@@ -14,7 +14,7 @@ object variable {
         System.clearProperty(name)
     }
 
-    fun list(): Map<String, String> = System.getenv()
+    fun list(): MutableMap<String, String> = System.getenv().toMutableMap()
 
     fun check(name: String): Boolean = System.getenv(name) != null
 }

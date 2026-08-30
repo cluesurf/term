@@ -7,16 +7,16 @@ mine lace
       mine form, like base
         site base
     mine list
-      mine form, like flow
+      mine form, like lace-flow
         site flow
 
-mine flow
+mine lace-flow
   mine any
     mine form, like text
       site text
-    mine form, like walk
+    mine form, like lace-walk
       site walk
-    mine form, like test
+    mine form, like lace-test
       site test
     mine form, like form
       site form
@@ -32,7 +32,7 @@ mine text
       mine text
         site text
 
-mine walk
+mine lace-walk
   mine term, term walk
     mine term
       site road
@@ -40,10 +40,10 @@ mine walk
       mine form, like base
         site base
     mine list
-      mine form, like flow
+      mine form, like lace-flow
         site flow
 
-mine test
+mine lace-test
   mine term, term test
     mine term
       site road
@@ -51,7 +51,7 @@ mine test
       mine form, like bind
         site bind
     mine list
-      mine form, like flow
+      mine form, like lace-flow
         site flow
     mine list
       mine form, like hook

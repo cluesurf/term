@@ -1,55 +1,37 @@
+note draft
+# Checked spec, not compiled code — see ../head/mine.tree's note. The real reader is ./code.tree's
+# read-otf-hhea-table, proven by deck/feed/test/otf-hhea-maxp.tree. Replaces the old pre-rename draft.
+# `ushort`/`short` are the same rules every OTF table spec in this package reuses — defined once in
+# ../head/mine.tree, not repeated identically in each file.
 
 mine hhea-table
-  mine form, form version
-  mine form, form ascender
-  mine form, form descender
-  mine form, form line-gap
-  mine form, form advance-width-max
-  mine form, form min-left-side-bearing
-  mine form, form min-right-side-bearing
-  mine form, form x-max-extent
-  mine form, form caret-slope-rise
-  mine form, form caret-slope-run
-  mine form, form caret-offset
-  mine count, bind count, share 8
-  mine form, form metric-data-format
-  mine form, form number-of-h-metrics
-
-mine version
-  mine form, form version
-
-mine ascender
-  mine form, form short
-
-mine descender
-  mine form, form short
-
-mine line-gap
-  mine form, form short
-
-mine advance-width-max
   mine form, form ushort
-
-mine min-left-side-bearing
-  mine form, form short
-
-mine min-right-side-bearing
-  mine form, form short
-
-mine x-max-extent
-  mine form, form short
-
-mine caret-slope-rise
-  mine form, form short
-
-mine caret-slope-run
-  mine form, form short
-
-mine caret-offset
-  mine form, form short
-
-mine metric-data-format
-  mine form, form short
-
-mine number-of-h-metrics
+    send version-major
   mine form, form ushort
+    send version-minor
+  mine form, form short
+    send ascender
+  mine form, form short
+    send descender
+  mine form, form short
+    send line-gap
+  mine form, form ushort
+    send advance-width-max
+  mine form, form short
+    send min-left-side-bearing
+  mine form, form short
+    send min-right-side-bearing
+  mine form, form short
+    send x-max-extent
+  mine form, form short
+    send caret-slope-rise
+  mine form, form short
+    send caret-slope-run
+  mine form, form short
+    send caret-offset
+  mine skip
+    bind width, code 8
+  mine form, form short
+    send metric-data-format
+  mine form, form ushort
+    send number-of-h-metrics

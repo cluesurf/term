@@ -1,0 +1,75 @@
+# read-otf-head-table / write-otf-head-table round trip. Run: term test, from deck/feed.
+#
+# Round trip, not a hand-encoded byte fixture: 54 bytes by hand is exactly the kind of transcription that would
+# make a wrong "expected" value and a wrong implementation agree by coincidence. This still proves both directions
+# are internally consistent, the way deck/feed/test/gzip.tree's round-trip check does.
+
+load ../code/base
+  find make-cursor
+
+load ../code/font/otf/table/head/form
+  find otf-head-table
+
+load ../code/font/otf/table/head/code
+  find read-otf-head-table
+  find write-otf-head-table
+
+task sample-head-table
+  like otf-head-table
+  send back
+    make otf-head-table
+      bind version-major, code 1
+      bind version-minor, code 0
+      bind font-revision, code 65536
+      bind checksum-adjustment, code 0
+      bind magic-number, code 0x5f0f3cf5
+      bind flags, code 0
+      bind units-per-em, code 1000
+      bind created, code 3610281600
+      bind modified, code 3610281600
+      bind x-min, code -100
+      bind y-min, code -50
+      bind x-max, code 1000
+      bind y-max, code 900
+      bind mac-style, code 0
+      bind lowest-rec-ppem, code 8
+      bind font-direction-hint, code 2
+      bind index-to-loc-format, code 0
+      bind glyph-data-format, code 0
+
+test <write-otf-head-table produces exactly 54 bytes>
+  want hold
+    call is-equal
+      call size(call write-otf-head-table(call sample-head-table))
+      code 54
+
+test <units-per-em round trips>
+  save reread
+    call read-otf-head-table
+      call make-cursor(call write-otf-head-table(call sample-head-table))
+  want hold
+    call is-equal
+      read reread/units-per-em
+      code 1000
+
+test <negative x-min round trips through signed int16>
+  save reread
+    call read-otf-head-table
+      call make-cursor(call write-otf-head-table(call sample-head-table))
+  want hold
+    call is-equal
+      read reread/x-min
+      code -100
+
+test <the 8-byte created timestamp round trips>
+  save reread
+    call read-otf-head-table
+      call make-cursor(call write-otf-head-table(call sample-head-table))
+  want hold
+    call is-equal
+      read reread/created
+      code 3610281600
+
+# A "bad magic number halts" test belongs here too, once the right assertion syntax for an expected exception is
+# confirmed — every `test` block seen so far in @term/seed uses `want hold` against a boolean, no example of
+# expecting a `halt` to fire. Not guessed at rather than risk a fourth wrong syntax guess this session.

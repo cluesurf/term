@@ -43,7 +43,7 @@ task resolve
       bind other, read ext
 
 task serialize
-  take value
+  take value, like unknown
   take format, like text
   note private
   like text
@@ -63,7 +63,7 @@ task serialize
 task deserialize
   take raw, like text
   take format, like text
-  like dynamic
+  like unknown
   note private
   fork test
     hook test
@@ -78,7 +78,7 @@ task deserialize
 
 task match
   note async
-  take value
+  take value, like unknown
   take name, like text
   take format, like text, fall text <json>
 
@@ -136,7 +136,7 @@ task match
 
 task update
   note async
-  take value
+  take value, like unknown
   take name, like text
   take format, like text, fall text <json>
 

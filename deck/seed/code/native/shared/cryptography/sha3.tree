@@ -1,504 +1,647 @@
+# SHA3-256 (FIPS-202): Keccak-f[1600] over 25 lanes, each lane held as two unsigned 32-bit halves (`lo`,
+# `hi`) since the portable bit vocabulary is 32-bit. Rate 136 bytes, domain padding 0x06...0x80, output the
+# first four lanes little-endian. The rotation offsets and round constants are the spec tables. Held to the
+# FIPS vectors in deck/seed/test/sha3.tree (the empty message and "abc").
+load @term/seed/code/bit
+  find bitwise-and
+  find bitwise-or
+  find bitwise-not
+  find bitwise-exclusive-or
+  find shift-left
+  find unsigned-shift-right
 
-# Not built: a half-finished translation, the same state as `aes.tree`. It calls a bit vocabulary that does not
-# exist (`unite-bitwise` / `intersect-bitwise` / `bitflip` for or / and / not), omits `read` before dynamic paths
-# (`save m-offset-i, m/{offset-i}`), and reads `self` in tasks that never take it.
-note draft
-load @term/seed/code/math
-  find round-up
+load @term/seed/code/native/shared/cryptography/md5
+  find md5-hex-byte
 
-save rhooffsets, call compute-rho-offset-constants
-save piindexes, call compute-pi-index-constants
-save roundconstants, call compute-round-constants
-task compute-rho-offset-constants
-  save table, make list
-  save x, code 1
-  save y, code 0
-  save t, code 0
-  walk test
-    hook test
-      call t/is-below
-        code 24
-    hook step
-      save tmp0
-        call x/add
-          call multiply
-            code 5
-            read y
-      save table/{tmp0}
-        call t/add
-          code 1
-          link multiply, call t/add(code 2)
-          link divide, code 2
-          link remainder, code 64
-      save new-x, call y/remainder(code 5)
-      save new-y
-        call multiply
-          code 2
-          read x
-          link add
-            call multiply
-              code 3
-              read y
-          link remainder, code 5
-      save x, read new-x
-      save y, read new-y
-      save t, call increment(read t)
-  send back, read table
+load @term/seed/code/text/string
+  find concat
 
-task compute-pi-index-constants
-  save table, make list
-  save x, code 0
-  walk test
-    hook test
-      call x/is-below
-        code 5
-    hook step
-      save y, code 0
-      walk test
-        hook test
-          call y/is-below
-            code 5
-        hook step
-          save tmp2
-            call x/add
-              call multiply
-                code 5
-                read y
-          save table/{tmp2}
-            call y/add
-              call multiply
-                code 2
-                read x
-                link add
-                  call multiply
-                    code 3
-                    read y
-                link remainder, code 5
-                link multiply, code 5
-          save y, call increment(read y)
-      save x, call increment(read x)
-  send back, read table
+load @term/seed/code/boolean
+  find not
 
-task compute-round-constants
-  save table, make list
-  save lfsr, code 1
-  save i, code 0
-  walk test
-    hook test
-      call i/is-below
-        code 24
-    hook step
-      save round-constant-msw, code 0
-      save round-constant-lsw, code 0
-      save j, code 0
-      walk test
-        hook test
-          call j/is-below
-            code 7
-        hook step
-          fork test, call lfsr/intersect-bitwise(code 1)
-            hook hold
-              save bit-position
-                call shift-left
-                  code 1
-                  read j
-                  link subtract, code 1
-              fork test, call bit-position/is-below(code 32)
-                hook hold
-                  save round-constant-lsw
-                    call bitwise-exclusive-or
-                      read round-constant-lsw
-                      call shift-left
-                        code 1
-                        read bit-position
-              save round-constant-msw
-                call bitwise-exclusive-or
-                  read round-constant-msw
-                  call shift-left
-                    code 1
-                    call bit-position/subtract
-                    code 32
-          fork test, call lfsr/intersect-bitwise(code 128)
-            hook hold
-              save lfsr
-                call lfsr/shift-left
-                  code 1
-                  link oppose-bitwise, code 113
-          save lfsr
-            call base-shift
-              read lfsr
-              code 1
-          save j, call increment(read j)
-      save table/{i}
-        call x64-word/create
-          read round-constant-msw
-          read round-constant-lsw
-      save i, call increment(read i)
-  send back, read table
+# the rho rotation offset of lane x + 5y
+host sha3-rot
+  code 0
+  code 1
+  code 62
+  code 28
+  code 27
+  code 36
+  code 44
+  code 6
+  code 55
+  code 20
+  code 3
+  code 10
+  code 43
+  code 25
+  code 39
+  code 41
+  code 45
+  code 15
+  code 21
+  code 8
+  code 18
+  code 2
+  code 61
+  code 56
+  code 14
 
-save t, call create-variable-table
-task create-variable-table
-  save table, make list
-  save i, code 0
-  walk test
-    hook test
-      call i/is-below
-        code 25
-    hook step
-      save table/{i}, call x64-word/create
-      save i, call increment(read i)
-  send back, read table
+# the iota round constants, low half
+host sha3-rc-lo
+  code 1
+  code 32898
+  code 32906
+  code 2147516416
+  code 32907
+  code 2147483649
+  code 2147516545
+  code 32777
+  code 138
+  code 136
+  code 2147516425
+  code 2147483658
+  code 2147516555
+  code 139
+  code 32905
+  code 32771
+  code 32770
+  code 128
+  code 32778
+  code 2147483658
+  code 2147516545
+  code 32896
+  code 2147483649
+  code 2147516424
 
-save output-length, code 512
-task do-reset
-  save state, save self/state, make list
-  save i, code 0
-  walk test
-    hook test
-      call i/is-below
-        code 25
-    hook step
-      save state/{i}, make x64-word/init
-      save i, call increment(read i)
-  save self/block-size
-    call divide
-      call subtract
-        code 1600
-        call multiply
-          code 2
-          read output-length
-      code 32
+# the iota round constants, high half
+host sha3-rc-hi
+  code 0
+  code 0
+  code 2147483648
+  code 2147483648
+  code 0
+  code 0
+  code 2147483648
+  code 2147483648
+  code 0
+  code 0
+  code 0
+  code 0
+  code 0
+  code 2147483648
+  code 2147483648
+  code 2147483648
+  code 2147483648
+  code 2147483648
+  code 0
+  code 2147483648
+  code 2147483648
+  code 2147483648
+  code 0
+  code 2147483648
 
-task do-process-block
-  take m
-  take offset
-  save state, self/state
-  save n-block-size-lanes, call self/block-size/divide(code 2)
-  save i, code 0
-  walk test
-    hook test
-      call i/is-below
-        read n-block-size-lanes
-    hook step
-      save tmp9
-        call offset/add
-          call multiply
-            code 2
-            read i
-      save m2i, m/{tmp9}
-      save tmp10
-        call offset/add
-          call multiply
-            code 2
-            read i
-          link add, code 1
-      save m2i1, m/{tmp10}
-      save m2i
-        call m2i/shift-left
-          code 8
-          link unite-bitwise, call m2i/unsigned-shift-right(code 24)
-          link intersect-bitwise, code 16711935
-          link unite-bitwise
-            call m2i/shift-left
-              code 24
-              link unite-bitwise, call m2i/unsigned-shift-right(code 8)
-              link intersect-bitwise, code 4278255360
-      save m2i1
-        call m2i1/shift-left
-          code 8
-          link unite-bitwise, call m2i1/unsigned-shift-right(code 24)
-          link intersect-bitwise, code 16711935
-          link unite-bitwise
-            call m2i1/shift-left
-              code 24
-              link unite-bitwise, call m2i1/unsigned-shift-right(code 8)
-              link intersect-bitwise, code 4278255360
-      save lane, state/{i}
-      save lane/high
-        call bitwise-exclusive-or
-          read lane/high
-          read m2i1
-      save lane/low
-        call bitwise-exclusive-or
-          read lane/low
-          read m2i
-      save i, call increment(read i)
-  save round, code 0
-  walk test
-    hook test
-      call round/is-below
-        code 24
-    hook step
-      save x, code 0
-      walk test
-        hook test
-          call x/is-below
-            code 5
-        hook step
-          save t-msw, code 0
-          save t-lsw, code 0
-          save y, code 0
-          walk test
-            hook test
-              call y/is-below
-                code 5
-            hook step
-              save tmp12
-                call x/add
-                  call multiply
-                    code 5
-                    read y
-              save lane, state/{tmp12}
-              save t-msw
-                call bitwise-exclusive-or
-                  read t-msw
-                  lane/high
-              save t-lsw
-                call bitwise-exclusive-or
-                  read t-lsw
-                  lane/low
-              save y, call increment(read y)
-          save tx, t/{x}
-          save tx/high, read t-msw
-          save tx/low, read t-lsw
-          save x, call increment(read x)
-      save x, code 0
-      walk test
-        hook test
-          call x/is-below
-            code 5
-        hook step
-          save tmp15
-            call x/add
-              code 4
-              link remainder, code 5
-          save tx4, t/{tmp15}
-          save tmp16
-            call x/add
-              code 1
-              link remainder, code 5
-          save tx1, t/{tmp16}
-          save tx1-msw, tx1/high
-          save tx1-lsw, tx1/low
-          save t-msw
-            call tx4/high/oppose-bitwise
-              call tx1-msw/shift-left
-                code 1
-                link unite-bitwise, call tx1-lsw/unsigned-shift-right(code 31)
-          save t-lsw
-            call tx4/low/oppose-bitwise
-              call tx1-lsw/shift-left
-                code 1
-                link unite-bitwise, call tx1-msw/unsigned-shift-right(code 31)
-          save y, code 0
-          walk test
-            hook test
-              call y/is-below
-                code 5
-            hook step
-              save tmp17
-                call x/add
-                  call multiply
-                    code 5
-                    read y
-              save lane, state/{tmp17}
-              save lane/high
-                call bitwise-exclusive-or
-                  read lane/high
-                  read t-msw
-              save lane/low
-                call bitwise-exclusive-or
-                  read lane/low
-                  read t-lsw
-              save y, call increment(read y)
-          save x, call increment(read x)
-      save lane-index, code 1
-      walk test
-        hook test
-          call lane-index/is-below
-            code 25
-        hook step
-          save t-msw
-          save t-lsw
-          save lane, state/{lane-index}
-          save lane-msw, lane/high
-          save lane-lsw, lane/low
-          save rho-offset, rhooffsets/{lane-index}
-          fork test, call rho-offset/is-below(code 32)
-            hook hold
-              save t-msw
-                call lane-msw/shift-left
-                  read rho-offset
-                  link unite-bitwise
-                    call lane-lsw/unsigned-shift-right
-                      call subtract
-                        code 32
-                        read rho-offset
-              save t-lsw
-                call lane-lsw/shift-left
-                  read rho-offset
-                  link unite-bitwise
-                    call lane-msw/unsigned-shift-right
-                      call subtract
-                        code 32
-                        read rho-offset
-          save t-msw
-            call lane-lsw/shift-left
-              call rho-offset/subtract
-                code 32
-              link unite-bitwise
-                call lane-msw/unsigned-shift-right
-                  call subtract
-                    code 64
-                    read rho-offset
-          save t-lsw
-            call lane-msw/shift-left
-              call rho-offset/subtract
-                code 32
-              link unite-bitwise
-                call lane-lsw/unsigned-shift-right
-                  call subtract
-                    code 64
-                    read rho-offset
-          save t-pi-lane, t/{piindexes/{lane-index}}
-          save t-pi-lane/high, read t-msw
-          save t-pi-lane/low, read t-lsw
-          save lane-index, call increment(read lane-index)
-      save t0, t/0
-      save state0, state/0
-      save t0/high, read state0/high
-      save t0/low, read state0/low
-      save x, code 0
-      walk test
-        hook test
-          call x/is-below
-            code 5
-        hook step
-          save y, code 0
-          walk test
-            hook test
-              call y/is-below
-                code 5
-            hook step
-              save lane-index
-                call x/add
-                  call multiply
-                    code 5
-                    read y
-              save lane, state/{lane-index}
-              save t-lane, t/{lane-index}
-              save tmp21
-                call x/add
-                  code 1
-                  link remainder, code 5
-                  link add
-                    call multiply
-                      code 5
-                      read y
-              save tx1-lane, t/{tmp21}
-              save tmp22
-                call x/add
-                  code 2
-                  link remainder, code 5
-                  link add
-                    call multiply
-                      code 5
-                      read y
-              save tx2-lane, t/{tmp22}
-              save lane/high
-                call t-lane/high/oppose-bitwise
-                  call bitflip
-                    tx1-lane/high
-                    link intersect-bitwise, read tx2-lane/high
-              save lane/low
-                call t-lane/low/oppose-bitwise
-                  call bitflip
-                    tx1-lane/low
-                    link intersect-bitwise, read tx2-lane/low
-              save y, call increment(read y)
-          save x, call increment(read x)
-      save lane, state/0
-      save round-constant, roundconstants/{round}
-      save lane/high
-        call bitwise-exclusive-or
-          read lane/high
-          round-constant/high
-      save lane/low
-        call bitwise-exclusive-or
-          read lane/low
-          round-constant/low
-      save round, call increment(read round)
-
-task do-finalize
-  save data, self/data
-  save data-words, data/words
-  save n-bits-total, call self/n-data-bytes/multiply(code 8)
-  save n-bits-left, call data/sig-bytes/multiply(code 8)
-  save block-size-bits, call self/block-size/multiply(code 32)
-  save tmp26, call n-bits-left/unsigned-shift-right(code 5)
-  save data-words/{tmp26}
-    call bitwise-or
-      read data-words/{tmp26}
-      call shift-left
-        code 1
-        call subtract
-          code 24
-          call remainder
-            read n-bits-left
-            code 32
-  save tmp27
-    call round-up
-      call n-bits-left/add
-        code 1
-        link divide, read block-size-bits
-      link multiply, read block-size-bits
-      link unsigned-shift-right, code 5
-      link subtract, code 1
-  save data-words/{tmp27}
-    call bitwise-or
-      read data-words/{tmp27}
-      code 128
-  save data/sig-bytes, call data-words/length/multiply(code 4)
-  call self/process
-  save state, self/state
-  save output-length-bytes, call output-length/divide(code 8)
-  save output-length-lanes, call output-length-bytes/divide(code 8)
-  save hash-words, make list
-  save i, code 0
-  walk test
-    hook test
-      call i/is-below
-        read output-length-lanes
-    hook step
-      save lane, state/{i}
-      save lane-msw, lane/high
-      save lane-lsw, lane/low
-      save lane-msw
-        call lane-msw/shift-left
-          code 8
-          link unite-bitwise, call lane-msw/unsigned-shift-right(code 24)
-          link intersect-bitwise, code 16711935
-          link unite-bitwise
-            call lane-msw/shift-left
-              code 24
-              link unite-bitwise, call lane-msw/unsigned-shift-right(code 8)
-              link intersect-bitwise, code 4278255360
-      save lane-lsw
-        call lane-lsw/shift-left
-          code 8
-          link unite-bitwise, call lane-lsw/unsigned-shift-right(code 24)
-          link intersect-bitwise, code 16711935
-          link unite-bitwise
-            call lane-lsw/shift-left
-              code 24
-              link unite-bitwise, call lane-lsw/unsigned-shift-right(code 8)
-              link intersect-bitwise, code 4278255360
-      call hash-words/push
-        read lane-lsw
-      call hash-words/push
-        read lane-msw
-      save i, call increment(read i)
+# a value reduced to its unsigned 32-bit form
+task sha3-wrap
+  take x, like number
+  like number
   send back
-    make word-array/init
-      read hash-words
-      read output-length-bytes
+    call unsigned-shift-right
+      read x
+      code 0
+
+# the LOW half of a 64-bit left rotation of the lane (l, h) by n
+task sha3-rotl-lo
+  take l, like number
+  take h, like number
+  take n, like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        read n
+        code 0
+    hook hold
+      send back, read l
+  fork test
+    hook test
+      call is-minimum
+        read n
+        code 32
+    hook hold
+      send back
+        call sha3-rotl-lo
+          read h
+          read l
+          call subtract
+            read n
+            code 32
+  send back
+    call sha3-wrap
+      call bitwise-or
+        call shift-left
+          read l
+          read n
+        call unsigned-shift-right
+          read h
+          call subtract
+            code 32
+            read n
+
+# the HIGH half of a 64-bit left rotation of the lane (l, h) by n
+task sha3-rotl-hi
+  take l, like number
+  take h, like number
+  take n, like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        read n
+        code 0
+    hook hold
+      send back, read h
+  fork test
+    hook test
+      call is-minimum
+        read n
+        code 32
+    hook hold
+      send back
+        call sha3-rotl-hi
+          read h
+          read l
+          call subtract
+            read n
+            code 32
+  send back
+    call sha3-wrap
+      call bitwise-or
+        call shift-left
+          read h
+          read n
+        call unsigned-shift-right
+          read l
+          call subtract
+            code 32
+            read n
+
+# one Keccak-f[1600] permutation over the state halves, in place
+task sha3-keccak
+  take lo
+    like list
+      like number
+  take hi
+    like list
+      like number
+  save rnd, code 0
+  walk test
+    hook test
+      call is-below
+        read rnd
+        code 24
+    hook hold
+      # theta: the column parities
+      save cl, make list
+      save ch, make list
+      save x, code 0
+      walk test
+        hook test
+          call is-below
+            read x
+            code 5
+        hook hold
+          save pl, code 0
+          save ph, code 0
+          save y, code 0
+          walk test
+            hook test
+              call is-below
+                read y
+                code 5
+            hook hold
+              save at
+                call add
+                  read x
+                  call multiply
+                    read y
+                    code 5
+              save pl
+                call bitwise-exclusive-or
+                  read pl
+                  read lo/{at}
+              save ph
+                call bitwise-exclusive-or
+                  read ph
+                  read hi/{at}
+              save y, call increment(read y)
+          call cl/push
+            call sha3-wrap
+              read pl
+          call ch/push
+            call sha3-wrap
+              read ph
+          save x, call increment(read x)
+      save x, code 0
+      walk test
+        hook test
+          call is-below
+            read x
+            code 5
+        hook hold
+          save left
+            call modulo
+              call add
+                read x
+                code 4
+              code 5
+          save right
+            call modulo
+              call add
+                read x
+                code 1
+              code 5
+          save rl, read cl/{right}
+          save rh, read ch/{right}
+          save dl
+            call bitwise-exclusive-or
+              read cl/{left}
+              call sha3-rotl-lo
+                read rl
+                read rh
+                code 1
+          save dh
+            call bitwise-exclusive-or
+              read ch/{left}
+              call sha3-rotl-hi
+                read rl
+                read rh
+                code 1
+          save y, code 0
+          walk test
+            hook test
+              call is-below
+                read y
+                code 5
+            hook hold
+              save at
+                call add
+                  read x
+                  call multiply
+                    read y
+                    code 5
+              call lo/set
+                read at
+                call sha3-wrap
+                  call bitwise-exclusive-or
+                    read lo/{at}
+                    read dl
+              call hi/set
+                read at
+                call sha3-wrap
+                  call bitwise-exclusive-or
+                    read hi/{at}
+                    read dh
+              save y, call increment(read y)
+          save x, call increment(read x)
+      # rho and pi: rotate each lane into its permuted place
+      save bl, make list
+      save bh, make list
+      save i, code 0
+      walk test
+        hook test
+          call is-below
+            read i
+            code 25
+        hook hold
+          call bl/push
+            code 0
+          call bh/push
+            code 0
+          save i, call increment(read i)
+      save x, code 0
+      walk test
+        hook test
+          call is-below
+            read x
+            code 5
+        hook hold
+          save y, code 0
+          walk test
+            hook test
+              call is-below
+                read y
+                code 5
+            hook hold
+              save at
+                call add
+                  read x
+                  call multiply
+                    read y
+                    code 5
+              save to
+                call add
+                  read y
+                  call multiply
+                    call modulo
+                      call add
+                        call multiply
+                          code 2
+                          read x
+                        call multiply
+                          code 3
+                          read y
+                      code 5
+                    code 5
+              save ll, read lo/{at}
+              save hh, read hi/{at}
+              save amount, read sha3-rot/{at}
+              call bl/set
+                read to
+                call sha3-rotl-lo
+                  read ll
+                  read hh
+                  read amount
+              call bh/set
+                read to
+                call sha3-rotl-hi
+                  read ll
+                  read hh
+                  read amount
+              save y, call increment(read y)
+          save x, call increment(read x)
+      # chi
+      save x, code 0
+      walk test
+        hook test
+          call is-below
+            read x
+            code 5
+        hook hold
+          save y, code 0
+          walk test
+            hook test
+              call is-below
+                read y
+                code 5
+            hook hold
+              save row
+                call multiply
+                  read y
+                  code 5
+              save at
+                call add
+                  read x
+                  read row
+              save one
+                call add
+                  call modulo
+                    call add
+                      read x
+                      code 1
+                    code 5
+                  read row
+              save two
+                call add
+                  call modulo
+                    call add
+                      read x
+                      code 2
+                    code 5
+                  read row
+              call lo/set
+                read at
+                call sha3-wrap
+                  call bitwise-exclusive-or
+                    read bl/{at}
+                    call bitwise-and
+                      call bitwise-not
+                        read bl/{one}
+                      read bl/{two}
+              call hi/set
+                read at
+                call sha3-wrap
+                  call bitwise-exclusive-or
+                    read bh/{at}
+                    call bitwise-and
+                      call bitwise-not
+                        read bh/{one}
+                      read bh/{two}
+              save y, call increment(read y)
+          save x, call increment(read x)
+      # iota
+      call lo/set
+        code 0
+        call sha3-wrap
+          call bitwise-exclusive-or
+            read lo/0
+            read sha3-rc-lo/{rnd}
+      call hi/set
+        code 0
+        call sha3-wrap
+          call bitwise-exclusive-or
+            read hi/0
+            read sha3-rc-hi/{rnd}
+      save rnd, call increment(read rnd)
+
+# the SHA3-256 digest of a byte list, as 64 lowercase hex characters
+task calculate-sha3-256
+  take list
+    like list
+      like number
+  like text
+  save lo, make list
+  save hi, make list
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        code 25
+    hook hold
+      call lo/push
+        code 0
+      call hi/push
+        code 0
+      save i, call increment(read i)
+  # pad: the 0x06 domain byte, zeros to the 136-byte rate, 0x80 on the last byte
+  save m, make list
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        read list/length
+    hook hold
+      call m/push
+        read list/{i}
+      save i, call increment(read i)
+  call m/push
+    code 6
+  walk test
+    hook test
+      call not
+        call is-equal
+          call modulo
+            read m/length
+            code 136
+          code 0
+    hook hold
+      call m/push
+        code 0
+  save last
+    call subtract
+      read m/length
+      code 1
+  call m/set
+    read last
+    call bitwise-or
+      read m/{last}
+      code 128
+  # absorb each 136-byte block, one 8-byte little-endian lane at a time
+  save off, code 0
+  walk test
+    hook test
+      call is-below
+        read off
+        read m/length
+    hook hold
+      save lane, code 0
+      walk test
+        hook test
+          call is-below
+            read lane
+            code 17
+        hook hold
+          save base
+            call add
+              read off
+              call multiply
+                read lane
+                code 8
+          save b0-at
+            call add
+              read base
+              code 0
+          save b0, read m/{b0-at}
+          save b1-at, call increment(read b0-at)
+          save b1, read m/{b1-at}
+          save b2-at, call add(read b0-at, code 2)
+          save b2, read m/{b2-at}
+          save b3-at, call add(read b0-at, code 3)
+          save b3, read m/{b3-at}
+          save word-a
+            call bitwise-or
+              call bitwise-or
+                read b0
+                call shift-left
+                  read b1
+                  code 8
+              call bitwise-or
+                call shift-left
+                  read b2
+                  code 16
+                call shift-left
+                  read b3
+                  code 24
+          call lo/set
+            read lane
+            call sha3-wrap
+              call bitwise-exclusive-or
+                read lo/{lane}
+                read word-a
+          save b0-at
+            call add
+              read base
+              code 4
+          save b0, read m/{b0-at}
+          save b1-at, call increment(read b0-at)
+          save b1, read m/{b1-at}
+          save b2-at, call add(read b0-at, code 2)
+          save b2, read m/{b2-at}
+          save b3-at, call add(read b0-at, code 3)
+          save b3, read m/{b3-at}
+          save word-b
+            call bitwise-or
+              call bitwise-or
+                read b0
+                call shift-left
+                  read b1
+                  code 8
+              call bitwise-or
+                call shift-left
+                  read b2
+                  code 16
+                call shift-left
+                  read b3
+                  code 24
+          call hi/set
+            read lane
+            call sha3-wrap
+              call bitwise-exclusive-or
+                read hi/{lane}
+                read word-b
+          save lane, call increment(read lane)
+      call sha3-keccak
+        read lo
+        read hi
+      save off
+        call add
+          read off
+          code 136
+  # squeeze: the first four lanes, little-endian halves, as hex
+  save digest, text <>
+  save lane, code 0
+  walk test
+    hook test
+      call is-below
+        read lane
+        code 4
+    hook hold
+      save word-a, read lo/{lane}
+      save bi-a, code 0
+      walk test
+        hook test
+          call is-below
+            read bi-a
+            code 4
+        hook hold
+          save byte-a
+            call bitwise-and
+              call unsigned-shift-right
+                read word-a
+                call multiply
+                  read bi-a
+                  code 8
+              code 255
+          save digest
+            call concat
+              read digest
+              call md5-hex-byte
+                read byte-a
+          save bi-a, call increment(read bi-a)
+      save word-b, read hi/{lane}
+      save bi-b, code 0
+      walk test
+        hook test
+          call is-below
+            read bi-b
+            code 4
+        hook hold
+          save byte-b
+            call bitwise-and
+              call unsigned-shift-right
+                read word-b
+                call multiply
+                  read bi-b
+                  code 8
+              code 255
+          save digest
+            call concat
+              read digest
+              call md5-hex-byte
+                read byte-b
+          save bi-b, call increment(read bi-b)
+      save lane, call increment(read lane)
+  send back, read digest
+

@@ -1,13 +1,32 @@
 
+load @term/mill/code/code/seed/mine
+  find seed
+
 mine fuse
   mine term, term fuse
-    site name
+    mine term
+      site name
     mine list
-      mine form, like fuse-bind
-        site bind
+      mine any
+        mine form, like fuse-bind
+          site bind
+        mine form, like fuse-term
+          site term
+        mine form, like seed
+          site seed
+        mine term
+          site word
+
+# `fuse access, term r`: a positional template argument naming a term
+mine fuse-term
+  mine term, term term
+    mine term
+      site name
 
 mine fuse-bind
   mine term, term bind
-    site name
-    mine any
-      site value
+    mine term
+      site name
+    mine maybe
+      mine form, like seed
+        site seed

@@ -23,40 +23,49 @@ load @term/mill/code/code/tag/mine
 load ./risk/mine
   find risk
 
+load @term/mill/code/code/wait/mine
+  find wait
+
+load @term/mill/code/code/hide/mine
+  find hide
+
+load @term/mill/code/code/form/link/mine
+  find link
+
+load @term/mill/code/code/tree/slot/mine
+  find slot
+
+# a task's parts come in ANY order in real source (`note async` before the takes, `like` between takes and
+# body), so the rule is one list of alternatives, not a fixed sequence
 mine task
   mine term, term task
     mine term
       site name
     mine list
-      mine form, like head
-        site head
-    mine list
-      mine form, like take
-        site take
-    mine list
-      mine form, like flow
-        site flow
-    mine list
-      mine form, like task
-        site task
-    mine maybe
-      mine form, like like
-        site like
-    mine maybe
-      mine form, like wait
-        site wait
-    mine maybe
-      mine form, like risk
-        site risk
-    mine maybe
-      mine form, like hide
-        site hide
-    mine maybe
-      mine form, like fold
-        site fold
-    mine maybe
-      mine form, like note
-        site note
-    mine list
-      mine form, like tag
-        site tag
+      mine any
+        mine form, like head
+          site head
+        mine form, like take
+          site take
+        mine form, like like
+          site like
+        mine form, like note
+          site note
+        mine form, like wait
+          site wait
+        mine form, like risk
+          site risk
+        mine form, like hide
+          site hide
+        mine form, like fold
+          site fold
+        mine form, like tag
+          site tag
+        mine form, like task
+          site task
+        mine form, like link
+          site link
+        mine form, like slot
+          site slot
+        mine form, like flow
+          site flow

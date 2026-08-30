@@ -7,7 +7,7 @@
 dock type
   load <any>, name big-handle
 
-bind do-from-text
+bind do-big-from-text
   take value, like text
   like big-handle
   case node
@@ -21,7 +21,7 @@ bind do-from-text
   case kotlin
     text <java.math.BigInteger($value)>
 
-bind do-from-number
+bind do-big-from-number
   take value, like number
   like big-handle
   case node
@@ -33,7 +33,7 @@ bind do-from-number
   case kotlin
     text <java.math.BigInteger.valueOf($value)>
 
-bind do-to-text
+bind do-big-to-text
   take value, like big-handle
   like text
   case node
@@ -41,11 +41,11 @@ bind do-to-text
   case browser
     text <$value.toString()>
   case rust
-    text <$value.to_string()>
+    text <$value.downcast_ref::\<num_bigint::BigInt\>().unwrap().to_string()>
   case kotlin
-    text <$value.toString()>
+    text <($value as java.math.BigInteger).toString()>
 
-bind do-add
+bind do-big-add
   take a, like big-handle
   take b, like big-handle
   like big-handle
@@ -54,11 +54,11 @@ bind do-add
   case browser
     text <$a + $b>
   case rust
-    text <&$a + &$b>
+    text <$a.downcast_ref::\<num_bigint::BigInt\>().unwrap() + $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()>
   case kotlin
-    text <$a.add($b)>
+    text <($a as java.math.BigInteger).add($b as java.math.BigInteger)>
 
-bind do-subtract
+bind do-big-subtract
   take a, like big-handle
   take b, like big-handle
   like big-handle
@@ -67,11 +67,11 @@ bind do-subtract
   case browser
     text <$a - $b>
   case rust
-    text <&$a - &$b>
+    text <$a.downcast_ref::\<num_bigint::BigInt\>().unwrap() - $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()>
   case kotlin
-    text <$a.subtract($b)>
+    text <($a as java.math.BigInteger).subtract($b as java.math.BigInteger)>
 
-bind do-multiply
+bind do-big-multiply
   take a, like big-handle
   take b, like big-handle
   like big-handle
@@ -80,11 +80,11 @@ bind do-multiply
   case browser
     text <$a * $b>
   case rust
-    text <&$a * &$b>
+    text <$a.downcast_ref::\<num_bigint::BigInt\>().unwrap() * $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()>
   case kotlin
-    text <$a.multiply($b)>
+    text <($a as java.math.BigInteger).multiply($b as java.math.BigInteger)>
 
-bind do-divide
+bind do-big-divide
   take a, like big-handle
   take b, like big-handle
   like big-handle
@@ -93,11 +93,11 @@ bind do-divide
   case browser
     text <$a / $b>
   case rust
-    text <&$a / &$b>
+    text <$a.downcast_ref::\<num_bigint::BigInt\>().unwrap() / $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()>
   case kotlin
-    text <$a.divide($b)>
+    text <($a as java.math.BigInteger).divide($b as java.math.BigInteger)>
 
-bind do-remainder
+bind do-big-remainder
   take a, like big-handle
   take b, like big-handle
   like big-handle
@@ -106,11 +106,11 @@ bind do-remainder
   case browser
     text <$a % $b>
   case rust
-    text <&$a % &$b>
+    text <$a.downcast_ref::\<num_bigint::BigInt\>().unwrap() % $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()>
   case kotlin
-    text <$a.remainder($b)>
+    text <($a as java.math.BigInteger).remainder($b as java.math.BigInteger)>
 
-bind do-negate
+bind do-big-negate
   take value, like big-handle
   like big-handle
   case node
@@ -120,9 +120,9 @@ bind do-negate
   case rust
     text <-&$value>
   case kotlin
-    text <$value.negate()>
+    text <($value as java.math.BigInteger).negate()>
 
-bind do-compare
+bind do-big-compare
   take a, like big-handle
   take b, like big-handle
   like number
@@ -131,9 +131,9 @@ bind do-compare
   case browser
     text <$a < $b ? -1 : ($a > $b ? 1 : 0)>
   case rust
-    text <$a.cmp(&$b) as i64>
+    text <match $a.downcast_ref::\<num_bigint::BigInt\>().unwrap().cmp($b.downcast_ref::\<num_bigint::BigInt\>().unwrap()) \{ std::cmp::Ordering::Less =\> -1i64, std::cmp::Ordering::Equal =\> 0i64, std::cmp::Ordering::Greater =\> 1i64 \}>
   case kotlin
-    text <$a.compareTo($b).toLong()>
+    text <($a as java.math.BigInteger).compareTo($b as java.math.BigInteger).toLong()>
 
 # an arbitrary-precision integer
 form big-integer
@@ -144,7 +144,7 @@ form big-integer
     take self
     like text
     send back
-      call do-to-text
+      call do-big-to-text
         read self/dock
 
   # this integer plus another
@@ -155,7 +155,7 @@ form big-integer
     send back
       make big-integer
         bind dock
-          call do-add
+          call do-big-add
             read self/dock
             read other/dock
 
@@ -167,7 +167,7 @@ form big-integer
     send back
       make big-integer
         bind dock
-          call do-subtract
+          call do-big-subtract
             read self/dock
             read other/dock
 
@@ -179,7 +179,7 @@ form big-integer
     send back
       make big-integer
         bind dock
-          call do-multiply
+          call do-big-multiply
             read self/dock
             read other/dock
 
@@ -191,7 +191,7 @@ form big-integer
     send back
       make big-integer
         bind dock
-          call do-divide
+          call do-big-divide
             read self/dock
             read other/dock
 
@@ -203,7 +203,7 @@ form big-integer
     send back
       make big-integer
         bind dock
-          call do-remainder
+          call do-big-remainder
             read self/dock
             read other/dock
 
@@ -214,7 +214,7 @@ form big-integer
     send back
       make big-integer
         bind dock
-          call do-negate
+          call do-big-negate
             read self/dock
 
   # -1, 0, or 1 as this integer is less than, equal to, or greater than another
@@ -223,7 +223,7 @@ form big-integer
     take other, like big-integer
     like number
     send back
-      call do-compare
+      call do-big-compare
         read self/dock
         read other/dock
 
@@ -234,7 +234,7 @@ task make-big-integer
   send back
     make big-integer
       bind dock
-        call do-from-text
+        call do-big-from-text
           read value
 
 # a big integer from a platform number
@@ -244,7 +244,7 @@ task big-from-number
   send back
     make big-integer
       bind dock
-        call do-from-number
+        call do-big-from-number
           read value
 
 # free-function arithmetic, for other modules to call without colliding with the platform `add` / `multiply` intrinsics
@@ -256,7 +256,7 @@ task big-add
   send back
     make big-integer
       bind dock
-        call do-add
+        call do-big-add
           read a/dock
           read b/dock
 
@@ -267,7 +267,7 @@ task big-subtract
   send back
     make big-integer
       bind dock
-        call do-subtract
+        call do-big-subtract
           read a/dock
           read b/dock
 
@@ -278,7 +278,7 @@ task big-multiply
   send back
     make big-integer
       bind dock
-        call do-multiply
+        call do-big-multiply
           read a/dock
           read b/dock
 
@@ -287,6 +287,6 @@ task big-compare
   take b, like big-integer
   like number
   send back
-    call do-compare
+    call do-big-compare
       read a/dock
       read b/dock

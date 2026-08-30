@@ -13,8 +13,9 @@
 # cannot build one. `walk test`, the while loop, is likewise unreachable: only `walk list` is matched, so a
 # document's every loop carries its own end. See note/term/view/05-sandbox.md.
 #
-# `walk size` is not matched yet. `zone-walk` carries a list and an item and has no counted form, so the counted
-# spelling needs either a mode on that form or a lowering onto a range, which is decided in view-dialect-0021.
+# Both walks land in one site, because both mean the same thing by the time anything downstream sees them: the
+# reader normalises `walk size` into a `walk list` over `range(base, head)`, `range` being a render-runtime task.
+# `zone-walk` carries only a list walk, and adding a counted one would touch every pass that reads a walk.
 
 load @term/mill/code/view/seed/mine
   find view-seed
@@ -27,6 +28,8 @@ mine view-node
     mine form, like view-text
       site text
     mine form, like view-walk
+      site walk
+    mine form, like view-walk-size
       site walk
     mine form, like view-fork
       site fork
@@ -72,6 +75,20 @@ mine view-walk-site
     mine term, term site
     mine term, term name
       site name
+
+# `walk size / bind base, 0 / bind head, 100`, and the short `walk size, read total` counting from zero
+mine view-walk-size
+  mine term, term walk
+    mine term, term size
+    mine maybe
+      mine form, like view-seed
+        site head
+    mine list
+      mine form, like view-bind
+        site bind
+    mine list
+      mine form, like view-walk-next
+        site next
 
 # `fork test` with `hook test` / `hook hold` / `hook miss`, a flat list paired during lowering
 mine view-fork

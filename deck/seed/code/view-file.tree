@@ -44,10 +44,8 @@ load ./zone
 #
 # There is no `tree` field, and that is not an oversight. A macro never reaches this form: `compile/template.ts`
 # expands `tree` and `fuse` on the parse tree before any mill runs, so a `view-file` only ever holds the expanded
-# result. A field named `tree` would also be deleted by that same expander, which drops every node whose head is
-# `tree` at any depth. That is a live compiler defect (`book-code`'s `link tree, like text` emits `like: any`
-# today) and it is filed against compiler-hygiene. The field can be added when the defect is fixed and a reason
-# to hold macros in the AST appears.
+# result and the field would always be empty. Add it if a reason to hold macros in the AST appears, which would
+# be the formatter or the editor wanting to read a file before expansion.
 form view-file
   link load, list view-load
   link host, list view-host

@@ -48,7 +48,7 @@ describe("a form's heads", () => {
   })
 
   it('carry a default, so a reference with no arguments still compiles', () => {
-    expect(emit(MAYBE)).toContain('= unknown')
+    expect(emit(MAYBE)).toContain('= any')
   })
 
   it('never leave the parameter used but undeclared', () => {

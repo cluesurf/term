@@ -1,4 +1,7 @@
 
+load @term/seed/code/hold/text/code/utf-16
+  find text-utf-16
+
 load @term/seed/code/bit
   find bitwise-and
   find bitwise-or
@@ -14,14 +17,32 @@ load @term/seed/code/mark/8
 load @term/seed/code/text/code/utf-8
   find text-utf-8
 
-task allocate
+host utf-8-decoding-table
+  make list
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+    7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+    8, 8, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+    0xa, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x4, 0x3, 0x3,
+    0xb, 0x6, 0x6, 0x6, 0x5, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8,
+    0x0, 0x1, 0x2, 0x3, 0x5, 0x8, 0x7, 0x1, 0x1, 0x1, 0x4, 0x6, 0x1, 0x1, 0x1, 0x1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1,
+    1, 2, 1, 1, 1, 1, 1, 2, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 1, 3, 1, 1, 1, 1, 1, 1,
+    1, 3, 1, 1, 1, 1, 1, 3, 1, 3, 1, 1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+
+
+task allocate-utf-8
   take size
   free text, like text-utf-8
 
 form text-utf-8
   link list
-    like list-type
-      like mark-8
+    like list
+      like u8
     note private
 
   task make-upper-case
@@ -40,391 +61,3 @@ form text-utf-8
   task split
 
   task replace
-
-task make-utf-8-from-utf-16
-  take text, like text-utf-16
-  save h
-  save l
-  save j
-  save i, code 0
-  save size, code 0
-
-  walk test
-    hook test
-      call is-below
-        read i
-        read text/get-size
-    hook step
-      save h, read text/{i}
-      fork test
-        hook test
-          call and
-            call is-minimum
-              read h
-              code 0xD800
-            call is-maximum
-              read h
-              code 0xDBFF
-        hook hold
-          fork test
-            hook test
-              call is-below
-                call add
-                  read i
-                  code 1
-                read text/get-size
-            hook hold
-              save l, read text/{i}
-              fork test
-                hook test
-                  call and
-                    call is-minimum
-                      read l
-                      code 0xDC00
-                    call is-maximum
-                      read l
-                      code 0xDFFF
-                hook hold
-                  save size
-                    call increment
-                      read size
-                      code 4
-                hook miss
-                  save size
-                    call increment
-                      read size
-                      code 3
-            hook miss
-              save size
-                call increment
-                  read size
-                  code 3
-        hook miss
-          fork test
-            hook test
-              call is-below
-                read h
-                code 0x80
-            hook hold
-              save size
-                call increment
-                  read size
-                  code 1
-          fork test
-            hook test
-              call is-below
-                read h
-                code 0x800
-            hook hold
-              save size
-                call increment
-                  read size
-                  code 2
-          fork test
-            hook test
-              call is-below
-                read h
-                code 0x10000
-            hook hold
-              save size
-                call increment
-                  read size
-                  code 3
-  save head-text, make array(read size)
-  save i, code 0
-  walk test
-    hook test
-      call is-below
-        read i
-        read text/get-size
-    hook step
-      save h, read text/{i}
-      fork test
-        hook test
-          call and
-            call is-minimum
-              read h
-              code 0xD800
-            call is-maximum
-              read h
-              code 0xDBFF
-        hook hold
-          fork test
-            hook test
-              call is-below
-                call add
-                  read i
-                  code 1
-                read text/get-size
-            hook hold
-              save l, read text/{i}
-              fork test
-                hook test
-                  call and
-                    call is-minimum
-                      read l
-                      code 0xDC00
-                    call is-maximum
-                      read l
-                      code 0xDFFF
-                hook hold
-                  save cp
-                    call add
-                      call shift-left
-                        call subtract
-                          read h
-                          code 0xD800
-                        code 10
-                      call add
-                        read l
-                        code 0x2400
-                  save tmp, read j
-                  save j, call increment(read j)
-                  save head-text/{tmp}
-                    call bitwise-or
-                      code 0xF0
-                      call shift-right
-                        read cp
-                        code 0x12
-                  save tmp, read j
-                  save j, call increment(read j)
-                  save head-text/{tmp}
-                    call bitwise-or
-                      code 0x80
-                      call bitwise-and
-                        call shift-right
-                          read cp
-                          code 0x0C
-                        code 0x3F
-                  save tmp, read j
-                  save j, call increment(read j)
-                  save head-text/{tmp}
-                    call bitwise-or
-                      code 0x80
-                      call bitwise-and
-                        call shift-right
-                          read cp
-                          code 0x06
-                        code 0x3F
-                  save tmp, read j
-                  save j, call increment(read j)
-                  save head-text/{tmp}
-                    call bitwise-or
-                      code 0x80
-                      call bitwise-and
-                        read cp
-                        code 0x3F
-                hook miss
-                  save tmp, read j
-                  save j, call increment(read j)
-                  save head-text/{tmp}, code 0xEF
-                  save tmp, read j
-                  save j, call increment(read j)
-                  save head-text/{tmp}, code 0xBF
-                  save tmp, read j
-                  save j, call increment(read j)
-                  save head-text/{tmp}, code 0xBD
-            hook miss
-              save tmp, read j
-              save j, call increment(read j)
-              save head-text/{tmp}, code 0xEF
-              save tmp, read j
-              save j, call increment(read j)
-              save head-text/{tmp}, code 0xBF
-              save tmp, read j
-              save j, call increment(read j)
-              save head-text/{tmp}, code 0xBD
-        hook miss
-          fork test
-            hook test
-              call is-below
-                read h
-                code 0x80
-            hook hold
-              save tmp, read j
-              save j, call increment(read j)
-              save head-text/{tmp}, read h
-          fork test
-            hook test
-              call is-below
-                read h
-                code 0x800
-            hook hold
-              save tmp, read j
-              save j, call increment(read j)
-              save head-text/{tmp}
-                call bitwise-or
-                  code 0xC0
-                  call shift-right
-                    read h
-                    code 6
-              save tmp, read j
-              save j, call increment(read j)
-              save head-text/{tmp}
-                call bitwise-or
-                  code 0x80
-                  call bitwise-and
-                    read h
-                    code 0x3F
-              save size
-                call increment
-                  read size
-                  code 2
-          fork test
-            hook test
-              call is-below
-                read h
-                code 0x10000
-            hook hold
-              save tmp, read j
-              save j, call increment(read j)
-              save head-text/{tmp}
-                call bitwise-or
-                  code 0xE0
-                  call shift-right
-                    read h
-                    code 0xC
-              save tmp, read j
-              save j, call increment(read j)
-              save head-text/{tmp}
-                call bitwise-or
-                  code 0x80
-                  call bitwise-and
-                    call shift-right
-                      read h
-                      code 0x6
-                    code 0x3F
-              save tmp, read j
-              save j, call increment(read j)
-              save head-text/{tmp}
-                call bitwise-or
-                  code 0x80
-                  call bitwise-and
-                    call shift-right
-                      read h
-                      code 0x0
-                    code 0x3F
-              save size
-                call increment
-                  read size
-                  code 3
-  send back, read head-text
-
-task make-utf-16-from-utf-8
-  take text
-  save point, code 0
-  save state, code 0
-  save head-text, make text-utf-16
-
-  task decode-byte
-    take byte
-    save type, read utf-8-decoding-table/get, read byte
-    fork test
-      hook test
-        call is-unequal
-          read state
-          code 0
-      hook hold
-        save point
-          call bitwise-or
-            call bitwise-and
-              read byte
-              code 0x3f
-            call shift-left
-              read point
-              code 6
-      hook miss
-        save point
-          call bitwise-and
-            call shift-right
-              code 0xff
-              read type
-            read byte
-    save state
-      call utf-8-decoding-table/get
-        call add
-          call add
-            code 256
-            call multiply
-              read state
-              code 16
-          read type
-    send back, read state
-  save i, code 0
-  walk test, fork decode-byte-walk
-    hook test
-      call is-below
-        read i
-        read text/length
-    hook step
-      save point, code 0
-      fork case, call decode-byte(read text/{i})
-        fork case
-        case 0, bust case
-        case 1
-          call head-text/push
-            code 0xfffd
-          walk test, fork fork3
-            hook test
-              fork test
-                hook test
-                  call and
-                    call is-below
-                      call add
-                        read i
-                        code 1
-                      read text/length
-                    call is-equal
-                      call bitwise-and
-                        call text/get
-                          call add
-                            read i
-                            code 1
-                        code 0xc0
-                      code 0x80
-            hook step
-              save i, call increment(read i)
-          save state, read point
-          roll decode-byte-walk
-        roll decode-byte-walk
-      fork test
-        hook test
-          call is-maximum
-            read point
-            code 0xffff
-        hook hold
-          call head-text/push
-            read point
-        hook miss
-          call head-text/push
-            call add
-              code 0xd7c0
-              call shift-right
-                read point
-                code 10
-          call head-text/push
-            call add
-              code 0xdc00
-              call bitwise-and
-                read point
-                code 0x3ff
-      save point, code 0
-      save i, call increment(read i)
-
-  send back, read head-text
-
-host utf-8-decoding-table
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
-  7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-  8, 8, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-  0xa, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x3, 0x4, 0x3, 0x3,
-  0xb, 0x6, 0x6, 0x6, 0x5, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8,
-  0x0, 0x1, 0x2, 0x3, 0x5, 0x8, 0x7, 0x1, 0x1, 0x1, 0x4, 0x6, 0x1, 0x1, 0x1, 0x1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1,
-  1, 2, 1, 1, 1, 1, 1, 2, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 1, 3, 1, 1, 1, 1, 1, 1,
-  1, 3, 1, 1, 1, 1, 1, 3, 1, 3, 1, 1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1

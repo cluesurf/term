@@ -1,405 +1,992 @@
+# AES-128 (FIPS-197), byte-oriented over a flat 16-byte column-major block (state[4*column + row]). The
+# S-box, its inverse and the rnd constants are carried as the spec tables. `aes-encrypt-block` and
+# `aes-decrypt-block` are the single-block cipher and inverse cipher over a 16-byte key: one block, no mode,
+# no padding (a mode composes on top). Held to the FIPS-197 appendix C.1 vector in deck/seed/test/aes.tree
+# (00112233445566778899aabbccddeeff under 000102...0f -> 69c4e0d86a7b0430d8cdb78070b4c55a).
+load @term/seed/code/bit
+  find bitwise-and
+  find bitwise-exclusive-or
+  find shift-left
+  find unsigned-shift-right
 
-# Not built: this is a half-finished translation. It calls a bit vocabulary that does not exist
-# (`oppose-bitwise` / `unite-bitwise` / `intersect-bitwise` for xor / or / and) and has malformed statements
-# (`save x2, d/{x}` is missing its `read`, and line 112 nests a `save` inside a `save`). 114 errors.
-note draft
-load @term/seed/code/boolean
-  find not
+# the substitution box
+host aes-sbox
+  code 99
+  code 124
+  code 119
+  code 123
+  code 242
+  code 107
+  code 111
+  code 197
+  code 48
+  code 1
+  code 103
+  code 43
+  code 254
+  code 215
+  code 171
+  code 118
+  code 202
+  code 130
+  code 201
+  code 125
+  code 250
+  code 89
+  code 71
+  code 240
+  code 173
+  code 212
+  code 162
+  code 175
+  code 156
+  code 164
+  code 114
+  code 192
+  code 183
+  code 253
+  code 147
+  code 38
+  code 54
+  code 63
+  code 247
+  code 204
+  code 52
+  code 165
+  code 229
+  code 241
+  code 113
+  code 216
+  code 49
+  code 21
+  code 4
+  code 199
+  code 35
+  code 195
+  code 24
+  code 150
+  code 5
+  code 154
+  code 7
+  code 18
+  code 128
+  code 226
+  code 235
+  code 39
+  code 178
+  code 117
+  code 9
+  code 131
+  code 44
+  code 26
+  code 27
+  code 110
+  code 90
+  code 160
+  code 82
+  code 59
+  code 214
+  code 179
+  code 41
+  code 227
+  code 47
+  code 132
+  code 83
+  code 209
+  code 0
+  code 237
+  code 32
+  code 252
+  code 177
+  code 91
+  code 106
+  code 203
+  code 190
+  code 57
+  code 74
+  code 76
+  code 88
+  code 207
+  code 208
+  code 239
+  code 170
+  code 251
+  code 67
+  code 77
+  code 51
+  code 133
+  code 69
+  code 249
+  code 2
+  code 127
+  code 80
+  code 60
+  code 159
+  code 168
+  code 81
+  code 163
+  code 64
+  code 143
+  code 146
+  code 157
+  code 56
+  code 245
+  code 188
+  code 182
+  code 218
+  code 33
+  code 16
+  code 255
+  code 243
+  code 210
+  code 205
+  code 12
+  code 19
+  code 236
+  code 95
+  code 151
+  code 68
+  code 23
+  code 196
+  code 167
+  code 126
+  code 61
+  code 100
+  code 93
+  code 25
+  code 115
+  code 96
+  code 129
+  code 79
+  code 220
+  code 34
+  code 42
+  code 144
+  code 136
+  code 70
+  code 238
+  code 184
+  code 20
+  code 222
+  code 94
+  code 11
+  code 219
+  code 224
+  code 50
+  code 58
+  code 10
+  code 73
+  code 6
+  code 36
+  code 92
+  code 194
+  code 211
+  code 172
+  code 98
+  code 145
+  code 149
+  code 228
+  code 121
+  code 231
+  code 200
+  code 55
+  code 109
+  code 141
+  code 213
+  code 78
+  code 169
+  code 108
+  code 86
+  code 244
+  code 234
+  code 101
+  code 122
+  code 174
+  code 8
+  code 186
+  code 120
+  code 37
+  code 46
+  code 28
+  code 166
+  code 180
+  code 198
+  code 232
+  code 221
+  code 116
+  code 31
+  code 75
+  code 189
+  code 139
+  code 138
+  code 112
+  code 62
+  code 181
+  code 102
+  code 72
+  code 3
+  code 246
+  code 14
+  code 97
+  code 53
+  code 87
+  code 185
+  code 134
+  code 193
+  code 29
+  code 158
+  code 225
+  code 248
+  code 152
+  code 17
+  code 105
+  code 217
+  code 142
+  code 148
+  code 155
+  code 30
+  code 135
+  code 233
+  code 206
+  code 85
+  code 40
+  code 223
+  code 140
+  code 161
+  code 137
+  code 13
+  code 191
+  code 230
+  code 66
+  code 104
+  code 65
+  code 153
+  code 45
+  code 15
+  code 176
+  code 84
+  code 187
+  code 22
 
-save sbox, make list
-save invsbox, make list
-save submix0, make list
-save submix1, make list
-save submix2, make list
-save submix3, make list
-save invsubmix0, make list
-save invsubmix1, make list
-save invsubmix2, make list
-save invsubmix3, make list
-save key-size
-  call divide
-    code 256
-    code 32
-call create-tables
-task create-tables
-  save d, make list
-  save i, code 0
-  walk test
+# the inverse substitution box
+host aes-inv-sbox
+  code 82
+  code 9
+  code 106
+  code 213
+  code 48
+  code 54
+  code 165
+  code 56
+  code 191
+  code 64
+  code 163
+  code 158
+  code 129
+  code 243
+  code 215
+  code 251
+  code 124
+  code 227
+  code 57
+  code 130
+  code 155
+  code 47
+  code 255
+  code 135
+  code 52
+  code 142
+  code 67
+  code 68
+  code 196
+  code 222
+  code 233
+  code 203
+  code 84
+  code 123
+  code 148
+  code 50
+  code 166
+  code 194
+  code 35
+  code 61
+  code 238
+  code 76
+  code 149
+  code 11
+  code 66
+  code 250
+  code 195
+  code 78
+  code 8
+  code 46
+  code 161
+  code 102
+  code 40
+  code 217
+  code 36
+  code 178
+  code 118
+  code 91
+  code 162
+  code 73
+  code 109
+  code 139
+  code 209
+  code 37
+  code 114
+  code 248
+  code 246
+  code 100
+  code 134
+  code 104
+  code 152
+  code 22
+  code 212
+  code 164
+  code 92
+  code 204
+  code 93
+  code 101
+  code 182
+  code 146
+  code 108
+  code 112
+  code 72
+  code 80
+  code 253
+  code 237
+  code 185
+  code 218
+  code 94
+  code 21
+  code 70
+  code 87
+  code 167
+  code 141
+  code 157
+  code 132
+  code 144
+  code 216
+  code 171
+  code 0
+  code 140
+  code 188
+  code 211
+  code 10
+  code 247
+  code 228
+  code 88
+  code 5
+  code 184
+  code 179
+  code 69
+  code 6
+  code 208
+  code 44
+  code 30
+  code 143
+  code 202
+  code 63
+  code 15
+  code 2
+  code 193
+  code 175
+  code 189
+  code 3
+  code 1
+  code 19
+  code 138
+  code 107
+  code 58
+  code 145
+  code 17
+  code 65
+  code 79
+  code 103
+  code 220
+  code 234
+  code 151
+  code 242
+  code 207
+  code 206
+  code 240
+  code 180
+  code 230
+  code 115
+  code 150
+  code 172
+  code 116
+  code 34
+  code 231
+  code 173
+  code 53
+  code 133
+  code 226
+  code 249
+  code 55
+  code 232
+  code 28
+  code 117
+  code 223
+  code 110
+  code 71
+  code 241
+  code 26
+  code 113
+  code 29
+  code 41
+  code 197
+  code 137
+  code 111
+  code 183
+  code 98
+  code 14
+  code 170
+  code 24
+  code 190
+  code 27
+  code 252
+  code 86
+  code 62
+  code 75
+  code 198
+  code 210
+  code 121
+  code 32
+  code 154
+  code 219
+  code 192
+  code 254
+  code 120
+  code 205
+  code 90
+  code 244
+  code 31
+  code 221
+  code 168
+  code 51
+  code 136
+  code 7
+  code 199
+  code 49
+  code 177
+  code 18
+  code 16
+  code 89
+  code 39
+  code 128
+  code 236
+  code 95
+  code 96
+  code 81
+  code 127
+  code 169
+  code 25
+  code 181
+  code 74
+  code 13
+  code 45
+  code 229
+  code 122
+  code 159
+  code 147
+  code 201
+  code 156
+  code 239
+  code 160
+  code 224
+  code 59
+  code 77
+  code 174
+  code 42
+  code 245
+  code 176
+  code 200
+  code 235
+  code 187
+  code 60
+  code 131
+  code 83
+  code 153
+  code 97
+  code 23
+  code 43
+  code 4
+  code 126
+  code 186
+  code 119
+  code 214
+  code 38
+  code 225
+  code 105
+  code 20
+  code 99
+  code 85
+  code 33
+  code 12
+  code 125
+
+# the key-schedule rnd constants
+host aes-rcon
+  code 1
+  code 2
+  code 4
+  code 8
+  code 16
+  code 32
+  code 64
+  code 128
+  code 27
+  code 54
+
+# multiply by x in GF(2^8): shift left, reduce by the AES polynomial when the high bit was set
+task aes-xtime
+  take a, like number
+  like number
+  save doubled
+    call bitwise-and
+      call shift-left
+        read a
+        code 1
+      code 255
+  fork test
     hook test
-      call i/is-below(code 256)
-    hook step
-      fork test, call i/is-below(code 128)
-        hook hold
-          save d/{i}, call i/shift-left(code 1)
-      save d/{i}
-        call i/shift-left(code 1)
-          link oppose-bitwise, code 283
-      save i, call increment(read i)
-  save x, code 0
-  save xi, code 0
-  save i, code 0
-  walk test
-    hook test
-      call i/is-below(code 256)
-    hook step
-      save sx
-        call xi/oppose-bitwise(call xi/shift-left(code 1))
-          link oppose-bitwise, call xi/shift-left(code 2)
-          link oppose-bitwise, call xi/shift-left(code 3)
-          link oppose-bitwise, call xi/shift-left(code 4)
-      save sx
-        call sx/unsigned-shift-right(code 8)
-          link oppose-bitwise, call sx/intersect-bitwise(code 255)
-          link oppose-bitwise, code 99
-      save sbox/{x}, read sx
-      save invsbox/{sx}, read x
-      save x2, d/{x}
-      save x4, d/{x2}
-      save x8, d/{x4}
-      save t
-        call d/{sx}/multiply(code 257)
-          link oppose-bitwise, call sx/multiply(code 16843008)
-      save submix0/{x}
-        call t/shift-left(code 24)
-          link unite-bitwise, call t/unsigned-shift-right(code 8)
-      save submix1/{x}
-        call t/shift-left(code 16)
-          link unite-bitwise, call t/unsigned-shift-right(code 16)
-      save submix2/{x}
-        call t/shift-left(code 8)
-          link unite-bitwise, call t/unsigned-shift-right(code 24)
-      save submix3/{x}, read t
-      save t
-        call x8/multiply(code 16843009)
-          link oppose-bitwise, call x4/multiply(code 65537)
-          link oppose-bitwise, call x2/multiply(code 257)
-          link oppose-bitwise, call x/multiply(code 16843008)
-      save invsubmix0/{sx}
-        call t/shift-left(code 24)
-          link unite-bitwise, call t/unsigned-shift-right(code 8)
-      save invsubmix1/{sx}
-        call t/shift-left(code 16)
-          link unite-bitwise, call t/unsigned-shift-right(code 16)
-      save invsubmix2/{sx}
-        call t/shift-left(code 8)
-          link unite-bitwise, call t/unsigned-shift-right(code 24)
-      save invsubmix3/{sx}, read t
-      fork test, call not(read x)
-        hook hold
-          save xi, code 1
-          save x, read xi
-      save tmp1, call x8/oppose-bitwise(read x2)
-      save x, call x2/oppose-bitwise(read d/{d/{d/{tmp1}}})
-      save xi
-        call bitwise-exclusive-or
-          read xi
-          d/{d/{xi}}
-      save i, call increment(read i)
-
-save rcon
-  make list
-    code 0
-    code 1
-    code 2
-    code 4
-    code 8
-    code 16
-    code 32
-    code 64
-    code 128
-    code 27
-    code 54
-task do-reset
-  save t
-  fork test, call self/n-rounds/intersect(call self/key-prior-reset/is-strictly-equal(read self/key))
+      call is-equal
+        call bitwise-and
+          read a
+          code 128
+        code 128
     hook hold
       send back
-        save key, save self/key-prior-reset, read self/key
-  save key-words, key/words
-  save key-size, call key/sig-bytes/divide(code 4)
-  save n-rounds, save self/n-rounds, call key-size/add(code 6)
-  save ks-rows
-    call n-rounds/add(code 1)
-      link multiply, code 4
-  save key-schedule, save self/key-schedule, make list
-  save ks-row, code 0
+        call bitwise-exclusive-or
+          read doubled
+          code 27
+  send back, read doubled
+
+# multiply two GF(2^8) values (russian-peasant over eight bits)
+task aes-gmul
+  take a, like number
+  take b, like number
+  like number
+  save result, code 0
+  save x, read a
+  save y, read b
+  save i, code 0
   walk test
     hook test
-      call ks-row/is-below(read ks-rows)
-    hook step
-      fork test, call ks-row/is-below(read key-size)
+      call is-below
+        read i
+        code 8
+    hook hold
+      fork test
+        hook test
+          call is-equal
+            call bitwise-and
+              read y
+              code 1
+            code 1
         hook hold
-          save key-schedule/{ks-row}, read key-words/{ks-row}
-      save tmp3, call ks-row/subtract(code 1)
-      save t, read key-schedule/{tmp3}
-      fork test, call not(call ks-row/remainder(read key-size))
-        hook hold
-          save t
-            call t/shift-left(code 8)
-              link unite-bitwise, call t/unsigned-shift-right(code 24)
-          save tmp4, call t/unsigned-shift-right(code 24)
-          save tmp5
-            call t/unsigned-shift-right(code 16)
-              link intersect-bitwise, code 255
-          save tmp6
-            call t/unsigned-shift-right(code 8)
-              link intersect-bitwise, code 255
-          save tmp7, call t/intersect-bitwise(code 255)
-          save t
-            call sbox/{tmp4}/shift-left(code 24)
-              link unite-bitwise, call sbox/{tmp5}/shift-left(code 16)
-              link unite-bitwise, call sbox/{tmp6}/shift-left(code 8)
-              link unite-bitwise, read sbox/{tmp7}
-          save tmp8
-            call ks-row/divide(read key-size)
-              link unite-bitwise, code 0
-          save t
+          save result
             call bitwise-exclusive-or
-              read t
-              call rcon/{tmp8}/shift-left(code 24)
-      fork test
-        hook test
-          call key-size/is-above(code 6)
-            link intersect
-              call ks-row/remainder(read key-size)
-                link is-equal, code 4
-        hook hold
-          save tmp9, call t/unsigned-shift-right(code 24)
-          save tmp10
-            call t/unsigned-shift-right(code 16)
-              link intersect-bitwise, code 255
-          save tmp11
-            call t/unsigned-shift-right(code 8)
-              link intersect-bitwise, code 255
-          save tmp12, call t/intersect-bitwise(code 255)
-          save t
-            call sbox/{tmp9}/shift-left(code 24)
-              link unite-bitwise, call sbox/{tmp10}/shift-left(code 16)
-              link unite-bitwise, call sbox/{tmp11}/shift-left(code 8)
-              link unite-bitwise, read sbox/{tmp12}
-      save tmp13, call ks-row/subtract(read key-size)
-      save key-schedule/{ks-row}, call key-schedule/{tmp13}/oppose-bitwise(read t)
-      save ks-row, call increment(read ks-row)
-  save inv-key-schedule, save self/inv-key-schedule, make list
-  save inv-ks-row, code 0
+              read result
+              read x
+      save x
+        call aes-xtime
+          read x
+      save y
+        call unsigned-shift-right
+          read y
+          code 1
+      save i, call increment(read i)
+  send back, read result
+
+# the 176-byte round-key schedule of a 16-byte key: word i is bytes 4i..4i+3
+task aes-expand-key
+  take key
+    like list
+      like number
+  like list
+    like number
+  save rk, make list
+  save i, code 0
   walk test
     hook test
-      call inv-ks-row/is-below(read ks-rows)
-    hook step
-      save ks-row, call ks-rows/subtract(read inv-ks-row)
-      fork test, call inv-ks-row/remainder(code 4)
-        hook hold
-          save t, key-schedule/{ks-row}
-      save tmp15, call ks-row/subtract(code 4)
-      save t, key-schedule/{tmp15}
-      fork test
-        hook test
-          call inv-ks-row/is-below(code 4)
-            link unite, call ks-row/is-max(code 4)
-        hook hold
-          save inv-key-schedule/{inv-ks-row}, read t
-      save tmp16, call t/unsigned-shift-right(code 24)
-      save tmp17
-        call t/unsigned-shift-right(code 16)
-          link intersect-bitwise, code 255
-      save tmp18
-        call t/unsigned-shift-right(code 8)
-          link intersect-bitwise, code 255
-      save tmp19, call t/intersect-bitwise(code 255)
-      save inv-key-schedule/{inv-ks-row}
-        call invsubmix0/{sbox/{tmp16}}/oppose-bitwise(read invsubmix1/{sbox/{tmp17}})
-          link oppose-bitwise, read invsubmix2/{sbox/{tmp18}}
-          link oppose-bitwise, read invsubmix3/{sbox/{tmp19}}
-      save inv-ks-row, call increment(read inv-ks-row)
-
-task encrypt-block
-  take m
-  take offset
-  call self/do-crypt-block
-    read m
-    read offset
-    read self/key-schedule
-    read submix0
-    read submix1
-    read submix2
-    read submix3
-    read sbox
-
-task decrypt-block
-  take m
-  take offset
-  save tmp21, call offset/add(code 1)
-  save t, m/{tmp21}
-  save tmp22, call offset/add(code 1)
-  save tmp23, call offset/add(code 3)
-  save m/{tmp22}, read m/{tmp23}
-  save tmp24, call offset/add(code 3)
-  save m/{tmp24}, read t
-  call self/do-crypt-block
-    read m
-    read offset
-    read self/inv-key-schedule
-    read invsubmix0
-    read invsubmix1
-    read invsubmix2
-    read invsubmix3
-    read invsbox
-  save tmp25, call offset/add(code 1)
-  save t, m/{tmp25}
-  save tmp26, call offset/add(code 1)
-  save tmp27, call offset/add(code 3)
-  save m/{tmp26}, read m/{tmp27}
-  save tmp28, call offset/add(code 3)
-  save m/{tmp28}, read t
-
-task do-crypt-block
-  take m
-  take offset
-  take key-schedule
-  take submix0
-  take submix1
-  take submix2
-  take submix3
-  take sbox
-  save n-rounds, self/n-rounds
-  save s0, call m/{offset}/oppose-bitwise(read key-schedule/0)
-  save tmp29, call offset/add(code 1)
-  save s1, call m/{tmp29}/oppose-bitwise(read key-schedule/1)
-  save tmp30, call offset/add(code 2)
-  save s2, call m/{tmp30}/oppose-bitwise(read key-schedule/2)
-  save tmp31, call offset/add(code 3)
-  save s3, call m/{tmp31}/oppose-bitwise(read key-schedule/3)
-  save ks-row, code 4
-  save round, code 1
+      call is-below
+        read i
+        code 16
+    hook hold
+      call rk/push
+        read key/{i}
+      save i, call increment(read i)
+  save w, code 4
   walk test
     hook test
-      call round/is-below(read n-rounds)
-    hook step
-      save tmp32, call s0/unsigned-shift-right(code 24)
-      save tmp33
-        call s1/unsigned-shift-right(code 16)
-          link intersect-bitwise, code 255
-      save tmp34
-        call s2/unsigned-shift-right(code 8)
-          link intersect-bitwise, code 255
-      save tmp35, call s3/intersect-bitwise(code 255)
-      save tmp36, save ks-row, call increment(read ks-row)
-      save t0
-        call submix0/{tmp32}/oppose-bitwise(read submix1/{tmp33})
-          link oppose-bitwise, read submix2/{tmp34}
-          link oppose-bitwise, read submix3/{tmp35}
-          link oppose-bitwise, read key-schedule/{tmp36}
-      save tmp37, call s1/unsigned-shift-right(code 24)
-      save tmp38
-        call s2/unsigned-shift-right(code 16)
-          link intersect-bitwise, code 255
-      save tmp39
-        call s3/unsigned-shift-right(code 8)
-          link intersect-bitwise, code 255
-      save tmp40, call s0/intersect-bitwise(code 255)
-      save tmp41, save ks-row, call increment(read ks-row)
-      save t1
-        call submix0/{tmp37}/oppose-bitwise(read submix1/{tmp38})
-          link oppose-bitwise, read submix2/{tmp39}
-          link oppose-bitwise, read submix3/{tmp40}
-          link oppose-bitwise, read key-schedule/{tmp41}
-      save tmp42, call s2/unsigned-shift-right(code 24)
-      save tmp43
-        call s3/unsigned-shift-right(code 16)
-          link intersect-bitwise, code 255
-      save tmp44
-        call s0/unsigned-shift-right(code 8)
-          link intersect-bitwise, code 255
-      save tmp45, call s1/intersect-bitwise(code 255)
-      save tmp46, save ks-row, call increment(read ks-row)
-      save t2
-        call submix0/{tmp42}/oppose-bitwise(read submix1/{tmp43})
-          link oppose-bitwise, read submix2/{tmp44}
-          link oppose-bitwise, read submix3/{tmp45}
-          link oppose-bitwise, read key-schedule/{tmp46}
-      save tmp47, call s3/unsigned-shift-right(code 24)
-      save tmp48
-        call s0/unsigned-shift-right(code 16)
-          link intersect-bitwise, code 255
-      save tmp49
-        call s1/unsigned-shift-right(code 8)
-          link intersect-bitwise, code 255
-      save tmp50, call s2/intersect-bitwise(code 255)
-      save tmp51, save ks-row, call increment(read ks-row)
-      save t3
-        call submix0/{tmp47}/oppose-bitwise(read submix1/{tmp48})
-          link oppose-bitwise, read submix2/{tmp49}
-          link oppose-bitwise, read submix3/{tmp50}
-          link oppose-bitwise, read key-schedule/{tmp51}
-      save s0, read t0
-      save s1, read t1
-      save s2, read t2
-      save s3, read t3
-      save round, call increment(read round)
-  save tmp53, call s0/unsigned-shift-right(code 24)
-  save tmp54
-    call s1/unsigned-shift-right(code 16)
-      link intersect-bitwise, code 255
-  save tmp55
-    call s2/unsigned-shift-right(code 8)
-      link intersect-bitwise, code 255
-  save tmp56, call s3/intersect-bitwise(code 255)
-  save tmp57, save ks-row, call increment(read ks-row)
-  save t0
-    call sbox/{tmp53}/shift-left(code 24)
-      link unite-bitwise, call sbox/{tmp54}/shift-left(code 16)
-      link unite-bitwise, call sbox/{tmp55}/shift-left(code 8)
-      link unite-bitwise, read sbox/{tmp56}
-      link oppose-bitwise, read key-schedule/{tmp57}
-  save tmp58, call s1/unsigned-shift-right(code 24)
-  save tmp59
-    call s2/unsigned-shift-right(code 16)
-      link intersect-bitwise, code 255
-  save tmp60
-    call s3/unsigned-shift-right(code 8)
-      link intersect-bitwise, code 255
-  save tmp61, call s0/intersect-bitwise(code 255)
-  save tmp62, save ks-row, call increment(read ks-row)
-  save t1
-    call sbox/{tmp58}/shift-left(code 24)
-      link unite-bitwise, call sbox/{tmp59}/shift-left(code 16)
-      link unite-bitwise, call sbox/{tmp60}/shift-left(code 8)
-      link unite-bitwise, read sbox/{tmp61}
-      link oppose-bitwise, read key-schedule/{tmp62}
-  save tmp63, call s2/unsigned-shift-right(code 24)
-  save tmp64
-    call s3/unsigned-shift-right(code 16)
-      link intersect-bitwise, code 255
-  save tmp65
-    call s0/unsigned-shift-right(code 8)
-      link intersect-bitwise, code 255
-  save tmp66, call s1/intersect-bitwise(code 255)
-  save tmp67, save ks-row, call increment(read ks-row)
-  save t2
-    call sbox/{tmp63}/shift-left(code 24)
-      link unite-bitwise, call sbox/{tmp64}/shift-left(code 16)
-      link unite-bitwise, call sbox/{tmp65}/shift-left(code 8)
-      link unite-bitwise, read sbox/{tmp66}
-      link oppose-bitwise, read key-schedule/{tmp67}
-  save tmp68, call s3/unsigned-shift-right(code 24)
-  save tmp69
-    call s0/unsigned-shift-right(code 16)
-      link intersect-bitwise, code 255
-  save tmp70
-    call s1/unsigned-shift-right(code 8)
-      link intersect-bitwise, code 255
-  save tmp71, call s2/intersect-bitwise(code 255)
-  save tmp72, save ks-row, call increment(read ks-row)
-  save t3
-    call sbox/{tmp68}/shift-left(code 24)
-      link unite-bitwise, call sbox/{tmp69}/shift-left(code 16)
-      link unite-bitwise, call sbox/{tmp70}/shift-left(code 8)
-      link unite-bitwise, read sbox/{tmp71}
-      link oppose-bitwise, read key-schedule/{tmp72}
-  save m/{offset}, read t0
-  save tmp73, call offset/add(code 1)
-  save m/{tmp73}, read t1
-  save tmp74, call offset/add(code 2)
-  save m/{tmp74}, read t2
-  save tmp75, call offset/add(code 3)
-  save m/{tmp75}, read t3
+      call is-below
+        read w
+        code 44
+    hook hold
+      save base
+        call multiply
+          call subtract
+            read w
+            code 1
+          code 4
+      save t0, read rk/{base}
+      save at1, call increment(read base)
+      save t1, read rk/{at1}
+      save at2, call add(read base, code 2)
+      save t2, read rk/{at2}
+      save at3, call add(read base, code 3)
+      save t3, read rk/{at3}
+      fork test
+        hook test
+          call is-equal
+            call modulo
+              read w
+              code 4
+            code 0
+        hook hold
+          # rotate the word, substitute each byte, fold in the rnd constant
+          save rotated, read t0
+          save t0, read aes-sbox/{t1}
+          save t1, read aes-sbox/{t2}
+          save t2, read aes-sbox/{t3}
+          save t3, read aes-sbox/{rotated}
+          save rnd
+            call subtract
+              call divide
+                read w
+                code 4
+              code 1
+          save t0
+            call bitwise-exclusive-or
+              read t0
+              read aes-rcon/{rnd}
+      save prior
+        call multiply
+          call subtract
+            read w
+            code 4
+          code 4
+      save p0, read rk/{prior}
+      save pa1, call increment(read prior)
+      save p1, read rk/{pa1}
+      save pa2, call add(read prior, code 2)
+      save p2, read rk/{pa2}
+      save pa3, call add(read prior, code 3)
+      save p3, read rk/{pa3}
+      call rk/push
+        call bitwise-exclusive-or
+          read p0
+          read t0
+      call rk/push
+        call bitwise-exclusive-or
+          read p1
+          read t1
+      call rk/push
+        call bitwise-exclusive-or
+          read p2
+          read t2
+      call rk/push
+        call bitwise-exclusive-or
+          read p3
+          read t3
+      save w, call increment(read w)
+  send back, read rk
+
+# fold rnd `rnd`'s key into the state, in place
+task aes-add-round-key
+  take state
+    like list
+      like number
+  take rk
+    like list
+      like number
+  take rnd, like number
+  save c, code 0
+  walk test
+    hook test
+      call is-below
+        read c
+        code 16
+    hook hold
+      save at
+        call add
+          call multiply
+            read rnd
+            code 16
+          read c
+      call state/set
+        read c
+        call bitwise-exclusive-or
+          read state/{c}
+          read rk/{at}
+      save c, call increment(read c)
+
+# substitute and shift the rows in one pass: out[4c + r] = sbox[in[4*((c + r) % 4) + r]]
+task aes-sub-shift
+  take state
+    like list
+      like number
+  take box
+    like list
+      like number
+  take direction, like number
+  like list
+    like number
+  save out, make list
+  save c, code 0
+  walk test
+    hook test
+      call is-below
+        read c
+        code 4
+    hook hold
+      save r, code 0
+      walk test
+        hook test
+          call is-below
+            read r
+            code 4
+        hook hold
+          save source-column
+            call modulo
+              call add
+                call add
+                  read c
+                  call multiply
+                    read direction
+                    read r
+                code 4
+              code 4
+          save at
+            call add
+              call multiply
+                read source-column
+                code 4
+              read r
+          save value, read state/{at}
+          call out/push
+            read box/{value}
+          save r, call increment(read r)
+      save c, call increment(read c)
+  send back, read out
+
+# one block through the cipher: ten rounds over a 16-byte key
+task aes-encrypt-block
+  take block
+    like list
+      like number
+  take key
+    like list
+      like number
+  like list
+    like number
+  save rk
+    call aes-expand-key
+      read key
+  save state, make list
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        code 16
+    hook hold
+      call state/push
+        read block/{i}
+      save i, call increment(read i)
+  call aes-add-round-key
+    read state
+    read rk
+    code 0
+  save rnd, code 1
+  walk test
+    hook test
+      call is-below
+        read rnd
+        code 10
+    hook hold
+      save state
+        call aes-sub-shift
+          read state
+          read aes-sbox
+          code 1
+      save mc, code 0
+      walk test
+        hook test
+          call is-below
+            read mc
+            code 4
+        hook hold
+          save b0-at, call multiply(read mc, code 4)
+          save b0, read state/{b0-at}
+          save b1-at, call increment(read b0-at)
+          save b1, read state/{b1-at}
+          save b2-at, call add(read b0-at, code 2)
+          save b2, read state/{b2-at}
+          save b3-at, call add(read b0-at, code 3)
+          save b3, read state/{b3-at}
+          call state/set
+            read b0-at
+            call bitwise-exclusive-or
+              call bitwise-exclusive-or
+                call aes-gmul(read b0, code 2)
+                call aes-gmul(read b1, code 3)
+              call bitwise-exclusive-or
+                read b2
+                read b3
+          call state/set
+            read b1-at
+            call bitwise-exclusive-or
+              call bitwise-exclusive-or
+                read b0
+                call aes-gmul(read b1, code 2)
+              call bitwise-exclusive-or
+                call aes-gmul(read b2, code 3)
+                read b3
+          call state/set
+            read b2-at
+            call bitwise-exclusive-or
+              call bitwise-exclusive-or
+                read b0
+                read b1
+              call bitwise-exclusive-or
+                call aes-gmul(read b2, code 2)
+                call aes-gmul(read b3, code 3)
+          call state/set
+            read b3-at
+            call bitwise-exclusive-or
+              call bitwise-exclusive-or
+                call aes-gmul(read b0, code 3)
+                read b1
+              call bitwise-exclusive-or
+                read b2
+                call aes-gmul(read b3, code 2)
+          save mc, call increment(read mc)
+      call aes-add-round-key
+        read state
+        read rk
+        read rnd
+      save rnd, call increment(read rnd)
+  save state
+    call aes-sub-shift
+      read state
+      read aes-sbox
+      code 1
+  call aes-add-round-key
+    read state
+    read rk
+    code 10
+  send back, read state
+
+# the inverse cipher: the same schedule walked backwards
+task aes-decrypt-block
+  take block
+    like list
+      like number
+  take key
+    like list
+      like number
+  like list
+    like number
+  save rk
+    call aes-expand-key
+      read key
+  save state, make list
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        code 16
+    hook hold
+      call state/push
+        read block/{i}
+      save i, call increment(read i)
+  call aes-add-round-key
+    read state
+    read rk
+    code 10
+  save rnd, code 9
+  walk test
+    hook test
+      call is-above
+        read rnd
+        code 0
+    hook hold
+      save state
+        call aes-sub-shift
+          read state
+          read aes-inv-sbox
+          code 3
+      call aes-add-round-key
+        read state
+        read rk
+        read rnd
+      save mc, code 0
+      walk test
+        hook test
+          call is-below
+            read mc
+            code 4
+        hook hold
+          save b0-at, call multiply(read mc, code 4)
+          save b0, read state/{b0-at}
+          save b1-at, call increment(read b0-at)
+          save b1, read state/{b1-at}
+          save b2-at, call add(read b0-at, code 2)
+          save b2, read state/{b2-at}
+          save b3-at, call add(read b0-at, code 3)
+          save b3, read state/{b3-at}
+          call state/set
+            read b0-at
+            call bitwise-exclusive-or
+              call bitwise-exclusive-or
+                call aes-gmul(read b0, code 14)
+                call aes-gmul(read b1, code 11)
+              call bitwise-exclusive-or
+                call aes-gmul(read b2, code 13)
+                call aes-gmul(read b3, code 9)
+          call state/set
+            read b1-at
+            call bitwise-exclusive-or
+              call bitwise-exclusive-or
+                call aes-gmul(read b0, code 9)
+                call aes-gmul(read b1, code 14)
+              call bitwise-exclusive-or
+                call aes-gmul(read b2, code 11)
+                call aes-gmul(read b3, code 13)
+          call state/set
+            read b2-at
+            call bitwise-exclusive-or
+              call bitwise-exclusive-or
+                call aes-gmul(read b0, code 13)
+                call aes-gmul(read b1, code 9)
+              call bitwise-exclusive-or
+                call aes-gmul(read b2, code 14)
+                call aes-gmul(read b3, code 11)
+          call state/set
+            read b3-at
+            call bitwise-exclusive-or
+              call bitwise-exclusive-or
+                call aes-gmul(read b0, code 11)
+                call aes-gmul(read b1, code 13)
+              call bitwise-exclusive-or
+                call aes-gmul(read b2, code 9)
+                call aes-gmul(read b3, code 14)
+          save mc, call increment(read mc)
+      save rnd
+        call decrement
+          bind value, read rnd
+  save state
+    call aes-sub-shift
+      read state
+      read aes-inv-sbox
+      code 3
+  call aes-add-round-key
+    read state
+    read rk
+    code 0
+  send back, read state

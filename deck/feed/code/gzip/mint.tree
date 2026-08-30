@@ -1,0 +1,70 @@
+note draft
+# Checked spec, not compiled code — see the note at the top of ./mine.tree. The real writer is ./code.tree's
+# write-gzip.
+
+mint gzip
+  mint byte, code 0x1f
+  mint byte, code 0x8b
+  mint form, form compression-method
+    bind value, read method
+  mint byte
+    read flags
+  mint int
+    bind width, code 4
+    bind order, term little
+    read modified-time
+  mint byte
+    read extra-flags
+  mint byte
+    read os
+
+  mint case, read extra
+    case some
+      mint form, form extra-field
+        bind value, read value
+    case none
+
+  mint case, read name
+    case some
+      mint until
+        read value
+      mint byte, code 0x00
+    case none
+
+  mint case, read comment
+    case some
+      mint until
+        read value
+      mint byte, code 0x00
+    case none
+
+  mint case, read header-crc16
+    case some
+      mint int
+        bind width, code 2
+        bind order, term little
+        read value
+    case none
+
+  mint bytes
+    read compressed-data
+
+  mint int
+    bind width, code 4
+    bind order, term little
+    read crc32
+  mint int
+    bind width, code 4
+    bind order, term little
+    read input-size
+
+mint compression-method
+  mint byte, code 0x08
+
+mint extra-field
+  mint int
+    bind width, code 2
+    bind order, term little
+    read length
+  mint bytes
+    read data

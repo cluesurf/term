@@ -19,9 +19,17 @@ export type Statement = { sql: string; params: Array<unknown> }
  * the column's own type does the conversion. That keeps a 64-bit value exact, which a
  * number would not.
  */
-export function toParam(value: Value | undefined): unknown {
+export function toParam(value: Value | undefined, asArray = false): unknown {
   if (value === undefined) {
     return null
+  }
+
+  // An ARRAY column takes a JS array, which every driver renders as a Postgres array. A
+  // collection bound for one must NOT be stringified: `'[0,0,5]'` is a valid json value and
+  // an invalid `int2[]`, so the two forms fail in opposite directions and neither failure
+  // mentions the other.
+  if (asArray && value.kind === 'collection') {
+    return value.items.map(item => toParam(item.value))
   }
 
   switch (value.kind) {
@@ -90,7 +98,12 @@ export function toStatement(write: Write): Statement {
   switch (write.type) {
     case 'insert': {
       const columns = [write.markColumn, ...write.values.keys()]
-      const params = [write.mark, ...[...write.values.values()].map(toParam)]
+      const params = [
+        write.mark,
+        ...[...write.values.entries()].map(([column, value]) =>
+          toParam(value, write.arrays?.has(column) === true),
+        ),
+      ]
       const places = columns.map((_, i) => `$${i + 1}`)
       const updates = [...write.values.keys()].map(
         column => `${quote(column)} = EXCLUDED.${quote(column)}`,
@@ -110,7 +123,9 @@ export function toStatement(write: Write): Statement {
       const columns = [...write.values.keys()]
       const sets = columns.map((column, i) => `${quote(column)} = $${i + 1}`)
       const params = [
-        ...[...write.values.values()].map(toParam),
+        ...[...write.values.entries()].map(([column, value]) =>
+          toParam(value, write.arrays?.has(column) === true),
+        ),
         write.mark,
       ]
 

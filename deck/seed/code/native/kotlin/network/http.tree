@@ -14,7 +14,10 @@ task do-request
   take method, like text
   take url, like text
   take body, like text
-  take header, like hash
+  take header
+    like hash
+      like text
+      like text
   like http-response
   send back
     call http/request

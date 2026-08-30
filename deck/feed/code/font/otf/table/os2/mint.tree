@@ -1,0 +1,116 @@
+note draft
+# Checked spec, not compiled code — see ../head/mint.tree's note. The real writer is ./code.tree's
+# write-otf-os2-table, proven by deck/feed/test/otf-os2.tree. `ushort`/`short` shared with ../head/mint.tree. The
+# version-1/version-2 tails don't need a version test on the write side, unlike the read side's `mine maybe` /
+# `test is-minimum` — a `like maybe` field already carries `some`/`none`, so `mint case` just writes what's there
+# or writes nothing, the same way ../../../gzip/mint.tree's optional fields already do.
+
+mint os2-table
+  mint ushort
+    read version
+  mint short
+    read x-avg-char-width
+  mint ushort
+    read us-weight-class
+  mint ushort
+    read us-width-class
+  mint ushort
+    read fs-type
+  mint short
+    read y-subscript-x-size
+  mint short
+    read y-subscript-y-size
+  mint short
+    read y-subscript-x-offset
+  mint short
+    read y-subscript-y-offset
+  mint short
+    read y-superscript-x-size
+  mint short
+    read y-superscript-y-size
+  mint short
+    read y-superscript-x-offset
+  mint short
+    read y-superscript-y-offset
+  mint short
+    read y-strikeout-size
+  mint short
+    read y-strikeout-position
+  mint short
+    read s-family-class
+  mint bytes
+    read panose
+  mint int
+    bind width, code 4
+    bind order, term big
+    read ul-unicode-range-1
+  mint int
+    bind width, code 4
+    bind order, term big
+    read ul-unicode-range-2
+  mint int
+    bind width, code 4
+    bind order, term big
+    read ul-unicode-range-3
+  mint int
+    bind width, code 4
+    bind order, term big
+    read ul-unicode-range-4
+  mint bytes
+    read ach-vend-id
+  mint ushort
+    read fs-selection
+  mint ushort
+    read us-first-char-index
+  mint ushort
+    read us-last-char-index
+  mint short
+    read s-typo-ascender
+  mint short
+    read s-typo-descender
+  mint short
+    read s-typo-line-gap
+  mint ushort
+    read us-win-ascent
+  mint ushort
+    read us-win-descent
+
+  mint case, read ul-code-page-range-1
+    case some
+      mint int
+        bind width, code 4
+        bind order, term big
+        slot value
+    case none
+  mint case, read ul-code-page-range-2
+    case some
+      mint int
+        bind width, code 4
+        bind order, term big
+        slot value
+    case none
+  mint case, read sx-height
+    case some
+      mint short
+        slot value
+    case none
+  mint case, read s-cap-height
+    case some
+      mint short
+        slot value
+    case none
+  mint case, read us-default-char
+    case some
+      mint ushort
+        slot value
+    case none
+  mint case, read us-break-char
+    case some
+      mint ushort
+        slot value
+    case none
+  mint case, read us-max-context
+    case some
+      mint ushort
+        slot value
+    case none

@@ -10,13 +10,16 @@ host current, like context
 
 form context
   link name, like text
-  link failures, like list
+  link failures
+    like list
+      like failure
   link skipped, like boolean
   link start-time, like size
 
-task make
+task make-context
   take name, like text
   take start-time, like size
+  like context
   send back
     make context
       bind name, read name
@@ -36,61 +39,37 @@ task get-context
 task fail
   take ctx, like context
   take failure, like failure
-  fork case, read ctx
-    case context
-      link name
-      link failures
-      link skipped
-      link start-time
-      call push
-        read failures
-        read failure
+  call push
+    read ctx/failures
+    read failure
 
 task is-passed
   take ctx, like context
   like boolean
-  fork case, read ctx
-    case context
-      link name
-      link failures
-      link skipped
-      link start-time
-      fork test
-        hook test, read skipped
-        hook hold
-          send back, false
-      save count
-        call size
-          read failures
-      fork test
-        hook test
-          call is-equal
-            bind a, read count
-            bind b, code 0
-        hook hold
-          send back, true
-        hook miss
-          send back, false
+  fork test
+    hook test, read ctx/skipped
+    hook hold
+      send back, false
+  save count
+    call size
+      read ctx/failures
+  fork test
+    hook test
+      call is-equal
+        bind a, read count
+        bind b, code 0
+    hook hold
+      send back, true
+    hook miss
+      send back, false
 
 task skip-context
   take ctx, like context
-  fork case, read ctx
-    case context
-      link name
-      link failures
-      link skipped
-      link start-time
-      save skipped, true
+  save ctx/skipped, true
 
 task count
   take ctx, like context
   like size
-  fork case, read ctx
-    case context
-      link name
-      link failures
-      link skipped
-      link start-time
-      send back
-        call size
-          read failures
+  send back
+    call size
+      read ctx/failures

@@ -1,15 +1,16 @@
 
 dock load
-  load <global:child>, name child
+  load <global:child>, name child-runtime
 
 load @term/seed/code/process
   find child
 
 task wait
   take child, like child
+  like size
 
   send back
-    call child/wait
+    call child-runtime/wait
       read child/dock
 
 task stop
@@ -22,24 +23,24 @@ task stop
         bind a, read form
         bind b, text <force>
     hook hold
-      call child/kill
+      call child-runtime/kill
         read child/dock
     hook miss
-      call child/stop
+      call child-runtime/stop
         read child/dock
 
 task write
   take child, like child
   take data, like text
 
-  call child/write
+  call child-runtime/write
     read child/dock
     read data
 
 task close
   take child, like child
 
-  call child/close
+  call child-runtime/close
     read child/dock
 
 task read
@@ -50,10 +51,10 @@ task read
   fork test, call is-equal(read kind, text <stderr>)
     hook hold
       send back
-        call child/read-error
+        call child-runtime/read-error
           read child/dock
     hook miss
       send back
-        call child/read-out
+        call child-runtime/read-out
           read child/dock
 

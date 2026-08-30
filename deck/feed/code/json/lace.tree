@@ -1,3 +1,6 @@
+note draft
+# An even older, superseded writer draft (the `write`-headed DSL, dead before the `mint` convention existed — same
+# role as css/lace.tree and html/lace.tree). Not ported. ./code.tree's write-json is the real writer.
 
 write json
   start value

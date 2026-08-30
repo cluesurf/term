@@ -1,0 +1,63 @@
+note draft
+# Checked spec, not compiled code — see ../../../../hex/mine.tree's note. The real writer is ./code.tree's
+# write-otf-head-table, proven by deck/feed/test/otf-head.tree.
+
+mint head-table
+  mint ushort
+    read version-major
+  mint ushort
+    read version-minor
+  mint int
+    bind width, code 4
+    bind order, term big
+    read font-revision
+  mint int
+    bind width, code 4
+    bind order, term big
+    read checksum-adjustment
+  mint bytes
+    read magic-number
+  mint ushort
+    read flags
+  mint ushort
+    read units-per-em
+  mint int
+    bind width, code 8
+    bind order, term big
+    read created
+  mint int
+    bind width, code 8
+    bind order, term big
+    read modified
+  mint short
+    read x-min
+  mint short
+    read y-min
+  mint short
+    read x-max
+  mint short
+    read y-max
+  mint ushort
+    read mac-style
+  mint ushort
+    read lowest-rec-ppem
+  mint short
+    read font-direction-hint
+  mint short
+    read index-to-loc-format
+  mint short
+    read glyph-data-format
+
+mint ushort
+  take value, like number
+  mint int
+    bind width, code 2
+    bind order, term big
+    read value
+
+mint short
+  take value, like number
+  mint int
+    bind width, code 2
+    bind order, term big
+    read value

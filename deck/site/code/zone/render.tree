@@ -135,6 +135,26 @@ task show
 # render each item of a list under a host, calling `build` per item. `items` is a getter, read inside an effect, so
 # the list re-renders whenever a signal it reads changes. Reconciliation is simple: remove the nodes built last time,
 # then build and append the current items.
+# The items a counted walk needs. The `view` role's `walk size` lowers to a `walk list` over this, because the zone
+# AST carries only a list walk and adding a counted one would touch every pass that reads it.
+#
+task range
+  take base, like integer
+  take head, like integer
+  like list
+    like integer
+  save out
+    make list
+  walk size
+    bind base, read base
+    bind head, read head
+    hook next
+      take site, name step
+      call push
+        bind list, read out
+        bind item, read step
+  send back, read out
+
 task each
   head t
   take host, like view

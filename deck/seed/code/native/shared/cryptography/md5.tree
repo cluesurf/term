@@ -1,868 +1,489 @@
+# MD5 (RFC 1321), written on the 32-bit bit vocabulary the way crc32 is: additions run exact in doubles and
+# wrap through `unsigned-shift-right(x, 0)`, the four round functions are the spec's F G H I, and the sine
+# table is carried as the 64 spec constants rather than recomputed (floor(abs(sin(i+1)) * 2^32), the values
+# every implementation agrees on). Input is a byte list, output the 32-character lowercase hex digest.
+# Vectors held in deck/seed/test/md5.tree: d41d8cd98f00b204e9800998ecf8427e for the empty message and
+# 900150983cd24fb0d6963f7d28e17f72 for "abc".
+load @term/seed/code/boolean
+  find not
 
-# Not built: a half-finished translation, the same state as `aes.tree`. It calls a bit vocabulary that does not
-# exist (`unite-bitwise` / `intersect-bitwise` / `bitflip` for or / and / not), omits `read` before dynamic paths
-# (`save m-offset-i, m/{offset-i}`), and reads `self` in tasks that never take it.
-note draft
 load @term/seed/code/math
-  find absolute
   find round-down
-  find sine
+  find power
 
-save t, call create-table
-task create-table
-  save t, make list
-  save i, code 0
-  walk test
-    hook test
-      call i/is-below
-        code 64
-    hook step
-      save t/{i}
-        call absolute
-          call sine
-            call i/add
-              code 1
-          link multiply, code 4294967296
-          link unite-bitwise, code 0
-      save i, call increment(read i)
-  send back, read t
+load @term/seed/code/text/string
+  find concat
 
-task doreset
-  save self/hash
-    make word-array/init
-      make list
-        code 1732584193
-        code 4023233417
-        code 2562383102
-        code 271733878
+load @term/seed/code/text
+  find char-at
 
-task process
-  take m
-  take offset
-  save i, code 0
-  walk test
-    hook test
-      call i/is-below
-        code 16
-    hook step
-      save offset-i, call offset/add(read i)
-      save m-offset-i, m/{offset-i}
-      save m/{offset-i}
-        call m-offset-i/shift-left
-          code 8
-          link unite-bitwise, call m-offset-i/unsigned-shift-right(code 24)
-          link intersect-bitwise, code 16711935
-          link unite-bitwise
-            call m-offset-i/shift-left
-              code 24
-              link unite-bitwise, call m-offset-i/unsigned-shift-right(code 8)
-              link intersect-bitwise, code 4278255360
-      save i, call increment(read i)
-  save h, self/hash/words
-  save tmp2, call offset/add(code 0)
-  save m-offset-0, m/{tmp2}
-  save tmp3, call offset/add(code 1)
-  save m-offset-1, m/{tmp3}
-  save tmp4, call offset/add(code 2)
-  save m-offset-2, m/{tmp4}
-  save tmp5, call offset/add(code 3)
-  save m-offset-3, m/{tmp5}
-  save tmp6, call offset/add(code 4)
-  save m-offset-4, m/{tmp6}
-  save tmp7, call offset/add(code 5)
-  save m-offset-5, m/{tmp7}
-  save tmp8, call offset/add(code 6)
-  save m-offset-6, m/{tmp8}
-  save tmp9, call offset/add(code 7)
-  save m-offset-7, m/{tmp9}
-  save tmp10, call offset/add(code 8)
-  save m-offset-8, m/{tmp10}
-  save tmp11, call offset/add(code 9)
-  save m-offset-9, m/{tmp11}
-  save tmp12, call offset/add(code 10)
-  save m-offset-10, m/{tmp12}
-  save tmp13, call offset/add(code 11)
-  save m-offset-11, m/{tmp13}
-  save tmp14, call offset/add(code 12)
-  save m-offset-12, m/{tmp14}
-  save tmp15, call offset/add(code 13)
-  save m-offset-13, m/{tmp15}
-  save tmp16, call offset/add(code 14)
-  save m-offset-14, m/{tmp16}
-  save tmp17, call offset/add(code 15)
-  save m-offset-15, m/{tmp17}
-  save a, h/0
-  save b, h/1
-  save c, h/2
-  save d, h/3
-  save a
-    call ff
-      read a
-      read b
-      read c
-      read d
-      read m-offset-0
-      code 7
-      read t/0
-  save d
-    call ff
-      read d
-      read a
-      read b
-      read c
-      read m-offset-1
-      code 12
-      read t/1
-  save c
-    call ff
-      read c
-      read d
-      read a
-      read b
-      read m-offset-2
-      code 17
-      read t/2
-  save b
-    call ff
-      read b
-      read c
-      read d
-      read a
-      read m-offset-3
-      code 22
-      read t/3
-  save a
-    call ff
-      read a
-      read b
-      read c
-      read d
-      read m-offset-4
-      code 7
-      read t/4
-  save d
-    call ff
-      read d
-      read a
-      read b
-      read c
-      read m-offset-5
-      code 12
-      read t/5
-  save c
-    call ff
-      read c
-      read d
-      read a
-      read b
-      read m-offset-6
-      code 17
-      read t/6
-  save b
-    call ff
-      read b
-      read c
-      read d
-      read a
-      read m-offset-7
-      code 22
-      read t/7
-  save a
-    call ff
-      read a
-      read b
-      read c
-      read d
-      read m-offset-8
-      code 7
-      read t/8
-  save d
-    call ff
-      read d
-      read a
-      read b
-      read c
-      read m-offset-9
-      code 12
-      read t/9
-  save c
-    call ff
-      read c
-      read d
-      read a
-      read b
-      read m-offset-10
-      code 17
-      read t/10
-  save b
-    call ff
-      read b
-      read c
-      read d
-      read a
-      read m-offset-11
-      code 22
-      read t/11
-  save a
-    call ff
-      read a
-      read b
-      read c
-      read d
-      read m-offset-12
-      code 7
-      read t/12
-  save d
-    call ff
-      read d
-      read a
-      read b
-      read c
-      read m-offset-13
-      code 12
-      read t/13
-  save c
-    call ff
-      read c
-      read d
-      read a
-      read b
-      read m-offset-14
-      code 17
-      read t/14
-  save b
-    call ff
-      read b
-      read c
-      read d
-      read a
-      read m-offset-15
-      code 22
-      read t/15
-  save a
-    call gg
-      read a
-      read b
-      read c
-      read d
-      read m-offset-1
-      code 5
-      read t/16
-  save d
-    call gg
-      read d
-      read a
-      read b
-      read c
-      read m-offset-6
-      code 9
-      read t/17
-  save c
-    call gg
-      read c
-      read d
-      read a
-      read b
-      read m-offset-11
-      code 14
-      read t/18
-  save b
-    call gg
-      read b
-      read c
-      read d
-      read a
-      read m-offset-0
-      code 20
-      read t/19
-  save a
-    call gg
-      read a
-      read b
-      read c
-      read d
-      read m-offset-5
-      code 5
-      read t/20
-  save d
-    call gg
-      read d
-      read a
-      read b
-      read c
-      read m-offset-10
-      code 9
-      read t/21
-  save c
-    call gg
-      read c
-      read d
-      read a
-      read b
-      read m-offset-15
-      code 14
-      read t/22
-  save b
-    call gg
-      read b
-      read c
-      read d
-      read a
-      read m-offset-4
-      code 20
-      read t/23
-  save a
-    call gg
-      read a
-      read b
-      read c
-      read d
-      read m-offset-9
-      code 5
-      read t/24
-  save d
-    call gg
-      read d
-      read a
-      read b
-      read c
-      read m-offset-14
-      code 9
-      read t/25
-  save c
-    call gg
-      read c
-      read d
-      read a
-      read b
-      read m-offset-3
-      code 14
-      read t/26
-  save b
-    call gg
-      read b
-      read c
-      read d
-      read a
-      read m-offset-8
-      code 20
-      read t/27
-  save a
-    call gg
-      read a
-      read b
-      read c
-      read d
-      read m-offset-13
-      code 5
-      read t/28
-  save d
-    call gg
-      read d
-      read a
-      read b
-      read c
-      read m-offset-2
-      code 9
-      read t/29
-  save c
-    call gg
-      read c
-      read d
-      read a
-      read b
-      read m-offset-7
-      code 14
-      read t/30
-  save b
-    call gg
-      read b
-      read c
-      read d
-      read a
-      read m-offset-12
-      code 20
-      read t/31
-  save a
-    call hh
-      read a
-      read b
-      read c
-      read d
-      read m-offset-5
-      code 4
-      read t/32
-  save d
-    call hh
-      read d
-      read a
-      read b
-      read c
-      read m-offset-8
-      code 11
-      read t/33
-  save c
-    call hh
-      read c
-      read d
-      read a
-      read b
-      read m-offset-11
-      code 16
-      read t/34
-  save b
-    call hh
-      read b
-      read c
-      read d
-      read a
-      read m-offset-14
-      code 23
-      read t/35
-  save a
-    call hh
-      read a
-      read b
-      read c
-      read d
-      read m-offset-1
-      code 4
-      read t/36
-  save d
-    call hh
-      read d
-      read a
-      read b
-      read c
-      read m-offset-4
-      code 11
-      read t/37
-  save c
-    call hh
-      read c
-      read d
-      read a
-      read b
-      read m-offset-7
-      code 16
-      read t/38
-  save b
-    call hh
-      read b
-      read c
-      read d
-      read a
-      read m-offset-10
-      code 23
-      read t/39
-  save a
-    call hh
-      read a
-      read b
-      read c
-      read d
-      read m-offset-13
-      code 4
-      read t/40
-  save d
-    call hh
-      read d
-      read a
-      read b
-      read c
-      read m-offset-0
-      code 11
-      read t/41
-  save c
-    call hh
-      read c
-      read d
-      read a
-      read b
-      read m-offset-3
-      code 16
-      read t/42
-  save b
-    call hh
-      read b
-      read c
-      read d
-      read a
-      read m-offset-6
-      code 23
-      read t/43
-  save a
-    call hh
-      read a
-      read b
-      read c
-      read d
-      read m-offset-9
-      code 4
-      read t/44
-  save d
-    call hh
-      read d
-      read a
-      read b
-      read c
-      read m-offset-12
-      code 11
-      read t/45
-  save c
-    call hh
-      read c
-      read d
-      read a
-      read b
-      read m-offset-15
-      code 16
-      read t/46
-  save b
-    call hh
-      read b
-      read c
-      read d
-      read a
-      read m-offset-2
-      code 23
-      read t/47
-  save a
-    call ii
-      read a
-      read b
-      read c
-      read d
-      read m-offset-0
-      code 6
-      read t/48
-  save d
-    call ii
-      read d
-      read a
-      read b
-      read c
-      read m-offset-7
-      code 10
-      read t/49
-  save c
-    call ii
-      read c
-      read d
-      read a
-      read b
-      read m-offset-14
-      code 15
-      read t/50
-  save b
-    call ii
-      read b
-      read c
-      read d
-      read a
-      read m-offset-5
-      code 21
-      read t/51
-  save a
-    call ii
-      read a
-      read b
-      read c
-      read d
-      read m-offset-12
-      code 6
-      read t/52
-  save d
-    call ii
-      read d
-      read a
-      read b
-      read c
-      read m-offset-3
-      code 10
-      read t/53
-  save c
-    call ii
-      read c
-      read d
-      read a
-      read b
-      read m-offset-10
-      code 15
-      read t/54
-  save b
-    call ii
-      read b
-      read c
-      read d
-      read a
-      read m-offset-1
-      code 21
-      read t/55
-  save a
-    call ii
-      read a
-      read b
-      read c
-      read d
-      read m-offset-8
-      code 6
-      read t/56
-  save d
-    call ii
-      read d
-      read a
-      read b
-      read c
-      read m-offset-15
-      code 10
-      read t/57
-  save c
-    call ii
-      read c
-      read d
-      read a
-      read b
-      read m-offset-6
-      code 15
-      read t/58
-  save b
-    call ii
-      read b
-      read c
-      read d
-      read a
-      read m-offset-13
-      code 21
-      read t/59
-  save a
-    call ii
-      read a
-      read b
-      read c
-      read d
-      read m-offset-4
-      code 6
-      read t/60
-  save d
-    call ii
-      read d
-      read a
-      read b
-      read c
-      read m-offset-11
-      code 10
-      read t/61
-  save c
-    call ii
-      read c
-      read d
-      read a
-      read b
-      read m-offset-2
-      code 15
-      read t/62
-  save b
-    call ii
-      read b
-      read c
-      read d
-      read a
-      read m-offset-9
-      code 21
-      read t/63
-  save h/0
-    call h/0/add
-      read a
-      link unite-bitwise, code 0
-  save h/1
-    call h/1/add
-      read b
-      link unite-bitwise, code 0
-  save h/2
-    call h/2/add
-      read c
-      link unite-bitwise, code 0
-  save h/3
-    call h/3/add
-      read d
-      link unite-bitwise, code 0
+load @term/seed/code/bit
+  find bitwise-and
+  find bitwise-or
+  find bitwise-not
+  find bitwise-exclusive-or
+  find shift-left
+  find unsigned-shift-right
 
-task finalize
-  save data, self/data
-  save data-words, data/words
-  save n-bits-total, call self/ndatabytes/multiply(code 8)
-  save n-bits-left, call data/sig-bytes/multiply(code 8)
-  save tmp18, call n-bits-left/unsigned-shift-right(code 5)
-  save data-words/{tmp18}
-    call bitwise-or
-      read data-words/{tmp18}
-      call shift-left
-        code 128
-        call subtract
-          code 24
-          call remainder
-            read n-bits-left
+# floor(abs(sin(i + 1)) * 2^32) for i in 0..63
+host md5-sines
+  code 3614090360
+  code 3905402710
+  code 606105819
+  code 3250441966
+  code 4118548399
+  code 1200080426
+  code 2821735955
+  code 4249261313
+  code 1770035416
+  code 2336552879
+  code 4294925233
+  code 2304563134
+  code 1804603682
+  code 4254626195
+  code 2792965006
+  code 1236535329
+  code 4129170786
+  code 3225465664
+  code 643717713
+  code 3921069994
+  code 3593408605
+  code 38016083
+  code 3634488961
+  code 3889429448
+  code 568446438
+  code 3275163606
+  code 4107603335
+  code 1163531501
+  code 2850285829
+  code 4243563512
+  code 1735328473
+  code 2368359562
+  code 4294588738
+  code 2272392833
+  code 1839030562
+  code 4259657740
+  code 2763975236
+  code 1272893353
+  code 4139469664
+  code 3200236656
+  code 681279174
+  code 3936430074
+  code 3572445317
+  code 76029189
+  code 3654602809
+  code 3873151461
+  code 530742520
+  code 3299628645
+  code 4096336452
+  code 1126891415
+  code 2878612391
+  code 4237533241
+  code 1700485571
+  code 2399980690
+  code 4293915773
+  code 2240044497
+  code 1873313359
+  code 4264355552
+  code 2734768916
+  code 1309151649
+  code 4149444226
+  code 3174756917
+  code 718787259
+  code 3951481745
+
+# the per-round left-rotation amounts
+host md5-shifts
+  code 7
+  code 12
+  code 17
+  code 22
+  code 7
+  code 12
+  code 17
+  code 22
+  code 7
+  code 12
+  code 17
+  code 22
+  code 7
+  code 12
+  code 17
+  code 22
+  code 5
+  code 9
+  code 14
+  code 20
+  code 5
+  code 9
+  code 14
+  code 20
+  code 5
+  code 9
+  code 14
+  code 20
+  code 5
+  code 9
+  code 14
+  code 20
+  code 4
+  code 11
+  code 16
+  code 23
+  code 4
+  code 11
+  code 16
+  code 23
+  code 4
+  code 11
+  code 16
+  code 23
+  code 4
+  code 11
+  code 16
+  code 23
+  code 6
+  code 10
+  code 15
+  code 21
+  code 6
+  code 10
+  code 15
+  code 21
+  code 6
+  code 10
+  code 15
+  code 21
+  code 6
+  code 10
+  code 15
+  code 21
+
+# a value reduced to its unsigned 32-bit form
+task md5-wrap
+  take x, like number
+  like number
+  send back
+    call unsigned-shift-right
+      read x
+      code 0
+
+# rotate a 32-bit value left by c
+task md5-rotate-left
+  take x, like number
+  take c, like number
+  like number
+  send back
+    call md5-wrap
+      call bitwise-or
+        call shift-left
+          read x
+          read c
+        call unsigned-shift-right
+          read x
+          call subtract
             code 32
-  save n-bits-total-h, call round-down(call n-bits-total/divide(code 4294967296))
-  save n-bits-total-l, read n-bits-total
-  call data-words/set
-    call n-bits-left/add
-      code 64
-      link unsigned-shift-right, code 9
-      link shift-left, code 4
-      link add, code 15
-    call n-bits-total-h/shift-left
-      code 8
-      link unite-bitwise, call n-bits-total-h/unsigned-shift-right(code 24)
-      link intersect-bitwise, code 16711935
-      link unite-bitwise
-        call n-bits-total-h/shift-left
-          code 24
-          link unite-bitwise, call n-bits-total-h/unsigned-shift-right(code 8)
-          link intersect-bitwise, code 4278255360
-  call data-words/set
-    call n-bits-left/add
-      code 64
-      link unsigned-shift-right, code 9
-      link shift-left, code 4
-      link add, code 14
-    call n-bits-total-l/shift-left
-      code 8
-      link unite-bitwise, call n-bits-total-l/unsigned-shift-right(code 24)
-      link intersect-bitwise, code 16711935
-      link unite-bitwise
-        call n-bits-total-l/shift-left
-          code 24
-          link unite-bitwise, call n-bits-total-l/unsigned-shift-right(code 8)
-          link intersect-bitwise, code 4278255360
-  save data/sig-bytes
-    call data-words/length/add
-      code 1
-      link multiply, code 4
-  call self/process
-  save hash, self/hash
-  save h, hash/words
+            read c
+
+# the digest of a byte list, as 32 lowercase hex characters
+task calculate-md5
+  take list
+    like list
+      like number
+  like text
+  # pad: 0x80, zeros to 56 mod 64, then the bit length as 8 little-endian bytes
+  save m, make list
   save i, code 0
   walk test
     hook test
-      call i/is-below
-        code 4
-    hook step
-      save h-i, h/{i}
-      save h/{i}
-        call h-i/shift-left
-          code 8
-          link unite-bitwise, call h-i/unsigned-shift-right(code 24)
-          link intersect-bitwise, code 16711935
-          link unite-bitwise
-            call h-i/shift-left
-              code 24
-              link unite-bitwise, call h-i/unsigned-shift-right(code 8)
-              link intersect-bitwise, code 4278255360
+      call is-below
+        read i
+        read list/length
+    hook hold
+      call m/push
+        read list/{i}
       save i, call increment(read i)
-  send back, read hash
-
-task ff
-  take a
-  take b
-  take c
-  take d
-  take x
-  take s
-  take t
-  save n
-    call a/add
-      call b/intersect-bitwise
-        read c
-        link unite-bitwise
-          call bitflip
+  call m/push
+    code 128
+  walk test
+    hook test
+      call not
+        call is-equal
+          call modulo
+            read m/length
+            code 64
+          code 56
+    hook hold
+      call m/push
+        code 0
+  save bits
+    call multiply
+      read list/length
+      code 8
+  save j, code 0
+  walk test
+    hook test
+      call is-below
+        read j
+        code 8
+    hook hold
+      call m/push
+        call bitwise-and
+          call round-down
+            call divide
+              read bits
+              call power
+                code 256
+                read j
+          code 255
+      save j, call increment(read j)
+  # the running state
+  save a0, code 1732584193
+  save b0, code 4023233417
+  save c0, code 2562383102
+  save d0, code 271733878
+  save block, code 0
+  walk test
+    hook test
+      call is-below
+        read block
+        read m/length
+    hook hold
+      # the sixteen little-endian words of this block
+      save w, make list
+      save k, code 0
+      walk test
+        hook test
+          call is-below
+            read k
+            code 16
+        hook hold
+          save at
+            call add
+              read block
+              call multiply
+                read k
+                code 4
+          save at1, call increment(read at)
+          save at2, call add(read at, code 2)
+          save at3, call add(read at, code 3)
+          call w/push
+            call bitwise-or
+              call bitwise-or
+                read m/{at}
+                call shift-left
+                  read m/{at1}
+                  code 8
+              call bitwise-or
+                call shift-left
+                  read m/{at2}
+                  code 16
+                call shift-left
+                  read m/{at3}
+                  code 24
+          save k, call increment(read k)
+      save a, read a0
+      save b, read b0
+      save c, read c0
+      save d, read d0
+      save r, code 0
+      walk test
+        hook test
+          call is-below
+            read r
+            code 64
+        hook hold
+          save f, code 0
+          save g, code 0
+          fork test
+            hook test
+              call is-below
+                read r
+                code 16
+            hook hold
+              save f
+                call bitwise-or
+                  call bitwise-and
+                    read b
+                    read c
+                  call bitwise-and
+                    call bitwise-not
+                      read b
+                    read d
+              save g, read r
+            hook miss
+              fork test
+                hook test
+                  call is-below
+                    read r
+                    code 32
+                hook hold
+                  save f
+                    call bitwise-or
+                      call bitwise-and
+                        read d
+                        read b
+                      call bitwise-and
+                        call bitwise-not
+                          read d
+                        read c
+                  save g
+                    call modulo
+                      call add
+                        call multiply
+                          code 5
+                          read r
+                        code 1
+                      code 16
+                hook miss
+                  fork test
+                    hook test
+                      call is-below
+                        read r
+                        code 48
+                    hook hold
+                      save f
+                        call bitwise-exclusive-or
+                          call bitwise-exclusive-or
+                            read b
+                            read c
+                          read d
+                      save g
+                        call modulo
+                          call add
+                            call multiply
+                              code 3
+                              read r
+                            code 5
+                          code 16
+                    hook miss
+                      save f
+                        call bitwise-exclusive-or
+                          read c
+                          call bitwise-or
+                            read b
+                            call bitwise-not
+                              read d
+                      save g
+                        call modulo
+                          call multiply
+                            code 7
+                            read r
+                          code 16
+          save f
+            call md5-wrap
+              call add
+                call add
+                  call md5-wrap
+                    read f
+                  call md5-wrap
+                    read a
+                call add
+                  read md5-sines/{r}
+                  read w/{g}
+          save a, read d
+          save d, read c
+          save c, read b
+          save b
+            call md5-wrap
+              call add
+                call md5-wrap
+                  read b
+                call md5-rotate-left
+                  read f
+                  read md5-shifts/{r}
+          save r, call increment(read r)
+      save a0
+        call md5-wrap
+          call add
+            call md5-wrap
+              read a0
+            read a
+      save b0
+        call md5-wrap
+          call add
+            call md5-wrap
+              read b0
             read b
-            link intersect-bitwise, read d
-      link add, read x
-      link add, read t
-  send back
-    call n/shift-left
-      read s
-      link unite-bitwise
-        call n/unsigned-shift-right
-          call subtract
-            code 32
-            read s
-      link add, read b
-
-task gg
-  take a
-  take b
-  take c
-  take d
-  take x
-  take s
-  take t
-  save n
-    call a/add
-      call b/intersect-bitwise
-        read d
-        link unite-bitwise, call c/intersect-bitwise(call bitflip(read d))
-      link add, read x
-      link add, read t
-  send back
-    call n/shift-left
-      read s
-      link unite-bitwise
-        call n/unsigned-shift-right
-          call subtract
-            code 32
-            read s
-      link add, read b
-
-task hh
-  take a
-  take b
-  take c
-  take d
-  take x
-  take s
-  take t
-  save n
-    call a/add
-      call b/oppose-bitwise
-        read c
-        link oppose-bitwise, read d
-      link add, read x
-      link add, read t
-  send back
-    call n/shift-left
-      read s
-      link unite-bitwise
-        call n/unsigned-shift-right
-          call subtract
-            code 32
-            read s
-      link add, read b
-
-task ii
-  take a
-  take b
-  take c
-  take d
-  take x
-  take s
-  take t
-  save n
-    call a/add
-      call c/oppose-bitwise
-        call b/unite-bitwise
-          call bitflip
+      save c0
+        call md5-wrap
+          call add
+            call md5-wrap
+              read c0
+            read c
+      save d0
+        call md5-wrap
+          call add
+            call md5-wrap
+              read d0
             read d
-      link add, read x
-      link add, read t
+      save block
+        call add
+          read block
+          code 64
+  # the digest: a0 b0 c0 d0 as little-endian bytes, each as two hex characters
+  save digest, text <>
+  save words, make list
+  call words/push
+    read a0
+  call words/push
+    read b0
+  call words/push
+    read c0
+  call words/push
+    read d0
+  save wi, code 0
+  walk test
+    hook test
+      call is-below
+        read wi
+        code 4
+    hook hold
+      save word, read words/{wi}
+      save bi, code 0
+      walk test
+        hook test
+          call is-below
+            read bi
+            code 4
+        hook hold
+          save byte
+            call bitwise-and
+              call unsigned-shift-right
+                read word
+                call multiply
+                  read bi
+                  code 8
+              code 255
+          save digest
+            call concat
+              read digest
+              call md5-hex-byte
+                read byte
+          save bi, call increment(read bi)
+      save wi, call increment(read wi)
+  send back, read digest
+
+# one byte as two lowercase hex characters
+task md5-hex-byte
+  take byte, like number
+  like text
   send back
-    call n/shift-left
-      read s
-      link unite-bitwise
-        call n/unsigned-shift-right
-          call subtract
-            code 32
-            read s
-      link add, read b
+    call concat
+      call md5-hex-nibble
+        call unsigned-shift-right
+          read byte
+          code 4
+      call md5-hex-nibble
+        call bitwise-and
+          read byte
+          code 15
+
+task md5-hex-nibble
+  take n, like number
+  like text
+  save table, text <0123456789abcdef>
+  send back
+    call char-at
+      read table
+      read n

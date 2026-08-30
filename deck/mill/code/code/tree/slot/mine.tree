@@ -1,4 +1,10 @@
+load @term/mill/code/code/like/mine
+  find like
 
 mine slot
   mine term, term slot
-    site name
+    mine term
+      site name
+    mine maybe
+      mine form, like like
+        site like

@@ -1,8 +1,9 @@
-# The deck manifest grammar, written against the REAL deck.tree files of this tree (14 packages surveyed
-# 2026-08-29), not an idealized one: the name is a path word (`deck @term/seed`), the fields come in any order,
-# and an unknown field passes over with `mine node` the way the hand-rolled reader ignores it. The executor
-# (compile/mill-run.ts) reads a manifest through this; test/compile/mill-run.ts holds it against
-# deck/deck/code/manifest.ts on every manifest in the tree.
+# The deck manifest grammar, written against the REAL deck.tree files of this tree and the manifest reader's
+# whole field surface (deck/deck/test/manifest.test.ts): the name is a path word (`deck @term/seed`), the fields
+# come in any order, and an unknown field passes over with `mine node` the way the hand-rolled reader ignores it.
+# The executor (compile/mill-run.ts) reads a manifest through this; test/compile/mill-run.ts holds it against
+# deck/deck/code/manifest.ts on every manifest in the tree, and deck/deck/code/manifest.ts itself reads through
+# this grammar (mill-self-hosting-0005).
 
 load @term/mill/code/deck/role/mine
   find role
@@ -37,12 +38,36 @@ mine deck-def
           site lock
         mine form, like deck-link
           site link
+        mine form, like deck-host
+          site host
+        mine form, like deck-case
+          site case
+        mine form, like deck-mind
+          site mind
+        mine form, like deck-hook
+          site hook
         mine form, like deck-bear
           site bear
         mine form, like deck-test
           site test
         mine form, like deck-line
           site line
+        mine form, like deck-book
+          site book
+        mine form, like deck-call
+          site call
+        mine form, like deck-task
+          site task
+        mine form, like deck-role
+          site role
+        mine form, like deck-deck
+          site deck
+        mine form, like deck-hide
+          site hide
+        mine form, like deck-site
+          site site
+        mine form, like deck-view
+          site view
         mine form, like deck-make
           site make
         mine form, like deck-term
@@ -85,7 +110,7 @@ mine deck-lock
       mine term
         site term
 
-# `link @term/seed, code <0.0.x>` (or the older `mark <0.0.x>`)
+# `link @term/seed, code <0.0.x>` (or the older `mark <0.0.x>`), with an optional `have <n>`
 mine deck-link
   mine term, term link
     mine path
@@ -98,6 +123,57 @@ mine deck-link
         mine term, term mark
           mine text
             site code
+    mine maybe
+      mine term, term have
+        mine any
+          mine text
+            site have
+          mine code
+            site have
+
+# `case work` holds the DEV dependencies: `link` forms and `host` groups
+mine deck-case
+  mine term, term case
+    mine term
+      site name
+    mine list
+      mine any
+        mine form, like deck-link
+          site link
+        mine form, like deck-host
+          site host
+
+# `host <registry url>` with child links: dependencies resolved at that registry
+mine deck-host
+  mine term, term host
+    mine text
+      site registry
+    mine list
+      mine form, like deck-link
+        site link
+
+# `mind <Lance Pollard>, base <lp@elk.fm>` with an optional child `site <...>`
+mine deck-mind
+  mine term, term mind
+    mine text
+      site name
+    mine maybe
+      mine term, term base
+        mine text
+          site base
+    mine maybe
+      mine term, term site
+        mine text
+          site site
+
+# `hook build, task ./task/build`
+mine deck-hook
+  mine term, term hook
+    mine term
+      site name
+    mine term, term task
+      mine path
+        site path
 
 # `bear ./code`: what the package exports
 mine deck-bear
@@ -117,17 +193,74 @@ mine deck-line
     mine path
       site path
 
+# `book ./book`: the docs
+mine deck-book
+  mine term, term book
+    mine path
+      site path
+
+# `call ./call`
+mine deck-call
+  mine term, term call
+    mine path
+      site path
+
+# `task ./task`
+mine deck-task
+  mine term, term task
+    mine path
+      site path
+
+# `role ./base/role`: the role file
+mine deck-role
+  mine term, term role
+    mine path
+      site path
+
+# `deck ./deck/load`: a sub-package entry
+mine deck-deck
+  mine term, term deck
+    mine path
+      site path
+
+# `hide true`
+mine deck-hide
+  mine term, term hide
+    mine term
+      site flag
+
+# `site <https://...>`
+mine deck-site
+  mine term, term site
+    mine any
+      mine text
+        site text
+      mine path
+        site text
+
+# `view ./view/tree.gif`
+mine deck-view
+  mine term, term view
+    mine any
+      mine text
+        site text
+      mine path
+        site text
+
 # `make <security>`: a keyword, repeatable
 mine deck-make
   mine term, term make
     mine text
       site text
 
-# `term <Apache 2.0>`: a licence or keyword term
+# `term <Apache 2.0>` or `term tree-code`: a licence or keyword term
 mine deck-term
   mine term, term term
-    mine text
-      site text
+    mine any
+      mine text
+        site text
+      mine term
+        site text
 
 # `text <The Term Secret Access Library>`: the long title
 mine deck-text

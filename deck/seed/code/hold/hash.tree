@@ -4,8 +4,8 @@ load @term/seed/code/bit
 
 task hash-djb2-xor
   like u32
-  take text
-  save size, read text/get-size
+  take text, like text
+  save size, read text/length
   save hash, code 5381
   save mark, code 0
 
@@ -20,11 +20,12 @@ task hash-djb2-xor
           call multiply
             read hash
             code 33
-          read text/{i}
+          call text/char-code-at(read i)
       save mark
         call increment
           read mark
 
-  call unsigned-shift-right
-    read hash
-    code 0
+  send back
+    call unsigned-shift-right
+      read hash
+      code 0

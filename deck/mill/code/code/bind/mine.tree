@@ -1,3 +1,12 @@
+load @term/mill/code/code/dock/mine
+  find dock-bind-line
+
+load @term/mill/code/code/take/mine
+  find take
+
+load @term/mill/code/code/like/mine
+  find like
+
 
 load @term/mill/code/code/seed/mine
   find seed
@@ -9,3 +18,34 @@ mine bind
     mine maybe
       mine form, like seed
         site seed
+
+# top-level `bind do-scale` / `take value, like text` / `like number` / `case node` with an inline text or
+# number body per backend: binds a task name to platform snippets.
+mine bind-def
+  mine term, term bind
+    mine term
+      site name
+    mine list
+      mine form, like take
+        site take
+    mine maybe
+      mine form, like like
+        site like
+    mine list
+      mine form, like bind-def-case
+        site case
+
+mine bind-def-case
+  mine term, term case
+    mine term
+      site platform
+    mine list
+      mine any
+        mine form, like seed
+          site seed
+        mine form, like dock-bind-line
+          site load
+        mine text
+          site text
+        mine code
+          site code

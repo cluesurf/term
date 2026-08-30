@@ -1,3 +1,8 @@
+# SHELVED 2026-08-31: a design sketch for a CoreMotion surface. It takes an untyped `motion` record with a
+# `native` field, but no public wave/motion module or `motion` form exists anywhere in the tree, so the
+# member path has nothing to type against on any backend. Nothing loads this module. Un-shelve by declaring
+# the motion form (or a `dock type` CMMotionManager handle) alongside the public API it forwards.
+note draft
 
 task is-motion-available
   # A Boolean value that indicates whether the device-motion service is available on the device.

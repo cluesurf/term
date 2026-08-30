@@ -1,5 +1,11 @@
+# SHELVED 2026-08-31: a SwiftUI-binding sketch. Its calls do not line up with the real SwiftUI signatures
+# (`alignmentGuide` takes an alignment plus a compute closure, and the sketch reads enum variants as bare
+# values), so it has never typechecked against the framework. Nothing loads it. Un-shelve by writing the
+# bindings against the real API, method by method, the way the camera and light modules are written.
+note draft
+
 dock type
-  load <AnyView>, name native-view
+  load <SwiftUI.AnyView>, name native-view
 
 load @term/seed/code/color/rgb
   find rgb-color

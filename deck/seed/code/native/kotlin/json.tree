@@ -93,14 +93,14 @@ task do-push-item
       read value
       read item
 
-task do-from-text
+task do-json-from-text
   take value, like text
   like dynamic
   send back
     call json/from-text
       read value
 
-task do-from-number
+task do-json-from-number
   take value, like decimal
   like dynamic
   send back

@@ -26,6 +26,7 @@ import {
   stringRead,
   exhausted,
   reassigned,
+  hasValuedReturn,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp } from '@term/make/code/compile/backend'
 import { armLocals } from '@term/make/code/check/arm'
@@ -33,13 +34,34 @@ import { raiseSets } from '@term/make/code/check/effects'
 import { formSpec, refuseAny, specForms } from '@term/make/code/compile/backend'
 import type { FormKind, FormSpec } from '@term/make/code/compile/backend'
 
+// Rust reserved and reserved-for-future-use keywords that cannot be bare identifiers; a seed name colliding with
+// one is suffixed with `_`, the same convention typescript.ts's RESERVED already uses, applied uniformly
+// (definitions and uses) so a local named e.g. `continue` stays consistent across the module. `self`/`Self` are
+// handled separately below (a rename, not a suffix) since `self` is meaningful in a method body.
+const RUST_RESERVED = new Set([
+  'as', 'break', 'const', 'continue', 'crate', 'dyn', 'else', 'enum', 'extern', 'false', 'fn', 'for', 'if', 'impl',
+  'in', 'let', 'loop', 'match', 'mod', 'move', 'mut', 'pub', 'ref', 'return', 'static', 'struct', 'super', 'trait',
+  'true', 'type', 'unsafe', 'use', 'where', 'while', 'async', 'await', 'abstract', 'become', 'box', 'do', 'final',
+  'macro', 'override', 'priv', 'typeof', 'unsized', 'virtual', 'yield', 'try', 'gen',
+])
+
 // `self` is fine in Rust as a name only in methods; as a free identifier rename it. Names snake_case.
 function vname(name: string): string {
-  return name === 'self' ? 'slf' : name.replace(/-/g, '_')
+  if (name === 'self') {
+    return 'slf'
+  }
+
+  const snakeName = name.replace(/-/g, '_')
+
+  return RUST_RESERVED.has(snakeName) ? `${snakeName}_` : snakeName
 }
 
 function snake(name: string): string {
-  return name.replace(/-/g, '_')
+  const snakeName = name.replace(/-/g, '_')
+
+  // a Term name that is a Rust keyword (`task move`, `task match`, a `move` field) escapes with a trailing
+  // underscore, the same way vname does, so every identifier position agrees
+  return RUST_RESERVED.has(snakeName) ? `${snakeName}_` : snakeName
 }
 
 function pascal(name: string): string {
@@ -499,6 +521,38 @@ export function emitRust(
   }
 
   // the empty value of a type: what a left-out field or argument holds
+
+  // a condition in a `while` / `if` head: a binary comparison drops its self-parenthesization there, since rustc
+  // warns on `while (a > b)` (unused_parens) and a strict build makes the warning fatal
+  const condExpr = (cond: Expression): string => {
+    const rendered = expr(cond)
+
+    if (
+      cond.form !== 'binary' ||
+      !rendered.startsWith('(') ||
+      !rendered.endsWith(')')
+    ) {
+      return rendered
+    }
+
+    // strip the pair only when the FIRST paren really closes at the last character
+    let depth = 0
+
+    for (let i = 0; i < rendered.length; i++) {
+      if (rendered[i] === '(') {
+        depth++
+      } else if (rendered[i] === ')') {
+        depth--
+
+        if (depth === 0 && i < rendered.length - 1) {
+          return rendered
+        }
+      }
+    }
+
+    return rendered.slice(1, -1)
+  }
+
   const emptyOf = (type: Type | undefined): string => {
     switch (type?.kind) {
       case 'string':
@@ -551,10 +605,81 @@ export function emitRust(
   )
   const localNames = new Set<string>()
   const moduleConstName = (name: string): string => `MODULE_${snake(name).toUpperCase()}`
+
+  // a module-level `host` data tree (`host range` / `host h` / `host start, code 0`) is an ANONYMOUS nested
+  // record: no form names it, so Rust gets one synthesized struct per record node, named by the binding and
+  // the field path (HostRange, HostRangeH). The record nodes are renamed in place so the construction and the
+  // static's type line up, and the struct defs ride ahead of the module lets.
+  const hostStructDefs: string[] = []
+  const hostStructOf = new Map<string, string>()
+  const hostLeafType = (v: Expression): string =>
+    v.form === 'integer'
+      ? 'i64'
+      : v.form === 'float'
+        ? 'f64'
+        : v.form === 'text'
+          ? 'String'
+          : v.form === 'boolean'
+            ? 'bool'
+            : v.type
+              ? rustType(v.type)
+              : 'i64'
+  const nameHostRecord = (
+    node: Extract<Expression, { form: 'record' }>,
+    base: string,
+  ): string => {
+    node.name = base
+
+    const fields = node.fields.map(f => {
+      const type =
+        f.value.form === 'record' && f.value.name === ''
+          ? nameHostRecord(f.value, `${base}${pascal(f.name)}`)
+          : hostLeafType(f.value)
+
+      return `pub ${snake(f.name)}: ${type}`
+    })
+
+    hostStructDefs.push(
+      `#[derive(Clone)] pub struct ${base} { ${fields.join(', ')} }`,
+    )
+
+    return base
+  }
+
+  for (const node of program) {
+    if (
+      node.form === 'let' &&
+      node.init.form === 'record' &&
+      node.init.name === ''
+    ) {
+      hostStructOf.set(
+        node.name,
+        nameHostRecord(node.init, `Host${pascal(node.name)}`),
+      )
+    }
+  }
+
+  // a valueless typed module SLOT (`host current, like context`, filled later by a `save`): rust has no
+  // lateinit, so the static is a RefCell<Option<T>>; reads unwrap, writes fill (see the variable and assign
+  // cases)
+  const moduleSlots = new Set<string>(
+    program
+      .filter(
+        (n): n is Extract<Statement, { form: 'let' }> =>
+          n.form === 'let' &&
+          n.init.form === 'unit' &&
+          n.type !== undefined &&
+          n.type.kind === 'named',
+      )
+      .map(n => n.name),
+  )
+
   const moduleLet = (node: Extract<Statement, { form: 'let' }>): string =>
-    `thread_local! { static ${moduleConstName(node.name)}: ${rustType(
-      node.init.type ?? node.type,
-    )} = ${expr(node.init)}; }`
+    moduleSlots.has(node.name)
+      ? `thread_local! { static ${moduleConstName(node.name)}: std::cell::RefCell<Option<${rustType(node.type)}>> = std::cell::RefCell::new(None); }`
+      : `thread_local! { static ${moduleConstName(node.name)}: ${
+          hostStructOf.get(node.name) ?? rustType(node.init.type ?? node.type)
+        } = ${expr(node.init)}; }`
 
   const isNativeCall = (node: Expression): boolean => {
     if (node.form !== 'call' || node.callee.form !== 'member') {
@@ -564,6 +689,33 @@ export function emitRust(
     const root = rootVariable(node.callee)
 
     return root !== undefined && aliases.has(root)
+  }
+
+  // a generic struct whose fields never mention one of its parameters (an opaque `dock` erases the type) needs
+  // a PhantomData field for the unused letters, or rustc refuses it (E0392). Detected up front so every
+  // construction of the form appends the marker regardless of declaration order.
+  const phantomForms = new Map<string, string>()
+
+  for (const node of program) {
+    if (
+      node.form !== 'record-type' ||
+      node.params.length === 0 ||
+      node.variants.length > 0
+    ) {
+      continue
+    }
+
+    const rendered = node.fields.map(f => rustType(f.type)).join(', ')
+    const unused = node.params
+      .map(p => p.toUpperCase())
+      .filter(p => !new RegExp(`\\b${p}\\b`).test(rendered))
+
+    if (unused.length > 0) {
+      phantomForms.set(
+        node.name,
+        unused.length === 1 ? unused[0]! : `(${unused.join(', ')})`,
+      )
+    }
   }
 
   // for each form, which of its generic parameters (by index) flow into a map KEY position inside its fields. A `set<t>`
@@ -665,7 +817,9 @@ export function emitRust(
       case 'hole':
         // a module-level constant lives in a thread_local (rust has no top-level `let`): a read clones it out
         if (moduleConsts.has(node.name) && !localNames.has(node.name)) {
-          return `${moduleConstName(node.name)}.with(|v| v.clone())`
+          return moduleSlots.has(node.name)
+            ? `${moduleConstName(node.name)}.with(|v| v.borrow().clone().unwrap())`
+            : `${moduleConstName(node.name)}.with(|v| v.clone())`
         }
 
         // a mutated capture lives in an Rc<RefCell> handle: a read borrows and clones the value out
@@ -674,7 +828,7 @@ export function emitRust(
           : vname(node.name)
       case 'unary':
         return `${node.op}${expr(node.operand)}`
-      case 'binary':
+      case 'binary': {
         // string concatenation: Rust's `+` requires `String + &str`, so two owned `String`s (e.g. function-call
         // results) would not compile. `format!` concatenates any Display operands uniformly, owned or borrowed.
         if (
@@ -686,7 +840,23 @@ export function emitRust(
           return `format!("{}{}", ${expr(node.left)}, ${expr(node.right)})`
         }
 
+        // comparing an unknown slot to `make void` is a presence check: Rc<dyn Any> has no `==`, so it asks
+        // the box whether it holds the unit
+        const voidSide =
+          node.right.form === 'record' && node.right.name === 'void'
+            ? node.left
+            : node.left.form === 'record' && node.left.name === 'void'
+              ? node.right
+              : undefined
+
+        if (voidSide && (node.op === '==' || node.op === '!=')) {
+          const check = `${expr(voidSide)}.is::<()>()`
+
+          return node.op === '==' ? check : `!${check}`
+        }
+
         return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
+      }
 
       case 'call': {
         // `call fill / <data> / like <form>` and `call melt / <value> / like <form>`: a function per form, generated
@@ -741,9 +911,14 @@ export function emitRust(
         // MOVE ON LAST USE: a bare variable read exactly once in the function (and not in a loop or closure) is moved at
         // this use instead of cloned -- there is no later use to invalidate, so the borrow checker accepts it, and the
         // clone (a deep `String` copy or an `Rc` refcount bump) is saved.
+        // a closure-typed local (a task parameter) boxes its unknown-typed arguments the same way a known
+        // function does: its param types come from the callee's own checked function type
         const params =
           node.callee.form === 'variable'
-            ? functionParams.get(node.callee.name)
+            ? (functionParams.get(node.callee.name) ??
+              (node.callee.type?.kind === 'function'
+                ? node.callee.type.params
+                : undefined))
             : undefined
         const argList = node.args.map((a, i) => {
           const rendered = (() => {
@@ -770,6 +945,20 @@ export function emitRust(
 
           return boxUnknown(params?.[i], a, rendered)
         })
+
+        // a trailing `need false` parameter left out at the call site still exists in the native signature:
+        // fill it with its type's empty value (the boxed unit for an unknown)
+        if (params && params.length > argList.length) {
+          for (let i = argList.length; i < params.length; i++) {
+            const missing = params[i]
+
+            argList.push(
+              missing?.kind === 'unknown' || missing === undefined
+                ? '(std::rc::Rc::new(()) as std::rc::Rc<dyn std::any::Any>)'
+                : emptyOf(missing),
+            )
+          }
+        }
 
         const args = argList.join(', ')
 
@@ -813,6 +1002,21 @@ export function emitRust(
           .join(', ')}]))`
 
       case 'record': {
+        // `make hash` / `make list` with no binds are the native collections, not record constructions (the
+        // pascal of `hash` would otherwise resolve to the std `Hash` derive macro)
+        if (node.name === 'hash' && node.fields.length === 0) {
+          return 'std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()))'
+        }
+
+        if (node.name === 'list' && node.fields.length === 0) {
+          return 'std::rc::Rc::new(std::cell::RefCell::new(Vec::new()))'
+        }
+
+        // `make void` is the absent value: the boxed unit, so an unknown slot can hold and recognize it
+        if (node.name === 'void' && node.fields.length === 0) {
+          return '(std::rc::Rc::new(()) as std::rc::Rc<dyn std::any::Any>)'
+        }
+
         // a label several enums share (`text` on both `token` and `data`) is owned by the enum the checker gave the
         // construction; a label of one enum by that enum
         const owner =
@@ -848,13 +1052,17 @@ export function emitRust(
               `${snake(f.name)}: ${boxUnknown(declared.get(f.name), f.value, owned(f.value))}`,
           ),
           ...missing,
+          ...(phantomForms.has(node.name)
+            ? ['_marker: std::marker::PhantomData']
+            : []),
         ].join(', ')} }`
       }
 
       case 'member': {
-        // a DYNAMIC segment (`read table/{key}`) indexes the collection through its handle
+        // a DYNAMIC segment (`read table/{key}`) indexes the collection through its handle; cloned out, since
+        // indexing a Vec of non-Copy values (String, Rc) cannot move
         if (node.index) {
-          return `${expr(node.target)}.borrow()[${expr(node.index)} as usize]`
+          return `${expr(node.target)}.borrow()[${expr(node.index)} as usize].clone()`
         }
 
         // `map.size` / `array.length` read the length (a map goes through its Rc<RefCell> handle; an array is a plain
@@ -872,6 +1080,15 @@ export function emitRust(
           return `(${expr(textLength.target)}.chars().count() as i64)`
         }
 
+        // a LITERAL index segment (`read parts/0`) on an array target indexes the Vec: `.0` would be a tuple
+        // field, which an Rc<RefCell<Vec>> does not have
+        if (
+          /^\d+$/.test(node.name) &&
+          node.target.type?.kind === 'array'
+        ) {
+          return `${expr(node.target)}.borrow()[${node.name}]`
+        }
+
         return memberPath(node)
       }
 
@@ -882,6 +1099,19 @@ export function emitRust(
           awaitedRaise = false
 
           return `${inner}.await${raiseSuffix()}`
+        }
+
+        // `wait true` on a call whose callee is checked SYNC (a plain task field): rustc refuses awaiting a
+        // non-future, so the await is dropped rather than emitted
+        if (node.expr.form === 'call') {
+          const calleeType =
+            node.expr.callee.type?.kind === 'function'
+              ? node.expr.callee.type
+              : undefined
+
+          if (calleeType && !calleeType.effects?.includes('async')) {
+            return expr(node.expr)
+          }
         }
 
         return `${expr(node.expr)}.await`
@@ -1009,7 +1239,10 @@ export function emitRust(
       case 'pop':
         return `${target}.borrow_mut().pop().unwrap()`
       case 'at':
+      case 'get':
         return `${data}[(${arg[0]}) as usize].clone()`
+      case 'set':
+        return `{ ${target}.borrow_mut()[(${arg[0]}) as usize] = ${arg[1]}; }`
       case 'includes':
         return `${data}.contains(&${arg[0]})`
       case 'indexOf':
@@ -1185,6 +1418,18 @@ export function emitRust(
   const stmt = (node: Statement, d: number): string => {
     switch (node.form) {
       case 'let': {
+        // the gradual boundary on a binding: `host record, like test-entry / read entry/base` re-types the
+        // boxed dynamic at a declared FORM, which on rust is a downcast out of the box
+        if (
+          node.type?.kind === 'named' &&
+          node.init.form === 'member' &&
+          recordFields.has(node.type.name) &&
+          (node.init.type?.kind === 'unknown' ||
+            node.init.type?.kind === 'dynamic')
+        ) {
+          return `let mut ${vname(node.name)} = ${expr(node.init)}.downcast_ref::<${rustType(node.type)}>().unwrap().clone();`
+        }
+
         // a MUTATED CAPTURE is declared as its Rc<RefCell> handle (reads / writes go through the cell)
         if (cellVars.has(node.name)) {
           return `let ${vname(
@@ -1221,6 +1466,15 @@ export function emitRust(
         // temporary FIRST: a `x.borrow()` inside it is a temporary `Ref` guard that lives to the end of its whole
         // statement, so evaluating it in the same statement as the `borrow_mut` would panic at run time
         // (`RefCell already borrowed`). The inner `let` scopes that guard to its own statement.
+        // a write to a module SLOT fills the thread_local's Option
+        if (
+          node.target.form === 'variable' &&
+          moduleSlots.has(node.target.name) &&
+          !localNames.has(node.target.name)
+        ) {
+          return `{ let __slot_value = ${owned(node.value)}; ${moduleConstName(node.target.name)}.with(|v| *v.borrow_mut() = Some(__slot_value)); }`
+        }
+
         const cellTarget = cellAssignTarget(node.target)
 
         if (cellTarget) {
@@ -1236,22 +1490,68 @@ export function emitRust(
       case 'expression':
         return `${expr(node.expr)};`
       case 'return': {
+        // outer parens around the returned value are the binary case's grouping: rustc warns on them in
+        // return position (unused_parens), so a BALANCED outer pair is stripped
+        const bare = (rendered: string): string => {
+          if (!rendered.startsWith('(') || !rendered.endsWith(')')) {
+            return rendered
+          }
+
+          let depth = 0
+
+          for (let i = 0; i < rendered.length; i++) {
+            if (rendered[i] === '(') {
+              depth += 1
+            } else if (rendered[i] === ')') {
+              depth -= 1
+
+              if (depth === 0 && i < rendered.length - 1) {
+                return rendered
+              }
+            }
+          }
+
+          return rendered.slice(1, -1)
+        }
+
         // a list-returning function that returns a native dock call directly wraps the shim's plain `Vec`
         const value = !node.value
           ? '()'
           : fnReturnsArray && isNativeCall(node.value)
             ? wrapList(expr(node.value))
-            : boxUnknown(currentResult, node.value, expr(node.value))
+            : bare(boxUnknown(currentResult, node.value, expr(node.value)))
+
+        // the gradual boundary: an unknown-typed value returned at a declared FORM type downcasts
+        const valueKind =
+          node.value?.form === 'await'
+            ? (node.value.type ?? node.value.expr.type)?.kind
+            : node.value?.type?.kind
+        // only a FIELD READ is certainly the boxed dynamic; a dock call's rust value is already concrete,
+        // and downcasting a plain struct does not compile
+        const casted =
+          node.value &&
+          node.value.form === 'member' &&
+          (valueKind === 'unknown' || valueKind === 'dynamic') &&
+          currentResult?.kind === 'named' &&
+          recordFields.has(currentResult.name)
+            ? `${value}.downcast_ref::<${rustType(currentResult)}>().unwrap().clone()`
+            : value
+
+        // a bare `send back` in a task whose synthesized result is the boxed dynamic answers the boxed unit
+        const boxedUnit =
+          !node.value && currentResult?.kind === 'unknown'
+            ? '(std::rc::Rc::new(()) as std::rc::Rc<dyn std::any::Any>)'
+            : undefined
 
         if (guardDepth > 0) {
-          return `return Ok(Some(${value}));`
+          return `return Ok(Some(${boxedUnit ?? casted}));`
         }
 
         if (currentRaising) {
-          return `return Ok(${value});`
+          return `return Ok(${boxedUnit ?? casted});`
         }
 
-        return node.value ? `return ${value};` : 'return;'
+        return node.value || boxedUnit ? `return ${boxedUnit ?? casted};` : 'return;'
       }
       case 'throw': {
         // a raise is `Err(TermException)`: the record's shared fields, its props as `link`, the record as `base`; a
@@ -1281,7 +1581,13 @@ export function emitRust(
         return `{ let raised = ${carrier}; eprintln!("{}", raised); std::process::exit(1) }`
       }
       case 'while':
-        return `while ${expr(node.cond)} {\n${block(
+        // `while true` emits `loop`, which rustc knows diverges: a function ending in the loop then needs no
+        // unreachable trailing value (E0308)
+        if (node.cond.form === 'boolean' && node.cond.value === true) {
+          return `loop {\n${block(node.body, d + 1)}\n${pad(d)}}`
+        }
+
+        return `while ${condExpr(node.cond)} {\n${block(
           node.body,
           d + 1,
         )}\n${pad(d)}}`
@@ -1372,6 +1678,28 @@ export function emitRust(
           )}\n${pad(d)}}`
         }
 
+        // a `fork case` over a TEXT subject (`fork case, read kind` with `case home` arms): the labels are
+        // string values, matched over &str with a wildcard for exhaustiveness
+        if (node.subject.type?.kind === 'string') {
+          const arms = node.cases.map(
+            b =>
+              `${pad(d + 1)}${JSON.stringify(b.label)} => {\n${block(
+                b.body,
+                d + 2,
+              )}\n${pad(d + 1)}}`,
+          )
+
+          arms.push(
+            `${pad(d + 1)}_ => {${
+              node.otherwise
+                ? `\n${block(node.otherwise, d + 2)}\n${pad(d + 1)}`
+                : ''
+            }}`,
+          )
+
+          return `match ${expr(node.subject)}.as_str() {\n${arms.join('\n')}\n${pad(d)}}`
+        }
+
         // match a clone of the subject: a variant pattern binds (moves out) the variant's fields, so matching the
         // original would partially move it and break a branch that also uses the whole subject (`return self`). Our
         // ADTs all derive Clone, so this is always valid; the bound fields come from the clone, the original is intact.
@@ -1440,7 +1768,7 @@ export function emitRust(
       case 'if': {
         let out = ''
         node.branches.forEach((b, i) => {
-          out += `${i ? ' else ' : ''}if ${expr(b.cond)} {\n${block(
+          out += `${i ? ' else ' : ''}if ${condExpr(b.cond)} {\n${block(
             b.body,
             d + 1,
           )}\n${pad(d)}}`
@@ -1553,7 +1881,9 @@ export function emitRust(
           isEq: boolean,
           isDisplay: boolean,
         ): string => {
-          const traits = ['Clone']
+          // every generic is 'static: our values own their data (String, i64, Rc), and the generic runtime
+          // shims (shape, compare, text) require it for the Any-based dispatch
+          const traits = ['Clone', "'static"]
 
           if (isKey) {
             traits.push('Eq', 'std::hash::Hash')
@@ -1623,8 +1953,15 @@ export function emitRust(
           .map(p => `${vname(p.name)}: ${rustType(p.type)}`)
           .join(', ')
 
+        // a task with no declared result but a valued `send back` (a dock forward) answers the boxed dynamic
+        const declaredResult =
+          node.result && node.result.kind !== 'unit'
+            ? node.result
+            : hasValuedReturn(node.body)
+              ? ({ kind: 'unknown' } as Type)
+              : node.result
         const plainResult =
-          node.result && node.result.kind !== 'unit' ? rustType(node.result) : ''
+          declaredResult && declaredResult.kind !== 'unit' ? rustType(declaredResult) : ''
         const ret = raising.has(node.name)
           ? ` -> Result<${plainResult || '()'}, TermException>`
           : plainResult
@@ -1633,7 +1970,7 @@ export function emitRust(
         const previousRaising = currentRaising
         const previousResult = currentResult
         currentRaising = raising.has(node.name)
-        currentResult = node.result
+        currentResult = declaredResult
 
         // names a nested closure ASSIGNS to are boxed in Rc<RefCell> for this whole function body
         const previousCellVars = cellVars
@@ -1674,8 +2011,15 @@ export function emitRust(
         const tail =
           currentRaising && (!node.result || node.result.kind === 'unit')
             ? `${pad(d + 1)}Ok(())`
-            : last?.form === 'guard' && node.result && node.result.kind !== 'unit'
-              ? `${pad(d + 1)}unreachable!()`
+            : (last?.form === 'guard' ||
+                  last?.form === 'if' ||
+                  last?.form === 'while' ||
+                  last?.form === 'match') &&
+                node.result &&
+                node.result.kind !== 'unit'
+              ? // a valued task whose body ends in branching that returns from every live path: rustc cannot
+                // always see the coverage (an `if` chain with no `else`), so the fall-through is marked
+                `${pad(d + 1)}unreachable!()`
               : ''
         // a signature-only stub compiles: its body is the not-implemented panic
         const bodyText =
@@ -1727,6 +2071,15 @@ export function emitRust(
         const fields = node.fields.map(
           f => `${pad(d + 1)}${snake(f.name)}: ${rustType(f.type)}`,
         )
+
+        // a generic parameter no field mentions (an opaque `dock` handle erases it) still has to be used, or
+        // rustc refuses the struct (E0392): a PhantomData field carries the unused letters, and every
+        // construction of the form appends the marker (see the record case)
+        if (phantomForms.has(node.name)) {
+          fields.push(
+            `${pad(d + 1)}_marker: std::marker::PhantomData<${phantomForms.get(node.name)}>`,
+          )
+        }
 
         return `${derive}struct ${pascal(
           node.name,
@@ -1791,7 +2144,8 @@ export function emitRust(
         n.kind !== 'type' &&
         !n.module.startsWith('global:'),
     )
-    .map(n => `use ${n.module.replace(/[:/]/g, '::')};`)
+    .map(n => `use ${n.module.replace(/::|[:/]/g, '::')};`)
+
 
   // plus the `use` each rendered `bind` needs (e.g. `use sha2::Sha256;` for a `case rust` that calls `Sha256::digest`).
   // Two paths that bind the SAME final name collide in Rust (`use sha2::Digest;` + `use md5::Digest;` -> E0252), yet a
@@ -1812,7 +2166,7 @@ export function emitRust(
     referencedBinds(program, binds),
     'rust',
   )) {
-    const path = need.module.replace(/[:/]/g, '::')
+    const path = need.module.replace(/::|[:/]/g, '::')
     const name = need.alias ?? path.split('::').pop()!
     const line = need.alias
       ? `use ${path} as ${need.alias};`
@@ -1827,10 +2181,80 @@ export function emitRust(
     }
   }
 
-  const body = program
-    .filter(n => n.form !== 'native')
-    .map(n => (n.form === 'let' ? moduleLet(n) : stmt(n, 0)))
-    .filter(Boolean)
+  // an abstract module's signature-only declaration and the platform module's implementation share a name by
+  // design (platform dispatch): when both are in the closure, the stub yields to the implementation instead of
+  // colliding with it (E0428)
+  const implemented = new Set(
+    program
+      .filter(
+        (n): n is Extract<Statement, { form: 'function' }> =>
+          n.form === 'function' && n.body.length > 0,
+      )
+      .map(n => n.name),
+  )
+
+
+  // a form declared in an abstract module AND its platform module lands twice in the closure: the empty
+  // declaration yields to the full one, and an exact repeat keeps only its first appearance
+  const fullForms = new Set(
+    program
+      .filter(
+        (n): n is Extract<Statement, { form: 'record-type' }> =>
+          n.form === 'record-type' &&
+          (n.fields.length > 0 || n.variants.length > 0),
+      )
+      .map(n => n.name),
+  )
+  const seenForms = new Set<string>()
+  // a module collected twice (two import spellings of one file) emits its functions twice: keep the first
+  const seenFns = new Set<string>()
+  const keepStatement = (n: Statement): boolean => {
+    if (n.form === 'function') {
+      const key = `${n.name}/${n.params.length}`
+
+      if (seenFns.has(key)) {
+        return false
+      }
+
+      seenFns.add(key)
+    }
+
+    if (n.form !== 'record-type') {
+      return true
+    }
+
+    if (
+      n.fields.length === 0 &&
+      n.variants.length === 0 &&
+      fullForms.has(n.name)
+    ) {
+      return false
+    }
+
+    if (seenForms.has(n.name)) {
+      return false
+    }
+
+    seenForms.add(n.name)
+
+    return true
+  }
+
+  const body = [
+    ...hostStructDefs,
+    ...program
+      .filter(n => n.form !== 'native')
+      .filter(
+        n =>
+          !(
+            n.form === 'function' &&
+            n.body.length === 0 &&
+            implemented.has(n.name)
+          ),
+      )
+      .filter(keepStatement)
+      .map(n => (n.form === 'let' ? moduleLet(n) : stmt(n, 0))),
+  ].filter(Boolean)
 
   const carrier = body.some(b => b.includes('TermException'))
     ? [

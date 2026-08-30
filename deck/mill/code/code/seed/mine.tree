@@ -1,16 +1,102 @@
+# One VALUE expression (what a `bind`, a call argument, a `send back` or a `save` carries): a call, a
+# construction, a read, a literal. This is the `seed` every rule that says `mine form, like seed` means.
 
-load @term/mill/code/code/seed/mine
-  find seed
+load @term/mill/code/code/call/mine
+  find call
+
+load @term/mill/code/code/make/mine
+  find make
+
+load @term/mill/code/code/fork/mine
+  find fork
+
+load @term/mill/code/code/task/mine
+  find task
+
+load @term/mill/code/code/tool/flow/mine
+  find move
 
 mine seed
-  mine list
-    mine form, like seed-def
-      site seed
+  mine any
+    mine form, like call
+      site call
+    mine form, like make
+      site make
+    mine form, like seed-read
+      site read
+    mine form, like seed-code
+      site code
+    mine form, like seed-text
+      site text
+    mine form, like fork
+      site fork
+    mine term, term true
+      site flag
+    mine term, term false
+      site flag
+    mine term, term void
+      site void
+    mine code
+      site number
+    mine text
+      site quote
+    mine form, like task
+      site task
+    mine form, like move
+      site move
+    mine form, like seed-term
+      site term
+    mine form, like seed-meet
+      site meet
+    mine form, like seed-call-open
+      site open
+
+mine seed-read
+  mine term, term read
+    mine path
+      site path
+
+mine seed-code
+  mine term, term code
+    mine code
+      site value
+
+mine seed-text
+  mine term, term text
+    mine text
+      site value
 
 mine seed-def
   mine term, term seed
     mine term
       site name
     mine maybe
+      mine form, like seed
+        site seed
+
+# a bare call: the callee is the head itself (`make-vector-4` with seed arguments below). At least one
+# argument, so a lone word stays a word.
+mine seed-call-open
+  mine open
+    site name
+    mine form, like seed
+      site seed
+    mine list
+      mine form, like seed
+        site seed
+
+# `term utf8`: a bare term value (an enum member spelled as a word)
+mine seed-term
+  mine term, term term
+    mine term
+      site name
+
+# `meet and` / `meet or`: a boolean combinator over the seeds below it
+mine seed-meet
+  mine term, term meet
+    mine any
+      mine term, term and
+      mine term, term or
+    mine list
       mine form, like seed
         site seed

@@ -1,4 +1,9 @@
 
+load @term/seed/code/json
+  find make-object
+  find set-field
+  find from-number
+
 dock load
   load <node:fs>, name fs
 
@@ -12,7 +17,7 @@ task create
   take start, like size, fall code 0
   take size, like size, fall code 0
 
-  save options, make object
+  save options, call make-object
 
   fork test
     hook test
@@ -20,9 +25,12 @@ task create
         bind a, read start
         bind b, code 0
     hook hold
-      call options/set
-        text <start>
-        read start
+      save options
+        call set-field
+          read options
+          text <start>
+          call from-number
+            read start
 
   fork test
     hook test
@@ -30,11 +38,14 @@ task create
         bind a, read size
         bind b, code 0
     hook hold
-      call options/set
-        text <end>
-        call add
-          bind a, read start
-          bind b, read size
+      save options
+        call set-field
+          read options
+          text <end>
+          call from-number
+            call add
+              bind a, read start
+              bind b, read size
 
   save handle
     call fs/create-read-stream

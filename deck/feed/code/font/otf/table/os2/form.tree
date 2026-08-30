@@ -1,0 +1,60 @@
+# The OpenType `OS/2` table through version 2 (versions 3-4 add no new fields, only reinterpret existing ones —
+# out of scope until a dialect distinguishes them). The version-1 and version-2 tails are `like maybe`: present
+# only when `version` says so. See note/term/feed/04-otf-case-study.md, "the versioned-tail case".
+
+form otf-os2-table
+  link version, like number
+  link x-avg-char-width, like number
+  link us-weight-class, like number
+  link us-width-class, like number
+  link fs-type, like number
+  link y-subscript-x-size, like number
+  link y-subscript-y-size, like number
+  link y-subscript-x-offset, like number
+  link y-subscript-y-offset, like number
+  link y-superscript-x-size, like number
+  link y-superscript-y-size, like number
+  link y-superscript-x-offset, like number
+  link y-superscript-y-offset, like number
+  link y-strikeout-size, like number
+  link y-strikeout-position, like number
+  link s-family-class, like number
+  link panose
+    like list
+      like u8
+  link ul-unicode-range-1, like number
+  link ul-unicode-range-2, like number
+  link ul-unicode-range-3, like number
+  link ul-unicode-range-4, like number
+  link ach-vend-id
+    like list
+      like u8
+  link fs-selection, like number
+  link us-first-char-index, like number
+  link us-last-char-index, like number
+  link s-typo-ascender, like number
+  link s-typo-descender, like number
+  link s-typo-line-gap, like number
+  link us-win-ascent, like number
+  link us-win-descent, like number
+  link ul-code-page-range-1
+    like maybe
+      like number
+  link ul-code-page-range-2
+    like maybe
+      like number
+  link sx-height
+    like maybe
+      like number
+  link s-cap-height
+    like maybe
+      like number
+  link us-default-char
+    like maybe
+      like number
+  link us-break-char
+    like maybe
+      like number
+  link us-max-context
+    like maybe
+      like number

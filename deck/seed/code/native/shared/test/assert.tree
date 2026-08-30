@@ -2,6 +2,9 @@
 dock load
   load <global:shape>, name shape
 
+dock load
+  load <global:compare>, name compare-runtime
+
 load @term/seed/code/float
   find absolute
 
@@ -19,7 +22,7 @@ load ./compare
 load @term/seed/code/native/shared/test
   find make-failure
 
-task assert
+task assert-shared
   take value, like unknown
   take form, like text, fall text <truthy>
   take expected, like unknown, need false
@@ -36,7 +39,9 @@ task assert
         bind b, text <truthy>
     hook hold
       fork test
-        hook test, read value
+        hook test
+          call compare-runtime/is-truthy
+            read value
         hook miss
           call fail
             bind ctx, read ctx
@@ -56,9 +61,9 @@ task assert
     hook hold
       fork test
         hook test
-          call is-equal
-            bind a, read value
-            bind b, read expected
+          call compare-runtime/deep-equal
+            read value
+            read expected
         hook miss
           call fail
             bind ctx, read ctx
@@ -107,13 +112,16 @@ task assert
         hook hold
           save has
             call contains-text
-              read value
-              bind search, read expected
+              call compare-runtime/as-text
+                read value
+              bind search
+                call compare-runtime/as-text
+                  read expected
         hook miss
           save has
-            call contains-list
-              bind list, read value
-              bind value, read expected
+            call compare-runtime/contains
+              read value
+              read expected
       fork test
         hook test, read has
         hook miss
@@ -135,9 +143,9 @@ task assert
     hook hold
       fork test
         hook test
-          call is-above
-            bind a, read value
-            bind b, read expected
+          call compare-runtime/above
+            read value
+            read expected
         hook miss
           call fail
             bind ctx, read ctx
@@ -157,9 +165,9 @@ task assert
     hook hold
       fork test
         hook test
-          call is-below
-            bind a, read value
-            bind b, read expected
+          call compare-runtime/below
+            read value
+            read expected
         hook miss
           call fail
             bind ctx, read ctx
@@ -178,11 +186,9 @@ task assert
         bind b, text <near>
     hook hold
       save diff
-        call absolute
-          bind value
-            call subtract
-              bind a, read value
-              bind b, read expected
+        call compare-runtime/gap
+          read value
+          read expected
       save tol, code 0.001
       fork test
         hook test
@@ -212,14 +218,16 @@ task assert
         bind a, read form
         bind b, text <type>
     hook hold
-      save actual-type
+      host actual-type, like text
         call shape/type-of
           bind value, read value
       fork test
         hook test
           call is-equal
             bind a, read actual-type
-            bind b, read expected
+            bind b
+              call compare-runtime/as-text
+                read expected
         hook miss
           call fail
             bind ctx, read ctx
@@ -231,7 +239,7 @@ task assert
                 bind actual, read actual-type
       send back
 
-task deny
+task deny-shared
   take value, like unknown
   take form, like text, fall text <truthy>
   take expected, like unknown, need false
@@ -243,7 +251,7 @@ task deny
     call count
       bind ctx, read ctx
 
-  call assert
+  call assert-shared
     bind value, read value
     bind form, read form
     bind expected, read expected

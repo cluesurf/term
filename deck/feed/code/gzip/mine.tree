@@ -1,1 +1,81 @@
-# https://tools.ietf.org/html/rfc1952
+note draft
+# Checked spec, not compiled code — see the note at the top of ../hex/mine.tree. The real reader is ./code.tree's
+# read-gzip. Matches it field for field; see note/term/feed/03-worked-examples.md for the walkthrough.
+
+mine gzip
+  mine byte, code 0x1f
+  mine byte, code 0x8b
+  mine form, form compression-method
+    send method
+  mine byte
+    send flags
+  mine int
+    bind width, code 4
+    bind order, term little
+    bind sign, term unsigned
+    send modified-time
+  mine byte
+    send extra-flags
+  mine byte
+    send os
+
+  mine maybe
+    test bitwise-and
+      bind base, read flags
+      bind mask, code 0x04
+    mine form, form extra-field
+    send extra
+
+  mine maybe
+    test bitwise-and
+      bind base, read flags
+      bind mask, code 0x08
+    mine until
+      mine byte, code 0x00
+    send name
+
+  mine maybe
+    test bitwise-and
+      bind base, read flags
+      bind mask, code 0x10
+    mine until
+      mine byte, code 0x00
+    send comment
+
+  mine maybe
+    test bitwise-and
+      bind base, read flags
+      bind mask, code 0x02
+    mine int
+      bind width, code 2
+      bind order, term little
+      bind sign, term unsigned
+    send header-crc16
+
+  mine bytes
+    bind width, read remaining-before-trailer
+    send compressed-data
+
+  mine int
+    bind width, code 4
+    bind order, term little
+    bind sign, term unsigned
+    send crc32
+  mine int
+    bind width, code 4
+    bind order, term little
+    bind sign, term unsigned
+    send input-size
+
+mine compression-method
+  mine byte, code 0x08
+
+mine extra-field
+  mine int
+    bind width, code 2
+    bind order, term little
+    bind sign, term unsigned
+    send length
+  mine bytes
+    bind width, read length
+    send data

@@ -5,6 +5,12 @@
 dock load
   load <global:camera>, name camera
 
+dock type
+  load <AVCaptureDevice>, name camera-device
+
+dock type
+  load <AVCapturePhotoSettings>, name photo-settings
+
 task check-authorization-status
   like text
 
@@ -20,11 +26,12 @@ task request-access
       wait true
 
 task get-default-device
+  like camera-device
   send back
     call camera/default-device
 
 task has-flash
-  take device
+  take device, like camera-device
   like boolean
 
   send back
@@ -32,7 +39,7 @@ task has-flash
       read device
 
 task set-flash
-  take settings
+  take settings, like photo-settings
   take mode, like text
 
   call camera/set-flash

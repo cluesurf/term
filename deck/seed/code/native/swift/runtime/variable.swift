@@ -14,8 +14,8 @@ enum variable {
         unsetenv(name)
     }
 
-    static func list() -> [String: String] {
-        ProcessInfo.processInfo.environment
+    static func list() -> SeedMap<String, String> {
+        SeedMap(ProcessInfo.processInfo.environment)
     }
 
     static func check(_ name: String) -> Bool {

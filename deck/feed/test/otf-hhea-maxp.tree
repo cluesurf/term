@@ -1,0 +1,96 @@
+# read/write round trips for the hhea and maxp OTF tables. Run: term test, from deck/feed.
+
+load ../code/base
+  find make-cursor
+
+load ../code/font/otf/table/hhea/form
+  find otf-hhea-table
+
+load ../code/font/otf/table/hhea/code
+  find read-otf-hhea-table
+  find write-otf-hhea-table
+
+load ../code/font/otf/table/maxp/form
+  find otf-maxp-table
+
+load ../code/font/otf/table/maxp/code
+  find read-otf-maxp-table
+  find write-otf-maxp-table
+
+task sample-hhea-table
+  like otf-hhea-table
+  send back
+    make otf-hhea-table
+      bind version-major, code 1
+      bind version-minor, code 0
+      bind ascender, code 1900
+      bind descender, code -500
+      bind line-gap, code 0
+      bind advance-width-max, code 1200
+      bind min-left-side-bearing, code -50
+      bind min-right-side-bearing, code -20
+      bind x-max-extent, code 1150
+      bind caret-slope-rise, code 1
+      bind caret-slope-run, code 0
+      bind caret-offset, code 0
+      bind metric-data-format, code 0
+      bind number-of-h-metrics, code 230
+
+test <write-otf-hhea-table produces exactly 36 bytes>
+  want hold
+    call is-equal
+      call size(call write-otf-hhea-table(call sample-hhea-table))
+      code 36
+
+test <negative descender round trips through signed int16>
+  save reread
+    call read-otf-hhea-table
+      call make-cursor(call write-otf-hhea-table(call sample-hhea-table))
+  want hold
+    call is-equal
+      read reread/descender
+      code -500
+
+test <the four reserved fields don't shift the trailing fields>
+  save reread
+    call read-otf-hhea-table
+      call make-cursor(call write-otf-hhea-table(call sample-hhea-table))
+  want hold
+    call is-equal
+      read reread/number-of-h-metrics
+      code 230
+
+task sample-maxp-table
+  like otf-maxp-table
+  send back
+    make otf-maxp-table
+      bind version, code 0x00010000
+      bind num-glyphs, code 500
+      bind max-points, code 200
+      bind max-contours, code 10
+      bind max-composite-points, code 0
+      bind max-composite-contours, code 0
+      bind max-zones, code 2
+      bind max-twilight-points, code 16
+      bind max-storage, code 32
+      bind max-function-defs, code 64
+      bind max-instruction-defs, code 0
+      bind max-stack-elements, code 512
+      bind max-size-of-instructions, code 1024
+      bind max-component-elements, code 0
+      bind max-component-depth, code 0
+
+test <write-otf-maxp-table produces exactly 32 bytes>
+  want hold
+    call is-equal
+      call size(call write-otf-maxp-table(call sample-maxp-table))
+      code 32
+
+test <num-glyphs round trips>
+  save reread
+    call read-otf-maxp-table
+      call make-cursor(call write-otf-maxp-table(call sample-maxp-table))
+  want hold
+    call is-equal
+      read reread/num-glyphs
+      code 500

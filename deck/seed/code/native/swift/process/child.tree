@@ -1,52 +1,77 @@
-
-dock load
-  load <Foundation>, name foundation
+# swift child-process surface: each operation is one native expression over the child's dock, cast to the
+# Foundation Process it holds. Internal: reached only through the public process API.
 
 load @term/seed/code/process
   find child
+
+bind do-wait
+  take child, like child
+  like size
+  case swift
+    load <Foundation>
+    text <\{ let p = $child.dock as! Process; p.waitUntilExit(); return Int(p.terminationStatus) \}()>
 
 task wait
   note async
   take child, like child
   like size
 
-  call child/dock/wait-until-exit
-
   send back
-    call child/dock/termination-status
+    call do-wait
+      read child
+
+bind do-stop
+  take child, like child
+  take force, like boolean
+  case swift
+    load <Foundation>
+    text <\{ let p = $child.dock as! Process; if $force \{ kill(p.processIdentifier, 9) \} else \{ p.terminate() \} \}()>
 
 task stop
   take child, like child
   take form, like text, fall text <gentle>
 
-  fork test, call is-equal(read form, text <force>)
-    hook hold
-      call kill
-        call child/dock/process-identifier
-        code 9
-    hook miss
-      call child/dock/terminate
+  call do-stop
+    read child
+    call is-equal
+      read form
+      text <force>
+
+bind do-write
+  take child, like child
+  take data, like text
+  case swift
+    load <Foundation>
+    text <\{ let p = $child.dock as! Process; if let pipe = p.standardInput as? Pipe \{ pipe.fileHandleForWriting.write($data.data(using: .utf8)!) \} \}()>
 
 task write
   note async
   take child, like child
   take data, like text
 
-  save pipe
-    call child/dock/standard-input
-  save handle
-    call pipe/file-handle-for-writing
-  call handle/write
-    call data/data
-      bind using, text <utf8>
+  call do-write
+    read child
+    read data
+
+bind do-close
+  take child, like child
+  case swift
+    load <Foundation>
+    text <\{ let p = $child.dock as! Process; if let pipe = p.standardInput as? Pipe \{ pipe.fileHandleForWriting.closeFile() \} \}()>
 
 task close
   note async
   take child, like child
 
-  save pipe
-    call child/dock/standard-input
-  call pipe/file-handle-for-writing/close-file
+  call do-close
+    read child
+
+bind do-read
+  take child, like child
+  take stderr, like boolean
+  case swift
+    load <Foundation>
+    text <\{ let p = $child.dock as! Process; let pipe = (($stderr ? p.standardError : p.standardOutput) as? Pipe); let data = pipe?.fileHandleForReading.readDataToEndOfFile() ?? Data(); return String(data: data, encoding: .utf8) ?? "" \}()>
 
 task read
   note async
@@ -55,42 +80,9 @@ task read
   take format, like text, fall text <text>
   like text
 
-  save pipe
-    fork test, call is-equal(read kind, text <stderr>)
-      hook hold
-        send back
-          call child/dock/standard-error
-      hook miss
-        send back
-          call child/dock/standard-output
-
-  save data
-    call pipe/file-handle-for-reading/read-data-to-end-of-file
-
-  fork test, call is-equal(read format, text <text>)
-    hook hold
-      send back
-        call foundation/string
-          bind data, read data
-          bind encoding, text <utf8>
-    hook miss
-      send back, read data
-
-task stream
-  note async
-  take child, like child
-  take kind, like text, fall text <stdout>
-  take format, like text, fall text <bytes>
-  like list
-
-  save pipe
-    fork test, call is-equal(read kind, text <stderr>)
-      hook hold
-        send back
-          call child/dock/standard-error
-      hook miss
-        send back
-          call child/dock/standard-output
-
   send back
-    call pipe/file-handle-for-reading
+    call do-read
+      read child
+      call is-equal
+        read kind
+        text <stderr>

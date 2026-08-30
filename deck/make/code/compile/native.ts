@@ -152,6 +152,19 @@ export function nativePrelude(
       }
     }
 
+    // a SHARED module (`code/hold/hash/fnv.tree`, `code/native/shared/...`) docks a global whose shim lives
+    // under the target platform's own runtime dir: derive `<pkg>/code/native/<env>/runtime/<name>` from the
+    // docking file's path, since the upward walk from a shared dir never reaches another platform's tree
+    if (file) {
+      const at = file.lastIndexOf('/code/')
+
+      if (at >= 0) {
+        candidates.push(
+          `${file.slice(0, at)}/code/native/${env}/runtime/${name}.${RUNTIME_EXTENSION[env]}`,
+        )
+      }
+    }
+
     candidates.push(runtimePath(env, name))
 
     for (const candidate of candidates) {

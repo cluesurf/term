@@ -5,16 +5,19 @@
 dock load
   load <global:light>, name light
 
+dock type
+  load <AVCaptureDevice>, name light-device
+
 task get-light-level
-  take device
-  like number
+  take device, like light-device
+  like decimal
 
   send back
     call light/level
       read device
 
 task has-light
-  take device
+  take device, like light-device
   like boolean
 
   send back
@@ -22,7 +25,7 @@ task has-light
       read device
 
 task is-light-available
-  take device
+  take device, like light-device
   like boolean
 
   send back
@@ -30,7 +33,7 @@ task is-light-available
       read device
 
 task is-light-active
-  take device
+  take device, like light-device
   like boolean
 
   send back
@@ -38,7 +41,7 @@ task is-light-active
       read device
 
 task set-light-mode
-  take device
+  take device, like light-device
   take mode, like text
   like boolean
 

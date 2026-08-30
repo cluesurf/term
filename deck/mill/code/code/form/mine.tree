@@ -1,3 +1,5 @@
+load @term/mill/code/code/wear/mine
+  find wear
 
 load @term/mill/code/code/head/mine
   find head
@@ -32,46 +34,62 @@ load @term/mill/code/code/tag/mine
 load @term/mill/code/code/call/mine
   find call
 
+load @term/mill/code/code/fuse/mine
+  find fuse
+
+load @term/mill/code/code/hook/mine
+  find hook
+
+load @term/mill/code/code/save/mine
+  find save
+
+load @term/mill/code/code/seed/seed/mine
+  find host
+
 mine form
   mine term, term form
     mine term
       site name
     mine list
-      mine form, like head
-        site head
-    mine maybe
-      mine form, like like
-        site like
-    mine list
-      mine form, like link
-        site link
-    mine list
-      mine form, like case
-        site case
-    mine list
-      mine form, like bond
-        site bond
-    mine list
-      mine form, like rein
-        site rein
-    mine list
-      mine form, like task
-        site task
-    mine maybe
-      mine form, like hold
-        site hold
-    mine maybe
-      mine form, like hide
-        site hide
-    mine maybe
-      mine form, like fold
-        site fold
-    mine maybe
-      mine form, like note
-        site note
-    mine list
-      mine form, like tag
-        site tag
+      mine any
+        mine form, like head
+          site head
+        mine form, like like
+          site like
+        mine form, like link
+          site link
+        mine form, like case
+          site case
+        mine form, like bond
+          site bond
+        mine form, like rein
+          site rein
+        mine form, like task
+          site task
+        mine form, like hold
+          site hold
+        mine form, like hide
+          site hide
+        mine form, like fold
+          site fold
+        mine form, like note
+          site note
+        mine form, like tag
+          site tag
+        mine form, like fuse
+          site fuse
+        mine form, like hook
+          site hook
+        mine form, like save
+          site save
+        mine form, like host
+          site host
+        mine form, like wear
+          site wear
+        mine form, like form-dock
+          site dock
+        mine form, like form-accessor
+          site accessor
 
 mine rein
   mine term, term rein
@@ -89,3 +107,15 @@ mine bond
     mine list
       mine form, like call
         site call
+
+# `dock native-date` inside a form: the opaque native handle the form wraps
+mine form-dock
+  mine term, term dock
+    mine term
+      site name
+
+# `accessor x`: a native-interop field accessor
+mine form-accessor
+  mine term, term accessor
+    mine term
+      site name

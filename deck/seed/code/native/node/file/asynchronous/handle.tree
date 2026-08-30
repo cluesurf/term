@@ -62,14 +62,14 @@ task read
   take file, like file
   take size, like size
 
-  save buffer
+  save data
     call buffer/alloc
       read size
 
   save result
     call file/dock/read
       wait true
-      read buffer
+      read data
       code 0
       read size
       halt kink

@@ -2,6 +2,13 @@ import Foundation
 
 enum text {
     static func concat(_ a: String, _ b: String) -> String { return a + b }
+    static func fromValue(_ v: Any) -> String {
+        if let s = v as? String { return s }
+        if let n = v as? Int { return String(n) }
+        if let n = v as? Double { return String(n) }
+        if let b = v as? Bool { return String(b) }
+        return ""
+    }
     static func upper(_ s: String) -> String { return s.uppercased() }
     static func lower(_ s: String) -> String { return s.lowercased() }
     static func trim(_ s: String) -> String { return s.trimmingCharacters(in: .whitespacesAndNewlines) }

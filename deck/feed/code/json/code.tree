@@ -1,0 +1,615 @@
+# A real, compiling recursive-descent JSON reader and writer (RFC 8259). Text substrate throughout — no byte
+# cursor, per note/term/feed/02-cursor.md's revised split. `text-cursor` here is JSON's own local position tracker;
+# worth hoisting to ../base.tree once a second text dialect needs the same shape, not before.
+
+load @term/seed/code/boolean
+  find and
+  find or
+  find not
+
+load @term/seed/code/list
+  find push
+  find join
+  find get
+  find set
+
+load @term/seed/code/text
+  find char-count
+  find char-at
+  find char-code-at
+
+load @term/seed/code/text/string
+  find concat
+
+load @term/seed/code/rune
+  find rune-to-text
+
+load ../hex/code
+  find hex-digit-value
+
+load @term/seed/code/float
+  find to-decimal
+  find to-number
+
+load ./form
+  find json-value
+  find json-entry
+
+# `length` is cached at construction, not recomputed per call. `char-count` is Unicode-correct via `Array.from`
+# (note/term/host's own `char-count`, see text.tree), which is an O(n) allocation, not an O(1) property read like
+# JS's own `.length`. `text-cursor-at-end` is checked on every character of every parse, so recomputing it there
+# made the whole parser O(n²) — a real measured regression, not theoretical: deck/feed/test/bench.tree showed JSON
+# running roughly 50x slower per byte than hex on inputs only ~9x longer, the signature of a quadratic term
+# starting to dominate. Fixed here; see bench.tree's comment for the before/after numbers.
+#
+# `position` is a one-element list, not a plain `like number` field — the same workaround `../base.tree`'s
+# `feed-cursor` uses and explains in full: a `form` field mutated by one task and read by another, across separate
+# calls, silently loses the mutation on the Rust and Swift backends (confirmed by probe, not guessed — see
+# `feedback_term_rust_swift_struct_field_mutation_bug` in memory). `length` stays a plain field: it's set once at
+# construction and only ever read afterward, never mutated, so it never hits the bug.
+form text-cursor
+  link text, like text
+  link position
+    like list
+      like number
+  link length, like number
+
+task make-text-cursor
+  take value, like text
+  like text-cursor
+  save position
+    make list
+  call push(read position, code 0)
+  send back
+    make text-cursor
+      bind text, read value
+      bind position, read position
+      bind length
+        call char-count(read value)
+
+task text-cursor-position
+  take cursor, like text-cursor
+  like number
+  send back
+    call get(read cursor/position, code 0)
+
+task text-cursor-at-end
+  take cursor, like text-cursor
+  like boolean
+  send back
+    call is-equal
+      call text-cursor-position(read cursor)
+      read cursor/length
+
+task text-cursor-peek
+  take cursor, like text-cursor
+  like text
+  send back
+    call char-at(read cursor/text, call text-cursor-position(read cursor))
+
+task text-cursor-peek-code
+  take cursor, like text-cursor
+  like number
+  send back
+    call char-code-at(read cursor/text, call text-cursor-position(read cursor))
+
+task text-cursor-read
+  take cursor, like text-cursor
+  like text
+  save value
+    call text-cursor-peek(read cursor)
+  call set(read cursor/position, code 0, call add(call text-cursor-position(read cursor), code 1))
+  send back, read value
+
+task is-json-whitespace
+  take code, like number
+  like boolean
+  send back
+    call or
+      call or
+        call is-equal(read code, code 32)
+        call is-equal(read code, code 9)
+      call or
+        call is-equal(read code, code 10)
+        call is-equal(read code, code 13)
+
+task skip-json-whitespace
+  take cursor, like text-cursor
+  walk test
+    hook test
+      call and
+        call not, call text-cursor-at-end(read cursor)
+        call is-json-whitespace(call text-cursor-peek-code(read cursor))
+    hook hold
+      call text-cursor-read(read cursor)
+
+task expect-json-char
+  take cursor, like text-cursor
+  take value, like text
+  fork test
+    hook test
+      call is-equal(call text-cursor-peek(read cursor), read value)
+    hook hold
+      call text-cursor-read(read cursor)
+      send back
+  halt <unexpected character in JSON>
+
+task parse-json-literal
+  take cursor, like text-cursor
+  take literal, like text
+  save length
+    call char-count(read literal)
+  save index, code 0
+  walk test
+    hook test
+      call is-below(read index, read length)
+    hook hold
+      call expect-json-char(read cursor, call char-at(read literal, read index))
+      save index
+        call add(read index, code 1)
+
+task is-json-digit
+  take code, like number
+  like boolean
+  send back
+    call and
+      call is-minimum(read code, code 48)
+      call is-maximum(read code, code 57)
+
+# a digit character code (`0`-`9`) as its decimal value. `subtract` stays an integer operation (a character code
+# minus another is `like number`, exact); `to-decimal` is the explicit widening to `like decimal` (`as f64` on
+# Rust), since Rust does not implicitly convert an `i64` to `f64` the way TypeScript's single `number` type does.
+task json-digit-value
+  take code, like number
+  like decimal
+  send back
+    call to-decimal
+      call subtract(read code, code 48)
+
+task parse-json-number
+  take cursor, like text-cursor
+  like decimal
+  save negative, false
+  fork test
+    hook test
+      call is-equal(call text-cursor-peek(read cursor), text <->)
+    hook hold
+      call text-cursor-read(read cursor)
+      save negative, true
+  save magnitude, code 0.0
+  walk test
+    hook test
+      call and
+        call not, call text-cursor-at-end(read cursor)
+        call is-json-digit(call text-cursor-peek-code(read cursor))
+    hook hold
+      save magnitude
+        call add
+          call multiply(read magnitude, code 10.0)
+          call json-digit-value(call text-cursor-peek-code(read cursor))
+      call text-cursor-read(read cursor)
+  save fraction, code 0.0
+  fork test
+    hook test
+      call and
+        call not, call text-cursor-at-end(read cursor)
+        call is-equal(call text-cursor-peek(read cursor), text <.>)
+    hook hold
+      call text-cursor-read(read cursor)
+      save divisor, code 1.0
+      walk test
+        hook test
+          call and
+            call not, call text-cursor-at-end(read cursor)
+            call is-json-digit(call text-cursor-peek-code(read cursor))
+        hook hold
+          save divisor
+            call multiply(read divisor, code 10.0)
+          save fraction
+            call add
+              read fraction
+              call divide
+                call json-digit-value(call text-cursor-peek-code(read cursor))
+                read divisor
+          call text-cursor-read(read cursor)
+  save value
+    call add(read magnitude, read fraction)
+  fork test
+    hook test
+      call and
+        call not, call text-cursor-at-end(read cursor)
+        call or
+          call is-equal(call text-cursor-peek(read cursor), text <e>)
+          call is-equal(call text-cursor-peek(read cursor), text <E>)
+    hook hold
+      call text-cursor-read(read cursor)
+      save exponent-negative, false
+      fork test
+        hook test
+          call is-equal(call text-cursor-peek(read cursor), text <->)
+        hook hold
+          call text-cursor-read(read cursor)
+          save exponent-negative, true
+        hook test
+          call is-equal(call text-cursor-peek(read cursor), text <+>)
+        hook hold
+          call text-cursor-read(read cursor)
+      save exponent, code 0
+      walk test
+        hook test
+          call and
+            call not, call text-cursor-at-end(read cursor)
+            call is-json-digit(call text-cursor-peek-code(read cursor))
+        hook hold
+          save exponent
+            call add
+              call multiply(read exponent, code 10)
+              call subtract(call text-cursor-peek-code(read cursor), code 48)
+          call text-cursor-read(read cursor)
+      save index, code 0
+      walk test
+        hook test
+          call is-below(read index, read exponent)
+        hook hold
+          fork test
+            hook test
+              read exponent-negative
+            hook hold
+              save value
+                call divide(read value, code 10.0)
+            hook miss
+              save value
+                call multiply(read value, code 10.0)
+          save index
+            call add(read index, code 1)
+  fork test
+    hook test
+      read negative
+    hook hold
+      send back
+        call multiply(read value, code -1.0)
+  send back, read value
+
+task parse-json-hex-4
+  take cursor, like text-cursor
+  like number
+  save value, code 0
+  save index, code 0
+  walk test
+    hook test
+      call is-below(read index, code 4)
+    hook hold
+      save value
+        call add
+          call multiply(read value, code 16)
+          call hex-digit-value(call text-cursor-peek-code(read cursor))
+      call text-cursor-read(read cursor)
+      save index
+        call add(read index, code 1)
+  send back, read value
+
+task parse-json-string-escape
+  take cursor, like text-cursor
+  like text
+  call text-cursor-read(read cursor)
+  save marker
+    call text-cursor-read(read cursor)
+  fork test
+    hook test
+      call is-equal(read marker, text <">)
+    hook hold
+      send back, text <">
+  fork test
+    hook test
+      call is-equal(read marker, text <\\>)
+    hook hold
+      send back, text <\\>
+  fork test
+    hook test
+      call is-equal(read marker, text </>)
+    hook hold
+      send back, text </>
+  fork test
+    hook test
+      call is-equal(read marker, text <b>)
+    hook hold
+      send back
+        call rune-to-text(code 8)
+  fork test
+    hook test
+      call is-equal(read marker, text <f>)
+    hook hold
+      send back
+        call rune-to-text(code 12)
+  fork test
+    hook test
+      call is-equal(read marker, text <n>)
+    hook hold
+      send back, text <\n>
+  fork test
+    hook test
+      call is-equal(read marker, text <r>)
+    hook hold
+      send back, text <\r>
+  fork test
+    hook test
+      call is-equal(read marker, text <t>)
+    hook hold
+      send back, text <\t>
+  fork test
+    hook test
+      call is-equal(read marker, text <u>)
+    hook hold
+      send back
+        call rune-to-text(call parse-json-hex-4(read cursor))
+  halt <invalid JSON escape>
+
+task parse-json-string
+  take cursor, like text-cursor
+  like text
+  call expect-json-char(read cursor, text <">)
+  save chars
+    make list
+  save continue, true
+  walk test
+    hook test
+      read continue
+    hook hold
+      save next
+        call text-cursor-peek(read cursor)
+      fork test
+        hook test
+          call is-equal(read next, text <">)
+        hook hold
+          call text-cursor-read(read cursor)
+          save continue, false
+        hook test
+          call is-equal(read next, text <\\>)
+        hook hold
+          call push(read chars, call parse-json-string-escape(read cursor))
+        hook miss
+          call push(read chars, call text-cursor-read(read cursor))
+  send back
+    call join(read chars, text <>)
+
+task parse-json-value
+  take cursor, like text-cursor
+  like json-value
+  call skip-json-whitespace(read cursor)
+  save next
+    call text-cursor-peek(read cursor)
+  fork test
+    hook test
+      call is-equal(read next, text <">)
+    hook hold
+      send back
+        make json-string
+          bind value
+            call parse-json-string(read cursor)
+    hook test
+      call is-equal(read next, text <{>)
+    hook hold
+      send back
+        call parse-json-object(read cursor)
+    hook test
+      call is-equal(read next, text <[>)
+    hook hold
+      send back
+        call parse-json-array(read cursor)
+    hook test
+      call is-equal(read next, text <t>)
+    hook hold
+      call parse-json-literal(read cursor, text <true>)
+      send back
+        make json-flag
+          bind value, true
+    hook test
+      call is-equal(read next, text <f>)
+    hook hold
+      call parse-json-literal(read cursor, text <false>)
+      send back
+        make json-flag
+          bind value, false
+    hook test
+      call is-equal(read next, text <n>)
+    hook hold
+      call parse-json-literal(read cursor, text <null>)
+      send back
+        make json-blank
+  send back
+    make json-number
+      bind value
+        call parse-json-number(read cursor)
+
+task parse-json-object
+  take cursor, like text-cursor
+  like json-value
+  call expect-json-char(read cursor, text <{>)
+  call skip-json-whitespace(read cursor)
+  save entries
+    make list
+  fork test
+    hook test
+      call not
+        call is-equal(call text-cursor-peek(read cursor), text <}>)
+    hook hold
+      save continue, true
+      walk test
+        hook test
+          read continue
+        hook hold
+          call skip-json-whitespace(read cursor)
+          save key
+            call parse-json-string(read cursor)
+          call skip-json-whitespace(read cursor)
+          call expect-json-char(read cursor, text <:>)
+          call skip-json-whitespace(read cursor)
+          save entry-value
+            call parse-json-value(read cursor)
+          call push
+            read entries
+            make json-entry
+              bind key, read key
+              bind value, read entry-value
+          call skip-json-whitespace(read cursor)
+          fork test
+            hook test
+              call is-equal(call text-cursor-peek(read cursor), text <,>)
+            hook hold
+              call text-cursor-read(read cursor)
+            hook miss
+              save continue, false
+  call skip-json-whitespace(read cursor)
+  call expect-json-char(read cursor, text <}>)
+  send back
+    make json-object
+      bind entries, read entries
+
+task parse-json-array
+  take cursor, like text-cursor
+  like json-value
+  call expect-json-char(read cursor, text <[>)
+  call skip-json-whitespace(read cursor)
+  save items
+    make list
+  fork test
+    hook test
+      call not
+        call is-equal(call text-cursor-peek(read cursor), text <]>)
+    hook hold
+      save continue, true
+      walk test
+        hook test
+          read continue
+        hook hold
+          call skip-json-whitespace(read cursor)
+          call push
+            read items
+            call parse-json-value(read cursor)
+          call skip-json-whitespace(read cursor)
+          fork test
+            hook test
+              call is-equal(call text-cursor-peek(read cursor), text <,>)
+            hook hold
+              call text-cursor-read(read cursor)
+            hook miss
+              save continue, false
+  call skip-json-whitespace(read cursor)
+  call expect-json-char(read cursor, text <]>)
+  send back
+    make json-array
+      bind items, read items
+
+task read-json
+  take input, like text
+  like json-value
+  send back
+    call parse-json-value
+      call make-text-cursor(read input)
+
+task write-json-string
+  take value, like text
+  like text
+  save chars
+    make list
+  call push(read chars, text <">)
+  save length
+    call char-count(read value)
+  save index, code 0
+  walk test
+    hook test
+      call is-below(read index, read length)
+    hook hold
+      save ch
+        call char-at(read value, read index)
+      fork test
+        hook test
+          call is-equal(read ch, text <">)
+        hook hold
+          call push(read chars, text <\\">)
+        hook test
+          call is-equal(read ch, text <\\>)
+        hook hold
+          call push(read chars, text <\\\\>)
+        hook miss
+          call push(read chars, read ch)
+      save index
+        call add(read index, code 1)
+  call push(read chars, text <">)
+  send back
+    call join(read chars, text <>)
+
+# JSON has one number grammar, but the four backends' own decimal-to-text conversions disagree on a whole value:
+# Rust's and TypeScript's both print `42.0` as `42`, Swift's and Kotlin's keep the trailing `.0`. Format through
+# `like number` for a whole value (its own `{{}}` interpolation is a plain integer everywhere) so a round trip
+# stays byte-identical on every backend, rather than relying on each platform's own float formatting to agree.
+task number-to-json-text
+  take value, like decimal
+  like text
+  fork test
+    hook test
+      call is-equal(read value, call to-decimal(call to-number(read value)))
+    hook hold
+      save whole
+        call to-number(read value)
+      send back
+        text <{{whole}}>
+  send back
+    text <{{value}}>
+
+task write-json
+  take subject, like json-value
+  like text
+  fork case, read subject
+    case json-string
+      link value
+      send back
+        call write-json-string(read value)
+    case json-number
+      link value
+      send back
+        call number-to-json-text(read value)
+    case json-flag
+      link value
+      fork test
+        hook test
+          read value
+        hook hold
+          send back, text <true>
+      send back, text <false>
+    case json-blank
+      send back, text <null>
+    case json-array
+      link items
+      save parts
+        make list
+      walk list, read items
+        hook next
+          take site, name item
+          call push(read parts, call write-json(read item))
+      send back
+        call concat
+          text <[>
+          call concat
+            call join(read parts, text <,>)
+            text <]>
+    case json-object
+      link entries
+      save parts
+        make list
+      walk list, read entries
+        hook next
+          take site, name item
+          call push
+            read parts
+            call concat
+              call write-json-string(read item/key)
+              call concat
+                text <:>
+                call write-json(read item/value)
+      send back
+        call concat
+          text <{>
+          call concat
+            call join(read parts, text <,>)
+            text <}>

@@ -1,0 +1,225 @@
+# read-otf-cmap-table against a hand-built table: one encoding record pointing at a format-12 subtable with one
+# group. Run: term test, from deck/feed. Proves mine at (offset relative to the cmap table's own start) composed
+# with a format-discriminated union (04-otf-case-study.md).
+
+load @term/seed/code/list
+  find push
+  find get
+
+load ../code/base
+  find make-cursor
+
+load ../code/font/otf/table/cmap/form
+  find otf-cmap-table
+  find otf-cmap-encoding-record
+  find otf-cmap-subtable
+  find otf-cmap-segment
+  find otf-cmap-group
+
+load ../code/font/otf/table/cmap/code
+  find read-otf-cmap-table
+  find write-otf-cmap-table
+
+# version=0, numTables=1
+# record: platformID=3, encodingID=10, offset=12 (right after the one 8-byte record)
+# subtable at +12: format=12, reserved=0, length=28, language=0, numGroups=1
+# group: startCharCode=65 ('A'), endCharCode=90 ('Z'), startGlyphID=36
+task cmap-bytes
+  like list
+    like u8
+  save result
+    make list
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 1)
+  call push(read result, code 0)
+  call push(read result, code 3)
+  call push(read result, code 0)
+  call push(read result, code 10)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 12)
+  call push(read result, code 0)
+  call push(read result, code 12)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 28)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 1)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 65)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 90)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 36)
+  send back, read result
+
+test <cmap-bytes is 40 bytes long, sanity-checking the fixture itself>
+  want hold
+    call is-equal
+      call size(call cmap-bytes)
+      code 40
+
+test <read-otf-cmap-table reads one encoding record>
+  save table
+    call read-otf-cmap-table(call make-cursor(call cmap-bytes))
+  want hold
+    call is-equal
+      call size(read table/records)
+      code 1
+
+test <the encoding record's platform-id and encoding-id round trip>
+  save table
+    call read-otf-cmap-table(call make-cursor(call cmap-bytes))
+  save record
+    call get(read table/records, code 0)
+  want hold
+    call is-equal
+      read record/platform-id
+      code 3
+
+task format-12-groups
+  take subtable, like otf-cmap-subtable
+  like list
+    like otf-cmap-group
+  fork case, read subtable
+    case otf-cmap-format-12
+      link groups
+      send back, read groups
+    case otf-cmap-format-4
+      halt <expected a format 12 subtable, found format 4>
+    case otf-cmap-format-unsupported
+      halt <expected a format 12 subtable, found an unsupported format>
+
+test <mine-at seeks to the subtable at the offset relative to the cmap table's own start>
+  save table
+    call read-otf-cmap-table(call make-cursor(call cmap-bytes))
+  save record
+    call get(read table/records, code 0)
+  want hold
+    call is-equal
+      call size(call format-12-groups(read record/subtable))
+      code 1
+
+test <the format-12 group's char codes and start-glyph-id all read correctly>
+  save table
+    call read-otf-cmap-table(call make-cursor(call cmap-bytes))
+  save record
+    call get(read table/records, code 0)
+  save group
+    call get(call format-12-groups(read record/subtable), code 0)
+  want hold
+    call is-equal
+      read group/start-char-code
+      code 65
+
+test <write-otf-cmap-table then read-otf-cmap-table round trips the format-12 group>
+  save table
+    call read-otf-cmap-table(call make-cursor(call cmap-bytes))
+  save reread
+    call read-otf-cmap-table
+      call make-cursor(call write-otf-cmap-table(read table))
+  save record
+    call get(read reread/records, code 0)
+  save group
+    call get(call format-12-groups(read record/subtable), code 0)
+  want hold
+    call is-equal
+      read group/end-char-code
+      code 90
+
+test <write-otf-cmap-table recomputes the subtable-offset correctly>
+  save table
+    call read-otf-cmap-table(call make-cursor(call cmap-bytes))
+  save reread
+    call read-otf-cmap-table
+      call make-cursor(call write-otf-cmap-table(read table))
+  save record
+    call get(read reread/records, code 0)
+  want hold
+    call is-equal
+      read record/subtable-offset
+      code 12
+
+task format-4-segments
+  take subtable, like otf-cmap-subtable
+  like list
+    like otf-cmap-segment
+  fork case, read subtable
+    case otf-cmap-format-4
+      link segments
+      send back, read segments
+    case otf-cmap-format-12
+      halt <expected a format 4 subtable, found format 12>
+    case otf-cmap-format-unsupported
+      halt <expected a format 4 subtable, found an unsupported format>
+
+task one-segment-table
+  like otf-cmap-table
+  save segments
+    make list
+  call push
+    read segments
+    make otf-cmap-segment
+      bind end-code, code 90
+      bind start-code, code 65
+      bind id-delta, code 0
+      bind id-range-offset, code 0
+  save records
+    make list
+  call push
+    read records
+    make otf-cmap-encoding-record
+      bind platform-id, code 3
+      bind encoding-id, code 1
+      bind subtable-offset, code 0
+      bind subtable
+        make otf-cmap-format-4
+          bind language, code 0
+          bind segments, read segments
+          bind glyph-id-array, make list
+  send back
+    make otf-cmap-table
+      bind version, code 0
+      bind records, read records
+
+test <a format-4 subtable's single segment round trips through write then read>
+  save reread
+    call read-otf-cmap-table
+      call make-cursor(call write-otf-cmap-table(call one-segment-table))
+  save record
+    call get(read reread/records, code 0)
+  save segment
+    call get(call format-4-segments(read record/subtable), code 0)
+  want hold
+    call is-equal
+      read segment/start-code
+      code 65
+
+test <a format-4 subtable's end-code sentinel and segment count are correct>
+  save reread
+    call read-otf-cmap-table
+      call make-cursor(call write-otf-cmap-table(call one-segment-table))
+  save record
+    call get(read reread/records, code 0)
+  want hold
+    call is-equal
+      call size(call format-4-segments(read record/subtable))
+      code 1

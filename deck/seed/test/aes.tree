@@ -1,0 +1,231 @@
+# AES-128 held to FIPS-197 appendix C.1: plaintext 00112233445566778899aabbccddeeff under key
+# 000102030405060708090a0b0c0d0e0f encrypts to 69c4e0d86a7b0430d8cdb78070b4c55a, and decrypting the
+# ciphertext returns the plaintext. Byte lists throughout.
+#
+# Run with: term test
+
+load @term/seed/code/native/shared/cryptography/aes
+  find aes-encrypt-block
+  find aes-decrypt-block
+
+load @term/seed/code/boolean
+  find not
+
+test aes-fips-197-encrypt
+  save key, make list
+  call key/push
+    code 0
+  call key/push
+    code 1
+  call key/push
+    code 2
+  call key/push
+    code 3
+  call key/push
+    code 4
+  call key/push
+    code 5
+  call key/push
+    code 6
+  call key/push
+    code 7
+  call key/push
+    code 8
+  call key/push
+    code 9
+  call key/push
+    code 10
+  call key/push
+    code 11
+  call key/push
+    code 12
+  call key/push
+    code 13
+  call key/push
+    code 14
+  call key/push
+    code 15
+  save plain, make list
+  call plain/push
+    code 0
+  call plain/push
+    code 17
+  call plain/push
+    code 34
+  call plain/push
+    code 51
+  call plain/push
+    code 68
+  call plain/push
+    code 85
+  call plain/push
+    code 102
+  call plain/push
+    code 119
+  call plain/push
+    code 136
+  call plain/push
+    code 153
+  call plain/push
+    code 170
+  call plain/push
+    code 187
+  call plain/push
+    code 204
+  call plain/push
+    code 221
+  call plain/push
+    code 238
+  call plain/push
+    code 255
+  save cipher
+    call aes-encrypt-block
+      read plain
+      read key
+  save match, true
+  save i, code 0
+  save expected, make list
+  call expected/push
+    code 105
+  call expected/push
+    code 196
+  call expected/push
+    code 224
+  call expected/push
+    code 216
+  call expected/push
+    code 106
+  call expected/push
+    code 123
+  call expected/push
+    code 4
+  call expected/push
+    code 48
+  call expected/push
+    code 216
+  call expected/push
+    code 205
+  call expected/push
+    code 183
+  call expected/push
+    code 128
+  call expected/push
+    code 112
+  call expected/push
+    code 180
+  call expected/push
+    code 197
+  call expected/push
+    code 90
+  walk test
+    hook test
+      call is-below
+        read i
+        code 16
+    hook hold
+      fork test
+        hook test
+          call not
+            call is-equal
+              read cipher/{i}
+              read expected/{i}
+        hook hold
+          save match, false
+      save i, call increment(read i)
+  want hold
+    read match
+
+test aes-fips-197-decrypt-round-trip
+  save key, make list
+  call key/push
+    code 0
+  call key/push
+    code 1
+  call key/push
+    code 2
+  call key/push
+    code 3
+  call key/push
+    code 4
+  call key/push
+    code 5
+  call key/push
+    code 6
+  call key/push
+    code 7
+  call key/push
+    code 8
+  call key/push
+    code 9
+  call key/push
+    code 10
+  call key/push
+    code 11
+  call key/push
+    code 12
+  call key/push
+    code 13
+  call key/push
+    code 14
+  call key/push
+    code 15
+  save plain, make list
+  call plain/push
+    code 0
+  call plain/push
+    code 17
+  call plain/push
+    code 34
+  call plain/push
+    code 51
+  call plain/push
+    code 68
+  call plain/push
+    code 85
+  call plain/push
+    code 102
+  call plain/push
+    code 119
+  call plain/push
+    code 136
+  call plain/push
+    code 153
+  call plain/push
+    code 170
+  call plain/push
+    code 187
+  call plain/push
+    code 204
+  call plain/push
+    code 221
+  call plain/push
+    code 238
+  call plain/push
+    code 255
+  save cipher
+    call aes-encrypt-block
+      read plain
+      read key
+  save back
+    call aes-decrypt-block
+      read cipher
+      read key
+  save match, true
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        code 16
+    hook hold
+      fork test
+        hook test
+          call not
+            call is-equal
+              read back/{i}
+              read plain/{i}
+        hook hold
+          save match, false
+      save i, call increment(read i)
+  want hold
+    read match

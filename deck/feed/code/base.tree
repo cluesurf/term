@@ -5,12 +5,16 @@
 load @term/seed/code/list
   find push
   find get
+  find set
   find size
 
 load @term/seed/code/bit
   find bitwise-and
-  find shift-left
-  find shift-right
+
+load @term/seed/code/float
+  find round-down
+  find to-decimal
+  find to-number
 
 # a byte order for a multi-byte integer field
 form byte-order
@@ -24,21 +28,49 @@ form integer-sign
 
 # a position into a byte buffer. Every read advances `position`. Passed by reference: every task below mutates the
 # cursor it is given rather than returning a new one, the same way `@term/host`'s `feed` mutates its `stream-reader`.
+#
+# `position` is a one-element list, not a plain `like number` field, on purpose — not for any reason internal to
+# this package. Confirmed by a minimal, reproducible probe (not guessed): a `form` field mutated by one task and
+# read by another, across separate calls against the same instance, silently loses the mutation on the Rust and
+# Swift backends (`note/term/feed/02-cursor.md`, `feedback_term_rust_swift_struct_field_mutation_bug` in memory —
+# the same bug also confirmed to affect `@term/host`'s own `stream-reader`, never caught because its native test
+# suite never exercises `stream.tree`). A `like list` field does not have this problem: `array` gets unconditional
+# `Rc<RefCell<...>>` reference semantics in the Rust backend's own type representation, confirmed by an identical
+# probe against a one-element list. Fixing the actual bug means changing how the Rust and Swift backends represent
+# every mutated `form`, which is compiler work with an ecosystem-wide blast radius, not scoped to this package —
+# out of scope here. This is the workaround: every `position` read goes through `get(position, 0)`, every write
+# through `set(position, 0, value)`, so the mutation rides on a type that already works correctly everywhere.
 form feed-cursor
   link bytes
     like list
       like u8
-  link position, like number
+  link position
+    like list
+      like number
 
 task make-cursor
   take bytes
     like list
       like u8
   like feed-cursor
+  save position
+    make list
+  call push(read position, code 0)
   send back
     make feed-cursor
       bind bytes, read bytes
-      bind position, code 0
+      bind position, read position
+
+task cursor-position
+  take cursor, like feed-cursor
+  like number
+  send back
+    call get(read cursor/position, code 0)
+
+task set-cursor-position
+  take cursor, like feed-cursor
+  take value, like number
+  call set(read cursor/position, code 0, read value)
 
 task remaining
   take cursor, like feed-cursor
@@ -46,7 +78,7 @@ task remaining
   send back
     call subtract
       call size(read cursor/bytes)
-      read cursor/position
+      call cursor-position(read cursor)
 
 task at-end
   take cursor, like feed-cursor
@@ -60,31 +92,36 @@ task peek-byte
   take cursor, like feed-cursor
   like u8
   send back
-    call get(read cursor/bytes, read cursor/position)
+    call get(read cursor/bytes, call cursor-position(read cursor))
 
 task read-byte
   take cursor, like feed-cursor
   like u8
   save value
     call peek-byte(read cursor)
-  save cursor/position
-    call add(read cursor/position, code 1)
+  call set-cursor-position
+    read cursor
+    call add(call cursor-position(read cursor), code 1)
   send back, read value
 
 task skip
   take cursor, like feed-cursor
   take width, like number
-  save cursor/position
-    call add(read cursor/position, read width)
+  call set-cursor-position
+    read cursor
+    call add(call cursor-position(read cursor), read width)
 
-# reposition the cursor to an absolute byte offset, giving back the position it was at, so a caller restores it after
-# an offset-relative read (`mine at`) with `seek(cursor, read prior-position)`
+# reposition the cursor to `base + offset` (an OTF/ELF-style table-relative offset; `base` defaults to 0, an
+# absolute offset from the buffer's own start), giving back the position it was at, so a caller restores it after
+# an offset-relative read (`mine at`) with `seek(cursor, prior-position)`
 task seek
   take cursor, like feed-cursor
   take offset, like number
+  take base, like number, fall 0
   like number
-  save prior, read cursor/position
-  save cursor/position, read offset
+  save prior
+    call cursor-position(read cursor)
+  call set-cursor-position(read cursor, call add(read base, read offset))
   send back, read prior
 
 task read-bytes
@@ -104,9 +141,56 @@ task read-bytes
         call add(read index, code 1)
   send back, read result
 
-# a fixed-width integer field. Big-endian folds high byte first; little-endian folds low byte first with a growing
-# shift. Both loops touch the cursor exactly `width` times, so cost is linear in the field's own width and nothing
-# else — no allocation beyond the returned number.
+# 256^index, built by repeated multiply rather than a bit shift: `bit.tree` documents shift-left/shift-right as
+# 32-bit operations on the TypeScript backend, which would silently truncate any field wider than 4 bytes (OTF's
+# LONGDATETIME is 8). Multiply/divide are ordinary number ops on every backend, exact up to the platform's safe
+# integer range, so this is the one place width > 4 actually matters.
+task byte-place
+  take index, like number
+  like number
+  save result, code 1
+  save counter, code 0
+  walk test
+    hook test
+      call is-below(read counter, read index)
+    hook hold
+      save result
+        call multiply(read result, code 256)
+      save counter
+        call add(read counter, code 1)
+  send back, read result
+
+# the most-significant byte of a signed field reinterpreted as its two's-complement value (128-255 becomes
+# -128 to -1) when `is-top` says this is that byte; every other byte, and every unsigned field, passes through
+# unchanged. Used instead of the old "accumulate as unsigned, then subtract 2^(8*width) if too large" approach,
+# which needed `byte-place(width)` — for width 8 that's 2^64, which does not fit in a signed `i64` at all and
+# panicked with "attempt to multiply with overflow" on Rust the first time a real 8-byte signed field (OTF
+# head's `created`/`modified`, LONGDATETIME) was ever read natively. Sign-extending the top byte during
+# accumulation keeps every intermediate value within the field's own true range, so it never needs to represent
+# a magnitude the final signed result itself couldn't hold.
+task sign-extend-byte
+  take raw, like number
+  take is-top, like boolean
+  take sign, like integer-sign
+  like number
+  fork case, read sign
+    case unsigned
+      send back, read raw
+    case signed
+      fork test
+        hook test
+          call and
+            read is-top
+            call is-minimum(read raw, code 128)
+        hook hold
+          send back
+            call subtract(read raw, code 256)
+      send back, read raw
+
+# a fixed-width integer field. Big-endian folds high byte first (so the first byte read is the top one);
+# little-endian folds low byte first against a growing place value (so the LAST byte read is the top one). Both
+# loops touch the cursor exactly `width` times, so cost is linear in the field's own width and nothing else — no
+# allocation beyond the returned number.
 task read-int
   take cursor, like feed-cursor
   take width, like number
@@ -121,40 +205,37 @@ task read-int
         hook test
           call is-below(read index, read width)
         hook hold
+          save byte-value
+            call sign-extend-byte
+              call read-byte(read cursor)
+              call is-equal(read index, code 0)
+              read sign
           save magnitude
             call add
-              call shift-left(read magnitude, code 8)
-              call read-byte(read cursor)
+              call multiply(read magnitude, code 256)
+              read byte-value
           save index
             call add(read index, code 1)
     case little
-      save shift, code 0
+      save place, code 1
       walk test
         hook test
           call is-below(read index, read width)
         hook hold
+          save byte-value
+            call sign-extend-byte
+              call read-byte(read cursor)
+              call is-equal(read index, call subtract(read width, code 1))
+              read sign
           save magnitude
             call add
               read magnitude
-              call shift-left(call read-byte(read cursor), read shift)
-          save shift
-            call add(read shift, code 8)
+              call multiply(read byte-value, read place)
+          save place
+            call multiply(read place, code 256)
           save index
             call add(read index, code 1)
-  fork case, read sign
-    case unsigned
-      send back, read magnitude
-    case signed
-      save half, call shift-left(code 1, call subtract(call multiply(read width, code 8), code 1))
-      fork test
-        hook test
-          call is-minimum(read magnitude, read half)
-        hook hold
-          send back
-            call subtract
-              read magnitude
-              call shift-left(code 1, call multiply(read width, code 8))
-      send back, read magnitude
+  send back, read magnitude
 
 # an accumulating byte buffer. `to-bytes` hands back the finished list; every `write-*` appends to it in place.
 form feed-writer
@@ -183,6 +264,28 @@ task write-bytes
       take site, name value
       call write-byte(read writer, read value)
 
+# the byte at `index` places from the low end of `value`: floor(value / 256^index) mod 256. `round-down` (floor)
+# on a negative `value` is arithmetic-shift-equivalent, so a negative signed value's bytes come out correct without
+# a separate two's-complement step. See read-int/byte-place for why this is multiply/divide, not a bit shift.
+#
+# `to-decimal` around the division, `to-number` around the floor: `round-down` is `like decimal` in and out
+# (`@term/seed/code/float.tree`), and Rust does not implicitly convert an `i64` division result into the `f64`
+# it expects, the same class of gap `feedback_term_decimal_vs_number_no_implicit_conversion` (memory) documents
+# for JSON's number parser. `to-number` truncates toward zero rather than flooring, but `round-down`'s own output
+# is already integer-valued by the time it gets there, so the distinction never matters at this call site.
+task int-byte-at
+  take value, like number
+  take index, like number
+  like u8
+  send back
+    call bitwise-and
+      call to-number
+        call round-down
+          call divide
+            call to-decimal(read value)
+            call to-decimal(call byte-place(read index))
+      code 0xff
+
 task write-int
   take writer, like feed-writer
   take value, like number
@@ -198,9 +301,7 @@ task write-int
         hook hold
           call write-byte
             read writer
-            call bitwise-and
-              call shift-right(read value, call multiply(read index, code 8))
-              code 0xff
+            call int-byte-at(read value, read index)
           save index
             call subtract(read index, code 1)
     case little
@@ -211,9 +312,7 @@ task write-int
         hook hold
           call write-byte
             read writer
-            call bitwise-and
-              call shift-right(read value, call multiply(read index, code 8))
-              code 0xff
+            call int-byte-at(read value, read index)
           save index
             call add(read index, code 1)
 

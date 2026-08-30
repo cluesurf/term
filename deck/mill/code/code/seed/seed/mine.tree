@@ -1,3 +1,8 @@
+load @term/mill/code/code/form/link/mine
+  find link
+
+load @term/mill/code/code/like/mine
+  find like
 
 load @term/mill/code/code/seed/mine
   find seed
@@ -7,5 +12,25 @@ mine host
     mine term
       site name
     mine maybe
+      mine form, like like
+        site like
+    mine maybe
       mine form, like seed
         site seed
+    mine list
+      mine any
+        mine form, like host-item
+          site item
+        mine form, like host
+          site host
+        mine form, like seed
+          site seed
+
+# one entry of a host data list: `term a98`, a bare word, a text, a number
+mine host-item
+  mine term, term term
+    mine term
+      site term
+    mine list
+      mine form, like link
+        site link

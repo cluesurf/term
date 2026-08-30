@@ -21,6 +21,15 @@ export type ColumnMapping = {
   column: string
   // the field on the record it is taken from
   field: string
+  /**
+   * Whether the column holds an ARRAY of the field's element type.
+   *
+   * Carried here because it is the only place that knows: a statement builder sees a value
+   * and a column name and cannot tell an `int2[]` from an `int2`. Without it a collection
+   * has to be guessed at, and the guess decides between a Postgres array literal and a JSON
+   * string, which are not interchangeable and fail in opposite directions.
+   */
+  array?: boolean
 }
 
 // One record form projected into one table.

@@ -1,6 +1,8 @@
+# swift current-process surface: forwards to the linked current runtime shim (ProcessInfo, exit, and a
+# DispatchSource-based signal listener). Internal: reached only through the public process API.
 
 dock load
-  load <Foundation>, name foundation
+  load <global:current>, name current
 
 load @term/seed/code/process/current
   find process-info
@@ -8,56 +10,54 @@ load @term/seed/code/process/current
 task read
   like process-info
 
-  save info
-    call foundation/process-info/process-info
-
   send back
     make process-info
       bind id
-        call info/process-identifier
+        call current/process-id
       bind arguments
-        call info/arguments
+        call current/arguments
       bind directory
-        call foundation/file-manager/default/current-directory-path
+        call current/directory
       bind executable
-        call info/arguments/first
+        call current/executable
 
 task exit
   take code, like size, fall 0
 
-  call foundation/exit
+  call current/exit
     read code
 
 task listen
   take signal, like text
   take handler, like task
 
-  save signal-id
-    fork roll
-      hook test
-        call is-equal
-          bind a, read signal
-          bind b, text <terminate>
-        send back, code 15
-      hook test
-        call is-equal
-          bind a, read signal
-          bind b, text <interrupt>
-        send back, code 2
-      hook test
-        call is-equal
-          bind a, read signal
-          bind b, text <hangup>
-        send back, code 1
-      hook fall
-        halt text <unknown signal>
+  save signal-id, code 0
+  fork test
+    hook test
+      call is-equal
+        read signal
+        text <terminate>
+    hook hold
+      save signal-id, code 15
+    hook miss
+      fork test
+        hook test
+          call is-equal
+            read signal
+            text <interrupt>
+        hook hold
+          save signal-id, code 2
+        hook miss
+          fork test
+            hook test
+              call is-equal
+                read signal
+                text <hangup>
+            hook hold
+              save signal-id, code 1
+            hook miss
+              halt <unknown signal>
 
-  save source
-    call foundation/dispatch-source/make-signal-source
-      bind signal, read signal-id
-      bind queue, call foundation/dispatch-queue/main
-
-  call source/set-event-handler
+  call current/listen
+    read signal-id
     read handler
-
-  call source/resume

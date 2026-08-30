@@ -16,18 +16,8 @@ task completion-suggestion-make
 
 task completion-suggestion-text
   take s, like completion-suggestion
-  fork case, read s
-    case completion-suggestion
-      link text
-      link label
-      link kind
-      send back, read text
+  send back, read s/text
 
 task completion-suggestion-label
   take s, like completion-suggestion
-  fork case, read s
-    case completion-suggestion
-      link text
-      link label
-      link kind
-      send back, read label
+  send back, read s/label

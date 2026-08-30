@@ -31,17 +31,26 @@ import { callHunt } from '@term/call/code/hunt'
 import { callLook } from '@term/call/code/look'
 import { callRoll } from '@term/call/code/roll'
 import { callMold } from '@term/call/code/mold'
+import { callView } from '@term/call/code/view'
 import { logFail, warn } from '@term/make/code/tint'
 import {
   callBaseCheck,
+  callBaseCheckout,
+  callBaseCommit,
   callBaseDiff,
+  callBaseExport,
   callBaseInit,
   callBaseList,
   callBaseLog,
+  callBaseMerge,
+  callBaseProject,
   callBaseShow,
+  callBaseStatus,
+  callBaseTag,
 } from '@term/call/code/base'
 
 const COMMANDS = [
+  'base',
   'wake',
   'load',
   'save',
@@ -71,6 +80,7 @@ const COMMANDS = [
   'look',
   'roll',
   'mold',
+  'view',
   'zone',
   'fill',
 ]
@@ -155,7 +165,7 @@ const cli = yargs(hideBin(process.argv))
     default: 'line',
     description: 'Response format',
   })
-  .command('base <verb>', 'The base record system', yargs =>
+  .command('base', 'The base record system', yargs =>
     yargs
       .command('init', 'Create a repository here', {}, () => {
         callBaseInit({ root })
@@ -216,6 +226,103 @@ const cli = yargs(hideBin(process.argv))
       .command('check', 'Whether the repository is coherent', {}, () => {
         callBaseCheck({ root })
       })
+      .command(
+        'status [branch]',
+        'What the working files would change',
+        y => y.positional('branch', { type: 'string', default: 'main' }),
+        argv => {
+          callBaseStatus({ root, branch: String(argv.branch) })
+        },
+      )
+      .command(
+        'commit <message>',
+        'Commit the working files onto a branch',
+        y =>
+          y
+            .positional('message', { type: 'string', demandOption: true })
+            .option('branch', { type: 'string', default: 'main' })
+            .option('author', { type: 'string', default: 'anonymous' }),
+        argv => {
+          callBaseCommit({
+            root,
+            branch: String(argv.branch),
+            message: String(argv.message),
+            author: String(argv.author),
+          })
+        },
+      )
+      .command(
+        'checkout <commit>',
+        'Write a commit back out as .tree files',
+        y => y.positional('commit', { type: 'string', demandOption: true }),
+        argv => {
+          callBaseCheckout({ root, commit: String(argv.commit) })
+        },
+      )
+      .command(
+        'merge <from>',
+        'Merge a branch into another',
+        y =>
+          y
+            .positional('from', { type: 'string', demandOption: true })
+            .option('into', { type: 'string', default: 'main' })
+            .option('author', { type: 'string', default: 'anonymous' }),
+        argv => {
+          callBaseMerge({
+            root,
+            from: String(argv.from),
+            into: String(argv.into),
+            author: String(argv.author),
+          })
+        },
+      )
+      .command(
+        'export <commit>',
+        'Write the working tree at a commit as .tree files',
+        y =>
+          y
+            .positional('commit', { type: 'string', demandOption: true })
+            .option('out', { type: 'string', demandOption: true }),
+        argv => {
+          callBaseExport({
+            root,
+            commit: String(argv.commit),
+            out: String(argv.out),
+          })
+        },
+      )
+      .command(
+        'project <commit>',
+        'What a projection would write. Reports only',
+        y =>
+          y
+            .positional('commit', { type: 'string', demandOption: true })
+            .option('mapping', { type: 'string', demandOption: true }),
+        argv => {
+          callBaseProject({
+            root,
+            commit: String(argv.commit),
+            mapping: String(argv.mapping),
+          })
+        },
+      )
+      .command(
+        'tag <name> [commit]',
+        'Name a commit, so it can be cited',
+        y =>
+          y
+            .positional('name', { type: 'string', demandOption: true })
+            .positional('commit', { type: 'string' })
+            .option('branch', { type: 'string', default: 'main' }),
+        argv => {
+          callBaseTag({
+            root,
+            name: String(argv.name),
+            branch: String(argv.branch),
+            ...(argv.commit ? { commit: String(argv.commit) } : {}),
+          })
+        },
+      )
       .demandCommand(1, 'which base verb?'),
   )
   .command(
@@ -844,6 +951,25 @@ const cli = yargs(hideBin(process.argv))
         trees: argv.trees,
         lines: argv.lines,
         check: argv.check,
+      })
+    },
+  )
+  .command(
+    'view [path]',
+    'Check a document in the view role and print what it uses',
+    yargs =>
+      yargs
+        .positional('path', {
+          type: 'string',
+          description: 'A .tree document, or a directory of them (the project root when absent)',
+        })
+        .option('find', { type: 'boolean', description: 'Print the query manifest instead' }),
+    async argv => {
+      await callView({
+        root,
+        path: argv.path,
+        find: argv.find,
+        back: argv.back as string | undefined,
       })
     },
   )

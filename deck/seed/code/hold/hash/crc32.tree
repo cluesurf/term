@@ -7,6 +7,8 @@ load @term/seed/code/bit
 
 task calculate-crc32
   take list
+    like list
+      like number
   take initial
   save crc
     call bitwise-exclusive-or

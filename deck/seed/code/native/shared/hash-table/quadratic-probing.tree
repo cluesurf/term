@@ -1,129 +1,301 @@
-
-# Not built: this depends on `code/hold`, which is unfinished and excluded from the build. Bring it back once the
-# hash / bit utilities it imports have finished homes.
-note draft
+# A hash table with quadratic probing: a collision at `base` tries the TRIANGULAR offsets
+# `(base + step * (step + 1) / 2) % capacity` for step 1, 2, 3, ... which visit every slot when the capacity
+# is a power of two. Slots live in three parallel lists (a state code per slot: 0 empty, 1 held, 2 removed,
+# beside the key and value lists), so no read ever goes through an untyped record. `locate` caps at
+# `capacity` probes and answers -1 when the table has no slot for the key, so no input can loop it.
+# A removed slot keeps state 2 (a tombstone), so probe chains survive a delete. Held by six behavior tests
+# in deck/seed/test/hash-table.tree.
 load @term/seed/code/boolean
   find not
-
-load @term/seed/code/void
-  find void
-
-dock load
-  load <global:shape>, name shape
 
 load @term/seed/code/hold/hash
   find hash-djb2-xor, name hash
 
 form hash-table
-  link capacity
-  link list
-
-  hook make
-    take self
-    take capacity
-
-    save self/list
-      make array
-        read capacity
-    save self/size, code 0
+  link capacity, like number
+  link size, like number
+  link state
+    like list
+      like number
+  link keys
+    like list
+      like text
+  link values
+    like list
+      like unknown
 
   task is-full
     take self
-    call is-equal
-      read self/list/size
-      read self/size
+    like boolean
+    send back
+      call is-equal
+        read self/size
+        read self/capacity
 
   task is-empty
     take self
-    call is-equal
-      read self/list/size
-      code 0
+    like boolean
+    send back
+      call is-equal
+        read self/size
+        code 0
 
-  save set
-    take key
-    take value
-    fuse initialize-loop
+  # the slot index for `key` after `step` collisions: the triangular sequence covers every slot of a
+  # power-of-two table
+  task probe
+    take self
+    take base, like number
+    take step, like number
+    like number
+    send back
+      call modulo
+        call add
+          read base
+          call divide
+            call multiply
+              read step
+              call increment
+                bind value, read step
+            code 2
+        read self/capacity
+
+  # the key's own slot, a reusable removed slot, or the hole that ends the search; -1 when `capacity`
+  # probes find nothing usable
+  task locate
+    take self
+    take key, like text
+    like number
+    save base
+      call modulo
+        call hash
+          read key
+        read self/capacity
+    save step, code 0
+    save i, read base
+    save reuse
+      call subtract
+        code 0
+        code 1
     walk test
       hook test
-        call shape/is-present
-          read self/list/{i}
+        true
       hook hold
-        fuse update-hash
-    save self/list/{i}
-      make leaf
+        fork test
+          hook test
+            call is-above
+              read step
+              read self/capacity
+          hook hold
+            send back, read reuse
+        save mark, read self/state/{i}
+        fork test
+          hook test
+            call is-equal
+              read mark
+              code 0
+          hook hold
+            fork test
+              hook test
+                call is-minimum
+                  read reuse
+                  code 0
+              hook hold
+                send back, read reuse
+            send back, read i
+        fork test
+          hook test
+            call and
+              call is-equal
+                read mark
+                code 1
+              call is-equal
+                read self/keys/{i}
+                read key
+          hook hold
+            send back, read i
+        fork test
+          hook test
+            call and
+              call is-equal
+                read mark
+                code 2
+              call is-below
+                read reuse
+                code 0
+          hook hold
+            save reuse, read i
+        save step
+          call increment
+            bind value, read step
+        save i
+          call probe
+            read self
+            read base
+            read step
+    send back, read reuse
+
+  # the key's held slot, walking past removed slots; -1 when the key is absent
+  task seek
+    take self
+    take key, like text
+    like number
+    save base
+      call modulo
+        call hash
+          read key
+        read self/capacity
+    save step, code 0
+    save i, read base
+    walk test
+      hook test
+        true
+      hook hold
+        fork test
+          hook test
+            call is-above
+              read step
+              read self/capacity
+          hook hold
+            send back
+              call subtract
+                code 0
+                code 1
+        save mark, read self/state/{i}
+        fork test
+          hook test
+            call is-equal
+              read mark
+              code 0
+          hook hold
+            send back
+              call subtract
+                code 0
+                code 1
+        fork test
+          hook test
+            call and
+              call is-equal
+                read mark
+                code 1
+              call is-equal
+                read self/keys/{i}
+                read key
+          hook hold
+            send back, read i
+        save step
+          call increment
+            bind value, read step
+        save i
+          call probe
+            read self
+            read base
+            read step
+    send back
+      call subtract
+        code 0
+        code 1
+
+  task set
+    take self
+    take key, like text
+    take value, like unknown
+    save i
+      call locate
+        read self
         read key
-        read value
-    save self/size
-      call increment
-        read self/size
+    fork test
+      hook test
+        call is-below
+          read i
+          code 0
+      hook hold
+        halt <the table is full and has no slot for this key>
+    fork test
+      hook test
+        call not
+          call is-equal
+            read self/state/{i}
+            code 1
+      hook hold
+        save self/size
+          call increment
+            bind value, read self/size
+    call self/state/set
+      read i
+      code 1
+    call self/keys/set
+      read i
+      read key
+    call self/values/set
+      read i
+      read value
 
   task find
     take self
-    take key
-    fuse initialize-loop
-    walk test
-      hook step
-        fork test
-          hook test
-            call not
-              read self/list/{i}
-          hook hold, back seed
-        fork test
-          hook test
-            call is-equal
-              read self/list/{i}/key
-              read key
-          hook hold
-            send back, read self/list/{i}/value
-        fuse update-hash
-        fuse increment-step
+    take key, like text
+    like unknown
+    save i
+      call seek
+        read self
+        read key
+    fork test
+      hook test
+        call is-below
+          read i
+          code 0
+      hook hold
+        send back, make void
+    send back, read self/values/{i}
 
   task remove
     take self
-    take key
-    fuse initialize-loop
-    walk test
-      hook step
-        fork test
-          hook test
-            call not
-              read self/list/{i}
-          hook hold, back seed
-        fork test
-          hook test
-            call is-equal
-              read self/list/{i}/key
-              read key
-          hook hold
-            save self/list/{i}, make void
-            save self/size
-              call decrement
-                read self/size
-        fuse update-hash
-        fuse increment-step
-
-form leaf
-  link key
-  link value
-
-tree update-hash
-  hook bind
+    take key, like text
     save i
-      call hash
-        call add
-          read base
-          call multiply
-            read step
-            read step
+      call seek
+        read self
+        read key
+    fork test
+      hook test
+        call is-below
+          read i
+          code 0
+      hook hold
+        send back
+    call self/state/set
+      read i
+      code 2
+    save self/size
+      call decrement
+        bind value, read self/size
 
-tree increment-step
-  hook bind
-    save step
-      call increment
-        read step
-
-tree initialize-loop
-  hook bind
-    save base, call hash(read key)
-    save i, read base
-    save step, code 1
+# a table with `capacity` slots, each starting empty
+task make-hash-table
+  take capacity, like number
+  like hash-table
+  save table
+    make hash-table
+      bind capacity, read capacity
+      bind size, code 0
+      bind state
+        make list
+      bind keys
+        make list
+      bind values
+        make list
+  save j, code 0
+  walk test
+    hook test
+      call is-below
+        read j
+        read capacity
+    hook hold
+      call table/state/push
+        code 0
+      call table/keys/push
+        text <>
+      call table/values/push
+        make void
+      save j
+        call increment
+          bind value, read j
+  send back, read table

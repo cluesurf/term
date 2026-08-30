@@ -1,0 +1,46 @@
+note draft
+# Checked spec, not compiled code — see ../head/mine.tree's note. The real writer is ./code.tree's
+# write-otf-glyph, proven by deck/feed/test/otf-glyf.tree. A composite glyph refuses to write (`code.tree`'s
+# `halt <cannot write an unsupported composite glyph>`) — nothing to write it FROM, since a read only kept the
+# bounding box, not the component records.
+
+mint glyph
+  mint case, read form
+    case glyph-empty
+      mint nothing
+    case glyph-composite-unsupported
+      mint halt
+    case glyph-simple
+      mint short
+        read number-of-contours
+      mint short
+        read x-min
+      mint short
+        read y-min
+      mint short
+        read x-max
+      mint short
+        read y-max
+      mint list
+        read end-points
+        mint ushort
+      mint ushort
+        read instruction-length
+      mint bytes
+        read instructions
+      mint flags-and-coordinates
+        read contours
+
+mint ushort
+  take value, like number
+  mint int
+    bind width, code 2
+    bind order, term big
+    read value
+
+mint short
+  take value, like number
+  mint int
+    bind width, code 2
+    bind order, term big
+    read value

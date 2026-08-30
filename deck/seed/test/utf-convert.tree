@@ -1,0 +1,126 @@
+# The UTF converters held to a mixed-width vector: "aé€<musical G clef>" is one byte, two bytes, three bytes
+# and four bytes in UTF-8 (61, c3 a9, e2 82 ac, f0 9d 84 9e), and its clef is a surrogate pair in UTF-16
+# (d834 dd1e). Both directions round trip, and a lone surrogate becomes U+FFFD.
+#
+# Run with: term test
+
+load @term/seed/code/boolean
+  find not
+
+load @term/seed/code/hold/text/code/convert
+  find utf-16-code-points
+  find utf-8-of-code-points
+  find utf-8-code-points
+  find utf-16-of-code-points
+
+test utf-16-decodes-a-surrogate-pair
+  save units, make list
+  call units/push
+    code 97
+  call units/push
+    code 55348
+  call units/push
+    code 56606
+  save points
+    call utf-16-code-points
+      read units
+  want hold
+    call is-equal
+      read points/1
+      code 119070
+
+test utf-8-encodes-every-width
+  save points, make list
+  call points/push
+    code 97
+  call points/push
+    code 233
+  call points/push
+    code 8364
+  call points/push
+    code 119070
+  save bytes
+    call utf-8-of-code-points
+      read points
+  save match, true
+  save expected, make list
+  call expected/push
+    code 97
+  call expected/push
+    code 195
+  call expected/push
+    code 169
+  call expected/push
+    code 226
+  call expected/push
+    code 130
+  call expected/push
+    code 172
+  call expected/push
+    code 240
+  call expected/push
+    code 157
+  call expected/push
+    code 132
+  call expected/push
+    code 158
+  fork test
+    hook test
+      call not
+        call is-equal
+          read bytes/length
+          read expected/length
+    hook hold
+      save match, false
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        read expected/length
+    hook hold
+      fork test
+        hook test
+          call not
+            call is-equal
+              read bytes/{i}
+              read expected/{i}
+        hook hold
+          save match, false
+      save i, call increment(read i)
+  want hold
+    read match
+
+test utf-8-round-trips-to-utf-16
+  save points, make list
+  call points/push
+    code 97
+  call points/push
+    code 233
+  call points/push
+    code 8364
+  call points/push
+    code 119070
+  save bytes
+    call utf-8-of-code-points
+      read points
+  save units
+    call utf-16-of-code-points
+      call utf-8-code-points
+        read bytes
+  want hold
+    call is-equal
+      read units/4
+      code 56606
+
+test lone-surrogate-becomes-replacement
+  save units, make list
+  call units/push
+    code 55296
+  save points
+    call utf-16-code-points
+      read units
+  want hold
+    call is-equal
+      read points/0
+      code 65533

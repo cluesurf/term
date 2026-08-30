@@ -4,10 +4,19 @@ note <the test DSL: one key head, `test`. `test <phrase>` names a test with a hu
 load @term/mill/code/code/tool/flow/mine
   find flow
 
+load @term/mill/code/code/take/mine
+  find take
+
 mine test
   mine term, term test
-    mine text
-      site name
+    mine any
+      mine text
+        site name
+      mine term
+        site term
     mine list
-      mine form, like flow
-        site work
+      mine any
+        mine form, like take
+          site take
+        mine form, like flow
+          site work

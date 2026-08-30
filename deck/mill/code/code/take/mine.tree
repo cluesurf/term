@@ -1,3 +1,8 @@
+load @term/mill/code/code/call/mine
+  find call
+
+load @term/mill/code/code/note/mine
+  find note
 
 load @term/mill/code/code/like/mine
   find like
@@ -8,6 +13,9 @@ load @term/mill/code/code/take/name/mine
 load @term/mill/code/code/seed/mine
   find seed
 
+load @term/mill/code/code/fall/mine
+  find fall
+
 mine take
   mine term, term take
     mine term
@@ -16,18 +24,42 @@ mine take
       mine form, like like
         site like
     mine maybe
+      mine form, like fall
+        site fall
+    mine maybe
       mine form, like name
         site alias
     mine maybe
       mine term, term need
-        site need
+        mine maybe
+          mine term, term true
+            site need
+        mine maybe
+          mine term, term false
+            site need
     mine maybe
       mine term, term base
-        mine form, like seed
-          site base
+        mine any
+          mine form, like seed
+            site base
+          mine term
+            site base
+    mine maybe
+      mine term, term void
+        mine term
+          site void
+    mine maybe
+      mine term, term flex
+        mine term
+          site flex
     mine list
-      mine form, like take-value
-        site take
+      mine any
+        mine form, like take-value
+          site take
+        mine form, like call
+          site call
+        mine form, like note
+          site note
 
 mine take-value
   mine term, term take

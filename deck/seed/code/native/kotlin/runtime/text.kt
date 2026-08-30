@@ -12,7 +12,7 @@ object text {
     fun sliceFrom(s: String, start: Long): String = s.substring(start.toInt())
     fun indexOf(s: String, search: String, start: Long): Long = s.indexOf(search, start.toInt()).toLong()
     fun replaceFirst(s: String, from: String, to: String): String = s.replaceFirst(from, to)
-    fun split(s: String, separator: String): List<String> = s.split(separator)
+    fun split(s: String, separator: String): MutableList<String> = s.split(separator).toMutableList()
     fun join(list: List<String>, separator: String): String = list.joinToString(separator)
     fun length(s: String): Long = s.length.toLong()
 }

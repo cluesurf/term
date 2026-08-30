@@ -3,9 +3,15 @@ form command
   link name, like text
   link note, like text
   link version, like text
-  link commands, like list
-  link flags, like list
-  link arguments, like list
+  link commands
+    like list
+      like unknown
+  link flags
+    like list
+      like command-flag
+  link arguments
+    like list
+      like command-argument
 
 form command-flag
   link name, like text
@@ -13,6 +19,7 @@ form command-flag
   link kind, like text
   link note, like text
   link required, like boolean
+  link fallback, need false
 
 form command-argument
   link name, like text
@@ -23,18 +30,31 @@ form command-argument
 form command-result
   case okay
     link command, like text
-    link flags, like hash
-    link arguments, like list
+    link flags
+      like hash
+        like text
+        like unknown
+    link arguments
+      like list
+        like text
   case error
-    link errors, like list
+    link errors
+      like list
+        like text
 
 task command-define
   take name, like text
   take note, like text
   take version, like text
-  take commands, like list
-  take flags, like list
-  take arguments, like list
+  take commands
+    like list
+      like unknown
+  take flags
+    like list
+      like command-flag
+  take arguments
+    like list
+      like command-argument
   send back
     make command
       bind name, read name

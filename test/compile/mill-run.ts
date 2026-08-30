@@ -349,7 +349,9 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
 // deck/deck/code/manifest.ts on the name, the version, the head line and the link set, for every deck.tree.
 
 {
-  const { parseManifest } = await import('../../deck/deck/code/manifest')
+  // the HAND reader is the reference here: parseManifest itself reads through the mill now, so comparing
+  // against it would be mill-vs-mill
+  const { parseManifestByHand: parseManifest } = await import('../../deck/deck/code/manifest')
   const { readdirSync } = await import('node:fs')
 
   // the deck grammar with its load closure inlined (the executor takes one grammar map)
@@ -466,7 +468,7 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
 // links the reader sees (no lock.tree is committed in the tree, so the writer's own output is the fixture)
 
 {
-  const { writeLockfile, parseLockfile } = await import('../../deck/deck/code/lock')
+  const { writeLockfile, parseLockfileByHand: parseLockfile } = await import('../../deck/deck/code/lock')
   const fixture = writeLockfile({
     lockfile: {
       version: 1,

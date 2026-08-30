@@ -1027,6 +1027,67 @@ export function check(
 
           type = signature.result
         } else {
+          // a native collection method (`table/push(x)`, `table/set(i, x)`, `map/set(k, v)`) constrains the
+          // ELEMENT (key, value) type: without this the element variable of a fresh `make list` never meets
+          // its contents, stays a free generic, and the native backends emit an unusable type parameter
+          if (node.callee.form === 'member' && !node.callee.index) {
+            const receiver = resolve(
+              node.callee.target.type ??
+                inferExpression(node.callee.target, env),
+            )
+            const op = node.callee.name
+
+            // pin only a still-FREE slot type from a SIMPLE argument type: this exists to give a fresh
+            // `make list`'s element the type of what is pushed into it, and a broader unification here can
+            // build a cyclic type (no occurs check on this path)
+            const pin = (slot: Type, arg: Expression | undefined): void => {
+              if (!arg) {
+                return
+              }
+
+              const el = resolve(slot)
+              const given = arg.type ? resolve(arg.type) : undefined
+
+              if (
+                el.kind === 'variable' &&
+                given &&
+                (given.kind === 'number' ||
+                  given.kind === 'float' ||
+                  given.kind === 'string' ||
+                  given.kind === 'boolean' ||
+                  given.kind === 'bytes' ||
+                  (given.kind === 'named' && !given.args?.length))
+              ) {
+                expect(given, el, arg.span, 'argument')
+              } else if (el.kind === 'variable' && given?.kind === 'unit') {
+                // pushing `make void` into a fresh list: the slot holds anything, so the element is the
+                // gradual unknown, never the unit type
+                expect({ kind: 'unknown' }, el, arg.span, 'argument')
+              }
+            }
+
+            if (receiver.kind === 'array') {
+              if (
+                op === 'push' ||
+                op === 'unshift' ||
+                op === 'includes' ||
+                op === 'indexOf' ||
+                op === 'lastIndexOf'
+              ) {
+                pin(receiver.element, node.args[0])
+              } else if (op === 'set') {
+                pin(receiver.element, node.args[1])
+              }
+            } else if (receiver.kind === 'map') {
+              if (op === 'set') {
+                pin(receiver.key, node.args[0])
+                pin(receiver.value, node.args[1])
+              } else if (op === 'get' || op === 'has' || op === 'delete') {
+                pin(receiver.key, node.args[0])
+              }
+            }
+          }
+
           // calling a first-class function value (a local of function type, a parameter, etc.)
           const calleeType = resolve(inferExpression(node.callee, env))
 

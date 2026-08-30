@@ -1,0 +1,24 @@
+# The OpenType `head` table (OpenType spec, "head"). Real, compiling Term. Every field a fixed-width int at a
+# fixed offset, no conditions — the flat baseline case note/term/feed/04-otf-case-study.md describes. `font-revision`
+# stays the raw signed 32-bit fixed-point field, not decoded to a decimal — see 01-grammar.md's "no arithmetic in
+# the spec" rule, which applies here to code.tree too: decoding Fixed is the caller's job, not the reader's.
+
+form otf-head-table
+  link version-major, like number
+  link version-minor, like number
+  link font-revision, like number
+  link checksum-adjustment, like number
+  link magic-number, like number
+  link flags, like number
+  link units-per-em, like number
+  link created, like number
+  link modified, like number
+  link x-min, like number
+  link y-min, like number
+  link x-max, like number
+  link y-max, like number
+  link mac-style, like number
+  link lowest-rec-ppem, like number
+  link font-direction-hint, like number
+  link index-to-loc-format, like number
+  link glyph-data-format, like number

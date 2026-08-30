@@ -1,3 +1,6 @@
+# SHELVED 2026-08-30 (file-level, the hold/ tree itself is IN the build now): this file still uses names or
+# syntax the resolver refuses. Delete `note draft` once its body is finished.
+note draft
 
 load @term/seed/code/shared/test
   find test-suite

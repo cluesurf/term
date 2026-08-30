@@ -47,6 +47,19 @@ export type Engine = {
   transact<T>(body: (tx: Transaction) => Promise<T>): Promise<T>
 }
 
+/**
+ * A recorded rebuild proof: this projection was shown to rebuild identically.
+ *
+ * `tables` is what the proving run covered, never the whole projection, because a run
+ * proves the tables it was handed. A reader that ignores it turns one table's proof into a
+ * claim about all of them.
+ */
+export type Proof = {
+  commit: string
+  at: number
+  tables: Array<string>
+}
+
 export type ProjectionState = {
   repository: string
   commit: string | undefined
@@ -419,6 +432,63 @@ export class Projector {
     return typeof commit === 'string'
       ? { commit, reason: typeof reason === 'string' ? reason : 'unknown' }
       : undefined
+  }
+
+  /**
+   * Record that this projection was proved to rebuild identically at a commit.
+   *
+   * Written only on a PASS. A failed proof deliberately leaves the previous record standing
+   * rather than clearing it: "last proved at X" and "last attempted at Y" are different
+   * facts, and overwriting the first with a failure would destroy the only evidence that the
+   * projection was ever trustworthy, at the exact moment somebody needs it.
+   */
+  async recordProof(input: {
+    commit: string
+    tables: Array<string>
+  }): Promise<void> {
+    const at = new Date(this.now()).toISOString()
+    // sorted so the same set of tables reads the same however the run was invoked, which is
+    // what lets two records be compared at all
+    const tables = [...new Set(input.tables)].sort().join(',')
+
+    await this.engine.transact(async tx => {
+      await tx.run({
+        sql: `UPDATE ${quote(BOOKKEEPING_TABLE)} SET "proved_commit" = $2, "proved" = $3, "proved_table" = $4 WHERE "repository" = $1`,
+        params: [this.repository, input.commit, at, tables],
+      })
+    })
+  }
+
+  /** When this projection was last proved, at which commit, and over which tables. */
+  async proof(): Promise<Proof | undefined> {
+    const rows = await this.engine.transact(tx =>
+      tx.all({
+        sql: `SELECT "proved_commit", "proved", "proved_table" FROM ${quote(BOOKKEEPING_TABLE)} WHERE "repository" = $1`,
+        params: [this.repository],
+      }),
+    )
+
+    const row = rows[0]
+
+    if (row === undefined || typeof row.proved_commit !== 'string') {
+      return undefined
+    }
+
+    const when = row.proved
+    const at =
+      when instanceof Date
+        ? when.getTime()
+        : typeof when === 'string'
+          ? Date.parse(when)
+          : Number.NaN
+
+    const tables = typeof row.proved_table === 'string' ? row.proved_table : ''
+
+    return {
+      commit: row.proved_commit,
+      at: Number.isNaN(at) ? 0 : at,
+      tables: tables === '' ? [] : tables.split(','),
+    }
   }
 
   /** What the projection knows about its own currency. */

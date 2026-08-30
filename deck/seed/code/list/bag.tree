@@ -5,7 +5,9 @@
 form bag
   head t
 
-  link items, like list
+  link items
+    like list
+      like t
 
   task make
     like bag

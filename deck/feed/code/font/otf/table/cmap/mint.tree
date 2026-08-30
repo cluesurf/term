@@ -1,0 +1,114 @@
+note draft
+# Checked spec, not compiled code — see ../head/mint.tree's note. The real writer is ./code.tree's
+# write-otf-cmap-table, proven by deck/feed/test/otf-cmap.tree. The offset problem in reverse: a record's
+# subtable-offset has to be known before that subtable is written, so every subtable is serialized first (to
+# measure its byte length), then the directory is written with a running offset total, then the subtable bytes
+# follow — two passes, which is why this is the one `mint` in the package that doesn't read top-to-bottom in
+# write order. `search-range`/`entry-selector`/`range-shift` (format 4's binary-search hint fields) are computed
+# from `segments`'s length, not carried as input fields — arithmetic on an already-captured count, the same
+# boundary 01-grammar.md draws for `mine`, here on the write side instead.
+
+mint cmap-table
+  mint ushort
+    read version
+  mint ushort
+    call size, read records
+  mint list, read records
+    mint form, form cmap-encoding-record-with-offset
+      slot value
+
+mint cmap-encoding-record-with-offset
+  take value, like otf-cmap-encoding-record
+  mint ushort
+    read value/platform-id
+  mint ushort
+    read value/encoding-id
+  mint uint32
+    call otf-cmap-record-offset
+      bind record, read value
+
+mint cmap-subtable
+  take value, like otf-cmap-subtable
+  fork case, read value
+    case otf-cmap-format-4
+      mint form, form cmap-subtable-format-4
+        slot value
+    case otf-cmap-format-12
+      mint form, form cmap-subtable-format-12
+        slot value
+    case otf-cmap-format-unsupported
+      halt <cannot write an unsupported cmap subtable format>
+
+mint cmap-subtable-format-4
+  mint ushort
+    text 4
+  mint ushort
+    call otf-cmap-format-4-length
+      read segments
+      read glyph-id-array
+  mint ushort
+    read language
+  mint ushort
+    call multiply, call size, read segments, code 2
+  mint ushort
+    call otf-cmap-search-range, call size, read segments
+  mint ushort
+    call otf-cmap-search-hint-selector, call size, read segments
+  mint ushort
+    call otf-cmap-range-shift, call size, read segments
+  mint list, read segments
+    mint ushort
+      read end-code
+  mint ushort
+    code 0
+  mint list, read segments
+    mint ushort
+      read start-code
+  mint list, read segments
+    mint short
+      read id-delta
+  mint list, read segments
+    mint ushort
+      read id-range-offset
+  mint list, read glyph-id-array
+    mint ushort
+      slot value
+
+mint cmap-subtable-format-12
+  mint ushort
+    text 12
+  mint ushort
+    code 0
+  mint uint32
+    call otf-cmap-format-12-length
+      read groups
+  mint uint32
+    read language
+  mint uint32
+    call size, read groups
+  mint list, read groups
+    mint form, form cmap-group
+      slot value
+
+mint cmap-group
+  take value, like otf-cmap-group
+  mint uint32
+    read value/start-char-code
+  mint uint32
+    read value/end-char-code
+  mint uint32
+    read value/start-glyph-id
+
+mint ushort
+  take value, like number
+  mint int
+    bind width, code 2
+    bind order, term big
+    read value
+
+mint uint32
+  take value, like number
+  mint int
+    bind width, code 4
+    bind order, term big
+    read value

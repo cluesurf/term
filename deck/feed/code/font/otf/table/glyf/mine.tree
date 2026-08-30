@@ -1,43 +1,60 @@
+note draft
+# Checked spec, not compiled code — see ../head/mine.tree's note. The real reader is ./code.tree's
+# read-otf-glyph, proven by deck/feed/test/otf-glyf.tree. Replaces the old pre-rename draft entirely (raw
+# opentype.js-style JS calls — `glyphset.GlyphSet`, `glyphset.ttfGlyphLoader` — mixed into `weave`/`share`/`cause`
+# syntax, not an actual byte-format description) rather than porting it. Simple glyphs only; composite glyphs
+# (`number-of-contours < 0`) send `glyph-composite-unsupported`, the same shape cmap's `format-unsupported` uses.
+#
+# The flag run-length repeat (`read-glyf-flags`) and the two-bit-pair coordinate delta decode
+# (`glyf-coordinate-delta`) are real per-byte control flow, not raw field extraction — like gzip's trailer-length
+# arithmetic and loca's short-format scale, this is real-reader-only logic with no attempt at spec notation here.
 
-mine glyf-table
-  start low-memory
-  check has
-    bind build, share low-memory
-    catch mine
-      parseGlyfTableOnLowMemory(data, start, loca, font);
-    catch fault
-      mine glyph-table-all(data, start, loca, font);
+mine glyph
+  take byte-length, like number
 
-mine glyph-table-all
-  start data
-  start start
-  start loca
-  start font
+  mine case, read byte-length
+    case 0
+      mine send, form glyph-empty
+    case default
+      mine int
+        bind width, code 2
+        bind order, term big
+        bind sign, term signed
+        send number-of-contours
+      mine form, form short
+        send x-min
+      mine form, form short
+        send y-min
+      mine form, form short
+        send x-max
+      mine form, form short
+        send y-max
+      mine case, read number-of-contours
+        case below-zero
+          mine send, form glyph-composite-unsupported
+        case default
+          mine list
+            bind count, read number-of-contours
+            mine form, form ushort
+            send end-points
+          mine form, form ushort
+            send instruction-length
+          mine bytes
+            bind width, read instruction-length
+            send instructions
+          mine flags-and-coordinates
+            bind end-points, read end-points
+            send contours
+          mine send, form glyph-simple
 
-  const glyphs = new glyphset.GlyphSet(font);
+mine ushort
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term unsigned
 
-  cause subtract
-    bind start, share loca/length
-    bind front, share 1
-    store size
-
-  cause chain
-    bind front, share size
-    store offset, share loca[count]
-
-    cause add
-      bind start, share count
-      bind front, share 1
-      store next-count
-    store next-offset, share loca[next-count]
-
-    check not-equal
-      bind start, share offset
-      bind front, share next-offset
-      catch mine
-        cause push
-          bind chain, share glyphs
-          bind index, share count
-          glyphset.ttfGlyphLoader(font, i, parseGlyph, data, start + offset, buildPath)
-      catch fault
-        glyphs.push(i, glyphset.glyphLoader(font, i))
+mine short
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term signed

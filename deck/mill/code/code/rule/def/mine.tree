@@ -1,0 +1,52 @@
+# The stdlib theorem form (`rule absurd` / `head a` / `take proof, like void` / `like a`, and form.tree's
+# `rule x` / `mark a, like tone` / claims) and the hive kind declaration (`roll test` / `like test-entry`).
+
+load @term/mill/code/code/head/mine
+  find head
+
+load @term/mill/code/code/take/mine
+  find take
+
+load @term/mill/code/code/like/mine
+  find like
+
+load @term/mill/code/code/call/mine
+  find call
+
+load @term/mill/code/code/seed/mine
+  find seed
+
+mine rule-def
+  mine term, term rule
+    mine term
+      site name
+    mine list
+      mine any
+        mine form, like head
+          site head
+        mine form, like take
+          site take
+        mine form, like like
+          site like
+        mine form, like rule-mark
+          site mark
+        mine form, like call
+          site call
+        mine form, like seed
+          site seed
+
+mine rule-mark
+  mine term, term mark
+    mine term
+      site name
+    mine maybe
+      mine form, like like
+        site like
+
+mine roll-def
+  mine term, term roll
+    mine term
+      site name
+    mine maybe
+      mine form, like like
+        site like

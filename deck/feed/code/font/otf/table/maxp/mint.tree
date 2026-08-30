@@ -1,0 +1,37 @@
+note draft
+# Checked spec, not compiled code — see ../head/mint.tree's note. The real writer is ./code.tree's
+# write-otf-maxp-table, proven by deck/feed/test/otf-hhea-maxp.tree. `ushort` shared with ../head/mint.tree.
+
+mint maxp-table
+  mint int
+    bind width, code 4
+    bind order, term big
+    read version
+  mint ushort
+    read num-glyphs
+  mint ushort
+    read max-points
+  mint ushort
+    read max-contours
+  mint ushort
+    read max-composite-points
+  mint ushort
+    read max-composite-contours
+  mint ushort
+    read max-zones
+  mint ushort
+    read max-twilight-points
+  mint ushort
+    read max-storage
+  mint ushort
+    read max-function-defs
+  mint ushort
+    read max-instruction-defs
+  mint ushort
+    read max-stack-elements
+  mint ushort
+    read max-size-of-instructions
+  mint ushort
+    read max-component-elements
+  mint ushort
+    read max-component-depth

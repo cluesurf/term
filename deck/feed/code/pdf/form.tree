@@ -1,4 +1,8 @@
 
+note draft
+# Stale pre-rename draft (field/host/chain-era syntax that never became real Term). Not ported, not built. See
+# note/term/feed/07-implementation.md.
+
 field pdf
   host catalog, field reference
   host page, chain page

@@ -2670,6 +2670,23 @@ const TEMPLATE_PROG = `task compute
   send back, text <n={{n}} w={{w}} \\{literal\\}>
 `
 
+// `walk size` is the counted range loop (`bind base` / `bind head`, `hook next`): 0+1+2+3+4 = 10. Every
+// spelling of it emitted `while (false) {}` and dropped the body until 2026-08-29 (compiler-hygiene-0014)
+const WALK_SIZE_PROG = `task compute
+  like number
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, code 5
+    hook next
+      take site, name i
+      save total
+        call add
+          read total
+          read i
+  send back, read total
+`
+
 const CONCAT_PROG = `load @cluesurf/seed/code/text/string
   find concat
 
@@ -3955,6 +3972,23 @@ async function main(): Promise<void> {
     'kotlin + text runtime: concat("foo","bar") == "foobar"',
     frontEnd(CONCAT_PROG, true, 'kotlin'),
     'true',
+  )
+
+  // the counted range loop on each toolchain
+  runRustText(
+    'rust + walk size: the range loop counts 0..5',
+    frontEnd(WALK_SIZE_PROG, true, 'rust'),
+    '10',
+  )
+  runSwiftText(
+    'swift + walk size: the range loop counts 0..5',
+    frontEnd(WALK_SIZE_PROG, true, 'swift'),
+    '10',
+  )
+  runKotlinText(
+    'kotlin + walk size: the range loop counts 0..5',
+    frontEnd(WALK_SIZE_PROG, true, 'kotlin'),
+    '10',
   )
 
   // runtime text interpolation on each toolchain: `format!`, `"\\(x)"`, `"$x"`

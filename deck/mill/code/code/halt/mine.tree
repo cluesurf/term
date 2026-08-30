@@ -1,6 +1,11 @@
+load @term/mill/code/code/bind/mine
+  find bind
 
 load @term/mill/code/code/seed/mine
   find seed
+
+load @term/mill/code/code/tool/flow/mine
+  find flow
 
 mine halt
   mine term, term halt
@@ -10,3 +15,9 @@ mine halt
     mine maybe
       mine form, like seed
         site seed
+    mine list
+      mine any
+        mine form, like bind
+          site bind
+        mine form, like flow
+          site flow

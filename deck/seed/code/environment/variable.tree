@@ -12,6 +12,8 @@ task remove
 
 task list
   like hash
+    like text
+    like text
 
 task check
   take name, like text

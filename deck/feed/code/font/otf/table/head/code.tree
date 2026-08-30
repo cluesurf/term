@@ -1,0 +1,117 @@
+# The real, compiling reader/writer for the OTF head table. 54 bytes, flat, no conditions — matches
+# note/term/feed/04-otf-case-study.md's "head table: the boring baseline" case.
+
+load @term/seed/code/boolean
+  find not
+
+load ../../../../base
+  find feed-cursor
+  find make-writer
+  find to-bytes
+
+load ../shared/code
+  find read-u16
+  find read-i16
+  find read-u32
+  find read-i32
+  find read-i64
+  find write-u16
+  find write-i16
+  find write-u32
+  find write-i64
+
+load ./form
+  find otf-head-table
+
+task read-otf-head-table
+  take cursor, like feed-cursor
+  like otf-head-table
+  save version-major
+    call read-u16(read cursor)
+  save version-minor
+    call read-u16(read cursor)
+  save font-revision
+    call read-i32(read cursor)
+  save checksum-adjustment
+    call read-u32(read cursor)
+  save magic-number
+    call read-u32(read cursor)
+  fork test
+    hook test
+      call not
+        call is-equal(read magic-number, code 0x5f0f3cf5)
+    hook hold
+      halt <not an OTF head table: bad magic number>
+  save flags
+    call read-u16(read cursor)
+  save units-per-em
+    call read-u16(read cursor)
+  save created
+    call read-i64(read cursor)
+  save modified
+    call read-i64(read cursor)
+  save x-min
+    call read-i16(read cursor)
+  save y-min
+    call read-i16(read cursor)
+  save x-max
+    call read-i16(read cursor)
+  save y-max
+    call read-i16(read cursor)
+  save mac-style
+    call read-u16(read cursor)
+  save lowest-rec-ppem
+    call read-u16(read cursor)
+  save font-direction-hint
+    call read-i16(read cursor)
+  save index-to-loc-format
+    call read-i16(read cursor)
+  save glyph-data-format
+    call read-i16(read cursor)
+  send back
+    make otf-head-table
+      bind version-major, read version-major
+      bind version-minor, read version-minor
+      bind font-revision, read font-revision
+      bind checksum-adjustment, read checksum-adjustment
+      bind magic-number, read magic-number
+      bind flags, read flags
+      bind units-per-em, read units-per-em
+      bind created, read created
+      bind modified, read modified
+      bind x-min, read x-min
+      bind y-min, read y-min
+      bind x-max, read x-max
+      bind y-max, read y-max
+      bind mac-style, read mac-style
+      bind lowest-rec-ppem, read lowest-rec-ppem
+      bind font-direction-hint, read font-direction-hint
+      bind index-to-loc-format, read index-to-loc-format
+      bind glyph-data-format, read glyph-data-format
+
+task write-otf-head-table
+  take table, like otf-head-table
+  like list
+    like u8
+  save writer
+    call make-writer
+  call write-u16(read writer, read table/version-major)
+  call write-u16(read writer, read table/version-minor)
+  call write-i32(read writer, read table/font-revision)
+  call write-u32(read writer, read table/checksum-adjustment)
+  call write-u32(read writer, read table/magic-number)
+  call write-u16(read writer, read table/flags)
+  call write-u16(read writer, read table/units-per-em)
+  call write-i64(read writer, read table/created)
+  call write-i64(read writer, read table/modified)
+  call write-i16(read writer, read table/x-min)
+  call write-i16(read writer, read table/y-min)
+  call write-i16(read writer, read table/x-max)
+  call write-i16(read writer, read table/y-max)
+  call write-u16(read writer, read table/mac-style)
+  call write-u16(read writer, read table/lowest-rec-ppem)
+  call write-i16(read writer, read table/font-direction-hint)
+  call write-i16(read writer, read table/index-to-loc-format)
+  call write-i16(read writer, read table/glyph-data-format)
+  send back
+    call to-bytes(read writer)

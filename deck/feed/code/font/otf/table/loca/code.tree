@@ -1,0 +1,71 @@
+# The real, compiling reader and writer for the OTF loca table ("Index to Location"): num-glyphs+1 offsets into
+# `glyf`. `short-format` (offsets stored as offset/2, vs. the offset itself) is `head`'s own `index-to-loc-format`
+# bit, resolved by the caller — loca stays single-responsibility, like every other table here, rather than
+# depending on `head`'s form directly.
+
+load @term/seed/code/list
+  find push
+
+load ../../../../base
+  find feed-cursor
+  find feed-writer
+  find make-writer
+  find to-bytes
+
+load ../shared/code
+  find read-u16
+  find read-u32
+  find write-u16
+  find write-u32
+
+load ./form
+  find otf-loca-table
+
+task read-otf-loca-table
+  take cursor, like feed-cursor
+  take num-glyphs, like number
+  take short-format, like boolean
+  like otf-loca-table
+  save offsets
+    make list
+  save count
+    call add(read num-glyphs, code 1)
+  save index, code 0
+  walk test
+    hook test
+      call is-below(read index, read count)
+    hook hold
+      fork test
+        hook test
+          read short-format
+        hook hold
+          call push
+            read offsets
+            call multiply(call read-u16(read cursor), code 2)
+        hook miss
+          call push(read offsets, call read-u32(read cursor))
+      save index
+        call add(read index, code 1)
+  send back
+    make otf-loca-table
+      bind offsets, read offsets
+
+task write-otf-loca-table
+  take table, like otf-loca-table
+  take short-format, like boolean
+  like list
+    like u8
+  save writer
+    call make-writer
+  walk list, read table/offsets
+    hook next
+      take site, name offset
+      fork test
+        hook test
+          read short-format
+        hook hold
+          call write-u16(read writer, call divide(read offset, code 2))
+        hook miss
+          call write-u32(read writer, read offset)
+  send back
+    call to-bytes(read writer)

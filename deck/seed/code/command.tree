@@ -3,9 +3,15 @@ form schema
   link name, like text
   link description, like text
   link version, like text
-  link commands, like list
-  link flags, like list
-  link arguments, like list
+  link commands
+    like list
+      like unknown
+  link flags
+    like list
+      like command-flag
+  link arguments
+    like list
+      like command-argument
 
 form command-flag
   link name, like text
@@ -14,7 +20,9 @@ form command-flag
   link description, like text
   link required, like boolean
   link fallback
-  link choices, like list
+  link choices
+    like list
+      like text
 
 form command-argument
   link name, like text
@@ -25,22 +33,41 @@ form command-argument
 form result
   link ok, like boolean
   link command, like text
-  link flags, like hash
-  link arguments, like list
-  link errors, like list
+  link flags
+    like hash
+      like text
+      like unknown
+  link arguments
+    like list
+      like text
+  link errors
+    like list
+      like text
 
 task parse
   take schema, like schema
-  take arguments, like list, need false
+  take arguments
+    like list
+      like text
+    need false
   like result
 
 task define
   take name, like text
   take description, like text, need false
   take version, like text, need false
-  take commands, like list, need false
-  take flags, like list, need false
-  take arguments, like list, need false
+  take commands
+    like list
+      like unknown
+    need false
+  take flags
+    like list
+      like command-flag
+    need false
+  take arguments
+    like list
+      like command-argument
+    need false
   like schema
   send back
     make schema

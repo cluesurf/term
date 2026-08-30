@@ -23,7 +23,7 @@ import {
   stringRead,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp, FormKind, FormSpec } from '@term/make/code/compile/backend'
-import { formSpec, refuseAny, specForms } from '@term/make/code/compile/backend'
+import { formSpec, hasValuedReturn, refuseAny, specForms } from '@term/make/code/compile/backend'
 import {
   collectBinds,
   renderBind,
@@ -367,6 +367,16 @@ export function emitSwift(
   const hasHiveTell = program.some(
     n => n.form === 'function' && n.name === 'hive-tell',
   )
+  // every known function's declared parameter types, for filling a left-out trailing `need false` argument
+  const functionParams = new Map<string, (Type | undefined)[]>(
+    program
+      .filter(
+        (n): n is Extract<Statement, { form: 'function' }> =>
+          n.form === 'function',
+      )
+      .map(n => [n.name, n.params.map(p => p.type)]),
+  )
+
   // declarative native bindings render their `case swift` template at call sites
   const binds = collectBinds(program)
 
@@ -743,6 +753,9 @@ export function emitSwift(
   // true while emitting a list-returning function: a native dock call returned directly (a plain Array from the shim,
   // which has no access to the SeedList class) is wrapped in the seed list's SeedList handle to match the return type
   let fnReturnsArray = false
+  // the enclosing function's declared result, so a `return <unknown-typed value>` casts at the gradual
+  // boundary (`read mock/dock` returned as `like mock-data`)
+  let currentResult: Type | undefined
 
   const isNativeCall = (node: Expression): boolean => {
     if (node.form !== 'call' || node.callee.form !== 'member') {
@@ -954,6 +967,21 @@ export function emitSwift(
           return `(${expr(node.left, bind)}).truncatingRemainder(dividingBy: ${expr(node.right, bind)})`
         }
 
+        // comparing an unknown slot to `make void` is a presence check: Any has no `==`, so it asks whether
+        // the slot holds the unit
+        const voidSide =
+          node.right.form === 'record' && node.right.name === 'void'
+            ? node.left
+            : node.left.form === 'record' && node.left.name === 'void'
+              ? node.right
+              : undefined
+
+        if (voidSide && (node.op === '==' || node.op === '!=')) {
+          const check = `(${expr(voidSide, bind)} is Void)`
+
+          return node.op === '==' ? check : `!${check}`
+        }
+
         const left = expr(node.left, bind)
         const right = expr(node.right, bind)
         // `a == (try f())` is refused by Swift ("operator can throw"): the `try` goes in front of the operator
@@ -1024,20 +1052,36 @@ export function emitSwift(
           )}(${rest.join(', ')})`
         }
 
+        // a trailing `need false` parameter left out at the call site still exists in the native signature:
+        // fill it with its type's empty value (the unit tuple for an unknown)
+        const renderedArgs = node.args.map(a => expr(a, bind))
+        const declaredParams =
+          node.callee.form === 'variable'
+            ? functionParams.get(node.callee.name)
+            : undefined
+
+        if (declaredParams && declaredParams.length > renderedArgs.length) {
+          for (let i = renderedArgs.length; i < declaredParams.length; i++) {
+            const missing = declaredParams[i]
+
+            renderedArgs.push(
+              missing === undefined || missing.kind === 'unknown'
+                ? '()'
+                : emptyOf(missing),
+            )
+          }
+        }
+
         // a call to a throwing function is `try!`: fatal on error (there is no catch construct), and the caller's own
         // signature stays clean. Parenthesized so the call composes inside any surrounding expression.
         if (
           node.callee.form === 'variable' &&
           throwingFns.has(node.callee.name)
         ) {
-          return `(${tryWord()} ${expr(node.callee, bind)}(${node.args
-            .map(a => expr(a, bind))
-            .join(', ')}))`
+          return `(${tryWord()} ${expr(node.callee, bind)}(${renderedArgs.join(', ')}))`
         }
 
-        return `${expr(node.callee, bind)}(${node.args
-          .map(a => expr(a, bind))
-          .join(', ')})`
+        return `${expr(node.callee, bind)}(${renderedArgs.join(', ')})`
       }
 
       case 'array': {
@@ -1068,6 +1112,35 @@ export function emitSwift(
       }
 
       case 'record': {
+        // `make hash` / `make list` with no binds are the native collections, not record constructions; the
+        // checked type pins the element parameters where swift cannot infer them (a generic function body)
+        if (node.name === 'hash' && node.fields.length === 0) {
+          const args =
+            node.type?.kind === 'map' &&
+            node.type.key.kind !== 'variable' &&
+            node.type.value.kind !== 'variable'
+              ? `<${swiftType(node.type.key)}, ${swiftType(node.type.value)}>`
+              : ''
+
+          return `SeedMap${args}()`
+        }
+
+        if (node.name === 'list' && node.fields.length === 0) {
+          // a still-FREE element stays unspelled, so swift infers it from the expected type at the use site
+          const args =
+            node.type?.kind === 'array' &&
+            node.type.element.kind !== 'variable'
+              ? `<${swiftType(node.type.element)}>`
+              : ''
+
+          return `SeedList${args}()`
+        }
+
+        // `make void` is the absent value: the unit tuple, recognized on an Any slot with `is Void`
+        if (node.name === 'void' && node.fields.length === 0) {
+          return '()'
+        }
+
         // leading-dot construction: Swift infers the enum/struct type from context
         if (variantSet.has(node.name)) {
           const labelled = node.fields.map(
@@ -1083,11 +1156,44 @@ export function emitSwift(
         // construction leaves out taking its type's empty value
         const declared = recordFields.get(node.name)
 
+        // an empty collection field value spells the DECLARED element type, since the checker's gradual
+        // unify leaves it free and the zonked default (Int) would not fit an Any-elemented field
+        const fieldValue = (name: string, value: Expression): string => {
+          // only for a non-generic form: a generic form's declared element is its own type parameter
+          if ((genericArity.get(node.name) ?? 0) > 0) {
+            return expr(value, bind)
+          }
+
+          const declaredType = declared?.find(f => f.name === name)?.type
+
+          if (
+            ((value.form === 'record' &&
+              value.fields.length === 0 &&
+              value.name === 'list') ||
+              (value.form === 'array' && value.items.length === 0)) &&
+            declaredType?.kind === 'array'
+          ) {
+            return `SeedList<${swiftType(declaredType.element)}>([])`
+          }
+
+          if (
+            ((value.form === 'record' &&
+              value.fields.length === 0 &&
+              value.name === 'hash') ||
+              (value.form === 'map' && value.entries.length === 0)) &&
+            declaredType?.kind === 'map'
+          ) {
+            return `SeedMap<${swiftType(declaredType.key)}, ${swiftType(declaredType.value)}>()`
+          }
+
+          return expr(value, bind)
+        }
+
         if (declared) {
           const given = new Map(node.fields.map(f => [f.name, f.value]))
 
           return `${pascal(node.name)}(${declared
-            .map(f => `${camel(f.name)}: ${given.has(f.name) ? expr(given.get(f.name)!, bind) : emptyOf(f.type)}`)
+            .map(f => `${camel(f.name)}: ${given.has(f.name) ? fieldValue(f.name, given.get(f.name)!) : emptyOf(f.type)}`)
             .join(', ')})`
         }
 
@@ -1114,6 +1220,11 @@ export function emitSwift(
 
         if (textLength) {
           return `${expr(textLength.target, bind)}.count`
+        }
+
+        // a LITERAL index segment (`read parts/0`) on an array target subscripts the SeedList's storage
+        if (/^\d+$/.test(node.name) && node.target.type?.kind === 'array') {
+          return `${expr(node.target, bind)}.data[${node.name}]`
         }
 
         // a matched variant's field reads the bound local; otherwise a normal field access
@@ -1217,7 +1328,11 @@ export function emitSwift(
       case 'pop':
         return `${target}.popping()`
       case 'at':
+      case 'get':
         return `${data}[${arg[0]}]`
+      case 'set':
+        // wrapped in parens so two set statements in a row do not parse as a trailing closure on the first
+        return `({ ${target}.data[${arg[0]}] = ${arg[1]} }())`
       case 'includes':
         return `${data}.contains(${arg[0]})`
       case 'indexOf':
@@ -1321,9 +1436,34 @@ export function emitSwift(
       .filter(Boolean)
       .join('\n')
 
+  // a `switch` case with no statement in its body (Term's `fork case, ... / case none` with nothing under it, a
+  // real and common shape: `maybe`'s `none` arm, an ignored variant) is a Swift compile error --
+  // "'case' label in a 'switch' must have at least one executable statement" -- unlike `if`/`while`, which accept
+  // an empty `{ }` block fine. `block` alone can't tell an arm from an ordinary block, so every match-arm body
+  // goes through this instead, which falls back to an explicit `break` only when the arm itself is empty.
+  const armBlock = (body: Statement[], d: number, bind: Bindings): string =>
+    block(body, d, bind) || `${pad(d)}break`
+
   const stmt = (node: Statement, d: number, bind: Bindings): string => {
     switch (node.form) {
       case 'let': {
+        // a valueless typed module slot (`host current, like context`, filled later by a `save`): an
+        // implicitly-unwrapped optional, so reads carry the declared class type
+        if (node.init.form === 'unit' && node.type?.kind === 'named' && node.type.name) {
+          return `var ${vname(node.name)}: ${swiftType(node.type)}!`
+        }
+
+        // the gradual boundary on a binding: a boxed dynamic re-typed at a declared FORM casts
+        if (
+          node.type?.kind === 'named' &&
+          node.init.form === 'member' &&
+          recordFields.has(node.type.name) &&
+          (node.init.type?.kind === 'unknown' ||
+            node.init.type?.kind === 'dynamic')
+        ) {
+          return `${node.mutable || assignedAnywhere.has(node.name) ? 'var' : 'let'} ${vname(node.name)} = ${expr(node.init, bind)} as! ${swiftType(node.type)}`
+        }
+
         // annotate an ADT binding so leading-dot construction has a type to infer from. An anonymous record's
         // type is `named ''` (a nested `host` constant) and cannot be spelled: no annotation, Swift infers
         const annotation =
@@ -1341,17 +1481,44 @@ export function emitSwift(
               node.value,
               bind,
             )}`
-      case 'expression':
-        return expr(node.expr, bind)
+      case 'expression': {
+        const rendered = expr(node.expr, bind)
+
+        // a VALUED call in statement position discards explicitly, or swiftc warns (and the gates treat
+        // warnings as failures)
+        if (
+          node.expr.form === 'call' &&
+          node.expr.type &&
+          node.expr.type.kind !== 'unit'
+        ) {
+          return `_ = ${rendered}`
+        }
+
+        return rendered
+      }
       case 'return':
         if (!node.value) {
-          return 'return'
+          return currentResult?.kind === 'unknown' ? 'return ()' : 'return'
         }
 
         // a list-returning function that returns a native dock call directly wraps the shim's plain Array
-        return fnReturnsArray && isNativeCall(node.value)
-          ? `return SeedList(${expr(node.value, bind)})`
-          : `return ${expr(node.value, bind)}`
+        if (fnReturnsArray && isNativeCall(node.value)) {
+          return `return SeedList(${expr(node.value, bind)})`
+        }
+
+        // the gradual boundary: an unknown-typed value returned at a DECLARED FORM type casts explicitly.
+        // Only for a form the program declares: a generic letter (`like t`) is not a cast target.
+        const valueKind = node.value.type?.kind
+        const cast =
+          node.value.form === 'member' &&
+          (valueKind === 'unknown' || valueKind === 'dynamic') &&
+          currentResult?.kind === 'named' &&
+          currentResult.name &&
+          recordFields.has(currentResult.name)
+            ? ` as! ${swiftType(currentResult)}`
+            : ''
+
+        return `return ${expr(node.value, bind)}${cast}`
       case 'throw': {
         // a raise carries the record whole in a TermException; a text raises `failure`; a caught value passes on.
         // When the program has the stdlib hive, a NEW carrier tells it before unwinding (a pass-on does not re-tell).
@@ -1410,7 +1577,7 @@ export function emitSwift(
         if (node.exceptionArms) {
           const arms = node.cases.map(b => {
             const arm = node.exceptionArms![b.label]!
-            const bodyText = block(b.body, d + 2, bind)
+            const bodyText = armBlock(b.body, d + 2, bind)
             const locals = armLocals([...arm.shared, ...arm.link], b.binds)
               .filter(({ local }) => new RegExp(`\\b${camel(local).replace(/[^\w$]/g, '\\$&')}\\b`).test(bodyText))
               .map(({ field, local }) =>
@@ -1428,6 +1595,29 @@ export function emitSwift(
           return `switch ${subject}.form {\n${arms.join('\n')}\n${pad(d)}}`
         }
 
+        // a `fork case` over a TEXT subject (`fork case, read kind` with `case home` arms): the labels are
+        // string values, matched by literal (a `default` keeps the switch exhaustive)
+        if (node.subject.type?.kind === 'string') {
+          const arms = node.cases.map(
+            b =>
+              `${pad(d + 1)}case ${JSON.stringify(b.label)}:\n${armBlock(
+                b.body,
+                d + 2,
+                bind,
+              )}`,
+          )
+
+          arms.push(
+            `${pad(d + 1)}default:${
+              node.otherwise
+                ? `\n${block(node.otherwise, d + 2, bind)}`
+                : '\n' + pad(d + 2) + 'break'
+            }`,
+          )
+
+          return `switch ${subject} {\n${arms.join('\n')}\n${pad(d)}}`
+        }
+
         const subjectVar =
           node.subject.form === 'variable'
             ? node.subject.name
@@ -1442,7 +1632,7 @@ export function emitSwift(
 
         const arms = node.cases.map(b => {
           if (booleans) {
-            return `${pad(d + 1)}case ${b.label}:\n${block(
+            return `${pad(d + 1)}case ${b.label}:\n${armBlock(
               b.body,
               d + 2,
               bind,
@@ -1467,7 +1657,7 @@ export function emitSwift(
                   .join(', ')}):`
               : `case .${camel(b.label)}:`
 
-          return `${pad(d + 1)}${pattern}\n${block(
+          return `${pad(d + 1)}${pattern}\n${armBlock(
             b.body,
             d + 2,
             branchBind,
@@ -1476,7 +1666,7 @@ export function emitSwift(
 
         if (node.otherwise) {
           arms.push(
-            `${pad(d + 1)}default:\n${block(
+            `${pad(d + 1)}default:\n${armBlock(
               node.otherwise,
               d + 2,
               bind,
@@ -1544,6 +1734,28 @@ export function emitSwift(
         const previousReturnsArray = fnReturnsArray
         fnReturnsArray = node.result?.kind === 'array'
 
+        // a task with no declared result but a valued `send back` (a dock forward) is Any, not Void
+        const result =
+          node.result && node.result.kind !== 'unit'
+            ? node.result
+            : hasValuedReturn(node.body)
+              ? ({ kind: 'unknown' } as Type)
+              : node.result
+
+        currentResult = result
+
+        // a valued task whose body ends in branching that returns from every live path: swift cannot always
+        // see the coverage (an if chain with no else), so the fall-through traps
+        const last = node.body[node.body.length - 1]
+        const unreachable =
+          (last?.form === 'if' ||
+            last?.form === 'while' ||
+            last?.form === 'match') &&
+          node.result &&
+          node.result.kind !== 'unit'
+            ? `${pad(d + 1)}fatalError("unreachable")`
+            : ''
+
         // a signature-only stub compiles: its body is the not-implemented trap
         const bodyText =
           node.body.length === 0
@@ -1551,16 +1763,18 @@ export function emitSwift(
             : [
                 ...shadows,
                 block(node.body, d + 1, new Map()),
+                unreachable,
               ]
                 .filter(Boolean)
                 .join('\n')
 
         fnReturnsArray = previousReturnsArray
 
+
         return `func ${camel(
           node.name,
         )}${generics}(${params})${asyncMark}${throwsMark} -> ${swiftType(
-          node.result,
+          result,
         )} {\n${bodyText}\n${pad(d)}}`
       }
 
@@ -1589,7 +1803,8 @@ export function emitSwift(
             }`
           })
 
-          return `enum ${pascal(node.name)}${generics} {\n${cases.join(
+          // `indirect` lets a variant hold its own enum (a linked list's `next`); harmless when nothing recurses
+          return `indirect enum ${pascal(node.name)}${generics} {\n${cases.join(
             '\n',
           )}\n${pad(d)}}`
         }
@@ -1667,6 +1882,18 @@ export function emitSwift(
     )
     .map(n => `import ${n.module.replace(/^[a-z]+:/, '')}`)
 
+  // a DOTTED opaque handle type (`dock type / load <SwiftUI.AnyView>`) names its module, which must be
+  // imported for the type to resolve
+  for (const n of program) {
+    if (n.form === 'native' && n.kind === 'type' && n.module.includes('.')) {
+      const importLine = `import ${n.module.split('.')[0]}`
+
+      if (!imports.includes(importLine)) {
+        imports.push(importLine)
+      }
+    }
+  }
+
   // a declarative binding's swift expression may need a module imported (e.g. `Foundation.pow`)
   for (const need of bindImports(
     referencedBinds(program, binds),
@@ -1686,10 +1913,124 @@ export function emitSwift(
     imports.unshift('import Foundation')
   }
 
-  const body = program
-    .filter(n => n.form !== 'native')
-    .map(n => stmt(n, 0, new Map()))
-    .filter(Boolean)
+  // a module-level `host` data tree is an ANONYMOUS nested record: with no name it emits as a labelled tuple,
+  // and a single-field tuple is not valid Swift. Synthesize one struct per record node, named by the binding
+  // and the field path (HostRange, HostRangeH), and rename the record nodes so the construction uses the
+  // memberwise init.
+  const hostStructDefs: string[] = []
+  const swiftHostLeaf = (v: Expression): string =>
+    v.form === 'integer'
+      ? 'Int'
+      : v.form === 'float'
+        ? 'Double'
+        : v.form === 'text'
+          ? 'String'
+          : v.form === 'boolean'
+            ? 'Bool'
+            : 'Int'
+  const nameHostRecord = (
+    node: Extract<Expression, { form: 'record' }>,
+    base: string,
+  ): string => {
+    node.name = base
+
+    const fields = node.fields.map(f => {
+      const type =
+        f.value.form === 'record' && f.value.name === ''
+          ? nameHostRecord(f.value, `${base}${pascal(f.name)}`)
+          : swiftHostLeaf(f.value)
+
+      return `var ${camel(f.name)}: ${type}`
+    })
+
+    hostStructDefs.push(`struct ${base} { ${fields.join('; ')} }`)
+
+    return base
+  }
+
+  for (const node of program) {
+    if (
+      node.form === 'let' &&
+      node.init.form === 'record' &&
+      node.init.name === ''
+    ) {
+      nameHostRecord(node.init, `Host${pascal(node.name)}`)
+    }
+  }
+
+  // an abstract module's signature-only declaration and the platform module's implementation share a name by
+  // design (platform dispatch): the stub yields to the implementation instead of redeclaring it
+  const implemented = new Set(
+    program
+      .filter(
+        (n): n is Extract<Statement, { form: 'function' }> =>
+          n.form === 'function' && n.body.length > 0,
+      )
+      .map(n => n.name),
+  )
+
+
+  // a form declared in an abstract module AND its platform module lands twice in the closure: the empty
+  // declaration yields to the full one, and an exact repeat keeps only its first appearance
+  const fullForms = new Set(
+    program
+      .filter(
+        (n): n is Extract<Statement, { form: 'record-type' }> =>
+          n.form === 'record-type' &&
+          (n.fields.length > 0 || n.variants.length > 0),
+      )
+      .map(n => n.name),
+  )
+  const seenForms = new Set<string>()
+  // a module collected twice (two import spellings of one file) emits its functions twice: keep the first
+  const seenFns = new Set<string>()
+  const keepStatement = (n: Statement): boolean => {
+    if (n.form === 'function') {
+      const key = `${n.name}/${n.params.length}`
+
+      if (seenFns.has(key)) {
+        return false
+      }
+
+      seenFns.add(key)
+    }
+
+    if (n.form !== 'record-type') {
+      return true
+    }
+
+    if (
+      n.fields.length === 0 &&
+      n.variants.length === 0 &&
+      fullForms.has(n.name)
+    ) {
+      return false
+    }
+
+    if (seenForms.has(n.name)) {
+      return false
+    }
+
+    seenForms.add(n.name)
+
+    return true
+  }
+
+  const body = [
+    ...hostStructDefs,
+    ...program
+      .filter(n => n.form !== 'native')
+      .filter(
+        n =>
+          !(
+            n.form === 'function' &&
+            n.body.length === 0 &&
+            implemented.has(n.name)
+          ),
+      )
+      .filter(keepStatement)
+      .map(n => stmt(n, 0, new Map())),
+  ].filter(Boolean)
 
   const prelude: string[] = []
 

@@ -1,162 +1,130 @@
+note draft
+# Checked spec, not compiled code — see ../head/mine.tree's note. The real reader is ./code.tree's
+# read-otf-os2-table, proven by deck/feed/test/otf-os2.tree (both an unversioned and a fully-versioned table).
+# Replaces the old pre-rename draft entirely. Through version 2 only, matching ./code.tree. This is the file
+# note/term/feed/01-grammar.md's `mine maybe` / `test is-minimum` example is drawn from — the real thing, not a
+# standalone sketch.
 
 mine os2-table
-  mine form, form version
-    weave version
-  mine form, form x-average-character-width
-  mine form, form us-weight-form
-  mine form, form us-width-form
-  mine form, form fs-type
-  mine form, form y-subscript-x-size
-  mine form, form y-subscript-y-size
-  mine form, form ySubscriptXOffset
-  mine form, form ySubscriptYOffset
-  mine form, form ySuperscriptXSize
-  mine form, form ySuperscriptYSize
-  mine form, form ySuperscriptXOffset
-  mine form, form ySuperscriptYOffset
-  mine form, form yStrikeoutSize
-  mine form, form yStrikeoutPosition
-  mine form, form sFamilyform
-  mine chain
-    bind front, share 10
-    mine form, form panose
-  mine form, form ulUnicodeRange1
-  mine form, form ulUnicodeRange2
-  mine form, form ulUnicodeRange3
-  mine form, form ulUnicodeRange4
-  mine form, form achVendID
-  mine form, form fsSelection
-  mine form, form usFirstCharIndex
-  mine form, form usLastCharIndex
-  mine form, form sTypoAscender
-  mine form, form sTypoDescender
-  mine form, form sTypoLineGap
-  mine form, form usWinAscent
-  mine form, form usWinDescent
-  check gte
-    bind start, share version
-    bind front, share 1
-    mine form, form ulCodePageRange1
-    mine form, form ulCodePageRange2
-
-  check gte
-    bind start, share version
-    bind front, share 2
-    mine form, form sxHeight
-    mine form, form sCapHeight
-    mine form, form usDefaultChar
-    mine form, form usBreakChar
-    mine form, form usMaxContent
-
-mine version
   mine form, form ushort
-
-mine x-average-character-width
+    send version
   mine form, form short
-
-mine us-weight-form
+    send x-avg-char-width
   mine form, form ushort
-
-mine us-width-form
+    send us-weight-class
   mine form, form ushort
-
-mine fs-type
+    send us-width-class
   mine form, form ushort
-
-mine y-subscript-size-x
+    send fs-type
   mine form, form short
-
-mine y-subscript-y-size
+    send y-subscript-x-size
   mine form, form short
-
-mine ySubscriptXOffset
+    send y-subscript-y-size
   mine form, form short
-
-mine ySubscriptYOffset
+    send y-subscript-x-offset
   mine form, form short
-
-mine ySuperscriptXSize
+    send y-subscript-y-offset
   mine form, form short
-
-mine ySuperscriptYSize
+    send y-superscript-x-size
   mine form, form short
-
-mine ySuperscriptXOffset
+    send y-superscript-y-size
   mine form, form short
-
-mine ySuperscriptYOffset
+    send y-superscript-x-offset
   mine form, form short
-
-mine yStrikeoutSize
+    send y-superscript-y-offset
   mine form, form short
-
-mine yStrikeoutPosition
+    send y-strikeout-size
   mine form, form short
-
-mine sFamilyform
+    send y-strikeout-position
   mine form, form short
-
-mine panose
-  mine form, form byte
-
-mine achVendID
-  mine chain
-    bind front, share 4
-    mine form, form byte
-
-mine ulUnicodeRange1
-  mine form, form ulong
-
-mine ulUnicodeRange2
-  mine form, form ulong
-
-mine ulUnicodeRange3
-  mine form, form ulong
-
-mine ulUnicodeRange4
-  mine form, form ulong
-
-mine fsSelection
+    send s-family-class
+  mine bytes
+    bind width, code 10
+    send panose
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send ul-unicode-range-1
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send ul-unicode-range-2
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send ul-unicode-range-3
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send ul-unicode-range-4
+  mine bytes
+    bind width, code 4
+    send ach-vend-id
   mine form, form ushort
-
-mine usFirstCharIndex
+    send fs-selection
   mine form, form ushort
-
-mine usLastCharIndex
+    send us-first-char-index
   mine form, form ushort
-
-mine sTypoAscender
+    send us-last-char-index
   mine form, form short
-
-mine sTypoDescender
+    send s-typo-ascender
   mine form, form short
-
-mine sTypoLineGap
+    send s-typo-descender
   mine form, form short
-
-mine usWinAscent
+    send s-typo-line-gap
   mine form, form ushort
-
-mine usWinDescent
+    send us-win-ascent
   mine form, form ushort
-
-mine ulCodePageRange1
-  mine form, form ulong
-
-mine ulCodePageRange2
-  mine form, form ulong
-
-mine sxHeight
-  mine form, form short
-
-mine sCapHeight
-  mine form, form short
-
-mine usDefaultChar
-  mine form, form ushort
-
-mine usBreakChar
-  mine form, form ushort
-
-mine usMaxContent
-  mine form, form ushort
+    send us-win-descent
+  mine maybe
+    test is-minimum
+      bind base, read version
+      bind head, code 1
+    mine int
+      bind width, code 4
+      bind order, term big
+      bind sign, term unsigned
+    send ul-code-page-range-1
+  mine maybe
+    test is-minimum
+      bind base, read version
+      bind head, code 1
+    mine int
+      bind width, code 4
+      bind order, term big
+      bind sign, term unsigned
+    send ul-code-page-range-2
+  mine maybe
+    test is-minimum
+      bind base, read version
+      bind head, code 2
+    mine form, form short
+    send sx-height
+  mine maybe
+    test is-minimum
+      bind base, read version
+      bind head, code 2
+    mine form, form short
+    send s-cap-height
+  mine maybe
+    test is-minimum
+      bind base, read version
+      bind head, code 2
+    mine form, form ushort
+    send us-default-char
+  mine maybe
+    test is-minimum
+      bind base, read version
+      bind head, code 2
+    mine form, form ushort
+    send us-break-char
+  mine maybe
+    test is-minimum
+      bind base, read version
+      bind head, code 2
+    mine form, form ushort
+    send us-max-context

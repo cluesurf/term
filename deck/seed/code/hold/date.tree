@@ -1,3 +1,6 @@
+# SHELVED 2026-08-30 (file-level, the hold/ tree itself is IN the build now): this file still uses names or
+# syntax the resolver refuses. Delete `note draft` once its body is finished.
+note draft
 
 load @term/seed/code/math
   find round-down
@@ -192,18 +195,21 @@ form date
 
   task get-millisecond
     take self
-    call add
-      call multiply
-        read self/second
-        code 1000
-      read self/millisecond
+    send back
+      call add
+        call multiply
+          read self/second
+          code 1000
+        read self/millisecond
 
   task get-day
     take self
-    call round-down
-      call divide
-        call self/get-millisecond
-        read milliseconds-per-day
+    send back
+      call round-down
+        call divide
+          call get-millisecond
+            read self
+          read milliseconds-per-day
 
 #   function YearFromTime(time) {
 #   return FromJulianDay(Day(time) + kDayZeroInJulianDay).year;

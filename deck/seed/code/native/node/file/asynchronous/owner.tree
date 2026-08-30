@@ -1,4 +1,7 @@
 
+load @term/seed/code/file/owner
+  find file-owner
+
 dock load
   load <node:fs/promises>, name fs-promise
 

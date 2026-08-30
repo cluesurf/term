@@ -46,6 +46,8 @@ const ARRAY_METHODS = new Set([
   'push',
   'pop',
   'at',
+  'get',
+  'set',
   'includes',
   'indexOf',
   'lastIndexOf',
@@ -453,4 +455,73 @@ export function refuseAny(spec: FormSpec, backend: string): void {
   }
 
   spec.fields.forEach(f => walk(f.kind, `field "${f.name}" of "${spec.form}"`))
+}
+
+// does any path of this body `return <value>`? A task with no declared result but a valued return still
+// needs a non-void native result type (the gradual Any / boxed dynamic).
+export function hasValuedReturn(body: import('@term/make/code/compile/node').Statement[]): boolean {
+  for (const s of body) {
+    switch (s.form) {
+      case 'return': {
+        // a `send back <unit call>` forwards nothing: not a valued return. An await's type rides on the
+        // inner call when the await node itself was not typed.
+        const returned =
+          s.value?.form === 'await'
+            ? (s.value.type ?? s.value.expr.type)
+            : s.value?.type
+
+        // only a KNOWN CONCRETE non-unit type counts: an untyped or unknown-typed dock forward may be a
+        // unit shim, and guessing valued turns `return io::file_write(...)` into a type error. A valued
+        // dock forward annotates its task (`like unknown`) instead.
+        if (
+          s.value &&
+          returned &&
+          returned.kind !== 'unit' &&
+          returned.kind !== 'unknown'
+        ) {
+          return true
+        }
+
+        break
+      }
+      case 'if':
+        if (
+          s.branches.some(b => hasValuedReturn(b.body)) ||
+          (s.otherwise && hasValuedReturn(s.otherwise))
+        ) {
+          return true
+        }
+
+        break
+      case 'while':
+      case 'for-each':
+        if (hasValuedReturn(s.body)) {
+          return true
+        }
+
+        break
+      case 'match':
+        if (
+          s.cases.some(c => hasValuedReturn(c.body)) ||
+          (s.otherwise && hasValuedReturn(s.otherwise))
+        ) {
+          return true
+        }
+
+        break
+      case 'guard':
+        if (
+          hasValuedReturn(s.body) ||
+          (s.catch && hasValuedReturn(s.catch.body))
+        ) {
+          return true
+        }
+
+        break
+      default:
+        break
+    }
+  }
+
+  return false
 }

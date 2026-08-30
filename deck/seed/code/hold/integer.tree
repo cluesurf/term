@@ -176,11 +176,13 @@ task mix-for-power-rounding
   take a
   take b
   note private
-  call bitwise-or
-    read a
-    call shift-right
+  like number
+  send back
+    call bitwise-or
       read a
-      read b
+      call shift-right
+        read a
+        read b
 
 # Euclidean algorithm. The swaps were written as assignments nested inside call arguments, which is not an
 # expression, so each is now its own statement through a temporary.
@@ -308,7 +310,18 @@ tree rotate
 host binary-reversal-table, call make-reversal-table
 
 task make-reversal-table
-  save table, make list-mark-8, code 256
+  save table
+    make list
+  save fill, code 0
+  walk test
+    hook test
+      call is-below
+        read fill
+        code 256
+    hook hold
+      call table/push
+        code 0
+      save fill, call increment(read fill)
   save i, code 0
   walk test
     hook test
@@ -353,7 +366,7 @@ task make-reversal-table
             read r
             read s
           code 255
-      save i, call add(read i)
+      save i, call increment(read i)
   send back, read table
 
 save binary-trailing-zero-magic-number, code 0x077cb531
@@ -412,6 +425,7 @@ task count-trailing-ones-8
 
 task count-leading-zeroes-32
   take n
+  like number
 
   save r
     call binary-leading-zero-table/get
@@ -463,6 +477,7 @@ task count-leading-zeroes-32
 
 task count-leading-zeroes-16
   take n
+  like number
   save r
     call binary-leading-zero-table/get
       call unsigned-shift-right
@@ -485,18 +500,22 @@ task count-leading-zeroes-16
 
 task count-leading-zeroes-8
   take n
-  call binary-leading-zero-table/get
-    read n
+  like number
+  send back
+    call binary-leading-zero-table/get
+      read n
 
 task count-leading-ones-32
   take n
-  call count-leading-zeroes-32
-    call bitwise-and
-      call unsigned-shift-right
-        call bitwise-not
-          read n
-        code 0
-      code 0xffffffff
+  like number
+  send back
+    call count-leading-zeroes-32
+      call bitwise-and
+        call unsigned-shift-right
+          call bitwise-not
+            read n
+          code 0
+        code 0xffffffff
 
 task count-leading-ones-16
   take n
@@ -521,8 +540,20 @@ task count-leading-ones-8
       code 0xff
 
 task make-leading-zero-table
-  save i, code 0
-  save table, make uint8-array, code 256
+  save i
+    code 0
+  save table
+    make list
+  save fill, code 0
+  walk test
+    hook test
+      call is-below
+        read fill
+        code 256
+    hook hold
+      call table/push
+        code 0
+      save fill, call increment(read fill)
   walk test
     hook test
       call is-below
@@ -557,7 +588,8 @@ task make-de-bruijn-trailing-zero-table
     call power
       code 2
       read exponent
-  save table, make array(read n)
+  save table
+    make hash
   save i, code 0
   walk test
     hook test
@@ -581,7 +613,18 @@ task make-de-bruijn-trailing-zero-table
 host binary-count-one-table, call make-binary-count-one-table
 
 task make-binary-count-one-table
-  save table, make uint8-array, code 256
+  save table
+    make list
+  save fill, code 0
+  walk test
+    hook test
+      call is-below
+        read fill
+        code 256
+    hook hold
+      call table/push
+        code 0
+      save fill, call increment(read fill)
   save i, code 0
   walk test
     hook test
@@ -606,32 +649,33 @@ task make-binary-count-one-table
 
 task count-one-bits-32
   take x
-
-  call add
+  like number
+  send back
     call add
       call add
-        call binary-count-one-table/get
-          call bitwise-and
-            read x
-            code 0xff
+        call add
+          call binary-count-one-table/get
+            call bitwise-and
+              read x
+              code 0xff
+          call binary-count-one-table/get
+            call bitwise-and
+              call shift-right
+                read x
+                code 8
+              code 0xff
         call binary-count-one-table/get
           call bitwise-and
             call shift-right
               read x
-              code 8
+              code 16
             code 0xff
       call binary-count-one-table/get
         call bitwise-and
           call shift-right
             read x
-            code 16
+            code 24
           code 0xff
-    call binary-count-one-table/get
-      call bitwise-and
-        call shift-right
-          read x
-          code 24
-        code 0xff
 
 task count-one-bits-16
   take x
@@ -818,7 +862,8 @@ task walk-bits
       take value
       take index
   save i, code 0
-  save n, read self/bit-capacity
+  # a 32-bit mask: the module's bit vocabulary is 32-wide throughout
+  save n, code 32
   walk test
     hook test
       call is-below
@@ -832,15 +877,17 @@ task walk-bits
       call step
         read v
         read i
-      save i, call add(read i)
+      save i, call increment(read i)
 
 task is-bit-set
   take mark
   take position
-  call is-unequal
-    call bitwise-and
-      read mark
-      call shift-left
-        code 1
-        read position
-    code 0
+  like boolean
+  send back
+    call is-unequal
+      call bitwise-and
+        read mark
+        call shift-left
+          code 1
+          read position
+      code 0

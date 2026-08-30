@@ -1,3 +1,8 @@
+load @term/mill/code/code/bind/mine
+  find bind
+
+load @term/mill/code/code/seed/seed/mine
+  find host
 
 load @term/mill/code/code/call/mine
   find line
@@ -11,6 +16,9 @@ load @term/mill/code/code/tool/flow/mine
 load @term/mill/code/code/task/mine
   find task
 
+load @term/mill/code/code/take/mine
+  find take
+
 mine hook
   mine term, term hook
     mine term
@@ -18,6 +26,15 @@ mine hook
     mine maybe
       mine term, term name
         site fork-name
+    mine list
+      mine form, like take
+        site take
+    mine list
+      mine form, like host
+        site host
+    mine list
+      mine form, like bind
+        site bind
     mine list
       mine form, like base
         site base

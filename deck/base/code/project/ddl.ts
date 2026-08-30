@@ -235,6 +235,18 @@ export function createBookkeeping(dialect: Dialect): Array<string> {
     // projection rather than about the process.
     `ALTER TABLE ${quote(BOOKKEEPING_TABLE)} ADD COLUMN IF NOT EXISTS "pinned_commit" ${text}`,
     `ALTER TABLE ${quote(BOOKKEEPING_TABLE)} ADD COLUMN IF NOT EXISTS "pinned_reason" ${text}`,
+    // When this projection was last PROVED to rebuild identically, and at which commit.
+    //
+    // The rebuild proof is what licenses reading from a projection at all, and it used to run
+    // and then forget. So nothing could tell a projection proved last night from one proved
+    // six months ago, and "we proved it" quietly became permanent. Recorded here, beside the
+    // watermark, because it is a fact about this projection rather than about a run.
+    `ALTER TABLE ${quote(BOOKKEEPING_TABLE)} ADD COLUMN IF NOT EXISTS "proved_commit" ${text}`,
+    `ALTER TABLE ${quote(BOOKKEEPING_TABLE)} ADD COLUMN IF NOT EXISTS "proved" TIMESTAMPTZ`,
+    // Which tables that proof covered, comma separated and sorted. A proof run names the
+    // tables it rebuilds, so a bare "proved" would claim the whole projection on the
+    // strength of one table. Recording the list keeps the claim the size it actually is.
+    `ALTER TABLE ${quote(BOOKKEEPING_TABLE)} ADD COLUMN IF NOT EXISTS "proved_table" ${text}`,
     `CREATE TABLE IF NOT EXISTS ${quote(`${BOOKKEEPING_TABLE}_log`)} (
   "repository" ${uuid} NOT NULL,
   "commit" ${text} NOT NULL,

@@ -17,7 +17,6 @@ bind do-parse
   case browser
     text <new URL($href, $base)>
   case rust
-    load <url::Url>
     text <url::Url::parse($base).unwrap().join(&$href).unwrap()>
   case swift
     load <Foundation>
@@ -33,11 +32,11 @@ bind do-scheme
   case browser
     text <$handle.protocol.replace(":", "")>
   case rust
-    text <$handle.scheme().to_string()>
+    text <$handle.downcast_ref::<url::Url>().unwrap().scheme().to_string()>
   case swift
-    text <$handle.scheme ?? "">
+    text <($handle as! URLComponents).scheme ?? "">
   case kotlin
-    text <$handle.scheme ?: "">
+    text <($handle as java.net.URI).scheme ?: "">
 
 bind do-host
   take handle, like url-handle
@@ -47,11 +46,11 @@ bind do-host
   case browser
     text <$handle.hostname>
   case rust
-    text <$handle.host_str().unwrap_or("").to_string()>
+    text <$handle.downcast_ref::<url::Url>().unwrap().host_str().unwrap_or("").to_string()>
   case swift
-    text <$handle.host ?? "">
+    text <($handle as! URLComponents).host ?? "">
   case kotlin
-    text <$handle.host ?: "">
+    text <($handle as java.net.URI).host ?: "">
 
 bind do-port
   take handle, like url-handle
@@ -61,11 +60,11 @@ bind do-port
   case browser
     text <$handle.port>
   case rust
-    text <$handle.port().map(|p| p.to_string()).unwrap_or_default()>
+    text <$handle.downcast_ref::<url::Url>().unwrap().port().map(|p| p.to_string()).unwrap_or_default()>
   case swift
-    text <$handle.port.map { String($0) } ?? "">
+    text <($handle as! URLComponents).port.map { String($0) } ?? "">
   case kotlin
-    text <if ($handle.port == -1) "" else $handle.port.toString()>
+    text <if (($handle as java.net.URI).port == -1) "" else ($handle as java.net.URI).port.toString()>
 
 bind do-path
   take handle, like url-handle
@@ -75,11 +74,11 @@ bind do-path
   case browser
     text <$handle.pathname>
   case rust
-    text <$handle.path().to_string()>
+    text <$handle.downcast_ref::<url::Url>().unwrap().path().to_string()>
   case swift
-    text <$handle.path>
+    text <($handle as! URLComponents).path>
   case kotlin
-    text <$handle.path ?: "">
+    text <($handle as java.net.URI).path ?: "">
 
 bind do-query
   take handle, like url-handle
@@ -89,11 +88,11 @@ bind do-query
   case browser
     text <$handle.search.replace("?", "")>
   case rust
-    text <$handle.query().unwrap_or("").to_string()>
+    text <$handle.downcast_ref::<url::Url>().unwrap().query().unwrap_or("").to_string()>
   case swift
-    text <$handle.query ?? "">
+    text <($handle as! URLComponents).query ?? "">
   case kotlin
-    text <$handle.query ?: "">
+    text <($handle as java.net.URI).query ?: "">
 
 bind do-fragment
   take handle, like url-handle
@@ -103,11 +102,11 @@ bind do-fragment
   case browser
     text <$handle.hash.replace("#", "")>
   case rust
-    text <$handle.fragment().unwrap_or("").to_string()>
+    text <$handle.downcast_ref::<url::Url>().unwrap().fragment().unwrap_or("").to_string()>
   case swift
-    text <$handle.fragment ?? "">
+    text <($handle as! URLComponents).fragment ?? "">
   case kotlin
-    text <$handle.fragment ?: "">
+    text <($handle as java.net.URI).fragment ?: "">
 
 # a parsed URL: its parts read off the opaque platform object
 form url

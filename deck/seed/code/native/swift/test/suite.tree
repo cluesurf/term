@@ -1,9 +1,9 @@
 
 load @term/seed/code/native/shared/test/suite
   find init
-  find describe, name shared-describe
+  find suite-describe, name shared-describe
   find register
-  find run, name shared-run
+  find suite-run, name shared-run
 load @term/seed/code/test/suite
   find report
 

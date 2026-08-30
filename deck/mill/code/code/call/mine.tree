@@ -1,3 +1,5 @@
+load @term/mill/code/code/halt/mine
+  find halt
 
 load @term/mill/code/code/bind/mine
   find bind
@@ -13,18 +15,20 @@ load @term/mill/code/code/wait/mine
 
 mine call
   mine term, term call
-    mine term
+    mine path
       site name
-    mine case
-      mine form, like wait
     mine list
       mine any
-        mine form, like base
+        mine form, like wait
+          site wait
         mine form, like bind
           site bind
-    mine list
-      mine form, like hook
-        site hook
+        mine form, like hook
+          site hook
+        mine form, like halt
+          site halt
+        mine form, like seed
+          site seed
 
 mine line
   mine term, term line

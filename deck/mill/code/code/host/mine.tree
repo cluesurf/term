@@ -14,7 +14,7 @@ load @term/mill/code/code/note/mine
 load @term/mill/code/code/seed/mine
   find seed
 
-mine host
+mine host-def
   mine list
     mine any
       mine form, like host-form

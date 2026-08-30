@@ -1,3 +1,9 @@
+load @term/mill/code/code/like/mine
+  find like
+
+load @term/mill/code/code/seed/mine
+  find seed
+
 load @term/mill/code/code/form/link/mine
   find link
 
@@ -8,7 +14,7 @@ mine base
       site name
     mine maybe
       mine any
-        mine form, like list
+        mine form, like case-list
           site list
         mine form, like draw
           site draw
@@ -17,19 +23,19 @@ mine base
         mine form, like take
           site take
     mine maybe
-      mine form, like free
+      mine form, like case-free
         site free
     mine maybe
       mine form, like fall
         site fall
 
-mine head
+mine case-head
   mine term, term head
     mine term
       site name
     mine maybe
       mine any
-        mine form, like list
+        mine form, like case-list
           site list
         mine form, like draw
           site draw
@@ -38,19 +44,19 @@ mine head
         mine form, like take
           site take
     mine maybe
-      mine form, like free
+      mine form, like case-free
         site free
     mine maybe
       mine form, like fall
         site fall
 
-mine host
+mine base-host
   mine term, term host
     mine term
       site name
     mine maybe
       mine any
-        mine form, like list
+        mine form, like case-list
           site list
         mine form, like draw
           site draw
@@ -60,7 +66,7 @@ mine host
       mine form, like fall
         site fall
 
-mine list
+mine case-list
   mine term, term list
     mine term
       site form
@@ -70,7 +76,7 @@ mine draw
     mine term
       site form
 
-mine free
+mine case-free
   mine term, term free
     mine term
       site term
@@ -79,6 +85,24 @@ mine case
   mine term, term case
     mine term
       site name
+    mine maybe
+      mine form, like like
+        site like
+    mine maybe
+      mine form, like seed
+        site seed
     mine list
-      mine form, like link
-        site link
+      mine any
+        mine form, like link
+          site link
+        mine form, like case-hold
+          site hold
+
+# `hold same` inside a proof case: a named witness with its type
+mine case-hold
+  mine term, term hold
+    mine term
+      site name
+    mine list
+      mine form, like like
+        site like

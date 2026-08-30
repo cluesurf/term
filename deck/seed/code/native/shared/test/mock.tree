@@ -11,14 +11,26 @@ form call-record
 form mock-data
   link returns
   link handler, need false
-  link calls, like list
+  link calls
+    like list
+      like call-record
 
 # the mock a caller holds: its data rides in the opaque `dock` handle
 form mock
   link dock, mark private
 
-task make
-  take returns, need false
+
+# the mock's data, typed out of the opaque dock handle (the gradual `unknown` coerces at a declared boundary)
+task data-of
+  note private
+  take mock, like mock
+  like mock-data
+  send back, read mock/dock
+
+task make-mock
+  take returns
+    like unknown
+    need false
   take handler, like task, need false
   like mock
   save data
@@ -34,8 +46,12 @@ task make
 task read
   take mock, like mock
   take field, like text, fall text <calls>
+  # the answer is the field asked for: the calls list, a count, the last record, or its arguments
+  like unknown
 
-  save data, read mock/dock
+  save data
+    call data-of
+      read mock
   save calls, read data/calls
 
   fork test
@@ -107,7 +123,9 @@ task read
 
 task reset
   take mock, like mock
-  save data, read mock/dock
+  save data
+    call data-of
+      read mock
   save calls, read data/calls
   call clear
     read calls

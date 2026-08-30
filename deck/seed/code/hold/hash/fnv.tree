@@ -4,17 +4,18 @@ dock load
 
 load @term/seed/code/bit
   find bitwise-and
+  find bitwise-or
   find shift-left
   find shift-right
   find unsigned-shift-right
 
 task fnv-hash-32-1a
-  take v
+  take v, like text
   take seed
   save a
     call bitwise-exclusive-or
       code 2166136261
-      call or
+      call bitwise-or
         read seed
         code 0
   save i, code 0
@@ -25,7 +26,7 @@ task fnv-hash-32-1a
         read i
         read n
     hook hold
-      save c, call v/get(read i)
+      save c, call v/char-code-at(read i)
       save d
         call bitwise-and
           read c

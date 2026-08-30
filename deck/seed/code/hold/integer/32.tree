@@ -9,7 +9,7 @@ load @term/seed/code/bit
   find shift-right
 
 task is-bit-count-odd
-  take x, like mark-32
+  take x, like u32
   save x
     call bitwise-exclusive-or
       call shift-right
@@ -52,7 +52,7 @@ task get-next-power-of-two
         read n
         code 0
     hook hold
-      send back, read 1
+      send back, code 1
   save n, call decrement(read n)
   save n
     call bitwise-or

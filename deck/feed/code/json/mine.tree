@@ -1,169 +1,55 @@
-
-mine json
-  mine form, form value
+note draft
+# Checked spec, not compiled code: see the note at the top of ../hex/mine.tree. The real reader is ./code.tree's
+# read-json / parse-json-value, RFC 8259, case names matching ./form.tree's prefixed json-* names.
 
 mine value
-  look after
+  mine any
     mine form, form string
     mine form, form number
     mine form, form object
     mine form, form array
-    mine form, form boolean
+    mine form, form true
+    mine form, form false
     mine form, form null
 
 mine string
-  mine form, form quote
+  mine char, text <">
   mine list
-    look after
-      mine form, form esc
-      mine form, form safe-code-point
-  mine form, form quote
+    mine any
+      mine form, form escape
+      mine form, form safe-char
+  mine char, text <">
 
-mine quote
-  mine #x0022
-
-mine safe-code-point
+mine safe-char
   mine not
-    look after
-      mine <">
-      mine <\\>
-      mine range
-        bind base, #x0000
-        bind head, #x001F
-
-mine number
-  mine not, mine form, form minus-sign
-  look after
-    mine form, form float
-    mine form, form integer
-  mine not, mine form, form exponent
-
-mine float
-  mine form, form integer
-  mine form, form decimal-point
-  mine list
-    bind base, text 1
-    mine form, form zero-through-nine
-
-mine zero-through-nine
+    mine any
+      mine char, text <">
+      mine char, text <\\>
   mine range
-    bind base, text #x0030
-    bind head, text #x0039
+    bind base, code 0x0020
+    bind head, code 0x10ffff
 
-mine one-through-nine
-  mine range
-    bind base, text #x0031
-    bind head, text #x0039
+mine escape
+  mine char, text <\\>
+  mine any
+    mine char, text <">
+    mine char, text <\\>
+    mine char, text </>
+    mine char, text <b>
+    mine char, text <f>
+    mine char, text <n>
+    mine char, text <r>
+    mine char, text <t>
+    mine form, form unicode-escape
 
-mine minus-sign
-  mine #x002D
-
-mine decimal-point
-  mine #x002E
-
-mine integer
-  look after
-    mine #x0030
-    mine form, form nonzero-integer
-
-mine nonzero-integer
-  mine form, form one-through-nine
-  mine list
-    mine form, form zero-through-nine
-
-mine exponent
-  look after
-    mine <E>
-    mine <e>
-  mine not, mine form, form sign
-  mine form, form integer
-
-mine sign
-  look after
-    mine <+>
-    mine <->
-
-mine object
-  mine form, form open-brace
-  mine list, mine form, form whitespace
-  mine not
-    mine form, form pair
-    mine list, mine form, form whitespace
-    mine flow
-      mine list, mine form, form whitespace
-      mine form, form comma
-      mine list, mine form, form whitespace
-      mine form, form pair
-      mine list, mine form, form whitespace
-  mine form, form close-brace
-
-mine comma
-  mine #x002C
-
-mine open-brace
-  mine #x007B
-
-mine close-brace
-  mine #x007D
-
-mine pair
-  mine form, form string
-  mine list, mine form, form whitespace
-  mine form, form colon
-  mine list, mine form, form whitespace
-  mine form, form value
-
-mine colon
-  mine <:>
-
-mine array
-  mine #x005B
-  mine list, mine form, form whitespace
-  mine not
-    mine form, form value
-    mine flow
-      mine form, form comma
-      mine form, form value
-  mine list, mine form, form whitespace
-  mine #x005D
-
-mine boolean
-  look after
-    mine <true>
-    mine <false>
-
-mine null
-  mine <null>
-
-mine whitespace
-  look after
-    mine #x0009
-    mine #x000A
-    mine #x000D
-    mine #x0020
-
-mine esc
-  mine <\\>
-  look after
-    look after
-      mine <">
-      mine <\\>
-      mine </>
-      mine <b>
-      mine <f>
-      mine <n>
-      mine <r>
-      mine <t>
-    mine form, form unicode
-
-mine unicode
-  mine <u>
+mine unicode-escape
+  mine char, text <u>
   mine mark
-    bind mark, mark 4
-    mine form, form hex
+    bind width, code 4
+    mine form, form hex-digit
 
-mine hex
-  look after
+mine hex-digit
+  mine any
     mine range
       bind base, text <0>
       bind head, text <9>
@@ -173,3 +59,85 @@ mine hex
     mine range
       bind base, text <A>
       bind head, text <F>
+
+mine number
+  take value, like text
+  bind value
+    mine text
+      mine maybe
+        mine char, text <->
+      mine form, form digits
+      mine maybe
+        mine char, text <.>
+        mine form, form digits
+      mine maybe
+        mine any
+          mine char, text <e>
+          mine char, text <E>
+        mine maybe
+          mine any
+            mine char, text <+>
+            mine char, text <->
+        mine form, form digits
+
+mine digits
+  mine list
+    mine range
+      bind base, text <0>
+      bind head, text <9>
+
+mine object
+  mine char, text <{>
+  mine list, mine form, form whitespace
+  mine maybe
+    mine form, form pair
+    mine list
+      mine list, mine form, form whitespace
+      mine char, text <,>
+      mine list, mine form, form whitespace
+      mine form, form pair
+    send pairs
+  mine list, mine form, form whitespace
+  mine char, text <}>
+
+mine pair
+  take key, like text
+  take value, like value
+  mine list, mine form, form whitespace
+  bind key
+    mine form, form string
+  mine list, mine form, form whitespace
+  mine char, text <:>
+  mine list, mine form, form whitespace
+  bind value
+    mine form, form value
+
+mine array
+  mine char, text <[>
+  mine list, mine form, form whitespace
+  mine maybe
+    mine form, form value
+    mine list
+      mine list, mine form, form whitespace
+      mine char, text <,>
+      mine list, mine form, form whitespace
+      mine form, form value
+    send items
+  mine list, mine form, form whitespace
+  mine char, text <]>
+
+mine true
+  mine text, text <true>
+
+mine false
+  mine text, text <false>
+
+mine null
+  mine text, text <null>
+
+mine whitespace
+  mine any
+    mine char, code 0x0020
+    mine char, code 0x0009
+    mine char, code 0x000a
+    mine char, code 0x000d

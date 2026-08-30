@@ -26,9 +26,14 @@ mine view-seed-text
     mine text
       site text
 
+# a number is a bare literal (`20`) or the `code` spelling (`code 20`), and the reader takes both
 mine view-seed-mark
-  mine code
-    site value
+  mine any
+    mine code
+      site value
+    mine term, term code
+      mine code
+        site value
 
 mine view-seed-wave
   mine any

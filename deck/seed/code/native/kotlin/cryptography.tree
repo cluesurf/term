@@ -8,6 +8,7 @@ dock load
 task digest
   take algorithm, like text
   take data, like text
+  like text
 
   send back
     call cryptography/digest
@@ -16,6 +17,7 @@ task digest
 
 task random-bytes
   take size, like size
+  like bytes
 
   send back
     call cryptography/random-bytes

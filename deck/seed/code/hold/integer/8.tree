@@ -23,7 +23,7 @@ task reverse
         code 4
 
 task is-bit-count-odd
-  take x, like integer-8
+  take x, like i8
   save x
     call bitwise-exclusive-or
       call shift-right
@@ -55,28 +55,29 @@ task count-zeroes-in-integer-8
 
 task count-ones-in-integer-8
   take i
-  free seed, like integer-8
-  call add
+  like number
+  send back
     call add
       call add
+        call add
+          call bitwise-and
+            call shift-right
+              read i
+              code 3
+            code 1
+          call bitwise-and
+            call shift-right
+              read i
+              code 2
+            code 1
         call bitwise-and
           call shift-right
             read i
-            code 3
-          code 1
-        call bitwise-and
-          call shift-right
-            read i
-            code 2
+            code 1
           code 1
       call bitwise-and
-        call shift-right
-          read i
-          code 1
+        read i
         code 1
-    call bitwise-and
-      read i
-      code 1
 
 task reverse-bits-byte
   take n

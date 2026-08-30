@@ -1,0 +1,739 @@
+# The real, compiling reader and writer for the PDF object model (`./form.tree`). `pdf-cursor` duplicates
+# `../../json/code`'s `text-cursor` shape rather than importing it — `json/code.tree`'s own header already
+# flagged hoisting that cursor to a shared location "once a second text dialect needs the same shape, not
+# before"; this is that second dialect, but the hoist itself stays a separate, deliberate step (`07-
+# implementation.md`), not bundled into landing the object model.
+#
+# The one genuinely ambiguous grammar point PDF has that JSON doesn't: a bare integer can be either a NUMBER or
+# the first half of an INDIRECT REFERENCE (`12 0 R`), and there is no way to tell which without reading past it.
+# `parse-pdf-number-or-reference` reads the number, tries the "generation R" continuation, and rewinds the
+# cursor's position (a plain integer save/restore against the list-backed position cell, not a full mutable-
+# struct copy, so it doesn't touch `feedback_term_rust_swift_struct_field_mutation_bug` at all) if that
+# continuation doesn't pan out.
+
+load @term/seed/code/boolean
+  find and
+  find or
+  find not
+
+load @term/seed/code/list
+  find push
+  find get
+  find set
+  find size
+  find join
+
+load @term/seed/code/text
+  find char-count
+  find char-at
+  find char-code-at
+
+load @term/seed/code/text/string
+  find pad-left
+
+load @term/seed/code/rune
+  find rune-to-text
+
+load @term/seed/code/float
+  find to-decimal
+  find to-number
+
+load ../../../hex/code
+  find hex-digit-value
+
+load ./form
+  find pdf-value
+  find pdf-entry
+  find pdf-indirect-object
+  find pdf-xref-entry
+  find pdf-xref-table
+  find pdf-trailer
+
+form pdf-cursor
+  link text, like text
+  link position
+    like list
+      like number
+  link length, like number
+
+task make-pdf-cursor
+  take value, like text
+  like pdf-cursor
+  save position
+    make list
+  call push(read position, code 0)
+  send back
+    make pdf-cursor
+      bind text, read value
+      bind position, read position
+      bind length
+        call char-count(read value)
+
+task pdf-cursor-position
+  take cursor, like pdf-cursor
+  like number
+  send back
+    call get(read cursor/position, code 0)
+
+task set-pdf-cursor-position
+  take cursor, like pdf-cursor
+  take value, like number
+  call set(read cursor/position, code 0, read value)
+
+task pdf-cursor-at-end
+  take cursor, like pdf-cursor
+  like boolean
+  send back
+    call is-equal
+      call pdf-cursor-position(read cursor)
+      read cursor/length
+
+task pdf-cursor-peek
+  take cursor, like pdf-cursor
+  like text
+  send back
+    call char-at(read cursor/text, call pdf-cursor-position(read cursor))
+
+task pdf-cursor-peek-code
+  take cursor, like pdf-cursor
+  like number
+  send back
+    call char-code-at(read cursor/text, call pdf-cursor-position(read cursor))
+
+task pdf-cursor-read
+  take cursor, like pdf-cursor
+  like text
+  save value
+    call pdf-cursor-peek(read cursor)
+  call set-pdf-cursor-position(read cursor, call add(call pdf-cursor-position(read cursor), code 1))
+  send back, read value
+
+# PDF's own whitespace set (spec table 1): space, tab, CR, LF, form feed, and NUL. Form feed / NUL are real but
+# rare; included for correctness, not guessed at.
+task is-pdf-whitespace
+  take code, like number
+  like boolean
+  send back
+    call or
+      call or
+        call or
+          call is-equal(read code, code 32)
+          call is-equal(read code, code 9)
+        call or
+          call is-equal(read code, code 10)
+          call is-equal(read code, code 13)
+      call or
+        call is-equal(read code, code 12)
+        call is-equal(read code, code 0)
+
+task is-pdf-delimiter
+  take code, like number
+  like boolean
+  send back
+    call or
+      call or
+        call or
+          call is-equal(read code, code 40)
+          call is-equal(read code, code 41)
+        call or
+          call is-equal(read code, code 60)
+          call is-equal(read code, code 62)
+      call or
+        call or
+          call is-equal(read code, code 91)
+          call is-equal(read code, code 93)
+        call or
+          call is-equal(read code, code 47)
+          call is-equal(read code, code 37)
+
+task skip-pdf-whitespace
+  take cursor, like pdf-cursor
+  walk test
+    hook test
+      call and
+        call not, call pdf-cursor-at-end(read cursor)
+        call is-pdf-whitespace(call pdf-cursor-peek-code(read cursor))
+    hook hold
+      call pdf-cursor-read(read cursor)
+
+task is-pdf-digit
+  take code, like number
+  like boolean
+  send back
+    call and
+      call is-minimum(read code, code 48)
+      call is-maximum(read code, code 57)
+
+task pdf-digit-value
+  take code, like number
+  like decimal
+  send back
+    call to-decimal
+      call subtract(read code, code 48)
+
+# a decimal-typed integer's text form with no trailing `.0`, the same reasoning `../../json/code.tree`'s own
+# `number-to-json-text` documents (Rust's and TypeScript's float-to-text already drop it; Swift's and Kotlin's
+# don't, so this has to be explicit to agree on every backend).
+task pdf-decimal-to-text
+  take value, like decimal
+  like text
+  fork test
+    hook test
+      call is-equal(read value, call to-decimal(call to-number(read value)))
+    hook hold
+      save whole
+        call to-number(read value)
+      send back
+        text <{{whole}}>
+  send back
+    text <{{value}}>
+
+task parse-pdf-number
+  take cursor, like pdf-cursor
+  like decimal
+  save negative, false
+  fork test
+    hook test
+      call is-equal(call pdf-cursor-peek(read cursor), text <->)
+    hook hold
+      call pdf-cursor-read(read cursor)
+      save negative, true
+    hook test
+      call is-equal(call pdf-cursor-peek(read cursor), text <+>)
+    hook hold
+      call pdf-cursor-read(read cursor)
+  save magnitude, code 0.0
+  walk test
+    hook test
+      call and
+        call not, call pdf-cursor-at-end(read cursor)
+        call is-pdf-digit(call pdf-cursor-peek-code(read cursor))
+    hook hold
+      save magnitude
+        call add
+          call multiply(read magnitude, code 10.0)
+          call pdf-digit-value(call pdf-cursor-peek-code(read cursor))
+      call pdf-cursor-read(read cursor)
+  save fraction, code 0.0
+  fork test
+    hook test
+      call and
+        call not, call pdf-cursor-at-end(read cursor)
+        call is-equal(call pdf-cursor-peek(read cursor), text <.>)
+    hook hold
+      call pdf-cursor-read(read cursor)
+      save divisor, code 1.0
+      walk test
+        hook test
+          call and
+            call not, call pdf-cursor-at-end(read cursor)
+            call is-pdf-digit(call pdf-cursor-peek-code(read cursor))
+        hook hold
+          save divisor
+            call multiply(read divisor, code 10.0)
+          save fraction
+            call add
+              read fraction
+              call divide
+                call pdf-digit-value(call pdf-cursor-peek-code(read cursor))
+                read divisor
+          call pdf-cursor-read(read cursor)
+  save value
+    call add(read magnitude, read fraction)
+  fork test
+    hook test
+      read negative
+    hook hold
+      send back
+        call multiply(read value, code -1.0)
+  send back, read value
+
+# `null` / `true` / `false` (PDF's other bareword literals) as one shared "read this many more letters" helper,
+# matching ../../json/code.tree's `parse-json-literal`.
+task parse-pdf-literal
+  take cursor, like pdf-cursor
+  take literal, like text
+  save length
+    call char-count(read literal)
+  save index, code 1
+  walk test
+    hook test
+      call is-below(read index, read length)
+    hook hold
+      call pdf-cursor-read(read cursor)
+      save index
+        call add(read index, code 1)
+
+task pdf-string-escape
+  take marker, like text
+  like text
+  fork test
+    hook test
+      call is-equal(read marker, text <n>)
+    hook hold
+      send back, text <\n>
+  fork test
+    hook test
+      call is-equal(read marker, text <r>)
+    hook hold
+      send back, text <\r>
+  fork test
+    hook test
+      call is-equal(read marker, text <t>)
+    hook hold
+      send back, text <\t>
+  send back, read marker
+
+# +1 for `(`, -1 for `)`, 0 while the previous character was an unescaped `\` (that character belongs to
+# `pdf-string-escape` instead, not the paren-balance count).
+task pdf-literal-string-depth-delta
+  take char, like text
+  take is-backslash, like boolean
+  like number
+  fork test
+    hook test
+      read is-backslash
+    hook hold
+      send back, code 0
+  fork test
+    hook test
+      call is-equal(read char, text <(>)
+    hook hold
+      send back, code 1
+  fork test
+    hook test
+      call is-equal(read char, text <)>)
+    hook hold
+      send back, code -1
+  send back, code 0
+
+task parse-pdf-literal-string
+  take cursor, like pdf-cursor
+  like text
+  call pdf-cursor-read(read cursor)
+  save chars
+    make list
+  save depth, code 1
+  walk test
+    hook test
+      call is-above(read depth, code 0)
+    hook hold
+      save next
+        call pdf-cursor-read(read cursor)
+      save is-backslash
+        call is-equal(read next, text <\\>)
+      save depth
+        call add
+          read depth
+          call pdf-literal-string-depth-delta(read next, read is-backslash)
+      fork test
+        hook test
+          read is-backslash
+        hook hold
+          save escaped
+            call pdf-cursor-read(read cursor)
+          call push(read chars, call pdf-string-escape(read escaped))
+      fork test
+        hook test
+          call and
+            call not, read is-backslash
+            call is-above(read depth, code 0)
+        hook hold
+          call push(read chars, read next)
+  send back
+    call join(read chars, text <>)
+
+task is-pdf-hex-digit
+  take value, like text
+  like boolean
+  save code
+    call char-code-at(read value, code 0)
+  send back
+    call or
+      call and
+        call is-minimum(read code, code 48)
+        call is-maximum(read code, code 57)
+      call or
+        call and
+          call is-minimum(read code, code 65)
+          call is-maximum(read code, code 70)
+        call and
+          call is-minimum(read code, code 97)
+          call is-maximum(read code, code 102)
+
+task pdf-hex-string-digits
+  take cursor, like pdf-cursor
+  like list
+    like text
+  save result
+    make list
+  walk test
+    hook test
+      call not, call is-equal(call pdf-cursor-peek(read cursor), text <\>>)
+    hook hold
+      save next
+        call pdf-cursor-read(read cursor)
+      fork test
+        hook test
+          call is-pdf-hex-digit(read next)
+        hook hold
+          call push(read result, read next)
+  send back, read result
+
+task parse-pdf-hex-string
+  take cursor, like pdf-cursor
+  like text
+  call pdf-cursor-read(read cursor)
+  save digits
+    call pdf-hex-string-digits(read cursor)
+  call pdf-cursor-read(read cursor)
+  save count
+    call size(read digits)
+  save chars
+    make list
+  save index, code 0
+  walk test
+    hook test
+      call is-below(call add(read index, code 1), read count)
+    hook hold
+      save high
+        call hex-digit-value
+          call char-code-at(call get(read digits, read index), code 0)
+      save low
+        call hex-digit-value
+          call char-code-at
+            call get(read digits, call add(read index, code 1))
+            code 0
+      call push
+        read chars
+        call rune-to-text
+          call add(call multiply(read high, code 16), read low)
+      save index
+        call add(read index, code 2)
+  send back
+    call join(read chars, text <>)
+
+task parse-pdf-name
+  take cursor, like pdf-cursor
+  like text
+  call pdf-cursor-read(read cursor)
+  save chars
+    make list
+  walk test
+    hook test
+      call and
+        call not, call pdf-cursor-at-end(read cursor)
+        call not
+          call or
+            call is-pdf-whitespace(call pdf-cursor-peek-code(read cursor))
+            call is-pdf-delimiter(call pdf-cursor-peek-code(read cursor))
+    hook hold
+      call push(read chars, call pdf-cursor-read(read cursor))
+  send back
+    call join(read chars, text <>)
+
+task parse-pdf-array
+  take cursor, like pdf-cursor
+  like list
+    like pdf-value
+  call pdf-cursor-read(read cursor)
+  save items
+    make list
+  call skip-pdf-whitespace(read cursor)
+  walk test
+    hook test
+      call and
+        call not, call pdf-cursor-at-end(read cursor)
+        call not, call is-equal(call pdf-cursor-peek(read cursor), text <]>)
+    hook hold
+      call push(read items, call parse-pdf-value(read cursor))
+      call skip-pdf-whitespace(read cursor)
+  call pdf-cursor-read(read cursor)
+  send back, read items
+
+task parse-pdf-dictionary-entry
+  take cursor, like pdf-cursor
+  like pdf-entry
+  save key
+    call parse-pdf-name(read cursor)
+  call skip-pdf-whitespace(read cursor)
+  save value
+    call parse-pdf-value(read cursor)
+  send back
+    make pdf-entry
+      bind key, read key
+      bind value, read value
+
+task parse-pdf-dictionary
+  take cursor, like pdf-cursor
+  like list
+    like pdf-entry
+  call pdf-cursor-read(read cursor)
+  call pdf-cursor-read(read cursor)
+  save entries
+    make list
+  call skip-pdf-whitespace(read cursor)
+  walk test
+    hook test
+      call not
+        call or
+          call pdf-cursor-at-end(read cursor)
+          call is-equal(call pdf-cursor-peek(read cursor), text <\>>)
+    hook hold
+      call push(read entries, call parse-pdf-dictionary-entry(read cursor))
+      call skip-pdf-whitespace(read cursor)
+  call pdf-cursor-read(read cursor)
+  call pdf-cursor-read(read cursor)
+  send back, read entries
+
+# reads a number, then tries the "generation R" continuation for an indirect reference; rewinds the cursor's
+# position and returns a plain number if that continuation isn't there. See this file's own header comment.
+task parse-pdf-number-or-reference
+  take cursor, like pdf-cursor
+  like pdf-value
+  save first
+    call parse-pdf-number(read cursor)
+  save after-number
+    call pdf-cursor-position(read cursor)
+  call skip-pdf-whitespace(read cursor)
+  fork test
+    hook test
+      call and
+        call not, call pdf-cursor-at-end(read cursor)
+        call is-pdf-digit(call pdf-cursor-peek-code(read cursor))
+    hook hold
+      save generation
+        call parse-pdf-number(read cursor)
+      call skip-pdf-whitespace(read cursor)
+      fork test
+        hook test
+          call and
+            call not, call pdf-cursor-at-end(read cursor)
+            call is-equal(call pdf-cursor-peek(read cursor), text <R>)
+        hook hold
+          call pdf-cursor-read(read cursor)
+          send back
+            make pdf-reference
+              bind object-number, call to-number(read first)
+              bind generation, call to-number(read generation)
+  call set-pdf-cursor-position(read cursor, read after-number)
+  send back
+    make pdf-number
+      bind value, read first
+
+task parse-pdf-value
+  take cursor, like pdf-cursor
+  like pdf-value
+  call skip-pdf-whitespace(read cursor)
+  save marker
+    call pdf-cursor-peek(read cursor)
+  fork test
+    hook test
+      call is-equal(read marker, text <n>)
+    hook hold
+      call parse-pdf-literal(read cursor, text <null>)
+      send back
+        make pdf-null
+    hook test
+      call is-equal(read marker, text <t>)
+    hook hold
+      call parse-pdf-literal(read cursor, text <true>)
+      send back
+        make pdf-boolean
+          bind value, true
+    hook test
+      call is-equal(read marker, text <f>)
+    hook hold
+      call parse-pdf-literal(read cursor, text <false>)
+      send back
+        make pdf-boolean
+          bind value, false
+    hook test
+      call is-equal(read marker, text </>)
+    hook hold
+      send back
+        make pdf-name
+          bind value, call parse-pdf-name(read cursor)
+    hook test
+      call is-equal(read marker, text <[>)
+    hook hold
+      send back
+        make pdf-array
+          bind items, call parse-pdf-array(read cursor)
+    hook test
+      call is-equal(read marker, text <(>)
+    hook hold
+      send back
+        make pdf-string
+          bind value, call parse-pdf-literal-string(read cursor)
+    hook test
+      call and
+        call is-equal(read marker, text <\<>)
+        call is-equal(call char-at(read cursor/text, call add(call pdf-cursor-position(read cursor), code 1)), text <\<>)
+    hook hold
+      send back
+        make pdf-dictionary
+          bind entries, call parse-pdf-dictionary(read cursor)
+    hook test
+      call is-equal(read marker, text <\<>)
+    hook hold
+      send back
+        make pdf-string
+          bind value, call parse-pdf-hex-string(read cursor)
+  send back
+    call parse-pdf-number-or-reference(read cursor)
+
+task write-pdf-array-items
+  take items
+    like list
+      like pdf-value
+  like list
+    like text
+  save result
+    make list
+  walk list, read items
+    hook next
+      take site, name item
+      call push(read result, call write-pdf-value(read item))
+  send back, read result
+
+task write-pdf-entry
+  take entry, like pdf-entry
+  like text
+  save value-text
+    call write-pdf-value(read entry/value)
+  send back
+    text </{{entry/key}} {{value-text}}>
+
+task write-pdf-dictionary-entries
+  take entries
+    like list
+      like pdf-entry
+  like list
+    like text
+  save result
+    make list
+  walk list, read entries
+    hook next
+      take site, name entry
+      call push(read result, call write-pdf-entry(read entry))
+  send back, read result
+
+task write-pdf-value
+  take subject, like pdf-value
+  like text
+  fork case, read subject
+    case pdf-null
+      send back, text <null>
+    case pdf-boolean
+      link value
+      fork test
+        hook test
+          read value
+        hook hold
+          send back, text <true>
+      send back, text <false>
+    case pdf-number
+      link value
+      send back
+        call pdf-decimal-to-text(read value)
+    case pdf-string
+      link value
+      send back
+        text <({{value}})>
+    case pdf-name
+      link value
+      send back
+        text </{{value}}>
+    case pdf-array
+      link items
+      save item-texts
+        call write-pdf-array-items(read items)
+      save joined
+        call join(read item-texts, text < >)
+      send back
+        text <[{{joined}}]>
+    case pdf-dictionary
+      link entries
+      save entry-texts
+        call write-pdf-dictionary-entries(read entries)
+      save joined
+        call join(read entry-texts, text < >)
+      send back
+        text <\<\<{{joined}}\>\>>
+    case pdf-reference
+      link object-number
+      link generation
+      send back
+        text <{{object-number}} {{generation}} R>
+
+task parse-pdf-indirect-object
+  take cursor, like pdf-cursor
+  like pdf-indirect-object
+  call skip-pdf-whitespace(read cursor)
+  save object-number
+    call to-number(call parse-pdf-number(read cursor))
+  call skip-pdf-whitespace(read cursor)
+  save generation
+    call to-number(call parse-pdf-number(read cursor))
+  call skip-pdf-whitespace(read cursor)
+  call parse-pdf-literal(read cursor, text <obj>)
+  save value
+    call parse-pdf-value(read cursor)
+  call skip-pdf-whitespace(read cursor)
+  call parse-pdf-literal(read cursor, text <endobj>)
+  send back
+    make pdf-indirect-object
+      bind object-number, read object-number
+      bind generation, read generation
+      bind value, read value
+
+task write-pdf-indirect-object
+  take subject, like pdf-indirect-object
+  like text
+  save value-text
+    call write-pdf-value(read subject/value)
+  send back
+    text <{{subject/object-number}} {{subject/generation}} obj\n{{value-text}}\nendobj>
+
+task write-pdf-xref-entry
+  take entry, like pdf-xref-entry
+  like text
+  save offset-text
+    call pad-left(text <{{entry/offset}}>, code 10, text <0>)
+  save generation-text
+    call pad-left(text <{{entry/generation}}>, code 5, text <0>)
+  fork test
+    hook test
+      read entry/in-use
+    hook hold
+      send back
+        text <{{offset-text}} {{generation-text}} n >
+  send back
+    text <{{offset-text}} {{generation-text}} f >
+
+task write-pdf-xref-table
+  take table, like pdf-xref-table
+  like text
+  save lines
+    make list
+  call push(read lines, text <xref>)
+  save count
+    call size(read table/entries)
+  call push
+    read lines
+    text <{{table/start}} {{count}}>
+  walk list, read table/entries
+    hook next
+      take site, name entry
+      call push(read lines, call write-pdf-xref-entry(read entry))
+  send back
+    call join(read lines, text <\n>)
+
+task write-pdf-trailer
+  take trailer, like pdf-trailer
+  like text
+  save root-text
+    call write-pdf-value(read trailer/root)
+  send back
+    text <trailer\n\<\< /Size {{trailer/size}} /Root {{root-text}} \>\>>

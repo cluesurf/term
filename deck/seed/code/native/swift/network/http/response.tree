@@ -1,29 +1,41 @@
+# swift response body reader: the dock holds the raw Data; `text` decodes it as UTF-8 in one native
+# expression, `bytes` and `stream` hand the Data back, `json` parses through JSONSerialization.
 
 load @term/seed/code/network/http
   find response
+
+bind do-response-text
+  take raw, like unknown
+  like text
+  case swift
+    load <Foundation>
+    text <String(data: ($raw as? Data) ?? Data(), encoding: .utf8) ?? "">
+
+bind do-response-json
+  take raw, like unknown
+  like unknown
+  case swift
+    load <Foundation>
+    text <(try? JSONSerialization.jsonObject(with: ($raw as? Data) ?? Data())) as Any>
 
 task read
   note async
   take response, like response
   take format, like text, fall text <text>
+  like unknown
 
   save raw, read response/dock
 
   fork case, read format
     case text
       send back
-        call string
-          text <data>
+        call do-response-text
           read raw
-          text <encoding>
-          text <.utf8>
     case bytes
       send back, read raw
     case json
       send back
-        call json-serialization/json-object
-          text <with>
+        call do-response-json
           read raw
-          halt kink
     case stream
       send back, read raw

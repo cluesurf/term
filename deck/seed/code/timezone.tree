@@ -19,7 +19,7 @@ bind offset-minutes
     text <(new Date(new Date($millis).toLocaleString("en-US", { timeZone: $zone })).getTime() - new Date(new Date($millis).toLocaleString("en-US", { timeZone: "UTC" })).getTime()) / 60000>
   case swift
     load <Foundation>
-    text <Double(TimeZone(identifier: $zone)?.secondsFromGMT(for: Date(timeIntervalSince1970: Double($millis) / 1000.0)) ?? 0) / 60.0>
+    text <((TimeZone(identifier: $zone)?.secondsFromGMT(for: Date(timeIntervalSince1970: Double($millis) / 1000.0)) ?? 0) / 60)>
   case kotlin
     text <(java.time.ZoneId.of($zone).rules.getOffset(java.time.Instant.ofEpochMilli($millis)).totalSeconds / 60).toLong()>
   case rust

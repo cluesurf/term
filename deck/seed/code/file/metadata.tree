@@ -6,6 +6,16 @@ load @term/seed/code/native/{platform}/file/metadata
   find metadata-is-directory
   find metadata-is-file
 
+# the whole metadata record the asynchronous API returns
+form file-metadata
+  link size, like size
+  link kind, like text
+  link made, like number
+  link changed, like number
+  link opened, like number
+  link mode, like number
+  link link, like boolean
+
 task size
   take path, like text
   like number

@@ -9,7 +9,7 @@ load @term/seed/code/native/shared/test/snapshot
   find deserialize
 
 load @term/seed/code/native/shared/test/context
-  find get
+  find get-context
   find fail
 
 load @term/seed/code/native/shared/test
@@ -65,7 +65,7 @@ task match
     hook test, read eq
     hook miss
       save ctx
-        call get
+        call get-context
       call fail
         bind ctx, read ctx
         bind failure

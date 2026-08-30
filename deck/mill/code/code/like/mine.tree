@@ -1,7 +1,25 @@
+load @term/mill/code/code/call/mine
+  find call
+
+load @term/mill/code/code/take/mine
+  find take
+
+load @term/mill/code/code/form/link/mine
+  find link
+
+load @term/mill/code/code/head/mine
+  find head
+
+load @term/mill/code/code/seed/mine
+  find seed
+
 mine like
   mine term, term like
     mine term
       site name
+    mine list
+      mine term
+        site arg
     mine maybe
       mine any
         mine form, like or
@@ -10,17 +28,51 @@ mine like
           site and
         mine form, like task
           site task
+        mine form, like like
+          site like
         mine term
           site name
+  mine list
+    mine any
+      mine form, like like-bind
+        site bind
+      mine form, like link
+        site link
+      mine form, like head
+        site head
+      mine form, like like
+        site child
+      mine form, like take
+        site take
+      mine form, like call
+        site call
+
+# `bind note, <Invalid>` under an exception `like`: pins a field of the base form
+mine like-bind
+  mine term, term bind
+    mine term
+      site name
+    mine maybe
+      mine form, like seed
+        site seed
+    mine maybe
+      mine text
+        site text
 
 mine or
   mine term, term or
     mine list
       mine form, like like
         site like
+  mine list
+    mine form, like like
+      site like
 
 mine and
   mine term, term and
     mine list
       mine form, like like
         site like
+  mine list
+    mine form, like like
+      site like

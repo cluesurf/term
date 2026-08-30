@@ -1,0 +1,136 @@
+# The PDF 1.7 content-stream operator catalog against literal expected sequences. Run: term test, from deck/feed.
+
+load ../code/pdf/1.7/code
+  find text-start
+  find text-position
+  find set-font
+  find render-text
+  find move-to
+  find line-to
+  find cubic-bezier-curve-to
+  find rectangle
+  find fill
+  find save-graphics-state
+  find set-line-width
+  find set-dash
+  find set-matrix
+  find set-color-fill-rgb
+  find set-color-fill-cmyk
+  find set-global-state
+  find hex-string
+  find literal-string
+  find comment
+
+test <text-start is BT>
+  want hold
+    call is-equal
+      call text-start
+      text <BT>
+
+test <text-position interpolates the identity matrix around x and y>
+  want hold
+    call is-equal
+      call text-position(code 100, code 700)
+      text <1 0 0 1 100 700 Tm>
+
+test <set-font interpolates the font id and size>
+  want hold
+    call is-equal
+      call set-font(text <F1>, code 12)
+      text </F1 12 Tf>
+
+test <render-text wraps the value in brackets before TJ>
+  want hold
+    call is-equal
+      call render-text(text <hello>)
+      text <[hello] TJ>
+
+test <move-to is postfix, x y then m>
+  want hold
+    call is-equal
+      call move-to(code 10, code 20)
+      text <10 20 m>
+
+test <line-to is postfix, x y then l>
+  want hold
+    call is-equal
+      call line-to(code 30, code 40)
+      text <30 40 l>
+
+test <cubic-bezier-curve-to orders both control points before the endpoint>
+  want hold
+    call is-equal
+      call cubic-bezier-curve-to(code 1, code 2, code 3, code 4, code 5, code 6)
+      text <1 2 3 4 5 6 c>
+
+test <rectangle is x y width height re>
+  want hold
+    call is-equal
+      call rectangle(code 0, code 0, code 100, code 50)
+      text <0 0 100 50 re>
+
+test <fill is the single letter f>
+  want hold
+    call is-equal
+      call fill
+      text <f>
+
+test <save-graphics-state is q>
+  want hold
+    call is-equal
+      call save-graphics-state
+      text <q>
+
+test <set-line-width interpolates before w>
+  want hold
+    call is-equal
+      call set-line-width(code 2)
+      text <2 w>
+
+test <set-dash brackets length and space, then phase then d>
+  want hold
+    call is-equal
+      call set-dash(code 4, code 2, code 0)
+      text <[4 2] 0 d>
+
+test <set-matrix orders all six components before cm>
+  want hold
+    call is-equal
+      call set-matrix(code 1, code 0, code 0, code 1, code 10, code 20)
+      text <1 0 0 1 10 20 cm>
+
+test <set-color-fill-rgb is three components then scn>
+  want hold
+    call is-equal
+      call set-color-fill-rgb(code 1, code 0, code 0)
+      text <1 0 0 scn>
+
+test <set-color-fill-cmyk is four components then scn>
+  want hold
+    call is-equal
+      call set-color-fill-cmyk(code 0, code 1, code 1, code 0)
+      text <0 1 1 0 scn>
+
+test <set-global-state slashes the id before gs>
+  want hold
+    call is-equal
+      call set-global-state(text <GS1>)
+      text </GS1 gs>
+
+test <hex-string wraps in angle brackets>
+  want hold
+    call is-equal
+      call hex-string(text <FF00FF>)
+      text <\<FF00FF\>>
+
+test <literal-string wraps in parens>
+  want hold
+    call is-equal
+      call literal-string(text <hello world>)
+      text <(hello world)>
+
+test <comment is a percent sign then the text>
+  want hold
+    call is-equal
+      call comment(text <a note>)
+      text <% a note>

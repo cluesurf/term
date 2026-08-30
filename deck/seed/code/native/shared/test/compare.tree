@@ -2,6 +2,9 @@
 dock load
   load <global:shape>, name shape
 
+dock load
+  load <global:compare>, name compare-runtime
+
 load @term/seed/code/list
   find get
   find size
@@ -10,71 +13,17 @@ load @term/seed/code/text
   find substring
 
 task deep-equal
-  # a and b are of any shape: `shape/is-list` narrows at runtime, and the recursive call descends into elements,
-  # so the params cannot be pinned to the list type inference would otherwise deduce from `size` / `get`
+  # a and b are of any shape: the compare runtime descends structurally (scalars by value, lists element by
+  # element), which a type-erased native backend cannot do in checked code. One shim per backend, all with
+  # the same semantics (native/<env>/runtime/compare.*).
   take a, like unknown
   take b, like unknown
   like boolean
 
-  fork test
-    hook test
-      call is-equal
-        bind a, read a
-        bind b, read b
-    hook hold
-      send back, true
-
-  fork test
-    hook test
-      meet and
-        call shape/is-list
-          read a
-        call shape/is-list
-          read b
-    hook hold
-      save size-a
-        call size
-          read a
-      save size-b
-        call size
-          read b
-      fork test
-        hook test
-          call is-equal
-            bind a, read size-a
-            bind b, read size-b
-        hook miss
-          send back, false
-      save i, code 0
-      walk test
-        hook test
-          call is-below
-            bind a, read i
-            bind b, read size-a
-        hook hold
-          save item-a
-            call get
-              read a
-              read i
-          save item-b
-            call get
-              read b
-              read i
-          save eq
-            call deep-equal
-              bind a, read item-a
-              bind b, read item-b
-          fork test
-            hook test, read eq
-            hook miss
-              send back, false
-          save i
-            call add
-              bind a, read i
-              bind b, code 1
-      send back, true
-
-  send back, false
+  send back
+    call compare-runtime/deep-equal
+      read a
+      read b
 
 task contains-text
   take text, like text
@@ -136,7 +85,9 @@ task contains-text
 
 task contains-list
   take list
-  take value
+    like list
+      like unknown
+  take value, like unknown
   like boolean
 
   save size
@@ -155,9 +106,9 @@ task contains-list
           read i
       fork test
         hook test
-          call is-equal
-            bind a, read item
-            bind b, read value
+          call compare-runtime/deep-equal
+            read item
+            read value
         hook hold
           send back, true
       save i

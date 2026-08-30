@@ -1,0 +1,100 @@
+# The real, compiling reader/writer for the OTF maxp table, version 1.0 only (TrueType outlines). Refuses any
+# other version rather than silently returning a struct with zeroed fields for the bytes past version 0.5's 6.
+
+load @term/seed/code/boolean
+  find not
+
+load ../../../../base
+  find feed-cursor
+  find make-writer
+  find to-bytes
+
+load ../shared/code
+  find read-u16
+  find read-u32
+  find write-u16
+  find write-u32
+
+load ./form
+  find otf-maxp-table
+
+task read-otf-maxp-table
+  take cursor, like feed-cursor
+  like otf-maxp-table
+  save version
+    call read-u32(read cursor)
+  fork test
+    hook test
+      call not
+        call is-equal(read version, code 0x00010000)
+    hook hold
+      halt <not a version 1.0 OTF maxp table>
+  save num-glyphs
+    call read-u16(read cursor)
+  save max-points
+    call read-u16(read cursor)
+  save max-contours
+    call read-u16(read cursor)
+  save max-composite-points
+    call read-u16(read cursor)
+  save max-composite-contours
+    call read-u16(read cursor)
+  save max-zones
+    call read-u16(read cursor)
+  save max-twilight-points
+    call read-u16(read cursor)
+  save max-storage
+    call read-u16(read cursor)
+  save max-function-defs
+    call read-u16(read cursor)
+  save max-instruction-defs
+    call read-u16(read cursor)
+  save max-stack-elements
+    call read-u16(read cursor)
+  save max-size-of-instructions
+    call read-u16(read cursor)
+  save max-component-elements
+    call read-u16(read cursor)
+  save max-component-depth
+    call read-u16(read cursor)
+  send back
+    make otf-maxp-table
+      bind version, read version
+      bind num-glyphs, read num-glyphs
+      bind max-points, read max-points
+      bind max-contours, read max-contours
+      bind max-composite-points, read max-composite-points
+      bind max-composite-contours, read max-composite-contours
+      bind max-zones, read max-zones
+      bind max-twilight-points, read max-twilight-points
+      bind max-storage, read max-storage
+      bind max-function-defs, read max-function-defs
+      bind max-instruction-defs, read max-instruction-defs
+      bind max-stack-elements, read max-stack-elements
+      bind max-size-of-instructions, read max-size-of-instructions
+      bind max-component-elements, read max-component-elements
+      bind max-component-depth, read max-component-depth
+
+task write-otf-maxp-table
+  take table, like otf-maxp-table
+  like list
+    like u8
+  save writer
+    call make-writer
+  call write-u32(read writer, read table/version)
+  call write-u16(read writer, read table/num-glyphs)
+  call write-u16(read writer, read table/max-points)
+  call write-u16(read writer, read table/max-contours)
+  call write-u16(read writer, read table/max-composite-points)
+  call write-u16(read writer, read table/max-composite-contours)
+  call write-u16(read writer, read table/max-zones)
+  call write-u16(read writer, read table/max-twilight-points)
+  call write-u16(read writer, read table/max-storage)
+  call write-u16(read writer, read table/max-function-defs)
+  call write-u16(read writer, read table/max-instruction-defs)
+  call write-u16(read writer, read table/max-stack-elements)
+  call write-u16(read writer, read table/max-size-of-instructions)
+  call write-u16(read writer, read table/max-component-elements)
+  call write-u16(read writer, read table/max-component-depth)
+  send back
+    call to-bytes(read writer)

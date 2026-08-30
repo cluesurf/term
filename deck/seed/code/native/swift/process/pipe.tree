@@ -1,15 +1,21 @@
-
-dock load
-  load <Foundation>, name foundation
+# swift pipe between two child processes: a Foundation Pipe wired as one child's standard output and the
+# other's standard input, in one native expression (the child's dock is a Foundation Process).
 
 load @term/seed/code/process
   find child
+
+bind do-connect
+  take from, like child
+  take to, like child
+  case swift
+    load <Foundation>
+    text <\{ let pipe = Pipe(); ($from.dock as! Process).standardOutput = pipe; ($to.dock as! Process).standardInput = pipe \}()>
 
 task connect
   note async
   take from, like child
   take to, like child
 
-  save pipe, make foundation/pipe
-  call from/dock/set-standard-output(read pipe)
-  call to/dock/set-standard-input(read pipe)
+  call do-connect
+    read from
+    read to

@@ -42,6 +42,9 @@ export type Bind = { term: string; bond: Seed; span: Span }
 
 export type Seed =
   | { form: 'text'; value: string; span: Span }
+  // `code <mark>`: a reference to a record by its mark. Lowers to the mark as text, and is collected separately
+  // from a plain text, because a reference is what delete protection and cache invalidation walk.
+  | { form: 'code'; value: string; span: Span }
   | { form: 'mark'; value: number; span: Span }
   | { form: 'wave'; value: boolean; span: Span }
   | { form: 'read'; value: Road; span: Span }
@@ -95,9 +98,14 @@ export type ViewResult =
   | { ok: true; file: ViewFile; diagnostics: Diagnostic[] }
   | { ok: false; diagnostics: Diagnostic[] }
 
-// A head the dialect refuses, and what to say instead. A grammar with no case for a word reports "unknown head",
-// which is correct and useless to someone writing a document, so every one of these gets its own sentence.
-const REFUSED = new Map<string, string>([
+// A word the dialect refuses where a STATEMENT or a BODY NODE is expected, and what to say instead. Several of
+// these are legal deeper in a file: `task` names a query inside a `find`, `hook` carries the body of a `walk`,
+// `test` is the mode of a `fork`. So the refusal is about position and not about the word, which is why the gate
+// checks it against the four statement heads rather than against the whole grammar.
+//
+// A grammar with no case for a word reports "unknown head", which is correct and useless to someone writing a
+// document, so every one of these gets its own sentence.
+export const VIEW_REFUSED_HEAD = new Map<string, string>([
   ['task', 'a document cannot declare a function. Use `call` to apply one from the operator catalog'],
   ['dock', 'a document cannot reach a native module'],
   ['save', 'a document cannot hold state. A value comes from a `host`, a `find`, or a `take`'],
@@ -144,8 +152,8 @@ export function readView(tree: RootNode, file: string): ViewResult {
 
     const head = headOf(group)
 
-    if (head && REFUSED.has(head)) {
-      error(spanOf(group), `"${head}" is not part of a document: ${REFUSED.get(head)!}`)
+    if (head && VIEW_REFUSED_HEAD.has(head)) {
+      error(spanOf(group), `"${head}" is not part of a document: ${VIEW_REFUSED_HEAD.get(head)!}`)
       continue
     }
 
@@ -542,8 +550,8 @@ export function readView(tree: RootNode, file: string): ViewResult {
     const span = spanOf(group)
     const head = headOf(group)
 
-    if (head && REFUSED.has(head)) {
-      error(span, `"${head}" is not part of a document: ${REFUSED.get(head)!}`)
+    if (head && VIEW_REFUSED_HEAD.has(head)) {
+      error(span, `"${head}" is not part of a document: ${VIEW_REFUSED_HEAD.get(head)!}`)
 
       return undefined
     }
@@ -631,13 +639,51 @@ export function readView(tree: RootNode, file: string): ViewResult {
       return undefined
     }
 
+    // `walk size` is normalised here into a `walk list` over `range(base, head)`, so nothing downstream learns
+    // there are two kinds of walk. The zone AST carries only a list walk, and `range` is a render-runtime task.
+    // Written this way rather than as a counted node because adding one would touch every pass that reads a walk.
     if (mode === 'size') {
-      error(
-        span,
-        'a `walk size` does not read yet: the component AST carries no counted walk. Use `walk list` for now (view-dialect-0026)',
-      )
+      const parts = rest(group)
+        .slice(1)
+        .filter((n): n is GroupNode => n.kind === 'group')
 
-      return undefined
+      const bound = (word: string): Seed | undefined => {
+        const found = parts.find(n => headOf(n) === 'bind' && keyOf(n) === word)
+        const value = found ? rest(found).slice(1)[0] : undefined
+
+        return value ? readSeed(value) : undefined
+      }
+
+      // `walk size, read total` is the short form, counting from zero
+      const short = rest(group)
+        .slice(1)
+        .find(n => n.kind === 'group' && headOf(n) !== 'bind' && headOf(n) !== 'hook')
+
+      const base = bound('base') ?? { form: 'mark' as const, value: 0, span }
+      const head =
+        bound('head') ?? (short?.kind === 'group' ? readSeed(short) : undefined)
+
+      if (!head) {
+        error(
+          span,
+          'a `walk size` names how far it counts: `walk size / bind base, 0 / bind head, 100`, or `walk size, read total`',
+        )
+
+        return undefined
+      }
+
+      return {
+        form: 'walk',
+        value: {
+          road: {
+            form: 'call',
+            value: { name: 'range', bind: [], slot: [base, head] },
+            span,
+          },
+          next: readWalkNext(group),
+        },
+        span,
+      }
     }
 
     if (mode !== 'list') {
@@ -662,6 +708,10 @@ export function readView(tree: RootNode, file: string): ViewResult {
       return undefined
     }
 
+    return { form: 'walk', value: { road, next: readWalkNext(group) }, span }
+  }
+
+  function readWalkNext(group: GroupNode): ViewWalkNext[] {
     const next: ViewWalkNext[] = []
 
     for (const child of rest(group)) {
@@ -701,7 +751,7 @@ export function readView(tree: RootNode, file: string): ViewResult {
       next.push({ site, node })
     }
 
-    return { form: 'walk', value: { road, next }, span }
+    return next
   }
 
   function readFork(group: GroupNode): ViewNode | undefined {
@@ -867,10 +917,17 @@ export function readView(tree: RootNode, file: string): ViewResult {
           : { form: 'text', value, span }
       }
       case 'code': {
+        // `code <quenya>` is a record reference by mark, `code 20` is a number. One head, told apart by the literal.
+        const mark = textOf(node)
+
+        if (mark !== undefined) {
+          return { form: 'code', value: mark, span }
+        }
+
         const value = numberOf(node)
 
         return value === undefined
-          ? (error(span, 'a `code` holds a number: `code 20`'), undefined)
+          ? (error(span, 'a `code` holds a number (`code 20`) or a record mark (`code <quenya>`)'), undefined)
           : { form: 'mark', value, span }
       }
       case 'true':
@@ -1214,6 +1271,9 @@ export function lowerView(file: ViewFile): Program {
       form: 'zone',
       name: def.name,
       params: [
+        // the view to mount into, first, which is what every zone component takes and what `append` needs. A
+        // document never writes it: the host supplies it, the same as it supplies the resolved queries.
+        { name: 'host' },
         ...def.take.map(take => ({ name: take.name })),
         ...supplied.map(name => ({ name })),
       ],
@@ -1286,6 +1346,7 @@ function lowerNode(node: ViewNode, fold: Map<string, Seed>): CompilerZoneNode {
 function lowerSeed(seed: Seed, fold: Map<string, Seed>): Expression {
   switch (seed.form) {
     case 'text':
+    case 'code':
       return { form: 'string', value: seed.value, span: seed.span }
     case 'mark':
       return { form: 'integer', value: seed.value, span: seed.span }
@@ -1327,5 +1388,257 @@ function lowerSeed(seed: Seed, fold: Map<string, Seed>): Expression {
         ],
         span: seed.span,
       }
+  }
+}
+
+
+// ---- the query manifest ----
+// The host reads this, fills the holes from the document's `host` values, batches by query id, resolves each with
+// the READER's permissions, and passes the results into the compiled component as its parameters. So it carries
+// what a resolver needs and nothing a renderer could act on.
+//
+// Written in the `host` dialect, because a manifest is data and the tree already has a data format. `term mold`
+// prints it as JSON for a route loader that wants it that way. See note/term/host/ and note/term/view/03-find.md.
+//
+// Three lists ride along with the queries, all answering questions nothing answers today:
+//   - `view`, every component the document places, so "which published documents use text/heading" is answerable
+//   - `call`, every operator it applies
+//   - `mark`, every record it names, which is what delete protection and cache invalidation walk
+
+export function viewManifest(file: ViewFile, module: string): string {
+  const out: string[] = []
+  const text = (value: string): string =>
+    `<${value.replace(/([<>\\])/g, '\\$1')}>`
+
+  out.push(`host module, ${text(module)}`)
+
+  // the names the host must supply: a `host` with a type and no value
+  const holes = file.host.filter(host => !host.bond)
+
+  if (holes.length > 0) {
+    out.push('list hole')
+
+    for (const hole of holes) {
+      out.push(`  mesh`)
+      out.push(`    host name, ${text(hole.name)}`)
+
+      if (hole.like) {
+        out.push(`    host like, ${text(hole.like.name)}`)
+      }
+    }
+  }
+
+  if (file.find.length > 0) {
+    out.push('list find')
+
+    for (const find of file.find) {
+      out.push('  mesh')
+      out.push(`    host name, ${text(find.name)}`)
+      out.push(`    host task, ${text(find.task)}`)
+
+      if (find.size !== undefined) {
+        out.push(`    host size, ${find.size}`)
+      }
+
+      if (find.slot !== undefined) {
+        out.push(`    host slot, ${find.slot}`)
+      }
+
+      if (find.meet) {
+        out.push('    host meet')
+        writeMeet(find.meet, out, 6, text)
+      }
+
+      if (find.hold.length > 0) {
+        out.push('    list hold')
+
+        for (const hold of find.hold) {
+          writeHold(hold, out, 6, text)
+        }
+      }
+
+      if (find.sort.length > 0) {
+        out.push('    list sort')
+
+        for (const sort of find.sort) {
+          out.push('      mesh')
+          out.push(`        host way, ${text(sort.way)}`)
+          out.push(`        host road, ${text(sort.road.step.join('/'))}`)
+        }
+      }
+    }
+  }
+
+  const uses = new Set<string>()
+  const calls = new Set<string>()
+  const marks = new Set<string>()
+
+  for (const def of file.view) {
+    gather(def.node, uses, calls, marks)
+  }
+
+  for (const find of file.find) {
+    for (const hold of find.hold) {
+      gatherSeeds([...hold.slot, ...hold.bind.map(one => one.bond)], calls, marks)
+    }
+
+    if (find.meet) {
+      gatherMeet(find.meet, calls, marks)
+    }
+  }
+
+  writeList('view', [...uses].sort(), out, text)
+  writeList('call', [...calls].sort(), out, text)
+  writeList('mark', [...marks].sort(), out, text)
+  writeList(
+    'load',
+    file.load.map(load => load.path).sort(),
+    out,
+    text,
+  )
+
+  return out.join('\n') + '\n'
+}
+
+function writeList(
+  name: string,
+  values: string[],
+  out: string[],
+  text: (value: string) => string,
+): void {
+  if (values.length === 0) {
+    return
+  }
+
+  out.push(`list ${name}`)
+
+  for (const value of values) {
+    out.push(`  ${text(value)}`)
+  }
+}
+
+function writeMeet(
+  meet: ViewMeet,
+  out: string[],
+  depth: number,
+  text: (value: string) => string,
+): void {
+  const pad = ' '.repeat(depth)
+
+  out.push(`${pad}host mode, ${text(meet.mode)}`)
+
+  if (meet.hold.length > 0) {
+    out.push(`${pad}list hold`)
+
+    for (const hold of meet.hold) {
+      writeHold(hold, out, depth + 2, text)
+    }
+  }
+
+  for (const inner of meet.meet) {
+    out.push(`${pad}host meet`)
+    writeMeet(inner, out, depth + 2, text)
+  }
+}
+
+function writeHold(
+  hold: ViewHold,
+  out: string[],
+  depth: number,
+  text: (value: string) => string,
+): void {
+  const pad = ' '.repeat(depth)
+
+  out.push(`${pad}mesh`)
+  out.push(`${pad}  host name, ${text(hold.name)}`)
+
+  const args = [...hold.slot, ...hold.bind.map(one => one.bond)]
+
+  if (args.length > 0) {
+    out.push(`${pad}  list side`)
+
+    for (const arg of args) {
+      out.push(`${pad}    mesh`)
+      out.push(`${pad}      host form, ${text(arg.form)}`)
+
+      if (arg.form === 'read') {
+        out.push(`${pad}      host road, ${text(arg.value.step.join('/'))}`)
+      } else if (arg.form === 'text' || arg.form === 'code') {
+        out.push(`${pad}      host text, ${text(arg.value)}`)
+      } else if (arg.form === 'mark' || arg.form === 'wave') {
+        out.push(`${pad}      host code, ${String(arg.value)}`)
+      } else {
+        out.push(`${pad}      host call, ${text(arg.value.name)}`)
+      }
+    }
+  }
+}
+
+function gather(
+  nodes: ViewNode[],
+  uses: Set<string>,
+  calls: Set<string>,
+  marks: Set<string>,
+): void {
+  for (const node of nodes) {
+    switch (node.form) {
+      case 'zone':
+        uses.add(node.value.name)
+        gatherSeeds(node.value.bind.map(one => one.bond), calls, marks)
+        gather(node.value.node, uses, calls, marks)
+        break
+      case 'walk':
+        gatherSeeds([node.value.road], calls, marks)
+
+        for (const next of node.value.next) {
+          gather(next.node, uses, calls, marks)
+        }
+
+        break
+      case 'fork':
+        for (const hook of node.value.hook) {
+          if (hook.form === 'test') {
+            gatherSeeds([hook.seed], calls, marks)
+          } else {
+            gather(hook.node, uses, calls, marks)
+          }
+        }
+
+        break
+      default:
+        break
+    }
+  }
+}
+
+function gatherMeet(meet: ViewMeet, calls: Set<string>, marks: Set<string>): void {
+  for (const hold of meet.hold) {
+    gatherSeeds([...hold.slot, ...hold.bind.map(one => one.bond)], calls, marks)
+  }
+
+  for (const inner of meet.meet) {
+    gatherMeet(inner, calls, marks)
+  }
+}
+
+function gatherSeeds(seeds: Seed[], calls: Set<string>, marks: Set<string>): void {
+  for (const seed of seeds) {
+    if (seed.form === 'code') {
+      marks.add(seed.value)
+      continue
+    }
+
+    if (seed.form === 'call') {
+      // `range` is the render runtime's, synthesized by the reader for a counted walk, never written by an author
+      if (seed.value.name !== 'range') {
+        calls.add(seed.value.name)
+      }
+
+      gatherSeeds(
+        [...seed.value.slot, ...seed.value.bind.map(one => one.bond)],
+        calls,
+        marks,
+      )
+    }
   }
 }

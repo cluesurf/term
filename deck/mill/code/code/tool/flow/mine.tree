@@ -1,3 +1,5 @@
+load @term/mill/code/code/like/mine
+  find like
 
 load @term/mill/code/code/call/mine
   find call
@@ -17,6 +19,30 @@ load @term/mill/code/code/halt/mine
 load @term/mill/code/code/bust/mine
   find bust
 
+load @term/mill/code/code/read/mine
+  find read
+
+load @term/mill/code/code/make/mine
+  find make
+
+load @term/mill/code/code/seed/seed/mine
+  find host
+
+load @term/mill/code/code/seed/mine
+  find seed
+
+load @term/mill/code/code/walk/mine
+  find walk
+
+load @term/mill/code/code/turn/mine
+  find turn
+
+load @term/mill/code/code/fuse/mine
+  find fuse
+
+load @term/mill/code/code/note/mine
+  find note
+
 mine flow
   mine any
     mine form, like call
@@ -31,3 +57,57 @@ mine flow
       site halt
     mine form, like bust
       site bust
+    mine form, like walk
+      site walk
+    mine form, like turn
+      site turn
+    mine form, like fuse
+      site fuse
+    mine form, like show
+      site show
+    mine form, like rest
+      site rest
+    mine form, like note
+      site note
+    mine form, like read
+      site read
+    mine form, like free
+      site free
+    mine form, like make
+      site make
+    mine form, like seed
+      site seed
+    mine form, like move
+      site move
+    mine form, like host
+      site host
+
+# `move x` hands ownership of a binding on (an argument or a statement)
+mine move
+  mine term, term move
+    mine path
+      site name
+
+# `show <message>` logs a value, `rest flow` is a breakpoint
+mine show
+  mine term, term show
+    mine form, like seed
+      site seed
+
+mine rest
+  mine term, term rest
+    mine term
+      site term
+
+# `free x` / `free x, like T` releases (or forward-declares) a binding
+mine free
+  mine term, term free
+    mine path
+      site name
+    mine maybe
+      mine form, like like
+        site like
+    mine maybe
+      mine term, term flex
+        mine term
+          site flex

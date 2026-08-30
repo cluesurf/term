@@ -1,95 +1,70 @@
-
-mint json
-  mint value, form value
-    turn seed
+note draft
+# Checked spec, not compiled code — see the note at the top of ../hex/mine.tree. The real writer is ./code.tree's
+# write-json.
 
 mint value
-  mint string, form string
-    turn seed
-  mint number, form number
-    turn seed
-  mint object, form object
-    turn seed
-  mint array, form array
-    turn seed
-  mint boolean, form boolean
-    turn seed
-  mint null
-    head text
-    call parse-string-to-null
-      bind text, link text
-      turn seed
-
-mint boolean
-  head text
-  call parse-string-to-boolean
-    bind text, link text
-    turn seed
+  case json-string
+    mint form, form string
+      bind value, read value
+  case json-number
+    mint form, form number
+      bind value, read value
+  case json-flag
+    mint form, form flag
+      bind value, read value
+  case json-blank
+    mint text, text <null>
+  case json-array
+    mint form, form array
+      bind items, read items
+  case json-object
+    mint form, form object
+      bind entries, read entries
 
 mint string
-  host symbol
-
-  mint esc
-    line symbol
-  mint safecodepoint
-    line symbol
-
-  turn seed, link symbol
+  take value, like text
+  mint text, text <">
+  mint form, form escaped
+    bind value, read value
+  mint text, text <">
 
 mint number
-  host minus, base false
-  host number
-  mint minus-sign
-    head text
-    test is-equal
-      bind base, link text
-      bind head, text <->
-      hook mesh
-        save minus, link true
-  mint integer
-    head text
-    call parse-string-to-integer
-      bind text, link text
-      save number
-  mint float
-    head text
-    call parse-string-to-float
-      bind text, link text
-      save number
-  mint exponent
-    mint sign
-    mint integer
+  take value, like number
+  mint text
+    read value
 
-  test is-existant
-    bind seed, link minus
-    call multiply
-      bind base, text -1
-      bind head, link number
-      save number
-
-mint object
-  make object
-    save object
-  mint pair
-    mint string, form string
-      save key
-    mint value, form value
-      hook base
-        head base
-        save object[key], link base
-  turn seed, link object
+mint flag
+  take value, like boolean
+  fork case, read value
+    case true
+      mint text, text <true>
+    case false
+      mint text, text <false>
 
 mint array
-  mint value, form value
-    line item
-  turn seed, link item
+  take items
+    like list
+      like json-value
+  mint text, text <[>
+  mint list, read items
+    mint form, form value
+      slot value
+  mint text, text <]>
 
-mint esc
-  mint unicode, form unicode
+mint object
+  take entries
+    like list
+      like json-entry
+  mint text, text <{>
+  mint list, read entries
+    mint form, form entry
+      slot value
+  mint text, text <}>
 
-mint unicode
-  mint hex
-    head text
-    call hex-to-unicode-string
-      bind hex, link text
-      turn seed
+mint entry
+  take value, like json-entry
+  mint form, form string
+    bind value, read value/key
+  mint text, text <:>
+  mint form, form value
+    bind value, read value/value

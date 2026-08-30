@@ -1,10 +1,8 @@
-# A representative slice of the ANSI/SGR/cursor escape catalog, real and compiling, ported from the old
-# `feed/code/ansi/mint.tree` draft's field list (dead syntax, real catalog — see note/term/feed/03-worked-examples.md).
+# The full ANSI/SGR/cursor escape catalog, real and compiling, ported field for field from the old
+# `feed/code/ansi/mint.tree` draft (dead syntax, real 362-line catalog — see note/term/feed/03-worked-examples.md).
 # ESC (0x1b) has no printable escape in a Term text literal (only \< \> \{ \} \n \r \t \\ are recognized, confirmed
-# by reading deck/make/code/compile/mill.ts's unescapeText), so it's built once through the new
-# @term/seed/code/rune `rune-to-text`, added for exactly this. Not the full ~80-sequence catalog from the old
-# draft — one representative case per category (reset, style, absolute/relative cursor motion, erase, 256-color,
-# RGB, named color, visibility). Extending it is copy-paste from here, not new design.
+# by reading deck/make/code/compile/mill.ts's unescapeText), so it's built once through @term/seed/code/rune's
+# rune-to-text, added for exactly this.
 
 load @term/seed/code/rune
   find rune-to-text
@@ -35,6 +33,34 @@ task reset-bold-mode
   send back
     text <{{esc}}[22m>
 
+task set-dim-mode
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[2m>
+
+task reset-dim-mode
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[22m>
+
+task set-italic-mode
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[3m>
+
+task reset-italic-mode
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[23m>
+
 task set-underline-mode
   like text
   save esc
@@ -48,6 +74,62 @@ task reset-underline-mode
     call escape
   send back
     text <{{esc}}[24m>
+
+task set-blinking-mode
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[5m>
+
+task reset-blinking-mode
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[25m>
+
+task set-inverse-mode
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[7m>
+
+task reset-inverse-mode
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[27m>
+
+task set-hidden-mode
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[8m>
+
+task reset-hidden-mode
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[28m>
+
+task set-strike-through-mode
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[9m>
+
+task reset-strike-through-mode
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[29m>
 
 task move-cursor-to-home-position
   like text
@@ -97,12 +179,113 @@ task move-cursor-left
   send back
     text <{{esc}}[{{columns}}D>
 
+task move-cursor-to-beginning-of-next-line
+  take rows, like number
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[{{rows}}E>
+
+task move-cursor-to-beginning-of-previous-line
+  take rows, like number
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[{{rows}}F>
+
+task move-cursor-to-column
+  take column, like number
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[{{column}}G>
+
+task request-cursor-position
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[6n>
+
+task move-cursor-up-one-line-with-scrolling
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}M>
+
+task save-cursor-position
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}7>
+
+task restore-cursor-position
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}8>
+
+task erase-in-display
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[J>
+
+task erase-from-cursor-to-end-of-screen
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[0J>
+
+task erase-from-cursor-to-beginning-of-screen
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[1J>
+
 task erase-screen
   like text
   save esc
     call escape
   send back
     text <{{esc}}[2J>
+
+task erase-saved-lines
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[3J>
+
+task erase-in-line
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[K>
+
+task erase-from-cursor-to-end-of-line
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[0K>
+
+task erase-from-start-of-line-to-cursor
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[1K>
 
 task erase-line
   like text
@@ -147,33 +330,33 @@ task set-color-background-rgb
   send back
     text <{{esc}}[48;2;{{r}};{{g}};{{b}}m>
 
-task set-red-foreground
-  like text
-  save esc
-    call escape
-  send back
-    text <{{esc}}[31m>
-
-task set-green-foreground
-  like text
-  save esc
-    call escape
-  send back
-    text <{{esc}}[32m>
-
-task set-blue-foreground
-  like text
-  save esc
-    call escape
-  send back
-    text <{{esc}}[34m>
-
 task set-default-foreground
   like text
   save esc
     call escape
   send back
     text <{{esc}}[39m>
+
+task set-default-background
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[49m>
+
+task reset-color-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[0m>
+
+task reset-color-background
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[0m>
 
 task make-cursor-invisible
   like text
@@ -188,3 +371,257 @@ task make-cursor-visible
     call escape
   send back
     text <{{esc}}[?25h>
+
+task save-screen
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[?47h>
+
+task restore-screen
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[?47l>
+
+task enable-alternative-buffer
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[?1049h>
+
+task disable-alternative-buffer
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[?1049l>
+
+# the eight basic named colors, foreground and background, 30-37 / 40-47 (SGR 3.x/4.x). Bright: 90-97 / 100-107.
+
+task set-black-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[30m>
+
+task set-black-background
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[40m>
+
+task set-red-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[31m>
+
+task set-red-background
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[41m>
+
+task set-green-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[32m>
+
+task set-green-background
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[42m>
+
+task set-yellow-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[33m>
+
+task set-yellow-background
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[43m>
+
+task set-blue-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[34m>
+
+task set-blue-background
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[44m>
+
+task set-magenta-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[35m>
+
+task set-magenta-background
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[45m>
+
+task set-cyan-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[36m>
+
+task set-cyan-background
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[46m>
+
+task set-white-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[37m>
+
+task set-white-background
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[47m>
+
+task set-bright-black-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[90m>
+
+task set-bright-black-background
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[100m>
+
+task set-bright-red-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[91m>
+
+task set-bright-red-background
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[101m>
+
+task set-bright-green-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[92m>
+
+task set-bright-green-background
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[102m>
+
+task set-bright-yellow-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[93m>
+
+task set-bright-yellow-background
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[103m>
+
+task set-bright-blue-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[94m>
+
+task set-bright-blue-background
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[104m>
+
+task set-bright-magenta-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[95m>
+
+task set-bright-magenta-background
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[105m>
+
+task set-bright-cyan-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[96m>
+
+task set-bright-cyan-background
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[106m>
+
+task set-bright-white-foreground
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[97m>
+
+task set-bright-white-background
+  like text
+  save esc
+    call escape
+  send back
+    text <{{esc}}[107m>

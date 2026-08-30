@@ -1,0 +1,39 @@
+note draft
+# Checked spec, not compiled code — see ../head/mine.tree's note. The real reader is ./code.tree's
+# read-otf-maxp-table, proven by deck/feed/test/otf-hhea-maxp.tree. Version 1.0 only (TrueType outlines) —
+# version 0.5 (CFF-flavored, 6 bytes) is out of scope until a dialect needs it, same as ./code.tree.
+
+mine maxp-table
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send version
+  mine form, form ushort
+    send num-glyphs
+  mine form, form ushort
+    send max-points
+  mine form, form ushort
+    send max-contours
+  mine form, form ushort
+    send max-composite-points
+  mine form, form ushort
+    send max-composite-contours
+  mine form, form ushort
+    send max-zones
+  mine form, form ushort
+    send max-twilight-points
+  mine form, form ushort
+    send max-storage
+  mine form, form ushort
+    send max-function-defs
+  mine form, form ushort
+    send max-instruction-defs
+  mine form, form ushort
+    send max-stack-elements
+  mine form, form ushort
+    send max-size-of-instructions
+  mine form, form ushort
+    send max-component-elements
+  mine form, form ushort
+    send max-component-depth

@@ -1,6 +1,6 @@
 // Locale runtime. Reached only through the public environment API. Rust has no locale facility in the standard
 // library, so the tag is read from `LANG` in the POSIX form (`en_GB.UTF-8`) and normalised to a BCP 47 tag.
-mod locale {
+mod tongue {
     pub fn tag() -> String {
         match std::env::var("LANG") {
             Ok(value) => value

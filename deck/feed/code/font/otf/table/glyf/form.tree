@@ -1,0 +1,30 @@
+# The OTF glyf table: one variable-length glyph outline per entry, its byte span given by `loca`. Simple glyphs
+# (contours of on/off-curve points) are real and tested. Composite glyphs (`number-of-contours < 0`, a glyph
+# built from other glyphs by reference) are deliberately out of scope — `otf-glyph-composite-unsupported` keeps
+# the bounding box but not the component records, the same "unsupported, not silently wrong" shape `cmap`'s
+# `otf-cmap-format-unsupported` uses for a subtable format it doesn't decode.
+
+form otf-glyph-point
+  link x, like number
+  link y, like number
+  link on-curve, like boolean
+
+form otf-glyph
+  case otf-glyph-empty
+  case otf-glyph-simple
+    link x-min, like number
+    link y-min, like number
+    link x-max, like number
+    link y-max, like number
+    link contours
+      like list
+        like list
+          like otf-glyph-point
+    link instructions
+      like list
+        like u8
+  case otf-glyph-composite-unsupported
+    link x-min, like number
+    link y-min, like number
+    link x-max, like number
+    link y-max, like number

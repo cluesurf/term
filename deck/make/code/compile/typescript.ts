@@ -163,10 +163,70 @@ function toMember(name: string): string {
   )
 }
 
+// TypeScript lib type names a seed form must not merge with: an emitted `interface Set` DECLARATION-MERGES with
+// the built-in `Set`, so every use site resolves to the wrong shape. Such a form is spelled with a `Form` suffix
+// throughout the emit, the way the Swift backend suffixes Foundation collisions.
+const TS_TAKEN = new Set([
+  'Set',
+  'Map',
+  'Date',
+  'Error',
+  'Promise',
+  'Symbol',
+  'Object',
+  'Array',
+  'Number',
+  'String',
+  'Boolean',
+  'RegExp',
+  'Function',
+  'Iterator',
+])
+
+// the empty value of a type: what a left-out field holds (the same rule the Rust / Swift / Kotlin backends apply)
+export function tsEmptyOf(type: Type | undefined): string {
+  switch (type?.kind) {
+    case 'string':
+      return '""'
+    case 'boolean':
+      return 'false'
+    case 'float':
+    case 'number':
+      return '0'
+    case 'bytes':
+      return 'new Uint8Array()'
+    case 'array':
+      return '[]'
+    case 'map':
+      return 'new Map()'
+    case 'named':
+      if (type.name === 'text') {
+        return '""'
+      }
+
+      if (type.name === 'boolean') {
+        return 'false'
+      }
+
+      if (type.name === 'list') {
+        return '[]'
+      }
+
+      if (type.name === 'hash') {
+        return 'new Map()'
+      }
+
+      return 'undefined as any'
+    default:
+      return 'undefined as any'
+  }
+}
+
 export function toPascal(name: string): string {
   const camel = toCamel(name)
+  const spelled = camel.charAt(0).toUpperCase() + camel.slice(1)
 
-  return camel.charAt(0).toUpperCase() + camel.slice(1)
+  return TS_TAKEN.has(spelled) ? `${spelled}Form` : spelled
 }
 
 // opaque per-backend handle types (`dock type / load <any>, name tcp-handle`): seed name -> concrete TS type. Populated
@@ -371,7 +431,15 @@ function tsType(type: Type | undefined): string {
     case 'unit':
       return 'void'
     case 'array':
-      return `${tsType(type.element)}[]`
+      {
+        // a function element needs parens: `(() => string)[]`, not `() => string[]` (which is a function
+        // returning an array)
+        const element = tsType(type.element)
+
+        return type.element?.kind === 'function'
+          ? `(${element})[]`
+          : `${element}[]`
+      }
     case 'map':
       return `Map<${tsType(type.key)}, ${tsType(type.value)}>`
 
@@ -380,6 +448,12 @@ function tsType(type: Type | undefined): string {
 
       if (opaque) {
         return opaque
+      }
+
+      // `like type` is the UNIVERSE (the type of types): the host has no spelling for it, so a signature that
+      // carries one emits `any` rather than a `Type` no module defines
+      if (type.name === 'type') {
+        return 'any'
       }
 
       // type arguments when the reference carries them, so `like maybe / head
@@ -594,6 +668,29 @@ function makeEmitter(
         return toCamel(node.name)
 
       case 'call': {
+        // `get` / `set` on an ARRAY receiver: JavaScript arrays have no such methods; they are indexing
+        if (
+          node.callee.form === 'member' &&
+          node.callee.target.type?.kind === 'array' &&
+          (node.callee.name === 'get' || node.callee.name === 'set')
+        ) {
+          const target = expression(node.callee.target)
+
+          return node.callee.name === 'get'
+            ? `${target}[${expression(node.args[0]!)}]`
+            : `(${target}[${expression(node.args[0]!)}] = ${expression(node.args[1]!)})`
+        }
+
+        // `flat()` on an array: TypeScript's conditional flat type does not narrow back to the declared element,
+        // so the call rides through `any` (the value is correct at run time; the signature carries the type)
+        if (
+          node.callee.form === 'member' &&
+          node.callee.name === 'flat' &&
+          node.callee.target.type?.kind === 'array'
+        ) {
+          return `(${expression(node.callee.target)}.flat() as any)`
+        }
+
         // `call fill / <data> / like <form>`: walk the data against the form's fields (a spec built here from the
         // record type) into a value of the form; `melt` is the reverse. The walk is the `__termFill` / `__termMelt`
         // prelude below, raised once per emitted module.
@@ -640,10 +737,18 @@ function makeEmitter(
         return `[${node.items
           .map(item => expression(item))
           .join(', ')}]`
-      case 'map':
-        return `new Map([${node.entries
+      case 'map': {
+        // an EMPTY map spells its checked key/value (`new Map<T, boolean>()`), so a construction flowing into a
+        // typed field or parameter is assignable (Map's type arguments are invariant); a filled one infers
+        const ann =
+          node.entries.length === 0 && node.type?.kind === 'map'
+            ? `<${tsType(node.type.key)}, ${tsType(node.type.value)}>`
+            : ''
+
+        return `new Map${ann}([${node.entries
           .map(e => `[${expression(e.key)}, ${expression(e.value)}]`)
           .join(', ')}])`
+      }
 
       case 'record': {
         const fields = node.fields.map(
@@ -659,6 +764,12 @@ function makeEmitter(
           return '[]'
         }
 
+        // `make void` is the absent value, not an empty object: `{} == {}` is never true, so a void slot
+        // written as `{}` could not be recognized again
+        if (node.name === 'void' && fields.length === 0) {
+          return 'undefined'
+        }
+
         // an enum variant carries a discriminant tag; a struct is a plain object
         if (variants.has(node.name)) {
           return `{ ${[
@@ -667,7 +778,15 @@ function makeEmitter(
           ].join(', ')} }`
         }
 
-        return `{ ${fields.join(', ')} }`
+        // a field the construction leaves out (`need false`, or one the runtime fills on another path) takes its
+        // type's empty value, so the object satisfies its interface -- the rule the native backends already follow
+        const declaredFields = tsRecordFields.get(node.name) ?? []
+        const givenNames = new Set(node.fields.map(f => f.name))
+        const missing = declaredFields
+          .filter(f => !givenNames.has(f.name) && !f.optional)
+          .map(f => `${toMember(f.name)}: ${tsEmptyOf(f.type)}`)
+
+        return `{ ${[...fields, ...missing].join(', ')} }`
       }
 
       case 'member':
@@ -1208,15 +1327,17 @@ function makeEmitter(
         // to parse. The cost was that a head written in the source could
         // never constrain anything: `like maybe / head text` and a provider
         // returning the wrong shape looked identical to the compiler.
-        // Each parameter is given `= unknown`. A reference that carries no
+        // Each parameter is given `= any`. A reference that carries no
         // arguments is common in emitted code, and a parameter with no
-        // default would make every one of those an error. The default keeps
-        // the bare reference legal while a reference that DOES carry
-        // arguments is checked properly.
+        // default would make every one of those an error. `any` (not
+        // `unknown`) because a bare reference is the GRADUAL case: a
+        // `Maybe` built with a concrete value must flow into a
+        // `Maybe<number>` slot, which `unknown` refuses. A reference that
+        // DOES carry arguments is checked properly.
         const generics =
           node.params && node.params.length > 0
             ? `<${node.params
-                .map(p => `${toPascal(p)} = unknown`)
+                .map(p => `${toPascal(p)} = any`)
                 .join(', ')}>`
             : ''
 
@@ -1270,8 +1391,20 @@ function makeEmitter(
         assignedNames = new Set<string>()
         collectAssigned(node.body, assignedNames)
 
+        // a `need false` parameter with no `fall` is optional in the emitted signature, so a caller that leaves
+        // it off (the checker allows it) still typechecks. A required param AFTER an optional one forces the
+        // optional to stay required (TypeScript refuses required-after-optional), matching by suffix
+        let lastRequired = -1
+        node.params.forEach((p, i) => {
+          if (!(p.optional && !p.fallback)) {
+            lastRequired = i
+          }
+        })
         const params = node.params
-          .map(p => `${toCamel(p.name)}: ${tsType(p.type)}`)
+          .map(
+            (p, i) =>
+              `${toCamel(p.name)}${p.optional && !p.fallback && i > lastRequired ? '?' : ''}: ${tsType(p.type)}`,
+          )
           .join(', ')
 
         const generics = node.generics.length
@@ -1283,12 +1416,15 @@ function makeEmitter(
           : tsType(node.result)
 
         const keyword = node.async ? 'async function' : 'function'
+        // a signature-only stub (a public module whose impl arrives from the platform module in a fuller
+        // closure) still typechecks: its body is the not-implemented throw, matching the native backends
+        const body =
+          node.body.length === 0 && node.result && node.result.kind !== 'unit'
+            ? `{\n${'  '.repeat(depth + 1)}throw new Error(${JSON.stringify(`stub: ${node.name}`)})\n${'  '.repeat(depth)}}`
+            : block(node.body, depth)
         const out = `${keyword} ${toCamel(
           node.name,
-        )}${generics}(${params}): ${returnType} ${block(
-          node.body,
-          depth,
-        )}`
+        )}${generics}(${params}): ${returnType} ${body}`
 
         assignedNames = previous
 
@@ -1411,23 +1547,48 @@ export function emitTypeScript(
       node.form === 'native',
   )
 
-  const imports = natives
-    .filter(
-      node =>
-        node.kind !== 'type' && !node.module.startsWith('global:'),
+  // the FFI is DYNAMIC by design (`dock` members are the host's `any`): the import is aliased through `any`,
+  // so a shim call is not typechecked against the host package's own declarations
+  const dockAliases = new Set<string>()
+  const imports: string[] = []
+
+  for (const node of natives.filter(
+    n => n.kind !== 'type' && !n.module.startsWith('global:'),
+  )) {
+    // two modules in one closure may dock the same alias (`fs` in a file module and its stream module): one import
+    const alias = toCamel(node.alias)
+
+    if (dockAliases.has(alias)) {
+      continue
+    }
+
+    dockAliases.add(alias)
+    imports.push(
+      `import * as __dock_${alias} from "${node.module}"\nconst ${alias}: any = __dock_${alias}`,
     )
-    .map(
-      node =>
-        `import * as ${toCamel(node.alias)} from "${node.module}"`,
-    )
+  }
+
+  const declaredGlobals = new Set<string>()
 
   for (const node of natives.filter(n =>
     n.module.startsWith('global:'),
   )) {
-    const globalName = node.module.slice('global:'.length)
+    // a global is a JS binding, so a hyphenated dock name (`global:http2-stream`) spells camel — the shim that
+    // defines it must use the same spelling
+    const globalName = toCamel(node.module.slice('global:'.length))
 
-    if (toCamel(node.alias) !== globalName) {
-      imports.push(`const ${toCamel(node.alias)} = ${globalName}`)
+    // the runtime shim defines the global at boot (nativePrelude prepends it); the module itself DECLARES it,
+    // so the emitted file is self-consistent TypeScript on its own (`declare` erases at transpile time)
+    if (!declaredGlobals.has(globalName)) {
+      declaredGlobals.add(globalName)
+      imports.push(`declare const ${globalName}: any`)
+    }
+
+    const alias = toCamel(node.alias)
+
+    if (alias !== globalName && !dockAliases.has(alias)) {
+      dockAliases.add(alias)
+      imports.push(`const ${alias} = ${globalName}`)
     }
   }
 
@@ -1439,12 +1600,23 @@ export function emitTypeScript(
       bind.targets.find(t => t.env === 'javascript')
 
     for (const need of target?.imports ?? []) {
-      const line = need.alias
-        ? `import * as ${toCamel(need.alias)} from "${need.module}"`
-        : `import "${need.module}"`
+      if (need.alias) {
+        const alias = toCamel(need.alias)
 
-      if (!imports.includes(line)) {
-        imports.push(line)
+        if (dockAliases.has(alias)) {
+          continue
+        }
+
+        dockAliases.add(alias)
+        imports.push(
+          `import * as __dock_${alias} from "${need.module}"\nconst ${alias}: any = __dock_${alias}`,
+        )
+      } else {
+        const line = `import "${need.module}"`
+
+        if (!imports.includes(line)) {
+          imports.push(line)
+        }
       }
     }
   }

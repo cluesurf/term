@@ -31,7 +31,11 @@ form mill-mine-child
   case path
     link path, like text
   case form
-    link form, like mill-mine-form
+    # the field is `mine`, not `form`: a variant's field named `form` collides with the discriminant the
+    # TypeScript backend tags variants with
+    link mine, like mill-mine-form
+  # `mine node` consumes any one node, capturing nothing: the skip a mixed file needs
+  case node
 
 # `mine term, term <word>`: one word of the tree, with what may follow it
 form mill-mine-term

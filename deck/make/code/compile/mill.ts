@@ -2474,6 +2474,125 @@ export function mill(tree: RootNode, file: string): MillResult {
             break
           }
 
+          if (variant === 'size') {
+            // `walk size` with `bind base` / `bind head` and a `hook next` body: a counted range loop,
+            // lowered to `let i = base; while (i < head) { body; i = i + 1 }`. Before this every spelling
+            // of it emitted `while (false) {}` and the body was silently dropped (compiler-hygiene-0014).
+            const bindOf = (name: string): Expression | undefined => {
+              for (const part of parts) {
+                if (
+                  part.kind !== 'group' ||
+                  headName(part) !== 'bind'
+                ) {
+                  continue
+                }
+
+                const key = rest(part)[0]
+
+                if (
+                  key?.kind !== 'group' ||
+                  headName(key) !== name
+                ) {
+                  continue
+                }
+
+                // `bind base, code 0` puts the value beside the key; the indented form nests it under it
+                const value = rest(part)[1] ?? rest(key)[0]
+
+                if (value) {
+                  return toExpression(value, scope)
+                }
+              }
+
+              return undefined
+            }
+
+            const base =
+              bindOf('base') ?? { form: 'integer', value: 0, span }
+            const head = bindOf('head')
+
+            if (!head) {
+              diagnostics.push(
+                diagnose('syntax-error', {
+                  file,
+                  span,
+                  message:
+                    '`walk size` needs `bind head` (the bound the counter walks to); `bind base` defaults to 0',
+                }),
+              )
+              break
+            }
+
+            const nextBody = hooks(node).get('next') ?? []
+
+            let item = 'item'
+            let bodyNodes = nextBody
+            const first = nextBody[0]
+
+            if (
+              first?.kind === 'group' &&
+              headName(first) === 'take'
+            ) {
+              const nameGroup = rest(first)[1]
+
+              if (
+                nameGroup?.kind === 'group' &&
+                headName(nameGroup) === 'name'
+              ) {
+                const itemGroup = rest(nameGroup)[0]
+
+                if (itemGroup?.kind === 'group') {
+                  item = headName(itemGroup) ?? 'item'
+                }
+              }
+
+              bodyNodes = nextBody.slice(1)
+            }
+
+            const loopScope = new Set(scope)
+            loopScope.add(item)
+            const counter: Expression = {
+              form: 'variable',
+              name: item,
+              span,
+            }
+            out.push({
+              form: 'let',
+              name: item,
+              init: base,
+              mutable: true,
+              span,
+            })
+            out.push({
+              form: 'while',
+              cond: {
+                form: 'binary',
+                op: '<',
+                left: counter,
+                right: head,
+                span,
+              },
+              body: [
+                ...toStatements(bodyNodes, loopScope),
+                {
+                  form: 'assign',
+                  op: '=',
+                  target: counter,
+                  value: {
+                    form: 'binary',
+                    op: '+',
+                    left: counter,
+                    right: { form: 'integer', value: 1, span },
+                    span,
+                  },
+                  span,
+                },
+              ],
+              span,
+            })
+            break
+          }
+
           const hookMap = hooks(node)
           const condNodes = hookMap.get('test')
           const bodyNodes =
@@ -2989,7 +3108,27 @@ export function mill(tree: RootNode, file: string): MillResult {
     // rather than a `form` plus `make` / `bind` per shape.
     const nested = hostRecord(group)
 
-    const value = nested ?? toExpression(valueNode, new Set<string>())
+    // a `host` with SEVERAL value children is a LIST constant (`host md5-sines` over 64 `code` lines): every
+    // value becomes an element. Taking only the first would silently drop the rest, which is exactly the
+    // value-goes-missing failure the comma rules exist to prevent.
+    const values = args
+      .slice(1)
+      .filter(
+        a =>
+          !(
+            a.kind === 'group' && HOST_ANNOTATION.has(headName(a) ?? '')
+          ),
+      )
+
+    const value =
+      nested ??
+      (values.length > 1
+        ? {
+            form: 'array' as const,
+            items: values.map(v => toExpression(v, new Set<string>())),
+            span: spanOf(group),
+          }
+        : toExpression(valueNode, new Set<string>()))
 
     const likeNode = args
       .slice(1)

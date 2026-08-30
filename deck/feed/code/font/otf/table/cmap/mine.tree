@@ -1,62 +1,146 @@
+note draft
+# Checked spec, not compiled code — see ../head/mine.tree's note. The real reader is ./code.tree's
+# read-otf-cmap-table, proven by deck/feed/test/otf-cmap.tree. Replaces the old pre-rename draft (raw opentype.js
+# JS comments left mid-file — see note/term/feed/04-otf-case-study.md, which called this out directly) entirely.
+# Formats 4 and 12 only; every other format sends a `format-unsupported` value rather than failing, matching
+# ./code.tree's `otf-cmap-format-unsupported` case. `mine case` here branches on a plain number (`format`), so the
+# real reader uses `mine test`/`is-equal` for it (`feedback_term_fork_case_needs_form`, memory) — shown as `mine
+# case` here anyway, since `01-grammar.md` still calls that the open, undecided spelling for a numeric branch.
 
 mine cmap-table
-  mine form, form cmap-table-version
-    weave version
-  check mine
-    bind start, share 0
-    bind front, share version
-  mine form, form table-count
-    weave table-count
-  wheel table-count
-    mine form, form platform-id
-      weave platform-id
-    mine form, form encoding-id
-      weave encoding-id
-    check or
-      check and
-        check mine
-          bind start, share platform-id
-          bind start, share 3
-      mine form, form count-4
-        weave offset
-      leave wheel
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term unsigned
+    send version
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term unsigned
+    send table-count
+  mine list
+    bind count, read table-count
+    mine form, form cmap-encoding-record
+    send records
 
-mine cmap-table-version
-  mine form, form count-2
+mine cmap-encoding-record
+  take table-start, like number
 
-mine table-count
-  mine form, form count-2
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term unsigned
+    send platform-id
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term unsigned
+    send encoding-id
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send subtable-offset
+  mine at
+    bind base, read table-start
+    bind offset, read subtable-offset
+    mine form, form cmap-subtable
+    send subtable
 
-mine platform-id
-  start shift
-  mine shift
-    bind shift, share shift
-    mine form, form count-2
+mine cmap-subtable
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term unsigned
+    send format
+  mine case, read format
+    case 4
+      mine form, form cmap-subtable-format-4
+    case 12
+      mine form, form cmap-subtable-format-12
+    case else
+      mine form, form cmap-subtable-format-unsupported
+    send body
 
-    cmap.numTables = parse.getUShort(data, start + 2);
-    let offset = -1;
-    for (let i = cmap.numTables - 1; i >= 0; i -= 1) {
-        const platformId = parse.getUShort(data, start + 4 + (i * 8));
-        const encodingId = parse.getUShort(data, start + 4 + (i * 8) + 2);
-        if ((platformId === 3 && (encodingId === 0 || encodingId === 1 || encodingId === 10)) ||
-            (platformId === 0 && (encodingId === 0 || encodingId === 1 || encodingId === 2 || encodingId === 3 || encodingId === 4))) {
-            offset = parse.getULong(data, start + 4 + (i * 8) + 4);
-            break;
-        }
-    }
+mine cmap-subtable-format-4
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term unsigned
+    send length
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term unsigned
+    send language
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term unsigned
+    send seg-count-x2
+  mine skip
+    bind width, code 6
+  mine list
+    bind count, read seg-count-x2, divide, code 2
+    mine form, form ushort
+    send end-codes
+  mine skip
+    bind width, code 2
+  mine list
+    bind count, read seg-count-x2, divide, code 2
+    mine form, form ushort
+    send start-codes
+  mine list
+    bind count, read seg-count-x2, divide, code 2
+    mine form, form short
+    send id-deltas
+  mine list
+    bind count, read seg-count-x2, divide, code 2
+    mine form, form ushort
+    send id-range-offsets
+  mine list
+    mine form, form ushort
+    send glyph-id-array
 
-    if (offset === -1) {
-        // There is no cmap table in the font that we support.
-        throw new Error('No valid cmap sub-tables found.');
-    }
+mine cmap-subtable-format-12
+  mine skip
+    bind width, code 2
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send length
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send language
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send num-groups
+  mine list
+    bind count, read num-groups
+    mine form, form cmap-group
+    send groups
 
-    const p = new parse.Parser(data, start + offset);
-    cmap.format = p.parseUShort();
+mine cmap-group
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send start-char-code
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send end-char-code
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send start-glyph-id
 
-    if (cmap.format === 12) {
-        parseCmapTableFormat12(cmap, p);
-    } else if (cmap.format === 4) {
-        parseCmapTableFormat4(cmap, p, data, start, offset);
-    } else {
-        throw new Error('Only format 4 and 12 cmap tables are supported (found format ' + cmap.format + ').');
-    }
+mine cmap-subtable-format-unsupported
+  send format

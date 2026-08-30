@@ -24,21 +24,11 @@ task log-record-make
 
 task log-record-level
   take r, like log-record
-  fork case, read r
-    case log-record
-      link level
-      link message
-      link timestamp
-      send back, read level
+  send back, read r/level
 
 task log-record-message
   take r, like log-record
-  fork case, read r
-    case log-record
-      link level
-      link message
-      link timestamp
-      send back, read message
+  send back, read r/message
 
 task log-level-rank
   take level, like log-level

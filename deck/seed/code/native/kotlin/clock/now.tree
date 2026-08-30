@@ -6,6 +6,7 @@ dock load
 
 task get
   take precise, like boolean, fall false
+  like size
 
   fork test, read precise
     hook hold

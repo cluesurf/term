@@ -21,7 +21,7 @@ import {
   stringRead,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp, FormKind, FormSpec } from '@term/make/code/compile/backend'
-import { formSpec, refuseAny, specForms } from '@term/make/code/compile/backend'
+import { formSpec, hasValuedReturn, refuseAny, specForms } from '@term/make/code/compile/backend'
 import {
   collectBinds,
   renderBind,
@@ -30,13 +30,27 @@ import {
   referencedBinds,
 } from '@term/make/code/compile/bind'
 
-function camel(name: string): string {
+// Kotlin hard keywords: one used as an identifier (a local named `continue`, a param named `object`) is
+// backtick-escaped, in the declaration and every reference alike
+const KOTLIN_KEYWORDS = new Set([
+  'as', 'break', 'class', 'continue', 'do', 'else', 'false', 'for', 'fun', 'if', 'in', 'interface', 'is',
+  'null', 'object', 'package', 'return', 'super', 'this', 'throw', 'true', 'try', 'typealias', 'typeof',
+  'val', 'var', 'when', 'while',
+])
+
+function rawCamel(name: string): string {
   // strip every hyphen, including one before a digit (`sha-256` -> `sha256`), so the result is a valid identifier
   return name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())
 }
 
+function camel(name: string): string {
+  const spelled = rawCamel(name)
+
+  return KOTLIN_KEYWORDS.has(spelled) ? `\`${spelled}\`` : spelled
+}
+
 function pascal(name: string): string {
-  const c = camel(name)
+  const c = rawCamel(name)
 
   return c.charAt(0).toUpperCase() + c.slice(1)
 }
@@ -153,13 +167,27 @@ export function emitKotlin(
       .map(n => [n.name, n.params?.length ?? 0]),
   )
 
+  // every known function's declared parameter types, for filling a left-out trailing `need false` argument
+  const functionParams = new Map<string, (Type | undefined)[]>(
+    program
+      .filter(
+        (n): n is Extract<Statement, { form: 'function' }> =>
+          n.form === 'function',
+      )
+      .map(n => [n.name, n.params.map(p => p.type)]),
+  )
+
   // declarative native bindings render their `case kotlin` template at call sites
   const binds = collectBinds(program)
+
   // the Kotlin subclass for a variant label, and each variant's field names (for construction / smart-cast access)
   const variantClass = new Map<string, string>()
   const variantFieldNames = new Map<string, string[]>()
   // a counter for the locals a `when` binds its subject to
   let matchCount = 0
+  // the enclosing function's declared result, so a `return <unknown-typed value>` can cast at the gradual
+  // boundary (`read mock/dock` returned as `like mock-data`)
+  let currentResult: Type | undefined
   // the forms a `fill` / `melt` with a form walks, gathered while the bodies are emitted
   const fillSpecs = new Map<string, FormSpec>()
   const meltSpecs = new Map<string, FormSpec>()
@@ -226,16 +254,26 @@ export function emitKotlin(
   const classFor = (label: string, type: Type | undefined): string | undefined =>
     (type?.kind === 'named' ? variantClassOf.get(label)?.get(type.name) : undefined) ?? variantClass.get(label)
 
+  // every form name's pascal spelling: a variant subclass (`Seed` + `text` -> `SeedText`) that lands on a
+  // REAL form's name (`seed-text` -> `SeedText`) gets a `Case` suffix, or kotlin refuses the redeclaration
+  const formPascals = new Set(
+    program
+      .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type')
+      .map(n => pascal(n.name)),
+  )
+
   for (const node of program) {
     if (node.form !== 'record-type') {
       continue
     }
 
     for (const v of node.variants) {
-      variantClass.set(v.name, `${pascal(node.name)}${pascal(v.name)}`)
+      const plain = `${pascal(node.name)}${pascal(v.name)}`
+      const cls = formPascals.has(plain) ? `${plain}Case` : plain
+      variantClass.set(v.name, cls)
       variantClassOf.set(
         v.name,
-        (variantClassOf.get(v.name) ?? new Map<string, string>()).set(node.name, `${pascal(node.name)}${pascal(v.name)}`),
+        (variantClassOf.get(v.name) ?? new Map<string, string>()).set(node.name, cls),
       )
       variantFieldNames.set(
         v.name,
@@ -477,7 +515,8 @@ export function emitKotlin(
       const letter = pool.find(l => !used.has(l)) ?? `T${id}`
       used.add(letter)
       varNames.set(id, letter)
-      fresh.push(letter)
+      // bounded `: Any`, so the letter is non-null and passes where a dynamic (Any) parameter is declared
+      fresh.push(`${letter} : Any`)
     }
 
     const namedInSig = new Set<string>()
@@ -612,7 +651,27 @@ export function emitKotlin(
           )})`
         }
 
-        return `${expr(node.callee)}(${node.args.map(expr).join(', ')})`
+        // a trailing `need false` parameter left out at the call site still exists in the native signature:
+        // fill it with its type's empty value (Unit for an unknown)
+        const rendered = node.args.map(expr)
+        const declaredParams =
+          node.callee.form === 'variable'
+            ? functionParams.get(node.callee.name)
+            : undefined
+
+        if (declaredParams && declaredParams.length > rendered.length) {
+          for (let i = rendered.length; i < declaredParams.length; i++) {
+            const missing = declaredParams[i]
+
+            rendered.push(
+              missing === undefined || missing.kind === 'unknown'
+                ? 'Unit'
+                : emptyOf(missing),
+            )
+          }
+        }
+
+        return `${expr(node.callee)}(${rendered.join(', ')})`
       }
 
       case 'array': {
@@ -639,12 +698,76 @@ export function emitKotlin(
       }
 
       case 'record': {
+        // `make hash` / `make list` with no binds are the native collections, not record constructions; the
+        // checked type pins the element parameters where kotlin cannot infer them (a generic function body)
+        if (node.name === 'hash' && node.fields.length === 0) {
+          const args =
+            node.type?.kind === 'map' &&
+            node.type.key.kind !== 'variable' &&
+            node.type.value.kind !== 'variable'
+              ? `<${kotlinType(node.type.key)}, ${kotlinType(node.type.value)}>`
+              : ''
+
+          return `mutableMapOf${args}()`
+        }
+
+        if (node.name === 'list' && node.fields.length === 0) {
+          // a still-FREE element stays unspelled, so kotlin infers it from the expected type at the use site
+          const args =
+            node.type?.kind === 'array' &&
+            node.type.element.kind !== 'variable'
+              ? `<${kotlinType(node.type.element)}>`
+              : ''
+
+          return `mutableListOf${args}()`
+        }
+
+        // `make void` is the absent value: kotlin's Unit, which an Any slot holds and `==` recognizes
+        if (node.name === 'void' && node.fields.length === 0) {
+          return 'Unit'
+        }
+
+        // an empty `make list` / `make hash` field value spells the DECLARED element type, since the
+        // checker's gradual unify leaves it free and kotlin cannot infer it from a named argument
+        const fieldValue = (name: string, value: Expression): string => {
+          // only for a non-generic form: a generic form's declared element is its own type parameter, which
+          // the construction instantiates (spelling the letter literally would not resolve)
+          if ((genericArity.get(node.name) ?? 0) > 0) {
+            return expr(value)
+          }
+
+          const declaredType = recordFields
+            .get(node.name)
+            ?.find(f => f.name === name)?.type
+
+          if (
+            ((value.form === 'record' &&
+              value.fields.length === 0 &&
+              value.name === 'list') ||
+              (value.form === 'array' && value.items.length === 0)) &&
+            declaredType?.kind === 'array'
+          ) {
+            return `mutableListOf<${kotlinType(declaredType.element)}>()`
+          }
+
+          if (
+            value.form === 'record' &&
+            value.fields.length === 0 &&
+            value.name === 'hash' &&
+            declaredType?.kind === 'map'
+          ) {
+            return `mutableMapOf<${kotlinType(declaredType.key)}, ${kotlinType(declaredType.value)}>()`
+          }
+
+          return expr(value)
+        }
+
         const cls = classFor(node.name, node.type)
 
         if (cls) {
           return node.fields.length > 0
             ? `${cls}(${node.fields
-                .map(f => `${camel(f.name)} = ${expr(f.value)}`)
+                .map(f => `${camel(f.name)} = ${fieldValue(f.name, f.value)}`)
                 .join(', ')})`
             : cls
         }
@@ -655,7 +778,7 @@ export function emitKotlin(
         if (declared) {
           const given = new Set(node.fields.map(f => f.name))
           const missing = declared.filter(f => !given.has(f.name)).map(f => `${camel(f.name)} = ${emptyOf(f.type)}`)
-          const all = [...node.fields.map(f => `${camel(f.name)} = ${expr(f.value)}`), ...missing]
+          const all = [...node.fields.map(f => `${camel(f.name)} = ${fieldValue(f.name, f.value)}`), ...missing]
 
           if (missing.length > 0) {
             return `${pascal(node.name)}(${all.join(', ')})`
@@ -669,7 +792,7 @@ export function emitKotlin(
             : ''
 
         return `${pascal(node.name)}${args}(${node.fields
-          .map(f => `${camel(f.name)} = ${expr(f.value)}`)
+          .map(f => `${camel(f.name)} = ${fieldValue(f.name, f.value)}`)
           .join(', ')})`
       }
 
@@ -688,7 +811,19 @@ export function emitKotlin(
         }
 
         if (node.index) {
-          return `${expr(node.target)}[${expr(node.index)}]`
+          // a list subscript takes Int, and seed numbers are Long: an ARRAY target's index narrows; a map key
+          // passes through as it is
+          const narrowed =
+            node.target.type?.kind === 'array'
+              ? `(${expr(node.index)}).toInt()`
+              : expr(node.index)
+
+          return `${expr(node.target)}[${narrowed}]`
+        }
+
+        // a LITERAL index segment (`read parts/0`) on an array target subscripts it: `.0` is not a member
+        if (/^\d+$/.test(node.name) && node.target.type?.kind === 'array') {
+          return `${expr(node.target)}[${node.name}]`
         }
 
         return `${expr(node.target)}.${camel(node.name)}`
@@ -769,7 +904,10 @@ export function emitKotlin(
       case 'pop':
         return `${target}.removeLast()`
       case 'at':
+      case 'get':
         return `${target}[(${arg[0]}).toInt()]`
+      case 'set':
+        return `run { ${target}[(${arg[0]}).toInt()] = ${arg[1]} }`
       case 'includes':
         return `${target}.contains(${arg[0]})`
       case 'indexOf':
@@ -903,6 +1041,23 @@ export function emitKotlin(
                 `: ${kotlinType(node.init.type)}`
               : ''
 
+        // a valueless typed module slot (`host current, like context`, filled later by a `save`): kotlin's
+        // lateinit var, so reads get the declared class type rather than Unit
+        if (node.init.form === 'unit' && node.type?.kind === 'named') {
+          return `lateinit var ${camel(node.name)}: ${kotlinType(node.type)}`
+        }
+
+        // the gradual boundary on a binding: a boxed dynamic re-typed at a declared FORM casts
+        if (
+          node.type?.kind === 'named' &&
+          node.init.form === 'member' &&
+          recordFields.has(node.type.name) &&
+          (node.init.type?.kind === 'unknown' ||
+            node.init.type?.kind === 'dynamic')
+        ) {
+          return `${node.mutable ? 'var' : 'val'} ${camel(node.name)} = ${expr(node.init)} as ${kotlinType(node.type)}`
+        }
+
         return `${node.mutable ? 'var' : 'val'} ${camel(
           node.name,
         )}${ann} = ${expr(node.init)}`
@@ -913,8 +1068,24 @@ export function emitKotlin(
           : `${expr(node.target)} ${node.op} ${expr(node.value)}`
       case 'expression':
         return expr(node.expr)
-      case 'return':
-        return node.value ? `return ${expr(node.value)}` : 'return'
+      case 'return': {
+        if (!node.value) {
+          return currentResult?.kind === 'unknown' ? 'return Unit' : 'return'
+        }
+
+        // the gradual boundary: an unknown-typed value returned at a DECLARED FORM type casts explicitly.
+        // Only for a form the program declares: a generic letter (`like t`) is not a cast target.
+        const valueKind = node.value.type?.kind
+        const cast =
+          node.value.form === 'member' &&
+          (valueKind === 'unknown' || valueKind === 'dynamic') &&
+          currentResult?.kind === 'named' &&
+          recordFields.has(currentResult.name)
+            ? ` as ${kotlinType(currentResult)}`
+            : ''
+
+        return `return ${expr(node.value)}${cast}`
+      }
       case 'throw': {
         // a raise carries the exception record whole in a TermException (the shared fields, the props as `link`, the
         // record as `base`), so a handler reads `note`, `form`, `code` the way it does on TypeScript. A text raises
@@ -983,6 +1154,28 @@ export function emitKotlin(
         const booleans =
           labels.length > 0 &&
           labels.every(label => label === 'true' || label === 'false')
+
+        // a `fork case` over a TEXT subject (`fork case, read kind` with `case home` arms): the labels are
+        // string values, matched by literal
+        if (node.subject.type?.kind === 'string') {
+          const arms = node.cases.map(
+            b =>
+              `${pad(d + 1)}${JSON.stringify(b.label)} -> {\n${block(
+                b.body,
+                d + 2,
+              )}\n${pad(d + 1)}}`,
+          )
+
+          arms.push(
+            `${pad(d + 1)}else -> {${
+              node.otherwise
+                ? `\n${block(node.otherwise, d + 2)}\n${pad(d + 1)}`
+                : ''
+            }}`,
+          )
+
+          return `when (${expr(node.subject)}) {\n${arms.join('\n')}\n${pad(d)}}`
+        }
 
         // an exhaustive `when` on the sealed type: each `is` arm smart-casts the subject, so its fields are directly
         // accessible in the body with no rewrite. A return-position match becomes `return when (...)`.
@@ -1066,18 +1259,40 @@ export function emitKotlin(
             p => `${pad(d + 1)}var ${camel(p.name)} = ${camel(p.name)}`,
           )
 
+        // a task with no declared result but a valued `send back` (a dock forward) is Any, not Unit
+        const result =
+          node.result && node.result.kind !== 'unit'
+            ? node.result
+            : hasValuedReturn(node.body)
+              ? ({ kind: 'unknown' } as Type)
+              : node.result
+
+        currentResult = result
+
+        // a valued task whose body ends in branching that returns from every live path: kotlin cannot always
+        // see the coverage (an if chain with no else), so the fall-through throws
+        const last = node.body[node.body.length - 1]
+        const unreachable =
+          (last?.form === 'if' ||
+            last?.form === 'while' ||
+            last?.form === 'match') &&
+          node.result &&
+          node.result.kind !== 'unit'
+            ? `${pad(d + 1)}throw IllegalStateException("unreachable")`
+            : ''
+
         // a signature-only stub (a public module whose impl arrives from the platform module in a fuller closure)
         // still compiles: its body is the not-implemented panic
         const bodyText =
           node.body.length === 0
             ? `${pad(d + 1)}TODO(${JSON.stringify(`stub: ${node.name}`)})`
-            : [...shadows, block(node.body, d + 1)]
+            : [...shadows, block(node.body, d + 1), unreachable]
                 .filter(Boolean)
                 .join('\n')
 
         return `${suspend}fun ${generics}${camel(
           node.name,
-        )}(${params}): ${kotlinType(node.result)} {\n${bodyText}\n${pad(
+        )}(${params}): ${kotlinType(result)} {\n${bodyText}\n${pad(
           d,
         )}}`
       }
@@ -1092,7 +1307,9 @@ export function emitKotlin(
 
           const head = `sealed class ${pascal(node.name)}${generics}`
           const subclasses = node.variants.map(v => {
-            const cls = `${pascal(node.name)}${pascal(v.name)}`
+            const cls =
+              variantClassOf.get(v.name)?.get(node.name) ??
+              `${pascal(node.name)}${pascal(v.name)}`
             // the variant carries only the generics its own fields mention; the rest of the type's params are Nothing
             const usesGeneric = (name: string) =>
               v.fields.some(f => mentions(f.type, name))
@@ -1242,9 +1459,121 @@ export function emitKotlin(
     }
   }
 
+  // a module-level `host` data tree is an ANONYMOUS nested record: with no form to name it the construction
+  // has nothing to reference. Synthesize one data class per record node, named by the binding and the field
+  // path (HostRange, HostRangeH), and rename the record nodes so the construction uses it.
+  const hostClassDefs: string[] = []
+  const kotlinHostLeaf = (v: Expression): string =>
+    v.form === 'integer'
+      ? 'Long'
+      : v.form === 'float'
+        ? 'Double'
+        : v.form === 'text'
+          ? 'String'
+          : v.form === 'boolean'
+            ? 'Boolean'
+            : 'Long'
+  const nameHostRecord = (
+    node: Extract<Expression, { form: 'record' }>,
+    base: string,
+  ): string => {
+    node.name = base
+
+    const fields = node.fields.map(f => {
+      const type =
+        f.value.form === 'record' && f.value.name === ''
+          ? nameHostRecord(f.value, `${base}${pascal(f.name)}`)
+          : kotlinHostLeaf(f.value)
+
+      return `val ${camel(f.name)}: ${type}`
+    })
+
+    hostClassDefs.push(`data class ${base}(${fields.join(', ')})`)
+
+    return base
+  }
+
+  for (const node of program) {
+    if (
+      node.form === 'let' &&
+      node.init.form === 'record' &&
+      node.init.name === ''
+    ) {
+      nameHostRecord(node.init, `Host${pascal(node.name)}`)
+    }
+  }
+
+  // an abstract module's signature-only declaration and the platform module's implementation share a name by
+  // design (platform dispatch): the stub yields to the implementation instead of redeclaring it
+  const implemented = new Set(
+    program
+      .filter(
+        (n): n is Extract<Statement, { form: 'function' }> =>
+          n.form === 'function' && n.body.length > 0,
+      )
+      .map(n => n.name),
+  )
+
+
+  // a form declared in an abstract module AND its platform module lands twice in the closure: the empty
+  // declaration yields to the full one, and an exact repeat keeps only its first appearance
+  const fullForms = new Set(
+    program
+      .filter(
+        (n): n is Extract<Statement, { form: 'record-type' }> =>
+          n.form === 'record-type' &&
+          (n.fields.length > 0 || n.variants.length > 0),
+      )
+      .map(n => n.name),
+  )
+  const seenForms = new Set<string>()
+  // a module collected twice (two import spellings of one file) emits its functions twice: keep the first
+  const seenFns = new Set<string>()
+  const keepStatement = (n: Statement): boolean => {
+    if (n.form === 'function') {
+      const key = `${n.name}/${n.params.length}`
+
+      if (seenFns.has(key)) {
+        return false
+      }
+
+      seenFns.add(key)
+    }
+
+    if (n.form !== 'record-type') {
+      return true
+    }
+
+    if (
+      n.fields.length === 0 &&
+      n.variants.length === 0 &&
+      fullForms.has(n.name)
+    ) {
+      return false
+    }
+
+    if (seenForms.has(n.name)) {
+      return false
+    }
+
+    seenForms.add(n.name)
+
+    return true
+  }
+
   const body = [
+    ...hostClassDefs,
     ...program
       .filter(n => n.form !== 'native')
+      .filter(
+        n =>
+          !(
+            n.form === 'function' &&
+            n.body.length === 0 &&
+            implemented.has(n.name)
+          ),
+      )
+      .filter(keepStatement)
       .map(n => stmt(n, 0))
       .filter(Boolean),
     ...kotlinFormWalk(fillSpecs, meltSpecs),

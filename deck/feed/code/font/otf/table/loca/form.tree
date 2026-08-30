@@ -1,0 +1,9 @@
+# The OTF loca table (RFC/spec: "Index to Location"): num-glyphs+1 byte offsets into `glyf`, entry `i` to `i+1`
+# giving glyph `i`'s byte span there. Format (short: stored as offset/2, or long: the offset itself) comes from
+# `head`'s own `index-to-loc-format`, not carried here — loca stays single-responsibility, like every other table
+# in this package, and the caller resolves the one cross-table dependency.
+
+form otf-loca-table
+  link offsets
+    like list
+      like number

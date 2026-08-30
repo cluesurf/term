@@ -21,42 +21,22 @@ task process-result-make
 
 task process-result-ok
   take r, like process-result
-  fork case, read r
-    case process-result
-      link code
-      link stdout
-      link stderr
-      send back
-        call is-equal
-          bind a, read code
-          bind b, code 0
+  send back
+    call is-equal
+      bind a, read r/code
+      bind b, code 0
 
 task process-result-code
   take r, like process-result
-  fork case, read r
-    case process-result
-      link code
-      link stdout
-      link stderr
-      send back, read code
+  send back, read r/code
 
 task process-result-stdout
   take r, like process-result
-  fork case, read r
-    case process-result
-      link code
-      link stdout
-      link stderr
-      send back, read stdout
+  send back, read r/stdout
 
 task process-result-stderr
   take r, like process-result
-  fork case, read r
-    case process-result
-      link code
-      link stdout
-      link stderr
-      send back, read stderr
+  send back, read r/stderr
 
 task process-info-make
   take id, like size
@@ -70,9 +50,4 @@ task process-info-make
 
 task process-info-id
   take p, like process-info
-  fork case, read p
-    case process-info
-      link id
-      link directory
-      link executable
-      send back, read id
+  send back, read p/id

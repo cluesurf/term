@@ -83,6 +83,13 @@ load @term/mill/code/code/view/mine
 load @term/mill/code/code/zone/mine
   find zone
 
+load @term/mill/code/code/bind/mine
+  find bind-def
+
+load @term/mill/code/code/rule/def/mine
+  find rule-def
+  find roll-def
+
 mine code
   mine list
     mine any
@@ -98,6 +105,14 @@ mine code
         site host
       mine form, like load
         site load
+      mine form, like dock-bind
+        site dock-bind
+      mine form, like bind-def
+        site bind-def
+      mine form, like rule-def
+        site rule
+      mine form, like roll-def
+        site roll
       mine form, like dock
         site dock
       mine form, like test

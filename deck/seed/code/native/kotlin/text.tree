@@ -2,14 +2,18 @@
 dock load
   load <global:text>, name text
 
+dock load
+  load <global:shape>, name shape
+
 task slice
   take value, like text
   take start, like size
   take end, like size, need false
+  like text
 
   fork test
     hook test
-      call is-some
+      call shape/is-present
         read end
     hook hold
       send back
@@ -27,6 +31,7 @@ task find
   take value, like text
   take search, like text
   take start, like size, fall code 0
+  like size
 
   send back
     call kotlin-index-of
@@ -39,6 +44,7 @@ task replace
   take search, like text
   take replacement, like text
   take all, like boolean, fall false
+  like text
 
   fork test, name all
     hook hold
@@ -57,6 +63,8 @@ task replace
 task split
   take value, like text
   take separator, like text
+  like list
+    like text
 
   send back
     call kotlin-split
@@ -64,8 +72,11 @@ task split
       read separator
 
 task join
-  take list, like list
+  take list
+    like list
+      like text
   take separator, like text, fall text <>
+  like text
 
   send back
     call kotlin-join
@@ -74,6 +85,7 @@ task join
 
 task trim
   take value, like text
+  like text
 
   send back
     call kotlin-trim
@@ -81,6 +93,7 @@ task trim
 
 task to-upper
   take value, like text
+  like text
 
   send back
     call kotlin-to-upper
@@ -88,6 +101,7 @@ task to-upper
 
 task to-lower
   take value, like text
+  like text
 
   send back
     call kotlin-to-lower
@@ -96,6 +110,7 @@ task to-lower
 task starts-with
   take value, like text
   take search, like text
+  like boolean
 
   send back
     call kotlin-starts-with
@@ -105,6 +120,7 @@ task starts-with
 task ends-with
   take value, like text
   take search, like text
+  like boolean
 
   send back
     call kotlin-ends-with
@@ -114,6 +130,7 @@ task ends-with
 task contains
   take value, like text
   take search, like text
+  like boolean
 
   send back
     call kotlin-contains
@@ -122,6 +139,7 @@ task contains
 
 task length
   take value, like text
+  like size
 
   send back
     call kotlin-length
@@ -191,7 +209,9 @@ task kotlin-split
 
 task kotlin-join
   note private
-  take list, like list
+  take list
+    like list
+      like text
   take separator, like text
   send back
     call text/join

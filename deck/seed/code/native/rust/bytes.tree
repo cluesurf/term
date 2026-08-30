@@ -3,14 +3,14 @@
 dock load
   load <global:octets>, name octets
 
-task do-from-text
+task do-bytes-from-text
   take text, like text
   like bytes
   send back
     call octets/from-text
       read text
 
-task do-to-text
+task do-bytes-to-text
   take value, like bytes
   like text
   send back

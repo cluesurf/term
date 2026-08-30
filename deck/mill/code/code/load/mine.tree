@@ -1,14 +1,14 @@
 
 mine load
   mine term, term load
-    mine load-path
+    mine path
       site path
     mine maybe
       mine term, term name
         mine term
           site name
     mine maybe
-      mine form, like host
+      mine form, like load-host
         site host
     mine list
       mine form, like find
@@ -17,7 +17,7 @@ mine load
       mine form, like load
         site load
 
-mine host
+mine load-host
   mine term, term host
     mine term
       site value

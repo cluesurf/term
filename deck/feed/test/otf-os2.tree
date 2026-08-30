@@ -1,0 +1,202 @@
+# read/write round trips for the OTF OS/2 table, both an unversioned (0) and a fully versioned (2) table. Run:
+# term test, from deck/feed. Proves mine maybe / test is-minimum (04-otf-case-study.md) against real code.
+
+load @term/seed/code/list
+  find push
+
+load @term/seed/code/maybe
+  find some
+  find none
+
+load ../code/base
+  find make-cursor
+
+load ../code/font/otf/table/os2/form
+  find otf-os2-table
+
+load ../code/font/otf/table/os2/code
+  find read-otf-os2-table
+  find write-otf-os2-table
+
+task ten-zero-bytes
+  like list
+    like u8
+  save result
+    make list
+  save index, code 0
+  walk test
+    hook test
+      call is-below(read index, code 10)
+    hook hold
+      call push(read result, code 0)
+      save index
+        call add(read index, code 1)
+  send back, read result
+
+task four-zero-bytes
+  like list
+    like u8
+  save result
+    make list
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  send back, read result
+
+task version-0-table
+  like otf-os2-table
+  send back
+    make otf-os2-table
+      bind version, code 0
+      bind x-avg-char-width, code 500
+      bind us-weight-class, code 400
+      bind us-width-class, code 5
+      bind fs-type, code 0
+      bind y-subscript-x-size, code 650
+      bind y-subscript-y-size, code 600
+      bind y-subscript-x-offset, code 0
+      bind y-subscript-y-offset, code 75
+      bind y-superscript-x-size, code 650
+      bind y-superscript-y-size, code 600
+      bind y-superscript-x-offset, code 0
+      bind y-superscript-y-offset, code 350
+      bind y-strikeout-size, code 50
+      bind y-strikeout-position, code 250
+      bind s-family-class, code 0
+      bind panose, call ten-zero-bytes
+      bind ul-unicode-range-1, code 1
+      bind ul-unicode-range-2, code 0
+      bind ul-unicode-range-3, code 0
+      bind ul-unicode-range-4, code 0
+      bind ach-vend-id, call four-zero-bytes
+      bind fs-selection, code 64
+      bind us-first-char-index, code 32
+      bind us-last-char-index, code 126
+      bind s-typo-ascender, code 800
+      bind s-typo-descender, code -200
+      bind s-typo-line-gap, code 90
+      bind us-win-ascent, code 900
+      bind us-win-descent, code 200
+      bind ul-code-page-range-1
+        make none
+      bind ul-code-page-range-2
+        make none
+      bind sx-height
+        make none
+      bind s-cap-height
+        make none
+      bind us-default-char
+        make none
+      bind us-break-char
+        make none
+      bind us-max-context
+        make none
+
+task version-2-table
+  like otf-os2-table
+  send back
+    make otf-os2-table
+      bind version, code 2
+      bind x-avg-char-width, code 500
+      bind us-weight-class, code 400
+      bind us-width-class, code 5
+      bind fs-type, code 0
+      bind y-subscript-x-size, code 650
+      bind y-subscript-y-size, code 600
+      bind y-subscript-x-offset, code 0
+      bind y-subscript-y-offset, code 75
+      bind y-superscript-x-size, code 650
+      bind y-superscript-y-size, code 600
+      bind y-superscript-x-offset, code 0
+      bind y-superscript-y-offset, code 350
+      bind y-strikeout-size, code 50
+      bind y-strikeout-position, code 250
+      bind s-family-class, code 0
+      bind panose, call ten-zero-bytes
+      bind ul-unicode-range-1, code 1
+      bind ul-unicode-range-2, code 0
+      bind ul-unicode-range-3, code 0
+      bind ul-unicode-range-4, code 0
+      bind ach-vend-id, call four-zero-bytes
+      bind fs-selection, code 64
+      bind us-first-char-index, code 32
+      bind us-last-char-index, code 126
+      bind s-typo-ascender, code 800
+      bind s-typo-descender, code -200
+      bind s-typo-line-gap, code 90
+      bind us-win-ascent, code 900
+      bind us-win-descent, code 200
+      bind ul-code-page-range-1
+        make some
+          bind value, code 1
+      bind ul-code-page-range-2
+        make some
+          bind value, code 0
+      bind sx-height
+        make some
+          bind value, code 520
+      bind s-cap-height
+        make some
+          bind value, code 700
+      bind us-default-char
+        make some
+          bind value, code 0
+      bind us-break-char
+        make some
+          bind value, code 32
+      bind us-max-context
+        make some
+          bind value, code 0
+
+task code-page-range-1-or-default
+  take subject
+    like maybe
+      like number
+  take default, like number
+  like number
+  fork case, read subject
+    case some
+      link value
+      send back, read value
+    case none
+      send back, read default
+
+test <a version-0 table is exactly 78 bytes, no version-1 or version-2 tail>
+  want hold
+    call is-equal
+      call size(call write-otf-os2-table(call version-0-table))
+      code 78
+
+test <a version-2 table is exactly 96 bytes, both tails present>
+  want hold
+    call is-equal
+      call size(call write-otf-os2-table(call version-2-table))
+      code 96
+
+test <a version-0 table reads back no code-page-range>
+  save reread
+    call read-otf-os2-table
+      call make-cursor(call write-otf-os2-table(call version-0-table))
+  want hold
+    call is-equal
+      call code-page-range-1-or-default(read reread/ul-code-page-range-1, code -1)
+      code -1
+
+test <a version-2 table reads back its code-page-range and sx-height>
+  save reread
+    call read-otf-os2-table
+      call make-cursor(call write-otf-os2-table(call version-2-table))
+  want hold
+    call is-equal
+      call code-page-range-1-or-default(read reread/ul-code-page-range-1, code -1)
+      code 1
+
+test <a version-2 table's always-present fields still round trip>
+  save reread
+    call read-otf-os2-table
+      call make-cursor(call write-otf-os2-table(call version-2-table))
+  want hold
+    call is-equal
+      read reread/s-typo-descender
+      code -200

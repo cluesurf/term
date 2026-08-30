@@ -1,3 +1,11 @@
+load @term/mill/code/code/take/mine
+  find take
+
+load @term/mill/code/code/like/mine
+  find like
+  find and
+  find or
+
 load @term/mill/code/code/head/mine
   find head
 
@@ -8,9 +16,27 @@ mine mask
   mine term, term mask
     mine term
       site name
+    mine maybe
+      mine term, term base
+        mine any
+          mine form, like and
+            site and
+          mine form, like or
+            site or
+          mine form, like like
+            site like
+          mine term
+            site base
+        mine maybe
+          mine form, like like
+            site base-like
     mine list
-      mine form, like head
-        site head
-    mine list
-      mine form, like task
-        site task
+      mine any
+        mine form, like suit-base
+          site base
+        mine form, like head
+          site head
+        mine form, like take
+          site take
+        mine form, like task
+          site task

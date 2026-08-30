@@ -175,8 +175,13 @@ export {
   encodeBundle,
   decodeBundle,
   applyBundle,
+  verifyBundle,
 } from '@term/base/code/transport/bundle'
-export type { Bundle, ApplyBundleReport } from '@term/base/code/transport/bundle'
+export type {
+  Bundle,
+  ApplyBundleReport,
+  BundleVerdict,
+} from '@term/base/code/transport/bundle'
 export { packChunks, unpack, readFromPack } from '@term/base/code/store/pack'
 export type { Pack } from '@term/base/code/store/pack'
 
@@ -275,6 +280,32 @@ export { ReferenceIndex } from '@term/base/code/lookup/reference-index'
 export { blame, recordHistory, bisect, buildMarkIndex, markHistory } from '@term/base/code/history/history'
 export type { FieldBlame, HistoryEntry } from '@term/base/code/history/history'
 export { MarkIndex, marksTouched } from '@term/base/code/lookup/mark-index'
+
+// Transparency checkpoints over the log
+export {
+  checkpointOf,
+  checkpointSigned,
+  consistent,
+  inclusionProof,
+  rootOf,
+  verifyInclusion,
+} from '@term/base/code/access/checkpoint'
+export type { Checkpoint } from '@term/base/code/access/checkpoint'
+
+// Which key belonged to which publisher, and when
+export {
+  canonicalDirectory,
+  covers,
+  endKey,
+  keysAt,
+  verifyAuthorship,
+} from '@term/base/code/access/directory'
+export type {
+  Directory,
+  KeyEntry,
+  Refusal,
+  Verdict,
+} from '@term/base/code/access/directory'
 
 // Integrity verification (fsck)
 export { fsck } from '@term/base/code/verify/fsck'

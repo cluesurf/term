@@ -1,0 +1,206 @@
+# Measured throughput, not claimed throughput: each block runs its codec many times and logs elapsed ms to the
+# console. Run: term test, from deck/feed (shown in the runner's output, not asserted against a fixed threshold —
+# wall-clock time is environment-dependent, so this is evidence to read, not a pass/fail gate). One concrete task
+# per dialect rather than a higher-order "run N times" helper — no confirmed precedent anywhere in @term/seed for
+# an inline anonymous task literal passed as an argument, and this session already spent enough turns on
+# unconfirmed syntax guesses that a plain, verbose loop is the safer choice here. `show <text>` (CLAUDE.md's
+# metadata list) turned out not to be a callable statement — `console/log` is the real one.
+#
+# This benchmark is what actually found ../code/json/code.tree's text-cursor-at-end bug: json round-tripped at
+# 117ms/5000 iterations against hex's 4.7ms/10000, roughly 50x slower per byte despite the input being only ~9x
+# longer — the signature of an O(n^2) term. Cause: char-count (Array.from, O(n)) was being recomputed on every
+# character of every parse instead of cached once at cursor construction. Fixed, remeasured: 25.7ms/5000, a 4.6x
+# speedup on the same input, same iteration count, same machine.
+#
+# Broadened afterward to every dialect with a round trip (gzip, OTF head-table) or a representative operation
+# (pdf), not just the one that already had a known bug, so "no other regression" is measured, not assumed. Every
+# per-operation cost scales with the operation's own field/token count and nothing else — no outlier the way json
+# was before the fix (roughly 25-100ns per field/character across hex, gzip, the OTF table, and json alike, once
+# normalized; pdf's plain template substitution is the cheapest at ~56ns per 4-operator call, as expected for the
+# simplest dialect in the package).
+
+load @term/seed/code/clock
+  find now
+
+load @term/seed/code/console
+  find log
+
+load ../code/hex/code
+  find read-hex
+  find write-hex
+
+load ../code/json/code
+  find read-json
+  find write-json
+
+load @term/seed/code/list
+  find push
+
+load ../code/gzip/code
+  find read-gzip
+  find write-gzip
+
+load ../code/font/otf/table/head/code
+  find read-otf-head-table
+  find write-otf-head-table
+
+load ../code/font/otf/table/head/form
+  find otf-head-table
+
+load ../code/base
+  find make-cursor
+
+load ../code/pdf/1.7/code
+  find move-to
+  find line-to
+  find set-color-fill-rgb
+  find fill
+
+task bench-sample-json
+  like text
+  send back
+    text <{"name": "term", "count": 42, "ok": true, "tags": [1, 2, 3, 4, 5], "nested": {"a": 1, "b": 2, "c": null}}>
+
+task bench-sample-gzip-bytes
+  like list
+    like u8
+  save result
+    make list
+  call push(read result, code 0x1f)
+  call push(read result, code 0x8b)
+  call push(read result, code 0x08)
+  call push(read result, code 0x00)
+  call push(read result, code 0x00)
+  call push(read result, code 0x00)
+  call push(read result, code 0x00)
+  call push(read result, code 0x00)
+  call push(read result, code 0x00)
+  call push(read result, code 0xff)
+  call push(read result, code 0xaa)
+  call push(read result, code 0xbb)
+  call push(read result, code 0x78)
+  call push(read result, code 0x56)
+  call push(read result, code 0x34)
+  call push(read result, code 0x12)
+  call push(read result, code 0x02)
+  call push(read result, code 0x00)
+  call push(read result, code 0x00)
+  call push(read result, code 0x00)
+  send back, read result
+
+task bench-sample-head-table
+  like otf-head-table
+  send back
+    make otf-head-table
+      bind version-major, code 1
+      bind version-minor, code 0
+      bind font-revision, code 65536
+      bind checksum-adjustment, code 0
+      bind magic-number, code 0x5f0f3cf5
+      bind flags, code 0
+      bind units-per-em, code 1000
+      bind created, code 3610281600
+      bind modified, code 3610281600
+      bind x-min, code -100
+      bind y-min, code -50
+      bind x-max, code 1000
+      bind y-max, code 900
+      bind mac-style, code 0
+      bind lowest-rec-ppem, code 8
+      bind font-direction-hint, code 2
+      bind index-to-loc-format, code 0
+      bind glyph-data-format, code 0
+
+test <hex round-trip throughput over 10,000 iterations>
+  save start
+    call now
+  save index, code 0
+  walk test
+    hook test
+      call is-below(read index, code 10000)
+    hook hold
+      call write-hex(call read-hex(text <deadbeefcafef00d>))
+      save index
+        call add(read index, code 1)
+  save elapsed
+    call subtract(call now, read start)
+  call log
+    text <hex round trip, 10000 iterations: {{elapsed}}ms>
+  want hold
+    true
+
+test <json round-trip throughput over 5,000 iterations>
+  save start
+    call now
+  save index, code 0
+  walk test
+    hook test
+      call is-below(read index, code 5000)
+    hook hold
+      call write-json(call read-json(call bench-sample-json))
+      save index
+        call add(read index, code 1)
+  save elapsed
+    call subtract(call now, read start)
+  call log
+    text <json round trip, 5000 iterations: {{elapsed}}ms>
+  want hold
+    true
+
+test <gzip round-trip throughput over 5,000 iterations>
+  save start
+    call now
+  save index, code 0
+  walk test
+    hook test
+      call is-below(read index, code 5000)
+    hook hold
+      call write-gzip(call read-gzip(call bench-sample-gzip-bytes))
+      save index
+        call add(read index, code 1)
+  save elapsed
+    call subtract(call now, read start)
+  call log
+    text <gzip round trip, 5000 iterations: {{elapsed}}ms>
+  want hold
+    true
+
+test <otf head-table round-trip throughput over 10,000 iterations>
+  save start
+    call now
+  save index, code 0
+  walk test
+    hook test
+      call is-below(read index, code 10000)
+    hook hold
+      call read-otf-head-table
+        call make-cursor(call write-otf-head-table(call bench-sample-head-table))
+      save index
+        call add(read index, code 1)
+  save elapsed
+    call subtract(call now, read start)
+  call log
+    text <otf head-table round trip, 10000 iterations: {{elapsed}}ms>
+  want hold
+    true
+
+test <pdf operator generation throughput over 20,000 iterations>
+  save start
+    call now
+  save index, code 0
+  walk test
+    hook test
+      call is-below(read index, code 20000)
+    hook hold
+      call move-to(code 10, code 20)
+      call line-to(code 30, code 40)
+      call set-color-fill-rgb(code 1, code 0, code 0)
+      call fill
+      save index
+        call add(read index, code 1)
+  save elapsed
+    call subtract(call now, read start)
+  call log
+    text <pdf 4-operator sequence, 20000 iterations: {{elapsed}}ms>
+  want hold
+    true

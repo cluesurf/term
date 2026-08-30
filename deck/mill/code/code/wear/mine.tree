@@ -1,10 +1,16 @@
 load @term/mill/code/code/task/mine
   find task
 
+load @term/mill/code/code/head/mine
+  find head
+
 mine wear
   mine term, term wear
     mine term
       site name
     mine list
-      mine form, like task
-        site task
+      mine any
+        mine form, like head
+          site head
+        mine form, like task
+          site task

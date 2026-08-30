@@ -1,0 +1,237 @@
+# read-otf-glyph / write-otf-glyph: a simple triangle glyph, the true zero-byte empty case, and a composite
+# glyph's header (bounding box only — deliberately unsupported past that, see form.tree). Run: term test, from
+# deck/feed.
+
+load @term/seed/code/list
+  find push
+  find get
+  find size
+
+load ../code/base
+  find make-cursor
+
+load ../code/font/otf/table/glyf/form
+  find otf-glyph
+  find otf-glyph-point
+
+load ../code/font/otf/table/glyf/code
+  find read-otf-glyph
+  find write-otf-glyph
+
+task triangle-contour
+  like list
+    like otf-glyph-point
+  save result
+    make list
+  call push
+    read result
+    make otf-glyph-point
+      bind x, code 0
+      bind y, code 0
+      bind on-curve, true
+  call push
+    read result
+    make otf-glyph-point
+      bind x, code 500
+      bind y, code 0
+      bind on-curve, true
+  call push
+    read result
+    make otf-glyph-point
+      bind x, code 250
+      bind y, code 700
+      bind on-curve, true
+  send back, read result
+
+task sample-triangle-glyph
+  like otf-glyph
+  save contours
+    make list
+  call push(read contours, call triangle-contour)
+  send back
+    make otf-glyph-simple
+      bind x-min, code 0
+      bind y-min, code 0
+      bind x-max, code 500
+      bind y-max, code 700
+      bind contours, read contours
+      bind instructions, make list
+
+task triangle-point
+  take glyph, like otf-glyph
+  take contour-index, like number
+  take point-index, like number
+  like otf-glyph-point
+  fork case, read glyph
+    case otf-glyph-simple
+      link contours
+      send back
+        call get
+          call get(read contours, read contour-index)
+          read point-index
+    case otf-glyph-empty
+      halt <expected a simple glyph, found empty>
+    case otf-glyph-composite-unsupported
+      halt <expected a simple glyph, found an unsupported composite>
+
+task first-contour-point-count
+  take glyph, like otf-glyph
+  like number
+  fork case, read glyph
+    case otf-glyph-simple
+      link contours
+      send back
+        call size(call get(read contours, code 0))
+    case otf-glyph-empty
+      halt <expected a simple glyph, found empty>
+    case otf-glyph-composite-unsupported
+      halt <expected a simple glyph, found an unsupported composite>
+
+test <write-otf-glyph then read-otf-glyph round trips a simple triangle's point count>
+  save bytes
+    call write-otf-glyph(call sample-triangle-glyph)
+  save reread
+    call read-otf-glyph(call make-cursor(read bytes), call size(read bytes))
+  want hold
+    call is-equal
+      call first-contour-point-count(read reread)
+      code 3
+
+test <the triangle's third point round trips its exact coordinates>
+  save bytes
+    call write-otf-glyph(call sample-triangle-glyph)
+  save reread
+    call read-otf-glyph(call make-cursor(read bytes), call size(read bytes))
+  save point
+    call triangle-point(read reread, code 0, code 2)
+  want hold
+    call is-equal
+      read point/x
+      code 250
+
+test <a negative-coordinate point round trips through the signed short-vector decode>
+  save contour
+    make list
+  call push
+    read contour
+    make otf-glyph-point
+      bind x, code -30
+      bind y, code -40
+      bind on-curve, true
+  call push
+    read contour
+    make otf-glyph-point
+      bind x, code 30
+      bind y, code 40
+      bind on-curve, false
+  save contours
+    make list
+  call push(read contours, read contour)
+  save glyph
+    make otf-glyph-simple
+      bind x-min, code -30
+      bind y-min, code -40
+      bind x-max, code 30
+      bind y-max, code 40
+      bind contours, read contours
+      bind instructions, make list
+  save reread
+    call read-otf-glyph
+      call make-cursor(call write-otf-glyph(read glyph))
+      call size(call write-otf-glyph(read glyph))
+  save point
+    call triangle-point(read reread, code 0, code 0)
+  want hold
+    call is-equal
+      read point/x
+      code -30
+
+test <the second point's off-curve flag round trips>
+  save contour
+    make list
+  call push
+    read contour
+    make otf-glyph-point
+      bind x, code -30
+      bind y, code -40
+      bind on-curve, true
+  call push
+    read contour
+    make otf-glyph-point
+      bind x, code 30
+      bind y, code 40
+      bind on-curve, false
+  save contours
+    make list
+  call push(read contours, read contour)
+  save glyph
+    make otf-glyph-simple
+      bind x-min, code -30
+      bind y-min, code -40
+      bind x-max, code 30
+      bind y-max, code 40
+      bind contours, read contours
+      bind instructions, make list
+  save reread
+    call read-otf-glyph
+      call make-cursor(call write-otf-glyph(read glyph))
+      call size(call write-otf-glyph(read glyph))
+  save point
+    call triangle-point(read reread, code 0, code 1)
+  want hold
+    call is-equal
+      read point/on-curve
+      false
+
+task is-empty-glyph
+  take glyph, like otf-glyph
+  like boolean
+  fork case, read glyph
+    case otf-glyph-empty
+      send back, true
+    case otf-glyph-simple
+      send back, false
+    case otf-glyph-composite-unsupported
+      send back, false
+
+test <a zero-byte span reads as the true empty glyph, no header read at all>
+  want hold
+    call is-empty-glyph
+      call read-otf-glyph(call make-cursor(make list), code 0)
+
+task composite-header-bytes
+  like list
+    like u8
+  save result
+    make list
+  call push(read result, code 0xff)
+  call push(read result, code 0xff)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 0)
+  call push(read result, code 100)
+  call push(read result, code 0)
+  call push(read result, code 100)
+  send back, read result
+
+task composite-x-max
+  take glyph, like otf-glyph
+  like number
+  fork case, read glyph
+    case otf-glyph-composite-unsupported
+      link x-max
+      send back, read x-max
+    case otf-glyph-empty
+      halt <expected a composite glyph, found empty>
+    case otf-glyph-simple
+      halt <expected a composite glyph, found a simple glyph>
+
+test <a composite glyph's header reads its bounding box without failing>
+  save glyph
+    call read-otf-glyph(call make-cursor(call composite-header-bytes), code 10)
+  want hold
+    call is-equal
+      call composite-x-max(read glyph)
+      code 100

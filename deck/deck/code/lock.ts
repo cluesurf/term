@@ -3,6 +3,7 @@ import path from 'path'
 import { Lockfile, LockEntry, Code } from './form'
 import { parseCode, showCode } from './code'
 import { readTree, valueOf, formsWith } from './read'
+import { parseLockfileMill } from './mill'
 
 export async function loadLockfile(input: {
   dir: string
@@ -19,6 +20,12 @@ export async function loadLockfile(input: {
 }
 
 export function parseLockfile(input: { text: string }): Lockfile {
+  // the lockfile reads THROUGH THE MILL (mill-self-hosting-0005); the hand extraction below is the retired
+  // reference path
+  return parseLockfileMill(input)
+}
+
+export function parseLockfileByHand(input: { text: string }): Lockfile {
   const result = readTree({ file: 'lock.tree', text: input.text })
 
   if (!result.ok) {

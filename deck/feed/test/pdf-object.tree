@@ -1,0 +1,253 @@
+# read-pdf-value / write-pdf-value against literal expected text, the number-vs-reference disambiguation, and
+# write-pdf-xref-table / write-pdf-trailer / write-pdf-indirect-object. Run: term test, from deck/feed.
+
+load @term/seed/code/list
+  find get
+  find push
+  find size
+
+load @term/seed/code/text
+  find char-count
+
+load ../code/pdf/1.7/object/form
+  find pdf-value
+  find pdf-entry
+  find pdf-indirect-object
+  find pdf-xref-entry
+  find pdf-xref-table
+  find pdf-trailer
+
+load ../code/pdf/1.7/object/code
+  find make-pdf-cursor
+  find parse-pdf-value
+  find write-pdf-value
+  find parse-pdf-indirect-object
+  find write-pdf-indirect-object
+  find write-pdf-xref-table
+  find write-pdf-trailer
+
+task round-pdf-value
+  take input, like text
+  like text
+  send back
+    call write-pdf-value
+      call parse-pdf-value(call make-pdf-cursor(read input))
+
+test <null reads and writes back>
+  want hold
+    call is-equal
+      call round-pdf-value(text <null>)
+      text <null>
+
+test <true reads and writes back>
+  want hold
+    call is-equal
+      call round-pdf-value(text <true>)
+      text <true>
+
+test <a bare integer reads and writes back>
+  want hold
+    call is-equal
+      call round-pdf-value(text <42>)
+      text <42>
+
+test <a negative decimal reads and writes back>
+  want hold
+    call is-equal
+      call round-pdf-value(text <-3.5>)
+      text <-3.5>
+
+test <a name reads and writes back>
+  want hold
+    call is-equal
+      call round-pdf-value(text </Type>)
+      text </Type>
+
+task pdf-string-value
+  take subject, like pdf-value
+  like text
+  fork case, read subject
+    case pdf-string
+      link value
+      send back, read value
+    case pdf-null
+      halt <expected a string, found null>
+    case pdf-boolean
+      halt <expected a string, found a boolean>
+    case pdf-number
+      halt <expected a string, found a number>
+    case pdf-name
+      halt <expected a string, found a name>
+    case pdf-array
+      halt <expected a string, found an array>
+    case pdf-dictionary
+      halt <expected a string, found a dictionary>
+    case pdf-reference
+      halt <expected a string, found a reference>
+
+task pdf-number-value
+  take subject, like pdf-value
+  like decimal
+  fork case, read subject
+    case pdf-number
+      link value
+      send back, read value
+    case pdf-null
+      halt <expected a number, found null>
+    case pdf-boolean
+      halt <expected a number, found a boolean>
+    case pdf-string
+      halt <expected a number, found a string>
+    case pdf-name
+      halt <expected a number, found a name>
+    case pdf-array
+      halt <expected a number, found an array>
+    case pdf-dictionary
+      halt <expected a number, found a dictionary>
+    case pdf-reference
+      halt <expected a number, found a reference>
+
+test <a literal string with an escaped paren round trips its content>
+  save reread
+    call pdf-string-value
+      call parse-pdf-value(call make-pdf-cursor(text <(a \\(nested\\) string)>))
+  want hold
+    call is-equal
+      read reread
+      text <a (nested) string>
+
+# 17 characters if `\n` decoded to one real newline character ("line one" + newline + "line two"); 18 if the
+# escape was left as the two literal characters `\` and `n` instead — a real assertion, not a placeholder,
+# without needing to write an actual newline into this file's own source text.
+test <a literal string with a newline escape decodes to one character, not two>
+  save reread
+    call pdf-string-value
+      call parse-pdf-value(call make-pdf-cursor(text <(line one\\nline two)>))
+  want hold
+    call is-equal
+      call char-count(read reread)
+      code 17
+
+test <a hex string decodes to its represented text>
+  save reread
+    call pdf-string-value
+      call parse-pdf-value(call make-pdf-cursor(text <\<48656C6C6F\>>))
+  want hold
+    call is-equal
+      read reread
+      text <Hello>
+
+test <an array of numbers round trips compact>
+  want hold
+    call is-equal
+      call round-pdf-value(text <[1 2 3]>)
+      text <[1 2 3]>
+
+test <a dictionary round trips compact>
+  want hold
+    call is-equal
+      call round-pdf-value(text <\<\< /Type /Catalog /Count 3 \>\>>)
+      text <\<\</Type /Catalog /Count 3\>\>>
+
+test <a plain integer next to a name is not mistaken for a reference>
+  save reread
+    call pdf-number-value
+      call parse-pdf-value(call make-pdf-cursor(text <7>))
+  want hold
+    call is-equal
+      read reread
+      code 7.0
+
+test <an indirect reference round trips>
+  want hold
+    call is-equal
+      call round-pdf-value(text <12 0 R>)
+      text <12 0 R>
+
+test <a reference inside an array round trips>
+  want hold
+    call is-equal
+      call round-pdf-value(text <[12 0 R 13 0 R]>)
+      text <[12 0 R 13 0 R]>
+
+task page-tree-object
+  like pdf-indirect-object
+  save entries
+    make list
+  call push
+    read entries
+    make pdf-entry
+      bind key, text <Type>
+      bind value
+        make pdf-name
+          bind value, text <Pages>
+  call push
+    read entries
+    make pdf-entry
+      bind key, text <Count>
+      bind value
+        make pdf-number
+          bind value, code 1.0
+  send back
+    make pdf-indirect-object
+      bind object-number, code 2
+      bind generation, code 0
+      bind value
+        make pdf-dictionary
+          bind entries, read entries
+
+test <write-pdf-indirect-object then read-pdf-indirect-object round trips the object number>
+  save written
+    call write-pdf-indirect-object(call page-tree-object)
+  save reread
+    call parse-pdf-indirect-object(call make-pdf-cursor(read written))
+  want hold
+    call is-equal
+      read reread/object-number
+      code 2
+
+test <write-pdf-indirect-object produces a real obj/endobj wrapper>
+  want hold
+    call is-equal
+      call write-pdf-indirect-object(call page-tree-object)
+      text <2 0 obj\n\<\</Type /Pages /Count 1\>\>\nendobj>
+
+task sample-xref-table
+  like pdf-xref-table
+  save entries
+    make list
+  call push
+    read entries
+    make pdf-xref-entry
+      bind offset, code 0
+      bind generation, code 65535
+      bind in-use, false
+  call push
+    read entries
+    make pdf-xref-entry
+      bind offset, code 18
+      bind generation, code 0
+      bind in-use, true
+  send back
+    make pdf-xref-table
+      bind start, code 0
+      bind entries, read entries
+
+test <write-pdf-xref-table pads offsets to ten digits and generations to five>
+  want hold
+    call is-equal
+      call write-pdf-xref-table(call sample-xref-table)
+      text <xref\n0 2\n0000000000 65535 f \n0000000018 00000 n >
+
+test <write-pdf-trailer produces the Size and Root entries>
+  save trailer
+    make pdf-trailer
+      bind size, code 4
+      bind root
+        make pdf-reference
+          bind object-number, code 1
+          bind generation, code 0
+  want hold
+    call is-equal
+      call write-pdf-trailer(read trailer)
+      text <trailer\n\<\< /Size 4 /Root 1 0 R \>\>>

@@ -1,0 +1,59 @@
+# The PDF object model (PDF 1.7 spec §7.3): the eight basic object types, an indirect object's `N G obj ...
+# endobj` wrapper, and the cross-reference table plus trailer that a whole file needs to be readable at all.
+# Separate from ../code.tree's content-stream operator catalog on purpose — a content stream is bytes INSIDE one
+# of these objects (a stream object's data), not a variant of one. `pdf-string` covers both PDF string syntaxes
+# (parenthesized literal and hex `<...>`) uniformly as decoded text; nothing downstream needs to know which
+# syntax produced it, the same way JSON's own escape-decoding collapses to one `like text` regardless of how a
+# character was written in the source.
+
+form pdf-value
+  case pdf-null
+  case pdf-boolean
+    link value, like boolean
+  case pdf-number
+    link value, like decimal
+  case pdf-string
+    link value, like text
+  case pdf-name
+    link value, like text
+  case pdf-array
+    link items
+      like list
+        like pdf-value
+  case pdf-dictionary
+    link entries
+      like list
+        like pdf-entry
+  case pdf-reference
+    link object-number, like number
+    link generation, like number
+
+form pdf-entry
+  link key, like text
+  link value, like pdf-value
+
+form pdf-indirect-object
+  link object-number, like number
+  link generation, like number
+  link value, like pdf-value
+
+# `in-use`: PDF's own term is "free" vs "in use" (the xref table's `f`/`n` marker) rather than a positive
+# boolean, but `in-use` is what CLAUDE.md's naming rule wants (a controlled-vocabulary flag reads as what IS
+# true, not its negation).
+form pdf-xref-entry
+  link offset, like number
+  link generation, like number
+  link in-use, like boolean
+
+form pdf-xref-table
+  link start, like number
+  link entries
+    like list
+      like pdf-xref-entry
+
+# `root` is `like pdf-value`, not a narrower reference-only type: `pdf-reference` is a CASE of `pdf-value`'s
+# tagged union, not a form of its own, so nothing else could be named here — real PDF has the same looseness,
+# a trailer's `/Root` is conventionally a reference but nothing in the object model itself enforces that.
+form pdf-trailer
+  link size, like number
+  link root, like pdf-value

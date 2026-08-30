@@ -25,13 +25,15 @@ import type {
   Node,
   RootNode,
 } from '@term/make/code/parser/tree'
+import type { Span } from '@term/make/code/parser/diagnostic'
 
-// a captured value: a word or literal, or a nested rule match to be minted
+// a captured value: a word or literal, or a nested rule match to be minted. Each carries the SPAN of the node
+// it came from, so a consumer's diagnostic (a manifest error, a lockfile error) points at the line in the file
 export type MillCapture =
-  | { kind: 'word'; value: string }
-  | { kind: 'text'; value: string }
-  | { kind: 'number'; value: number; decimal: boolean }
-  | { kind: 'match'; rule: string; match: MillMatch }
+  | { kind: 'word'; value: string; span?: Span }
+  | { kind: 'text'; value: string; span?: Span }
+  | { kind: 'number'; value: number; decimal: boolean; span?: Span }
+  | { kind: 'match'; rule: string; match: MillMatch; span?: Span }
 
 // one rule's fill: site name -> the captures that landed there, in order
 export type MillMatch = Map<string, MillCapture[]>
@@ -44,6 +46,7 @@ export type MineRule =
   | { kind: 'code'; site?: string }
   | { kind: 'path'; site?: string }
   | { kind: 'node' }
+  | { kind: 'open'; children: MineRule[]; site?: string }
   | { kind: 'maybe'; children: MineRule[] }
   | { kind: 'list'; children: MineRule[] }
   | { kind: 'any'; children: MineRule[] }
@@ -51,14 +54,44 @@ export type MineRule =
 
 export type MineGrammar = Map<string, MineRule[]>
 
+
+// the source span a node covers (its first token's), so a consumer's diagnostic can point at the line
+export function spanOfNode(node: Node | undefined): Span | undefined {
+  if (!node) {
+    return undefined
+  }
+
+  switch (node.kind) {
+    case 'name':
+    case 'text': {
+      const part = node.parts[0]
+
+      return part && 'token' in part ? part.token.span : undefined
+    }
+    case 'integer':
+    case 'decimal':
+    case 'radix':
+      return node.token.span
+    case 'group':
+      return spanOfNode(node.nodes[0])
+    default:
+      return undefined
+  }
+}
+
 function wordOf(node: Node | undefined): string | undefined {
   if (!node) {
     return undefined
   }
 
   if (node.kind === 'name') {
+    // an interpolation part renders as written (`{platform}` in a load path is part of the word)
     return node.parts
-      .map(p => (p.kind === 'chunk' ? p.text : ''))
+      .map(p =>
+        p.kind === 'chunk'
+          ? p.text
+          : `{${p.group && p.group.nodes[0]?.kind === 'name' ? p.group.nodes[0].parts.map(q => (q.kind === 'chunk' ? q.text : '')).join('') : ''}}`,
+      )
       .join('')
   }
 
@@ -71,6 +104,34 @@ function wordOf(node: Node | undefined): string | undefined {
   }
 
   return undefined
+}
+
+
+// the full word chain a node denotes: a multi-word value parses as nested heads (`vitest run` is
+// vitest > run), so a phrase reconstructs by walking head plus terms recursively, space-joined
+function phraseOf(node: Node | undefined): string | undefined {
+  const head = wordOf(node)
+
+  if (head === undefined || node?.kind !== 'group') {
+    return head
+  }
+
+  const parts = [head]
+
+  let cursor: Node | undefined = node.nodes[1]
+
+  while (cursor && cursor.kind === 'group') {
+    const next: string | undefined = wordOf(cursor)
+
+    if (next === undefined) {
+      break
+    }
+
+    parts.push(next)
+    cursor = cursor.nodes[1]
+  }
+
+  return parts.join(' ')
 }
 
 function headWord(group: GroupNode): string | undefined {
@@ -162,7 +223,13 @@ function readMineRule(group: GroupNode): MineRule | undefined {
       return { kind: 'path', site }
     case 'node':
       return { kind: 'node' }
+    case 'open':
+      // a group with ANY head word (a bare call spells the callee as the head): the word is captured at the
+      // site, and the child rules run over the group's remaining nodes
+      return { kind: 'open', children: childRules(), site }
     case 'maybe':
+    // `mine case` in the dialect marks an optional part the mint later cases on: match-wise it is a maybe
+    case 'case':
       return { kind: 'maybe', children: childRules() }
     case 'list':
       return { kind: 'list', children: childRules() }
@@ -227,10 +294,64 @@ function matchSequence(
 ): number | undefined {
   let cursor = at
 
-  for (const rule of rules) {
+  for (let i = 0; i < rules.length; i++) {
+    const rule = rules[i]!
     const next = matchRule(grammar, rule, nodes, cursor, into)
 
     if (next === undefined) {
+      // paren splice: `send back(false)` and `send back, false` are one tree in the language, but the paren
+      // nests the value under `back`. A worded term rule facing a group headed by its own word matches its
+      // child rules as a PREFIX of the group, then hands the group's leftover nodes to the REST of the sequence.
+      const node = nodes[cursor]
+
+      if (
+        rule.kind === 'term' &&
+        rule.word !== undefined &&
+        node?.kind === 'group' &&
+        headWord(node) === rule.word &&
+        node.nodes.length > 1
+      ) {
+        const inner: MillMatch = new Map()
+        const innerEnd = matchSequence(
+          grammar,
+          rule.children,
+          node.nodes,
+          1,
+          inner,
+        )
+
+        if (innerEnd !== undefined) {
+          const extras = node.nodes.slice(innerEnd)
+          const spliced = [...extras, ...nodes.slice(cursor + 1)]
+          const after: MillMatch = new Map()
+          const end = matchSequence(
+            grammar,
+            rules.slice(i + 1),
+            spliced,
+            0,
+            after,
+          )
+
+          if (end !== undefined && end >= extras.length) {
+            capture(into, rule.site, {
+              kind: 'word',
+              value: rule.word,
+              span: spanOfNode(node),
+            })
+
+            for (const trial of [inner, after]) {
+              for (const [site, values] of trial) {
+                for (const value of values) {
+                  capture(into, site, value)
+                }
+              }
+            }
+
+            return cursor + 1 + (end - extras.length)
+          }
+        }
+      }
+
       return undefined
     }
 
@@ -284,6 +405,7 @@ function matchRule(
           capture(into, rule.site, {
             kind: 'word',
             value: rule.word,
+            span: spanOfNode(node),
           })
 
           return at + 1
@@ -293,6 +415,7 @@ function matchRule(
           capture(into, rule.site, {
             kind: 'word',
             value: rule.word,
+            span: spanOfNode(node),
           })
 
           return at + 1
@@ -308,7 +431,11 @@ function matchRule(
         return undefined
       }
 
-      capture(into, rule.site, { kind: 'word', value: word })
+      capture(into, rule.site, {
+        kind: 'word',
+        value: word,
+        span: spanOfNode(node),
+      })
 
       return at + 1
     }
@@ -321,20 +448,26 @@ function matchRule(
       capture(into, rule.site, {
         kind: 'text',
         value: textOf(node),
+        span: spanOfNode(node),
       })
 
       return at + 1
     }
 
     case 'path': {
-      // a path or glob rides as a word (`@/book/**/*.tree` is one name node): capture its full text
-      const word = node ? wordOf(node) : undefined
+      // a path or glob rides as a word (`@/book/**/*.tree` is one name node), and a multi-word value is a
+      // nested chain (`vitest run` is vitest > run): capture the whole phrase
+      const phrase = node ? phraseOf(node) : undefined
 
-      if (word === undefined) {
+      if (phrase === undefined) {
         return undefined
       }
 
-      capture(into, rule.site, { kind: 'word', value: word })
+      capture(into, rule.site, {
+        kind: 'word',
+        value: phrase,
+        span: spanOfNode(node),
+      })
 
       return at + 1
     }
@@ -356,6 +489,7 @@ function matchRule(
         kind: 'number',
         value,
         decimal: node.kind === 'decimal',
+        span: spanOfNode(node),
       })
 
       return at + 1
@@ -364,6 +498,33 @@ function matchRule(
     case 'node':
       // any ONE node, captured nowhere: the skip a mixed file needs
       return node === undefined ? undefined : at + 1
+
+    case 'open': {
+      // a group with any head word: the head is the capture, the children rules must consume the rest
+      if (node?.kind !== 'group') {
+        return undefined
+      }
+
+      const head = headWord(node)
+
+      if (head === undefined) {
+        return undefined
+      }
+
+      const inner = matchSequence(grammar, rule.children, node.nodes, 1, into)
+
+      if (inner === undefined || inner < node.nodes.length) {
+        return undefined
+      }
+
+      capture(into, rule.site, {
+        kind: 'word',
+        value: head,
+        span: spanOfNode(node),
+      })
+
+      return at + 1
+    }
 
     case 'maybe': {
       const trial: MillMatch = new Map()
@@ -448,11 +609,11 @@ function matchRule(
       }
 
       const inner: MillMatch = new Map()
-      // a named rule whose body is a single term-rule matches THIS node; one whose body is a list/any sequence
-      // (a start rule) also runs against this node alone
-      const next = matchSequence(grammar, rules, [node], 0, inner)
+      // a named rule runs against the node STREAM from here: a rule like fork-test-pair is a sequence of two
+      // sibling groups (`hook test`, `hook hold`), so it may consume more than one node. Consuming none is no match.
+      const next = matchSequence(grammar, rules, nodes, at, inner)
 
-      if (next !== 1) {
+      if (next === undefined || next === at) {
         return undefined
       }
 
@@ -460,9 +621,10 @@ function matchRule(
         kind: 'match',
         rule: rule.like,
         match: inner,
+        span: spanOfNode(node),
       })
 
-      return at + 1
+      return next
     }
 
     default:

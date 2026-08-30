@@ -1,3 +1,5 @@
+load @term/mill/code/code/form/link/mine
+  find link
 
 load @term/mill/code/code/seed/mine
   find seed
@@ -14,15 +16,47 @@ mine fork
         site case
       mine form, like fork-tree
         site tree
+      mine form, like fork-roll
+        site roll
+
+# `fork roll`: a chain of `hook test` arms, each a guard with its own body
+mine fork-roll
+  mine term, term roll
+  mine list
+    mine form, like fork-arm-hook
+      site arm
 
 mine fork-test
   mine term, term test
+  mine maybe
+    mine any
+      mine form, like seed
+        site condition
+      mine form, like fork-name
+        site name
+  mine list
+    mine form, like fork-arm-hook
+      site arm
+
+# `fork test, name all`: dispatch on a named boolean parameter at compile time
+mine fork-name
+  mine term, term name
+    mine term
+      site name
+
+# one arm of a fork test: `hook test` (condition), `hook hold` (then), `hook miss` (else), `hook step`
+mine fork-arm-hook
+  mine term, term hook
+    mine any
+      mine term, term test
+      mine term, term hold
+      mine term, term miss
+      mine term, term step
+      mine term, term fall
+      mine term, term else
     mine list
-      mine form, like fork-test-pair
-        site pair
-    mine maybe
-      mine form, like fork-miss
-        site miss
+      mine form, like flow
+        site flow
 
 mine fork-test-pair
   mine term, term hook
@@ -45,26 +79,29 @@ mine fork-miss
 
 mine fork-case
   mine term, term case
-    mine form, like seed
-      site seed
-    mine list
-      mine form, like fork-arm
-        site arm
+  mine form, like seed
+    site seed
+  mine list
+    mine form, like fork-arm
+      site arm
 
 mine fork-arm
   mine term, term case
-    mine term
+    mine path
       site name
     mine maybe
       mine term, term base
         mine term
           site base
     mine list
-      mine form, like flow
-        site flow
+      mine any
+        mine form, like link
+          site link
+        mine form, like flow
+          site flow
 
 mine fork-tree
   mine term, term tree
-    mine list
-      mine form, like flow
-        site flow
+  mine list
+    mine form, like flow
+      site flow

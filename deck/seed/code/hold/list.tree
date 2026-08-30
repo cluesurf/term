@@ -1,3 +1,10 @@
+# SHELVED 2026-08-30 (file-level; hold/ itself is IN the build): a growable-list design that writes record
+# fields (growth-factor, capacity, line) onto a native array. It needs its own form before it can build; the
+# module comes back once redesigned. Delete `note draft` then.
+note draft
+
+load @term/seed/code/hold/text/code/utf-8
+  find text-utf-8
 
 load @term/seed/code/math
   find maximum
@@ -33,7 +40,7 @@ form list
           read self/length
           read index
       hook hold
-        send back, make error
+        halt <index out of bounds>
     call self/line/set
       read item
     send back, read self
@@ -47,7 +54,7 @@ form list
           read self/length
           read index
       hook hold
-        send back, make error
+        halt <index out of bounds>
     send back
       call self/line/get
         read index

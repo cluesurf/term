@@ -149,8 +149,23 @@ function collectEntries(
   }
 }
 
-// Incrementally update a tree from a parent root: only the changed records are
-// canonicalized and hashed, and unchanged record chunks are reused by hash. This is
+// Update a tree from a parent root.
+//
+// WHAT IT ACTUALLY DOES, said plainly because the name suggests otherwise: it walks the
+// WHOLE parent tree with `collectEntries`, applies the upserts and removes to that flat map,
+// sorts every entry, and writes the tree again from scratch. The saving is real but narrow:
+// only changed records are canonicalized and hashed, and unchanged record chunks are reused
+// by hash, so the chunk store barely grows. The WALK and the REWRITE are O(the repository).
+//
+// That is what makes a batched load quadratic. A caller committing N records in batches of B
+// pays this N/B times, each time proportional to N. MEASURED 2026-08-30: a 160,000-record
+// load takes 55 seconds through `commit` and 9 seconds through `commitChanges`, and the 9
+// seconds is this. See base-scale-0004 and base-scale-0008.
+//
+// A genuinely incremental version would descend to the affected leaves and copy only the
+// path back to the root. The constraint that makes it more than an afternoon: it MUST
+// produce a byte-identical tree to a full rebuild, or two ways of writing the same content
+// give different hashes and history forks silently.
 // what a commit uses so committing one change to a large dataset does not
 // re-canonicalize every record. (The index rebuild is still linear in the entry
 // count but cheap, since it only rehashes small entries; a fully incremental leaf

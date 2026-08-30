@@ -1,65 +1,68 @@
+note draft
+# Checked spec, not compiled code — see the note at the top of ../../../../hex/mine.tree. The real reader is
+# ./code.tree's read-otf-head-table, proven by deck/feed/test/otf-head.tree. This replaces the old pre-rename
+# draft (share/mark/turn-seed syntax with raw opentype.js comments mixed in) entirely rather than porting it —
+# code.tree is now the field-order source of truth, not the old file.
 
 mine head-table
-  mine form, form head-table-version
-  mine form, form head-table-font-revision
-  mine form, form head-table-checksum-adjustment
-  mine form, form head-table-magic-number
-  mine form, form head-table-flags
-  head.unitsPerEm = p.parseUShort();
-  mine form, form head-table-units-per-em
-  head.created = p.parseLongDateTime();
-  mine form, form head-table-created-at-time
-  head.modified = p.parseLongDateTime();
-  mine form, form head-table-modified-at-time
-  head.xMin = p.parseShort();
-  mine form, form head-table-x-min
-  head.yMin = p.parseShort();
-  mine form, form head-table-y-min
-  head.xMax = p.parseShort();
-  mine form, form head-table-x-max
-  head.yMax = p.parseShort();
-  mine form, form head-table-y-max
-  head.macStyle = p.parseUShort();
-  mine form, form head-table-mac-style
-  head.lowestRecPPEM = p.parseUShort();
-  mine form, form head-table-lowest-rec-ppem
-  head.fontDirectionHint = p.parseShort();
-  mine form, form head-table-font-direction-hint
-  head.indexToLocFormat = p.parseShort();
-  mine form, form head-table-index-to-loc-format
-  head.glyphDataFormat = p.parseShort();
-  mine form, form head-table-glyph-data-format
+  mine form, form ushort
+    send version-major
+  mine form, form ushort
+    send version-minor
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term signed
+    send font-revision
+  mine int
+    bind width, code 4
+    bind order, term big
+    bind sign, term unsigned
+    send checksum-adjustment
+  mine bytes
+    bind width, code 4
+    send magic-number
+  mine form, form ushort
+    send flags
+  mine form, form ushort
+    send units-per-em
+  mine int
+    bind width, code 8
+    bind order, term big
+    bind sign, term signed
+    send created
+  mine int
+    bind width, code 8
+    bind order, term big
+    bind sign, term signed
+    send modified
+  mine form, form short
+    send x-min
+  mine form, form short
+    send y-min
+  mine form, form short
+    send x-max
+  mine form, form short
+    send y-max
+  mine form, form ushort
+    send mac-style
+  mine form, form ushort
+    send lowest-rec-ppem
+  mine form, form short
+    send font-direction-hint
+  mine form, form short
+    send index-to-loc-format
+  mine form, form short
+    send glyph-data-format
 
-mine head-table-version
-  mine form, form head-table-version-major
-  mine form, form head-table-version-minor
+mine ushort
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term unsigned
 
-mine head-table-version-major
-  mine form, form count-2
-
-mine head-table-version-minor
-  mine form, form count-2
-
-mine head-table-font-revision
-  mine form, form decimal
-  mine form, form fraction
-
-mine decimal
-  mine form, form count-2
-
-mine fraction
-  mine form, form count-2
-
-mine head-table-checksum-adjustment
-  mine count
-    bind count, share 4
-
-mine head-table-magic-number
-  mine write, share #h5F0F3CF5
-
-mine head-table-flags
-  mine form, form count-2
-
-mine count-2
-  mine count
-    bind count, share 2
+mine short
+  mine int
+    bind width, code 2
+    bind order, term big
+    bind sign, term signed

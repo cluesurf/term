@@ -11,9 +11,7 @@ task start
 task read
   take m, like mark
   take now, like size
-  fork case, read m
-    case mark
-      send back
-        call subtract
-          bind a, read now
-          bind b, read m/start
+  send back
+    call subtract
+      bind a, read now
+      bind b, read m/start

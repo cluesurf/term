@@ -9,7 +9,7 @@ load @term/seed/code/bit
   find shift-right
 
 task is-bit-count-odd
-  take n, like integer-8
+  take n, like i8
   save n
     call bitwise-exclusive-or
       call shift-right

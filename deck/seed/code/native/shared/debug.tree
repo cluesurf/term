@@ -16,18 +16,8 @@ task trace-entry-make
 
 task trace-entry-name
   take e, like trace-entry
-  fork case, read e
-    case trace-entry
-      link name
-      link duration
-      link depth
-      send back, read name
+  send back, read e/name
 
 task trace-entry-duration
   take e, like trace-entry
-  fork case, read e
-    case trace-entry
-      link name
-      link duration
-      link depth
-      send back, read duration
+  send back, read e/duration

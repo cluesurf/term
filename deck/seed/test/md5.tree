@@ -1,0 +1,38 @@
+# MD5 vectors from RFC 1321 section A.5: the empty message, "a", "abc", and "message digest". The byte lists
+# are the ASCII codes, so nothing here depends on a text-to-bytes verb.
+#
+# Run with: term test
+
+load @term/seed/code/native/shared/cryptography/md5
+  find calculate-md5
+
+test md5-empty
+  want hold
+    call is-equal
+      call calculate-md5
+        make list
+      text <d41d8cd98f00b204e9800998ecf8427e>
+
+test md5-a
+  save bytes, make list
+  call bytes/push
+    code 97
+  want hold
+    call is-equal
+      call calculate-md5
+        read bytes
+      text <0cc175b9c0f1b6a831c399e269772661>
+
+test md5-abc
+  save bytes, make list
+  call bytes/push
+    code 97
+  call bytes/push
+    code 98
+  call bytes/push
+    code 99
+  want hold
+    call is-equal
+      call calculate-md5
+        read bytes
+      text <900150983cd24fb0d6963f7d28e17f72>

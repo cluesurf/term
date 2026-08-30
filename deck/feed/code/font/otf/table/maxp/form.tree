@@ -1,0 +1,19 @@
+# The OpenType `maxp` table (Maximum Profile), version 1.0 (TrueType outlines) — 32 bytes, flat. CFF-flavored
+# fonts use version 0.5 (just version + num-glyphs, 6 bytes); not built yet, out of scope until a dialect needs it.
+
+form otf-maxp-table
+  link version, like number
+  link num-glyphs, like number
+  link max-points, like number
+  link max-contours, like number
+  link max-composite-points, like number
+  link max-composite-contours, like number
+  link max-zones, like number
+  link max-twilight-points, like number
+  link max-storage, like number
+  link max-function-defs, like number
+  link max-instruction-defs, like number
+  link max-stack-elements, like number
+  link max-size-of-instructions, like number
+  link max-component-elements, like number
+  link max-component-depth, like number

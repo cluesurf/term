@@ -1,0 +1,282 @@
+# The real, compiling reader/writer for the OTF OS/2 table, through version 2. Proves `mine maybe` / `test
+# is-minimum` (04-otf-case-study.md) against a real table: the version-1 tail (2 fields) and version-2 tail
+# (5 fields) are each read only when `version` says so.
+#
+# `save` inside a `fork test` branch is scoped to that branch, not the enclosing task — found the hard way: a first
+# draft of this file set the same `save` name in both `hook hold` and `hook miss` meaning one variable visible
+# after the fork, and `term make` refused every later `read` of it as undefined. Every conditional field is its own
+# small task instead, `send back` inside the fork, called from a plain `save` at the point of use — the shape
+# ../../../gzip/code.tree's `read-gzip-extra` already used successfully.
+
+load @term/seed/code/maybe
+  find maybe
+  find some
+  find none
+
+load ../../../../base
+  find feed-cursor
+  find feed-writer
+  find make-writer
+  find to-bytes
+  find read-bytes
+  find write-bytes
+
+load ../shared/code
+  find read-u16
+  find read-i16
+  find read-u32
+  find write-u16
+  find write-i16
+  find write-u32
+
+load ./form
+  find otf-os2-table
+
+task read-otf-os2-maybe-u16
+  take cursor, like feed-cursor
+  take version, like number
+  take minimum-version, like number
+  like maybe
+    like number
+  fork test
+    hook test
+      call is-minimum(read version, read minimum-version)
+    hook hold
+      send back
+        make some
+          bind value
+            call read-u16(read cursor)
+  send back
+    make none
+
+task read-otf-os2-maybe-i16
+  take cursor, like feed-cursor
+  take version, like number
+  take minimum-version, like number
+  like maybe
+    like number
+  fork test
+    hook test
+      call is-minimum(read version, read minimum-version)
+    hook hold
+      send back
+        make some
+          bind value
+            call read-i16(read cursor)
+  send back
+    make none
+
+task read-otf-os2-maybe-u32
+  take cursor, like feed-cursor
+  take version, like number
+  take minimum-version, like number
+  like maybe
+    like number
+  fork test
+    hook test
+      call is-minimum(read version, read minimum-version)
+    hook hold
+      send back
+        make some
+          bind value
+            call read-u32(read cursor)
+  send back
+    make none
+
+task read-otf-os2-table
+  take cursor, like feed-cursor
+  like otf-os2-table
+  save version
+    call read-u16(read cursor)
+  save x-avg-char-width
+    call read-i16(read cursor)
+  save us-weight-class
+    call read-u16(read cursor)
+  save us-width-class
+    call read-u16(read cursor)
+  save fs-type
+    call read-u16(read cursor)
+  save y-subscript-x-size
+    call read-i16(read cursor)
+  save y-subscript-y-size
+    call read-i16(read cursor)
+  save y-subscript-x-offset
+    call read-i16(read cursor)
+  save y-subscript-y-offset
+    call read-i16(read cursor)
+  save y-superscript-x-size
+    call read-i16(read cursor)
+  save y-superscript-y-size
+    call read-i16(read cursor)
+  save y-superscript-x-offset
+    call read-i16(read cursor)
+  save y-superscript-y-offset
+    call read-i16(read cursor)
+  save y-strikeout-size
+    call read-i16(read cursor)
+  save y-strikeout-position
+    call read-i16(read cursor)
+  save s-family-class
+    call read-i16(read cursor)
+  save panose
+    call read-bytes(read cursor, code 10)
+  save ul-unicode-range-1
+    call read-u32(read cursor)
+  save ul-unicode-range-2
+    call read-u32(read cursor)
+  save ul-unicode-range-3
+    call read-u32(read cursor)
+  save ul-unicode-range-4
+    call read-u32(read cursor)
+  save ach-vend-id
+    call read-bytes(read cursor, code 4)
+  save fs-selection
+    call read-u16(read cursor)
+  save us-first-char-index
+    call read-u16(read cursor)
+  save us-last-char-index
+    call read-u16(read cursor)
+  save s-typo-ascender
+    call read-i16(read cursor)
+  save s-typo-descender
+    call read-i16(read cursor)
+  save s-typo-line-gap
+    call read-i16(read cursor)
+  save us-win-ascent
+    call read-u16(read cursor)
+  save us-win-descent
+    call read-u16(read cursor)
+  save ul-code-page-range-1
+    call read-otf-os2-maybe-u32(read cursor, read version, code 1)
+  save ul-code-page-range-2
+    call read-otf-os2-maybe-u32(read cursor, read version, code 1)
+  save sx-height
+    call read-otf-os2-maybe-i16(read cursor, read version, code 2)
+  save s-cap-height
+    call read-otf-os2-maybe-i16(read cursor, read version, code 2)
+  save us-default-char
+    call read-otf-os2-maybe-u16(read cursor, read version, code 2)
+  save us-break-char
+    call read-otf-os2-maybe-u16(read cursor, read version, code 2)
+  save us-max-context
+    call read-otf-os2-maybe-u16(read cursor, read version, code 2)
+  send back
+    make otf-os2-table
+      bind version, read version
+      bind x-avg-char-width, read x-avg-char-width
+      bind us-weight-class, read us-weight-class
+      bind us-width-class, read us-width-class
+      bind fs-type, read fs-type
+      bind y-subscript-x-size, read y-subscript-x-size
+      bind y-subscript-y-size, read y-subscript-y-size
+      bind y-subscript-x-offset, read y-subscript-x-offset
+      bind y-subscript-y-offset, read y-subscript-y-offset
+      bind y-superscript-x-size, read y-superscript-x-size
+      bind y-superscript-y-size, read y-superscript-y-size
+      bind y-superscript-x-offset, read y-superscript-x-offset
+      bind y-superscript-y-offset, read y-superscript-y-offset
+      bind y-strikeout-size, read y-strikeout-size
+      bind y-strikeout-position, read y-strikeout-position
+      bind s-family-class, read s-family-class
+      bind panose, read panose
+      bind ul-unicode-range-1, read ul-unicode-range-1
+      bind ul-unicode-range-2, read ul-unicode-range-2
+      bind ul-unicode-range-3, read ul-unicode-range-3
+      bind ul-unicode-range-4, read ul-unicode-range-4
+      bind ach-vend-id, read ach-vend-id
+      bind fs-selection, read fs-selection
+      bind us-first-char-index, read us-first-char-index
+      bind us-last-char-index, read us-last-char-index
+      bind s-typo-ascender, read s-typo-ascender
+      bind s-typo-descender, read s-typo-descender
+      bind s-typo-line-gap, read s-typo-line-gap
+      bind us-win-ascent, read us-win-ascent
+      bind us-win-descent, read us-win-descent
+      bind ul-code-page-range-1, read ul-code-page-range-1
+      bind ul-code-page-range-2, read ul-code-page-range-2
+      bind sx-height, read sx-height
+      bind s-cap-height, read s-cap-height
+      bind us-default-char, read us-default-char
+      bind us-break-char, read us-break-char
+      bind us-max-context, read us-max-context
+
+# writes a `like maybe, like number` field if present, writes nothing if not — the writer's own presence mirrors
+# whatever the caller built, so a version-0 table with `make none` tails round trips back to exactly version 0.
+task write-otf-os2-maybe-u16
+  take writer, like feed-writer
+  take subject
+    like maybe
+      like number
+  fork case, read subject
+    case some
+      link value
+      call write-u16(read writer, read value)
+    case none
+
+task write-otf-os2-maybe-i16
+  take writer, like feed-writer
+  take subject
+    like maybe
+      like number
+  fork case, read subject
+    case some
+      link value
+      call write-i16(read writer, read value)
+    case none
+
+task write-otf-os2-maybe-u32
+  take writer, like feed-writer
+  take subject
+    like maybe
+      like number
+  fork case, read subject
+    case some
+      link value
+      call write-u32(read writer, read value)
+    case none
+
+task write-otf-os2-table
+  take table, like otf-os2-table
+  like list
+    like u8
+  save writer
+    call make-writer
+  call write-u16(read writer, read table/version)
+  call write-i16(read writer, read table/x-avg-char-width)
+  call write-u16(read writer, read table/us-weight-class)
+  call write-u16(read writer, read table/us-width-class)
+  call write-u16(read writer, read table/fs-type)
+  call write-i16(read writer, read table/y-subscript-x-size)
+  call write-i16(read writer, read table/y-subscript-y-size)
+  call write-i16(read writer, read table/y-subscript-x-offset)
+  call write-i16(read writer, read table/y-subscript-y-offset)
+  call write-i16(read writer, read table/y-superscript-x-size)
+  call write-i16(read writer, read table/y-superscript-y-size)
+  call write-i16(read writer, read table/y-superscript-x-offset)
+  call write-i16(read writer, read table/y-superscript-y-offset)
+  call write-i16(read writer, read table/y-strikeout-size)
+  call write-i16(read writer, read table/y-strikeout-position)
+  call write-i16(read writer, read table/s-family-class)
+  call write-bytes(read writer, read table/panose)
+  call write-u32(read writer, read table/ul-unicode-range-1)
+  call write-u32(read writer, read table/ul-unicode-range-2)
+  call write-u32(read writer, read table/ul-unicode-range-3)
+  call write-u32(read writer, read table/ul-unicode-range-4)
+  call write-bytes(read writer, read table/ach-vend-id)
+  call write-u16(read writer, read table/fs-selection)
+  call write-u16(read writer, read table/us-first-char-index)
+  call write-u16(read writer, read table/us-last-char-index)
+  call write-i16(read writer, read table/s-typo-ascender)
+  call write-i16(read writer, read table/s-typo-descender)
+  call write-i16(read writer, read table/s-typo-line-gap)
+  call write-u16(read writer, read table/us-win-ascent)
+  call write-u16(read writer, read table/us-win-descent)
+  call write-otf-os2-maybe-u32(read writer, read table/ul-code-page-range-1)
+  call write-otf-os2-maybe-u32(read writer, read table/ul-code-page-range-2)
+  call write-otf-os2-maybe-i16(read writer, read table/sx-height)
+  call write-otf-os2-maybe-i16(read writer, read table/s-cap-height)
+  call write-otf-os2-maybe-u16(read writer, read table/us-default-char)
+  call write-otf-os2-maybe-u16(read writer, read table/us-break-char)
+  call write-otf-os2-maybe-u16(read writer, read table/us-max-context)
+  send back
+    call to-bytes(read writer)

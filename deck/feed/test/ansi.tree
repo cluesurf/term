@@ -17,6 +17,13 @@ load ../code/ansi/code
   find set-color-foreground-256
   find set-color-foreground-rgb
   find make-cursor-invisible
+  find set-italic-mode
+  find set-strike-through-mode
+  find set-red-foreground
+  find set-bright-cyan-background
+  find save-cursor-position
+  find enable-alternative-buffer
+  find erase-from-cursor-to-end-of-line
 
 task esc
   like text
@@ -64,3 +71,45 @@ test <make-cursor-invisible is ESC[?25l>
     call is-equal
       call make-cursor-invisible
       call concat(call esc, text <[?25l>)
+
+test <set-italic-mode is ESC[3m>
+  want hold
+    call is-equal
+      call set-italic-mode
+      call concat(call esc, text <[3m>)
+
+test <set-strike-through-mode is ESC[9m>
+  want hold
+    call is-equal
+      call set-strike-through-mode
+      call concat(call esc, text <[9m>)
+
+test <set-red-foreground is ESC[31m>
+  want hold
+    call is-equal
+      call set-red-foreground
+      call concat(call esc, text <[31m>)
+
+test <set-bright-cyan-background is ESC[106m>
+  want hold
+    call is-equal
+      call set-bright-cyan-background
+      call concat(call esc, text <[106m>)
+
+test <save-cursor-position is ESC7, no bracket>
+  want hold
+    call is-equal
+      call save-cursor-position
+      call concat(call esc, text <7>)
+
+test <enable-alternative-buffer is ESC[?1049h>
+  want hold
+    call is-equal
+      call enable-alternative-buffer
+      call concat(call esc, text <[?1049h>)
+
+test <erase-from-cursor-to-end-of-line is ESC[0K>
+  want hold
+    call is-equal
+      call erase-from-cursor-to-end-of-line
+      call concat(call esc, text <[0K>)

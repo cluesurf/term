@@ -493,6 +493,25 @@ function expandBody(nodes: Node[], ctx: Context): Node[] {
 
       const head = headName(node)
 
+      // `read <param>` with the param bound to a NUMBER substitutes the literal itself (`read amount` with
+      // amount = 5 becomes `5`), the same way a numeric `{param}` interpolation does; bound to a word it falls
+      // through to name substitution below (a read of that name). Before this the read rode through untouched
+      // and resolved against a name that does not exist (compiler-hygiene-0013).
+      if (
+        (head === 'read' || head === 'loan' || head === 'move') &&
+        rest(node).length === 1
+      ) {
+        const target = rest(node)[0]
+        const word =
+          target?.kind === 'group' ? headName(target) : undefined
+        const bound = word ? ctx.subs.get(word) : undefined
+
+        if (bound !== undefined && isNumeric(bound)) {
+          out.push(integerNode(Number(bound)))
+          continue
+        }
+      }
+
       // `site <name>` (formerly `slot`) marks the injection point a `beam <name>` at the fuse site fills
       if (head === 'site' || head === 'slot') {
         const slotArg = rest(node)[0]
@@ -554,7 +573,7 @@ function expandBody(nodes: Node[], ctx: Context): Node[] {
 
 // expand a top-level node: instantiate fuses, drop template definitions, and recurse into groups (so a `fuse` nested
 // inside a `form` expands in place). Top-level `walk`s are runtime loops and left untouched.
-function expandTop(node: Node, ctx: Context): Node[] {
+function expandTop(node: Node, ctx: Context, top = false): Node[] {
   if (node.kind !== 'group') {
     return [node]
   }
@@ -573,7 +592,10 @@ function expandTop(node: Node, ctx: Context): Node[] {
     return expandFuse(node, ctx)
   }
 
-  if (head === 'tree') {
+  // a template definition is a TOP-LEVEL statement: only a top-level `tree` drops after expansion. A nested
+  // group whose head happens to be `tree` (a data anchor, a `walk tree` structure) rides through untouched
+  // (compiler-hygiene-0011).
+  if (head === 'tree' && top) {
     return []
   }
 
@@ -640,7 +662,7 @@ export function expandTemplates(
   const nodes: GroupNode[] = []
 
   for (const group of tree.nodes) {
-    for (const expanded of expandTop(group, ctx)) {
+    for (const expanded of expandTop(group, ctx, true)) {
       if (expanded.kind === 'group') {
         nodes.push(expanded)
       }

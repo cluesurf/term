@@ -1,5 +1,5 @@
 // Child process runtime. Reached only through the public process API.
-object child {
+object childRuntime {
     fun wait(proc: Process): Long {
         proc.waitFor()
 

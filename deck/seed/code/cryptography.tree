@@ -354,51 +354,42 @@ tree define-asymmetric-key-pair
     void true
 
   hook fuse
-    task generate-asymmetric-rsa-key-pair-{{scope}}
+    task generate-asymmetric-rsa-key-pair-{scope}
       take modulus-length
       take public-exponent
-      wait read wait
       free pair, like key-pair
 
-    task generate-asymmetric-rsa-pss-key-pair-{{scope}}
+    task generate-asymmetric-rsa-pss-key-pair-{scope}
       take hash-algorithm
       take mgf1-hash-algorithm
       take salt-length
-      wait read wait
       free pair, like key-pair
 
-    task generate-asymmetric-dsa-key-pair-{{scope}}
+    task generate-asymmetric-dsa-key-pair-{scope}
       take divisor-length
-      wait read wait
       free pair, like key-pair
 
-    task generate-asymmetric-ec-key-pair-{{scope}}
+    task generate-asymmetric-ec-key-pair-{scope}
       take named-curve
-      wait read wait
       free pair, like key-pair
 
-    task generate-asymmetric-ed25519-key-pair-{{scope}}
-      wait read wait
+    task generate-asymmetric-ed25519-key-pair-{scope}
       free pair, like key-pair
 
-    task generate-asymmetric-ed448-key-pair-{{scope}}
-      wait read wait
+    task generate-asymmetric-ed448-key-pair-{scope}
       free pair, like key-pair
 
-    task generate-asymmetric-x25519-key-pair-{{scope}}
-      wait read wait
+    task generate-asymmetric-x25519-key-pair-{scope}
       free pair, like key-pair
 
-    task generate-asymmetric-x448-key-pair-{{scope}}
-      wait read wait
+    task generate-asymmetric-x448-key-pair-{scope}
       free pair, like key-pair
 
-    task generate-asymmetric-dh-key-pair-{{scope}}
+    task generate-asymmetric-dh-key-pair-{scope}
       take prime
       take prime-length
       take generator
       take group-name
-      wait read wait
       free pair, like key-pair
 
 tree define-private-key

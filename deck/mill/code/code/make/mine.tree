@@ -8,13 +8,18 @@ load @term/mill/code/code/save/mine
 load @term/mill/code/code/turn/mine
   find turn
 
+load @term/mill/code/code/seed/mine
+  find seed
+
 mine make
   mine term, term make
     mine term
       site name
     mine list
-      mine form, like bind
-        site bind
-    mine list
-      mine form, like save
-        site save
+      mine any
+        mine form, like bind
+          site bind
+        mine form, like save
+          site save
+        mine form, like seed
+          site seed

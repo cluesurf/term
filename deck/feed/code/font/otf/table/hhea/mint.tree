@@ -1,0 +1,35 @@
+note draft
+# Checked spec, not compiled code — see ../head/mint.tree's note. The real writer is ./code.tree's
+# write-otf-hhea-table, proven by deck/feed/test/otf-hhea-maxp.tree. `ushort`/`short` shared with ../head/mint.tree.
+
+mint hhea-table
+  mint ushort
+    read version-major
+  mint ushort
+    read version-minor
+  mint short
+    read ascender
+  mint short
+    read descender
+  mint short
+    read line-gap
+  mint ushort
+    read advance-width-max
+  mint short
+    read min-left-side-bearing
+  mint short
+    read min-right-side-bearing
+  mint short
+    read x-max-extent
+  mint short
+    read caret-slope-rise
+  mint short
+    read caret-slope-run
+  mint short
+    read caret-offset
+  mint skip
+    bind width, code 8
+  mint short
+    read metric-data-format
+  mint ushort
+    read number-of-h-metrics

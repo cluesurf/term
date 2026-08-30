@@ -29,6 +29,8 @@ task remove
 
 task list
   like hash
+    like text
+    like text
 
   send back
     call variable/list

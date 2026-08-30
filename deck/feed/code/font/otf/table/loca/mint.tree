@@ -1,0 +1,24 @@
+note draft
+# Checked spec, not compiled code — see ../head/mine.tree's note. The real writer is ./code.tree's
+# write-otf-loca-table, proven by deck/feed/test/otf-loca.tree. Same short/long split and same open notation
+# question as mine.tree.
+
+mint loca-table
+  take short-format, like boolean
+
+  mint list
+    read offsets
+    mint case, read short-format
+      case true
+        mint ushort
+      case false
+        mint int
+          bind width, code 4
+          bind order, term big
+
+mint ushort
+  take value, like number
+  mint int
+    bind width, code 2
+    bind order, term big
+    read value

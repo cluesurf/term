@@ -1,4 +1,11 @@
-
+note draft
+# An even older, superseded writer draft (the `write`/`lace`-headed DSL, dead before `mint` existed — same role as
+# css/lace.tree and json/lace.tree). Genuinely the most complete artifact anywhere in the old feed/ tree: the full
+# PDF content-stream operator catalog (text positioning, graphics state, path construction, painting, color,
+# dictionaries, xref/trailer), pointed at directly by the user as worth porting. ../code.tree ports the operator
+# catalog for real; the object-model/xref parts (`pdf-tree`, `definition`, `end`) stay here, not yet attempted —
+# see note/term/feed/07-implementation.md.
+#
 # https://ghostscript.com/~robin/pdf_reference17.pdf
 
 load @term/seed/code/content/pdf

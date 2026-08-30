@@ -1,0 +1,410 @@
+# The real, compiling reader and writer for a simple-glyph entry in the OTF glyf table. `read-otf-glyph` takes
+# the byte span `loca` already gave a caller (`loca[i]` to `loca[i+1]`) as `byte-length`, so a zero-length span —
+# a real, common case, any glyph with no outline (space, control characters) — is `otf-glyph-empty` without
+# reading a header at all, matching the spec: an empty glyph has no bytes, not a zeroed one.
+#
+# The flag/coordinate encoding is the one genuinely two-pass shape in this package: every point's flag byte comes
+# first (with its own run-length repeat encoding), then every x-delta, then every y-delta — three separate
+# sequential arrays over the SAME point order, not one interleaved pass. `glyf-flatten-points` exists only to
+# give the writer that same flat, contour-boundary-forgetting order to write in.
+#
+# The writer always emits the long (2-byte signed delta, no run-length repeat) coordinate encoding, never the
+# short form: correct per spec either way (short-vector encoding is a size optimization, not a requirement), and
+# it means the writer needs no flag/coordinate-choice heuristics to be correct, matching how `write-int` always
+# uses one representation regardless of what a real font tool might pick to save space.
+
+load @term/seed/code/list
+  find push
+  find get
+  find size
+
+load @term/seed/code/boolean
+  find and
+
+load @term/seed/code/bit
+  find bitwise-and
+
+load ../../../../base
+  find feed-cursor
+  find feed-writer
+  find make-writer
+  find read-byte
+  find read-bytes
+  find read-int
+  find write-int
+  find write-byte
+  find write-bytes
+  find to-bytes
+
+load ../shared/code
+  find read-u16
+  find write-u16
+
+load ./form
+  find otf-glyph
+  find otf-glyph-point
+
+task read-glyf-end-points
+  take cursor, like feed-cursor
+  take contour-count, like number
+  like list
+    like number
+  save result
+    make list
+  save index, code 0
+  walk test
+    hook test
+      call is-below(read index, read contour-count)
+    hook hold
+      call push(read result, call read-u16(read cursor))
+      save index
+        call add(read index, code 1)
+  send back, read result
+
+# how many points a simple glyph's flags/coordinate arrays hold: one past the last contour's end-point index, or
+# zero for a glyph with no contours at all (legal, if unusual — an outline-less glyph that still has a header,
+# unlike the true zero-byte `otf-glyph-empty` case above).
+task glyf-point-count
+  take end-points
+    like list
+      like number
+  take contour-count, like number
+  like number
+  fork test
+    hook test
+      call is-above(read contour-count, code 0)
+    hook hold
+      send back
+        call add
+          call get(read end-points, call subtract(read contour-count, code 1))
+          code 1
+  send back, code 0
+
+# one flag byte per point, expanded from the format's own run-length repeat encoding: bit 3 set means the byte
+# right after this one is a repeat COUNT, so the same flag value applies to that many more points beyond this one.
+task read-glyf-flags
+  take cursor, like feed-cursor
+  take point-count, like number
+  like list
+    like number
+  save result
+    make list
+  walk test
+    hook test
+      call is-below(call size(read result), read point-count)
+    hook hold
+      save flag
+        call read-byte(read cursor)
+      call push(read result, read flag)
+      fork test
+        hook test
+          call is-above(call bitwise-and(read flag, code 0x08), code 0)
+        hook hold
+          save repeat-count
+            call read-byte(read cursor)
+          save copied, code 0
+          walk test
+            hook test
+              call and
+                call is-below(read copied, read repeat-count)
+                call is-below(call size(read result), read point-count)
+            hook hold
+              call push(read result, read flag)
+              save copied
+                call add(read copied, code 1)
+  send back, read result
+
+# one coordinate axis's delta for one point, from its own flag byte and the axis's own short/same-or-positive bit
+# pair (0x02/0x10 for x, 0x04/0x20 for y — see read-glyf-coordinates). Reads 0 or 1 or 2 bytes from the cursor as
+# a side effect depending on which case applies, so this has to be its own task with a `send back` per branch —
+# a bare `save` inside a `fork test` arm is scoped to that arm, not the caller (feedback_term_fork_case_param_
+# shadow's sibling finding, the same reason gzip's and os2's version-gated fields are each their own task too).
+task glyf-coordinate-delta
+  take cursor, like feed-cursor
+  take flag, like number
+  take short-bit, like number
+  take same-bit, like number
+  like number
+  fork test
+    hook test
+      call is-above(call bitwise-and(read flag, read short-bit), code 0)
+    hook hold
+      save magnitude
+        call read-byte(read cursor)
+      fork test
+        hook test
+          call is-above(call bitwise-and(read flag, read same-bit), code 0)
+        hook hold
+          send back, read magnitude
+      send back
+        call multiply(read magnitude, code -1)
+  fork test
+    hook test
+      call is-above(call bitwise-and(read flag, read same-bit), code 0)
+    hook hold
+      send back, code 0
+  send back
+    call read-int(read cursor, code 2, make big, make signed)
+
+# every point's running coordinate on one axis, delta-decoded against the flags list already read. `short-bit`/
+# `same-bit` select which pair of flag bits this axis reads (x: 0x02 short, 0x10 same-or-positive; y: 0x04/0x20),
+# so this one task serves both passes.
+task read-glyf-coordinates
+  take cursor, like feed-cursor
+  take flags
+    like list
+      like number
+  take short-bit, like number
+  take same-bit, like number
+  like list
+    like number
+  save result
+    make list
+  save running, code 0
+  walk list, read flags
+    hook next
+      take site, name flag
+      save running
+        call add
+          read running
+          call glyf-coordinate-delta(read cursor, read flag, read short-bit, read same-bit)
+      call push(read result, read running)
+  send back, read result
+
+task glyf-point-on-curve
+  take flag, like number
+  like boolean
+  send back
+    call is-above
+      call bitwise-and(read flag, code 0x01)
+      code 0
+
+# groups the flat per-point flag/x/y arrays back into one point list per contour, using each contour's own
+# end-point index as the boundary.
+task glyf-build-contours
+  take end-points
+    like list
+      like number
+  take x-coords
+    like list
+      like number
+  take y-coords
+    like list
+      like number
+  take flags
+    like list
+      like number
+  like list
+    like list
+      like otf-glyph-point
+  save contours
+    make list
+  save start, code 0
+  walk list, read end-points
+    hook next
+      take site, name end
+      save points
+        make list
+      save index
+        read start
+      walk test
+        hook test
+          call is-maximum(read index, read end)
+        hook hold
+          call push
+            read points
+            make otf-glyph-point
+              bind x, call get(read x-coords, read index)
+              bind y, call get(read y-coords, read index)
+              bind on-curve, call glyf-point-on-curve(call get(read flags, read index))
+          save index
+            call add(read index, code 1)
+      call push(read contours, read points)
+      save start
+        call add(read end, code 1)
+  send back, read contours
+
+task read-otf-glyph
+  take cursor, like feed-cursor
+  take byte-length, like number
+  like otf-glyph
+  fork test
+    hook test
+      call is-equal(read byte-length, code 0)
+    hook hold
+      send back
+        make otf-glyph-empty
+  save number-of-contours
+    call read-int(read cursor, code 2, make big, make signed)
+  save x-min
+    call read-int(read cursor, code 2, make big, make signed)
+  save y-min
+    call read-int(read cursor, code 2, make big, make signed)
+  save x-max
+    call read-int(read cursor, code 2, make big, make signed)
+  save y-max
+    call read-int(read cursor, code 2, make big, make signed)
+  fork test
+    hook test
+      call is-below(read number-of-contours, code 0)
+    hook hold
+      send back
+        make otf-glyph-composite-unsupported
+          bind x-min, read x-min
+          bind y-min, read y-min
+          bind x-max, read x-max
+          bind y-max, read y-max
+  save end-points
+    call read-glyf-end-points(read cursor, read number-of-contours)
+  save point-count
+    call glyf-point-count(read end-points, read number-of-contours)
+  save instruction-length
+    call read-u16(read cursor)
+  save instructions
+    call read-bytes(read cursor, read instruction-length)
+  save flags
+    call read-glyf-flags(read cursor, read point-count)
+  save x-coords
+    call read-glyf-coordinates(read cursor, read flags, code 0x02, code 0x10)
+  save y-coords
+    call read-glyf-coordinates(read cursor, read flags, code 0x04, code 0x20)
+  save contours
+    call glyf-build-contours(read end-points, read x-coords, read y-coords, read flags)
+  send back
+    make otf-glyph-simple
+      bind x-min, read x-min
+      bind y-min, read y-min
+      bind x-max, read x-max
+      bind y-max, read y-max
+      bind contours, read contours
+      bind instructions, read instructions
+
+task glyf-end-points-from-contours
+  take contours
+    like list
+      like list
+        like otf-glyph-point
+  like list
+    like number
+  save result
+    make list
+  save total, code -1
+  walk list, read contours
+    hook next
+      take site, name contour
+      save total
+        call add(read total, call size(read contour))
+      call push(read result, read total)
+  send back, read result
+
+task glyf-flatten-points
+  take contours
+    like list
+      like list
+        like otf-glyph-point
+  like list
+    like otf-glyph-point
+  save result
+    make list
+  walk list, read contours
+    hook next
+      take site, name contour
+      walk list, read contour
+        hook next
+          take site, name point
+          call push(read result, read point)
+  send back, read result
+
+task glyf-flag-byte
+  take on-curve, like boolean
+  like number
+  fork test
+    hook test
+      read on-curve
+    hook hold
+      send back, code 0x01
+  send back, code 0
+
+task write-otf-glyph-simple-bytes
+  take x-min, like number
+  take y-min, like number
+  take x-max, like number
+  take y-max, like number
+  take contours
+    like list
+      like list
+        like otf-glyph-point
+  take instructions
+    like list
+      like u8
+  like list
+    like u8
+  save end-points
+    call glyf-end-points-from-contours(read contours)
+  save writer
+    call make-writer
+  call write-int(read writer, call size(read contours), code 2, make big)
+  call write-int(read writer, read x-min, code 2, make big)
+  call write-int(read writer, read y-min, code 2, make big)
+  call write-int(read writer, read x-max, code 2, make big)
+  call write-int(read writer, read y-max, code 2, make big)
+  walk list, read end-points
+    hook next
+      take site, name end
+      call write-int(read writer, read end, code 2, make big)
+  call write-int(read writer, call size(read instructions), code 2, make big)
+  call write-bytes(read writer, read instructions)
+  save points
+    call glyf-flatten-points(read contours)
+  walk list, read points
+    hook next
+      take site, name point
+      call write-byte(read writer, call glyf-flag-byte(read point/on-curve))
+  save running-x, code 0
+  walk list, read points
+    hook next
+      take site, name point
+      call write-int
+        read writer
+        call subtract(read point/x, read running-x)
+        code 2
+        make big
+      save running-x, read point/x
+  save running-y, code 0
+  walk list, read points
+    hook next
+      take site, name point
+      call write-int
+        read writer
+        call subtract(read point/y, read running-y)
+        code 2
+        make big
+      save running-y, read point/y
+  send back
+    call to-bytes(read writer)
+
+task write-otf-glyph
+  take glyph, like otf-glyph
+  like list
+    like u8
+  fork case, read glyph
+    case otf-glyph-empty
+      send back
+        make list
+    case otf-glyph-composite-unsupported
+      halt <cannot write an unsupported composite glyph>
+    case otf-glyph-simple
+      link x-min
+      link y-min
+      link x-max
+      link y-max
+      link contours
+      link instructions
+      send back
+        call write-otf-glyph-simple-bytes
+          read x-min
+          read y-min
+          read x-max
+          read y-max
+          read contours
+          read instructions

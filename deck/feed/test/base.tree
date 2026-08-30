@@ -77,6 +77,19 @@ test <write-int then read-int round trips, both byte orders>
         make unsigned
       code 16909060
 
+test <width 8 round trips without truncating, the case a 32-bit shift would break>
+  save writer
+    call make-writer
+  call write-int(read writer, code 9007199254740991, code 8, make big)
+  want hold
+    call is-equal
+      call read-int
+        call make-cursor(call to-bytes(read writer))
+        code 8
+        make big
+        make unsigned
+      code 9007199254740991
+
 test <a cursor is at-end after reading every byte>
   save cursor
     call make-cursor(call bytes-of-4)
@@ -101,6 +114,15 @@ test <seek moves the cursor to the new position>
     call make-cursor(call bytes-of-4)
   call read-byte(read cursor)
   call seek(read cursor, code 3)
+  want hold
+    call is-equal
+      call read-byte(read cursor)
+      code 4
+
+test <seek with a base adds it to the offset, OTF/ELF table-relative style>
+  save cursor
+    call make-cursor(call bytes-of-4)
+  call seek(read cursor, code 1, code 2)
   want hold
     call is-equal
       call read-byte(read cursor)

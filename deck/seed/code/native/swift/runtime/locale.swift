@@ -2,7 +2,7 @@
 // (`en_GB`), so it is normalised to a BCP 47 tag to match the other platforms.
 import Foundation
 
-enum locale {
+enum tongue {
     static func tag() -> String {
         Locale.current.identifier.replacingOccurrences(of: "_", with: "-")
     }

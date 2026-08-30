@@ -25,6 +25,7 @@ const ZONE_RUNTIME = [
   'append',
   'show',
   'each',
+  'range',
   'make-signal',
   'read-signal',
   'write-signal',
@@ -37,13 +38,18 @@ type Folded =
   | undefined
 
 function foldArithmetic(op: string, a: number, b: number): Folded {
+  // fold only within the SAFE integer range: beyond 2^53 a JS number rounds, and the rounded literal is
+  // not the value the program wrote (an i64 extreme folded here printed an off-by-192 neighbor)
+  const safe = (value: number): Folded =>
+    Number.isSafeInteger(value) ? { kind: 'integer', value } : undefined
+
   switch (op) {
     case '+':
-      return { kind: 'integer', value: a + b }
+      return safe(a + b)
     case '-':
-      return { kind: 'integer', value: a - b }
+      return safe(a - b)
     case '*':
-      return { kind: 'integer', value: a * b }
+      return safe(a * b)
     case '/':
       return b === 0
         ? undefined
@@ -158,7 +164,10 @@ function isPureExpr(node: Expression): boolean {
         e => isPureExpr(e.key) && isPureExpr(e.value),
       )
     case 'member':
-      return isPureExpr(node.target)
+      return (
+        isPureExpr(node.target) &&
+        (!node.index || isPureExpr(node.index))
+      )
     case 'conditional':
       return (
         node.branches.every(
@@ -450,6 +459,13 @@ function collectReadNames(
       break
     case 'member':
       collectReadNames(node.target, into)
+
+      // a DYNAMIC segment (`read m/{at}`) reads its index variable: missing this, dead-binding elimination
+      // dropped `let at1` while `m[at1]` still read it (md5's word assembly lost three bindings silently)
+      if (node.index) {
+        collectReadNames(node.index, into)
+      }
+
       break
     case 'await':
       collectReadNames(node.expr, into)
@@ -672,7 +688,13 @@ function substituteExpr(
         items: node.items.map(i => substituteExpr(i, subst)),
       }
     case 'member':
-      return { ...node, target: substituteExpr(node.target, subst) }
+      return {
+        ...node,
+        target: substituteExpr(node.target, subst),
+        ...(node.index
+          ? { index: substituteExpr(node.index, subst) }
+          : {}),
+      }
     case 'record':
       return {
         ...node,
@@ -1082,7 +1104,13 @@ function simplifyExpression(node: Expression): Expression {
     case 'array':
       return { ...node, items: node.items.map(simplifyExpression) }
     case 'member':
-      return { ...node, target: simplifyExpression(node.target) }
+      return {
+        ...node,
+        target: simplifyExpression(node.target),
+        ...(node.index
+          ? { index: simplifyExpression(node.index) }
+          : {}),
+      }
     case 'record':
       return {
         ...node,
@@ -1354,6 +1382,9 @@ function rewriteExpression(
       return {
         ...node,
         target: rewriteExpression(node.target, forwarders),
+        ...(node.index
+          ? { index: rewriteExpression(node.index, forwarders) }
+          : {}),
       }
     case 'record':
       return {
@@ -1500,6 +1531,11 @@ function countReferences(
       break
     case 'member':
       countReferences(node.target, counts)
+
+      if (node.index) {
+        countReferences(node.index, counts)
+      }
+
       break
     case 'record':
       node.fields.forEach(f => countReferences(f.value, counts))

@@ -9,10 +9,6 @@ form box
 task add
   take b, like box
   take item, like text
-  fork case, read b
-    case box
-      link tag
-      link items
-      call push
-        read items
-        read item
+  call push
+    read b/items
+    read item

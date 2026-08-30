@@ -28,6 +28,13 @@ import { MemoryRefStore } from '@term/base/code/store/ref-store'
 import { commitChanges } from '@term/base/code/project/feed'
 import { canonicalizeRecord } from '@term/base/code/canon/canonicalize'
 import { FORMAT_REF } from '@term/base/code/canon/format'
+import { exportTree } from '@term/base/code/api/export'
+import { rowsFor } from '@term/base/code/project/projector'
+import type { Mapping } from '@term/base/code/project/mapping'
+import { parseTree } from '@term/base/code/tree/parse'
+import { formatTree } from '@term/base/code/tree/format'
+import { datasetOf, type Dataset } from '@term/base/code/diff/change'
+import type { RecordNode } from '@term/base/code/base/type'
 
 // Where a repository keeps itself, beside the working files, the way `.git` does.
 const HOME = '.base'
@@ -43,7 +50,9 @@ const REFS = 'ref.json'
  * production substrate: the durable stores live in mesh and speak to Postgres and R2. Keeping
  * this simple means the CLI cannot be the reason a commit is lost.
  */
-function open(root: string): { repo: Repository; save: () => void } | undefined {
+function open(root: string):
+  | { repo: Repository; refs: MemoryRefStore; save: () => void }
+  | undefined {
   const home = path.join(root, HOME)
 
   if (!fs.existsSync(home)) {
@@ -98,10 +107,64 @@ function open(root: string): { repo: Repository; save: () => void } | undefined 
     fs.writeFileSync(refFile, `${JSON.stringify(named, null, 2)}\n`)
   }
 
-  return { repo: new Repository(chunks, refs), save }
+  return { repo: new Repository(chunks, refs), refs, save }
 }
 
-function need(root: string): { repo: Repository; save: () => void } {
+/**
+ * Expand a commit PREFIX to a full hash, the way git does.
+ *
+ * `log` prints a shortened hash because a full one is 71 characters and unreadable in a
+ * column. Without this, every hash it prints is one the other verbs REFUSE, so the first
+ * thing a person does by hand fails. Found by driving the verbs by hand, which is exactly
+ * what that is for.
+ *
+ * Ambiguity is an error rather than a guess: picking one of two matching commits would be
+ * silently showing the wrong history.
+ */
+function resolve(repo: Repository, given: string): string {
+  if (repo.containsCommit(given)) {
+    return given
+  }
+
+  const seen = new Set<string>()
+
+  for (const branch of repo.branches()) {
+    for (const { hash } of repo.log(branch)) {
+      seen.add(hash)
+    }
+  }
+
+  for (const name of repo.tags()) {
+    const at = repo.tag(name)
+
+    if (at !== undefined) {
+      seen.add(at)
+    }
+  }
+
+  const hit = [...seen].filter(hash => hash.startsWith(given))
+
+  if (hit.length === 1) {
+    return hit[0]!
+  }
+
+  if (hit.length > 1) {
+    console.error(
+      `\`${given}\` matches ${hit.length} commits. Give more of it:\n` +
+        hit.map(hash => `  ${hash}`).join('\n'),
+    )
+    process.exit(1)
+  }
+
+  console.error(`no commit matching \`${given}\``)
+  process.exit(1)
+}
+
+function need(root: string): {
+  repo: Repository
+  refs: MemoryRefStore
+  save: () => void
+} {
   const held = open(root)
 
   if (!held) {
@@ -151,7 +214,9 @@ export function callBaseDiff(input: {
   to: string
 }): void {
   const { repo } = need(input.root)
-  const changes = commitChanges(repo, input.from, input.to)
+  const to = resolve(repo, input.to)
+  const from = input.from === undefined ? undefined : resolve(repo, input.from)
+  const changes = commitChanges(repo, from, to)
 
   if (!changes.length) {
     console.log('no changes')
@@ -188,25 +253,50 @@ export function callBaseShow(input: {
   mark: string
 }): void {
   const { repo } = need(input.root)
-  const found = repo.recordAt(input.commit, input.mark)
+  const at = resolve(repo, input.commit)
+  const found = repo.recordAt(at, input.mark)
 
   if (!found) {
     console.error(`no record ${input.mark} at ${input.commit}`)
     process.exit(1)
   }
 
-  // canonical form rather than a pretty print, so what is shown is what is HASHED. A
-  // display that differed from the canonical bytes would be the one place a person could
-  // not check what they are about to trust.
+  // Both, and in this order. The readable half is what a person needs to learn the record
+  // model, which is what a read verb is for. The canonical half is what is HASHED, and
+  // showing only a pretty print would leave the one thing a person cannot otherwise check
+  // invisible: whether the bytes about to be trusted are the bytes they think.
+  console.log(`mark  ${input.mark}`)
+  console.log(`form  ${found.type}`)
+
+  for (const [field, value] of [...found.fields].sort()) {
+    const said =
+      value.kind === 'text' || value.kind === 'decimal' || value.kind === 'date'
+        ? String(value.value)
+        : value.kind === 'integer' || value.kind === 'boolean'
+          ? String(value.value)
+          : value.kind === 'ref'
+            ? `-> ${value.target}`
+            : value.kind === 'null'
+              ? '(null)'
+              : `(${value.kind})`
+
+    console.log(`  ${field.padEnd(20)} ${said}`)
+  }
+
+  console.log(`\ncanonical bytes, which are what is hashed:`)
   console.log(canonicalizeRecord(found))
 }
 
 /** Whether a repository is coherent, and what it holds. */
 export function callBaseCheck(input: { root: string }): void {
-  const { repo } = need(input.root)
+  const { repo, refs } = need(input.root)
   const report = repo.fsck()
 
-  console.log(`format      ${repo.head(FORMAT_REF) ?? '(unversioned)'}`)
+  // Read the ref DIRECTLY. `repo.head(name)` prepends `branch/`, so asking it for
+  // `meta/format` looks for `branch/meta/format` and always answers undefined, which made
+  // this print "(unversioned)" on a repository that was correctly versioned. The gate was
+  // working; only the display was wrong.
+  console.log(`format      ${refs.get(FORMAT_REF) ?? '(unversioned)'}`)
   console.log(`branches    ${repo.branches().join(', ') || '(none)'}`)
   console.log(`tags        ${repo.tags().join(', ') || '(none)'}`)
 
@@ -226,7 +316,7 @@ export function callBaseCheck(input: { root: string }): void {
 /** Every record at a commit, by mark and form. */
 export function callBaseList(input: { root: string; commit: string }): void {
   const { repo } = need(input.root)
-  const dataset = repo.checkout(input.commit)
+  const dataset = repo.checkout(resolve(repo, input.commit))
 
   for (const mark of [...dataset.keys()].sort()) {
     console.log(`${mark}  ${dataset.get(mark)!.type}`)
@@ -249,4 +339,359 @@ export function callBaseInit(input: { root: string }): void {
   fs.writeFileSync(path.join(home, REFS), '{}\n')
 
   console.log(`initialised an empty repository in ${HOME}/`)
+}
+
+// Where a person authors records: `.tree` files beside the repository, one per record. A
+// directory of readable files rather than a database, so the working copy is something you
+// can open, grep, and put in git alongside anything else.
+const WORK = 'record'
+
+/** Every `.tree` file under `record/`, parsed. */
+function working(root: string): Dataset {
+  const dir = path.join(root, WORK)
+
+  if (!fs.existsSync(dir)) {
+    return new Map()
+  }
+
+  const records: RecordNode[] = []
+
+  const walk = (at: string): void => {
+    for (const name of fs.readdirSync(at)) {
+      const full = path.join(at, name)
+
+      if (fs.statSync(full).isDirectory()) {
+        walk(full)
+        continue
+      }
+
+      if (!name.endsWith('.tree')) {
+        continue
+      }
+
+      try {
+        const node = parseTree(fs.readFileSync(full, 'utf8'))
+
+        // Checked HERE, where the file name is still known. `datasetOf` rejects a record
+        // without a mark too, but by then the file is out of scope and the message names
+        // only the form, which in a directory of five hundred records is not something a
+        // person can act on.
+        if (node.mark === undefined) {
+          console.error(
+            `${path.relative(root, full)}: no \`mark\` line, so this record has no identity`,
+          )
+          process.exit(1)
+        }
+
+        records.push(node)
+      } catch (error) {
+        // Named, and fatal. A commit that silently skipped a file it could not read would
+        // record a DELETION of that record, because the dataset is the whole working state
+        // rather than a list of edits.
+        console.error(
+          `${path.relative(root, full)}: ${error instanceof Error ? error.message : String(error)}`,
+        )
+        process.exit(1)
+      }
+    }
+  }
+
+  walk(dir)
+
+  return datasetOf(records)
+}
+
+/**
+ * What the working files would change, against a branch.
+ *
+ * The read half of `commit`, so a person can see what is about to happen before it does.
+ */
+export function callBaseStatus(input: { root: string; branch: string }): void {
+  const { repo } = need(input.root)
+  const now = working(input.root)
+  const head = repo.head(input.branch)
+  const before = head ? repo.checkout(head) : new Map()
+
+  const added = [...now.keys()].filter(mark => !before.has(mark))
+  const gone = [...before.keys()].filter(mark => !now.has(mark))
+  const changed = [...now.keys()].filter(
+    mark =>
+      before.has(mark) &&
+      canonicalizeRecord(now.get(mark)!) !== canonicalizeRecord(before.get(mark)!),
+  )
+
+  for (const mark of added.sort()) {
+    console.log(`+ ${mark}`)
+  }
+
+  for (const mark of changed.sort()) {
+    console.log(`~ ${mark}`)
+  }
+
+  // A record absent from the working files is a REMOVAL, because the dataset is the whole
+  // state. Said plainly, because the surprising way to lose a record is to move its file.
+  for (const mark of gone.sort()) {
+    console.log(`- ${mark}  (absent from ${WORK}/, so committing would remove it)`)
+  }
+
+  console.log(
+    `\n${now.size} record(s) in ${WORK}/, ${added.length} new, ${changed.length} changed, ${gone.length} removed`,
+  )
+}
+
+/** Commit the working files onto a branch. */
+export function callBaseCommit(input: {
+  root: string
+  branch: string
+  message: string
+  author: string
+}): void {
+  const { repo, save } = need(input.root)
+  const next = working(input.root)
+
+  if (!next.size) {
+    console.error(
+      `no records in ${WORK}/. Committing would empty the branch, so this refuses rather ` +
+        'than doing it by accident. Use `term base status` to see what is there.',
+    )
+    process.exit(1)
+  }
+
+  const done = repo.commit(input.branch, {
+    author: input.author,
+    time: Date.now(),
+    message: input.message,
+  }, next)
+
+  if (!done.ok) {
+    console.error('refused:')
+
+    for (const one of done.diagnostics ?? []) {
+      console.error(`  ${one.mark ?? '(dataset)'}  ${one.message}`)
+    }
+
+    for (const one of done.conflicts ?? []) {
+      console.error(`  conflict on ${JSON.stringify(one)}`)
+    }
+
+    process.exit(1)
+  }
+
+  save()
+
+  console.log(`${done.commit}`)
+  console.log(`${next.size} record(s) on ${input.branch}`)
+}
+
+/** Write a commit's records back out as `.tree` files. */
+export function callBaseCheckout(input: {
+  root: string
+  commit: string
+}): void {
+  const { repo } = need(input.root)
+  const at = resolve(repo, input.commit)
+  const dataset = repo.checkout(at)
+  const dir = path.join(input.root, WORK)
+
+  fs.mkdirSync(dir, { recursive: true })
+
+  for (const [mark, node] of dataset) {
+    const into = path.join(dir, node.type)
+
+    fs.mkdirSync(into, { recursive: true })
+    fs.writeFileSync(path.join(into, `${mark}.tree`), formatTree(node))
+  }
+
+  console.log(`wrote ${dataset.size} record(s) into ${WORK}/`)
+}
+
+/** Merge one branch into another. */
+export function callBaseMerge(input: {
+  root: string
+  into: string
+  from: string
+  author: string
+}): void {
+  const { repo, save } = need(input.root)
+  const done = repo.merge(input.into, input.from, {
+    author: input.author,
+    time: Date.now(),
+    message: `merge ${input.from} into ${input.into}`,
+  })
+
+  if (!done.ok) {
+    // Conflicts are RETURNED rather than resolved, so a person decides. Printing them per
+    // field is the point: "merge failed" would leave nothing to act on.
+    console.error(`${done.conflicts.length} conflict(s):`)
+
+    for (const one of done.conflicts) {
+      console.error(`  ${JSON.stringify(one)}`)
+    }
+
+    process.exit(1)
+  }
+
+  save()
+
+  console.log(
+    done.alreadyUpToDate
+      ? `${input.into} already has ${input.from}`
+      : `${done.commit}`,
+  )
+}
+
+/** Name a commit, so it can be cited. */
+export function callBaseTag(input: {
+  root: string
+  name: string
+  commit?: string
+  branch: string
+}): void {
+  const { repo, save } = need(input.root)
+  const at = input.commit
+    ? resolve(repo, input.commit)
+    : repo.head(input.branch)
+
+  if (!at) {
+    console.error(`nothing to tag: ${input.branch} has no commits`)
+    process.exit(1)
+  }
+
+  if (!repo.createTag(input.name, at)) {
+    console.error(`a tag named \`${input.name}\` already exists`)
+    process.exit(1)
+  }
+
+  save()
+
+  console.log(`${input.name} -> ${at}`)
+}
+
+/**
+ * A projected cell as a person reads it.
+ *
+ * `rowsFor` returns base `Value` objects rather than scalars, because unwrapping to a driver
+ * parameter happens later in `writesFor`. Printing the KIND alone would show that a column is
+ * present without showing what lands in it, and the reason to run this at all is to see what
+ * a mapping produces.
+ */
+function cell(value: unknown): string {
+  if (value && typeof value === 'object' && 'kind' in value) {
+    const held = value as { kind: string; value?: unknown; target?: string }
+
+    switch (held.kind) {
+      case 'null':
+        return '(null)'
+      case 'ref':
+        return `-> ${held.target}`
+      case 'blob':
+        return '(blob)'
+      case 'collection':
+      case 'record':
+        return `(${held.kind})`
+      default:
+        return String(held.value)
+    }
+  }
+
+  return String(value)
+}
+
+/**
+ * The working tree at a commit, as `.tree` files somebody can read without our software.
+ *
+ * Distinct from `checkout`, which writes into `record/` so the repository can be worked on.
+ * This writes wherever you point it and is for handing the data to somebody else.
+ */
+export function callBaseExport(input: {
+  root: string
+  commit: string
+  out: string
+}): void {
+  const { repo } = need(input.root)
+  const at = resolve(repo, input.commit)
+  let count = 0
+
+  for (const entry of exportTree({ repo, commit: at })) {
+    const full = path.join(input.out, entry.path)
+
+    fs.mkdirSync(path.dirname(full), { recursive: true })
+    fs.writeFileSync(full, entry.bytes)
+    count += 1
+  }
+
+  console.log(`exported ${count} file(s) to ${input.out}`)
+}
+
+/**
+ * What a projection WOULD write for a commit.
+ *
+ * Reports, and cannot write. That is a scoping decision rather than a missing half: the
+ * language package has no database driver and should not gain one for a single verb, so
+ * actually writing a projection lives in mesh, where the Postgres engine and the durable
+ * stores already are (`pnpm check:rebuild` and the projection runner).
+ *
+ * What this gives a person is the thing that is genuinely hard to see otherwise: exactly
+ * which rows and columns a mapping produces, offline, before anything touches a database.
+ * A mapping that drops a field is visible here as a column that is simply absent.
+ *
+ * The mapping comes from a file because the CLI has no schema to introspect. In mesh it is
+ * DERIVED from the live target instead, which is the right source there and unavailable here.
+ */
+export function callBaseProject(input: {
+  root: string
+  commit: string
+  mapping: string
+}): void {
+  const { repo } = need(input.root)
+  const at = resolve(repo, input.commit)
+
+  if (!fs.existsSync(input.mapping)) {
+    console.error(`no mapping file at ${input.mapping}`)
+    process.exit(1)
+  }
+
+  let mapping: Mapping
+
+  try {
+    mapping = JSON.parse(fs.readFileSync(input.mapping, 'utf8')) as Mapping
+  } catch (error) {
+    console.error(
+      `${input.mapping} is not readable json: ${error instanceof Error ? error.message : String(error)}`,
+    )
+    process.exit(1)
+  }
+
+  const rows = rowsFor({ mapping, dataset: repo.checkout(at) })
+
+  if (!rows.size) {
+    console.log('this mapping produces no rows for that commit')
+
+    return
+  }
+
+  let total = 0
+
+  for (const table of [...rows.keys()].sort()) {
+    const held = rows.get(table)!
+
+    console.log(`${table}  ${held.length} row(s)`)
+    total += held.length
+
+    // one row in full, so a person can see the SHAPE rather than only a count. A count
+    // alone cannot show that a column is missing, which is the thing a mapping gets wrong.
+    const first = held[0]
+
+    if (first) {
+      for (const [column, value] of [...first].sort()) {
+        console.log(`    ${column.padEnd(24)} ${cell(value)}`)
+      }
+    }
+  }
+
+  console.log(`\n${total} row(s) across ${rows.size} table(s). Nothing was written.`)
+  console.log(
+    'Writing a projection into a database lives in mesh, where the driver is: see\n' +
+      'pnpm check:rebuild and the projection runner.',
+  )
 }

@@ -1,7 +1,7 @@
 
 load @term/seed/code/native/shared/test/assert
-  find assert
-  find deny
+  find assert-shared
+  find deny-shared
   find mark-skip
   find mark-fail
 
@@ -12,7 +12,7 @@ task assert
   take message, like text, need false
   take tolerance, need false
 
-  call assert
+  call assert-shared
     bind value, read value
     bind form, read form
     bind expected, read expected
@@ -25,7 +25,7 @@ task deny
   take expected, need false
   take message, like text, need false
 
-  call deny
+  call deny-shared
     bind value, read value
     bind form, read form
     bind expected, read expected

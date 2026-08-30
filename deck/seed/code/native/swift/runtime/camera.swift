@@ -17,8 +17,8 @@ enum camera {
         await AVCaptureDevice.requestAccess(for: .video)
     }
 
-    static func defaultDevice() -> AVCaptureDevice? {
-        AVCaptureDevice.default(for: .video)
+    static func defaultDevice() -> AVCaptureDevice {
+        AVCaptureDevice.default(for: .video)!
     }
 
     static func hasFlash(_ device: AVCaptureDevice) -> Bool {

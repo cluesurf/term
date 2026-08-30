@@ -15,7 +15,7 @@ mine hold
 
 mine step
   mine any
-    mine form, like show
+    mine form, like show-claim
       site show
     mine form, like mark
       site mark
@@ -36,7 +36,7 @@ mine step
     mine form, like find
       site find
 
-mine show
+mine show-claim
   mine term, term show
     mine form, like call
       site claim
@@ -102,7 +102,7 @@ mine self
       mine form, like step
         site step
 
-mine seed
+mine rule-seed
   mine term, term seed
     mine term
       site arg

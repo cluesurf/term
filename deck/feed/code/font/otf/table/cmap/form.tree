@@ -1,0 +1,48 @@
+# The OpenType `cmap` table: a directory of encoding records, each pointing at a subtable elsewhere in the table
+# by an offset relative to the table's own start. Formats 4 (segment mapping, BMP) and 12 (segmented coverage,
+# full Unicode) only — every other cmap subtable format is out of scope until a dialect needs it. See
+# note/term/feed/04-otf-case-study.md, "cmap table: the offset-table case".
+
+form otf-cmap-table
+  link version, like number
+  link records
+    like list
+      like otf-cmap-encoding-record
+
+form otf-cmap-encoding-record
+  link platform-id, like number
+  link encoding-id, like number
+  link subtable-offset, like number
+  link subtable, like otf-cmap-subtable
+
+form otf-cmap-subtable
+  case otf-cmap-format-4
+    link language, like number
+    link segments
+      like list
+        like otf-cmap-segment
+    link glyph-id-array
+      like list
+        like number
+  case otf-cmap-format-12
+    link language, like number
+    link groups
+      like list
+        like otf-cmap-group
+  case otf-cmap-format-unsupported
+    link format, like number
+
+# one entry of format 4's four parallel arrays (end-code/start-code/id-delta/id-range-offset), captured together
+# rather than as four separate lists — the grammar's job is to make the data available, not to run the lookup
+# algorithm that resolves id-range-offset against glyph-id-array (that belongs in code consuming this, same as
+# every other case study's "no arithmetic in the reader" rule)
+form otf-cmap-segment
+  link end-code, like number
+  link start-code, like number
+  link id-delta, like number
+  link id-range-offset, like number
+
+form otf-cmap-group
+  link start-char-code, like number
+  link end-char-code, like number
+  link start-glyph-id, like number

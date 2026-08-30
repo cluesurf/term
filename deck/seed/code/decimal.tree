@@ -54,6 +54,10 @@ bind do-format
     text <(function (s, sc) { if (sc === 0) return s; var neg = s.charAt(0) === "-"; var d = (neg ? s.slice(1) : s).padStart(sc + 1, "0"); var out = d.slice(0, d.length - sc) + "." + d.slice(d.length - sc); return (neg ? "-" : "") + out })($digits, $scale)>
   case browser
     text <(function (s, sc) { if (sc === 0) return s; var neg = s.charAt(0) === "-"; var d = (neg ? s.slice(1) : s).padStart(sc + 1, "0"); var out = d.slice(0, d.length - sc) + "." + d.slice(d.length - sc); return (neg ? "-" : "") + out })($digits, $scale)>
+  case rust
+    text <\{ let s: String = $digits; let sc = $scale as usize; if sc == 0 \{ s \} else \{ let neg = s.starts_with('-'); let d = if neg \{ &s[1..] \} else \{ &s[..] \}; let mut d = d.to_string(); while d.len() \< sc + 1 \{ d.insert(0, '0'); \} let split = d.len() - sc; let out = format!("\{\}.\{\}", &d[..split], &d[split..]); if neg \{ format!("-\{\}", out) \} else \{ out \} \} \}>
+  case kotlin
+    text <run \{ val s = $digits; val sc = ($scale).toInt(); if (sc == 0) s else \{ val neg = s.startsWith("-"); val d0 = if (neg) s.substring(1) else s; val d = d0.padStart(sc + 1, '0'); val out = d.substring(0, d.length - sc) + "." + d.substring(d.length - sc); if (neg) "-" + out else out \} \}>
 
 # ten raised to `power`, as a big integer (used to align two decimals to a common scale)
 task power-of-ten

@@ -30,12 +30,15 @@ function scanImports(text: string): ImportScan {
       line.length > 0 && !line.startsWith(' ') && !line.startsWith('\t')
 
     if (topLevel && angleDepth === 0 && !line.startsWith('#')) {
-      const head = /^(load|bear|zone)\b/.exec(line)
+      const head = /^(load|bear|zone|view)\b/.exec(line)
 
       if (head) {
         const kw = head[1]
 
-        if (kw === 'zone') {
+        // `zone` in the code role and `view` in the view role are the same concept, a component, and both mean the
+        // emitter will synthesize render-runtime calls. A top-level `view` is only ever a document, because the
+        // code role's own `view` head is a stale grammar nothing uses. See note/term/view/06-mill.md.
+        if (kw === 'zone' || kw === 'view') {
           hasZone = true
         } else {
           // the path is the first token after the keyword, up to a comma or space.
@@ -67,7 +70,8 @@ export type Resolver = (
   fromFile: string,
 ) => Source | undefined
 
-// the render runtime backing a `zone`: a module with a zone calls `element` / `text` / `dynamic` / `show` / `each`,
+// the render runtime backing a `zone` (and a view-role document, whose `view` lowers to one): such a module calls
+// `element` / `text` / `dynamic` / `show` / `each`,
 // which the emitter synthesizes rather than the user importing. So a module containing a zone implicitly depends on it.
 // `load @path` / `bear @path` (re-exports) both pull the target into the merged program; because the program is one
 // flat namespace, a `bear`ed definition is visible to anything importing this module. `scanImports` (above) reads both.

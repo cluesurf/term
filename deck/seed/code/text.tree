@@ -34,11 +34,11 @@ bind do-size
   case browser
     text <Array.from($value).length>
   case rust
-    text <$value.chars().count()>
+    text <$value.chars().count() as i64>
   case swift
     text <$value.unicodeScalars.count>
   case kotlin
-    text <$value.codePointCount(0, $value.length)>
+    text <$value.codePointCount(0, $value.length).toLong()>
 
 task char-count
   take value, like text

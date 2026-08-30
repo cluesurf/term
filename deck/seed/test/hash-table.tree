@@ -1,0 +1,141 @@
+# Quadratic probing: five keys in eight slots force probe walks (the djb2 hashes collide modulo 8 for some of
+# these), and the table must still find every key, miss an absent key, and forget a removed one. A capacity of
+# eight with five keys keeps the table under load while leaving free slots, so `locate` always terminates.
+#
+# Run with: term test
+
+load @term/seed/code/native/shared/hash-table/quadratic-probing
+  find make-hash-table
+
+load @term/seed/code/void
+  find void
+
+test hash-table-finds-what-was-set
+  save table
+    call make-hash-table
+      code 8
+  call set
+    read table
+    text <alpha>
+    code 1
+  call set
+    read table
+    text <beta>
+    code 2
+  call set
+    read table
+    text <gamma>
+    code 3
+  call set
+    read table
+    text <delta>
+    code 4
+  call set
+    read table
+    text <epsilon>
+    code 5
+  want hold
+    call is-equal
+      call find
+        read table
+        text <gamma>
+      code 3
+
+test hash-table-counts-what-it-holds
+  save table
+    call make-hash-table
+      code 8
+  call set
+    read table
+    text <alpha>
+    code 1
+  call set
+    read table
+    text <beta>
+    code 2
+  call set
+    read table
+    text <alpha>
+    code 9
+  want hold
+    call is-equal
+      read table/size
+      code 2
+
+test hash-table-overwrites-a-key
+  save table
+    call make-hash-table
+      code 8
+  call set
+    read table
+    text <alpha>
+    code 1
+  call set
+    read table
+    text <alpha>
+    code 9
+  want hold
+    call is-equal
+      call find
+        read table
+        text <alpha>
+      code 9
+
+test hash-table-misses-an-absent-key
+  save table
+    call make-hash-table
+      code 8
+  call set
+    read table
+    text <alpha>
+    code 1
+  want hold
+    call is-equal
+      call find
+        read table
+        text <omega>
+      make void
+
+test hash-table-forgets-a-removed-key
+  save table
+    call make-hash-table
+      code 8
+  call set
+    read table
+    text <alpha>
+    code 1
+  call set
+    read table
+    text <beta>
+    code 2
+  call remove
+    read table
+    text <alpha>
+  want hold
+    call is-equal
+      call find
+        read table
+        text <alpha>
+      make void
+
+test hash-table-keeps-the-others-after-a-remove
+  save table
+    call make-hash-table
+      code 8
+  call set
+    read table
+    text <alpha>
+    code 1
+  call set
+    read table
+    text <beta>
+    code 2
+  call remove
+    read table
+    text <alpha>
+  want hold
+    call is-equal
+      call find
+        read table
+        text <beta>
+      code 2

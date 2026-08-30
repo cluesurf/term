@@ -10,7 +10,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint \"code/**/*.ts\" \"test/**/*.ts\"",
-    "format": "prettier --write \"code/**/*.ts\" \"test/**/*.ts\""
+    "format": "prettier --write \"code/**/*.ts\" \"test/**/*.ts\"",
+    "check:base-format": "tsx task/format-check.ts",
+    "check:base-transfer": "tsx task/transfer-check.ts"
   },
   "prettier": "@cluesurf/wash/flow.json",
   "devDependencies": {

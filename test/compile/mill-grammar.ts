@@ -253,6 +253,59 @@ ok(
   !/mine term, term task\n\s+site name/.test(viewRules) && !/mine term, term dock\b/.test(viewRules),
 )
 
+// a rule name defined twice in one role's load closure: the later definition silently clobbers the earlier in a
+// merged grammar, and the failure surfaces as an unrelated rule refusing input (the lace `walk` ate the loop
+// `walk` this way). Held to zero for every role with a start file.
+for (const role of ['code', 'deck', 'note', 'test', 'view', 'host', 'mill']) {
+  const start = join(MILL, role, 'mine.tree')
+
+  if (!existsSync(start)) {
+    continue
+  }
+
+  const files: string[] = []
+  const seenFiles = new Set<string>()
+  const queue = [start]
+
+  while (queue.length > 0) {
+    const file = queue.shift()!
+
+    if (seenFiles.has(file)) {
+      continue
+    }
+
+    seenFiles.add(file)
+    files.push(file)
+
+    const text = readFileSync(file, 'utf8')
+
+    for (const m of text.matchAll(/^load (\S+)$/gm)) {
+      const target = resolveLoad(m[1]!, file)
+
+      if (target && target.startsWith(MILL)) {
+        queue.push(target)
+      }
+    }
+  }
+
+  const where = new Map<string, string[]>()
+
+  for (const file of files) {
+    for (const m of readFileSync(file, 'utf8').matchAll(/^mine (\S+)$/gm)) {
+      const list = where.get(m[1]!) ?? []
+      list.push(relative(MILL, file))
+      where.set(m[1]!, list)
+    }
+  }
+
+  const dups = [...where].filter(([, list]) => list.length > 1)
+  ok(
+    `the ${role} role defines every rule once`,
+    dups.length === 0,
+    dups.map(([name, list]) => `${name} in ${list.join(' + ')}`).join('; '),
+  )
+}
+
 const byRole = new Map<string, number>()
 
 for (const p of rest) {

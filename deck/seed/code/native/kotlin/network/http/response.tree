@@ -1,6 +1,10 @@
 
 dock load
-  load <global:response>, name response
+  load <global:response>, name response-runtime
+
+# the response shim parses a json body through the stdlib json runtime, so it rides along
+dock load
+  load <global:json>, name json
 
 load @term/seed/code/network/http
   find response
@@ -8,18 +12,19 @@ load @term/seed/code/network/http
 task read
   take response, like response
   take format, like text, fall text <text>
+  like unknown
 
   fork case, read format
     case text
       send back
-        call response/text
+        call response-runtime/text
           read response/dock
     case bytes
       send back
-        call response/bytes
+        call response-runtime/bytes
           read response/dock
     case json
       send back
-        call response/json
+        call response-runtime/json-body
           read response/dock
 

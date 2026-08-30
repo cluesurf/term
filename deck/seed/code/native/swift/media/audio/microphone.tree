@@ -1,3 +1,7 @@
+# SHELVED 2026-08-31: an AVAudioSession sketch. It calls an `av-audio-session-form` binding that was never
+# declared (no dock, no form), so it has nothing to compile against. Nothing loads it. Un-shelve by binding
+# AVAudioSession.sharedInstance().requestRecordPermission through a runtime shim, the camera pattern.
+note draft
 
 task request-access
   fork case

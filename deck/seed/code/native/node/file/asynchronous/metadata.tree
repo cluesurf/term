@@ -1,4 +1,7 @@
 
+load @term/seed/code/file/metadata
+  find file-metadata
+
 dock load
   load <node:fs/promises>, name fs-promise
 
@@ -39,7 +42,7 @@ task read
 
   send back
     make file-metadata
-      size, read stats/size
+      bind size, read stats/size
       bind kind, read kind
       bind made
         call stats/birth-time/get-time

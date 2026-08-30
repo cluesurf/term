@@ -1,0 +1,280 @@
+/**
+ * The TRANSFER framing conformance vectors: generate them, and check nothing moved.
+ *
+ * A second implementation cannot interoperate on a description. `vector/canonical-form.json`
+ * is that corpus for the bytes a record HASHES to; this is the corpus for how a set of
+ * chunks and refs is PACKAGED to move between hosts.
+ *
+ * SEPARATE ON PURPOSE, and separate is the whole point of the item this exists for. The two
+ * change for different reasons: the canonical form changes when the meaning of a value
+ * changes, and the framing changes when the way a transfer is packaged changes. A format
+ * that versions them together cannot fix one without a flag day for the other, and that is
+ * the mistake most formats make once.
+ *
+ * REPORTS BY DEFAULT AND WRITES ONLY ON --commit, like its twin. Rewriting the corpus to
+ * match a changed encoder is exactly how a wire-breaking change gets waved through: the
+ * corpus is supposed to be the thing that refuses.
+ *
+ *   pnpm check:base-transfer                  # verify every vector
+ *   pnpm check:base-transfer --write --commit # actually rewrite the corpus
+ */
+
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import {
+  BUNDLE_FORMAT,
+  decodeBundle,
+  encodeBundle,
+  type Bundle,
+} from '@term/base/code/transport/bundle'
+import { hashBytes } from '@term/base/code/canon/hash'
+
+function repoRoot(): string {
+  let at = dirname(fileURLToPath(import.meta.url))
+
+  while (!existsSync(join(at, 'note', 'workflow'))) {
+    const up = dirname(at)
+
+    if (up === at) {
+      throw new Error('could not find the repository root')
+    }
+
+    at = up
+  }
+
+  return at
+}
+
+// Beside the canonical-form corpus, in the package, so a published package carries both.
+const CORPUS = join(
+  repoRoot(),
+  'deck/term/deck/term/deck/base/vector/transfer.json',
+)
+
+type Vector = {
+  name: string
+  asserts: string
+  bundle: Bundle
+  /** the exact bytes `encodeBundle` produces */
+  bytes: string
+  /** sha256 of those bytes, so a difference is one comparison rather than a diff */
+  digest: string
+}
+
+/**
+ * The cases, chosen for what an implementer can get wrong rather than for coverage.
+ *
+ * Chunk contents are short readable strings rather than real canonical records: this corpus
+ * is about the FRAMING, and using real records would make every digest depend on the
+ * canonical form too, which is the coupling the separation exists to avoid.
+ */
+const CASES: Array<{ name: string; asserts: string; bundle: Bundle }> = [
+  {
+    name: 'empty',
+    asserts: 'a bundle with no refs and no chunks still carries its framing version',
+    bundle: { refs: {}, chunks: {} },
+  },
+  {
+    name: 'one_ref_one_chunk',
+    asserts: 'the ordinary case: one branch and the chunk it names',
+    bundle: {
+      refs: { 'branch/main': 'sha256:aa' },
+      chunks: { 'sha256:aa': 'one' },
+    },
+  },
+  {
+    name: 'several_refs',
+    asserts: 'branches and tags travel in the same map, distinguished by their prefix',
+    bundle: {
+      refs: {
+        'branch/main': 'sha256:aa',
+        'branch/draft': 'sha256:bb',
+        'tag/2026.08': 'sha256:aa',
+      },
+      chunks: { 'sha256:aa': 'one', 'sha256:bb': 'two' },
+    },
+  },
+  {
+    name: 'key_order_refs',
+    asserts:
+      'refs written in a different order produce the SAME bytes as several_refs, or two hosts building one bundle disagree',
+    bundle: {
+      refs: {
+        'tag/2026.08': 'sha256:aa',
+        'branch/main': 'sha256:aa',
+        'branch/draft': 'sha256:bb',
+      },
+      chunks: { 'sha256:bb': 'two', 'sha256:aa': 'one' },
+    },
+  },
+  {
+    name: 'unicode_chunk',
+    asserts: 'a chunk holding non-ASCII text survives the framing unchanged',
+    bundle: {
+      refs: { 'branch/main': 'sha256:cc' },
+      chunks: { 'sha256:cc': 'café 日本語' },
+    },
+  },
+  {
+    name: 'chunk_with_quotes',
+    asserts: 'a chunk holding quotes and backslashes is escaped rather than truncated',
+    bundle: {
+      refs: { 'branch/main': 'sha256:dd' },
+      chunks: { 'sha256:dd': 'he said "\\" and left' },
+    },
+  },
+]
+
+function vectorOf(one: (typeof CASES)[number]): Vector {
+  const bytes = encodeBundle(one.bundle)
+
+  return {
+    name: one.name,
+    asserts: one.asserts,
+    bundle: one.bundle,
+    bytes,
+    digest: hashBytes(bytes),
+  }
+}
+
+function corpusOf(): { format: string; note: string; vector: Array<Vector> } {
+  return {
+    format: BUNDLE_FORMAT,
+    note:
+      'Transfer framing conformance vectors for base. `bytes` is exactly what encodeBundle ' +
+      'produces and `digest` is its sha256. An implementation that reproduces every digest ' +
+      'here packages a transfer the way base does. This is SEPARATE from ' +
+      'vector/canonical-form.json, which covers the bytes a record hashes to: the two version ' +
+      'independently. Generated by task/transfer-check.ts.',
+    vector: CASES.map(vectorOf),
+  }
+}
+
+function main(): void {
+  const write = process.argv.includes('--write')
+  const commit = process.argv.includes('--commit')
+  const built = corpusOf()
+
+  if (write) {
+    if (!commit) {
+      console.log(
+        `would rewrite ${CORPUS} with ${built.vector.length} vectors. Pass --commit to actually write it.`,
+      )
+      return
+    }
+
+    writeFileSync(CORPUS, `${JSON.stringify(built, null, 2)}\n`)
+    console.log(`wrote ${built.vector.length} vectors to ${CORPUS}`)
+    return
+  }
+
+  if (!existsSync(CORPUS)) {
+    console.error(
+      `no corpus at ${CORPUS}. Generate it with --write --commit, then read it before trusting it.`,
+    )
+    process.exit(1)
+  }
+
+  const held = JSON.parse(readFileSync(CORPUS, 'utf8')) as ReturnType<
+    typeof corpusOf
+  >
+  const problems: string[] = []
+
+  if (held.format !== BUNDLE_FORMAT) {
+    problems.push(
+      `corpus is ${held.format} and this build is ${BUNDLE_FORMAT}. A framing change needs a new version, not a rewritten corpus.`,
+    )
+  }
+
+  const byName = new Map(built.vector.map(one => [one.name, one]))
+
+  for (const one of held.vector) {
+    const now = byName.get(one.name)
+
+    if (!now) {
+      problems.push(`${one.name} is in the corpus and is no longer generated`)
+      continue
+    }
+
+    if (now.bytes !== one.bytes) {
+      problems.push(`${one.name}: the framing changed. ${one.asserts}`)
+      continue
+    }
+
+    if (now.digest !== one.digest) {
+      problems.push(`${one.name}: bytes match and the digest does not, which is impossible`)
+    }
+
+    byName.delete(one.name)
+  }
+
+  for (const name of byName.keys()) {
+    problems.push(`${name} is generated and is not in the corpus. Add it with --write --commit`)
+  }
+
+  // The relationship the corpus exists to hold, asserted rather than left to a reader:
+  // two bundles built with the keys in a different order must frame identically, or two
+  // hosts packaging the same slice produce different bytes.
+  const ordered = held.vector.find(one => one.name === 'several_refs')
+  const reordered = held.vector.find(one => one.name === 'key_order_refs')
+
+  if (ordered && reordered && ordered.digest !== reordered.digest) {
+    problems.push(
+      'several_refs and key_order_refs must frame identically: key order must not change the bytes',
+    )
+  }
+
+  // And a decoded vector has to come back to the bundle it was made from, or the corpus
+  // describes an encoder nothing can read.
+  // Compared by CONTENT rather than by JSON.stringify. A bundle's refs and chunks are maps,
+  // and a map has no order, so the vector holds its keys in whatever order the case was
+  // written in while a decode gives them back sorted. Comparing the serialised strings would
+  // report every multi-key vector as broken, which is what it did the first time.
+  const sameMap = (
+    one: { [key: string]: string },
+    two: { [key: string]: string },
+  ): boolean => {
+    const keys = Object.keys(one)
+
+    return (
+      keys.length === Object.keys(two).length &&
+      keys.every(key => one[key] === two[key])
+    )
+  }
+
+  for (const one of held.vector) {
+    try {
+      const back = decodeBundle(one.bytes)
+
+      if (
+        !sameMap(back.refs, one.bundle.refs) ||
+        !sameMap(back.chunks, one.bundle.chunks)
+      ) {
+        problems.push(`${one.name}: decoding its bytes does not give back its bundle`)
+      }
+    } catch (error) {
+      problems.push(
+        `${one.name}: its own bytes do not decode. ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+
+  if (problems.length) {
+    for (const problem of problems) {
+      console.error(`  ${problem}`)
+    }
+
+    console.error(
+      `\n${problems.length} problem(s). A moved digest is a WIRE-BREAKING change: give the framing a new version rather than rewriting the corpus.`,
+    )
+
+    process.exit(1)
+  }
+
+  console.log(
+    `${held.vector.length} vectors, transfer framing ${held.format}, every digest holds`,
+  )
+}
+
+main()

@@ -2,7 +2,7 @@
 // message that names it. See note/term/view/ and deck/mill/code/view/.
 
 import { parse } from '@term/make/code/parser/tree'
-import { readView, lowerView } from '@term/make/code/compile/view'
+import { readView, lowerView, viewManifest } from '@term/make/code/compile/view'
 
 let pass = 0
 let fail = 0
@@ -203,9 +203,9 @@ if (result.ok) {
 
   // a `take`, then every name the host supplies: the typed `host` parameter and the two query results
   ok(
-    'the zone takes its parameter and its resolved queries',
+    'the zone takes the mount host, its parameter, and its resolved queries',
     zone?.form === 'zone' &&
-      zone.params.map(p => p.name).join(',') === 'theme,slug,language,vowel',
+      zone.params.map(p => p.name).join(',') === 'host,theme,slug,language,vowel',
     zone?.form === 'zone' ? zone.params.map(p => p.name).join(',') : '',
   )
 
@@ -235,6 +235,51 @@ if (result.ok) {
     'the lowering emits no computed local',
     body.every(node => node.form !== 'save'),
   )
+}
+
+// ---- the query manifest ----
+// Written in the `host` dialect, because a manifest is data. It carries what a RESOLVER needs and nothing a
+// renderer could act on. See note/term/view/03-find.md.
+
+if (result.ok) {
+  const manifest = viewManifest(result.file, 'page/quenya')
+
+  const holds = (what: string) => manifest.includes(what)
+
+  ok('the manifest names its module', holds('host module, <page/quenya>'))
+  ok('it lists the holes the host must fill', holds('list hole') && holds('host name, <slug>'))
+  ok('it carries the hole type', holds('host like, <text>'))
+  ok('it lists every query with its id', holds('host task, <filter:phoneme>') && holds('host task, <select:language>'))
+  ok('it carries the result cap', holds('host size, 50'))
+  ok('it carries the meet mode', holds('host mode, <and>'))
+  ok('it carries a predicate and its operands', holds('host name, <is-equal>') && holds('host road, <self/kind>'))
+  ok('it carries the sort order', holds('host way, <fall>') && holds('host road, <self/frequency>'))
+  ok('it lists every component placed', holds('list view') && holds('<sound/phoneme-chart>'))
+  ok('it lists every operator applied', holds('list call') && holds('<titlecase>'))
+  ok('it lists every package loaded', holds('list load') && holds('<@view/sound>'))
+  ok('it does not list the synthesized range', !/list call[\s\S]*<range>/.test(manifest))
+
+  // the manifest is the host dialect, so the host reader takes it back
+  const back = parse({ file: 'find.tree', text: manifest })
+
+  ok('the manifest parses as a tree', back.ok, back.ok ? '' : back.diagnostics.map(d => d.message).join(' | '))
+}
+
+// a record reference is collected apart from a plain text, because a reference is what delete protection walks
+const REFERENCED = read(`
+view page
+  view text/item
+    bind term, code <quenya-a>
+    bind note, text <not a mark>
+`)
+
+ok('a record reference reads', REFERENCED.ok, REFERENCED.ok ? '' : REFERENCED.diagnostics.map(d => d.message).join(' | '))
+
+if (REFERENCED.ok) {
+  const manifest = viewManifest(REFERENCED.file, 'page/ref')
+
+  ok('a record mark is listed', /list mark\n  <quenya-a>/.test(manifest))
+  ok('a plain text is not a mark', !manifest.includes('<not a mark>'))
 }
 
 // ---- the role routes a file to this reader, end to end ----
@@ -298,6 +343,127 @@ ok(
   !asCode.ok && asCode.diagnostics.some(d => /the name "view" is not defined/.test(d.message)),
   asCode.ok ? '' : asCode.diagnostics.map(d => d.message).slice(0, 2).join(' | '),
 )
+
+// ---- a counted walk ----
+// `walk size` normalises into a `walk list` over `range(base, head)`, because `zone-walk` carries only a list walk
+// and adding a counted one would touch every pass that reads a walk. `range` is a render-runtime task.
+
+const COUNTED = `
+host total, like text
+
+view page
+  walk size
+    bind base, 0
+    bind head, 100
+    hook next
+      take site, name step
+      view text/item
+        bind rank, read step
+  walk size, read total
+    hook next
+      take site, name n
+      view text/item
+        bind rank, read n
+`
+
+// Read and lowered directly rather than through `compile`, because `range` is a render-runtime task and a bare
+// compile has no resolver to load it. A real build auto-loads that runtime for any module holding a zone.
+const countedRead = read(COUNTED)
+
+ok(
+  'a counted walk reads',
+  countedRead.ok,
+  countedRead.ok ? '' : countedRead.diagnostics.map(d => d.message).join(' | '),
+)
+
+if (countedRead.ok) {
+  const zone = lowerView(countedRead.file)[0]
+  const body = zone?.form === 'zone' ? zone.body : []
+
+  ok('both counted walks lower to a walk', body.length === 2 && body.every(node => node.form === 'walk'))
+  ok(
+    'a counted walk iterates a range call',
+    body[0]?.form === 'walk' &&
+      body[0].iterable.form === 'call' &&
+      body[0].iterable.callee.form === 'variable' &&
+      body[0].iterable.callee.name === 'range',
+  )
+  ok(
+    'its bounds are the base and the head',
+    body[0]?.form === 'walk' &&
+      body[0].iterable.form === 'call' &&
+      body[0].iterable.args[0]?.form === 'integer' &&
+      body[0].iterable.args[0].value === 0 &&
+      body[0].iterable.args[1]?.form === 'integer' &&
+      body[0].iterable.args[1].value === 100,
+  )
+  ok(
+    'the short form counts from zero',
+    body[1]?.form === 'walk' &&
+      body[1].iterable.form === 'call' &&
+      body[1].iterable.args[0]?.form === 'integer' &&
+      body[1].iterable.args[0].value === 0,
+  )
+  ok('a counted walk binds its item', body[0]?.form === 'walk' && body[0].item === 'step')
+}
+
+refuses('a counted walk with no bound', 'view page\n  walk size\n    hook next\n      text <x>\n', 'names how far it counts')
+
+// ---- macros expand before the reader ever sees them ----
+// `tree` and `fuse` are surface syntax. `compile/template.ts` expands them on the parse tree, so by the time the
+// reader runs the macros are gone and their bodies stand where each `fuse` was. The dialect gets this for free
+// by going through the same expand phase the code role does. See note/term/view/02-macro.md.
+
+// A parameter substitutes as `{name}`, never as `read name`. The wrong spelling does not fail: it expands to a
+// read of the bound group's head, which is a variable that does not exist. Measured, see note/term/view/02-macro.md.
+const MACRO = `
+tree sound-row
+  take symbol, like text
+  hook fuse
+    view text/item
+      bind term, text <{symbol}>
+
+view page
+  fuse sound-row
+    bind symbol, <a>
+  fuse sound-row
+    bind symbol, <e>
+`
+
+const expanded = compile(
+  { file: '/app/page/macro.tree', text: MACRO },
+  { roleOf, optimize: false },
+)
+
+ok(
+  'a document with a macro compiles',
+  expanded.ok,
+  expanded.ok ? '' : expanded.diagnostics.map(d => d.message).join(' | '),
+)
+
+if (expanded.ok) {
+  const zone = expanded.program[0]
+  const body = zone?.form === 'zone' ? zone.body : []
+
+  ok('two fuses expand to two nodes', body.length === 2)
+  ok('an expanded node is the macro body', body[0]?.form === 'element')
+  ok(
+    'a macro parameter is substituted',
+    body[0]?.form === 'element' &&
+      body[0].props[0]?.value.form === 'string' &&
+      body[0].props[0].value.value === 'a',
+  )
+  ok(
+    'each fuse gets its own argument',
+    body[1]?.form === 'element' &&
+      body[1].props[0]?.value.form === 'string' &&
+      body[1].props[0].value.value === 'e',
+  )
+  ok(
+    'the reader never sees a tree or a fuse',
+    body.every(node => node.form === 'element'),
+  )
+}
 
 console.log(`\nview-role: ${pass} pass, ${fail} fail`)
 

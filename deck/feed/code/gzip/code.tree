@@ -1,0 +1,265 @@
+# The real, compiling gzip header/trailer codec (RFC 1952). `compressed-data` stays an opaque block — no DEFLATE
+# here, matching note/term/feed/07-implementation.md's step 5 scope. Matches the spec sketch in
+# note/term/feed/03-worked-examples.md field for field: the flags-byte bitwise tests, the NUL-terminated latin1
+# name/comment fields, the trailer.
+
+load @term/seed/code/boolean
+  find and
+  find not
+
+load @term/seed/code/list
+  find push
+  find size
+  find join
+
+load @term/seed/code/text
+  find char-count
+  find char-code-at
+
+load @term/seed/code/rune
+  find rune-to-text
+
+load @term/seed/code/bit
+  find bitwise-and
+
+load @term/seed/code/maybe
+  find maybe
+  find some
+  find none
+
+load ../base
+  find feed-cursor
+  find feed-writer
+  find make-cursor
+  find read-byte
+  find read-int
+  find read-bytes
+  find remaining
+  find make-writer
+  find write-byte
+  find write-int
+  find write-bytes
+  find to-bytes
+
+load ./form
+  find gzip-file
+
+# whether a bit is set in a flags byte
+task flag-set
+  take flags, like number
+  take mask, like number
+  like boolean
+  send back
+    call is-above
+      call bitwise-and(read flags, read mask)
+      code 0
+
+task read-gzip-extra
+  take cursor, like feed-cursor
+  take flags, like number
+  like maybe
+    like list
+      like u8
+  fork test
+    hook test
+      call flag-set(read flags, code 0x04)
+    hook hold
+      save length
+        call read-int(read cursor, code 2, make little, make unsigned)
+      send back
+        make some
+          bind value
+            call read-bytes(read cursor, read length)
+  send back
+    make none
+
+# a NUL-terminated latin1 string: the code point of every byte up to (not including) the terminator, joined
+task read-latin1-string
+  take cursor, like feed-cursor
+  like text
+  save chars
+    make list
+  save continue, true
+  walk test
+    hook test
+      read continue
+    hook hold
+      save value
+        call read-byte(read cursor)
+      fork test
+        hook test
+          call is-equal(read value, code 0)
+        hook hold
+          save continue, false
+        hook miss
+          call push(read chars, call rune-to-text(read value))
+  send back
+    call join(read chars, text <>)
+
+task read-gzip-name
+  take cursor, like feed-cursor
+  take flags, like number
+  like maybe
+    like text
+  fork test
+    hook test
+      call flag-set(read flags, code 0x08)
+    hook hold
+      send back
+        make some
+          bind value
+            call read-latin1-string(read cursor)
+  send back
+    make none
+
+task read-gzip-comment
+  take cursor, like feed-cursor
+  take flags, like number
+  like maybe
+    like text
+  fork test
+    hook test
+      call flag-set(read flags, code 0x10)
+    hook hold
+      send back
+        make some
+          bind value
+            call read-latin1-string(read cursor)
+  send back
+    make none
+
+task read-gzip-header-crc16
+  take cursor, like feed-cursor
+  take flags, like number
+  like maybe
+    like number
+  fork test
+    hook test
+      call flag-set(read flags, code 0x02)
+    hook hold
+      send back
+        make some
+          bind value
+            call read-int(read cursor, code 2, make little, make unsigned)
+  send back
+    make none
+
+task read-gzip
+  take input
+    like list
+      like u8
+  like gzip-file
+  save cursor
+    call make-cursor(read input)
+  save magic-1
+    call read-byte(read cursor)
+  save magic-2
+    call read-byte(read cursor)
+  fork test
+    hook test
+      call not
+        call and
+          call is-equal(read magic-1, code 0x1f)
+          call is-equal(read magic-2, code 0x8b)
+    hook hold
+      halt <not a gzip file>
+  save method
+    call read-byte(read cursor)
+  save flags
+    call read-byte(read cursor)
+  save modified-time
+    call read-int(read cursor, code 4, make little, make unsigned)
+  save extra-flags
+    call read-byte(read cursor)
+  save os
+    call read-byte(read cursor)
+  save extra
+    call read-gzip-extra(read cursor, read flags)
+  save name
+    call read-gzip-name(read cursor, read flags)
+  save comment
+    call read-gzip-comment(read cursor, read flags)
+  save header-crc16
+    call read-gzip-header-crc16(read cursor, read flags)
+  save compressed-length
+    call subtract(call remaining(read cursor), code 8)
+  save compressed-data
+    call read-bytes(read cursor, read compressed-length)
+  save crc32
+    call read-int(read cursor, code 4, make little, make unsigned)
+  save input-size
+    call read-int(read cursor, code 4, make little, make unsigned)
+  send back
+    make gzip-file
+      bind method, read method
+      bind flags, read flags
+      bind modified-time, read modified-time
+      bind extra-flags, read extra-flags
+      bind os, read os
+      bind extra, read extra
+      bind name, read name
+      bind comment, read comment
+      bind header-crc16, read header-crc16
+      bind compressed-data, read compressed-data
+      bind crc32, read crc32
+      bind input-size, read input-size
+
+task write-latin1-string
+  take writer, like feed-writer
+  take value, like text
+  save length
+    call char-count(read value)
+  save index, code 0
+  walk test
+    hook test
+      call is-below(read index, read length)
+    hook hold
+      call write-byte(read writer, call char-code-at(read value, read index))
+      save index
+        call add(read index, code 1)
+  call write-byte(read writer, code 0)
+
+task write-gzip
+  take file, like gzip-file
+  like list
+    like u8
+  save writer
+    call make-writer
+  call write-byte(read writer, code 0x1f)
+  call write-byte(read writer, code 0x8b)
+  call write-byte(read writer, read file/method)
+  call write-byte(read writer, read file/flags)
+  call write-int(read writer, read file/modified-time, code 4, make little)
+  call write-byte(read writer, read file/extra-flags)
+  call write-byte(read writer, read file/os)
+
+  fork case, read file/extra
+    case some
+      link value
+      call write-int(read writer, call size(read value), code 2, make little)
+      call write-bytes(read writer, read value)
+    case none
+
+  fork case, read file/name
+    case some
+      link value
+      call write-latin1-string(read writer, read value)
+    case none
+
+  fork case, read file/comment
+    case some
+      link value
+      call write-latin1-string(read writer, read value)
+    case none
+
+  fork case, read file/header-crc16
+    case some
+      link value
+      call write-int(read writer, read value, code 2, make little)
+    case none
+
+  call write-bytes(read writer, read file/compressed-data)
+  call write-int(read writer, read file/crc32, code 4, make little)
+  call write-int(read writer, read file/input-size, code 4, make little)
+  send back
+    call to-bytes(read writer)

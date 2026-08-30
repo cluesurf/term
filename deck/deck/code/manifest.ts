@@ -8,6 +8,7 @@ import {
   CodeHold,
 } from './form'
 import { parseCode, parseCodeHold, showCode } from './code'
+import { parseManifestMill } from './mill'
 import {
   readTree,
   formOf,
@@ -29,6 +30,13 @@ export async function loadManifest(input: {
 }
 
 export function parseManifest(input: { text: string }): DeckManifest {
+  // the manifest reads THROUGH THE MILL (mill-self-hosting-0005): the deck grammar run by the executor. The
+  // extraction below over the flattened tree is RETIRED as the primary path and kept only as the reference the
+  // differential in test/compile/mill-run.ts holds the grammar against.
+  return parseManifestMill(input)
+}
+
+export function parseManifestByHand(input: { text: string }): DeckManifest {
   const result = readTree({ file: 'deck.tree', text: input.text })
 
   if (!result.ok) {

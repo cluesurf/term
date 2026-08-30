@@ -1,4 +1,7 @@
 mine bear
   mine term, term bear
-    mine term
-      site path
+    mine any
+      mine term
+        site path
+      mine text
+        site text

@@ -1,3 +1,7 @@
+note draft
+# Stale pre-rename draft (a form declaration using `take` for fields and `self`, neither of which is current form
+# syntax — see the syntax rule in deck/term/CLAUDE.md, fields are `link`). Kept as the document-model field
+# catalog for whenever the PDF object model gets built for real. Not ported, not built.
 
 form document
   take id, like text

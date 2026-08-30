@@ -31,7 +31,7 @@ load @term/seed/code/hive
   find hive-entry
 
 load ./context
-  find make
+  find make-context
   find set
   find count
 
@@ -47,7 +47,10 @@ form test-entry
 roll test
   like test-entry
 
-host group-stack, make list
+host group-stack
+  like list
+    like text
+  make list
 
 task init
   note private
@@ -106,7 +109,7 @@ task register
       bind site, text <>
       bind base, read entry
 
-task describe
+task suite-describe
   take name, like text
   take work, like task
 
@@ -119,7 +122,7 @@ task describe
   call pop
     read group-stack
 
-task run
+task suite-run
   note async
   take filter, like text, need false
   take timeout, like size, fall 5000
@@ -153,7 +156,10 @@ task run
           read i
 
       save name, read entry/name
-      save work, read entry/base/work
+      # the hive entry's base is the boxed test-entry: re-type it at the boundary, then read the work task
+      host record, like test-entry
+        read entry/base
+      save work, read record/work
 
       fork test
         hook test
@@ -178,7 +184,7 @@ task run
               turn next
 
       save ctx
-        call make
+        call make-context
           bind name, read name
           bind start-time
             call now

@@ -47,16 +47,16 @@ task format
     hook hold
       send back
         call concat
-          bind a, text <Coverage: >
-          bind b
+          bind input, text <Coverage: >
+          bind other
             call concat
-              bind a
+              bind input
                 call to-text
                   bind value, read covered
-              bind b
+              bind other
                 call concat
-                  bind a, text </>
-                  bind b
+                  bind input, text </>
+                  bind other
                     call to-text
                       bind value, read total
 
@@ -66,9 +66,20 @@ task format
         bind a, read style
         bind b, text <json>
     hook hold
+      # a compact JSON summary built by hand: the full structural serializer is the host data walker,
+      # and the counts are what a reader consumes
       send back
-        call json-serialize
-          bind value, read coverage
+        call concat
+          text <\{"functions":>
+          call concat
+            call to-text
+              bind value, read total
+            call concat
+              text <,"covered":>
+              call concat
+                call to-text
+                  bind value, read covered
+                text <\}>
 
   save lines
     make list
@@ -78,15 +89,15 @@ task format
       call push
         read lines
         call concat
-          bind a, read fc/path
-          bind b
+          bind input, read fc/path
+          bind other
             call concat
-              bind a, text <: >
-              bind b
+              bind input, text <: >
+              bind other
                 call to-text
                   bind value, read fc/functions
 
   send back
-    call text-join
-      bind list, read lines
-      bind separator, text <\n>
+    call join
+      read lines
+      text <\n>

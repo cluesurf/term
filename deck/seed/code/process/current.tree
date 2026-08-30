@@ -1,7 +1,9 @@
 
 form process-info
   link id, like size
-  link arguments, like list
+  link arguments
+    like list
+      like text
   link directory, like text
   link executable, like text
 

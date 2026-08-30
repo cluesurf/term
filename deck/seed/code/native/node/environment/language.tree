@@ -1,4 +1,7 @@
 
+load @term/seed/code/environment/language
+  find locale
+
 load @term/seed/code/text
   find split
 

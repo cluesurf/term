@@ -1,12 +1,15 @@
+# A Bloom filter over 32-bit buckets: k locations per value by double hashing (two FNV-1a passes), each location
+# one bit in the bucket array. `add` sets the bits, `test` reads them (a false stops early), `get-size` estimates
+# the count from the popcount of the buckets. Restored 2026-08-30 from the mangled draft, on the hold/ utilities
+# (count-one-bits-32, fnv-hash-32-1a) now that they are in the build.
 
-# Not built: this depends on `code/hold`, which is unfinished and excluded from the build. Bring it back once the
-# hash / bit utilities it imports have finished homes.
-note draft
 load @term/seed/code/hold/integer
   find count-one-bits-32
 
 load @term/seed/code/bit
   find shift-left
+  find bitwise-and
+  find bitwise-or
 
 load @term/seed/code/hold/hash/fnv
   find fnv-hash-32-1a
@@ -17,20 +20,28 @@ load @term/seed/code/math
   find logarithm
 
 form bloom-filter
-  link m
-  link k
-  link buckets
+  link m, like number
+  link k, like number
   link locations
+    like list
+      like number
+  link buckets
+    like list
+      like number
 
+  # the k bit locations for a value: double hashing with two FNV-1a passes
   task get-locations
     take self
     take v
+    like list
+      like number
     save k, read self/k
     save m, read self/m
     save r, read self/locations
     save a
       call fnv-hash-32-1a
         read v
+        code 0
     save b
       call fnv-hash-32-1a
         read v
@@ -46,23 +57,19 @@ form bloom-filter
           read i
           read k
       hook hold
-        save tmp6
-          call is-below
-            read x
-            code 0
-        save tmp7
-          call add
-            read x
-            read m
-        save tmp8
         fork test
           hook test
-            tmp6
+            call is-below
+              read x
+              code 0
           hook hold
-            save tmp8, read tmp7
-          hook miss
-            save tmp8, read x
-        save r/{i}, read tmp8
+            save x
+              call add
+                read x
+                read m
+        call r/set
+          read i
+          read x
         save x
           call modulo
             call add
@@ -72,33 +79,34 @@ form bloom-filter
         save i
           call increment
             bind value, read i
-      hook miss
-        halt    send back, read r
-  task add
+    send back, read r
+
+  # set the value's k bits
+  task put
     take self
     take v
-    save tmp10
-      call self/get-locations
+    save l
+      call get-locations
+        read self
         read v
-    save l, read tmp10
     save k, read self/k
     save buckets, read self/buckets
     save i, code 0
-    walk test, fork fork12
+    walk test
       hook test
-        call test
-          call is-below
-            read i
-            read k
+        call is-below
+          read i
+          read k
       hook hold
-        save tmp11
+        save at
           call round-down
             call divide
               read l/{i}
               code 32
-        save buckets/{tmp11}
+        call buckets/set
+          read at
           call bitwise-or
-            read buckets/{tmp11}
+            read buckets/{at}
             call shift-left
               code 1
               call modulo
@@ -107,26 +115,27 @@ form bloom-filter
         save i
           call increment
             bind value, read i
-      hook miss
-        halt  task test
+
+  # are all k bits set? A clear bit answers false at once
+  task test
     take self
     take v
-    save tmp13
-      call self/get-locations
+    like boolean
+    save l
+      call get-locations
+        read self
         read v
-    save l, read tmp13
     save k, read self/k
     save buckets, read self/buckets
     save i, code 0
-    walk test, fork fork15
+    walk test
       hook test
-        call test
-          call is-below
-            read i
-            read k
+        call is-below
+          read i
+          read k
       hook hold
         save b, read l/{i}
-        save tmp14
+        save at
           call round-down
             call divide
               read b
@@ -135,7 +144,7 @@ form bloom-filter
           hook test
             call is-equal
               call bitwise-and
-                read buckets/{tmp14}
+                read buckets/{at}
                 call shift-left
                   code 1
                   call modulo
@@ -143,24 +152,25 @@ form bloom-filter
                     code 32
               code 0
           hook hold
-            send back, read false
+            send back, false
         save i
           call increment
             bind value, read i
-      hook miss
-        halt    send back, read true
+    send back, true
+
+  # the estimated count: -m/k * ln(1 - bits/m), bits the popcount over the buckets
   task get-size
     take self
+    like number
     save buckets, read self/buckets
     save bits, code 0
     save i, code 0
     save n, read buckets/length
-    walk test, fork fork16
+    walk test
       hook test
-        call test
-          call is-below
-            read i
-            read n
+        call is-below
+          read i
+          read n
       hook hold
         save bits
           call add
@@ -170,8 +180,7 @@ form bloom-filter
         save i
           call increment
             bind value, read i
-      hook miss
-        halt    send back
+    send back
       call divide
         call multiply
           call subtract
@@ -185,35 +194,37 @@ form bloom-filter
                 read self/m
         read self/k
 
+# a filter with m bits (rounded up to whole 32-bit buckets) and k hashes per value
 task make-bloom-filter
   take m
   take k
+  like bloom-filter
   save n
     call round-up
       call divide
         read m
         code 32
-  save i
-    call subtract
-      code 0
-      code 1
-  save m
-    call multiply
-      read n
-      code 32
-  save bloom, make bloom-filter
-  save bloom/m, read m
-  save bloom/k, read k
-  save bloom/locations, make list
-  save bloom/buckets, make list
+  save bloom
+    make bloom-filter
+      bind m
+        call multiply
+          read n
+          code 32
+      bind k, read k
+      bind locations
+        make list
+      bind buckets
+        make list
+  save i, code 0
   walk test
     hook test
-      save i, call increment(read i)
       call is-below
         read i
         read n
     hook hold
-      call bloom/buckets/set
-        read i
+      call bloom/buckets/push
         code 0
-  read bloom
+      save i
+        call increment
+          bind value, read i
+  send back, read bloom

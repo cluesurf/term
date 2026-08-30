@@ -1,0 +1,93 @@
+# The real, compiling reader/writer for the OTF hhea table. 36 bytes, flat, no conditions: the same shape as
+# ../head, four reserved int16 fields (always 0, `skip`ped on read, written as 0) instead of one magic number.
+
+load ../../../../base
+  find feed-cursor
+  find make-writer
+  find to-bytes
+  find skip
+
+load ../shared/code
+  find read-u16
+  find read-i16
+  find write-u16
+  find write-i16
+
+load ./form
+  find otf-hhea-table
+
+task read-otf-hhea-table
+  take cursor, like feed-cursor
+  like otf-hhea-table
+  save version-major
+    call read-u16(read cursor)
+  save version-minor
+    call read-u16(read cursor)
+  save ascender
+    call read-i16(read cursor)
+  save descender
+    call read-i16(read cursor)
+  save line-gap
+    call read-i16(read cursor)
+  save advance-width-max
+    call read-u16(read cursor)
+  save min-left-side-bearing
+    call read-i16(read cursor)
+  save min-right-side-bearing
+    call read-i16(read cursor)
+  save x-max-extent
+    call read-i16(read cursor)
+  save caret-slope-rise
+    call read-i16(read cursor)
+  save caret-slope-run
+    call read-i16(read cursor)
+  save caret-offset
+    call read-i16(read cursor)
+  call skip(read cursor, code 8)
+  save metric-data-format
+    call read-i16(read cursor)
+  save number-of-h-metrics
+    call read-u16(read cursor)
+  send back
+    make otf-hhea-table
+      bind version-major, read version-major
+      bind version-minor, read version-minor
+      bind ascender, read ascender
+      bind descender, read descender
+      bind line-gap, read line-gap
+      bind advance-width-max, read advance-width-max
+      bind min-left-side-bearing, read min-left-side-bearing
+      bind min-right-side-bearing, read min-right-side-bearing
+      bind x-max-extent, read x-max-extent
+      bind caret-slope-rise, read caret-slope-rise
+      bind caret-slope-run, read caret-slope-run
+      bind caret-offset, read caret-offset
+      bind metric-data-format, read metric-data-format
+      bind number-of-h-metrics, read number-of-h-metrics
+
+task write-otf-hhea-table
+  take table, like otf-hhea-table
+  like list
+    like u8
+  save writer
+    call make-writer
+  call write-u16(read writer, read table/version-major)
+  call write-u16(read writer, read table/version-minor)
+  call write-i16(read writer, read table/ascender)
+  call write-i16(read writer, read table/descender)
+  call write-i16(read writer, read table/line-gap)
+  call write-u16(read writer, read table/advance-width-max)
+  call write-i16(read writer, read table/min-left-side-bearing)
+  call write-i16(read writer, read table/min-right-side-bearing)
+  call write-i16(read writer, read table/x-max-extent)
+  call write-i16(read writer, read table/caret-slope-rise)
+  call write-i16(read writer, read table/caret-slope-run)
+  call write-i16(read writer, read table/caret-offset)
+  call write-i16(read writer, code 0)
+  call write-i16(read writer, code 0)
+  call write-i16(read writer, code 0)
+  call write-i16(read writer, code 0)
+  call write-i16(read writer, read table/metric-data-format)
+  call write-u16(read writer, read table/number-of-h-metrics)
+  send back
+    call to-bytes(read writer)

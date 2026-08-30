@@ -43,6 +43,7 @@ task read
 
 task list
   like list
+    like text
 
   send back
     call tongue/preferred

@@ -3,7 +3,7 @@ dock load
   load <node:http>, name http
 
 dock type
-  load <import("node:http").Server>, name nodejs-http-server
+  load <any>, name nodejs-http-server
 
 form server
   link x-server, like nodejs-http-server
@@ -13,13 +13,13 @@ form server
 
   task listen
     take self
-    free seed, like self
     call self/x-server/listen
       read self/port
 
   task get-port
     take self
-    read self/port
+    like u16
+    send back, read self/port
 
 task make-server
   take handler, like task, base response-handler

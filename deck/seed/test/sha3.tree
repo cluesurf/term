@@ -1,0 +1,27 @@
+# SHA3-256 held to the FIPS-202 vectors: the empty message and "abc" (byte list 97 98 99).
+#
+# Run with: term test
+
+load @term/seed/code/native/shared/cryptography/sha3
+  find calculate-sha3-256
+
+test sha3-256-empty
+  want hold
+    call is-equal
+      call calculate-sha3-256
+        make list
+      text <a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a>
+
+test sha3-256-abc
+  save bytes, make list
+  call bytes/push
+    code 97
+  call bytes/push
+    code 98
+  call bytes/push
+    code 99
+  want hold
+    call is-equal
+      call calculate-sha3-256
+        read bytes
+      text <3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532>

@@ -1,3 +1,14 @@
+load @term/mill/code/code/call/mine
+  find call
+
+load @term/mill/code/code/hide/mine
+  find hide
+
+load @term/mill/code/code/task/mine
+  find task
+
+load @term/mill/code/code/note/mine
+  find note
 
 load @term/mill/code/code/like/mine
   find like
@@ -13,19 +24,46 @@ mine link
     mine term
       site name
     mine maybe
-      mine form, like like
-        site like
+      mine any
+        mine form, like like
+          site like
+        mine form, like link-call
+          site call
+        mine form, like link-list
+          site list
+        mine form, like link-hash
+          site hash
+        mine form, like link-mesh
+          site mesh
+        mine form, like link-void
+          site void
+        mine form, like link-form
+          site form
     mine maybe
       mine term, term mark
         mine term, term private
           site hide
     mine maybe
       mine term, term need
-        site need
+        mine maybe
+          mine term, term true
+            site need
+        mine maybe
+          mine term, term false
+            site need
     mine maybe
       mine term, term base
         mine form, like seed
           site base
+    mine list
+      mine form, like hide
+        site hide
+    mine list
+      mine form, like task
+        site task
+    mine list
+      mine form, like note
+        site note
     mine list
       mine form, like tag
         site tag
@@ -47,3 +85,46 @@ mine link-take-mark
   mine term, term mark
     mine term
       site value
+
+# `link bind, list code-bind`: a list-of-form field. `link host, form term` a typed field. `link head, void
+# node, like t` a nullable typed field. `link deck, hash deck, link name` a hash keyed by a field of the form.
+mine link-list
+  mine term, term list
+    mine term
+      site form
+
+mine link-form
+  mine term, term form
+    mine term
+      site form
+
+mine link-void
+  mine term, term void
+    mine term
+      site form
+  mine maybe
+    mine form, like like
+      site like
+
+mine link-hash
+  mine term, term hash
+    mine term
+      site form
+  mine maybe
+    mine term, term link
+      mine term
+        site key
+
+mine link-mesh
+  mine term, term mesh
+    mine term
+      site form
+  mine maybe
+    mine term, term link
+      mine term
+        site key
+
+# `link second` typed by a call: a dependent field (`call b / bind value, read first`)
+mine link-call
+  mine form, like call
+    site call

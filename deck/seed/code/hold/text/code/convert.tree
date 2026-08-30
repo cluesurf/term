@@ -1,0 +1,386 @@
+# The UTF converters, split out of utf-8.tree so its core stays lean: UTF-16 code units to UTF-8 bytes and
+# back, both through codepoints. Surrogate pairs decode to supplementary codepoints; a lone surrogate or a
+# malformed byte sequence becomes U+FFFD (the replacement character), never a crash. Rewritten clean
+# 2026-08-30 from the retired-syntax draft; held to mixed-width vectors (1/2/3/4-byte characters) in
+# deck/seed/test/utf-convert.tree.
+
+load @term/seed/code/hold/text/code/utf-8
+  find text-utf-8
+
+load @term/seed/code/hold/text/code/utf-16
+  find text-utf-16
+
+load @term/seed/code/boolean
+  find not
+
+load @term/seed/code/bit
+  find bitwise-and
+  find bitwise-or
+  find shift-left
+  find unsigned-shift-right
+
+# the codepoints of a UTF-16 unit list, surrogate pairs joined, lone surrogates replaced
+task utf-16-code-points
+  take units
+    like list
+      like number
+  like list
+    like number
+  save points, make list
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        read units/length
+    hook hold
+      save unit, read units/{i}
+      fork test
+        hook test
+          call and
+            call is-minimum
+              read unit
+              code 55296
+            call is-maximum
+              read unit
+              code 56319
+        hook hold
+          # a high surrogate: joined with a following low surrogate, else replaced
+          save next-at, call increment(read i)
+          save joined, false
+          fork test
+            hook test
+              call is-below
+                read next-at
+                read units/length
+            hook hold
+              save low, read units/{next-at}
+              fork test
+                hook test
+                  call and
+                    call is-minimum
+                      read low
+                      code 56320
+                    call is-maximum
+                      read low
+                      code 57343
+                hook hold
+                  call points/push
+                    call add
+                      code 65536
+                      call add
+                        call multiply
+                          call subtract
+                            read unit
+                            code 55296
+                          code 1024
+                        call subtract
+                          read low
+                          code 56320
+                  save i, call increment(read i)
+                  save joined, true
+          fork test
+            hook test
+              call not
+                read joined
+            hook hold
+              call points/push
+                code 65533
+        hook miss
+          fork test
+            hook test
+              call and
+                call is-minimum
+                  read unit
+                  code 56320
+                call is-maximum
+                  read unit
+                  code 57343
+            hook hold
+              # a lone low surrogate
+              call points/push
+                code 65533
+            hook miss
+              call points/push
+                read unit
+      save i, call increment(read i)
+  send back, read points
+
+# the UTF-8 bytes of a codepoint list
+task utf-8-of-code-points
+  take points
+    like list
+      like number
+  like list
+    like number
+  save bytes, make list
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        read points/length
+    hook hold
+      save point, read points/{i}
+      fork test
+        hook test
+          call is-below
+            read point
+            code 128
+        hook hold
+          call bytes/push
+            read point
+        hook miss
+          fork test
+            hook test
+              call is-below
+                read point
+                code 2048
+            hook hold
+              call bytes/push
+                call bitwise-or
+                  code 192
+                  call unsigned-shift-right
+                    read point
+                    code 6
+              call bytes/push
+                call bitwise-or
+                  code 128
+                  call bitwise-and
+                    read point
+                    code 63
+            hook miss
+              fork test
+                hook test
+                  call is-below
+                    read point
+                    code 65536
+                hook hold
+                  call bytes/push
+                    call bitwise-or
+                      code 224
+                      call unsigned-shift-right
+                        read point
+                        code 12
+                  call bytes/push
+                    call bitwise-or
+                      code 128
+                      call bitwise-and
+                        call unsigned-shift-right
+                          read point
+                          code 6
+                        code 63
+                  call bytes/push
+                    call bitwise-or
+                      code 128
+                      call bitwise-and
+                        read point
+                        code 63
+                hook miss
+                  call bytes/push
+                    call bitwise-or
+                      code 240
+                      call unsigned-shift-right
+                        read point
+                        code 18
+                  call bytes/push
+                    call bitwise-or
+                      code 128
+                      call bitwise-and
+                        call unsigned-shift-right
+                          read point
+                          code 12
+                        code 63
+                  call bytes/push
+                    call bitwise-or
+                      code 128
+                      call bitwise-and
+                        call unsigned-shift-right
+                          read point
+                          code 6
+                        code 63
+                  call bytes/push
+                    call bitwise-or
+                      code 128
+                      call bitwise-and
+                        read point
+                        code 63
+      save i, call increment(read i)
+  send back, read bytes
+
+# the codepoints of a UTF-8 byte list, malformed sequences replaced
+task utf-8-code-points
+  take bytes
+    like list
+      like number
+  like list
+    like number
+  save points, make list
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        read bytes/length
+    hook hold
+      save lead, read bytes/{i}
+      save width, code 1
+      save point, read lead
+      fork test
+        hook test
+          call is-minimum
+            read lead
+            code 240
+        hook hold
+          save width, code 4
+          save point
+            call bitwise-and
+              read lead
+              code 7
+        hook miss
+          fork test
+            hook test
+              call is-minimum
+                read lead
+                code 224
+            hook hold
+              save width, code 3
+              save point
+                call bitwise-and
+                  read lead
+                  code 15
+            hook miss
+              fork test
+                hook test
+                  call is-minimum
+                    read lead
+                    code 192
+                hook hold
+                  save width, code 2
+                  save point
+                    call bitwise-and
+                      read lead
+                      code 31
+                hook miss
+                  fork test
+                    hook test
+                      call is-minimum
+                        read lead
+                        code 128
+                    hook hold
+                      # a stray continuation byte
+                      save point, code 65533
+      save k, code 1
+      save broken, false
+      walk test
+        hook test
+          call is-below
+            read k
+            read width
+        hook hold
+          save at, call add(read i, read k)
+          fork test
+            hook test
+              call is-below
+                read at
+                read bytes/length
+            hook hold
+              save follow, read bytes/{at}
+              fork test
+                hook test
+                  call is-equal
+                    call bitwise-and
+                      read follow
+                      code 192
+                    code 128
+                hook hold
+                  save point
+                    call bitwise-or
+                      call shift-left
+                        read point
+                        code 6
+                      call bitwise-and
+                        read follow
+                        code 63
+                hook miss
+                  save broken, true
+            hook miss
+              save broken, true
+          save k, call increment(read k)
+      fork test
+        hook test
+          read broken
+        hook hold
+          call points/push
+            code 65533
+        hook miss
+          call points/push
+            read point
+      save i, call add(read i, read width)
+  send back, read points
+
+# the UTF-16 code units of a codepoint list, supplementary codepoints as surrogate pairs
+task utf-16-of-code-points
+  take points
+    like list
+      like number
+  like list
+    like number
+  save units, make list
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        read points/length
+    hook hold
+      save point, read points/{i}
+      fork test
+        hook test
+          call is-below
+            read point
+            code 65536
+        hook hold
+          call units/push
+            read point
+        hook miss
+          save rest
+            call subtract
+              read point
+              code 65536
+          call units/push
+            call add
+              code 55296
+              call unsigned-shift-right
+                read rest
+                code 10
+          call units/push
+            call add
+              code 56320
+              call bitwise-and
+                read rest
+                code 1023
+      save i, call increment(read i)
+  send back, read units
+
+# a UTF-8 text from a UTF-16 text
+task make-utf-8-from-utf-16
+  take text, like text-utf-16
+  like text-utf-8
+  send back
+    make text-utf-8
+      bind list
+        call utf-8-of-code-points
+          call utf-16-code-points
+            read text/list
+
+# a UTF-16 text from a UTF-8 text
+task make-utf-16-from-utf-8
+  take text, like text-utf-8
+  like text-utf-16
+  send back
+    make text-utf-16
+      bind list
+        call utf-16-of-code-points
+          call utf-8-code-points
+            read text/list

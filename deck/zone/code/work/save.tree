@@ -238,7 +238,7 @@ task keep-zone
           take site, name one
           call push
             bind list, read spots
-            bind item, read one
+            bind item, read one/path
 
   save made, code 0
   save want, code 0
@@ -264,7 +264,7 @@ task keep-zone
           call make-hold
             bind kind, read root/base
             bind body, read token
-            bind name, read one/path
+            bind name, read one
           save made
             call add
               read made
@@ -273,13 +273,13 @@ task keep-zone
             call join-text
               make list
                 text <  made    >
-                read one/path
+                read one
         hook miss
           call show-line
             call join-text
               make list
                 text <  would make    >
-                read one/path
+                read one
 
   fork test
     hook test

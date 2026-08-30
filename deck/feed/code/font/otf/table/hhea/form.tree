@@ -1,0 +1,17 @@
+# The OpenType `hhea` table (Horizontal Header). 36 bytes, flat. See ../head/form.tree for the pattern.
+
+form otf-hhea-table
+  link version-major, like number
+  link version-minor, like number
+  link ascender, like number
+  link descender, like number
+  link line-gap, like number
+  link advance-width-max, like number
+  link min-left-side-bearing, like number
+  link min-right-side-bearing, like number
+  link x-max-extent, like number
+  link caret-slope-rise, like number
+  link caret-slope-run, like number
+  link caret-offset, like number
+  link metric-data-format, like number
+  link number-of-h-metrics, like number

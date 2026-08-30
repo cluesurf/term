@@ -2,18 +2,14 @@
 load @term/seed/code/list
   find list
 
-load @term/seed/code/mark/16
-  find mark-16
-
-load @term/seed/code/text/code/utf-16
-  find text-utf-16
-
-task allocate
+task allocate-utf-16
   take size
-  cast text, like text-utf-16
+  like text-utf-16
 
 form text-utf-16
-  link list, list mark-16
+  link list
+    like list
+      like u16
     note private
 
   task get-size, like size
@@ -30,4 +26,3 @@ form text-utf-16
   task split
 
   task replace
-

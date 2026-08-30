@@ -1,0 +1,28 @@
+# rust structured-concurrency surface: the opaque handle type and the four signatures, so the task module
+# builds on this backend (a signature-only task emits the backend's stub). Wrapping a tokio task behind
+# the handle is future work; the node backend is the implemented one and carries the tests.
+
+dock type
+  load <any>, name job-handle
+
+load @term/seed/code/task
+  find handle
+
+task do-spawn
+  take work
+    like task
+      like text
+  like job-handle
+
+task do-wait
+  note async
+  take self, like handle
+  like text
+
+task do-cancel
+  take self, like handle
+  like void
+
+task do-alive
+  take self, like handle
+  like boolean

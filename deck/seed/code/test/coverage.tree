@@ -1,6 +1,8 @@
 
 form coverage
-  link files, like list
+  link files
+    like list
+      like file-coverage
 
 form file-coverage
   link path, like text

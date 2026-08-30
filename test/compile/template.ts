@@ -227,6 +227,43 @@ fuse bad-tmpl
     )
   }
 
+  // `read <param>` inside a template body substitutes the BOUND VALUE (compiler-hygiene-0013): a numeric bind
+  // rides in as the literal, so the fused task computes with it rather than reading the bound group's head as a
+  // variable that does not exist
+  const readParam = `tree adder
+  take amount
+  hook fuse
+    task add-{amount}
+      take x, like number
+      like number
+      send back
+        call add
+          read x
+          read amount
+
+fuse adder, bind amount, 5
+
+task probe
+  like number
+  send back
+    call add-5
+      code 1
+`
+  const readResult = compile({ file: 'tmpl.tree', text: readParam })
+
+  if (
+    readResult.ok &&
+    readResult.typescript.includes('x + 5')
+  ) {
+    pass++
+    console.log('ok    read <param> substitutes the bound value')
+  } else {
+    fail++
+    console.log(
+      `FAIL  read <param> should substitute the bound value (ok=${readResult.ok})`,
+    )
+  }
+
   console.log(`\ntemplate: ${pass} pass, ${fail} fail`)
 }
 

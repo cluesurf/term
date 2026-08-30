@@ -1,0 +1,75 @@
+# read-json / write-json against literal expected text, plus round trips. Run: term test, from deck/feed.
+
+load ../code/json/code
+  find read-json
+  find write-json
+
+test <a bare number reads and writes back>
+  want hold
+    call is-equal
+      call write-json(call read-json(text <42>))
+      text <42>
+
+test <a negative decimal reads and writes back>
+  want hold
+    call is-equal
+      call write-json(call read-json(text <-3.5>))
+      text <-3.5>
+
+test <true reads and writes back>
+  want hold
+    call is-equal
+      call write-json(call read-json(text <true>))
+      text <true>
+
+test <false reads and writes back>
+  want hold
+    call is-equal
+      call write-json(call read-json(text <false>))
+      text <false>
+
+test <null reads and writes back>
+  want hold
+    call is-equal
+      call write-json(call read-json(text <null>))
+      text <null>
+
+test <a string with an escaped quote round trips>
+  want hold
+    call is-equal
+      call write-json(call read-json(text <"a \"quoted\" word">))
+      text <"a \\"quoted\\" word">
+
+# \u escape decoding (parse-json-hex-4) reuses hex-digit-value, already tested by deck/feed/test/hex.tree, so it's
+# not duplicated here as a literal-text test — every attempt to write a literal `A` into this file gets
+# silently resolved to the character it names before it reaches the .tree source, which would test nothing.
+
+test <an array of numbers reads and writes back compact>
+  want hold
+    call is-equal
+      call write-json(call read-json(text <[1, 2, 3]>))
+      text <[1,2,3]>
+
+test <an object reads and writes back compact>
+  want hold
+    call is-equal
+      call write-json(call read-json(text <{"a": 1, "b": 2}>))
+      text <{"a":1,"b":2}>
+
+test <nested objects and arrays recurse correctly>
+  want hold
+    call is-equal
+      call write-json(call read-json(text <{"a": [1, {"b": true}, null]}>))
+      text <{"a":[1,{"b":true},null]}>
+
+test <whitespace between tokens is ignored>
+  want hold
+    call is-equal
+      call write-json(call read-json(text <  {  "a" : 1 ,  "b" : [ 1 , 2 ]  }  >))
+      text <{"a":1,"b":[1,2]}>
+
+test <an exponent parses to the same value written back>
+  want hold
+    call is-equal
+      call write-json(call read-json(text <1.5e2>))
+      text <150>

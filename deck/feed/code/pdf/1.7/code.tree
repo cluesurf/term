@@ -1,0 +1,265 @@
+# A real, compiling port of PDF 1.7's content-stream operator catalog (text positioning, graphics state, path
+# construction, painting, color), from the old ./lace.tree draft's field list (dead `lace`-headed syntax, real
+# catalog — the user pointed at this file directly as worth porting). PDF operators are postfix (operands then
+# the operator: `{x} {y} m`, not `m {x} {y}`), unlike ANSI's prefix escape sequences, but the same
+# `{{x}} {{y}} op` template-interpolation shape as ../../ansi/code.tree otherwise. Not attempted: the object
+# model (dictionaries, arrays, indirect references, streams) and the xref/trailer — ./lace.tree's `pdf-tree`/
+# `definition`/`end` are genuinely procedural (sorting keys, walking a document tree, formatting a running
+# byte-offset table), not a fixed template catalog the way every operator below is, so porting them is a
+# different, larger piece of work, not more of this one. See note/term/feed/07-implementation.md.
+
+task text-start
+  like text
+  send back
+    text <BT>
+
+task text-end
+  like text
+  send back
+    text <ET>
+
+task text-position
+  take x, like number
+  take y, like number
+  like text
+  send back
+    text <1 0 0 1 {{x}} {{y}} Tm>
+
+task set-font
+  take font-id, like text
+  take size, like number
+  like text
+  send back
+    text </{{font-id}} {{size}} Tf>
+
+task set-text-rendering-mode
+  take mode, like number
+  like text
+  send back
+    text <{{mode}} Tr>
+
+task set-text-character-spacing
+  take space, like number
+  like text
+  send back
+    text <{{space}} Tc>
+
+task set-text-word-spacing
+  take space, like number
+  like text
+  send back
+    text <{{space}} Tw>
+
+task render-text
+  take value, like text
+  like text
+  send back
+    text <[{{value}}] TJ>
+
+task move-to
+  take x, like number
+  take y, like number
+  like text
+  send back
+    text <{{x}} {{y}} m>
+
+task line-to
+  take x, like number
+  take y, like number
+  like text
+  send back
+    text <{{x}} {{y}} l>
+
+task cubic-bezier-curve-to
+  take control-1-x, like number
+  take control-1-y, like number
+  take control-2-x, like number
+  take control-2-y, like number
+  take x, like number
+  take y, like number
+  like text
+  send back
+    text <{{control-1-x}} {{control-1-y}} {{control-2-x}} {{control-2-y}} {{x}} {{y}} c>
+
+task quadratic-bezier-curve-to
+  take control-x, like number
+  take control-y, like number
+  take x, like number
+  take y, like number
+  like text
+  send back
+    text <{{control-x}} {{control-y}} {{x}} {{y}} v>
+
+task rectangle
+  take x, like number
+  take y, like number
+  take width, like number
+  take height, like number
+  like text
+  send back
+    text <{{x}} {{y}} {{width}} {{height}} re>
+
+task close-path
+  like text
+  send back
+    text <h>
+
+task fill
+  like text
+  send back
+    text <f>
+
+task line
+  like text
+  send back
+    text <S>
+
+task clip
+  like text
+  send back
+    text <W n>
+
+task save-graphics-state
+  like text
+  send back
+    text <q>
+
+task restore-graphics-state
+  like text
+  send back
+    text <Q>
+
+task set-line-width
+  take width, like number
+  like text
+  send back
+    text <{{width}} w>
+
+task set-line-cap
+  take style, like number
+  like text
+  send back
+    text <{{style}} J>
+
+task set-line-join
+  take style, like number
+  like text
+  send back
+    text <{{style}} j>
+
+task set-miter-limit
+  take limit, like number
+  like text
+  send back
+    text <{{limit}} M>
+
+task set-dash
+  take length, like number
+  take space, like number
+  take phase, like number
+  like text
+  send back
+    text <[{{length}} {{space}}] {{phase}} d>
+
+task set-undash
+  like text
+  send back
+    text <[] 0 d>
+
+task set-matrix
+  take a, like number
+  take b, like number
+  take c, like number
+  take d, like number
+  take dx, like number
+  take dy, like number
+  like text
+  send back
+    text <{{a}} {{b}} {{c}} {{d}} {{dx}} {{dy}} cm>
+
+task set-color-space-fill
+  take space, like text
+  like text
+  send back
+    text </{{space}} cs>
+
+task set-color-space-line
+  take space, like text
+  like text
+  send back
+    text </{{space}} CS>
+
+task set-color-fill-rgb
+  take r, like number
+  take g, like number
+  take b, like number
+  like text
+  send back
+    text <{{r}} {{g}} {{b}} scn>
+
+task set-color-fill-cmyk
+  take c, like number
+  take m, like number
+  take y, like number
+  take k, like number
+  like text
+  send back
+    text <{{c}} {{m}} {{y}} {{k}} scn>
+
+task set-color-line-rgb
+  take r, like number
+  take g, like number
+  take b, like number
+  like text
+  send back
+    text <{{r}} {{g}} {{b}} SCN>
+
+task set-color-line-cmyk
+  take c, like number
+  take m, like number
+  take y, like number
+  take k, like number
+  like text
+  send back
+    text <{{c}} {{m}} {{y}} {{k}} SCN>
+
+task set-global-state
+  take id, like text
+  like text
+  send back
+    text </{{id}} gs>
+
+task begin-marked-content
+  take tag, like text
+  like text
+  send back
+    text </{{tag}} BMC>
+
+task end-marked-content
+  like text
+  send back
+    text <EMC>
+
+task set-image
+  take label, like text
+  like text
+  send back
+    text <{{label}} Do>
+
+task comment
+  take value, like text
+  like text
+  send back
+    text <% {{value}}>
+
+task hex-string
+  take value, like text
+  like text
+  send back
+    text <\<{{value}}\>>
+
+task literal-string
+  take value, like text
+  like text
+  send back
+    text <({{value}})>

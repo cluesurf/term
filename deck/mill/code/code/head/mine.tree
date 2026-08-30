@@ -1,6 +1,11 @@
+load @term/mill/code/code/seed/mine
+  find seed
 
 load @term/mill/code/code/need/mine
   find need
+
+load @term/mill/code/code/like/mine
+  find like
 
 load @term/mill/code/code/fall/mine
   find fall
@@ -10,8 +15,18 @@ mine head
     mine term
       site name
     mine maybe
+      mine form, like like
+        site like
+    mine maybe
       mine form, like need
         site need
     mine maybe
       mine form, like fall
         site fall
+    mine maybe
+      mine term, term base
+        mine any
+          mine form, like seed
+            site base
+          mine term
+            site base

@@ -4,16 +4,28 @@
 # predicates. On JavaScript a `number` is a 64-bit float, so values beyond 2^53 lose precision -- use `big` for exact
 # arbitrary-precision integers.
 
-# the i64 range
+# the i64 range. The extremes are COMPUTED (-2^31 * 2^32, and -(min) - 1): a decimal literal this large
+# round-trips through a 64-bit float in the front end and prints an off-by-192 neighbor, which rustc and
+# kotlinc rightly refuse.
 task i64-minimum-value
   like number
   send back
-    code -9223372036854775808
+    call multiply
+      call subtract
+        code 0
+        code 2147483648
+      call multiply
+        code 2147483648
+        code 2
 
 task i64-maximum-value
   like number
   send back
-    code 9223372036854775807
+    call subtract
+      call subtract
+        code 0
+        call i64-minimum-value
+      code 1
 
 # native arithmetic (wraps at 64 bits on the compiled backends)
 task i64-add
@@ -82,9 +94,14 @@ task u64-minimum-value
     code 0
 
 task u64-maximum-value
+  # 2^64 - 1 does not fit the signed 64-bit number every compiled backend uses (and a JS float loses it
+  # too): the honest maximum this module can hand out as a NUMBER is the same bit pattern read signed, -1.
+  # A caller needing the true magnitude uses `big`.
   like number
   send back
-    code 18446744073709551615
+    call subtract
+      code 0
+      code 1
 
 task u64-add
   take a, like number

@@ -1,17 +1,25 @@
+# The parsed JSON value (RFC 8259). Real, compiling Term. Case names are prefixed `json-*` on purpose: `@term/host`'s
+# own `data` form already owns the unprefixed `hash`/`array`/`flag`/`blank` case names as global constructors
+# (deck/host/code/base.tree), and top-level case names are package-global (deck/term/CLAUDE.md's naming rule) —
+# reusing them here would collide.
 
-state object
-  field pair, match chain, match pair
+form json-value
+  case json-object
+    link entries
+      like list
+        like json-entry
+  case json-array
+    link items
+      like list
+        like json-value
+  case json-string
+    link value, like text
+  case json-number
+    link value, like decimal
+  case json-flag
+    link value, like boolean
+  case json-blank
 
-state pair
-  field key, match chord
-  field value, match value
-
-state value
-
-state array
-
-state null
-
-state boolean
-
-state number
+form json-entry
+  link key, like text
+  link value, like json-value
