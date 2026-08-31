@@ -24,13 +24,13 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-function lower(text: string): Program {
+function lower(text: string, role?: string): Program {
   const parsed = parse({ file: 't.tree', text })
 
   if (!parsed.ok)
     {throw new Error('parse: ' + JSON.stringify(parsed.diagnostics))}
 
-  const milled = mill(parsed.tree, 't.tree')
+  const milled = mill(parsed.tree, 't.tree', role)
 
   if (!milled.ok)
     {throw new Error('mill: ' + JSON.stringify(milled.diagnostics))}
@@ -108,6 +108,36 @@ function main(): void {
       'dock collects the handler call',
       dock?.route.calls[0]?.name === 'make-deck',
     )
+  }
+
+  // THE FILE'S ROLE DECIDES what a `hook` is, and content is only the fallback.
+  //
+  // A project's role.tree says which files hold CLI definitions and which hold routes -- `role call` and
+  // `role site` -- the same authority model the `code` and `view` roles already use for components: the role says
+  // what a file is allowed to mean, rather than the compiler inferring it from the contents. A guess read from
+  // content is right until somebody writes a file the guess was not imagined for, which is exactly what happened
+  // to the old rule (it looked for a `view` child, so an API route with `task get` / `task post` and no view was
+  // built as a CLI command and its methods went into the wrong shape).
+  //
+  // Asserted in BOTH directions: the role has to be able to overrule the content either way, or it is not the
+  // authority, it is a hint.
+  {
+    const PATHLIKE = `hook /users\n  task get\n    call list-users\n`
+    const WORDLIKE = `hook make\n  take name\n    like text\n  call make-deck\n    bind name, read name\n`
+
+    // a route carries a `component` field; a command does not. That is the shape the two builders differ by.
+    const kindOf = (text: string, role?: string): string => {
+      const route = (lower(text, role).find(
+        (s): s is Extract<Statement, { form: 'dock' }> => s.form === 'dock',
+      ) as { route?: Record<string, unknown> } | undefined)?.route
+
+      return route ? ('component' in route ? 'route' : 'command') : 'none'
+    }
+
+    ok('with no role, a path-shaped hook is a route', kindOf(PATHLIKE) === 'route')
+    ok('with no role, a word-shaped hook is a command', kindOf(WORDLIKE) === 'command')
+    ok('`role call` makes a path-shaped hook a COMMAND', kindOf(PATHLIKE, 'call') === 'command')
+    ok('`role site` makes a word-shaped hook a ROUTE', kindOf(WORDLIKE, 'site') === 'route')
   }
 
   // A COMMAND'S HANDLER, both spellings. `task <impl>` names it and passes the takes in order (the zone console

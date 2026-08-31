@@ -1,6 +1,3 @@
-load @term/mill/code/code/hold/mint
-  find hold
-
 mint rule
   case hold, mint hold
     site hold

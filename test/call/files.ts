@@ -100,6 +100,42 @@ ok(
   namedInside.join(' '),
 )
 
+// ---- a role file is not code ----
+//
+// A role file says which mill reads which file, and for `hook` whether a file holds CLI commands or URL routes.
+// It is configuration, read through the role mill, and `role` is not a code statement — so the build compiling
+// one reports `the name "role" is not defined` on a file nobody wrote as code. deck/seed/role/base.tree carries
+// `note draft` for exactly that reason, which shelves a LIVE file to silence an error that should not exist.
+//
+// BY CONTENT, like the manifest and the lockfile before it. That matters here more than usual: this package's own
+// role file is `role/base.tree`, so a filename test would have missed the one that counts.
+
+{
+  const { isRoleFileText } = await import('@term/call/code/manifest-name')
+
+  ok(
+    'a `role <name>` with `take` globs reads as a role file',
+    isRoleFileText('role site\n  take @/code/route/**/*.tree\n', 'anything.tree'),
+  )
+
+  ok(
+    'whatever it is called',
+    isRoleFileText('role call\n  take @/code/line/**/*.tree\n', 'base.tree'),
+  )
+
+  // a MANIFEST writes `role ./base/role` as a field under `deck`, not a top-level statement with `take` children
+  ok(
+    'a manifest naming a role directory is not one',
+    !isRoleFileText('deck @term/thing\n  code <0.0.1>\n  role ./role\n', 'deck.tree'),
+  )
+
+  // and ordinary code is not one
+  ok(
+    'ordinary code is not one',
+    !isRoleFileText('task role\n  like void\n  send back\n', 'role.tree'),
+  )
+}
+
 console.log(`\nfiles: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

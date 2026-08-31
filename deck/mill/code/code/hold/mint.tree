@@ -1,15 +1,6 @@
 load @term/mill/code/code/bind/mint
   find bind
 
-load @term/mill/code/code/form/case/mint
-  find base
-
-load @term/mill/code/code/task/mint
-  find task
-
-load @term/mill/code/code/tool/flow/mint
-  find flow
-
 load @term/mill/code/code/wait/mint
   find wait
 

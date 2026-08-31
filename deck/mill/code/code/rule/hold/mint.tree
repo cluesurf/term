@@ -1,6 +1,3 @@
-load @term/mill/code/code/call/mint
-  find call
-
 load @term/mill/code/code/form/case/mint
   find case-hold
 

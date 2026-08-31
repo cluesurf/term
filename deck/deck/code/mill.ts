@@ -17,6 +17,8 @@ import type {
 } from '@term/make/code/compile/mill-run'
 import { DECK_GRAMMAR, LOCK_GRAMMAR } from './grammar'
 import type {
+  RoleConfig,
+  RoleRule,
   DeckManifest,
   DeckLink,
   DeckMind,
@@ -281,6 +283,69 @@ export function parseManifestMill(input: {
     make: make.length > 0 ? make : undefined,
     cite: cite.length > 0 ? cite : undefined,
   }
+}
+
+// ---- the role file ----
+
+// A role file read THROUGH THE MILL, the same way the manifest is (mill-self-hosting-0005).
+//
+// The role grammar has existed at deck/mill/code/deck/role/mine.tree all along and the deck grammar composes it
+// in (`load @term/mill/code/deck/role/mine` / `find role`), but `parseRoleFile` never ran it: it parsed with the
+// real parser and then walked the flattened forms by hand, which is exactly the shape `parseManifestByHand` had
+// before the manifest moved onto its grammar. Two readers of one dialect disagree eventually, and the
+// disagreement is silent.
+//
+// The ENTRY RULE IS `deck`, not `role`. `mine role` matches ONE role statement; `mine deck`'s top rule is the
+// list that a whole file is, and it already lists `role` among the forms it accepts. A standalone role.tree is
+// a file of `role` statements and `load` directives, which is a case that rule already covers.
+export function parseRoleMill(input: {
+  text: string
+  root: string
+  expand: (pattern: string, root: string) => string
+}): RoleConfig {
+  deckGrammar ??= grammarOf(DECK_GRAMMAR)
+
+  const parsed = parse({ file: 'role.tree', text: input.text })
+
+  if (!parsed.ok) {
+    const at = parsed.diagnostics[0]
+
+    throw new Error(
+      `role file could not be parsed${at ? `: ${at.message}` : ''}`,
+    )
+  }
+
+  const mined = runMine(deckGrammar, 'deck', parsed.tree)
+
+  if (!mined.ok) {
+    const at = spanOfNode(mined.at)
+
+    throw new Error(
+      `role file does not fit the role grammar${at ? ` (line ${at.start.line})` : ''}`,
+    )
+  }
+
+  // A GLOB'S ESCAPED BRACES COME BACK ESCAPED. A role file writes `\\{code,view\\}` because a bare `{x}` is an
+  // interpolation to the parser, so the escape is about the TREE syntax and has no meaning to the glob matcher:
+  // left in, `/book/**/\\{code,view\\}/**/*.tree` matches nothing at all, silently, and every file that rule was
+  // meant to catch falls through to another role. The hand reader resolved them; the capture does not.
+  const glob = (raw: string): string => raw.replace(/\\([{}])/g, '$1')
+
+  const rules: RoleRule[] = []
+
+  for (const role of matches(mined.match.get('role'))) {
+    rules.push({
+      name: word(first(role.get('name'))) ?? '',
+      take: matches(role.get('take')).map(entry => ({
+        pattern: input.expand(glob(word(first(entry.get('glob'))) ?? ''), input.root),
+        miss: matches(entry.get('miss')).map(m =>
+          input.expand(glob(word(first(m.get('glob'))) ?? ''), input.root),
+        ),
+      })),
+    })
+  }
+
+  return { rules }
 }
 
 // ---- the lockfile ----

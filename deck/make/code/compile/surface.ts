@@ -92,3 +92,16 @@ export const UNARY_BUILTIN = new Set(['increment', 'decrement'])
 // the `halt` arguments that are control flow rather than an exception to raise. An exception form may not take
 // one of these names.
 export const HALT_WORDS = new Set(['fork', 'flow', 'code', 'kink', 'take'])
+
+// Unescape a text literal's escape sequences: the delimiters (`\<` `\>` `\{` `\}`, kept in the chunk so the
+// bracket is content and not a delimiter) and the standard characters (`\n` `\r` `\t` `\\`). This lets a native
+// bind expression carry an arrow (`=>`) or a stray `>` without closing the `text <...>` literal, and lets a plain
+// program build newlines and tabs with no native helper.
+//
+// A text literal's VALUE is the unescaped one, everywhere, so this belongs beside the rest of the surface
+// vocabulary rather than inside one of the two readers.
+export function unescapeText(text: string): string {
+  return text.replace(/\\([<>{}nrt\\])/g, (_, ch: string) =>
+    ch === 'n' ? '\n' : ch === 'r' ? '\r' : ch === 't' ? '\t' : ch,
+  )
+}

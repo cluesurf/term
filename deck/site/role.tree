@@ -1,0 +1,30 @@
+# Which mill reads which file in @term/site, and — for `hook` — what a file's
+# statements MEAN.
+#
+# `hook` spells two different things: a CLI command and a URL route. Telling
+# them apart from CONTENT is a guess, and the guess was wrong: the rule looked
+# for a `view` child, so an API route (`hook /users` with `task get` and
+# `task post`, no view) was built as a CLI command and its methods were
+# collected into the wrong shape. A file that DECLARES which it holds cannot be
+# guessed wrong.
+#
+#   role site    every `hook` here is a URL route
+#   role call    every `hook` here is a CLI command
+#
+# `take` names a glob, `miss` excludes one, and `@` is the package root.
+
+load @term/code
+  find code
+
+role site
+  take @/code/test/site/route.tree
+  take @/code/test/site/server.tree
+
+role call
+  take @/code/test/site/console.tree
+
+role code
+  take @/code/**/*.tree
+    miss @/code/test/site/route.tree
+    miss @/code/test/site/server.tree
+    miss @/code/test/site/console.tree

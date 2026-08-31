@@ -19,7 +19,7 @@ import { compileSeparate } from '@term/make/code/compile/separate'
 import { CompileCache } from '@term/make/code/compile/cache'
 import { projectCache } from '@term/call/code/cache-store'
 import { preprocessTests } from '@term/call/code/test-preprocess'
-import { isLockfileAt, manifestNameOf } from '@term/call/code/manifest-name'
+import { isLockfileAt, isRoleFileAt, manifestNameOf } from '@term/call/code/manifest-name'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectRoleOf } from '@term/call/code/role-of'
 import { parse } from '@term/make/code/parser/tree'
@@ -175,6 +175,14 @@ export function findTreeFiles(
       //
       // Again: MANIFEST, not filename. deck/seed/code/deck.tree is an ordinary stdlib module.
       if (entry === 'deck.tree' && isPackageManifest(full)) {
+        continue
+      }
+
+      // a ROLE FILE says which mill reads which file (and what a `hook` in it means). Configuration, read through
+      // the role mill, not a program: `role` is not a code statement, so compiling one reports `the name "role"
+      // is not defined` on a file nobody wrote as code. Content, not filename: this package's own is
+      // `role/base.tree`.
+      if (isRoleFileAt(full)) {
         continue
       }
 
@@ -714,7 +722,9 @@ export function compileProjectSeparate(
 
     const result = compileSeparate(
       { file, text },
-      { resolve, cache, modules: f => `./${slug(f)}` },
+      // roleOf comes along: a unit compiled separately has to be asked the same question about its role as one
+      // compiled through the merged path, or the two disagree about whether a `hook` is a command or a route
+      { resolve, cache, modules: f => `./${slug(f)}`, roleOf: projectRoleOf(root) },
     )
 
     if (!result.ok) {

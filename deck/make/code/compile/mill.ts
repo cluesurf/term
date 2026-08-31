@@ -20,6 +20,7 @@ import {
   BINARY_BUILTIN,
   UNARY_BUILTIN,
   HALT_WORDS,
+  unescapeText,
 } from '@term/make/code/compile/surface'
 import type {
   GroupNode,
@@ -631,11 +632,6 @@ function isValueExpressionHead(name: string | undefined): boolean {
 // is content, not a delimiter) and the standard characters (`\n` `\r` `\t` `\\`). This lets a native bind expression
 // carry an arrow (`=>` / `->`) or a stray `>` as `\>` without closing the `text <...>` literal, and a plain program
 // build newlines and tabs without a native helper.
-function unescapeText(text: string): string {
-  return text.replace(/\\([<>{}nrt\\])/g, (_, ch: string) =>
-    ch === 'n' ? '\n' : ch === 'r' ? '\r' : ch === 't' ? '\t' : ch,
-  )
-}
 
 // the literal text inside a `<...>` node
 function textOf(node: {
@@ -663,7 +659,13 @@ function rest(group: GroupNode): Node[] {
 
 // the source span of any node
 
-export function mill(tree: RootNode, file: string): MillResult {
+export function mill(
+  tree: RootNode,
+  file: string,
+  // the ROLE this file has, from the project's role.tree. `call` and `site` decide what a `hook` is; see the
+  // `hook` case below. Absent for a file no role rule matches, which is most of them today.
+  role?: string,
+): MillResult {
   const diagnostics: Diagnostic[] = []
 
   function fail(node: Node, message: string) {
@@ -5041,24 +5043,36 @@ export function mill(tree: RootNode, file: string): MillResult {
       // Both lower to a route statement (shared structure), but downstream passes treat them apart.
       // (`dock` is the native FFI binding -- `dock load`, `dock type` -- and nothing else.)
       //
-      // THE PATH IS WHAT TELLS THEM APART. A command is a word (`hook bind`, `hook make`); a route is a path
-      // (`hook /users`). This used to look for a `view` child instead, which is true of a PAGE route and false of
-      // an API route: `hook /users / task get / task post` has no view, so it was built as a CLI command and its
-      // methods and calls were collected into the wrong shape. That was invisible while the only `dock`-spelled
-      // API route in the tree still went down the old `dock` path.
+      // THE FILE'S ROLE DECIDES, and nothing else does when it is there. A project's role.tree says which files
+      // hold CLI definitions and which hold routes:
+      //
+      //   role call        take @/code/line/**/*.tree      -> every `hook` here is a COMMAND
+      //   role site        take @/code/route/**/*.tree     -> every `hook` here is a ROUTE
+      //
+      // That is the same authority model the `code` and `view` roles already use for components: the role says
+      // what a file is allowed to mean, rather than the compiler inferring it from the file's contents. A guess
+      // read from content is right until somebody writes a file the guess was not imagined for.
+      //
+      // WITHOUT A ROLE it falls back to content, which is what every file in the tree relies on today. The
+      // fallback reads the PATH first — a command is a word (`hook make`), a route is a path (`hook /users`) —
+      // and then looks for a `view`. It used to look ONLY for a `view`, which is true of a page route and false
+      // of an API route: `hook /users / task get / task post` has no view, so it was built as a CLI command and
+      // its methods were collected into the wrong shape.
       const first = rest(group)[0]
       const name = first?.kind === 'group' ? headName(first) : undefined
       const isRoute =
-        (name?.startsWith('/') ?? false) ||
-        rest(group).some(
-          n =>
-            n.kind === 'group' &&
-            (headName(n) === 'view' ||
-              // a resource route: `hook </vibe.pdf> / seed proxy, text <url>` has no view; the server streams it
-              (headName(n) === 'seed' &&
-                rest(n)[0]?.kind === 'group' &&
-                headName(rest(n)[0] as GroupNode) === 'proxy')),
-        )
+        role === 'site' ||
+        (role !== 'call' &&
+          ((name?.startsWith('/') ?? false) ||
+            rest(group).some(
+              n =>
+                n.kind === 'group' &&
+                (headName(n) === 'view' ||
+                  // a resource route: `hook </vibe.pdf> / seed proxy, text <url>` has no view; the server streams it
+                  (headName(n) === 'seed' &&
+                    rest(n)[0]?.kind === 'group' &&
+                    headName(rest(n)[0] as GroupNode) === 'proxy')),
+            )))
 
       program.push({
         form: 'dock',

@@ -13,10 +13,29 @@ load @term/mill/code/code/hook/mine
 load @term/mill/code/code/wait/mine
   find wait
 
+# `call f, a, b`, `call f(a, b)` and the stacked form are one call. The callee is a HEAD whose own children
+# are its arguments when they were written in parentheses, and whose siblings are its arguments when they were
+# written on their own lines, so both places are matched.
+#
+# The callee used to be read with `mine path`, which walks a head plus every term nested under it into one
+# phrase. That is right for a multi-word type (`like stack number`) and wrong here: `call f(read a, read b)`
+# read as a callee literally named "f read a" and dropped `read b` on the floor (mint-bridge-0002).
 mine call
   mine term, term call
-    mine path
+    mine open
       site name
+      mine list
+        mine any
+          mine form, like wait
+            site wait
+          mine form, like bind
+            site bind
+          mine form, like hook
+            site hook
+          mine form, like halt
+            site halt
+          mine form, like seed
+            site seed
     mine list
       mine any
         mine form, like wait

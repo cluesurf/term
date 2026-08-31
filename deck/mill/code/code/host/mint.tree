@@ -1,18 +1,3 @@
-load @term/mill/code/code/head/mint
-  find head
-
-load @term/mill/code/code/like/mint
-  find like
-
-load @term/mill/code/code/note/mint
-  find note
-
-load @term/mill/code/code/seed/seed/mint
-  find host-item
-
-load @term/mill/code/code/take/mint
-  find take
-
 load @term/seed/code/lang
   find host-form
   find host-task

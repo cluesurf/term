@@ -9,11 +9,16 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse, renderHead } from '@term/make/code/parser/tree'
-import type { RootNode } from '@term/make/code/parser/tree'
+import type {
+  GroupNode,
+  Node,
+  RootNode,
+} from '@term/make/code/parser/tree'
 import {
   readMineGrammar,
   readMintGrammar,
   spanOfNode,
+  spanOfWhole,
 } from '@term/make/code/compile/mill-run'
 import type {
   MineGrammar,
@@ -113,6 +118,127 @@ function resolveImport(
       : []
 
   return bases.find(candidate => existsSync(candidate))
+}
+
+// One rule as a grammar FILE holds it: its name, the `like` it annotates, the form its `hook make` builds, and
+// the lines it occupies. Everything a tool needs to rewrite that block in place, read from the parse tree.
+//
+// There is one parser for `.tree` (note/term/one-parser.md). A tool that finds `mint <name>` with a regex is a
+// second reader of the grammar, and it disagrees with the first one eventually.
+export type GrammarRule = {
+  half: 'mine' | 'mint'
+  name: string
+  like?: string
+  makeForm?: string
+  // 0-based, inclusive of the head line, exclusive of the end
+  from: number
+  to: number
+}
+
+export type GrammarFile = {
+  file: string
+  text: string
+  rules: GrammarRule[]
+  // the lines occupied by a `load` of another grammar file, so a regenerated block replaces them exactly
+  grammarLoadLines: Set<number>
+}
+
+const nameOfGroup = (node: Node | undefined): string | undefined => {
+  if (node?.kind === 'name') {
+    return renderHead(node)
+  }
+
+  if (node?.kind === 'group' && node.nodes[0]?.kind === 'name') {
+    return renderHead(node.nodes[0])
+  }
+
+  return undefined
+}
+
+// a DIRECT child group headed `word`. Not a search at any depth: a `mint` whose cases mention `like` or `make`
+// would answer such a search with one of them, and the annotation being read is the rule's own.
+function directChild(
+  group: GroupNode | undefined,
+  word: string,
+): GroupNode | undefined {
+  return group?.nodes.find(
+    (n): n is GroupNode =>
+      n.kind === 'group' && nameOfGroup(n.nodes[0]) === word,
+  )
+}
+
+export function readGrammarFile(file: string): GrammarFile | undefined {
+  if (!existsSync(file)) {
+    return undefined
+  }
+
+  const text = readFileSync(file, 'utf8')
+  const parsed = parse({ file, text })
+
+  if (!parsed.ok) {
+    return undefined
+  }
+
+  const rules: GrammarRule[] = []
+  const grammarLoadLines = new Set<number>()
+
+  for (const group of parsed.tree.nodes) {
+    const head = nameOfGroup(group.nodes[0])
+    const span = spanOfWhole(group)
+
+    if (head === 'load') {
+      const target = nameOfGroup(group.nodes[1])
+
+      if (target?.startsWith('@term/mill/')) {
+        for (let i = span.start.line; i <= span.end.line; i++) {
+          grammarLoadLines.add(i)
+        }
+      }
+
+      continue
+    }
+
+    if (head !== 'mine' && head !== 'mint') {
+      continue
+    }
+
+    const name = nameOfGroup(group.nodes[1])
+
+    if (!name) {
+      continue
+    }
+
+    // `mint task, like code-task`: the comma leaves the annotation beside the name, so it sits either directly
+    // under the rule or directly under the name group
+    const nameGroup =
+      group.nodes[1]?.kind === 'group' ? group.nodes[1] : undefined
+    const likeGroup =
+      directChild(group, 'like') ?? directChild(nameGroup, 'like')
+    // `hook make` / `make <form>`: the construction is under the hook
+    const hookGroup = group.nodes.find(
+      (n): n is GroupNode =>
+        n.kind === 'group' &&
+        nameOfGroup(n.nodes[0]) === 'hook' &&
+        nameOfGroup(n.nodes[1]) === 'make',
+    )
+    const makeGroup = hookGroup?.nodes.find(
+      (n): n is GroupNode =>
+        n.kind === 'group' &&
+        nameOfGroup(n.nodes[0]) === 'make' &&
+        n.nodes.length > 1,
+    )
+
+    rules.push({
+      half: head,
+      name,
+      like: likeGroup ? nameOfGroup(likeGroup.nodes[1]) : undefined,
+      makeForm: makeGroup ? nameOfGroup(makeGroup.nodes[1]) : undefined,
+      from: span.start.line,
+      to: span.end.line + 1,
+    })
+  }
+
+  return { file, text, rules, grammarLoadLines }
 }
 
 // the rule names one grammar file defines, read off its own parse tree: a top-level group headed `mine` or

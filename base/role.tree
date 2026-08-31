@@ -1,10 +1,28 @@
-# Which mill reads which file. `deck/deck/code/role.ts` parses this and
-# `deck/call/code/role-of.ts` hands the answer to the compiler, so a file's
-# role overrides what its content says.
+# Which mill reads which file. `deck/deck/code/role.ts` reads this THROUGH
+# THE ROLE MILL at `deck/mill/code/deck/role/`, and `deck/call/code/role-of.ts`
+# hands the answer to the compiler, so a file's role overrides what its
+# content says.
 #
 # `take` names a glob, `miss` excludes one, and `@` is the package root. A
 # glob carrying braces escapes them (`\{code,view\}`), because a bare `{x}`
-# is an interpolation to the parser.
+# is an interpolation to the parser. The escape belongs to the tree syntax and
+# is resolved before the pattern reaches the matcher.
+#
+# THE ROLES THIS PACKAGE USES:
+#
+#   code    ordinary Term. The default when no rule matches
+#   book    documentation
+#   view    the sandboxed document dialect (note/term/view/)
+#   host    a data file, compiled to its value rather than to a program
+#   call    a file of CLI definitions: every `hook` in it is a COMMAND
+#   site    a file of routes: every `hook` in it is a URL ROUTE
+#
+# `call` and `site` exist because `hook` spells both, and telling them apart
+# from CONTENT is a guess: the rule used to look for a `view` child, so an API
+# route (`hook /users` with `task get` and `task post`, no view) was built as a
+# CLI command and its methods were collected into the wrong shape. A file that
+# declares which it is cannot be guessed wrong. Without a rule the compiler
+# still falls back to content, which is what every file here relies on today.
 
 load @term/code
   find code

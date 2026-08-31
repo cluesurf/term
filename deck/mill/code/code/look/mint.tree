@@ -1,7 +1,3 @@
-load @term/mill/code/code/seed/mint
-  find seed
-
-
 # Builder for the look (CSS) DSL: map the parsed slots onto the look AST forms in @term/seed/code/look.
 # The shared builder (seed) comes from the code building-block mill by name. Mirrors the zone DSL builder
 # (../zone/mint).

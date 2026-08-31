@@ -26,6 +26,7 @@ import type {
   RootNode,
 } from '@term/make/code/parser/tree'
 import type { Span } from '@term/make/code/parser/diagnostic'
+import { unescapeText } from '@term/make/code/compile/surface'
 
 // a captured value: a word or literal, or a nested rule match to be minted. Each carries the SPAN of the node it
 // came from, so a consumer's diagnostic (a manifest error, a lockfile error) points at the line in the file, and
@@ -203,9 +204,13 @@ export function headWord(group: GroupNode): string | undefined {
     : undefined
 }
 
+// the VALUE of a text literal: its chunks, with the escape sequences resolved. A reader that skips the
+// unescaping gets `\n` as two characters, which is a different string from the one the source wrote.
 export function textOf(node: Node): string {
   return node.kind === 'text'
-    ? node.parts.map(p => (p.kind === 'chunk' ? p.text : '')).join('')
+    ? unescapeText(
+        node.parts.map(p => (p.kind === 'chunk' ? p.text : '')).join(''),
+      )
     : ''
 }
 

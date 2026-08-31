@@ -1,17 +1,11 @@
 load @term/mill/code/code/bind/mint
   find bind
 
-load @term/mill/code/code/form/case/mint
-  find base
-
 load @term/mill/code/code/hook/mint
   find hook
 
 load @term/mill/code/code/seed/mint
   find seed
-
-load @term/mill/code/code/tool/flow/mint
-  find flow
 
 mint walk
   case mode

@@ -43,7 +43,23 @@ function readRoles(root: string): RoleConfig | undefined {
 
     if (declared) {
       const at = path.resolve(root, declared)
-      candidates.unshift(existsSync(at) && statSync(at).isDirectory() ? path.join(at, 'role.tree') : at)
+
+      // A DIRECTORY RESOLVES THE WAY EVERY OTHER TERM PATH DOES: `<dir>.tree`, then `<dir>/base.tree`, then
+      // `<dir>/note.tree`. Only `<dir>/role.tree` was tried, so this package's own `role ./role` pointing at
+      // `role/base.tree` found NOTHING, and `readRoles` returned undefined: every file answered null and content
+      // decided everything. The role system was inert here and said so to nobody.
+      //
+      // Spelled out rather than shared with `resolveTreeFile` in call/code/make.ts, which imports this module:
+      // reaching back the other way would be a cycle. The order is the one in CLAUDE.md's file_resolution rules.
+      if (existsSync(at) && statSync(at).isDirectory()) {
+        candidates.unshift(
+          path.join(at, 'role.tree'),
+          path.join(at, 'base.tree'),
+          path.join(at, 'note.tree'),
+        )
+      } else {
+        candidates.unshift(at, `${at}.tree`)
+      }
     }
   }
 

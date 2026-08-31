@@ -15,7 +15,7 @@
 // EVERY minted form is named for the grammar rule that built it, so the switches below are total and a rule
 // added to the grammar shows up here as an unhandled name rather than as silence.
 
-import type { RootNode } from '@term/make/code/parser/tree'
+import type { Node, RootNode } from '@term/make/code/parser/tree'
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type {
@@ -602,8 +602,20 @@ function statementOf(
       const name = wordAt(value, 'name')
       const init = expressionOf(bridge, firstAt(value, 'seed'))
 
-      if (name === undefined || !init) {
-        return unhandled(bridge, value, 'a save with no name or value')
+      if (name === undefined) {
+        return unhandled(bridge, value, 'a save with no name')
+      }
+
+      if (!init) {
+        bridge.declared.add(name)
+
+        return {
+          form: 'let',
+          name,
+          init: { form: 'unit', span },
+          mutable: true,
+          span,
+        }
       }
 
       // the first `save x` declares; a later one assigns. The language has one word for both, and the
@@ -631,10 +643,27 @@ function statementOf(
       return built ? { form: 'expression', expr: built, span } : undefined
     }
 
-    case 'read': {
+    case 'read':
+    case 'seed-read':
+    case 'seed-text':
+    case 'seed-code':
+    case 'seed-term':
+    case 'seed-call-open':
+    case 'seed-meet': {
       const built = expressionOf(bridge, value)
 
       return built ? { form: 'expression', expr: built, span } : undefined
+    }
+
+    case 'roll-def': {
+      const name = wordAt(value, 'name')
+      const like = wordAt(firstAt(value, 'like'), 'name') ?? wordAt(value, 'like')
+
+      if (name === undefined || like === undefined) {
+        return unhandled(bridge, value, 'a roll with no name or kind')
+      }
+
+      return { form: 'roll', name, like, span }
     }
 
     case 'fork-test':
@@ -745,10 +774,11 @@ function loopOf(bridge: Bridge, value: Form): Statement | undefined {
 
       return name === 'step' || name === 'hold'
     })
-    const cond = expressionOf(bridge, firstAt(test, 'flow'))
-
-    if (!cond) {
-      return unhandled(bridge, value, 'a walk test with no condition')
+    // `walk test` with no condition loops until something breaks out of it
+    const cond = expressionOf(bridge, firstAt(test, 'flow')) ?? {
+      form: 'boolean' as const,
+      value: true,
+      span,
     }
 
     return {
@@ -833,7 +863,12 @@ function constantOf(bridge: Bridge, value: Form): Statement | undefined {
     }
   }
 
-  const init = expressionOf(bridge, seed) ?? { form: 'unit' as const, span }
+  // a `host` whose children are more `host` lines is an anonymous record: a constant written as a little tree
+  const nested = formsAt(value, 'host')
+  const init =
+    nested.length > 0
+      ? anonymousRecord(bridge, nested, span)
+      : (expressionOf(bridge, seed) ?? { form: 'unit' as const, span })
 
   return {
     form: 'let',
@@ -841,6 +876,38 @@ function constantOf(bridge: Bridge, value: Form): Statement | undefined {
     init,
     mutable: false,
     ...(type ? { type } : {}),
+    span,
+  }
+}
+
+// the record a nested `host` block builds. It has no form name: the compiler synthesizes one per record when
+// a backend needs a struct for it.
+function anonymousRecord(
+  bridge: Bridge,
+  entries: Form[],
+  span: Span,
+): Expression {
+  const fields = entries.map(entry => {
+    const inner = formsAt(entry, 'host')
+
+    return {
+      name: wordAt(entry, 'name') ?? '',
+      value:
+        inner.length > 0
+          ? anonymousRecord(bridge, inner, spanOf(entry))
+          : (expressionOf(bridge, firstAt(entry, 'seed')) ?? {
+              form: 'unit' as const,
+              span: spanOf(entry),
+            }),
+    }
+  })
+
+  // no `functionFree` here: the mill sets that flag on a `make` construction and not on a host record, and
+  // parity is what this file is for
+  return {
+    form: 'record',
+    name: '',
+    fields,
     span,
   }
 }
@@ -873,8 +940,10 @@ function conditionOf(
     }
 
     if (kind === 'hold' || kind === 'step') {
+      // a `hook hold` with nothing to hold on is unconditional: its body is what runs, which is the else
       if (!pending) {
-        return unhandled(bridge, arm, 'a fork arm with no condition')
+        otherwise = flowOf(bridge, flow)
+        continue
       }
 
       branches.push({ cond: pending, body: flowOf(bridge, flow) })
@@ -906,6 +975,7 @@ function paramOf(
 ): {
   name: string
   type?: Type
+  refine?: 'natural'
   optional?: boolean
   fallback?: Expression
   positional?: boolean
@@ -922,10 +992,16 @@ function paramOf(
     fallValue(firstAt(take, 'fall') ?? firstAt(like, 'fall')),
   )
 
+  // a parameter with a default is optional too: the caller may leave it out either way
+  const optional = need === 'false' || Boolean(fallback)
+  // `like natural-number` refines the number to the naturals
+  const refine = wordAt(like, 'name') === 'natural-number'
+
   return {
     name,
     ...(type ? { type } : {}),
-    ...(need === 'false' ? { optional: true } : {}),
+    ...(refine ? { refine: 'natural' as const } : {}),
+    ...(optional ? { optional: true } : {}),
     ...(fallback ? { fallback } : {}),
   }
 }
@@ -970,6 +1046,7 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
     ...(result ? { result } : {}),
     generics,
     ...(hasWord(value, 'note', 'async') ? { async: true } : {}),
+    ...(hasWord(value, 'note', 'private') ? { private: true } : {}),
     ...(owner ? { method: { form: owner, name: bare } } : {}),
     span: spanOf(value),
   }
@@ -1152,7 +1229,7 @@ function fieldOf(
     name: wordAt(link, 'name') ?? '',
     type,
     identity: false,
-    ...(need === 'false' ? { optional: true } : {}),
+    ...(need === 'false' || fallback ? { optional: true } : {}),
     ...(fallback ? { fallback } : {}),
   }
 }
@@ -1235,24 +1312,33 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
 
 // ---- the entry point ----
 
-// the top-level match holds one bucket per statement KIND, so source order across kinds is not in the map. It
-// is in the spans, which are exact: sorting the captures by where they start restores the file's own order.
-function topLevelInOrder(match: Map<string, MillCapture[]>): MillCapture[] {
+// The top-level match holds one bucket per statement KIND, so the file's own order across kinds is not in the
+// map. It is recovered from the parse tree: every top-level capture carries the CST node it matched, and that
+// node's position in `tree.nodes` IS the source order.
+//
+// Not the spans. A node a template expanded into carries no source position at all, so ordering by span puts
+// every expanded definition at the top of the file, which is a different program.
+function topLevelInOrder(
+  match: Map<string, MillCapture[]>,
+  tree: RootNode,
+): MillCapture[] {
+  const position = new Map<Node, number>()
+
+  tree.nodes.forEach((node, index) => position.set(node, index))
+
   const all: MillCapture[] = []
 
   for (const captures of match.values()) {
     all.push(...captures)
   }
 
-  return all.sort((a, b) => {
-    const left = a.span ?? ZERO_SPAN
-    const right = b.span ?? ZERO_SPAN
-
-    return (
-      left.start.line - right.start.line ||
-      left.start.column - right.start.column
-    )
-  })
+  return all
+    .map((capture, fallback) => ({
+      capture,
+      at: capture.node ? (position.get(capture.node) ?? fallback) : fallback,
+    }))
+    .sort((a, b) => a.at - b.at)
+    .map(entry => entry.capture)
 }
 
 export function millByGrammar(
@@ -1278,7 +1364,7 @@ export function millByGrammar(
 
   const program: Program = []
 
-  for (const capture of topLevelInOrder(mined.match)) {
+  for (const capture of topLevelInOrder(mined.match, tree)) {
     if (capture.kind !== 'match') {
       continue
     }

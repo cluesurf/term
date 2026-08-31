@@ -1,5 +1,6 @@
 import { RoleConfig, RoleRule } from './form'
 import { readTree, formsWith, termsOf } from './read'
+import { parseRoleMill } from './mill'
 
 /**
  * Parse a role file that maps glob patterns to mill names.
@@ -14,7 +15,24 @@ import { readTree, formsWith, termsOf } from './read'
  *     take @/code/**\/*.tree
  *     take @/book/**\/{code,view}/**\/*.tree
  */
+// The role file reads THROUGH THE MILL, the same way the manifest does (mill-self-hosting-0005). The grammar has
+// been at deck/mill/code/deck/role/mine.tree all along and the deck grammar composes it in; this reader simply
+// never ran it. Two readers of one dialect disagree eventually, and the disagreement is silent.
+//
+// `parseRoleFileByHand` below is RETIRED as the primary path and kept as the reference the differential in
+// test/compile/mill-run.ts holds the grammar against, exactly as `parseManifestByHand` is.
 export function parseRoleFile(input: {
+  text: string
+  root: string
+}): RoleConfig {
+  return parseRoleMill({
+    text: input.text,
+    root: input.root,
+    expand: (pattern, root) => expandRoot({ pattern, root }),
+  })
+}
+
+export function parseRoleFileByHand(input: {
   text: string
   root: string
 }): RoleConfig {

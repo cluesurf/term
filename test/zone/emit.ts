@@ -57,7 +57,7 @@ function main(): void {
   // a server route emits a route descriptor with its methods
   {
     const program = lower(
-      `dock /users\n  task get\n    call list-users\n  task post\n    call make-user\n`,
+      `hook /users\n  task get\n    call list-users\n  task post\n    call make-user\n`,
     )
     const dock = program.find(
       (s): s is Extract<Statement, { form: 'dock' }> =>
@@ -81,7 +81,7 @@ function main(): void {
 
   // a client route emits a descriptor mapping the path to a component
   {
-    const program = lower(`dock /counter\n  view counter\n`)
+    const program = lower(`hook /counter\n  view counter\n`)
     const dock = program.find(
       (s): s is Extract<Statement, { form: 'dock' }> =>
         s.form === 'dock',

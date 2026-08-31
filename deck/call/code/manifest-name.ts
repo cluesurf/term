@@ -118,6 +118,44 @@ export function isLockfileText(text: string, file: string): boolean {
   )
 }
 
+// Is this file a ROLE FILE (`role <name>` with `take` globs), as opposed to Term code?
+//
+// A role file says which mill reads which file, and -- for `hook` -- whether a file's statements are CLI commands
+// or URL routes. It is configuration read by deck/deck/code/role.ts through the role mill, not a program: `role`
+// is not a code statement, so compiling one reports `the name "role" is not defined` on a file nobody wrote as
+// code. deck/seed/role/base.tree carries `note draft` for exactly that reason, which shelves a LIVE file to
+// silence an error that should never have been raised.
+//
+// BY CONTENT, never by name, the same as the manifest and the lockfile: `role.tree` is a strong hint and nothing
+// more, and this package's own role file is `role/base.tree`.
+export function isRoleFileText(text: string, file: string): boolean {
+  const parsed = parse({ file, text })
+
+  if (!parsed.ok) {
+    return false
+  }
+
+  // `role <name>` with a `take` child. The head alone is not enough: a manifest writes `role ./base/role` as a
+  // field, and that sits under `deck`, not at the top level.
+  return parsed.tree.nodes.some(
+    node =>
+      node.kind === 'group' &&
+      headName(node) === 'role' &&
+      node.nodes
+        .slice(2)
+        .some(child => child.kind === 'group' && headName(child) === 'take'),
+  )
+}
+
+// the same, read from a file
+export function isRoleFileAt(file: string): boolean {
+  try {
+    return isRoleFileText(readFileSync(file, 'utf8'), file)
+  } catch {
+    return false
+  }
+}
+
 // the same, read from a file
 export function isLockfileAt(file: string): boolean {
   try {

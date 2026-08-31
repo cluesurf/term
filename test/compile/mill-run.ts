@@ -602,6 +602,48 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
   }
 }
 
+// ---- the ROLE FILE, mill against hand ----
+//
+// The role grammar has been at deck/mill/code/deck/role/mine.tree all along and the deck grammar composes it in
+// (`load @term/mill/code/deck/role/mine`), but `parseRoleFile` never ran it: it parsed with the real parser and
+// then walked the flattened forms by hand, the same shape `parseManifestByHand` had. It reads through the mill
+// now, and this is what holds the two together.
+//
+// ONE DIFFERENCE SHOWED UP IMMEDIATELY, and it is the argument for the differential. A role file writes
+// `\{code,view\}` because a bare `{x}` is an interpolation to the parser, so the escape belongs to the TREE
+// syntax and means nothing to the glob matcher. The hand reader resolved the escapes; the mill capture returned
+// them raw, and `/book/**/\{code,view\}/**/*.tree` matches NOTHING. Every file that rule was meant to catch
+// would have fallen through to another role, silently.
+
+{
+  const { parseRoleFile, parseRoleFileByHand } = await import('../../deck/deck/code/role')
+  const { readFileSync: read, existsSync: has } = await import('node:fs')
+
+  const roleFile = join(TERM, 'base/role.tree')
+
+  if (has(roleFile)) {
+    const text = read(roleFile, 'utf8')
+    const root = '/anywhere'
+    const mill = parseRoleFile({ text, root })
+    const hand = parseRoleFileByHand({ text, root })
+
+    ok(
+      'the role file reads through the role grammar with the hand reader\'s roles, globs and misses',
+      JSON.stringify(mill) === JSON.stringify(hand),
+      `mill: ${JSON.stringify(mill)}\nhand: ${JSON.stringify(hand)}`,
+    )
+
+    // and the globs are USABLE: an escaped brace that survived into the pattern matches nothing
+    ok(
+      'no glob carries a tree-syntax escape into the matcher',
+      !JSON.stringify(mill).includes('\\\\{'),
+      JSON.stringify(mill),
+    )
+
+    ok('the role file declares roles', mill.rules.length > 0, JSON.stringify(mill))
+  }
+}
+
 console.log(`\nmill-run: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

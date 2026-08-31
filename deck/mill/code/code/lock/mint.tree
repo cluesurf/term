@@ -1,9 +1,3 @@
-load @term/mill/code/code/form/link/mint
-  find link
-
-load @term/mill/code/code/load/mint
-  find load
-
 mint lockfile
   case base
     site base

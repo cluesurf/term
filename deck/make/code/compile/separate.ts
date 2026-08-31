@@ -151,6 +151,10 @@ export function compileSeparate(
     // maps a source file to the URL/path its emitted module is imported by (same contract as compile()'s `modules`)
     modules: (file: string) => string
     env?: string
+    // the role a project's role.tree gives a file, same contract as compile()'s `roleOf`. The mill needs it to
+    // tell a CLI `hook` from a route one (`role call` vs `role site`), so a unit compiled here must be asked the
+    // same question a unit compiled through compile() is, or the two paths disagree about what a file means.
+    roleOf?: (file: string) => string | null | undefined
   },
 ): SeparateResult {
   // one parse per module, shared by the dependency walk and the edge graph
@@ -278,6 +282,7 @@ export function compileSeparate(
         const milled = mill(
           expandTemplates(parsed.tree, templates),
           unit.file,
+          options.roleOf?.(unit.file) ?? undefined,
         )
 
         if (!milled.ok) {

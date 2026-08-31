@@ -381,7 +381,7 @@ function millUnit(
 
   const expanded = expandTemplates(parsed.tree, templates)
 
-  return mill(expanded, unit.file)
+  return mill(expanded, unit.file, role)
 }
 
 // The checking core: everything downstream of parse and mill. Takes an already-milled program so the editor path
