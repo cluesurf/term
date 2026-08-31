@@ -18,7 +18,7 @@
 
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { collectTreeFiles } from '@term/call/code/files'
 
 let pass = 0
@@ -133,6 +133,63 @@ ok(
   ok(
     'ordinary code is not one',
     !isRoleFileText('task role\n  like void\n  send back\n', 'role.tree'),
+  )
+}
+
+// ---- where a role file lives ----
+//
+// `base/role.tree` is the DEFAULT, so a package needs no `role` line in its manifest to have one. A manifest that
+// declares `role <path>` still wins, and a directory there resolves the way every other Term path does:
+// `<dir>.tree`, then `<dir>/base.tree`, then `<dir>/note.tree`.
+//
+// That last part was the whole bug. Only `<dir>/role.tree` was tried, so this package's own `role ./role`
+// pointing at `role/base.tree` found NOTHING and `readRoles` returned undefined. Every file in the tree answered
+// `null` for its role — `code`, `book`, `view`, `host`, all of it — and the role system was inert without
+// saying so to anyone.
+
+{
+  const { projectRoleOf } = await import('@term/call/code/role-of')
+
+  const roleRoot = mkdtempSync(join(tmpdir(), 'term-role-'))
+  const write = (name: string, text: string): void => {
+    mkdirSync(dirname(join(roleRoot, name)), { recursive: true })
+    writeFileSync(join(roleRoot, name), text)
+  }
+
+  write('deck.tree', 'deck @term/probe\n  code <0.0.1>\n')
+  write('base/role.tree', 'role site\n  take @/code/route/**/*.tree\n')
+  write('code/route/one.tree', 'task t\n')
+  write('code/other.tree', 'task t\n')
+
+  const roleOf = projectRoleOf(roleRoot)
+
+  ok(
+    '`base/role.tree` is found with no `role` line in the manifest',
+    roleOf(join(roleRoot, 'code/route/one.tree')) === 'site',
+    String(roleOf(join(roleRoot, 'code/route/one.tree'))),
+  )
+
+  ok(
+    'and a file no rule matches has no role',
+    roleOf(join(roleRoot, 'code/other.tree')) === null,
+    String(roleOf(join(roleRoot, 'code/other.tree'))),
+  )
+
+  // a manifest that names a DIRECTORY resolves `<dir>/base.tree`, which is what `role ./role` meant all along
+  const declared = mkdtempSync(join(tmpdir(), 'term-role-declared-'))
+  const put2 = (name: string, text: string): void => {
+    mkdirSync(dirname(join(declared, name)), { recursive: true })
+    writeFileSync(join(declared, name), text)
+  }
+
+  put2('deck.tree', 'deck @term/probe\n  code <0.0.1>\n  role ./elsewhere\n')
+  put2('elsewhere/base.tree', 'role call\n  take @/code/**/*.tree\n')
+  put2('code/one.tree', 'task t\n')
+
+  ok(
+    '`role ./elsewhere` resolves `elsewhere/base.tree`, not only `elsewhere/role.tree`',
+    projectRoleOf(declared)(join(declared, 'code/one.tree')) === 'call',
+    String(projectRoleOf(declared)(join(declared, 'code/one.tree'))),
   )
 }
 

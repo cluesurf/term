@@ -11,7 +11,9 @@
 #   role site    every `hook` here is a URL route
 #   role call    every `hook` here is a CLI command
 #
-# `take` names a glob, `miss` excludes one, and `@` is the package root.
+# `take` names a glob, `miss` excludes one, and `@` is the package root. This
+# file is at the default location (`base/role.tree`), so @term/site's manifest
+# says nothing about roles.
 
 load @term/code
   find code

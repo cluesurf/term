@@ -35,7 +35,14 @@ export function projectRoleOf(root: string): RoleOf {
 }
 
 function readRoles(root: string): RoleConfig | undefined {
-  const candidates = [path.join(root, 'role.tree')]
+  // THE DEFAULT IS `base/role.tree`, and a package needs no `role` line in its manifest to have one. `role.tree`
+  // at the root is kept as a second default so a small project can put it there without a `base/` at all.
+  //
+  // A manifest that DOES declare `role <path>` wins over both, and is unshifted in front below.
+  const candidates = [
+    path.join(root, 'base', 'role.tree'),
+    path.join(root, 'role.tree'),
+  ]
   const manifestPath = path.join(root, 'deck.tree')
 
   if (existsSync(manifestPath)) {

@@ -30,7 +30,6 @@ deck @term/term
   # the task loader
   book ./book
   # also a default
-  role ./role
   # also a default
   line ./deck/call/code/line
   test ./test

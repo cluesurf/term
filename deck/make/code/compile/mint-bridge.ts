@@ -483,7 +483,13 @@ function recordOf(bridge: Bridge, value: Form): Expression | undefined {
 
   if (name === undefined) {
     // a bare `make` is a record with an empty name, which is what the reader answers for one
-    return { form: 'record', name: '', fields: [], functionFree: true, span }
+    return {
+      form: 'record',
+      name: '',
+      fields: [],
+      functionFree: true,
+      span: spanOf(value),
+    }
   }
 
   const fields: { name: string; value: Expression }[] = []

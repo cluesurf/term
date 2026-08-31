@@ -3,6 +3,11 @@
 # hands the answer to the compiler, so a file's role overrides what its
 # content says.
 #
+# `base/role.tree` is the DEFAULT LOCATION and needs no `role` line in
+# deck.tree. A manifest that declares `role <path>` wins over it, and a
+# directory named there resolves the way every other Term path does:
+# `<dir>.tree`, then `<dir>/base.tree`, then `<dir>/note.tree`.
+#
 # `take` names a glob, `miss` excludes one, and `@` is the package root. A
 # glob carrying braces escapes them (`\{code,view\}`), because a bare `{x}`
 # is an interpolation to the parser. The escape belongs to the tree syntax and
