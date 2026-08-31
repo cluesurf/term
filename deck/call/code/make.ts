@@ -104,8 +104,26 @@ export function findTreeFiles(
         continue
       }
 
+      // a subdirectory with its own `deck.tree` is a DIFFERENT package, and builds itself. Compiling its sources into
+      // this one resolves its imports against the wrong root: the blog sample app in deck/site/test/site declares
+      // `deck @term/blog` and loads `@term/site/...`, which is a foreign package from there and needs a `link/` entry,
+      // so every one of its imports came back undefined and site's build reported five phantom unknown names. The
+      // same files compile clean from the term root, which is how test/site/{serve,router,blog}.ts build them.
+      if (existsSync(path.join(full, 'deck.tree'))) {
+        continue
+      }
+
       findTreeFiles(full, out, platform)
     } else if (entry.endsWith('.tree')) {
+      // a `deck.tree` is a package MANIFEST, read by the package manager, and is not Term code. Compiling it emitted
+      // an empty module that nothing imports, and only ever produced misleading errors: a manifest head the code mill
+      // does not know (`boot`, `back`, `hook`, `face`, `book` in test/site/deck.tree) was reported as an undefined
+      // NAME. A root manifest happened to compile clean because its heads (`deck`, `load`, `bear`) are also code
+      // heads, so the rule looked like it worked. The manifest grammar is checked where it is read, not here.
+      if (entry === 'deck.tree') {
+        continue
+      }
+
       // a file that declares `note draft` is unfinished and is not built. This keeps a half-written module in the
       // tree, readable and version-controlled, without its errors drowning the ones that matter. Remove the line to
       // bring it back into the build.
@@ -340,6 +358,24 @@ export function projectResolver(
 
     if (fromStdlib) {
       return fromStdlib
+    }
+
+    // `@scope/pkg/code/sub` -> `<that package's root>/code/sub.tree` when it names the importer's OWN package.
+    // A package that imports itself by its declared name has no `link/` entry pointing at itself and should not
+    // need one: @term/bind does this 11,503 times and @term/site 5, and every one of them silently resolved to
+    // nothing, so the imported names existed but could not be used. The remainder of the path already begins
+    // with `code/`, which is why it is joined to the package root directly — the fallback below joins it under
+    // `<root>/code` and so builds `<root>/code/code/...`, a path that never exists.
+    const ownPackage = packageNameOf(fromFile)
+
+    if (ownPackage && importPath.startsWith(`${ownPackage}/`)) {
+      const withinSelf = tryFile(
+        path.join(packageRootOf(fromFile) ?? root, importPath.slice(ownPackage.length + 1)),
+      )
+
+      if (withinSelf) {
+        return withinSelf
+      }
     }
 
     // `@scope/pkg/sub/path` -> `<root>/code/sub/path.tree` when it refers to this project

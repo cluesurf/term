@@ -23,8 +23,8 @@ form command
 
 # the undo/redo controller: two command stacks as signals
 form history
-  link past, like signal
-  link future, like signal
+  link past, like signal list
+  link future, like signal list
 
 task make-history
   like history

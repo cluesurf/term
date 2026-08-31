@@ -12,11 +12,11 @@ load @term/site/code/view/reactive
 
 # the focus context: one signal per level (the focused key, or empty text when that level is inactive)
 form scope
-  link cell, like signal
-  link row, like signal
-  link selection, like signal
-  link section, like signal
-  link surface, like signal
+  link cell, like signal text
+  link row, like signal text
+  link selection, like signal text
+  link section, like signal text
+  link surface, like signal text
 
 task make-scope
   like scope
@@ -118,7 +118,7 @@ task active-scope
 
 # is a level active (its key is non-empty)
 task has-focus
-  take self, like signal
+  take self, like signal text
   like boolean
   send back
     fork test

@@ -101,6 +101,10 @@ const HOST_ANNOTATION = new Set([
   'head',
   'note',
   'free',
+  // `home true` marks a binding as living on the host's global object rather than being imported: @term/bind
+  // writes it on 27 ambient declarations (`host url, name <URL>` / `home true`). An annotation, never the host's
+  // value, which is why it belongs here — read as a value it became a call to an undefined `home`.
+  'home',
 ])
 
 // a path whose segments may be DYNAMIC: `table/{key}` reads the member named by evaluating `key`, not the literal
@@ -1087,6 +1091,8 @@ export function mill(tree: RootNode, file: string): MillResult {
           inner.add(p.name)
         }
 
+        // `cast` / `lead` / `rank` are type-level signature declarations; see the longer note on the task
+        // SIGNATURE set below for what each one means.
         const SIGNATURE = new Set([
           'take',
           'slot',
@@ -1095,6 +1101,11 @@ export function mill(tree: RootNode, file: string): MillResult {
           'mark',
           'note',
           'wait',
+          'cast',
+          'lead',
+          'rank',
+          'time',
+          'home',
         ])
 
         const bodyNodes = decl.filter(
@@ -3240,6 +3251,27 @@ export function mill(tree: RootNode, file: string): MillResult {
     // (`note async` / `note private` / documentation) are all consumed here, so only real statements (send back,
     // save, call, fork, ...) remain. `name <X>` is the task's foreign / display name (the JS method name a generated
     // binding maps to), not an executable statement. All are signature annotations, never executable.
+    // `cast <name>` / `lead <type>` / `rank <param>` are TYPE-LEVEL declarations a binding package writes, and
+    // they belong to the signature rather than the body. A binding file is a signature with no body — a `.d.ts`,
+    // not a program — and @term/bind carries 891 of these across the Rust, Node and JavaScript host APIs:
+    //
+    //   cast c-1        a NAMED bound, so the return can project its associated type (`like c-1/output`).
+    //     like usize      Rust's `impl Add<usize> for usize { type Output = usize; }`
+    //     like add
+    //       like usize
+    //   lead f32        the same bound with no name to project from: a plain where-clause
+    //     like float-to-int
+    //   rank arg        a type PREDICATE on a parameter: TypeScript's `isArray(arg): arg is Array<any>`
+    //     like native-array
+    //   time a          a LIFETIME parameter, Rust's `'a`, declared beside `head p` for type parameters
+    //   home true       the binding lives on the host's global object rather than being imported. It appears on a
+    //                   `task` as well as a `host`, which is why it is in both sets
+    //
+    // Recognised here so they are recorded as signature and never mistaken for a call to an undefined name, which
+    // is what they were: `rank` alone accounted for 745 unknown-name errors. The checker does not yet ENFORCE any
+    // of them — `cast`/`lead` need associated types on a mask, `rank` needs narrowing carried into the caller's
+    // `fork test` — so this makes a binding package declarable, not verified. That enforcement is type-system work
+    // (note/term/project/package-builds.md, and the type-system-gates project).
     const SIGNATURE = new Set([
       'head',
       'take',
@@ -3249,6 +3281,11 @@ export function mill(tree: RootNode, file: string): MillResult {
       'mark',
       'note',
       'name',
+      'cast',
+      'lead',
+      'rank',
+      'time',
+      'home',
     ])
 
     // `halt <form>` with no children among the signature lines, before the first statement, declares a bound on the
@@ -4467,12 +4504,27 @@ export function mill(tree: RootNode, file: string): MillResult {
                   ? headName(eventGroup)
                   : undefined
 
-              const handlerNode = rest(child)[1]
+              // the handler. One node is an expression the emitter wraps (`hook click, call submit`). MORE than one
+              // is a statement BODY, and becomes a closure here: only the first was read before and the rest were
+              // dropped in silence, so a two-statement handler ran its first line and forgot the others.
+              const bodyNodes = rest(child).slice(1)
 
-              if (eventName && handlerNode) {
+              const handler: Expression | undefined =
+                bodyNodes.length > 1
+                  ? {
+                      form: 'closure',
+                      params: [],
+                      body: toStatements(bodyNodes, new Set(scope)),
+                      span: spanOf(child),
+                    }
+                  : bodyNodes[0]
+                    ? toExpression(bodyNodes[0], scope)
+                    : undefined
+
+              if (eventName && handler) {
                 attributes.push({
                   name: eventName,
-                  value: toExpression(handlerNode, scope),
+                  value: handler,
                   event: true,
                   span: spanOf(child),
                 })
@@ -4637,7 +4689,23 @@ export function mill(tree: RootNode, file: string): MillResult {
           break
         }
 
+        // a setup statement: `call on-mount / task start / ...`, `call make-effect`, `call on-cleanup`. Run for its
+        // effect while the component builds, in source order among the non-`save` nodes.
+        case 'call': {
+          out.push({ form: 'call', value: toExpression(node, scope), span })
+          break
+        }
+
+        // Anything else is a mistake, and saying so is the whole point. This used to `break`, so a head the component
+        // grammar does not know was dropped in silence: `call on-mount` in a component body compiled clean and did
+        // nothing at all, and `hook mount-start` (a lifecycle hook that was never built) read as an event attribute
+        // named "mount-start" whose handler was the bare name `save`. A component that quietly renders less than it
+        // says is worse than one that refuses to build.
         default:
+          fail(
+            node,
+            `a component body cannot hold "${headName(node) ?? '?'}". It takes view / node, text, read, site / slot, fork, walk, save and call`,
+          )
           break
       }
     }

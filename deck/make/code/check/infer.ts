@@ -1917,6 +1917,10 @@ export function check(
             type: inferExpression(node.value, env),
           })
           break
+        // a setup statement: typed for its effect, its result discarded
+        case 'call':
+          inferExpression(node.value, env)
+          break
         case 'fork':
           for (const branch of node.branches) {
             inferExpression(branch.cond, env)

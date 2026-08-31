@@ -499,6 +499,11 @@ export type ViewNode =
     }
   // a computed local: `save total / call count, ...`
   | { form: 'save'; name: string; value: Expression; span: Span }
+  // a setup statement run for its effect while the component builds: `call on-mount / task start / ...`, `call
+  // make-effect`, `call on-cleanup`. Evaluated in source order among the non-`save` body nodes, so it sees the
+  // elements declared above it. Without this a component could only declare state and markup, and a `call` in a
+  // component body was dropped without a word.
+  | { form: 'call'; value: Expression; span: Span }
 
 // ---- the dock (routing / CLI) AST ----
 export type DockArgument = { name: string; value: Expression }

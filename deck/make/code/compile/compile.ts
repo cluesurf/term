@@ -45,7 +45,8 @@ import {
 import { emitTypeScript } from '@term/make/code/compile/typescript'
 import { emitModules } from '@term/make/code/compile/modules'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
-import { collectModules } from '@term/make/code/compile/load'
+import { collectModules, makeParseMemo } from '@term/make/code/compile/load'
+import type { ParseMemo } from '@term/make/code/compile/load'
 import type { Resolver } from '@term/make/code/compile/load'
 import { hashText } from '@term/make/code/compile/cache'
 import type { CompileCache } from '@term/make/code/compile/cache'
@@ -184,8 +185,11 @@ export function compile(
 
   // collect the entry plus every module it loads (so the stdlib supplies the form definitions), dependencies
   // first, then mill each and merge into one program. Without a resolver this is just the single entry file.
+  // one parse per module for the whole build: the dependency walk, the template scan and the mill all read from it.
+  const parsed = makeParseMemo()
+
   const sources = options?.resolve
-    ? collectModules(source, options.resolve).sources
+    ? collectModules(source, options.resolve, parsed).sources
     : [source]
 
   const cache = options?.cache
@@ -224,15 +228,15 @@ export function compile(
         continue
       }
 
-      const parsed = parse(unit)
+      const tree = parsed(unit)
 
-      if (!parsed.ok) {
+      if (!tree.ok) {
         continue
       }
 
       templateText += unit.text
 
-      for (const [name, template] of collectTemplates(parsed.tree)) {
+      for (const [name, template] of collectTemplates(tree.tree)) {
         templates.set(name, template)
       }
     }
@@ -256,9 +260,9 @@ export function compile(
         ? cache.milledUnit(
             `${unit.file}\u0000${templateKey}\u0000${unitRole ?? ''}`,
             unit.text,
-            () => millUnit(unit, templates, unitRole),
+            () => millUnit(unit, parsed, templates, unitRole),
           )
-        : millUnit(unit, templates, unitRole)
+        : millUnit(unit, parsed, templates, unitRole)
 
       if (!milled.ok) {
         return { ok: false, diagnostics: milled.diagnostics }
@@ -347,12 +351,13 @@ function compileData(source: { file: string; text: string }): CompileResult {
 // parse, expand templates, and mill one module into a program (or the diagnostics that stopped it)
 function millUnit(
   unit: { file: string; text: string },
+  parseOf: ParseMemo,
   templates?: Map<string, Template>,
   role?: string,
 ):
   | { ok: true; program: Program }
   | { ok: false; diagnostics: Diagnostic[] } {
-  const parsed = parse(unit)
+  const parsed = parseOf(unit)
 
   if (!parsed.ok) {
     return { ok: false, diagnostics: parsed.diagnostics }

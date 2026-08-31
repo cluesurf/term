@@ -4,60 +4,90 @@
 // are handled (each module is included exactly once). Browser-safe: file reading is delegated to a resolver.
 
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { parse, renderHead } from '@term/make/code/parser/tree'
+import type { GroupNode, ParseResult, RootNode } from '@term/make/code/parser/tree'
 
 export type Source = { file: string; text: string }
 
-// Dependency discovery only needs two facts per module: its `load`/`bear`
-// import paths and whether it has a top-level `zone`. Building the full AST
-// of every transitive module just to read those is the dominant cost of a
-// cold compile (a tiny file can pull in the whole stdlib closure - ~1700
-// modules / 2MB - and parsing them all dominated `collectModules`). A
-// column-0 line scan recovers both facts without the AST. It mirrors the
-// grammar: `load`/`bear`/`zone` are column-0 heads; a `#` line is a comment;
-// and an unbalanced `<...>` text literal carries content lines that must not
-// be mistaken for statements.
+// Dependency discovery needs two facts per module: its `load` / `bear` import paths, and whether it has a top-level
+// `view` (a component, whose emitter synthesizes render-runtime calls). Both are read from the real parse tree.
+//
+// This USED to be a hand-rolled column-0 line scan, kept because parsing every transitive module just to read its
+// imports was the dominant cost of a cold compile. It drifted from the grammar exactly the way a second
+// implementation always does, and silently: it counted the `<` and `>` on comment lines toward text-literal
+// balance, so one bare `<` in an English sentence left the depth stuck at 1, every column-0 line after it read as
+// literal content, and the file's `load` directives vanished. The resolver was never called, every imported name
+// failed later as `unknown-name`, and a same-file forward reference failed with it. Found in @term/face
+// code/logic/scope.tree on 2026-08-30, whose header comment reads "(cell < row < list/selection < ...)".
+//
+// There is ONE parser for `.tree` in this codebase. The cost that motivated the scan is paid back by `makeParseMemo`
+// below: the dependency walk, the template scan and the mill all take their tree from the same memo, so a module is
+// parsed once per build instead of the two or three times it was before.
 type ImportScan = { paths: string[]; hasZone: boolean }
 
-function scanImports(text: string): ImportScan {
+// the parser's own renderer, so an interpolated path keeps its braces: `load @term/seed/code/native/{platform}/float`
+// has to reach the resolver with `{platform}` intact for `withNativeEnv` to fill it in. Reading only the chunks drops
+// the interpolation and asks for `.../native//float`, which resolves to nothing.
+function headName(group: GroupNode): string | undefined {
+  const first = group.nodes[0]
+
+  return first?.kind === 'name' ? renderHead(first) : undefined
+}
+
+// One parse per module per build. Keyed by file, holding the text it was parsed from, so a resolver that hands back
+// a changed file re-parses rather than serving a stale tree.
+export type ParseMemo = (source: Source) => ParseResult
+
+export function makeParseMemo(): ParseMemo {
+  const seen = new Map<string, { text: string; result: ParseResult }>()
+
+  return source => {
+    const hit = seen.get(source.file)
+
+    if (hit && hit.text === source.text) {
+      return hit.result
+    }
+
+    const result = parse(source)
+
+    seen.set(source.file, { text: source.text, result })
+
+    return result
+  }
+}
+
+function scanImports(tree: RootNode): ImportScan {
   const paths: string[] = []
 
   let hasZone = false
-  let angleDepth = 0 // open `<` minus `>` across lines: inside a text literal
 
-  for (const line of text.split('\n')) {
-    // only column-0 (top-level) lines are statements; skip body / indented lines
-    const topLevel =
-      line.length > 0 && !line.startsWith(' ') && !line.startsWith('\t')
+  for (const group of tree.nodes) {
+    const keyword = headName(group)
 
-    if (topLevel && angleDepth === 0 && !line.startsWith('#')) {
-      const head = /^(load|bear|zone|view)\b/.exec(line)
-
-      if (head) {
-        const kw = head[1]
-
-        // `zone` in the code role and `view` in the view role are the same concept, a component, and both mean the
-        // emitter will synthesize render-runtime calls. A top-level `view` is only ever a document, because the
-        // code role's own `view` head is a stale grammar nothing uses. See note/term/view/06-mill.md.
-        if (kw === 'view' || kw === 'view') {
-          hasZone = true
-        } else {
-          // the path is the first token after the keyword, up to a comma or space.
-          // a `<...>` text / template path (e.g. `bear <./{{x}}>`) is NOT a plain
-          // import path - the parser reads it as a text node and skips it, so we do too.
-          const m = /^\s+([^\s,]+)/.exec(line.slice(kw!.length))
-
-          if (m && !m[1]!.startsWith('<')) {
-            paths.push(m[1]!)
-          }
-        }
-      }
+    // `view` is the component head in both roles, and means the emitter will synthesize render-runtime calls. A
+    // top-level `view` is only ever a document, because the code role's own `view` head is a stale grammar nothing
+    // uses. See note/term/view/06-mill.md.
+    if (keyword === 'view') {
+      hasZone = true
+      continue
     }
 
-    // track text-literal balance so a `<...>` spanning lines does not let its
-    // content be read as statements (only `<`/`>` not preceded by a backslash)
-    for (const ch of line.replace(/\\[<>]/g, '')) {
-      if (ch === '<') {angleDepth++}
-      else if (ch === '>' && angleDepth > 0) {angleDepth--}
+    if (keyword !== 'load' && keyword !== 'bear') {
+      continue
+    }
+
+    // the path is the first child. A `<...>` text / template path (`bear <./{{x}}>`) parses as a text node, not a
+    // name, and is not a plain import path, so it is skipped the way the checker skips it.
+    const first = group.nodes[1]
+
+    if (first?.kind !== 'group') {
+      continue
+    }
+
+    const path = headName(first)
+
+    if (path !== undefined) {
+      paths.push(path)
     }
   }
 
@@ -81,6 +111,9 @@ const VIEW_RUNTIME_MODULE = '@cluesurf/site/code/view/render'
 export function collectModules(
   entry: Source,
   resolve: Resolver,
+  // the build's shared parse memo. Passing the compile's own means each module is parsed once for the whole build
+  // rather than once here and again in the mill. Omitted (the editor and the tests), a private one is made.
+  parsed: ParseMemo = makeParseMemo(),
 ): { sources: Source[]; diagnostics: Diagnostic[] } {
   const diagnostics: Diagnostic[] = []
   const ordered: Source[] = []
@@ -94,11 +127,12 @@ export function collectModules(
 
     active.add(source.file)
 
-    // discover dependencies by a cheap column-0 line scan instead of a full
-    // parse: building the AST of every transitive module just to read its
-    // imports was the dominant cost of a cold compile. The full parse still
-    // happens once, later, for the modules actually compiled.
-    const scan = scanImports(source.text)
+    // discover dependencies from the module's parse tree. A module that does not parse contributes no dependencies:
+    // its own diagnostics are raised where it is compiled, and guessing at its imports here would only bury them.
+    const tree = parsed(source)
+    const scan = tree.ok
+      ? scanImports(tree.tree)
+      : { paths: [], hasZone: false }
     const paths = scan.paths
 
     // a module with a zone implicitly depends on the render runtime (the emitter synthesizes its calls). Inject it

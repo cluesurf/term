@@ -12,7 +12,7 @@ load @term/site/code/view/reactive
   find write-signal
 
 form presence
-  link phase, like signal
+  link phase, like signal text
 
 task make-presence
   like presence

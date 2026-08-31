@@ -476,6 +476,11 @@ export function resolve(
           resolveExpression(node.value)
           declare(node.name, { kind: 'local' })
           break
+        // a setup statement: resolved like any other expression, so the names it calls are checked rather than
+        // reaching the emitter unresolved
+        case 'call':
+          resolveExpression(node.value)
+          break
         case 'fork':
           for (const branch of node.branches) {
             resolveExpression(branch.cond)

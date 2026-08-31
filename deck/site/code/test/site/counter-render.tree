@@ -48,7 +48,7 @@ task counter
       task build-count
         send back
           call dynamic
-            bind get
+            bind source
               task get
                 send back
                   call read-signal

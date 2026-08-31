@@ -1,6 +1,6 @@
 
 # In-memory DOM: the native host implementation for server-side rendering and headless testing. A node is a real
-# element record (tag, text, attributes, styles, classes, children, listeners, parent), so the full DOM API works
+# page-element record (tag, text, attributes, styles, classes, children, listeners, parent), so the full DOM API works
 # without a browser: build a tree, mutate it, fire stored listeners, remove and replace nodes. Conforms to ../../dom.
 
 load @term/seed/code/list
@@ -19,7 +19,7 @@ dock load
   load <global:html>, name doc
   note native
 
-form element
+form page-element
   link tag, like text
   link text, like text
   link value, like text
@@ -45,7 +45,7 @@ task create-element
   send back
     make view
       bind handle
-        make element
+        make page-element
           bind tag, read tag
           bind text, text <>
           bind value, text <>
@@ -68,7 +68,7 @@ task create-text
   send back
     make view
       bind handle
-        make element
+        make page-element
           bind tag, text <>
           bind text, read value
           bind value, text <>
@@ -95,7 +95,7 @@ task set-attribute
   take name, like text
   take value, like text
   # retype the opaque handle so `attributes` is a list and `filter` dispatches to the list method (see `remove`)
-  host self, like element
+  host self, like page-element
     read node/handle
   save kept
     call filter
@@ -119,7 +119,7 @@ task get-attribute
   take node, like view
   take name, like text
   like text
-  host self, like element
+  host self, like page-element
     read node/handle
   save found
     call find
@@ -165,7 +165,7 @@ task add-class
 task remove-class
   take node, like view
   take name, like text
-  host self, like element
+  host self, like page-element
     read node/handle
   save kept
     call filter
@@ -339,15 +339,15 @@ task append
 
 task remove
   take node, like view
-  # retype the opaque view handle to this impl's concrete element, so `children` reads as a list and `filter`
+  # retype the opaque view handle to this impl's concrete page-element, so `children` reads as a list and `filter`
   # dispatches to the list method (an opaque handle has unknown type, where method dispatch cannot resolve)
-  host self, like element
+  host self, like page-element
     read node/handle
   host edge, like maybe
     read self/parent
   fork case, read edge
     case some
-      host owner, like element
+      host owner, like page-element
         read edge/value/handle
       save kept
         call filter

@@ -902,11 +902,19 @@ function makeEmitter(
         out.push(`const ${ref} = element(${JSON.stringify(zone.name)})`)
 
         for (const attribute of zone.attributes) {
+          // an event handler is a function, so a single expression (`hook click, call submit`) is wrapped in one. A
+          // multi-statement body already milled to a closure and is passed through: wrapping it again would build the
+          // function and never call it.
+          const handler =
+            attribute.value.form === 'closure'
+              ? expression(attribute.value)
+              : `() => ${expression(attribute.value)}`
+
           out.push(
             attribute.event
               ? `event(${ref}, ${JSON.stringify(
                   attribute.name,
-                )}, () => ${expression(attribute.value)})`
+                )}, ${handler})`
               : `attribute(${ref}, ${JSON.stringify(
                   attribute.name,
                 )}, ${expression(attribute.value)})`,
@@ -1073,9 +1081,17 @@ function makeEmitter(
     const roots: string[] = []
 
     for (const child of node.body) {
-      if (child.form !== 'save') {
-        attach(child, host, lines, hmr ? roots : undefined)
+      if (child.form === 'save') {
+        continue
       }
+
+      // a setup statement runs where it is written, so it sees the elements declared above it
+      if (child.form === 'call') {
+        lines.push(expression(child.value))
+        continue
+      }
+
+      attach(child, host, lines, hmr ? roots : undefined)
     }
 
     // HMR: close the scope and register this instance (host, live signals, scope, root nodes) so the dev client can

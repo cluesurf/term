@@ -14,8 +14,8 @@ load @term/seed/code/math
   find maximum
 
 form roving
-  link index, like signal
-  link count, like signal
+  link index, like signal number
+  link count, like signal number
 
 task make-roving
   like roving

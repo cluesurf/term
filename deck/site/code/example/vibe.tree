@@ -9,6 +9,9 @@
 load @term/site/code/dom/dom
   find view
 
+load @term/site/code/view/reactive
+  find on-mount
+
 load @term/site/code/graphics/graphics
   find surface
   find open
@@ -69,7 +72,9 @@ view lattice-view
     view canvas
       name screen
 
-    hook mount-start
+  # the canvas has to exist before a WebGL context can be opened on it, so the setup runs after the tree above
+  call on-mount
+    task start
       save pane
         call open, text <lattice-canvas>
       call render
