@@ -32,6 +32,18 @@ export type FeedMineRule =
   | { kind: 'value'; expr: GroupNode }
   | { kind: 'send'; name: string }
   | { kind: 'byte'; literal?: number; send?: string }
+  // `mine char, text <">` / `mine char, code 0x0020`: exactly one character, by literal or by code point. The
+  // text-substrate twin of `byte`, and JSON's most-used construct (31 of its 9 kinds).
+  | { kind: 'char'; literal: number; send?: string }
+  // `mine text, text <true>`: a fixed multi-character literal, matched in order
+  | { kind: 'text'; literal: string; send?: string }
+  // `mine not / mine any / mine char ...`: negative lookahead. The next character must not be one of these, and
+  // nothing is consumed either way. JSON's `safe-char` is this plus a range: any character in the range that is
+  // not a quote or a backslash.
+  | { kind: 'not'; codes: number[] }
+  // `mine mark / bind width, code 4 / mine form, form hex-digit`: the nested rule exactly `width` times, which is
+  // how a `\uXXXX` escape says four hex digits
+  | { kind: 'mark'; width: number; children: FeedMineRule[]; send?: string }
   | { kind: 'int'; width: number; order: 'big' | 'little'; sign: 'signed' | 'unsigned'; send?: string }
   | { kind: 'bytes'; width: GroupNode; send?: string }
   | { kind: 'maybe'; test: GroupNode; children: FeedMineRule[]; send?: string }
@@ -45,7 +57,7 @@ export type FeedMineGrammar = Map<string, FeedMineRule[]>
 // `readFeedMineRule`'s `form` case; this is for every OTHER kind, where `send` is a trailing sibling instead).
 // Runs once over every rules array as it's built, so a compiler pass never has to guess which capture a trailing
 // `send` belongs to.
-const SENDABLE = new Set(['any', 'byte', 'int', 'bytes', 'until', 'form', 'maybe'])
+const SENDABLE = new Set(['any', 'byte', 'char', 'text', 'mark', 'int', 'bytes', 'until', 'form', 'maybe'])
 
 function mergeSends(rules: FeedMineRule[]): FeedMineRule[] {
   const out: FeedMineRule[] = []
@@ -168,9 +180,17 @@ function readFeedMineRule(group: GroupNode): FeedMineRule | undefined {
     case 'any':
       return { kind: 'any', children: children() }
 
+    // A bound is written either as the character itself (`bind base, text <0>`) or as its code point
+    // (`bind base, code 0x0020`), and a grammar uses whichever reads better: a digit range as digits, a
+    // control-character boundary as a number. Reading only the first spelling dropped the whole rule silently, and
+    // with it JSON's `safe-char`, which is every character of every string.
     case 'range': {
-      const base = bindTextOf(group, 'base')
-      const head2 = bindTextOf(group, 'head')
+      const baseText = bindTextOf(group, 'base')
+      const headText = bindTextOf(group, 'head')
+      const baseCode = bindCodeOf(group, 'base')
+      const headCode = bindCodeOf(group, 'head')
+      const base = baseText ?? (baseCode === undefined ? undefined : String.fromCodePoint(baseCode))
+      const head2 = headText ?? (headCode === undefined ? undefined : String.fromCodePoint(headCode))
 
       return base && head2 ? { kind: 'range', base, head: head2 } : undefined
     }
@@ -197,6 +217,69 @@ function readFeedMineRule(group: GroupNode): FeedMineRule | undefined {
       const literal = literalGroup ? codeValueOf(literalGroup) : undefined
 
       return { kind: 'byte', literal, send: nestedSend(group) }
+    }
+
+    // `mine char, text <">` or `mine char, code 0x0020`: one character, given either way. The two spellings are the
+    // same rule, because a grammar writes a printable delimiter as itself and a control character as its code.
+    case 'char': {
+      const textGroup = rawChildren().find(n => headWord(n) === 'text')
+      const codeGroup = rawChildren().find(n => headWord(n) === 'code')
+      const writtenNode = textGroup?.nodes[1]
+      const written = writtenNode ? textOf(writtenNode) : undefined
+      const literal =
+        written !== undefined
+          ? written.codePointAt(0)
+          : codeGroup
+            ? codeValueOf(codeGroup)
+            : undefined
+
+      return literal === undefined
+        ? undefined
+        : { kind: 'char', literal, send: nestedSend(group) }
+    }
+
+    // `mine not`: the codes the next character must not be. Its alternatives read like any other rule's, so this
+    // reuses `children()` and then flattens: a lookahead is written either as one `char` or as an `any` of them.
+    case 'not': {
+      const codes: number[] = []
+
+      const gather = (rules: FeedMineRule[]): void => {
+        for (const rule of rules) {
+          if (rule.kind === 'char') {
+            codes.push(rule.literal)
+          } else if (rule.kind === 'any' || rule.kind === 'list') {
+            gather(rule.children)
+          }
+        }
+      }
+
+      gather(children())
+
+      return codes.length > 0 ? { kind: 'not', codes } : undefined
+    }
+
+    // `mine mark, bind width, code 4`: the nested rules exactly `width` times
+    case 'mark': {
+      const width = bindCodeOf(group, 'width')
+      const children = rawChildren()
+        .filter(n => headWord(n) !== 'bind')
+        .map(readFeedMineRule)
+        .filter((r): r is FeedMineRule => r !== undefined)
+
+      return width === undefined || children.length === 0
+        ? undefined
+        : { kind: 'mark', width, children, send: nestedSend(group) }
+    }
+
+    // `mine text, text <true>`: a fixed multi-character literal
+    case 'text': {
+      const textGroup = rawChildren().find(n => headWord(n) === 'text')
+      const literalNode = textGroup?.nodes[1]
+      const literal = literalNode ? textOf(literalNode) : undefined
+
+      return literal === undefined || literal.length === 0
+        ? undefined
+        : { kind: 'text', literal, send: nestedSend(group) }
     }
 
     case 'int': {
@@ -544,6 +627,18 @@ function captureTypeOf(rule: FeedMineRule, ops: Ops, grammar: FeedMineGrammar, s
       return text ? ['like text'] : ['like u8']
     case 'byte':
       return ['like u8']
+    // a matched character comes back as the text it matched, so a rule can send it on
+    case 'char':
+      return text ? ['like text'] : ['like u8']
+    case 'text':
+      return ['like text']
+    // a lookahead captures nothing: it only refuses
+    case 'not':
+      return ['like number']
+    case 'range':
+      return text ? ['like text'] : ['like u8']
+    case 'mark':
+      return ['like list', '  like text']
     case 'bytes':
       return BYTE_BLOCK
     case 'until':
@@ -747,7 +842,7 @@ function compileExpr(
     case 'any': {
       const helperName = nextHelperName()
 
-      helpers.push(...compileAnyHelper(helperName, rule.children, ops))
+      helpers.push(...compileAnyHelper(helperName, rule.children, ops, grammar))
 
       const localName = rule.send ?? `char-${sends.length}`
 
@@ -777,6 +872,122 @@ function compileExpr(
       out.push(`${p}    halt <expected byte ${rule.literal}>`)
       out.push(`${p}save ${localName}`)
       out.push(`${p}  call ${ops.advance}(read(cursor))`)
+
+      return
+    }
+
+    // `mine char, text <">`: read one character and require it. The text-substrate twin of `byte` above, and the
+    // same flat shape: a single fixed value needs no fork to choose, only one to refuse.
+    case 'char': {
+      const localName = rule.send ?? `char-${sends.length}`
+
+      bindCapture(scope, localName, rule, ops, grammar)
+      out.push(`${p}fork test`)
+      out.push(`${p}  hook test`)
+      out.push(`${p}    call not, call is-equal(call ${ops.peekCode}(read(cursor)), code ${rule.literal})`)
+      out.push(`${p}  hook hold`)
+      out.push(`${p}    halt <expected character ${rule.literal}>`)
+      out.push(`${p}save ${localName}`)
+      out.push(`${p}  call ${ops.advance}(read(cursor))`)
+
+      return
+    }
+
+    // `mine text, text <true>`: the same, once per character, so a mismatch halts on the character that differed
+    // rather than after the whole literal
+    case 'text': {
+      const localName = rule.send ?? `text-${sends.length}`
+
+      bindCapture(scope, localName, rule, ops, grammar)
+
+      for (const character of [...rule.literal]) {
+        const code = character.codePointAt(0) ?? 0
+
+        out.push(`${p}fork test`)
+        out.push(`${p}  hook test`)
+        out.push(`${p}    call not, call is-equal(call ${ops.peekCode}(read(cursor)), code ${code})`)
+        out.push(`${p}  hook hold`)
+        out.push(`${p}    halt <expected ${rule.literal}>`)
+        out.push(`${p}  hook miss`)
+        out.push(`${p}    call ${ops.advance}(read(cursor))`)
+      }
+
+      out.push(`${p}save ${localName}`)
+      out.push(`${p}  text <${rule.literal}>`)
+
+      return
+    }
+
+    // `mine range` on its OWN, outside an `any`: read one character and require it to be within the bounds. Inside
+    // an `any` a range is a branch that compileAnyHelper turns into a test; standing alone in a sequence it had no
+    // emitter at all, so JSON's `safe-char` (a `not` followed by a range, which is every character of every string)
+    // generated an empty body.
+    case 'range': {
+      const localName = `char-${sends.length}`
+      const baseCode = rule.base.codePointAt(0) ?? 0
+      const headCode = rule.head.codePointAt(0) ?? 0
+
+      bindCapture(scope, localName, rule, ops, grammar)
+      out.push(`${p}fork test`)
+      out.push(`${p}  hook test`)
+      out.push(`${p}    call not`)
+      out.push(`${p}      call and`)
+      out.push(`${p}        call is-minimum(call ${ops.peekCode}(read(cursor)), code ${baseCode})`)
+      out.push(`${p}        call is-maximum(call ${ops.peekCode}(read(cursor)), code ${headCode})`)
+      out.push(`${p}  hook hold`)
+      out.push(`${p}    halt <expected a character between ${baseCode} and ${headCode}>`)
+      out.push(`${p}save ${localName}`)
+      out.push(`${p}  call ${ops.advance}(read(cursor))`)
+
+      return
+    }
+
+    // `mine not`: refuse if the next character is one of these, and consume nothing either way. The chain is
+    // nested `or`s rather than one call, because `or` takes two.
+    case 'not': {
+      const test = rule.codes
+        .map(code => `call is-equal(call ${ops.peekCode}(read(cursor)), code ${code})`)
+        .reduce((left, right) => `call or(${left}, ${right})`)
+
+      out.push(`${p}fork test`)
+      out.push(`${p}  hook test`)
+      out.push(`${p}    ${test}`)
+      out.push(`${p}  hook hold`)
+      out.push(`${p}    halt <unexpected character here>`)
+
+      return
+    }
+
+    // `mine mark, bind width, code 4`: the nested rules that many times. Unrolled rather than looped, because the
+    // width is a constant in the grammar and an unrolled run needs no counter and no list-index arithmetic.
+    case 'mark': {
+      const localName = rule.send ?? `mark-${sends.length}`
+      const parts: string[] = []
+
+      for (let turn = 0; turn < rule.width; turn++) {
+        const inner: string[] = []
+
+        compileSequence(rule.children, indent, ops, grammar, scope, nextHelperName, inner, helpers)
+
+        // the last local each turn bound is that turn's result
+        const bound = inner
+          .filter(line => line.trimStart().startsWith('save '))
+          .pop()
+
+        if (bound) {
+          parts.push(bound.trim().slice('save '.length))
+        }
+
+        out.push(...inner)
+      }
+
+      bindCapture(scope, localName, rule, ops, grammar)
+      out.push(`${p}save ${localName}`)
+      out.push(`${p}  make list`)
+
+      for (const part of parts) {
+        out.push(`${p}    read ${part}`)
+      }
 
       return
     }
@@ -849,7 +1060,98 @@ function compileExpr(
 // `mine any` over a run of `mine range` alternatives becomes its own helper task: one `fork test` with one
 // `hook test`/`hook hold` pair per range, each `hook hold` returning the matched character directly via `send
 // back` (never a `save` a caller would need to read after the fork closes — see this file's own header).
-function compileAnyHelper(name: string, branches: FeedMineRule[], ops: Ops): string[] {
+
+// ---- FIRST sets, for dispatching an `any` whose alternatives are forms ----
+
+// The code points a rule can begin with, as inclusive ranges. This is what lets an `any` over FORM alternatives
+// dispatch: JSON's `value` picks string / object / array / literal / number by looking at ONE character, which is
+// how every hand-written JSON reader does it too.
+//
+// A rule that cannot be decided this way returns undefined rather than guessing, and its `any` falls back to the
+// old behaviour (refuse) instead of dispatching to the wrong branch. Silence would be worse than a refusal here.
+type Span = { base: number; head: number }
+
+function firstOf(
+  rule: FeedMineRule,
+  grammar: FeedMineGrammar,
+  seen: Set<string>,
+): Span[] | undefined {
+  switch (rule.kind) {
+    case 'char':
+      return [{ base: rule.literal, head: rule.literal }]
+    case 'text': {
+      const code = rule.literal.codePointAt(0)
+
+      return code === undefined ? undefined : [{ base: code, head: code }]
+    }
+    case 'range':
+      return [
+        {
+          base: rule.base.codePointAt(0) ?? 0,
+          head: rule.head.codePointAt(0) ?? 0,
+        },
+      ]
+    case 'form':
+      return firstOfRule(rule.name, grammar, seen)
+    case 'any': {
+      const out: Span[] = []
+
+      for (const child of rule.children) {
+        const spans = firstOf(child, grammar, seen)
+
+        if (!spans) {
+          return undefined
+        }
+
+        out.push(...spans)
+      }
+
+      return out
+    }
+    // a lookahead and a capture-only rule consume nothing, so they cannot start a rule on their own
+    case 'not':
+    case 'send':
+    case 'value':
+    case 'let':
+      return undefined
+    default:
+      return undefined
+  }
+}
+
+// the FIRST set of a named rule: the first of its first rule that can actually begin it
+function firstOfRule(
+  name: string,
+  grammar: FeedMineGrammar,
+  seen: Set<string>,
+): Span[] | undefined {
+  if (seen.has(name)) {
+    return undefined
+  }
+
+  const rules = grammar.get(name)
+
+  if (!rules || rules.length === 0) {
+    return undefined
+  }
+
+  const inner = new Set(seen)
+
+  inner.add(name)
+
+  for (const rule of rules) {
+    // skip the rules that consume nothing and so cannot decide the branch
+    if (rule.kind === 'not' || rule.kind === 'send' || rule.kind === 'let' || rule.kind === 'value') {
+      continue
+    }
+
+    return firstOf(rule, grammar, inner)
+  }
+
+  return undefined
+}
+
+function compileAnyHelper(name: string, branches: FeedMineRule[], ops: Ops, grammar: FeedMineGrammar): string[] {
   const ranges = branches.filter((b): b is { kind: 'range'; base: string; head: string } => b.kind === 'range')
   const element = ops.cursorType === 'text-cursor' ? 'like text' : 'like u8'
   // one peek, held in a local, rather than one per COMPARISON. Each `peek` walks the cursor's cell indirection
@@ -879,6 +1181,53 @@ function compileAnyHelper(name: string, branches: FeedMineRule[], ops: Ops): str
     lines.push('    hook hold')
     lines.push('      send back')
     lines.push(`        call ${ops.advance}(read(cursor))`)
+  })
+
+  // DISPATCH ON THE FIRST CHARACTER for alternatives that are FORMS or literals. This is how JSON's `value` picks
+  // string / object / array / literal / number, and how every hand-written reader for a format like it works.
+  //
+  // Only branches whose FIRST set can be computed are dispatched. One that cannot is left out rather than guessed
+  // at, so the helper refuses instead of calling the wrong reader: a refusal is a bug report, a wrong branch is a
+  // corrupted parse.
+  type Dispatch = { branch: FeedMineRule; spans: Span[] }
+
+  const dispatched: Dispatch[] = []
+
+  for (const branch of branches) {
+    if (branch.kind !== 'form' && branch.kind !== 'char' && branch.kind !== 'text') {
+      continue
+    }
+
+    const spans = firstOf(branch, grammar, new Set<string>())
+
+    if (spans && spans.length > 0) {
+      dispatched.push({ branch, spans })
+    }
+  }
+
+  dispatched.forEach(({ branch, spans }, i) => {
+    if (i === 0 && ranges.length === 0) {
+      lines.push('  fork test')
+    }
+
+    const test = spans
+      .map(span =>
+        span.base === span.head
+          ? `call is-equal(read(code), code ${span.base})`
+          : `call and(call is-minimum(read(code), code ${span.base}), call is-maximum(read(code), code ${span.head}))`,
+      )
+      .reduce((left, right) => `call or(${left}, ${right})`)
+
+    lines.push('    hook test')
+    lines.push(`      ${test}`)
+    lines.push('    hook hold')
+    lines.push('      send back')
+
+    if (branch.kind === 'form') {
+      lines.push(`        call read-${branch.name}(read(cursor))`)
+    } else {
+      lines.push(`        call ${ops.advance}(read(cursor))`)
+    }
   })
 
   lines.push(`  halt <expected a match for ${name}>`)
