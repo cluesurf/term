@@ -10,6 +10,8 @@
 //   mine code / site s    consume a number literal (integer, decimal or radix), tagged with which it was
 //   mine path / site s    consume a path or glob word (`@/book/**/*.tree` is one word to the parser)
 //   mine node             consume any one node, capturing nothing (the skip for a mixed file)
+//   mine word / site s    consume a word with NOTHING under it (`mine term` takes a group's head and drops
+//                         whatever it holds, which in value position turns a call into a name)
 //   mine maybe [r]        the rule, or nothing
 //   mine list [r]         the rule, zero or more times
 //   mine any [r...]       the first alternative that matches
@@ -61,6 +63,7 @@ export type MineRule =
   | { kind: 'code'; site?: string }
   | { kind: 'path'; site?: string }
   | { kind: 'node' }
+  | { kind: 'word'; site?: string }
   | { kind: 'open'; children: MineRule[]; site?: string }
   | { kind: 'maybe'; children: MineRule[] }
   | { kind: 'list'; children: MineRule[] }
@@ -291,6 +294,8 @@ function readMineRule(group: GroupNode): MineRule | undefined {
       return { kind: 'path', site }
     case 'node':
       return { kind: 'node' }
+    case 'word':
+      return { kind: 'word', site }
     case 'open':
       // a group with ANY head word (a bare call spells the callee as the head): the word is captured at the
       // site, and the child rules run over the group's remaining nodes
@@ -573,6 +578,42 @@ function matchRule(
     case 'node':
       // any ONE node, captured nowhere: the skip a mixed file needs
       return node === undefined ? undefined : at + 1
+
+    case 'word': {
+      // A word with NOTHING under it. Distinct from a bare `mine term`, which takes a group's head and passes
+      // over whatever the group holds: `mine term` reads `head t / base or / like x` as the word "head" and
+      // throws the rest away. In value position that is never right, because a headed group WITH children is
+      // a call and only a childless one is a name. This is the matcher for the second of those.
+      if (node?.kind === 'name') {
+        capture(into, rule.site, {
+          kind: 'word',
+          value: wordOf(node) ?? '',
+          span: spanOfNode(node),
+          node,
+        })
+
+        return at + 1
+      }
+
+      if (node?.kind !== 'group' || node.nodes.length !== 1) {
+        return undefined
+      }
+
+      const only = wordOf(node)
+
+      if (only === undefined) {
+        return undefined
+      }
+
+      capture(into, rule.site, {
+        kind: 'word',
+        value: only,
+        span: spanOfNode(node),
+        node,
+      })
+
+      return at + 1
+    }
 
     case 'open': {
       // a group with any head word: the head is the capture, the children rules must consume the rest

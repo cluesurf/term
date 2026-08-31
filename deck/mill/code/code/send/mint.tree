@@ -7,3 +7,13 @@ mint send
   hook make
     make send
       bind seed, read seed
+
+mint send-kind
+  case kind
+    site kind
+  case seed
+    site seed
+  hook make
+    make send-kind
+      bind kind, read kind
+      bind seed, read seed

@@ -24,6 +24,8 @@ mine seed
       site make
     mine form, like seed-read
       site read
+    mine form, like seed-loan
+      site read
     mine form, like seed-code
       site code
     mine form, like seed-text
@@ -50,21 +52,52 @@ mine seed
       site meet
     mine form, like seed-call-open
       site open
+    # A BARE WORD in value position. `compile/mill.ts` lowers a childless group to a variable of that name,
+    # which is how a reference reaches the AST without a `read`: `fuse define-each, read space` puts
+    # `define-each` in value position, and so does every argument of the generic "an unknown head is a call"
+    # fallback the reader ends in.
+    #
+    # `mine word`, not `mine term`. A bare `mine term` takes a group's HEAD and passes over whatever the group
+    # holds, so it reads `head t / base or / like x` as the word "head" and throws the rest away. In value
+    # position that is never right: a headed group with children is a call, and only a childless one is a name.
+    #
+    # LAST on purpose, so it fires only where every other alternative has already declined, which is the same
+    # place the reader's own fallback fires.
+    mine word
+      site word
 
+# `read x` / `read x/foo`. The path rides as ONE word (a slash is part of a name), so this takes the head word
+# and not the phrase: `read form flow` reads `form` and drops `flow`, which is what the reader does with it.
 mine seed-read
   mine term, term read
-    mine path
-      site path
+    mine maybe
+      mine term
+        site path
 
+# `loan x` in value position is a READ. The reader lowers `read`, `loan` and `move` through one case, so all
+# three are the same expression, and only `move next` (the continue marker) is a statement of its own.
+mine seed-loan
+  mine term, term loan
+    mine maybe
+      mine term
+        site path
+
+# `code 42` is a number, and a BARE `code` is the reader's zero: it takes a `code` head as a literal whether or
+# not a number followed.
 mine seed-code
   mine term, term code
-    mine code
-      site value
+    mine maybe
+      mine code
+        site value
 
+# `text <hello>` is a string literal, and a BARE `text` with nothing after it is the empty string: the reader
+# takes a `text` head as a literal whether or not it found one, so `lace text, text <...>` has an empty string
+# for its first argument and not a reference to something called `text`.
 mine seed-text
   mine term, term text
-    mine text
-      site value
+    mine maybe
+      mine text
+        site value
 
 mine seed-def
   mine term, term seed
@@ -79,24 +112,54 @@ mine seed-def
 mine seed-call-open
   mine open
     site name
-    mine form, like seed
-      site seed
-    mine list
+    mine any
+      mine form, like seed-bind-arg
+        site seed
       mine form, like seed
         site seed
+    mine list
+      mine any
+        mine form, like seed-bind-arg
+          site seed
+        mine form, like seed
+          site seed
 
-# `term utf8`: a bare term value (an enum member spelled as a word)
+# `bind <name>, <value>` as an argument of the generic fallback. The reader takes the SECOND child and drops
+# the first: at mill time there is no callee signature to put a named argument into, so `mill view / bind mine,
+# load ./mine` lowers to `mill(view, load(<./mine>))` with the word `mine` gone.
+#
+# The second child and no other, which is why both parts are optional here. A bare `bind` has no second child
+# and neither does `bind read x`, and the reader answers `unit` for both rather than reading the one child it
+# has. Anything past the second is ignored the same way.
+mine seed-bind-arg
+  mine term, term bind
+    mine maybe
+      mine node
+    mine maybe
+      mine form, like seed
+        site seed
+    mine list
+      mine node
+
+# `term utf8`: a bare term value (an enum member spelled as a word). A BARE `term` is the empty string, the
+# same way a bare `text` is: the reader takes the head as a literal and the word after it as the value.
 mine seed-term
   mine term, term term
-    mine term
-      site name
+    mine maybe
+      mine term
+        site name
 
 # `meet and` / `meet or`: a boolean combinator over the seeds below it
+# `meet and` / `meet or` combine their operands. The marker word IS the operator, so it is captured: matched
+# and discarded, every `meet` minted the same and the bridge could not tell an `and` from an `or`. The third
+# instance of that class in this grammar, after the fork arm's kind and the dock's load-versus-type.
 mine seed-meet
   mine term, term meet
     mine any
       mine term, term and
+        site name
       mine term, term or
+        site name
     mine list
       mine form, like seed
         site seed

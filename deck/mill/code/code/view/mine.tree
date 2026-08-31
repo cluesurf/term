@@ -1,3 +1,6 @@
+load @term/mill/code/code/bind/mine
+  find bind
+
 
 # The `view` head in the CODE role: a component, with nothing held back. State, events, effects and native calls
 # are all reachable from one, because a component is code we wrote and reviewed.
@@ -30,6 +33,10 @@ mine view-def
   mine term, term view
     mine term
       site name
+    # a route's component carries its props: `view counter` over `bind label, text <hits>`
+    mine list
+      mine form, like bind
+        site bind
     mine list
       mine form, like take
         site take

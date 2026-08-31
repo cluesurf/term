@@ -4,6 +4,9 @@ load @term/mill/code/code/bind/mint
 load @term/mill/code/code/seed/mint
   find seed
 
+load @term/mill/code/code/take/mint
+  find take
+
 load @term/mill/code/code/tool/flow/mint
   find flow
 
@@ -14,6 +17,8 @@ mint halt
     site seed
   case bind
     site bind
+  case take
+    site take
   case flow
     site flow
   hook make
@@ -21,4 +26,5 @@ mint halt
       bind mode, read mode
       bind seed, read seed
       bind bind, read bind
+      bind take, read take
       bind flow, read flow

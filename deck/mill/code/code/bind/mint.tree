@@ -1,8 +1,14 @@
 load @term/mill/code/code/dock/mint
   find dock-bind-line
 
+load @term/mill/code/code/head/mint
+  find head
+
 load @term/mill/code/code/like/mint
   find like
+
+load @term/mill/code/code/note/mint
+  find note
 
 load @term/mill/code/code/seed/mint
   find seed
@@ -14,18 +20,22 @@ load @term/seed/code/lang
   find code-bind
 
 mint bind, like code-bind
-  case name
-    site name
   case seed
     site seed
+  case name
+    site name
   hook make
     make bind
-      bind name, read name
       bind seed, read seed
+      bind name, read name
 
 mint bind-def
   case name
     site name
+  case head
+    site head
+  case note
+    site note
   case take
     site take
   case like
@@ -35,6 +45,8 @@ mint bind-def
   hook make
     make bind-def
       bind name, read name
+      bind head, read head
+      bind note, read note
       bind take, read take
       bind like, read like
       bind case, read case

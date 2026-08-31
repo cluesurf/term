@@ -1,3 +1,6 @@
+load @term/mill/code/code/drop/mint
+  find drop
+
 load @term/mill/code/code/call/mint
   find call
 
@@ -85,6 +88,10 @@ mint form
     site dock
   case accessor, mint form-accessor
     site accessor
+  case nick, mint form-nick
+    site nick
+  case drop
+    site drop
   hook make
     make form
       bind name, read name
@@ -107,6 +114,22 @@ mint form
       bind wear, read wear
       bind dock, read dock
       bind accessor, read accessor
+      bind nick, read nick
+      bind drop, read drop
+
+mint form-nick
+  case text
+    site text
+  hook make
+    make form-nick
+      bind text, read text
+
+mint form-base
+  case name
+    site name
+  hook make
+    make form-base
+      bind name, read name
 
 mint bond
   case name

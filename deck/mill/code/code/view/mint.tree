@@ -1,3 +1,6 @@
+load @term/mill/code/code/bind/mint
+  find bind
+
 load @term/mill/code/code/hook/mint
   find hook
 
@@ -27,6 +30,8 @@ mint view
 mint view-def, like code-view-def
   case name
     site name
+  case bind
+    site bind
   case take
     site take
   case hook
@@ -40,6 +45,7 @@ mint view-def, like code-view-def
   hook make
     make view-def
       bind name, read name
+      bind bind, read bind
       bind take, read take
       bind hook, read hook
       bind tune, read tune

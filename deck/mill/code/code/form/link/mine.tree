@@ -1,3 +1,9 @@
+load @term/mill/code/code/seed/mine
+  find seed-text
+
+load @term/mill/code/code/drop/mine
+  find drop
+
 load @term/mill/code/code/call/mine
   find call
 
@@ -40,6 +46,10 @@ mine link
         mine form, like link-form
           site form
     mine maybe
+      mine term, term name
+        mine text
+          site nick
+    mine maybe
       mine term, term mark
         mine term, term private
           site hide
@@ -70,7 +80,37 @@ mine link
     mine list
       mine form, like link-take
         site take
+    mine list
+      mine any
+        mine form, like like
+          site drop
+        mine form, like link-lock
+          site drop
+        mine form, like drop
+          site drop
+        mine form, like seed-text
+          site drop
 
+# `lock false` beside a field, and a `like` that arrives after the field's native `name <X>`.
+#
+# THE READER IGNORES BOTH, and this rule exists to say so out loud. `compile/mill.ts` takes a field's type from
+# the SECOND child of the `link` and no other, so once a `name <X>` sits there the `like` under it never reaches
+# the type. That is how every one of the 3,091 interfaces `@term/bind` emits has `any` for every field. The
+# site is called `drop` because that is what happens to it: the mint reads it so the grammar's own health check
+# can see it is accounted for, and the bridge builds nothing from it.
+#
+# Reproduced rather than fixed, so the switch stays mechanical. See quirk 6 in note/term/mint-bridge/quirks.md.
+mine link-lock
+  mine term, term lock
+    mine any
+      mine term, term true
+        site value
+      mine term, term false
+        site value
+
+# One `take` beside a `link`: a parameter of the function type the link is declared `like task`. It may carry
+# its own `like <type>`, which used to be unmatched, so the whole link failed and `form hive-ear` stopped
+# parsing the moment the `like` rule stopped swallowing the take (mint-bridge-0002).
 mine link-take
   mine term, term take
     mine any
@@ -80,6 +120,9 @@ mine link-take
         site text
       mine form, like link-take-mark
         site mark
+    mine maybe
+      mine form, like like
+        site like
 
 mine link-take-mark
   mine term, term mark
@@ -128,3 +171,13 @@ mine link-mesh
 mine link-call
   mine form, like call
     site call
+
+# `link 1, name <$1>`: a field whose NAME is a number, which is how `RegExp.$1` is declared. The reader takes a
+# field's name from a group head, a number is not one, and a field with no name is not pushed at all, so the
+# whole line vanishes. Matched here so the file still reads, and built into nothing. See quirk 6.
+mine link-number
+  mine term, term link
+    mine code
+      site value
+    mine list
+      mine node

@@ -21,7 +21,7 @@ mint seed
     site call
   case make
     site make
-  case read, mint seed-read
+  case read
     site read
   case code, mint seed-code
     site code
@@ -47,6 +47,8 @@ mint seed
     site meet
   case open, mint seed-call-open
     site open
+  case word
+    site word
 
 mint seed-def, like seed-def
   case name
@@ -63,6 +65,14 @@ mint seed-read
     site path
   hook make
     make seed-read
+      bind path, read path
+
+# `loan x` is a read, and mints as one so the bridge has a single case to build
+mint seed-loan
+  case path
+    site path
+  hook make
+    make seed-loan
       bind path, read path
 
 mint seed-code
@@ -97,8 +107,18 @@ mint seed-term
       bind name, read name
 
 mint seed-meet
+  case name
+    site name
   case seed
     site seed
   hook make
     make seed-meet
+      bind name, read name
+      bind seed, read seed
+
+mint seed-bind-arg
+  case seed
+    site seed
+  hook make
+    make seed-bind-arg
       bind seed, read seed

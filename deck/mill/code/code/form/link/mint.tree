@@ -1,3 +1,6 @@
+load @term/mill/code/code/drop/mint
+  find drop
+
 load @term/mill/code/code/call/mint
   find call
 
@@ -53,9 +56,15 @@ mint link
     site tag
   case take, mint link-take
     site take
+  case nick
+    site nick
+  case drop
+    site drop
   hook make
     make link
       bind name, read name
+      bind nick, read nick
+      bind drop, read drop
       bind like, read like
       bind call, read call
       bind list, read list
@@ -78,11 +87,14 @@ mint link-take, like link-take
     site text
   case mark, mint link-take-mark
     site mark
+  case like
+    site like
   hook make
     make link-take
       bind term, read term
       bind text, read text
       bind mark, read mark
+      bind like, read like
 
 mint link-take-mark
   case value
@@ -141,3 +153,19 @@ mint link-call
   hook make
     make link-call
       bind call, read call
+
+# `lock false` beside a field. Matched so the rule can say the reader ignores it, and built into nothing.
+mint link-lock
+  case value
+    site value
+  hook make
+    make link-lock
+      bind value, read value
+
+# A numerically named field, matched so the file reads and built into nothing. See link-number in mine.tree.
+mint link-number
+  case value
+    site value
+  hook make
+    make link-number
+      bind value, read value

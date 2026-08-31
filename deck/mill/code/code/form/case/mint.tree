@@ -1,3 +1,6 @@
+load @term/mill/code/code/drop/mint
+  find drop
+
 load @term/mill/code/code/fall/mint
   find fall
 
@@ -81,11 +84,14 @@ mint free
     site like
   case flex
     site flex
+  case drop
+    site drop
   hook make
     make free
       bind name, read name
       bind like, read like
       bind flex, read flex
+      bind drop, read drop
 
 mint base-host
   case name

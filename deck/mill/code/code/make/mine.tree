@@ -11,10 +11,13 @@ load @term/mill/code/code/turn/mine
 load @term/mill/code/code/seed/mine
   find seed
 
+# `make <form>` with `bind` children. The name is OPTIONAL because the reader's value case for a `make` head
+# fires whether or not one followed: a bare `make` is a record with an empty name.
 mine make
   mine term, term make
-    mine term
-      site name
+    mine maybe
+      mine term
+        site name
     mine list
       mine any
         mine form, like bind

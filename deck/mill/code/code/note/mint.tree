@@ -1,6 +1,12 @@
+load @term/mill/code/code/tool/flow/mint
+  find flow
+
 mint note
   case text
     site text
+  case flow
+    site flow
   hook make
     make note
       bind text, read text
+      bind flow, read flow

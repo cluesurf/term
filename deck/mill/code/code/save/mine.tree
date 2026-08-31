@@ -1,11 +1,19 @@
+load @term/mill/code/code/like/mine
+  find like
+
 
 load @term/mill/code/code/seed/mine
   find seed
 
+# `save x, <value>` binds a name. `save x, like <type>` annotates the binding, with the value on the lines
+# under it, which is how the DOM bindings in @term/site are written.
 mine save
   mine term, term save
     mine path
       site name
+    mine maybe
+      mine form, like like
+        site like
     mine maybe
       mine form, like seed
         site seed

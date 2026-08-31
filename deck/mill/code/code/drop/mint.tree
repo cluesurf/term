@@ -1,0 +1,5 @@
+# What the mine matched and the compiler ignores. It is minted so the grammar's own health check can see the
+# site is accounted for, and the bridge builds nothing from it. See drop/mine.tree.
+mint drop
+  hook make
+    make drop

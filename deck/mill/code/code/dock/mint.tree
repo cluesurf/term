@@ -1,6 +1,9 @@
 load @term/mill/code/code/bind/mint
   find bind
 
+load @term/mill/code/code/note/mint
+  find note
+
 load @term/mill/code/code/seed/mint
   find seed
 
@@ -129,10 +132,13 @@ mint dock-bind
     site kind
   case line, mint dock-bind-line
     site line
+  case note
+    site note
   hook make
     make dock-bind
       bind kind, read kind
       bind line, read line
+      bind note, read note
 
 mint dock-bind-line
   case path

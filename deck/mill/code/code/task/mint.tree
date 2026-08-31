@@ -1,3 +1,9 @@
+load @term/mill/code/code/form/mint
+  find form-nick
+
+load @term/mill/code/code/drop/mint
+  find drop
+
 load @term/mill/code/code/form/link/mint
   find link
 
@@ -72,6 +78,10 @@ mint task, like code-task
     site slot
   case flow
     site flow
+  case nick, mint form-nick
+    site nick
+  case drop
+    site drop
   hook make
     make task
       bind name, read name
@@ -88,3 +98,5 @@ mint task, like code-task
       bind link, read link
       bind slot, read slot
       bind flow, read flow
+      bind nick, read nick
+      bind drop, read drop

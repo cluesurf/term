@@ -23,6 +23,10 @@ mine host
           site item
         mine form, like host
           site host
+        # `host page, name <document>` with an indented `like document`: the type is written AFTER the
+        # foreign-name annotation, not before it, so the leading `maybe` above never sees it
+        mine form, like like
+          site like
         mine form, like seed
           site seed
 

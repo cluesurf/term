@@ -1,0 +1,85 @@
+# The binding dialect's vocabulary that `compile/mill.ts` does not read.
+#
+# `@term/bind` declares platform signatures in more detail than the compiler consumes. The Rust bindings carry
+# lifetimes (`lead`, `time`), where-clauses (`cast`), borrows (`cite`), mutability (`flex`, `lock`) and a few
+# more; the DOM bindings carry `rest` for a variadic and `back` for a constructor's result. The reader walks a
+# task's children looking for `take`, `like`, `head` and `note`, and passes silently over everything else.
+#
+# THIS RULE IS THAT SILENCE, WRITTEN DOWN. Every word here is something the compiler is told and does not
+# understand, so "passed over" is a list somebody can read rather than a hole anything falls into.
+#
+# It is deliberately NOT a wildcard. A bare `mine node` would swallow a typo as readily as a lifetime, and the
+# whole reason the code role is moving onto a grammar is that a reader which quietly accepts anything cannot be
+# checked. Adding a word here is a decision, and it should stay one.
+#
+# Closing these is quirk 6 in note/term/mint-bridge/quirks.md. Until then they are matched and dropped, which
+# is exactly what the reader does with them today.
+mine drop
+  mine any
+    # a Rust borrow: `take self / cite free`
+    mine term, term cite
+      mine list
+        mine node
+    # a where-clause: `cast c-1 / like r / like try`
+    mine term, term cast
+      mine list
+        mine node
+    # a lifetime parameter, and its use
+    mine term, term lead
+      mine list
+        mine node
+    mine term, term time
+      mine list
+        mine node
+    # mutability, both ways round
+    mine term, term flex
+      mine list
+        mine node
+    mine term, term lock
+      mine list
+        mine node
+    # a nested signature, a trait rank, a pinned value, a shorthand
+    mine term, term dive
+      mine list
+        mine node
+    mine term, term rank
+      mine list
+        mine node
+    mine term, term calm
+      mine list
+        mine node
+    mine term, term dash
+      mine list
+        mine node
+    # a variadic parameter: `take params / rest true`
+    mine term, term rest
+      mine list
+        mine node
+    # a getter that is computed rather than stored
+    mine term, term computed
+      mine list
+        mine node
+    # a constructor's result type, an owning module, an intrinsic marker, a forced coercion
+    mine term, term back
+      mine list
+        mine node
+    mine term, term home
+      mine list
+        mine node
+    mine term, term intrinsic
+      mine list
+        mine node
+    mine term, term force
+      mine list
+        mine node
+    # a conditional type's scrutinee
+    mine term, term stem
+      mine list
+        mine node
+    # a borrow written as a read, and an index signature
+    mine term, term read
+      mine list
+        mine node
+    mine term, term mesh
+      mine list
+        mine node

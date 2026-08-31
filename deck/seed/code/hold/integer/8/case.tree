@@ -1,3 +1,13 @@
+# SUPERSEDED 2026-08-31, kept as a record. The i8 vector tables, the sibling of
+# hold/integer/32/case.tree which was superseded on 2026-08-30 for the same reason: they feed
+# hold/test.tree's suite runner, and that runner needed call-reflection the language does not expose.
+# Nothing imports this file.
+#
+# Its head is `hook suite`, which the compiler reads as the routing / CLI dialect rather than as data, so
+# the tables lower to a route nobody serves. The live pattern for the same intent is a `test` block per
+# vector; see deck/seed/test/integer-32.tree.
+note draft
+
 
 hook suite
   host add-free

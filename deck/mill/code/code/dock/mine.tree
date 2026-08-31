@@ -12,6 +12,9 @@ load @term/mill/code/code/bind/mine
 load @term/mill/code/code/seed/mine
   find seed
 
+load @term/mill/code/code/note/mine
+  find note
+
 mine dock
   mine list
     mine form, like dock-def
@@ -29,6 +32,9 @@ mine dock-bind
     mine list
       mine form, like dock-bind-line
         site line
+    mine list
+      mine form, like note
+        site note
 
 mine dock-bind-line
   mine term, term load

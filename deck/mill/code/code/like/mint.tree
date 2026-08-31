@@ -1,3 +1,6 @@
+load @term/mill/code/code/drop/mint
+  find drop
+
 load @term/mill/code/code/fall/mint
   find fall
 
@@ -63,14 +66,16 @@ mint like
     site need
   case fall
     site fall
-  case arg
-    site arg
   case bind, mint like-bind
     site bind
   case link
     site link
   case head
     site head
+  case arg
+    site arg
+  case drop
+    site drop
   hook make
     make like
       bind name, read name
@@ -81,7 +86,8 @@ mint like
       bind take, read take
       bind need, read need
       bind fall, read fall
-      bind arg, read arg
       bind bind, read bind
       bind link, read link
       bind head, read head
+      bind arg, read arg
+      bind drop, read drop

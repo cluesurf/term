@@ -1,3 +1,9 @@
+load @term/mill/code/code/drop/mint
+  find drop
+
+load @term/mill/code/code/bind/mint
+  find bind
+
 load @term/mill/code/code/call/mint
   find call
 
@@ -36,12 +42,20 @@ mint take
     site void
   case flex
     site flex
-  case take, mint take-value
+  case code
+    site code
+  case many
+    site many
+  case bind
+    site bind
+  case take
     site take
   case call
     site call
   case note
     site note
+  case drop
+    site drop
   hook make
     make take
       bind name, read name
@@ -52,9 +66,13 @@ mint take
       bind base, read base
       bind void, read void
       bind flex, read flex
+      bind code, read code
+      bind many, read many
+      bind bind, read bind
       bind take, read take
       bind call, read call
       bind note, read note
+      bind drop, read drop
 
 mint take-value, like take-value
   case term

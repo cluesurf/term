@@ -1,3 +1,9 @@
+load @term/mill/code/code/seed/mine
+  find seed-text
+
+load @term/mill/code/code/drop/mine
+  find drop
+
 load @term/mill/code/code/wear/mine
   find wear
 
@@ -56,6 +62,8 @@ mine form
           site head
         mine form, like like
           site like
+        mine form, like link-number
+          site drop
         mine form, like link
           site link
         mine form, like case
@@ -90,6 +98,33 @@ mine form
           site dock
         mine form, like form-accessor
           site accessor
+        mine form, like form-nick
+          site nick
+        mine form, like form-base
+          site drop
+        mine form, like drop
+          site drop
+        # `form auto-keyword, name <AutoKeyword>` over `text <auto>`: a string-literal type. The reader builds
+        # a record type from `link` children and reads nothing else, so this is dropped.
+        mine form, like seed-text
+          site drop
+
+# `form abort-controller, name <AbortController>`: the form's exact native spelling, which every file in
+# `@term/bind` carries. `compile/mill.ts` never reads it (a `record-type` has no field for it), so the emitters
+# recover the native name by re-casing the Term one and get away with it for as long as the two agree.
+# Captured, and built into nothing. See quirk 6.
+mine form-nick
+  mine term, term name
+    mine text
+      site text
+
+# `base algorithm` under a form: the form it extends. `compile/mill.ts` reads `base` under a LINK and not under
+# a form, so this is dropped and the whole `@term/bind` hierarchy is flat in the emitted output. Reproduced,
+# not fixed. See quirk 6.
+mine form-base
+  mine term, term base
+    mine term
+      site name
 
 mine rein
   mine term, term rein

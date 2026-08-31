@@ -1,9 +1,24 @@
 load @term/mill/code/code/seed/mine
   find seed
 
+# `send back <value>` RETURNS from a task.
+#
+# The `back` stays a worded rule at the head of this sequence rather than one branch of an alternation: the
+# executor's paren splice (`send back(read other)`) hands the parenthesis's leftover to the REST of the
+# sequence, and a rule wrapped in an `any` or a `maybe` has no rest to hand it to.
 mine send
   mine term, term send
     mine term, term back
+    mine maybe
+      mine form, like seed
+        site seed
+
+# `send <name> <value>` is the route DSL's RESPONSE (`send json` over the value to serialise). It shares the
+# head and is a different statement, so it is a different rule.
+mine send-kind
+  mine term, term send
+    mine term
+      site kind
     mine maybe
       mine form, like seed
         site seed

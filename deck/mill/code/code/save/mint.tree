@@ -1,12 +1,18 @@
+load @term/mill/code/code/like/mint
+  find like
+
 load @term/mill/code/code/seed/mint
   find seed
 
 mint save
   case name
     site name
+  case like
+    site like
   case seed
     site seed
   hook make
     make save
       bind name, read name
+      bind like, read like
       bind seed, read seed

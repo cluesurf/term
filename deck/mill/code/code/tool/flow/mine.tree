@@ -1,3 +1,9 @@
+load @term/mill/code/code/form/link/mine
+  find link-list
+
+load @term/mill/code/code/drop/mine
+  find drop
+
 load @term/mill/code/code/like/mine
   find like
 
@@ -12,6 +18,7 @@ load @term/mill/code/code/save/mine
 
 load @term/mill/code/code/send/mine
   find send
+  find send-kind
 
 load @term/mill/code/code/halt/mine
   find halt
@@ -51,6 +58,8 @@ mine flow
       site save
     mine form, like send
       site send
+    mine form, like send-kind
+      site send-kind
     mine form, like fork
       site fork
     mine form, like halt
@@ -111,3 +120,11 @@ mine free
       mine term, term flex
         mine term
           site flex
+    # `free xs / list t` in a binding signature, and the binding dialect's own words. The reader takes a
+    # `free`'s type from its `like` and nothing else. See drop/mine.tree.
+    mine list
+      mine any
+        mine form, like link-list
+          site drop
+        mine form, like drop
+          site drop

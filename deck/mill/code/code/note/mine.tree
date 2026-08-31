@@ -1,4 +1,9 @@
+load @term/mill/code/code/tool/flow/mine
+  find flow
 
+
+# `note <word>` is metadata. `note unsafe` is the one that carries a BODY: the statements under it are the
+# guarded block, and the `halt take` beside it is the handler.
 mine note
   mine term, term note
     mine any
@@ -6,3 +11,6 @@ mine note
         site text
       mine text
         site text
+    mine list
+      mine form, like flow
+        site flow

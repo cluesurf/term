@@ -1,3 +1,6 @@
+load @term/mill/code/code/take/mine
+  find take
+
 load @term/mill/code/code/bind/mine
   find bind
 
@@ -19,5 +22,9 @@ mine halt
       mine any
         mine form, like bind
           site bind
+        # `halt take` / `take <name>` is the HANDLER of a guarded block: the name it binds the caught
+        # exception to, followed by the handler body
+        mine form, like take
+          site take
         mine form, like flow
           site flow

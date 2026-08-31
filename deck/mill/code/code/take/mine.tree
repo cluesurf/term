@@ -1,3 +1,12 @@
+load @term/mill/code/code/form/link/mine
+  find link-list
+
+load @term/mill/code/code/drop/mine
+  find drop
+
+load @term/mill/code/code/bind/mine
+  find bind
+
 load @term/mill/code/code/call/mine
   find call
 
@@ -52,14 +61,44 @@ mine take
       mine term, term flex
         mine term
           site flex
+    # a CLI parameter's short flag (`take title / code t` makes `--title` also `-t`) and its variadic marker
+    # (`take paths / many` collects the remaining positionals)
+    mine maybe
+      mine term, term code
+        mine term
+          site code
+    mine maybe
+      mine term, term many
+        site many
+    # A parameter declared `like task` carries the function type's own parameters as further `take` lines
+    # nested inside it. They sit in this group, never beside it, so matching them here cannot swallow one of
+    # the enclosing task's parameters.
     mine list
       mine any
+        # the parts of a take may be written in any order: a `like` after a `code t` short flag is still the
+        # parameter's type, and the leading `maybe` above has already gone past by then
+        mine form, like like
+          site like
+        # a CLI parameter's default is written `bind <value>` under it
+        mine form, like bind
+          site bind
+        mine form, like take
+          site take
         mine form, like take-value
           site take
         mine form, like call
           site call
         mine form, like note
           site note
+        mine form, like drop
+          site drop
+        # `take namespace-uri, text <http://www.w3.org/1999/xhtml>`: a literal type, and `take xs, list t`: a
+        # list shorthand. The reader takes a parameter's type from its `like` and from nowhere else, so both
+        # are dropped. See drop/mine.tree.
+        mine form, like seed-text
+          site drop
+        mine form, like link-list
+          site drop
 
 mine take-value
   mine term, term take

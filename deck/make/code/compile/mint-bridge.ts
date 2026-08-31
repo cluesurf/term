@@ -15,7 +15,11 @@
 // EVERY minted form is named for the grammar rule that built it, so the switches below are total and a rule
 // added to the grammar shows up here as an unhandled name rather than as silence.
 
-import type { Node, RootNode } from '@term/make/code/parser/tree'
+import type {
+  NameNode,
+  Node,
+  RootNode,
+} from '@term/make/code/parser/tree'
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type {
@@ -28,13 +32,26 @@ import {
   runMine,
   runMint,
   spanOfWhole,
+  wordOf,
   ZERO_SPAN,
 } from '@term/make/code/compile/mill-run'
 import type {
   Minted,
   MillCapture,
 } from '@term/make/code/compile/mill-run'
-import type { LoadedGrammar } from '@term/make/code/compile/mill-load'
+import { parse } from '@term/make/code/parser/tree'
+import {
+  readMineGrammar,
+  readMintGrammar,
+} from '@term/make/code/compile/mill-run'
+import type {
+  MineGrammar,
+  MintGrammar,
+} from '@term/make/code/compile/mill-run'
+import {
+  MINE_SOURCE,
+  MINT_SOURCE,
+} from '@term/make/code/compile/mill-grammar.generated'
 import {
   TYPE_NAME,
   BINARY_BUILTIN,
@@ -116,6 +133,8 @@ const spanOf = (value: Minted | undefined): Span =>
 
 type Bridge = {
   file: string
+  // the file's role: `site` means every `hook` here is a URL route, `call` means every one is a CLI command
+  role?: string
   diagnostics: Diagnostic[]
   // the form a nested `task` belongs to: its methods are mangled `<form>_<name>` and a bare `take self` takes
   // the form's own type
@@ -126,6 +145,8 @@ type Bridge = {
   declared: Set<string>
   // the owning form's type parameters: every method of the form carries them as leading generics
   ownerParams?: string[]
+  // `find X, name Y`: Y is a local synonym for X in this file, rewritten to X across the built program
+  aliases: Map<string, string>
 }
 
 function unhandled(bridge: Bridge, value: Minted, what: string): undefined {
@@ -213,6 +234,10 @@ function typeOf(bridge: Bridge, value: Minted | undefined): Type | undefined {
   const args = [
     ...applied.map(phraseType),
     ...children.filter((c): c is Type => c !== undefined),
+    // `like maybe / head v`: a `head` child supplies a type argument the way a word chain does
+    ...formsAt(value, 'head').map(
+      head => typeOf(bridge, firstAt(head, 'like')) ?? named(wordAt(head, 'name') ?? ''),
+    ),
   ]
 
   return {
@@ -220,6 +245,33 @@ function typeOf(bridge: Bridge, value: Minted | undefined): Type | undefined {
     name,
     ...(args.length > 0 ? { args } : {}),
   }
+}
+
+// A `like task` declares a function type, and its parameters may be written as `take` lines belonging to
+// whatever declared the like (the `link` or the enclosing `take`) rather than nested inside the like itself.
+// Both spellings mean the same function type.
+function withOuterTakes(
+  bridge: Bridge,
+  declared: Type | undefined,
+  owner: Form,
+): Type | undefined {
+  if (declared?.kind !== 'function' || declared.params.length > 0) {
+    return declared
+  }
+
+  const takes = formsAt(owner, 'take')
+
+  if (takes.length === 0) {
+    return declared
+  }
+
+  const params = takes.map(
+    take => typeOf(bridge, firstAt(take, 'like')) ?? UNKNOWN,
+  )
+
+  // no `paramNames`: the mill records those only when the takes are nested inside the `like` group, and this
+  // is the other spelling
+  return { ...declared, params }
 }
 
 // a type written as one phrase: `stack number` is `stack` applied to `number`
@@ -265,12 +317,25 @@ function expressionOf(
   }
 
   switch (value.form) {
+    case 'seed-loan':
     case 'seed-read':
     case 'read': {
       const path = wordAt(value, 'path') ?? wordAt(value, 'name')
 
       if (path === undefined) {
-        return unhandled(bridge, value, 'a read with no path')
+        // a bare `read` names the empty path, which is what the reader answers for one
+        return readPath('', span)
+      }
+
+      // `read x/{key}` reads the member NAMED BY evaluating `key`. The braces are part of one name token, so
+      // the segment's expression and its span come from the token's own interpolation part, which is why the
+      // capture carries its CST node and not just the rendered word.
+      if (path.includes('{')) {
+        const dynamic = dynamicPath(value, span)
+
+        if (dynamic) {
+          return dynamic
+        }
       }
 
       return readPath(path, span)
@@ -282,7 +347,8 @@ function expressionOf(
       return {
         form: 'string',
         value: textOf(literal) ?? '',
-        span: spanOf(literal),
+        // a bare `text` has no literal to take a span from, so the head's own extent stands in
+        span: literal ? spanOf(literal) : span,
       }
     }
 
@@ -295,13 +361,21 @@ function expressionOf(
           : { form: 'integer', value: literal.value, span: spanOf(literal) }
       }
 
+      // `code false` / `code true`: the boolean written with the literal head
+      const word = textOf(literal)
+
+      if (word === 'true' || word === 'false') {
+        return { form: 'boolean', value: word === 'true', span: spanOf(literal) }
+      }
+
       return { form: 'integer', value: 0, span }
     }
 
     case 'seed-term':
+      // `term utf8` is the word ITSELF as a value, not a reference to something named `utf8`
       return {
-        form: 'variable',
-        name: wordAt(value, 'name') ?? '',
+        form: 'string',
+        value: wordAt(value, 'name') ?? '',
         span,
       }
 
@@ -321,14 +395,59 @@ function expressionOf(
     }
 
     case 'seed-meet': {
-      const inner = firstAt(value, 'seed')
+      // `meet and` / `meet or` combine their operands with `&&` / `||`, left to right. The marker word says
+      // which, and with no operands the identity of that operator is the answer.
+      const marker = wordAt(value, 'name') ?? wordAt(value, 'mode')
+      const op = marker === 'or' ? ('||' as const) : ('&&' as const)
+      const operands = at(value, 'seed')
+        .map(operand => expressionOf(bridge, operand))
+        .filter((operand): operand is Expression => operand !== undefined)
 
-      return inner ? expressionOf(bridge, inner) : undefined
+      if (operands.length === 0) {
+        return { form: 'boolean', value: marker !== 'or', span }
+      }
+
+      return operands.reduce((left, right) => ({
+        form: 'binary',
+        op,
+        left,
+        right,
+        span,
+      }))
+    }
+
+    case 'move': {
+      // `move x` hands ownership of `x` on. The value is the same one and the marker is for the checker, but
+      // the SPAN is the whole `move x` construct: the mill reads a move exactly as it reads a `read`.
+      const moved = wordAt(value, 'name')
+
+      return moved === undefined ? undefined : readPath(moved, span)
+    }
+
+    // `bind <name>, <value>` as an argument of the generic call fallback: the value, with the name dropped.
+    // At mill time there is no callee signature to place a named argument into, so the reader takes the value
+    // and forgets the name, and the built expression is the value's own, span included.
+    case 'seed-bind-arg': {
+      const bound = firstAt(value, 'seed')
+
+      // a `bind` with no second child has no value to give, and the reader answers unit for it
+      return bound
+        ? expressionOf(bridge, bound)
+        : { form: 'unit', span }
     }
 
     case 'seed-call-open': {
       // a bare call written as its own head (`name <document>`): the head is the callee, the rest its arguments
       const callee = wordAt(value, 'name')
+
+      // except when the head is a LITERAL keyword: `code false` is the boolean, not a call to `code`
+      if (callee === 'code') {
+        const word = wordAt(value, 'seed')
+
+        if (word === 'true' || word === 'false') {
+          return { form: 'boolean', value: word === 'true', span }
+        }
+      }
 
       if (callee === undefined) {
         return unhandled(bridge, value, 'an open call with no head')
@@ -363,7 +482,8 @@ function recordOf(bridge: Bridge, value: Form): Expression | undefined {
   const name = wordAt(value, 'name')
 
   if (name === undefined) {
-    return unhandled(bridge, value, 'a make with no form name')
+    // a bare `make` is a record with an empty name, which is what the reader answers for one
+    return { form: 'record', name: '', fields: [], functionFree: true, span }
   }
 
   const fields: { name: string; value: Expression }[] = []
@@ -386,13 +506,25 @@ function recordOf(bridge: Bridge, value: Form): Expression | undefined {
     }
   }
 
-  // `make list` and `make hash` are the native collections, not records of those names
+  // `make list` is the native array and `make find` the native map. `make hash` is NOT: it constructs the
+  // stdlib's hash FORM, which is a record.
   if (name === 'list' && fields.length === 0) {
     return { form: 'array', items: positional, span: spanOf(value) }
   }
 
-  if (name === 'hash' && fields.length === 0) {
-    return { form: 'map', entries: [], span: spanOf(value) }
+  if (name === 'find') {
+    const entries = formsAt(value, 'save').map(entry => ({
+      key: {
+        form: 'string' as const,
+        value: wordAt(entry, 'name') ?? '',
+        span: spanOf(value),
+      },
+      value:
+        expressionOf(bridge, firstAt(entry, 'seed')) ??
+        ({ form: 'unit' as const, span: spanOf(value) } as Expression),
+    }))
+
+    return { form: 'map', entries, span: spanOf(value) }
   }
 
   const functionFree = fields.every(f => f.value.form !== 'closure')
@@ -448,8 +580,13 @@ function asConditional(
 
   const last = built.otherwise?.[0]
   const otherwise =
-    built.otherwise && built.otherwise.length === 1 && last?.form === 'expression'
-      ? last.expr
+    built.otherwise && built.otherwise.length === 1
+      ? last?.form === 'expression'
+        ? last.expr
+        : // an else-if chain: the else is another conditional, carried in value position too
+          last?.form === 'if'
+          ? asConditional(last, last.span)
+          : undefined
       : undefined
 
   return {
@@ -458,6 +595,79 @@ function asConditional(
     ...(otherwise ? { otherwise } : {}),
     span,
   }
+}
+
+// the name node a `read` was built from, wherever it sits under the captured group
+function nameNodeOf(node: Node | undefined): NameNode | undefined {
+  if (!node) {
+    return undefined
+  }
+
+  if (node.kind === 'name') {
+    return node
+  }
+
+  if (node.kind !== 'group') {
+    return undefined
+  }
+
+  for (const child of node.nodes) {
+    const found = nameNodeOf(child)
+
+    if (found?.parts.some(part => part.kind === 'interpolation')) {
+      return found
+    }
+  }
+
+  return undefined
+}
+
+// A path with an interpolated segment, built from the token's parts the way the mill builds it: each chunk
+// contributes plain segments, and each `{...}` contributes a member indexed by the inner group's value.
+function dynamicPath(value: Minted, span: Span): Expression | undefined {
+  const head = nameNodeOf(value.node)
+
+  if (!head) {
+    return undefined
+  }
+
+  let built: Expression | undefined
+
+  const step = (name: string): void => {
+    built = built
+      ? { form: 'member', target: built, name, span }
+      : { form: 'variable', name, span }
+  }
+
+  for (const part of head.parts) {
+    if (part.kind === 'chunk') {
+      for (const segment of part.text.split('/').filter(s => s.length > 0)) {
+        step(segment)
+      }
+
+      continue
+    }
+
+    if (!part.group || !built) {
+      continue
+    }
+
+    const inner = wordOf(part.group)
+
+    built = {
+      form: 'member',
+      target: built,
+      name: '',
+      index: {
+        form: 'variable',
+        name: inner ?? '',
+        span: spanOfWhole(part.group),
+      },
+      span,
+    }
+  }
+
+  return built
 }
 
 // `read a/b/c` is a member chain rooted at a variable; `read x/{k}` is a dynamic index. The path arrives as one
@@ -471,7 +681,17 @@ function readPath(path: string, span: Span): Expression {
   }
 
   for (const part of parts.slice(1)) {
-    node = { form: 'member', target: node, name: part, span }
+    const dynamic = /^\{(.*)\}$/.exec(part)
+
+    node = dynamic
+      ? {
+          form: 'member',
+          target: node,
+          name: '',
+          index: { form: 'variable', name: dynamic[1] ?? '', span },
+          span,
+        }
+      : { form: 'member', target: node, name: part, span }
   }
 
   return node
@@ -485,15 +705,31 @@ function callOf(bridge: Bridge, value: Form): Expression | undefined {
   }
 
   const span = spanOf(value)
-  const args: Expression[] = []
-  const names: (string | undefined)[] = []
+  // A call's arguments are matched into two sites, one for `bind <name>, <value>` and one for a bare value,
+  // so their interleaving is not in the match. It is in the parse tree: each argument's position among the
+  // call's own children IS the order it was written in, and a named argument before a positional one has to
+  // stay before it.
+  const order = new Map<Node, number>()
+
+  if (value.node?.kind === 'group') {
+    value.node.nodes.forEach((child, index) => order.set(child, index))
+  }
+
+  const written: {
+    at: number
+    expr: Expression
+    name: string | undefined
+  }[] = []
 
   for (const bind of formsAt(value, 'bind')) {
     const built = expressionOf(bridge, firstAt(bind, 'seed'))
 
     if (built) {
-      args.push(built)
-      names.push(wordAt(bind, 'name'))
+      written.push({
+        at: bind.node ? (order.get(bind.node) ?? written.length) : written.length,
+        expr: built,
+        name: wordAt(bind, 'name'),
+      })
     }
   }
 
@@ -501,14 +737,54 @@ function callOf(bridge: Bridge, value: Form): Expression | undefined {
     const built = expressionOf(bridge, seed)
 
     if (built) {
-      args.push(built)
-      names.push(undefined)
+      written.push({
+        at: seed.node ? (order.get(seed.node) ?? written.length) : written.length,
+        expr: built,
+        name: undefined,
+      })
     }
   }
+
+  // A `note` written under a CALL is not metadata: a call has no metadata, and the mill reads it through the
+  // generic path as an argument (`note(async)`). It is a source mistake nothing refuses. Reproduced so parity
+  // stays mechanical, and recorded as quirk 6 with the diagnostic it should get instead.
+  for (const note of formsAt(value, 'note')) {
+    const word = wordAt(note, 'text')
+
+    if (word === undefined) {
+      continue
+    }
+
+    written.push({
+      at: note.node ? (order.get(note.node) ?? written.length) : written.length,
+      expr: {
+        form: 'call',
+        callee: { form: 'variable', name: 'note', span: spanOf(note) },
+        args: [
+          {
+            form: 'variable',
+            name: word,
+            span: spanOf(firstAt(note, 'text')),
+          },
+        ],
+        span: spanOf(note),
+      },
+      name: undefined,
+    })
+  }
+
+  written.sort((a, b) => a.at - b.at)
+
+  const args = written.map(entry => entry.expr)
+  const names = written.map(entry => entry.name)
 
   // the arithmetic and comparison builtins lower to an operator, not a call: they have no definition to bind to
   const folded = foldBuiltin(name, args, span)
 
+  // `halt kink` as a child of the call passes the callee's exception on rather than handling it here
+  const propagate = formsAt(value, 'halt').some(
+    halt => wordAt(halt, 'mode') === 'kink',
+  )
   const call: Expression =
     folded ??
     ({
@@ -517,6 +793,7 @@ function callOf(bridge: Bridge, value: Form): Expression | undefined {
       args,
       span,
       ...(names.some(Boolean) ? { names } : {}),
+      ...(propagate ? { propagate: true } : {}),
     } as Expression)
 
   return at(value, 'wait').length > 0
@@ -563,10 +840,50 @@ function foldBuiltin(
 function flowOf(bridge: Bridge, values: Minted[]): Statement[] {
   const body: Statement[] = []
 
-  for (const value of values) {
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i]!
+
+    // `note unsafe` over a body, with the `halt take` beside it, is ONE guarded block: the note carries the
+    // statements to try and the halt carries the handler and the name it binds the caught exception to.
+    if (
+      isForm(value) &&
+      value.form === 'note' &&
+      wordAt(value, 'text') === 'unsafe'
+    ) {
+      const next = values[i + 1]
+      const handler =
+        isForm(next) && next.form === 'halt' && wordAt(next, 'mode') === 'take'
+          ? next
+          : undefined
+      const bound = handler ? formsAt(handler, 'take')[0] : undefined
+
+      body.push({
+        form: 'guard',
+        body: scopedFlow(bridge, at(value, 'flow')),
+        ...(handler && bound
+          ? {
+              catch: {
+                name: wordAt(bound, 'name') ?? '',
+                body: scopedFlow(bridge, at(handler, 'flow')),
+                span: spanOf(handler),
+              },
+            }
+          : {}),
+        span: spanOf(value),
+      })
+
+      if (handler) {
+        i++
+      }
+
+      continue
+    }
+
     const built = statementOf(bridge, value)
 
-    if (built) {
+    if (Array.isArray(built)) {
+      body.push(...built)
+    } else if (built) {
       body.push(built)
     }
   }
@@ -574,12 +891,28 @@ function flowOf(bridge: Bridge, values: Minted[]): Statement[] {
   return body
 }
 
+// a nested body is its own scope: a `save x` in one arm of a fork must not turn the `save x` in the other arm
+// into an assignment to a name that was never bound on that path
+function scopedFlow(bridge: Bridge, values: Minted[]): Statement[] {
+  const enclosing = bridge.declared
+  bridge.declared = new Set(enclosing)
+  const body = flowOf(bridge, values)
+  bridge.declared = enclosing
+
+  return body
+}
+
 function statementOf(
   bridge: Bridge,
   value: Minted,
-): Statement | undefined {
+): Statement | Statement[] | undefined {
   if (!isForm(value)) {
-    return unhandled(bridge, value, 'a bare value as a statement')
+    // a bare literal as a branch body (`hook hold` over `false`): an expression statement
+    const built = expressionOf(bridge, value)
+
+    return built
+      ? { form: 'expression', expr: built, span: spanOf(value) }
+      : unhandled(bridge, value, 'a bare value as a statement')
   }
 
   const span = spanOf(value)
@@ -619,8 +952,9 @@ function statementOf(
       }
 
       // the first `save x` declares; a later one assigns. The language has one word for both, and the
-      // difference is whether the name is already in scope.
-      if (bridge.declared.has(name)) {
+      // difference is whether the name is already in scope. A SLASHED name is never a binding: `save
+      // self/count` mutates a member and is always an assignment.
+      if (name.includes('/') || bridge.declared.has(name)) {
         // the target carries the STATEMENT's span, the way the mill writes it: `save x, <v>` is one construct
         // and the assignment it lowers to points at the whole of it
         return {
@@ -633,8 +967,16 @@ function statementOf(
       }
 
       bridge.declared.add(name)
+      const declaredType = typeOf(bridge, firstAt(value, 'like'))
 
-      return { form: 'let', name, init, mutable: true, span }
+      return {
+        form: 'let',
+        name,
+        init,
+        mutable: true,
+        ...(declaredType ? { type: declaredType } : {}),
+        span,
+      }
     }
 
     case 'call': {
@@ -653,6 +995,26 @@ function statementOf(
       const built = expressionOf(bridge, value)
 
       return built ? { form: 'expression', expr: built, span } : undefined
+    }
+
+    case 'move': {
+      // `move x` in statement position: the same value, spanning the whole construct
+      const moved = wordAt(value, 'name')
+
+      return moved === undefined
+        ? undefined
+        : { form: 'expression', expr: readPath(moved, span), span }
+    }
+
+    case 'fork-roll': {
+      // `fork roll`: a chain of guards, each `hook test` its own branch with an empty body
+      const branches = formsAt(value, 'arm').flatMap(arm => {
+        const cond = expressionOf(bridge, firstAt(arm, 'flow'))
+
+        return cond ? [{ cond, body: [] as Statement[] }] : []
+      })
+
+      return { form: 'if', branches, span }
     }
 
     case 'roll-def': {
@@ -725,6 +1087,34 @@ function haltOf(bridge: Bridge, value: Form): Statement | undefined {
       break
   }
 
+  // `halt <form>` with `bind` children RAISES that exception: the value is the form constructed from the
+  // binds, and `raise` names it so extendForms can check it is an exception and fill the carrier's fields.
+  const binds = formsAt(value, 'bind')
+
+  if (binds.length > 0) {
+    const fields = binds.flatMap(bind => {
+      const built = expressionOf(bridge, firstAt(bind, 'seed'))
+      const field = wordAt(bind, 'name')
+
+      return built && field !== undefined
+        ? [{ name: field, value: built }]
+        : []
+    })
+
+    return {
+      form: 'throw',
+      // no `functionFree` here: the mill sets that flag on a `make` construction and not on a raise
+      value: {
+        form: 'record',
+        name: mode,
+        fields,
+        span,
+      },
+      raise: mode,
+      span,
+    }
+  }
+
   const raised = expressionOf(bridge, firstAt(value, 'seed'))
 
   return {
@@ -737,7 +1127,10 @@ function haltOf(bridge: Bridge, value: Form): Statement | undefined {
 
 // `walk list, <seq>` iterates; `walk test` loops while a condition holds. Both arrive as one `walk` form
 // distinguished by its mode word, which is the only thing that tells them apart.
-function loopOf(bridge: Bridge, value: Form): Statement | undefined {
+function loopOf(
+  bridge: Bridge,
+  value: Form,
+): Statement | Statement[] | undefined {
   const span = spanOf(value)
   const mode = wordAt(value, 'mode')
   const hooks = formsAt(value, 'hook')
@@ -762,7 +1155,7 @@ function loopOf(bridge: Bridge, value: Form): Statement | undefined {
       form: 'for-each',
       item,
       iterable,
-      body: flowOf(bridge, at(next, 'flow')),
+      body: scopedFlow(bridge, at(next, 'flow')),
       span,
     }
   }
@@ -774,22 +1167,77 @@ function loopOf(bridge: Bridge, value: Form): Statement | undefined {
 
       return name === 'step' || name === 'hold'
     })
-    // `walk test` with no condition loops until something breaks out of it
+    // `walk test` with no `hook test` has no condition: the mill writes `false`, so the loop never runs. That
+    // is a source mistake rather than a spelling, and the mill's answer is the one to reproduce.
     const cond = expressionOf(bridge, firstAt(test, 'flow')) ?? {
       form: 'boolean' as const,
-      value: true,
+      value: false,
       span,
     }
 
     return {
       form: 'while',
       cond,
-      body: step ? flowOf(bridge, at(step, 'flow')) : [],
+      body: step ? scopedFlow(bridge, at(step, 'flow')) : [],
       span,
     }
   }
 
-  return unhandled(bridge, value, `a walk in ${mode ?? '(no)'} mode`)
+  if (mode === 'size') {
+    // a counted walk: `bind base` and `bind head` bound the counter, and the loop is the count written out
+    const binds = formsAt(value, 'bind')
+    const boundOf = (name: string): Expression | undefined =>
+      expressionOf(
+        bridge,
+        firstAt(
+          binds.find(bind => wordAt(bind, 'name') === name),
+          'seed',
+        ),
+      )
+    const from = boundOf('base') ?? { form: 'integer', value: 0, span }
+    const to = boundOf('head')
+    const next = hooks.find(h => wordAt(h, 'name') === 'next') ?? hooks[0]
+    const binder = formsAt(next, 'take')[0]
+    const item =
+      wordAt(firstAt(binder, 'alias'), 'name') ??
+      textOf(firstAt(binder, 'alias')) ??
+      wordAt(binder, 'name') ??
+      'i'
+
+    if (!to || !next) {
+      return unhandled(bridge, value, 'a walk size with no bound')
+    }
+
+    const counter: Expression = { form: 'variable', name: item, span }
+
+    return [
+      { form: 'let', name: item, init: from, mutable: true, span },
+      {
+      form: 'while',
+      cond: { form: 'binary', op: '<', left: counter, right: to, span },
+      body: [
+        ...scopedFlow(bridge, at(next, 'flow')),
+        {
+          form: 'assign',
+          target: counter,
+          op: '=',
+          value: {
+            form: 'binary',
+            op: '+',
+            left: counter,
+            right: { form: 'integer', value: 1, span },
+            span,
+          },
+          span,
+        },
+      ],
+      span,
+      },
+    ]
+  }
+
+  // any other mode is one the mill has no lowering for: it writes a loop that never runs, and so does this
+  return { form: 'while', cond: { form: 'boolean', value: false, span }, body: [], span }
 }
 
 // `fork case, <subject>` with one `case <label>` arm per variant
@@ -806,7 +1254,7 @@ function matchOf(bridge: Bridge, value: Form): Statement | undefined {
 
   for (const arm of formsAt(value, 'arm')) {
     const label = wordAt(arm, 'name')
-    const body = flowOf(bridge, at(arm, 'flow'))
+    const body = scopedFlow(bridge, at(arm, 'flow'))
 
     if (label === undefined) {
       otherwise = body
@@ -863,19 +1311,40 @@ function constantOf(bridge: Bridge, value: Form): Statement | undefined {
     }
   }
 
-  // a `host` whose children are more `host` lines is an anonymous record: a constant written as a little tree
+  // A `host` whose children are more `host` lines is an anonymous record: a constant written as a little tree.
+  // A `host` carrying SEVERAL values is a list, one entry per value: md5's sine table and the AES S-box are
+  // written that way, and reading only the first is how the md5 table shipped as a single number.
   const nested = formsAt(value, 'host')
+  const seeds = at(value, 'seed')
+  const values = seeds
+    .map(entry => expressionOf(bridge, entry))
+    .filter((entry): entry is Expression => entry !== undefined)
   const init =
     nested.length > 0
       ? anonymousRecord(bridge, nested, span)
-      : (expressionOf(bridge, seed) ?? { form: 'unit' as const, span })
+      : values.length > 1
+        ? ({ form: 'array', items: values, span } as Expression)
+        : (values[0] ?? { form: 'unit' as const, span })
+
+  // With no `like`, the constant's type is the one its LITERAL names: an integer literal is `integer`, a
+  // decimal `number`, a text `text`, a boolean `boolean`. Anything else is left to inference.
+  const literalType: Type | undefined =
+    init.form === 'integer'
+      ? { kind: 'named', name: 'integer' }
+      : init.form === 'float'
+        ? { kind: 'named', name: 'number' }
+        : init.form === 'string'
+          ? { kind: 'named', name: 'text' }
+          : init.form === 'boolean'
+            ? { kind: 'named', name: 'boolean' }
+            : undefined
 
   return {
     form: 'let',
     name,
     init,
     mutable: false,
-    ...(type ? { type } : {}),
+    ...(type ?? literalType ? { type: type ?? literalType } : {}),
     span,
   }
 }
@@ -924,7 +1393,13 @@ function conditionOf(
   let otherwise: Statement[] | undefined
   let pending: Expression | undefined
 
-  const inline = expressionOf(bridge, firstAt(value, 'condition'))
+  // `fork test, name <flag>` dispatches on a named boolean parameter: the condition is a read of that flag.
+  // `fork test, <expression>` writes the condition inline. Either way it is the condition the first `hook
+  // hold` holds on.
+  const flag = wordAt(firstAt(value, 'name'), 'name')
+  const inline = flag
+    ? ({ form: 'variable', name: flag, span } as Expression)
+    : expressionOf(bridge, firstAt(value, 'condition'))
 
   if (inline) {
     pending = inline
@@ -942,21 +1417,27 @@ function conditionOf(
     if (kind === 'hold' || kind === 'step') {
       // a `hook hold` with nothing to hold on is unconditional: its body is what runs, which is the else
       if (!pending) {
-        otherwise = flowOf(bridge, flow)
+        otherwise = scopedFlow(bridge, flow)
         continue
       }
 
-      branches.push({ cond: pending, body: flowOf(bridge, flow) })
+      branches.push({ cond: pending, body: scopedFlow(bridge, flow) })
       pending = undefined
       continue
     }
 
     if (kind === 'miss' || kind === 'else' || kind === 'fall') {
-      otherwise = flowOf(bridge, flow)
+      otherwise = scopedFlow(bridge, flow)
       continue
     }
 
     return unhandled(bridge, arm, `a fork arm named ${kind ?? '(nothing)'}`)
+  }
+
+  // a `hook test` with no `hook hold` after it is still a branch: its body is empty and the work is in the
+  // `hook miss`. Dropping the condition would drop the test itself.
+  if (pending) {
+    branches.push({ cond: pending, body: [] })
   }
 
   return {
@@ -981,7 +1462,11 @@ function paramOf(
   positional?: boolean
 } {
   const name = wordAt(take, 'name') ?? ''
-  const declared = typeOf(bridge, firstAt(take, 'like'))
+  const declared = withOuterTakes(
+    bridge,
+    typeOf(bridge, firstAt(take, 'like')),
+    take,
+  )
   // a form's method takes its own form as `self` when nothing else is written
   const type =
     declared ?? (owner && name === 'self' ? bridge.selfType : undefined)
@@ -1019,11 +1504,37 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
     paramOf(bridge, take, owner),
   )
 
-  const result = typeOf(bridge, firstAt(value, 'like'))
+  // A `free x, like T` inside the body supplies the TASK's result type when the task declares none. That is
+  // what the mill does and it looks wrong (a `free` forward-declares a binding, it is not a return annotation),
+  // so it is reproduced here and written down: note/term/mint-bridge/quirks.md entry 3.
+  const freed = at(value, 'flow')
+    .filter(isForm)
+    .find(step => step.form === 'free' && firstAt(step, 'like'))
+  const result =
+    typeOf(bridge, firstAt(value, 'like')) ??
+    (freed ? typeOf(bridge, firstAt(freed, 'like')) : undefined)
   // a function body is its own scope: a `save` inside it declares, whatever the enclosing body has bound
   const enclosing = bridge.declared
   bridge.declared = new Set(params.map(p => p.name))
-  const body = flowOf(bridge, at(value, 'flow'))
+  // `task read-synchronously, name <read-file>` annotates the task with the host name it maps to. The comma
+  // leaves it where a body statement would sit, and it is not one: the mill emits an empty body here.
+  // `note unsafe` over a body is captured at the task's own `note` site, not in its flow, while the `halt take`
+  // that handles it IS in the flow. Put the note back in front of the flow so the two pair into one guard.
+  const guardNote = formsAt(value, 'note').find(
+    note => wordAt(note, 'text') === 'unsafe' && at(note, 'flow').length > 0,
+  )
+  const steps = at(value, 'flow').filter(
+    step =>
+      !(
+        isForm(step) &&
+        step.form === 'seed-call-open' &&
+        wordAt(step, 'name') === 'name'
+      ),
+  )
+  const body = flowOf(
+    bridge,
+    guardNote ? [guardNote, ...steps] : steps,
+  )
   bridge.declared = enclosing
 
   const generics = [
@@ -1056,13 +1567,24 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
 // (a `load` is an import, which the loader resolves; it is not part of the program).
 function topLevelOf(bridge: Bridge, value: Minted): Statement[] {
   if (!isForm(value)) {
-    const built = statementOf(bridge, value)
-
-    return built ? [built] : []
+    return asStatements(statementOf(bridge, value))
   }
 
   switch (value.form) {
     case 'load':
+      // The loader resolves the path; the only thing to keep here is `find X, name Y`, which makes Y a local
+      // synonym for X in this file. Every reference to Y is rewritten to X once the program is built.
+      for (const found of formsAt(value, 'find')) {
+        const imported = wordAt(found, 'text')
+        const local = wordAt(firstAt(found, 'name'), 'name') ?? wordAt(found, 'name')
+
+        if (imported && local && local !== imported) {
+          bridge.aliases.set(local, imported)
+        }
+      }
+
+      return []
+
     case 'bear':
       // imports are resolved by the module loader and carry no statement
       return []
@@ -1073,8 +1595,7 @@ function topLevelOf(bridge: Bridge, value: Minted): Statement[] {
     case 'dock-bind':
       return nativeOf(bridge, value)
 
-    case 'mask':
-    case 'suit': {
+    case 'mask': {
       const name = wordAt(value, 'name')
 
       if (name === undefined) {
@@ -1093,6 +1614,33 @@ function topLevelOf(bridge: Bridge, value: Minted): Statement[] {
           span: spanOf(value),
         },
       ]
+    }
+
+    case 'suit': {
+      // `suit <target>` declares nothing itself: its `wear` blocks are trait implementations for the target
+      const target = wordAt(value, 'name')
+
+      if (target === undefined) {
+        return []
+      }
+
+      return formsAt(value, 'wear').flatMap(worn => {
+        const mask = wordAt(worn, 'name')
+
+        return mask === undefined
+          ? []
+          : [
+              {
+                form: 'instance' as const,
+                mask,
+                target,
+                methods: formsAt(worn, 'task')
+                  .map(task => wordAt(task, 'name') ?? '')
+                  .filter(Boolean),
+                span: spanOf(worn),
+              },
+            ]
+      })
     }
 
     case 'wear': {
@@ -1118,11 +1666,244 @@ function topLevelOf(bridge: Bridge, value: Minted): Statement[] {
     case 'bind-def':
       return bindOf(bridge, value)
 
-    default: {
-      const built = statementOf(bridge, value)
+    case 'hook':
+      // a top-level `hook` is the CLI command / route DSL: one dock statement carrying the whole tree
+      return [
+        {
+          form: 'dock',
+          route: routeOf(bridge, value),
+          span: spanOf(value),
+        },
+      ]
 
-      return built ? [built] : []
+    case 'rule-def': {
+      const name = wordAt(value, 'name')
+
+      if (name === undefined) {
+        return []
+      }
+
+      const params = formsAt(value, 'mark').map(mark => {
+        const type = typeOf(bridge, firstAt(mark, 'like'))
+
+        return {
+          name: wordAt(mark, 'name') ?? '',
+          ...(type ? { type } : {}),
+        }
+      })
+      const claim = expressionOf(bridge, firstAt(value, 'seed'))
+      const result = typeOf(bridge, firstAt(value, 'like'))
+
+      return [
+        {
+          form: 'function',
+          name,
+          params,
+          body: claim
+            ? [{ form: 'return' as const, value: claim, span: spanOf(value) }]
+            : [],
+          ...(result ? { result } : {}),
+          generics: [],
+          span: spanOf(value),
+        },
+      ]
     }
+
+    default:
+      return asStatements(statementOf(bridge, value))
+  }
+}
+
+// a statement builder may answer with none, one, or several (a counted walk is a counter plus its loop)
+function asStatements(
+  built: Statement | Statement[] | undefined,
+): Statement[] {
+  return Array.isArray(built) ? built : built ? [built] : []
+}
+
+// The help text a `#` comment above a command or a parameter carries. Comments are CST trivia the parser
+// attaches to the group, and a minted value keeps its CST node, so they survive the mill without the grammar
+// having to say anything about them. Multi-line comments join with a space, so a wrapped sentence stays one
+// help line.
+function leadingNote(value: Minted | undefined): string | undefined {
+  const node = value?.node
+
+  if (node?.kind !== 'group' || !node.comments) {
+    return undefined
+  }
+
+  const text = node.comments
+    .map(comment => comment.text.replace(/^#\s?/, '').trim())
+    .filter(line => line.length > 0)
+    .join(' ')
+
+  return text.length > 0 ? text : undefined
+}
+
+// One `hook`: a CLI command or a URL route, with its help text, its parameters, the task it runs and its
+// subcommands. Nested hooks are its children, so a command group is one dock statement, not several.
+function routeOf(
+  bridge: Bridge,
+  value: Form,
+): Extract<Statement, { form: 'dock' }>['route'] {
+  // `take path` / `take query` / `take body` / `take head` are SECTIONS, not parameters: they group the
+  // route's real takes by where they come from, and the takes are the ones nested inside them.
+  const SECTION = new Set(['path', 'query', 'body', 'head'])
+  const takeList = formsAt(value, 'take').flatMap(take =>
+    SECTION.has(wordAt(take, 'name') ?? '') ? formsAt(take, 'take') : [take],
+  )
+  const takes = takeList.map(take => {
+    const type = typeOf(bridge, firstAt(take, 'like'))
+    const note = leadingNote(take) ?? wordAt(firstAt(take, 'note'), 'text')
+    const short = wordAt(take, 'code')
+    const fallbackValue = firstAt(
+      formsAt(take, 'bind')[0],
+      'seed',
+    )
+    const literal = fallbackValue
+      ? (expressionOf(bridge, fallbackValue) ?? undefined)
+      : undefined
+    const fallback =
+      literal?.form === 'integer' || literal?.form === 'float'
+        ? Number(literal.value)
+        : literal?.form === 'string'
+          ? literal.value
+          : literal?.form === 'boolean'
+            ? literal.value
+            : undefined
+
+    return {
+      name: wordAt(take, 'name') ?? '',
+      ...(type ? { type } : {}),
+      required: needWord(take) === 'true',
+      ...(short !== undefined ? { short } : {}),
+      ...(note !== undefined ? { note } : {}),
+      ...(fallback !== undefined ? { fallback } : {}),
+      ...(at(take, 'many').length > 0 ? { variadic: true } : {}),
+      span: spanOf(take),
+    }
+  })
+
+  // `hook` spells two things. A ROUTE (role `site`, or a path, or a component) carries a component and no help
+  // text; a CLI COMMAND carries help text and the task it runs. Telling them apart from content alone was the
+  // guess role.tree exists to end, so the role decides first.
+  const path = wordAt(value, 'name') ?? ''
+  const isRoute =
+    bridge.role === 'site' ||
+    (bridge.role !== 'call' &&
+      (path.startsWith('/') || formsAt(value, 'view').length > 0))
+  const help = isRoute
+    ? undefined
+    : (leadingNote(value) ?? wordAt(firstAt(value, 'note'), 'text'))
+
+  // the implementation, in either spelling: `task <impl>` names the handler and passes the takes in order,
+  // `call <impl>` names it with its arguments written out
+  const argsOf = (
+    call: Form,
+  ): { name: string; value: Expression }[] =>
+    formsAt(call, 'bind').flatMap(bind => {
+      const built = expressionOf(bridge, firstAt(bind, 'seed'))
+      const name = wordAt(bind, 'name')
+
+      return built && name !== undefined ? [{ name, value: built }] : []
+    })
+  // a `call` written under a hook is captured with the rest of its flow
+  const flowCalls = at(value, 'flow')
+    .filter(isForm)
+    .filter(step => step.form === 'call')
+    .map(call => ({
+      name: wordAt(call, 'name') ?? '',
+      args: argsOf(call),
+      span: spanOf(call),
+    }))
+
+  // A ROUTE's `task get` / `task post` are its HTTP METHODS, each with its own takes, calls and responses.
+  // A command's `task <impl>` is its handler instead, which is why the two shapes are told apart first.
+  const methods = isRoute
+    ? formsAt(value, 'task').map(method => ({
+        name: wordAt(method, 'name') ?? '',
+        takes: formsAt(method, 'take')
+          .flatMap(take =>
+            SECTION.has(wordAt(take, 'name') ?? '')
+              ? formsAt(take, 'take')
+              : [take],
+          )
+          .map(take => {
+            const type = typeOf(bridge, firstAt(take, 'like'))
+
+            return {
+              name: wordAt(take, 'name') ?? '',
+              ...(type ? { type } : {}),
+              required: needWord(take) === 'true',
+              span: spanOf(take),
+            }
+          }),
+        calls: at(method, 'flow')
+          .filter(isForm)
+          .filter(step => step.form === 'call')
+          .map(call => ({
+            name: wordAt(call, 'name') ?? '',
+            args: argsOf(call),
+            span: spanOf(call),
+          })),
+        sends: at(method, 'flow')
+          .filter(isForm)
+          .filter(step => step.form === 'send-kind')
+          .map(send => {
+            const built = expressionOf(bridge, firstAt(send, 'seed'))
+
+            return {
+              name: wordAt(send, 'kind') ?? '',
+              ...(built ? { value: built } : {}),
+            }
+          }),
+        span: spanOf(method),
+      }))
+    : []
+
+  const calls = [
+    // `task <impl>` binds a COMMAND's handler and passes its takes in order. A route has no such spelling.
+    ...(isRoute
+      ? []
+      : formsAt(value, 'task').map(task => ({
+          name: wordAt(task, 'name') ?? '',
+          args: [],
+          span: spanOf(task),
+        }))),
+    ...formsAt(value, 'call').map(call => ({
+      name: wordAt(call, 'name') ?? '',
+      args: argsOf(call),
+      span: spanOf(call),
+    })),
+    ...flowCalls,
+  ]
+
+  // a client route renders a component, with its props
+  const shown = formsAt(value, 'view')[0]
+  const component = shown
+    ? {
+        name: wordAt(shown, 'name') ?? '',
+        props: formsAt(shown, 'bind').flatMap(bind => {
+          const built = expressionOf(bridge, firstAt(bind, 'seed'))
+          const name = wordAt(bind, 'name')
+
+          return built && name !== undefined ? [{ name, value: built }] : []
+        }),
+      }
+    : undefined
+
+  return {
+    path,
+    ...(help !== undefined ? { note: help } : {}),
+    takes,
+    methods,
+    calls,
+    ...(component ? { component } : {}),
+    directives: [],
+    sends: [],
+    hooks: [],
+    children: formsAt(value, 'hook').map(child => routeOf(bridge, child)),
+    span: spanOf(value),
   }
 }
 
@@ -1145,18 +1926,27 @@ function bindOf(bridge: Bridge, value: Form): Statement[] {
     }
   })
   const result = typeOf(bridge, firstAt(value, 'like'))
-  const targets = formsAt(value, 'case').map(target => ({
-    env: wordAt(target, 'platform') ?? '',
-    expression:
-      wordAt(firstAt(target, 'seed'), 'value') ??
-      wordAt(target, 'text') ??
-      '',
-    imports: at(target, 'load')
-      .map(load => ({
-        module: textOf(load) ?? wordAt(load, 'value') ?? '',
-      }))
-      .filter(i => i.module !== ''),
-  }))
+  // A target's children are its native expression and the imports that expression needs, in whatever order
+  // they were written: the `text <...>` is the expression, and each `load <...>` beside it is an import.
+  const targets = formsAt(value, 'case').map(target => {
+    const seeds = formsAt(target, 'seed')
+    const written = seeds.find(seed => seed.form === 'seed-text')
+    const loads = seeds.filter(
+      seed => seed.form === 'seed-call-open' && wordAt(seed, 'name') === 'load',
+    )
+
+    return {
+      env: wordAt(target, 'platform') ?? '',
+      expression:
+        wordAt(written, 'value') ?? wordAt(target, 'text') ?? '',
+      imports: [
+        ...loads.map(load => ({ module: wordAt(load, 'seed') ?? '' })),
+        ...at(target, 'load')
+          .map(load => ({ module: textOf(load) ?? '' }))
+          .filter(entry => entry.module !== ''),
+      ].filter(entry => entry.module !== ''),
+    }
+  })
 
   return [
     {
@@ -1207,12 +1997,13 @@ function fieldOf(
   name: string
   type: Type
   identity: boolean
+  nick?: string
   optional?: boolean
   fallback?: Expression
 } {
   const like = firstAt(link, 'like')
   const listOf = firstAt(link, 'list')
-  const declared = typeOf(bridge, like)
+  const declared = withOuterTakes(bridge, typeOf(bridge, like), link)
   const element = wordAt(listOf, 'form')
   const type: Type =
     declared ??
@@ -1225,10 +2016,22 @@ function fieldOf(
     fallValue(firstAt(link, 'fall') ?? firstAt(like, 'fall')),
   )
 
+  // `name <onabort>`: the field's exact native spelling, so an emitter writes the host's own name instead of
+  // camel-casing the Term one. Every field in @term/bind carries one.
+  //
+  // A field CALLED `name` gets none. `compile/mill.ts` finds the spelling by scanning the link's children for
+  // the first one headed `name`, and for `link name, name <name>` that is the field's own name, whose value is
+  // not a text, so the scan stops there and the annotation is never reached. This is the one place the bridge
+  // reads a spelling rather than a shape, because the quirk is ABOUT a spelling and cannot be said in a
+  // grammar that matches children in order. It goes when quirk 6 is fixed.
+  const field = wordAt(link, 'name')
+  const nick = field === 'name' ? undefined : wordAt(link, 'nick')
+
   return {
-    name: wordAt(link, 'name') ?? '',
+    name: field ?? '',
     type,
     identity: false,
+    ...(nick !== undefined ? { nick } : {}),
     ...(need === 'false' || fallback ? { optional: true } : {}),
     ...(fallback ? { fallback } : {}),
   }
@@ -1246,9 +2049,18 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
   }
 
   const out: Statement[] = []
-  const params = formsAt(value, 'head')
+  // `head a` names a TYPE parameter. `head b, like <type>` names a VALUE index: it makes this an indexed
+  // family, where `sigma a (b: a -> type)` is a different type for a different `b`.
+  const heads = formsAt(value, 'head')
+  const params = heads
+    .filter(head => !firstAt(head, 'like'))
     .map(head => wordAt(head, 'name') ?? '')
     .filter(Boolean)
+  const indices = heads.flatMap(head => {
+    const type = typeOf(bridge, firstAt(head, 'like'))
+
+    return type ? [{ name: wordAt(head, 'name') ?? '', type }] : []
+  })
 
   // A form NAMED for a primitive registers no record-type: the compiler uses the native representation, and a
   // record-type of that name would clash with it. Its methods are still desugared, typed over the primitive.
@@ -1267,10 +2079,55 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
 
   if (!self) {
     const fields = formsAt(value, 'link').map(link => fieldOf(bridge, link))
-    const variants = formsAt(value, 'case').map(arm => ({
-      name: wordAt(arm, 'name') ?? '',
-      fields: formsAt(arm, 'link').map(link => fieldOf(bridge, link)),
+    // `like <base>` on a form: with children it EXTENDS the base (`bind` pins one of its fields, `link` adds a
+    // prop, `head` names a type argument), and with none it is a transparent ALIAS of it
+    const like = firstAt(value, 'like')
+    const base = typeOf(bridge, like)
+    const pins = formsAt(like, 'bind').map(pin => ({
+      name: wordAt(pin, 'name') ?? '',
+      value:
+        expressionOf(bridge, firstAt(pin, 'seed')) ??
+        ({
+          form: 'string' as const,
+          value: wordAt(pin, 'text') ?? '',
+          span: spanOf(pin),
+        }),
     }))
+    const links = formsAt(like, 'link').map(link => fieldOf(bridge, link))
+    // Only a `head` that carries a `like` or a `link` of its own counts. A bare `head t` under the base is a
+    // positional type ARGUMENT (`like list / head text`), and `head t / base function` in the binding files is
+    // a bound, and neither makes the form an extension of its base: `form class-decorator / like task /
+    // head t-function / base function` is an ALIAS for a function type. Counting them turned every one of
+    // those into an extension of `task` with an empty body.
+    const heads = formsAt(like, 'head')
+      .filter(head => firstAt(head, 'like') || at(head, 'link').length > 0)
+      .map(head => {
+        const type = typeOf(bridge, firstAt(head, 'like'))
+
+        return {
+          name: wordAt(head, 'name') ?? '',
+          ...(type ? { type } : {}),
+          span: spanOf(head),
+        }
+      })
+    const extend =
+      base && (pins.length > 0 || links.length > 0 || heads.length > 0)
+        ? { base, heads, links, pins, span: spanOf(like) }
+        : undefined
+    const alias =
+      base && !extend && fields.length === 0 ? base : undefined
+    const variants = formsAt(value, 'case').map(arm => {
+      // `case face, like face-rule` is a single-payload variant: its one field is called `value`
+      const payload = typeOf(bridge, firstAt(arm, 'like'))
+      const armFields = formsAt(arm, 'link').map(link => fieldOf(bridge, link))
+
+      return {
+        name: wordAt(arm, 'name') ?? '',
+        fields: payload
+          ? [...armFields, { name: 'value', type: payload }]
+          : armFields,
+      }
+    })
 
     out.push({
       form: 'record-type',
@@ -1278,7 +2135,14 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
       params,
       fields,
       variants,
-      functionFree: fields.every(f => f.type.kind !== 'function'),
+      ...(indices.length > 0 ? { indices } : {}),
+      ...(alias ? { alias } : {}),
+      ...(extend ? { extend } : {}),
+      functionFree:
+        fields.every(f => f.type.kind !== 'function') &&
+        variants.every(v =>
+          v.fields.every(f => f.type.kind !== 'function'),
+        ),
       truncation: false,
       span: spanOf(value),
     })
@@ -1294,6 +2158,23 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
     args: params.map(p => ({ kind: 'named' as const, name: p })),
   }
   bridge.ownerParams = params
+
+  // `wear <mask>` blocks inside the form are trait instances for it
+  for (const worn of formsAt(value, 'wear')) {
+    const mask = wordAt(worn, 'name')
+
+    if (mask !== undefined) {
+      out.push({
+        form: 'instance',
+        mask,
+        target: name,
+        methods: formsAt(worn, 'task')
+          .map(task => wordAt(task, 'name') ?? '')
+          .filter(Boolean),
+        span: spanOf(worn),
+      })
+    }
+  }
 
   for (const task of formsAt(value, 'task')) {
     const built = functionOf(bridge, task)
@@ -1341,12 +2222,130 @@ function topLevelInOrder(
     .map(entry => entry.capture)
 }
 
+// A reference is a `variable` expression (a read or a call), a `record` construction, or a `named` type. A
+// definition's own name is none of those, and an alias names something imported rather than defined here, so
+// every match is a genuine reference.
+function applyAliases(
+  aliases: Map<string, string>,
+  program: Program,
+): void {
+  if (aliases.size === 0) {
+    return
+  }
+
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      node.forEach(walk)
+
+      return
+    }
+
+    if (!node || typeof node !== 'object') {
+      return
+    }
+
+    const record = node as Record<string, unknown>
+
+    if (
+      (record.form === 'variable' || record.form === 'record') &&
+      typeof record.name === 'string'
+    ) {
+      record.name = aliases.get(record.name) ?? record.name
+    } else if (
+      record.kind === 'named' &&
+      typeof record.name === 'string'
+    ) {
+      record.name = aliases.get(record.name) ?? record.name
+    }
+
+    for (const key in record) {
+      const value = record[key]
+
+      if (value && typeof value === 'object') {
+        walk(value)
+      }
+    }
+  }
+
+  walk(program)
+}
+
+// The line the grammar stopped on, rendered as words. Without this a refusal names the file and nothing else,
+// which for a 40-line `form` is not a lead, and for a source string a suite wrote inline there is no file to go
+// and look at. Two levels: the node's own words, then the head word of each child.
+function outlineOf(node: Node | undefined): string {
+  if (!node) {
+    return '(nothing)'
+  }
+
+  if (node.kind === 'name') {
+    return node.parts
+      .map(part => (part.kind === 'chunk' ? part.text : '{}'))
+      .join('')
+  }
+
+  if (node.kind === 'text') {
+    return `<${node.parts
+      .map(part => (part.kind === 'chunk' ? part.text : '{}'))
+      .join('')}>`
+  }
+
+  if (node.kind !== 'group') {
+    return node.kind
+  }
+
+  const words: string[] = []
+  const kids: string[] = []
+
+  for (const child of node.nodes) {
+    if (child.kind === 'group') {
+      kids.push(outlineOf(child.nodes[0]))
+    } else {
+      words.push(outlineOf(child))
+    }
+  }
+
+  return kids.length
+    ? `${words.join(' ')} > ${kids.join(' ')}`
+    : words.join(' ')
+}
+
+// The baked grammar, parsed once. `pnpm term:mill-bundle` writes the text; parsing it is cheap and happens on
+// the first compile rather than at import time, so a tool that never mills never pays for it.
+let baked: { mine: MineGrammar; mint: MintGrammar } | undefined
+
+function bakedGrammar(): { mine: MineGrammar; mint: MintGrammar } {
+  if (!baked) {
+    const mine = parse({ file: 'code-mine.tree', text: MINE_SOURCE })
+    const mint = parse({ file: 'code-mint.tree', text: MINT_SOURCE })
+
+    baked = {
+      mine: mine.ok ? readMineGrammar(mine.tree) : new Map(),
+      mint: mint.ok ? readMintGrammar(mint.tree) : new Map(),
+    }
+  }
+
+  return baked
+}
+
 export function millByGrammar(
   tree: RootNode,
   file: string,
-  grammar: LoadedGrammar,
+  // the file's ROLE, from the project's role.tree. `site` and `call` decide what a `hook` is: a URL route or a
+  // CLI command. Absent for a file no role rule matches, which is most of them. Third, so this is a drop-in
+  // for the reader it replaces.
+  role?: string,
+  // the grammar to read with. Omitted, the baked one is used, which is what the compiler does; the parity gate
+  // passes the one it loaded from disk so a grammar edit is measured before it is baked.
+  grammar: { mine: MineGrammar; mint: MintGrammar } = bakedGrammar(),
 ): MillResult {
-  const bridge: Bridge = { file, diagnostics: [], declared: new Set() }
+  const bridge: Bridge = {
+    file,
+    role,
+    diagnostics: [],
+    declared: new Set(),
+    aliases: new Map(),
+  }
   const mined = runMine(grammar.mine, 'code', tree)
 
   if (!mined.ok) {
@@ -1356,7 +2355,7 @@ export function millByGrammar(
         diagnose('unexpected-node', {
           file,
           span: mined.at ? spanOfWhole(mined.at) : ZERO_SPAN,
-          message: 'the code grammar does not match this file',
+          message: `the code grammar does not match this file, at \`${outlineOf(mined.at)}\``,
         }),
       ],
     }
@@ -1382,6 +2381,8 @@ export function millByGrammar(
   if (bridge.diagnostics.length > 0) {
     return { ok: false, diagnostics: bridge.diagnostics }
   }
+
+  applyAliases(bridge.aliases, program)
 
   return { ok: true, program }
 }

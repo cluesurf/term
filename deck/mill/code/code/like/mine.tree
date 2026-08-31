@@ -1,3 +1,6 @@
+load @term/mill/code/code/drop/mine
+  find drop
+
 load @term/mill/code/code/call/mine
   find call
 
@@ -40,22 +43,31 @@ mine like
           site need
         mine form, like fall
           site fall
+        mine form, like like-bind
+          site bind
+        mine form, like link
+          site link
+        mine form, like head
+          site head
+        # the binding dialect's own words, matched here so a `like` that carries one still reads. See drop/mine.tree.
+        mine form, like drop
+          site drop
         mine term
           site arg
   # The parts that follow the `like` group as SIBLINGS: the extension syntax of a form that is `like` a base
-  # (`bind` pins a field, `link` adds a prop, `head` names a type argument). A nested `like` is deliberately NOT
-  # here: `like hash` over `like text` and `like number` wants two siblings under hash, and a trailing
-  # alternative would let the first one swallow the second as its own child.
-  mine list
-    mine any
-      mine form, like like-bind
-        site bind
-      mine form, like link
-        site link
-      mine form, like head
-        site head
-      mine form, like take
-        site take
+  # (`bind` pins a field, `link` adds a prop, `head` names a type argument).
+  #
+  # A nested `like` is deliberately NOT here: `like hash` over `like text` and `like number` wants two siblings
+  # under hash, and a trailing alternative would let the first one swallow the second as its own child.
+  #
+  # Neither is `take`. A `take` written after a `like` belongs to whatever DECLARED the like: for `link work,
+  # like task` it is the function type's parameter and the link captures it, and for `task f / like u32 / take
+  # text` it is the task's own parameter. Letting the like swallow it cost `hash-djb2-xor` its only argument.
+  # Nothing trails a `like`. Its parts are its own children, matched by the list above: the extension syntax
+  # of a form that is `like` a base (`bind` pins a field, `link` adds a prop, `head` names a type argument)
+  # sits INSIDE the like group, and a `bind` or `take` written beside it belongs to whatever declared the
+  # like. Every trailing alternative this rule ever had swallowed a sibling that was not its own: a nested
+  # `like`, the statement after a `like void`, a task's parameter, a CLI parameter's default.
 
 # `bind note, <Invalid>` under an exception `like`: pins a field of the base form
 mine like-bind

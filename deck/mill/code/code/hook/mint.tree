@@ -1,11 +1,14 @@
+load @term/mill/code/code/drop/mint
+  find drop
+
 load @term/mill/code/code/bind/mint
   find bind
 
 load @term/mill/code/code/form/case/mint
   find base
 
-load @term/mill/code/code/seed/seed/mint
-  find host
+load @term/mill/code/code/note/mint
+  find note
 
 load @term/mill/code/code/take/mint
   find take
@@ -16,6 +19,9 @@ load @term/mill/code/code/task/mint
 load @term/mill/code/code/tool/flow/mint
   find flow
 
+load @term/mill/code/code/view/mint
+  find view-def
+
 load @term/seed/code/lang
   find code-hook
 
@@ -24,25 +30,34 @@ mint hook, like code-hook
     site name
   case fork-name
     site fork-name
+  case note
+    site note
   case take
     site take
-  case host
-    site host
   case bind
     site bind
   case base
     site base
-  case flow
-    site flow
   case task
     site task
+  case hook
+    site hook
+  case view, mint view-def
+    site view
+  case flow
+    site flow
+  case drop
+    site drop
   hook make
     make hook
       bind name, read name
       bind fork-name, read fork-name
+      bind note, read note
       bind take, read take
-      bind host, read host
       bind bind, read bind
       bind base, read base
-      bind flow, read flow
       bind task, read task
+      bind hook, read hook
+      bind view, read view
+      bind flow, read flow
+      bind drop, read drop

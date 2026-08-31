@@ -26,8 +26,20 @@ mine fork-roll
     mine form, like fork-arm-hook
       site arm
 
+# `fork test` with `hook test` / `hook hold` / `hook miss` arms, or `fork test, <condition>` with the condition
+# written inline and the arms under it.
+#
+# THE ARMS ARE MATCHED TWICE, before the condition and after it, and that is deliberate. An arm is always
+# headed `hook` and a condition never is, but the grammar has no way to say "anything except a hook", and the
+# value alternation ends in a fallback that takes any headed group at all. Written condition-first, that
+# fallback swallows the first `hook test` arm as the condition and the whole fork comes out as a call to
+# `hook`. Matching the arms first leaves the condition slot for something that is not an arm, which is exactly
+# what it is for.
 mine fork-test
   mine term, term test
+  mine list
+    mine form, like fork-arm-hook
+      site arm
   mine maybe
     mine any
       mine form, like seed

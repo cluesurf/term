@@ -1,3 +1,9 @@
+load @term/mill/code/code/head/mine
+  find head
+
+load @term/mill/code/code/note/mine
+  find note
+
 load @term/mill/code/code/dock/mine
   find dock-bind-line
 
@@ -11,10 +17,18 @@ load @term/mill/code/code/like/mine
 load @term/mill/code/code/seed/mine
   find seed
 
+# `bind <name>, <value>` is a named argument. `bind <value>` with no name is the DEFAULT of the parameter it
+# sits under, which is how a CLI takes one (`take runs, like number` over `bind 3000`), so the name is
+# optional and a bare literal is the value.
 mine bind
   mine term, term bind
-    mine term
-      site name
+    mine any
+      # `mine word`, so only a word with NOTHING under it is read as the NAME. `bind read x` and `bind call f`
+      # are values, and `mine term` would have taken the head of either as a name.
+      mine word
+        site name
+      mine form, like seed
+        site seed
     mine maybe
       mine form, like seed
         site seed
@@ -25,9 +39,20 @@ mine bind-def
   mine term, term bind
     mine term
       site name
+    # a generic bind names its type arguments the way a task does
+    mine list
+      mine form, like head
+        site head
+    # `note async` sits with the signature, and it may be written before the takes or after them
+    mine list
+      mine form, like note
+        site note
     mine list
       mine form, like take
         site take
+    mine list
+      mine form, like note
+        site note
     mine maybe
       mine form, like like
         site like

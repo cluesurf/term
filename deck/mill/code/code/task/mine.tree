@@ -1,3 +1,6 @@
+load @term/mill/code/code/drop/mine
+  find drop
+
 
 load @term/mill/code/code/head/mine
   find head
@@ -35,6 +38,9 @@ load @term/mill/code/code/form/link/mine
 load @term/mill/code/code/tree/slot/mine
   find slot
 
+load @term/mill/code/code/form/mine
+  find form-nick
+
 # a task's parts come in ANY order in real source (`note async` before the takes, `like` between takes and
 # body), so the rule is one list of alternatives, not a fixed sequence
 mine task
@@ -67,5 +73,12 @@ mine task
           site link
         mine form, like slot
           site slot
+        mine form, like form-nick
+          site nick
+        mine form, like drop
+          site drop
+        # LAST. `mine flow` ends in the generic value fallback, which takes any headed group, so anything
+        # listed after it is unreachable: a `name <getRandomValues>` read as a call to `name`, a `head t` read
+        # as a call to `head`.
         mine form, like flow
           site flow

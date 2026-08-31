@@ -1,3 +1,6 @@
+load @term/mill/code/code/drop/mint
+  find drop
+
 load @term/mill/code/code/fall/mint
   find fall
 
@@ -21,6 +24,8 @@ mint head
     site fall
   case base, mint seed
     site base
+  case drop
+    site drop
   hook make
     make head
       bind name, read name
@@ -28,3 +33,4 @@ mint head
       bind need, read need
       bind fall, read fall
       bind base, read base
+      bind drop, read drop
