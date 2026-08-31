@@ -20,11 +20,34 @@ import {
 } from './read'
 import type { Form } from './read'
 
+// The manifest of the project in `dir`.
+//
+// A missing one is the ORDINARY case of running a package command outside a project, so it is answered with a
+// sentence rather than by letting Node's ENOENT out. Five verbs (`host`, `load`, `note`, `save`, `toss`) all reach
+// the manifest through here, and every one of them used to print
+//
+//   ENOENT: no such file or directory, open '/private/var/folders/8x/z26.../T/tmp.pQBAV0ypyb/deck.tree'
+//
+// which names an absolute path on the machine it ran on, says nothing about what to do, and reads as a crash rather
+// than as "you are not in a Term project". term-cli-0005.
 export async function loadManifest(input: {
   dir: string
 }): Promise<DeckManifest> {
   const file = path.join(input.dir, 'deck.tree')
-  const text = await fsp.readFile(file, 'utf-8')
+
+  let text: string
+
+  try {
+    text = await fsp.readFile(file, 'utf-8')
+  } catch (error) {
+    if ((error as { code?: string }).code === 'ENOENT') {
+      throw new Error(
+        'no deck.tree here, so this is not a Term project. Run `term wake <name>` to start one, or change to a directory that has one.',
+      )
+    }
+
+    throw error
+  }
 
   return parseManifest({ text })
 }

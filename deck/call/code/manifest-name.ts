@@ -20,8 +20,14 @@ function headName(group: GroupNode): string | undefined {
   return first?.kind === 'name' ? renderHead(first) : undefined
 }
 
-// the first argument of a manifest's top-level `<head>` statement (`deck @term/site` -> `@term/site`,
-// `role ./mill` -> `./mill`), or undefined when the manifest has no such statement
+// the first argument of a manifest's `<head>` statement (`deck @term/site` -> `@term/site`, `role ./roles` ->
+// `./roles`), or undefined when the manifest has none.
+//
+// A manifest head sits in one of TWO places, which is the whole reason this is not a one-liner: at the top level
+// (`boot ./hook/blog` in deck/site/test/site/deck.tree), or as a CHILD of the `deck` statement, which is where
+// `head`, `code`, `lock`, `bear` and `role` are written. The regex this replaced was anchored `^\s*`, so it happened
+// to find both and nobody had to think about it; a reader that walked only the top level silently stopped finding
+// `role ./roles` and a project's role file went unread. test/compile/host-tools.ts holds that case.
 export function manifestValue(
   text: string,
   file: string,
@@ -33,15 +39,27 @@ export function manifestValue(
     return undefined
   }
 
-  for (const group of parsed.tree.nodes) {
-    if (headName(group) !== head) {
-      continue
-    }
-
+  const argumentOf = (group: GroupNode): string | undefined => {
     const first = group.nodes[1]
 
-    if (first?.kind === 'group') {
-      const value = headName(first)
+    return first?.kind === 'group' ? headName(first) : undefined
+  }
+
+  const groups = parsed.tree.nodes.filter(
+    (node): node is GroupNode => node.kind === 'group',
+  )
+
+  // the `deck` statement's children, then the top level, so the manifest's own block wins when both spell a head
+  const deck = groups.find(group => headName(group) === 'deck')
+  const nested = deck
+    ? deck.nodes
+        .slice(1)
+        .filter((node): node is GroupNode => node.kind === 'group')
+    : []
+
+  for (const group of [...nested, ...groups]) {
+    if (headName(group) === head) {
+      const value = argumentOf(group)
 
       if (value !== undefined) {
         return value

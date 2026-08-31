@@ -550,7 +550,38 @@ export function compileProjectSeparate(
   let reused = 0
 
   const errors: string[] = []
-  const artifacts = new Map<string, string>()
+
+  // Artifacts are written AS THEY ARE PRODUCED, and this remembers only which paths have been written.
+  //
+  // It used to be a `Map<path, content>` drained after the loop, which held every emitted file's TEXT until the whole
+  // project had compiled: O(files) in emitted bytes, tens of kilobytes each. The map was there to dedupe, because a
+  // shared module's `.unit` artifact is produced by every entry that imports it. A Set of PATHS dedupes exactly as
+  // well at about a hundred bytes an entry, and the write itself is already content-addressed, so nothing changes
+  // except how much is resident. See test/compile/build-memory.ts for the shape this protects.
+  const written_paths = new Set<string>()
+
+  // content-addressed: an unchanged artifact is left untouched, so a rebuild touches only what differs
+  const writeArtifact = (outPath: string, content: string): void => {
+    if (written_paths.has(outPath)) {
+      return
+    }
+
+    written_paths.add(outPath)
+
+    let existing: string | undefined
+
+    try {
+      existing = readFileSync(outPath, 'utf8')
+    } catch {
+      existing = undefined
+    }
+
+    if (existing !== content) {
+      mkdirSync(path.dirname(outPath), { recursive: true })
+      writeFileSync(outPath, content)
+      written++
+    }
+  }
 
   for (const file of files) {
     const text = readFileSync(file, 'utf8')
@@ -561,7 +592,7 @@ export function compileProjectSeparate(
 
       if (sheet.ok && typeof sheet.css === 'string') {
         compiled++
-        artifacts.set(
+        writeArtifact(
           path.join(
             root,
             'host',
@@ -599,7 +630,7 @@ export function compileProjectSeparate(
     reused += result.reused.length
 
     for (const [mfile, emit] of result.modules) {
-      artifacts.set(
+      writeArtifact(
         path.join(root, 'host', '.unit', `${slug(mfile)}.ts`),
         emit.code,
       )
@@ -621,27 +652,10 @@ export function compileProjectSeparate(
       .split(path.sep)
       .join('/')
 
-    artifacts.set(
+    writeArtifact(
       outPath,
       `export * from '${toUnit.startsWith('.') ? toUnit : `./${toUnit}`}'\n`,
     )
-  }
-
-  // content-addressed writes: an unchanged artifact is left untouched
-  for (const [outPath, content] of artifacts) {
-    let existing: string | undefined
-
-    try {
-      existing = readFileSync(outPath, 'utf8')
-    } catch {
-      existing = undefined
-    }
-
-    if (existing !== content) {
-      mkdirSync(path.dirname(outPath), { recursive: true })
-      writeFileSync(outPath, content)
-      written++
-    }
   }
 
   return { compiled, written, failed, errors, built, reused }

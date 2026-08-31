@@ -97,14 +97,21 @@ for (const [index, file] of files.slice(0, HIGH).entries()) {
 
 const ratio = low > 0 ? high / low : Infinity
 
+const flat = ratio <= LIMIT
+
 console.log(
-  `\nterm build-memory: ${low} MB at ${LOW} files, ${high} MB at ${HIGH}, ratio ${ratio.toFixed(2)} (limit ${LIMIT})`,
+  `  ${low} MB at ${LOW} files, ${high} MB at ${HIGH}, ratio ${ratio.toFixed(2)} (limit ${LIMIT})`,
 )
 
-if (ratio > LIMIT) {
+if (!flat) {
   console.log(
-    'Memory grows with the FILE count, so something is retained per entry rather than per module.\n' +
-      'The usual cause is a cache that is not bounded. See deck/make/code/compile/cache.ts.',
+    '  Memory grows with the FILE count, so something is retained per entry rather than per module.\n' +
+      '  The usual cause is a cache that is not bounded. See deck/make/code/compile/cache.ts.',
   )
+}
+
+console.log(`\nbuild-memory: ${flat ? 1 : 0} pass, ${flat ? 0 : 1} fail`)
+
+if (!flat) {
   process.exit(1)
 }

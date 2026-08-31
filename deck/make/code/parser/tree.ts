@@ -353,6 +353,16 @@ function buildTree(
 
           here.nodes.push(node)
           setParent(node, here)
+        } else if (here.kind === 'root') {
+          // the same mistake an INTEGER head makes, and it deserves the same sentence. It used to fall through to
+          // `unexpected(event)` and say only "unexpected decimal here", which names the token kind and not the problem.
+          diagnostics.push(
+            diagnose('invalid-nesting', {
+              file,
+              span: event.token.span,
+              hint: 'a bare number is a value, not a name, so it cannot be the head of a line',
+            }),
+          )
         } else {
           unexpected(event)
         }
@@ -378,6 +388,16 @@ function buildTree(
 
           here.nodes.push(node)
           setParent(node, here)
+        } else if (here.kind === 'root') {
+          // the same mistake an INTEGER head makes, and it deserves the same sentence. It used to fall through to
+          // `unexpected(event)` and say only "unexpected radix here", which names the token kind and not the problem.
+          diagnostics.push(
+            diagnose('invalid-nesting', {
+              file,
+              span: event.token.span,
+              hint: 'a bare number is a value, not a name, so it cannot be the head of a line',
+            }),
+          )
         } else {
           unexpected(event)
         }

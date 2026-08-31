@@ -5,11 +5,17 @@
 //
 // ./file/kink holds sources that must be REFUSED, with the expected diagnostic message after the `---`.
 //
+// It also holds the COVERAGE rule: every diagnostic the parser can emit has a fixture pinning its message. A
+// diagnostic nothing pins can change its wording, or stop firing altogether, and no test would notice. The set is
+// read from the parser's own source rather than listed here, so a new one fails this until somebody writes the
+// fixture (tree-parser-0006).
+//
 // Run: npx tsx test/parser/fixture.ts   (FIND=<substr> to run a subset)
 
 import { readdirSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse, printTree } from '@term/make/code/parser/tree'
+import { CATALOG } from '@term/make/code/parser/diagnostic'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const DIR = join(HERE, 'file')
@@ -60,8 +66,17 @@ function runTree(file: string, source: string, expected: string): void {
   failures.push(`${file}\n--- got ---\n${got}\n--- want ---\n${expected}`)
 }
 
+// every diagnostic NAME the kink fixtures actually produce, for the coverage check below
+const pinned = new Set<string>()
+
 function runKink(file: string, source: string, expected: string): void {
   const result = parse({ file, text: source })
+
+  if (!result.ok) {
+    for (const diagnostic of result.diagnostics) {
+      pinned.add(diagnostic.name)
+    }
+  }
 
   if (result.ok) {
     fail++
@@ -127,6 +142,36 @@ function walk(dir: string, kink: boolean): void {
 
 walk(DIR, false)
 walk(join(DIR, 'kink'), true)
+
+// COVERAGE: every diagnostic the parser can emit is pinned by a kink fixture. The emittable set is read from the
+// parser's own source and compared against what the fixtures actually PRODUCE, not against the catalog's message:
+// `unexpected()` overrides the catalog text with `unexpected <kind> here`, so matching on the message would report a
+// pinned diagnostic as unpinned. Adding a diagnostic fails this until a fixture exists.
+const parserSource = ['tree.ts', 'token.ts', 'event.ts']
+  .map(name => {
+    try {
+      return readFileSync(join(HERE, '../../deck/make/code/parser', name), 'utf8')
+    } catch {
+      return ''
+    }
+  })
+  .join('\n')
+
+for (const name of Object.keys(CATALOG)) {
+  if (!new RegExp(`['"\`]${name}['"\`]`).test(parserSource)) {
+    continue
+  }
+
+  if (pinned.has(name)) {
+    pass++
+    continue
+  }
+
+  fail++
+  failures.push(
+    `no kink fixture produces "${name}"\n  the parser can emit it, so add a file/kink/*.tree that does`,
+  )
+}
 
 for (const line of failures) {
   console.log(`FAIL  ${line}\n`)

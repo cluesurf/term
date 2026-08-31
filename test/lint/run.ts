@@ -39,6 +39,27 @@ function findings(text: string) {
 }
 
 function main(): void {
+  // L005: an empty BLOCK, and never a signature-only task.
+  //
+  // The rule had no test, and that is exactly how it came to report 4,757 findings across the stdlib, @term/site,
+  // @term/face and @term/host: it flagged every task with no body. A signature-only task is a deliberate, documented
+  // construct that emits a native stub, which is how a binding library is written. Both directions are pinned here.
+  {
+    const declaration = `task later\n  take x, like number\n  like number\n`
+    ok(
+      'L005 leaves a signature-only task alone',
+      findings(declaration).filter(f => f.code === 'L005').length === 0,
+      JSON.stringify(findings(declaration).filter(f => f.code === 'L005')),
+    )
+
+    const emptyBranch = `task go\n  fork test\n    hook test\n      true\n    hook hold\n    hook miss\n      show <x>\n`
+    ok(
+      'L005 catches an empty fork branch',
+      findings(emptyBranch).filter(f => f.code === 'L005').length >= 1,
+      JSON.stringify(findings(emptyBranch)),
+    )
+  }
+
   // L003: redundant arithmetic, with a verbatim-slice fix
   {
     const text = `save y\n  call add\n    read x\n    code 0\n`
