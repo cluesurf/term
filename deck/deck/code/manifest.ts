@@ -135,6 +135,13 @@ export function parseManifestByHand(input: { text: string }): DeckManifest {
     }
   }
 
+  // `make <security>` is repeatable, and `cite` has the same shape as `mind`
+  const make = formsWith(root, 'make')
+    .map(f => f.value ?? f.terms[0] ?? '')
+    .filter(Boolean)
+
+  const cite = formsWith(root, 'cite').map(toMind)
+
   const dir = (h: string): string | undefined => termOf(root, h)
 
   return {
@@ -162,6 +169,15 @@ export function parseManifestByHand(input: { text: string }): DeckManifest {
     deck: deck.length > 0 ? deck : undefined,
     devLink: devLink.length > 0 ? devLink : undefined,
     hostLink: hostLink.length > 0 ? hostLink : undefined,
+    // the fields the grammar knows that this reader used to walk past. Anything read here has to be written back
+    // in writeManifest, or the round trip deletes it. See the note on DeckManifest.
+    bear: dir('bear'),
+    boot: dir('boot'),
+    tool: dir('tool'),
+    text: valueOf(root, 'text'),
+    mark: valueOf(root, 'mark') ?? termOf(root, 'mark'),
+    make: make.length > 0 ? make : undefined,
+    cite: cite.length > 0 ? cite : undefined,
   }
 }
 
@@ -229,8 +245,16 @@ export function writeManifest(input: {
   lines.push(`deck ${fullName}`)
   lines.push(`  code <${showCode(m.code)}>`)
 
+  if (m.mark) {
+    lines.push(`  mark <${m.mark}>`)
+  }
+
   if (m.head) {
     lines.push(`  head <${m.head}>`)
+  }
+
+  if (m.text) {
+    lines.push(`  text <${m.text}>`)
   }
 
   if (m.hide) {
@@ -256,6 +280,12 @@ export function writeManifest(input: {
   if (m.term) {
     for (const t of m.term) {
       lines.push(`  term <${t}>`)
+    }
+  }
+
+  if (m.make) {
+    for (const k of m.make) {
+      lines.push(`  make <${k}>`)
     }
   }
 
@@ -321,6 +351,18 @@ export function writeManifest(input: {
     lines.push(`  test ${m.test}`)
   }
 
+  if (m.bear) {
+    lines.push(`  bear ${m.bear}`)
+  }
+
+  if (m.boot) {
+    lines.push(`  boot ${m.boot}`)
+  }
+
+  if (m.tool) {
+    lines.push(`  tool ${m.tool}`)
+  }
+
   if (m.mind) {
     for (const f of m.mind) {
       let mindLine = `  mind <${f.name}>`
@@ -330,6 +372,23 @@ export function writeManifest(input: {
       }
 
       lines.push(mindLine)
+
+      if (f.site) {
+        lines.push(`    site <${f.site}>`)
+      }
+    }
+  }
+
+  // `cite` is `mind`'s shape under another head: attribution rather than authorship
+  if (m.cite) {
+    for (const f of m.cite) {
+      let citeLine = `  cite <${f.name}>`
+
+      if (f.base) {
+        citeLine += `, base <${f.base}>`
+      }
+
+      lines.push(citeLine)
 
       if (f.site) {
         lines.push(`    site <${f.site}>`)

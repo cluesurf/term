@@ -22,7 +22,7 @@ export async function callMove(input: {
 }): Promise<void> {
   if (input.target !== 'code') {
     logFail(
-      `Unknown move target: ${input.target}. Use: seed move code [1|2|3]`,
+      `Unknown move target: ${input.target}. Use: term move code [1|2|3]`,
     )
     process.exit(1)
   }

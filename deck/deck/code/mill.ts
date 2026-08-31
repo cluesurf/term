@@ -225,6 +225,23 @@ export function parseManifestMill(input: {
   const dir = (site: string): string | undefined =>
     siteWord(first(fields.get(site)), 'path')
 
+  // `make <security>` is repeatable, and `cite` is `mind`'s shape under another head
+  const make = matches(fields.get('make'))
+    .map(m => word(first(m.get('text'))) ?? '')
+    .filter(Boolean)
+
+  const cite = matches(fields.get('cite')).map((m): DeckMind => {
+    const entry: DeckMind = { name: word(first(m.get('name'))) ?? '' }
+    const base = word(first(m.get('base')))
+
+    if (base !== undefined) {
+      entry.base = base
+    }
+
+    return entry
+  })
+
+  const markCapture = first(fields.get('mark'))
   const hideCapture = first(fields.get('hide'))
   const siteCapture = first(fields.get('site'))
   const viewCapture = first(fields.get('view'))
@@ -254,6 +271,15 @@ export function parseManifestMill(input: {
     deck: deck.length > 0 ? deck : undefined,
     devLink: devLink.length > 0 ? devLink : undefined,
     hostLink: hostLink.length > 0 ? hostLink : undefined,
+    // the fields this reader used to walk past. Anything read here has to be written back in writeManifest, or
+    // the round trip DELETES it from the file. See the note on DeckManifest, and deck/deck/test/round-trip.ts.
+    bear: dir('bear'),
+    boot: dir('boot'),
+    tool: dir('tool'),
+    text: siteWord(first(fields.get('text')), 'text'),
+    mark: siteWord(markCapture, 'text') ?? siteWord(markCapture, 'term'),
+    make: make.length > 0 ? make : undefined,
+    cite: cite.length > 0 ? cite : undefined,
   }
 }
 

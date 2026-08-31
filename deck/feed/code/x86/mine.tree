@@ -10,15 +10,15 @@ mine suffix
   mine form, form scale-index-base-byte
     mine check
       bind start, read mod-memory-register-byte/register
-      bind front, #b100
+      bind front, 0b100
   mine form, form displacement
     mine check
       bind start, read mod/reg
-      bind front, #b100
+      bind front, 0b100
   mine form, form immediate
     mine check
       bind start, read mod/reg
-      bind front, #b100
+      bind front, 0b100
 
 mine scale-index-base-byte
 
@@ -43,13 +43,13 @@ mine opcode-1
   mine form, form state-8
 
 mine opcode-2
-  mine binary, #h0F
+  mine binary, 0x0F
 
 mine opcode-3
-  mine binary, #h38
-  mine binary, #h3A
-  mine binary, #h7A
-  mine binary, #h7B
+  mine binary, 0x38
+  mine binary, 0x3A
+  mine binary, 0x7A
+  mine binary, 0x7B
 
 mine legacy-prefix
   mine maybe, mine form, form instruction-prefix
@@ -58,14 +58,14 @@ mine legacy-prefix
   mine maybe, mine form, form segment-override-prefix
 
 mine instruction-prefix
-  mine binary, #hF3
-  mine binary, #hF2
-  mine binary, #hF0
+  mine binary, 0xF3
+  mine binary, 0xF2
+  mine binary, 0xF0
 
 mine address-size-prefix
-  mine binary, #h67
+  mine binary, 0x67
 
 mine operand-size-prefix
-  mine binary, #h66
+  mine binary, 0x66
 
 mine segment-override-prefix

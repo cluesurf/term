@@ -36,6 +36,8 @@ import {
   runMemoryProfile,
   formatMemoryResult,
 } from '@term/make/code/time/memory'
+import { projectResolver } from '@term/call/code/make'
+import { withNativeEnv } from '@term/make/code/compile/native'
 
 export async function callTime(input: {
   root: string
@@ -51,7 +53,7 @@ export async function callTime(input: {
   memory?: string
   top?: number
 }): Promise<void> {
-  // profiling mode: `seed time --cpu <file>` / `--memory <file>` profiles one file's hotspots instead of benchmarking.
+  // profiling mode: `term time --cpu <file>` / `--memory <file>` profiles one file's hotspots instead of benchmarking.
   if (input.cpu || input.memory) {
     await runProfile({
       root: input.root,
@@ -64,6 +66,10 @@ export async function callTime(input: {
   }
 
   logStep('Running benchmarks...')
+
+  // the same resolver `term make` uses, so a benchmark file's imports resolve the way its build does. Without it
+  // `term time` reported every imported name as undefined on a project that compiles.
+  const resolve = withNativeEnv('node', projectResolver(input.root))
 
   try {
     const files = input.file
@@ -87,6 +93,7 @@ export async function callTime(input: {
         module = compileBenchmarks({
           text,
           file: relative,
+          resolve,
           filter: input.filter,
         })
       } catch (err) {
@@ -220,6 +227,8 @@ async function runProfile(input: {
 }): Promise<void> {
   const target = (input.cpu ?? input.memory)!
   const filePath = path.resolve(input.root, target)
+  // as above: profiling compiles the file, and it has to compile it the way the build does
+  const resolve = withNativeEnv('node', projectResolver(input.root))
 
   try {
     await fs.access(filePath)
@@ -238,6 +247,7 @@ async function runProfile(input: {
       const result = await runCpuProfile({
         text,
         file: relative,
+        resolve,
         root: input.root,
         name,
         top: input.top,
@@ -251,6 +261,7 @@ async function runProfile(input: {
       const result = await runMemoryProfile({
         text,
         file: relative,
+        resolve,
         root: input.root,
         name,
       })

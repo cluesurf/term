@@ -1,5 +1,5 @@
 // A node-backed persistent cache store for the compiler (Tier 1). Reads / writes JSON entries under `.base/@cluesurf/term/cache`, so a
-// cold `seed boot` / `seed make` reuses the parse + mill + compile work of a prior run. Writes are atomic (temp file
+// cold `term boot` / `term make` reuses the parse + mill + compile work of a prior run. Writes are atomic (temp file
 // then rename), so a killed build never leaves a truncated entry a later run would trust. Injected into `CompileCache`,
 // which keeps its own logic browser-safe. See note/seed/plan/compilation-performance.md (Tier 1).
 

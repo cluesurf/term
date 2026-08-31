@@ -20,7 +20,7 @@ export async function callLink(input: {
   deck?: string
 }): Promise<void> {
   // no argument: register the current package in the global link registry (~/.base/@cluesurf/term/link), so any project can later
-  // `seed link <name>` to use this working copy.
+  // `term link <name>` to use this working copy.
   if (!input.deck) {
     logStep('Registering current package globally...')
 
@@ -30,7 +30,7 @@ export async function callLink(input: {
       })
       logGood(`Registered ${name(fullName)}`)
       console.log(
-        fade(`  use it elsewhere with: seed link ${fullName}`),
+        fade(`  use it elsewhere with: term link ${fullName}`),
       )
     } catch (error) {
       logFail(formatError(error))

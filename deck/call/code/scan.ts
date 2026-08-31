@@ -1,4 +1,4 @@
-// `seed scan <file>`: type-check a file with its project's imports resolved, and report diagnostics. This is the
+// `term scan <file>`: type-check a file with its project's imports resolved, and report diagnostics. This is the
 // agent's fast inner-loop verifier. `--back json` returns `{ ok, diagnostics }` with codes + spans so a loop or skill
 // can decide "done" mechanically; the process exits non-zero on any error, so a plain shell check works too.
 

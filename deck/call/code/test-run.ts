@@ -1,7 +1,7 @@
 // The Seed test runner. A test file is ordinary Seed with `test <phrase>` blocks, each lowering (via the
 // preprocessor) to a zero-argument boolean task that ends in a `want`. This compiles the file, imports the module,
 // runs each test task (awaiting async ones), and returns the per-test results. It is parameterized by the resolver
-// and native-runtime reader so both the `seed test` CLI (project resolver) and the dev harness (stdlib tree) reuse
+// and native-runtime reader so both the `term test` CLI (project resolver) and the dev harness (stdlib tree) reuse
 // it. Pure logic, no process exit, no printing. See note/library/seed/test-dsl.md.
 
 import { mkdtempSync, writeFileSync } from 'node:fs'
@@ -80,7 +80,7 @@ export async function runTestFile(input: {
     }
   }
 
-  // a proof obligation that the compiler could not discharge is only a warning, but for `seed test` an unproven
+  // a proof obligation that the compiler could not discharge is only a warning, but for `term test` an unproven
   // `hold` is a failure: a stated proposition with no accepted proof must not pass. (A false proof is already a hard
   // `invalid-proof` error above.) So an unchecked hold fails the file, the same as a failing test.
   const unproven = (result.warnings ?? []).filter(

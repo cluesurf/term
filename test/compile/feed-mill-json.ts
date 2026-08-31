@@ -20,9 +20,9 @@
 //
 //   THE GENERATED SOURCE PARSES AND MILLS, so what comes out is Term rather than something that only looks like it.
 //
-//   THE VALUE DISPATCH IS REAL. `value-helper-0` peeks one character and branches to six of the seven json-value
-//   variants by code point, which is the dispatch every hand-written JSON reader makes. Before this it peeked and
-//   then fell into `halt <expected a match for value-helper-0>`.
+//   THE VALUE DISPATCH IS REAL. `value-helper-0` peeks one character and branches to all seven json-value variants
+//   by code point, which is the dispatch every hand-written JSON reader makes. Before this it peeked and then fell
+//   into `halt <expected a match for value-helper-0>`.
 //
 // Run: npx tsx test/compile/feed-mill-json.ts
 
@@ -39,13 +39,24 @@ const GRAMMAR = join(TERM, 'deck/feed/code/json/mine.tree')
 // Rules that do NOT read yet, each with the reason. A BASELINE, not permission: this fails if a rule outside the
 // list stops reading, and fails if one on it starts, so the list cannot grow quietly or rot. Emptying it is the
 // rest of format-mill-0003.
-const KNOWN_DROPPED: Record<string, string> = {
-  number:
-    'a SPAN CAPTURE (`take value, like text` with a `bind value` wrapping a bare `mine text`), whose value is the text its children consumed. It needs an accumulator threaded through nested rules; slicing the cursor instead is unsound because text-cursor-compact discards consumed text past 64 KiB',
-}
+// EMPTY, and it should stay that way. `number` was the last entry: it is a SPAN CAPTURE (`take value, like text`
+// with a `bind value` wrapping a bare `mine text`), and it reads since the span rule landed on 2026-08-30. The
+// span ACCUMULATES what each read returns rather than slicing the cursor, because text-cursor-compact discards
+// consumed text past 64 KiB and resets the position, so a start offset is not a thing a streaming cursor can be
+// asked to remember.
+const KNOWN_DROPPED: Record<string, string> = {}
 
 // how many rule objects each declared rule reads to, on 2026-08-30. A number that changes is a rule that gained or
 // lost a piece, and either is worth stopping for.
+// Rules that read to FEWER parts than the grammar gives them, with the reason. A count alone cannot say this: a
+// pinned 1 looks as settled as a pinned 4, and only a reader who counted the grammar's children would know one of
+// them is wrong. Named here so it is a recorded gap rather than a number nobody questions.
+// EMPTY, and it should stay that way. `number` was the last entry: it read 1 of its 4 children because
+// `mine maybe` without an explicit `test` had no reader, so the optional sign, fractional part and exponent were
+// dropped and only the integer digits survived. A bare maybe is decided by its own FIRST set now, and `number`
+// reads as one span over four children (maybe, form, maybe, maybe).
+const KNOWN_PARTIAL: Record<string, string> = {}
+
 const RULE_COUNT: Record<string, number> = {
   value: 1,
   string: 3,
@@ -53,19 +64,21 @@ const RULE_COUNT: Record<string, number> = {
   escape: 2,
   'unicode-escape': 2,
   'hex-digit': 1,
-  number: 0,
+  // one SPAN, over four children of its own
+  number: 1,
   digits: 1,
-  object: 4,
-  pair: 4,
-  array: 4,
+  object: 5,
+  // 6, not 4: `bind key` and `bind value` are named captures and read since the bind rule landed
+  pair: 6,
+  array: 5,
   true: 1,
   false: 1,
   null: 1,
   whitespace: 1,
 }
 
-// the six that dispatch by first character, as [variant, code point]. `number` is the seventh, and is the open
-// half of format-mill-0003.
+// all seven json-value variants, as [variant, a code point that selects it]. `number` was the last to arrive: its
+// FIRST set has to reach PAST the optional sign to the digits behind it, which is what firstOfSequence knows.
 const DISPATCH: [string, number][] = [
   ['string', 34], // "
   ['object', 123], // {
@@ -73,6 +86,7 @@ const DISPATCH: [string, number][] = [
   ['true', 116], // t
   ['false', 102], // f
   ['null', 110], // n
+  ['number', 45], // -
 ]
 
 let pass = 0
@@ -132,6 +146,15 @@ ok(
   miscounted.map(e => `${e.name}: ${e.got} not ${e.want}`).join(', '),
 )
 
+// the partial rules are still partial, and no new one has appeared
+const partialNames = Object.keys(KNOWN_PARTIAL)
+
+ok(
+  `${partialNames.length} rule(s) read only part of what the grammar gives them, each with a reason`,
+  partialNames.every(name => (grammar.get(name) ?? []).length > 0),
+  partialNames.join(', '),
+)
+
 const source = compileFeedMine(grammar, 'text', '@term/feed/code/base')
 const generated = parse({ file: 'json-generated.tree', text: source })
 
@@ -149,7 +172,9 @@ const dispatch = helperEnd < 0 ? helper : helper.slice(0, helperEnd)
 for (const [variant, code] of DISPATCH) {
   ok(
     `\`value\` dispatches code ${code} to read-${variant}`,
-    new RegExp(`code ${code}\\)[\\s\\S]{0,120}call read-${variant}\\(`).test(dispatch),
+    // the window is generous because a branch's test can be a chain of ors (`number` is a sign OR a digit range),
+    // and what matters is that this code selects this reader, not how tersely the condition is written
+    new RegExp(`code ${code}\\)[\\s\\S]{0,240}call read-${variant}\\(`).test(dispatch),
   )
 }
 

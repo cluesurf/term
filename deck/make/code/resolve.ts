@@ -1,6 +1,6 @@
 // Module resolution shared by every front end (the CLI, the dev server, the language server). It maps a `@scope/pkg`
 // import to a file on disk: `stdlibResolver` finds the stdlib that ships with this monorepo, `linkResolver` follows a
-// project's `seed link` symlinks, and `editorResolver` combines them for an opened file (so hover / completion see the
+// project's `term link` symlinks, and `editorResolver` combines them for an opened file (so hover / completion see the
 // same modules a build would). Living in the compiler (make) keeps every consumer one-way (call / flow -> make).
 
 import {
@@ -148,7 +148,7 @@ export function siblingResolver(): Resolver | undefined {
 }
 
 // resolve any `@scope/pkg/sub/path` import via the package manager's link dir (`<root>/link/@scope/pkg/...`), where
-// `seed link` symlinks each dependency. Follows the file-resolution rules (foo.tree, then foo/base.tree, foo/note.tree).
+// `term link` symlinks each dependency. Follows the file-resolution rules (foo.tree, then foo/base.tree, foo/note.tree).
 // This is how a project resolves its linked packages (@cluesurf/seed, @cluesurf/bind, @cluesurf/term, @cluesurf/site).
 export function linkResolver(root: string): Resolver {
   const linkDir = join(root, 'link')

@@ -1,3 +1,4 @@
+import type { Resolver } from '@term/make/code/compile/load'
 // The benchmark runner. Discovers `time-*` functions in a compiled program, runs them in a child `node` process
 // against the compiled artifact, and reduces the raw samples to statistics. Benchmarks are zero-argument top-level
 // functions whose name starts with `time-` (e.g. `task time-sort`).
@@ -42,11 +43,14 @@ export function discoverBenchmarks(
 export function compileBenchmarks(input: {
   text: string
   file: string
+  // the project resolver, so an entry with imports compiles the way `term make` compiles it
+  resolve?: Resolver
   filter?: string
 }): CompiledBenchmarks {
   const { code, program } = compileToModule({
     text: input.text,
     file: input.file,
+    resolve: input.resolve,
   })
 
   return { code, benchmarks: discoverBenchmarks(program, input.filter) }

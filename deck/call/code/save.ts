@@ -13,7 +13,7 @@ export async function callSave(input: {
   constraint?: string
 }): Promise<void> {
   if (!input.deck) {
-    logFail('Missing deck name. Usage: seed save <deck>')
+    logFail('Missing deck name. Usage: term save <deck>')
     process.exit(1)
   }
 

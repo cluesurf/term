@@ -12,7 +12,7 @@ export async function callToss(input: {
   deck?: string
 }): Promise<void> {
   if (!input.deck) {
-    logFail('Missing deck name. Usage: seed toss <deck>')
+    logFail('Missing deck name. Usage: term toss <deck>')
     process.exit(1)
   }
 

@@ -1,8 +1,12 @@
 note draft
-# Checked spec, not compiled code: `mine`/`form`/`any`/`range`/`send` are the feed grammar DSL's own vocabulary
-# (note/term/feed/01-grammar.md), never real Term identifiers, so this file can never pass `term make`'s type
-# checker and is shelved from the build on purpose, the same as every mine.tree/mint.tree in this package and in
-# @term/mill. The real, compiling reader for this dialect is ./code.tree. See note/term/feed/05-parser-and-mill.md.
+# `mine`/`form`/`any`/`range`/`send` are the feed grammar DSL's own vocabulary (note/term/feed/01-grammar.md) and
+# not Term identifiers, so this file is not compiled AS code. It is compiled FROM: `term make` recognises a
+# grammar, generates the reader it describes and compiles that (deck/call/code/make.ts, held by
+# test/compile/feed-mill-build.ts). What passes the type checker is the generated reader, not this.
+#
+# Still shelved with `note draft` only because ./code.tree still hand-writes `read-hex`, and two definitions of one
+# name in a package collide. Removing the marker is the hex half of format-mill-0007, and it goes together with
+# deleting that task from ./code.tree. See note/term/feed/05-parser-and-mill.md.
 #
 # `send <name>` emits a match as a named field on the enclosing rule. `take`/`bind` is reserved for parameters a
 # rule receives from its caller (mine int's width/order/sign, an offset passed down for mine at) — hex needs none.
@@ -16,6 +20,11 @@ note draft
 # the simplest dialect) discovered the original version of this file had no way to express "combine two nibble
 # captures into a byte" at all — every earlier session that hand-wrote ./code.tree's `read-hex` did that
 # combination in the reader's own logic, invisibly, without the grammar ever having to say it.
+
+# a `mine value` is an ordinary Term expression and may call a real helper, so the grammar imports what it calls
+# the way any other .tree does. `feedMineLoads` carries these into the generated reader verbatim.
+load ./code
+  find hex-digit-value
 
 mine hex
   mine list

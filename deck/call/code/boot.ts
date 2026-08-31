@@ -77,7 +77,7 @@ function nodeValue(group: GroupNode): string {
 // that the per-build hash does not already capture (e.g. a new prelude assembly rule).
 const BOOT_CACHE_EPOCH = '8'
 
-// the default port range: `seed boot` scans 2400..2499 for the first free port, so an app always starts on a good port
+// the default port range: `term boot` scans 2400..2499 for the first free port, so an app always starts on a good port
 // no matter where (or how many) you boot, with no manual `--port`.
 const BASE_PORT = 2400
 const MAX_PORT = 2499
@@ -106,7 +106,7 @@ async function findFreePort(start: number): Promise<number> {
   }
 
   throw new Error(
-    `no free port in ${start}..${MAX_PORT} (stop apps with \`seed halt\`)`,
+    `no free port in ${start}..${MAX_PORT} (stop apps with \`term halt\`)`,
   )
 }
 
@@ -498,7 +498,7 @@ export function writeBuildId(appDir: string): void {
 
 // recompile every look stylesheet (`site/style/*.tree`) to `build/style/*.css`, then bump the reload id. Look files are
 // self-contained (only `face` / `tone` / `base` statements), so they compile with no resolver. This is what makes
-// `seed boot` self-sufficient (no separate make step for CSS) and what the dev watcher calls on each style edit.
+// `term boot` self-sufficient (no separate make step for CSS) and what the dev watcher calls on each style edit.
 export function buildStyles(appDir: string): void {
   const styleDir = path.join(appDir, 'site', 'style')
 
@@ -593,7 +593,7 @@ export async function callBoot(input: {
 
     const env: NativeEnv = input.env ?? 'node'
 
-    // load the app's host env config (`bind/host/base.tree`), so a bare `seed boot` needs no inline env vars
+    // load the app's host env config (`bind/host/base.tree`), so a bare `term boot` needs no inline env vars
     const appDir = findAppDir(entry) ?? findAppDir(cwd)
     const loadedEnv = appDir ? loadHostEnv(appDir) : []
 
@@ -627,7 +627,7 @@ export async function callBoot(input: {
     }
 
     // the seed CLI's own install dir (the nearest `link/` ancestor of this module), used as a fallback link root so an
-    // app that has not run `seed link` itself still resolves `@cluesurf/*` through the install's stdlib links
+    // app that has not run `term link` itself still resolves `@cluesurf/*` through the install's stdlib links
     const installRoot = findProjectRoot(
       path.dirname(fileURLToPath(import.meta.url)),
     )
@@ -666,17 +666,17 @@ export async function callBoot(input: {
     const serverCwd = appDir ?? projectRoot
     const dev = process.env.NODE_ENV !== 'production'
 
-    // ONE persistent cache, reused across every rebuild (exactly as `seed make --watch` does). It is the turborepo-style
+    // ONE persistent cache, reused across every rebuild (exactly as `term make --watch` does). It is the turborepo-style
     // content-addressed store at `.base/@cluesurf/term/cache`: the in-memory layer survives across rebuilds in this process, and the
     // disk layer survives across runs and machines (and a remote, via pull/push above). So an unchanged module reuses
-    // its parse + mill, and an unchanged graph returns its whole result instantly -- the same reuse `seed make` gets.
+    // its parse + mill, and an unchanged graph returns its whole result instantly -- the same reuse `term make` gets.
     const cache = projectCache(projectRoot)
 
     // build the app ONCE: compile the entry, (re)build the client bundle + styles, bundle to ESM, and write the run
     // entry `run.mjs`. Returns its path plus whether the program is a command-line tool (top-level `hook` commands),
     // or null on a compile error (the rich diagnostics are printed and any running server is left up). This is the
     // SAME incremental compile (shared `.base/@cluesurf/term/cache`) and the SAME diagnostic renderer (`report.ts`) that
-    // `seed make` uses; only the output step (esbuild bundle + run entry) differs.
+    // `term make` uses; only the output step (esbuild bundle + run entry) differs.
     const buildOnce = async (): Promise<{
       run: string
       cli: boolean
@@ -957,7 +957,7 @@ export async function callBoot(input: {
       stops.push(watchStyles(appDir))
 
       // APP-CODE hot reload: on a `.tree` edit anywhere in the app, recompile + rebundle + restart the server. This is
-      // the SAME debounced, no-overlap watcher (`watchTreeFiles`) that `seed make --watch` uses -- the recompilation
+      // the SAME debounced, no-overlap watcher (`watchTreeFiles`) that `term make --watch` uses -- the recompilation
       // machinery is shared, only the build step differs. A compile error keeps the running server up (diagnostics
       // printed). Generated / dependency dirs are ignored.
       const codeWatcher = watchTreeFiles(

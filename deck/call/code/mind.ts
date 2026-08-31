@@ -1,9 +1,9 @@
-// `seed mind`: the project's durable memory -- one fact per file under `.base/@cluesurf/term/memory/`, with an index. This is what
+// `term mind`: the project's durable memory -- one fact per file under `.base/@cluesurf/term/memory/`, with an index. This is what
 // lets an unattended session (a disposable agent) start cold and still know the project's decisions and conventions.
 //
-//   seed mind <fact>            remember a fact
-//   seed mind                   list every remembered fact
-//   seed mind --find <query>    recall the facts matching a query
+//   term mind <fact>            remember a fact
+//   term mind                   list every remembered fact
+//   term mind --find <query>    recall the facts matching a query
 //
 // The store is plain markdown (a human or any agent can read it); `--back json` returns structured records.
 

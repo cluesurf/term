@@ -90,3 +90,39 @@ export function manifestNameOf(file: string): string | undefined {
 
   return name?.startsWith('@') ? name : undefined
 }
+
+// Is this file a LOCKFILE (`lock <1>` and one `deck` entry per resolved package), as opposed to Term code?
+//
+// The lockfile is written by `term save` / `term toss` / `term link` — anything that installs — and it is data,
+// not code. The build compiled it, and `lock <version>` is not a Term statement, so the first `term make` after
+// any dependency verb failed with `the name "lock" is not defined` on a file the user never wrote. A scaffolded
+// project would build, take one `term toss`, and stop building.
+//
+// BY CONTENT, never by name, for the third time in this file: `deck/seed/code/task/lock.tree` is an ordinary Term
+// module (`form lock`, `task make`), so a filename test would take the stdlib out of the build the same way a
+// filename test for the manifest once did.
+export function isLockfileText(text: string, file: string): boolean {
+  const parsed = parse({ file, text })
+
+  if (!parsed.ok) {
+    return false
+  }
+
+  // `lock <1>`: the head word `lock` carrying a TEXT version. A code module's `lock` is a form or a task name and
+  // never a statement head, and a manifest's `lock mit` sits under `deck` rather than at the top level.
+  return parsed.tree.nodes.some(
+    node =>
+      node.kind === 'group' &&
+      headName(node) === 'lock' &&
+      node.nodes[1]?.kind === 'text',
+  )
+}
+
+// the same, read from a file
+export function isLockfileAt(file: string): boolean {
+  try {
+    return isLockfileText(readFileSync(file, 'utf8'), file)
+  } catch {
+    return false
+  }
+}

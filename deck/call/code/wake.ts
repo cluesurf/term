@@ -92,8 +92,8 @@ export async function callWake(input: {
     console.log(
       fade(
         project && project !== '.'
-          ? `  cd ${project} && seed boot`
-          : `  seed boot`,
+          ? `  cd ${project} && term boot`
+          : `  term boot`,
       ),
     )
   } catch (error) {

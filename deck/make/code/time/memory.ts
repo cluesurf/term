@@ -1,3 +1,4 @@
+import type { Resolver } from '@term/make/code/compile/load'
 // Memory profiling. Runs the compiled program once in a child `node --expose-gc` process, forcing a collection
 // before and after so the heap delta reflects what the program retained, not transient allocation. CPU profiling is
 // intentionally not here yet (profiling the compiled artifact's hotspots is a separate, later piece).
@@ -33,12 +34,15 @@ main().catch((e) => { console.error(e); process.exit(1) })
 export async function runMemoryProfile(input: {
   text: string
   file: string
+  // the project resolver, so an entry with imports compiles the way `term make` compiles it
+  resolve?: Resolver
   root: string
   name: string
 }): Promise<MemoryResult> {
   const { code } = compileToModule({
     text: input.text,
     file: input.file,
+    resolve: input.resolve,
   })
 
   const dir = await prepareModuleDir({

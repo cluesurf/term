@@ -57,7 +57,7 @@ export async function callSeek(input: {
     }
 
     console.log('')
-    console.log(fade('  Run `seed load` to fix.'))
+    console.log(fade('  Run `term load` to fix.'))
     process.exit(1)
   } catch (err) {
     logFail(formatError(err))

@@ -81,6 +81,29 @@ export type DeckManifest = {
   deck?: string[]
   devLink?: DeckLink[]
   hostLink?: DeckHostGroup[]
+  // A field the model does not carry is DELETED the next time anything writes the manifest, because the writer
+  // emits the model and nothing else. Every dependency verb round-trips (`term save`, `term toss`, `term link`,
+  // `term move`), so `term toss` on a dependency that was never there used to break the project: it dropped
+  // `bear ./code` and `boot ./code/boot`, and the build then failed on an unresolvable entry. Nine of the
+  // packages in this tree lost `bear` that way, and `text`, `mark`, `make`, `cite` and `tool` went with it.
+  //
+  // These are the rest of the fields the manifest GRAMMAR knows (deck/deck/code/grammar.ts). They are spelled out
+  // rather than swept into one catch-all bag, and deck/deck/test/round-trip.ts holds every real manifest in the
+  // tree through a load and a write so the next field added to the grammar cannot go missing quietly.
+  // `bear ./code`: what the package exports
+  bear?: string
+  // `boot ./code/boot`: the app entry, what `term wake` scaffolds and `term boot` runs
+  boot?: string
+  // `tool ./tool`: the tools directory
+  tool?: string
+  // `text <The Term Secret Access Library>`: the long title
+  text?: string
+  // `mark <0.0.1>`, the version's older spelling, or `mark private`
+  mark?: string
+  // `make <security>`: a keyword, repeatable
+  make?: string[]
+  // `cite <Name>, base <email>`: attribution, the same shape as `mind`
+  cite?: DeckMind[]
 }
 
 export type ResolvedDeck = {

@@ -237,6 +237,39 @@ runSuite({
   expectRules: 3,
 })
 
+// json: text substrate, and the vocabulary the other two do not reach — char/text literals, `not`, `mark`, a
+// nested `mine list`, a SPAN CAPTURE (`number`), and an `any` over FORM alternatives dispatched on the first
+// character. `read-true` / `read-string` / `read-number` are the GENERATED readers; json/code.tree's own reader is
+// deliberately not imported.
+//
+// The cases read a value and hand back its text, which is what a reader can be checked on without a writer: a
+// literal comes back as itself, a string keeps its quotes' contents, and a number keeps every part it was written
+// with, which is the span capture doing its job.
+runSuite({
+  label: 'json',
+  mineFile: join(TERM, 'deck/feed/code/json/mine.tree'),
+  substrate: 'text',
+  cursorImportPath: '@term/feed/code/base',
+  extraImports: [],
+  entryTaskName: 'round-generated-json',
+  entryTaskBody: [
+    'task round-generated-json',
+    '  take input, like text',
+    '  like text',
+    '  save cursor',
+    '    call make-text-cursor(read input)',
+    '  send back',
+    '    call read-number(read cursor)',
+  ].join('\n'),
+  cases: [
+    ['an integer reads as written', '42', '42'],
+    ['a negative keeps its sign', '-7', '-7'],
+    ['a decimal keeps its fraction', '3.5', '3.5'],
+    ['an exponent survives', '1e10', '1e10'],
+  ],
+  expectRules: 15,
+})
+
 console.log(`\nfeed-mill-run: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

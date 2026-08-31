@@ -1,5 +1,5 @@
 /**
- * `seed hunt` - the automated bug-hunt CLI verb. Points the verification
+ * `term hunt` - the automated bug-hunt CLI verb. Points the verification
  * package's multi-oracle engine at the Seed compiler (or any directory of
  * `.tree` files): metamorphic oracles (parse round-trip is a fixpoint),
  * differential oracles (recompile determinism, cross-backend totality),
@@ -10,7 +10,7 @@
  *
  * The engine lives in `@cluesurf/test`; this verb owns the project
  * resolver (from `call`) and the process glue, then delegates to
- * `huntSeedCompiler` - the same discipline as `seed hold`.
+ * `huntSeedCompiler` - the same discipline as `term hold`.
  */
 
 import { projectResolver } from '@term/call/code/make'

@@ -19,9 +19,16 @@ import { compileSeparate } from '@term/make/code/compile/separate'
 import { CompileCache } from '@term/make/code/compile/cache'
 import { projectCache } from '@term/call/code/cache-store'
 import { preprocessTests } from '@term/call/code/test-preprocess'
-import { manifestNameOf } from '@term/call/code/manifest-name'
+import { isLockfileAt, manifestNameOf } from '@term/call/code/manifest-name'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectRoleOf } from '@term/call/code/role-of'
+import { parse } from '@term/make/code/parser/tree'
+import {
+  compileFeedMine,
+  feedMineLoads,
+  feedMineSubstrate,
+  readFeedMineGrammar,
+} from '@term/make/code/compile/feed-mill'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import type { Resolver, Source } from '@term/make/code/compile/load'
@@ -65,6 +72,38 @@ function isDraftTree(file: string): boolean {
 // the entire stdlib.
 function isPackageManifest(file: string): boolean {
   return existsSync(file) && manifestNameOf(file) !== undefined
+}
+
+// The cursor library a generated reader reads through. Every dialect grammar in the tree is a FEED dialect and
+// reads a `@term/feed` cursor, so this is where `make-text-cursor`, `read-byte` and the rest come from. A grammar
+// that one day needs another cursor library will say so in the grammar, which is where a fact about a dialect
+// belongs. Until one does, inventing the syntax for it would be inventing a requirement.
+const FEED_CURSOR = '@term/feed/code/base'
+
+// Is this file a feed GRAMMAR (a `mine.tree` that reads to rules), as opposed to Term code? Parsed, never matched
+// on its name, for the same reason `deck.tree` is: a filename is a guess about content and this codebase has been
+// burnt by one (a filename test for the package manifest skipped the entire stdlib).
+//
+// The grammar comes back with it, because reading a mine.tree twice is reading it twice. `undefined` means this is
+// not a grammar and the ordinary code path should have it: a 0-byte `mine.tree` placeholder, or a file that
+// happens to be called that and is not one.
+function feedGrammarOf(
+  file: string,
+  text: string,
+): ReturnType<typeof readFeedMineGrammar> | undefined {
+  if (path.basename(file) !== 'mine.tree') {
+    return undefined
+  }
+
+  const parsed = parse({ file, text })
+
+  if (!parsed.ok) {
+    return undefined
+  }
+
+  const grammar = readFeedMineGrammar(parsed.tree)
+
+  return grammar.size > 0 ? grammar : undefined
 }
 
 export function findTreeFiles(
@@ -139,6 +178,13 @@ export function findTreeFiles(
         continue
       }
 
+      // the LOCKFILE is data the package manager writes, not Term code. `lock <1>` is not a statement, so before
+      // this a project failed to build with `the name "lock" is not defined` the moment any dependency verb ran.
+      // Content, not filename: deck/seed/code/task/lock.tree is an ordinary module.
+      if (entry === 'lock.tree' && isLockfileAt(full)) {
+        continue
+      }
+
       // a file that declares `note draft` is unfinished and is not built. This keeps a half-written module in the
       // tree, readable and version-controlled, without its errors drowning the ones that matter. Remove the line to
       // bring it back into the build.
@@ -154,7 +200,7 @@ export function findTreeFiles(
 }
 
 // the on-disk file a bare module path points at, applying Seed's candidate order (`foo.tree`, then `foo/base.tree`,
-// then `foo/note.tree`). Returns the first that exists, else undefined. Shared by the build resolver and `seed boot`.
+// then `foo/note.tree`). Returns the first that exists, else undefined. Shared by the build resolver and `term boot`.
 export function resolveTreeFile(base: string): string | undefined {
   for (const candidate of [
     `${base}.tree`,
@@ -173,11 +219,36 @@ export function resolveTreeFile(base: string): string | undefined {
 // wrapped so abstract native imports resolve to the target platform's implementation (default node)
 // realpath if it exists, else a normalized absolute path (so confinement
 // checks work for not-yet-existing candidates too).
+// The real path of `p`, resolving symlinks along however much of it EXISTS.
+//
+// `realpathSync` throws on a path that is not there, and the obvious fallback (return it unresolved) is wrong in a
+// way that does not announce itself: the confinement check below compares a candidate against its package root,
+// the package root always exists and so is always resolved, and the candidate is a bare `.../code` with no
+// extension yet and so never is. On any project whose path crosses a symlink the two are then spelled
+// differently — `/var/folders/...` against `/private/var/folders/...`, which is EVERY macOS temporary directory —
+// the candidate reads as outside its own package, the import resolves to nothing, and the failure surfaces much
+// later and somewhere else as `the name "x" is not defined`, pointing at the call and never at the import.
+//
+// So resolve the longest ancestor that does exist and re-attach the rest. A path with no existing ancestor at all
+// falls back to `path.resolve`, which is the same answer as before for a case where there is nothing to resolve.
 function safeReal(p: string): string {
-  try {
-    return realpathSync(p)
-  } catch {
-    return path.resolve(p)
+  const full = path.resolve(p)
+  let dir = full
+  const rest: string[] = []
+
+  for (;;) {
+    try {
+      return rest.length > 0 ? path.join(realpathSync(dir), ...rest) : realpathSync(dir)
+    } catch {
+      const up = path.dirname(dir)
+
+      if (up === dir) {
+        return full
+      }
+
+      rest.unshift(path.basename(dir))
+      dir = up
+    }
   }
 }
 
@@ -194,7 +265,7 @@ export function projectResolver(
   root: string,
   env: NativeEnv = 'node',
   // an optional second `link/` root tried after the project's own. The CLI passes its own install dir here, so an app
-  // that has not run `seed link` itself still resolves `@cluesurf/*` through the seed install's stdlib links.
+  // that has not run `term link` itself still resolves `@cluesurf/*` through the seed install's stdlib links.
   fallbackLinkRoot?: string,
 ): Resolver {
   const stdlib = stdlibResolver()
@@ -354,7 +425,7 @@ export function projectResolver(
       return tryFile(resolved)
     }
 
-    // linked packages first (@cluesurf/base, /bind, /term, /site via `seed link`): the project's own links, then the
+    // linked packages first (@cluesurf/base, /bind, /term, /site via `term link`): the project's own links, then the
     // CLI install's links, then the bundled stdlib fallback
     const fromLink =
       linked(importPath, fromFile) ??
@@ -456,12 +527,48 @@ export function compileProject(
 
   for (const file of files) {
     // a file carrying `test <phrase>` blocks is not plain Term until the test preprocessor has rewritten them into
-    // tasks. `seed test` does that before compiling; a plain build has to as well, or every test file in the project
+    // tasks. `term test` does that before compiling; a plain build has to as well, or every test file in the project
     // fails here on a construct the compiler is never meant to see.
     const source = readFileSync(file, 'utf8')
-    const text = /^\s*test /m.test(source)
-      ? preprocessTests(source).text
-      : source
+
+    // A `mine.tree` is a GRAMMAR, not Term code. The build generates the reader it describes and compiles THAT, so
+    // a dialect is written once, as the grammar, instead of twice as a grammar and a hand-written reader that
+    // drifts from it. Which is the whole point of feed-mill: the two cannot disagree if there is only one.
+    //
+    // The SUBSTRATE is inferred, never asked for. `byte`, `int` and `bytes` can only read a byte cursor and `char`,
+    // `text`, `range` and `span` can only read a text one, and across @term/feed's readable grammars six are
+    // byte-only, eight text-only, and none use both. A grammar with no leaf to infer from is REPORTED rather than
+    // guessed at: guessing would emit a reader that compiles and reads the wrong cursor.
+    const grammar = feedGrammarOf(file, source)
+    let text = source
+
+    if (grammar) {
+      const substrate = feedMineSubstrate(grammar)
+
+      if (!substrate) {
+        failed++
+        errors.push(
+          `${path.relative(root, file)}: cannot tell whether this grammar reads bytes or text. ` +
+            `Every rule in it is a combinator over rules with no body, so there is no leaf to infer from. ` +
+            `Write one of its leaf rules, or shelve the grammar with \`note draft\` until it has one.`,
+        )
+        continue
+      }
+
+      // the grammar's own `load` blocks come through verbatim: a `mine value` may call a real helper, and where
+      // that helper lives is a fact only the grammar knows
+      text = compileFeedMine(
+        grammar,
+        substrate,
+        FEED_CURSOR,
+        feedMineLoads(file, source),
+      )
+    } else if (/^\s*test /m.test(source)) {
+      // a file carrying `test <phrase>` blocks is not plain Term until the test preprocessor has rewritten them
+      // into tasks. `term test` does that before compiling; a plain build has to as well, or every test file in
+      // the project fails here on a construct the compiler is never meant to see.
+      text = preprocessTests(source).text
+    }
 
     const result = compile({ file, text }, { resolve, cache, deckOf, roleOf })
 
@@ -515,7 +622,7 @@ export function compileProject(
   return { compiled, written, failed, errors }
 }
 
-// Separate compilation for the whole project (`seed make --separate`): every module of every entry's closure is
+// Separate compilation for the whole project (`term make --separate`): every module of every entry's closure is
 // checked once against its dependencies' INTERFACES and emitted once into host/.unit/<slug>.ts (imports are
 // sibling-relative, so one artifact serves every importer), with each entry keeping a re-export shim at its classic
 // host/<path>.ts location. Units are cached by content + dependency interface hashes, so a body-only edit in a
@@ -819,7 +926,7 @@ export async function callMake(input: {
       // big projects fan out across worker threads (each runs the full compile(), sharing the on-disk cache); small
       // ones build sequentially since the worker bundle + spawn overhead would outweigh it. The parallel path is loaded
       // dynamically so make.ts's static graph (which the build worker itself bundles) never pulls esbuild. Any failure
-      // setting up the pool falls back to the sequential build, so a worker problem never breaks `seed make`.
+      // setting up the pool falls back to the sequential build, so a worker problem never breaks `term make`.
       const fileCount = findTreeFiles(input.root).length
       const parallel =
         !input.separate && fileCount >= 16 && cpus().length > 2
@@ -920,7 +1027,7 @@ function runCommand(input: {
   cmd: string
   args: string[]
   cwd: string
-  // run through a shell (PATH lookup of script shims like `pnpm`). A long-running server (`seed boot`) sets this false
+  // run through a shell (PATH lookup of script shims like `pnpm`). A long-running server (`term boot`) sets this false
   // so ctrl-c reaches the process directly and no shell sits in between.
   shell?: boolean
 }): Promise<void> {

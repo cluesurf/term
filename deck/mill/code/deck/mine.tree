@@ -48,6 +48,10 @@ mine deck-def
           site hook
         mine form, like deck-bear
           site bear
+        mine form, like deck-boot
+          site boot
+        mine form, like deck-tool
+          site tool
         mine form, like deck-test
           site test
         mine form, like deck-line
@@ -178,6 +182,18 @@ mine deck-hook
 # `bear ./code`: what the package exports
 mine deck-bear
   mine term, term bear
+    mine path
+      site path
+
+# `boot ./code/boot`: the app entry, what `term wake` scaffolds and `term boot` runs
+mine deck-boot
+  mine term, term boot
+    mine path
+      site path
+
+# `tool ./tool`: the tools directory
+mine deck-tool
+  mine term, term tool
     mine path
       site path
 

@@ -1,4 +1,4 @@
-// `seed feed [entry]`: the dev server. Compiles the app in per-module mode, serves each module lazily over native
+// `term feed [entry]`: the dev server. Compiles the app in per-module mode, serves each module lazily over native
 // ESM, and hot-reloads on change over SSE (it "feeds" live updates to the browser). The entry is an argument or the
 // `deck.tree` boot entry. Stays alive until interrupted. See code/dev/server.ts.
 

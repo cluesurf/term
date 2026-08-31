@@ -1,5 +1,5 @@
-// `seed work`: run the long-lived compiler daemon (the background worker). It hosts the warm incremental analyzer over
-// HTTP, so the LSP, `seed feed`, and the CLI share one warm compiler instead of each cold-starting. Stays alive until
+// `term work`: run the long-lived compiler daemon (the background worker). It hosts the warm incremental analyzer over
+// HTTP, so the LSP, `term feed`, and the CLI share one warm compiler instead of each cold-starting. Stays alive until
 // interrupted. See code/dev/daemon.ts.
 
 import { startDaemon } from '@term/make/code/dev/daemon'

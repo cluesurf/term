@@ -22,7 +22,7 @@ function toDiagnostic(finding: Finding, file: string): Diagnostic {
     file,
     span: finding.span,
     markers: [{ span: finding.span }],
-    hint: finding.fix ? 'fixable: run `seed lint --fix`' : undefined,
+    hint: finding.fix ? 'fixable: run `term lint --fix`' : undefined,
     severity: finding.severity,
   }
 }
@@ -67,7 +67,7 @@ function applyEdits(text: string, edits: TextEdit[]): string {
   return result
 }
 
-// `seed lint` -- lint `.tree` files. `--fix` applies autofixes in place; otherwise findings are reported. Exits
+// `term lint` -- lint `.tree` files. `--fix` applies autofixes in place; otherwise findings are reported. Exits
 // non-zero when any error-severity finding remains (so it gates CI).
 export async function callLint(input: {
   root: string

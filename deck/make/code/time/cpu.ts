@@ -4,6 +4,7 @@
 import { spawn } from 'node:child_process'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
+import type { Resolver } from '@term/make/code/compile/load'
 import {
   compileToModule,
   prepareModuleDir,
@@ -46,6 +47,8 @@ type V8Profile = {
 export async function runCpuProfile(input: {
   text: string
   file: string
+  // the project resolver, so an entry with imports compiles the way `term make` compiles it
+  resolve?: Resolver
   root: string
   name: string
   top?: number
@@ -53,6 +56,7 @@ export async function runCpuProfile(input: {
   const { code } = compileToModule({
     text: input.text,
     file: input.file,
+    resolve: input.resolve,
   })
 
   const dir = await prepareModuleDir({

@@ -169,7 +169,7 @@ function formatDiagnostics(diagnostics: Diagnostic[]): string {
 export async function callWalk(_input: {
   root: string
 }): Promise<void> {
-  logStep('Seed REPL')
+  logStep('Term REPL')
   console.log(
     fade(
       '  Type a definition (task / form / load) to add it, an expression to evaluate it, or `exit`.',
@@ -181,7 +181,7 @@ export async function callWalk(_input: {
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
-    prompt: bold('seed> '),
+    prompt: bold('term> '),
   })
 
   let buffer: string[] = []
@@ -205,30 +205,56 @@ export async function callWalk(_input: {
     }
   }
 
-  rl.prompt()
-  rl.on('line', async line => {
-    if (line.trim() === 'exit') {
-      return rl.close()
-    }
+  // READLINE DOES NOT AWAIT AN ASYNC `line` LISTENER. Typing, that is invisible: a person is slower than a compile,
+  // so each line finishes long before the next arrives. PIPED, every queued line fires back to back and `close`
+  // follows immediately, and a `close` that called `process.exit` killed every flush still in flight. So
+  // `term walk < script.tree` printed the banner, the prompt and `bye`, and evaluated nothing at all.
+  //
+  // Chaining the work makes the order the input's order either way, and `close` waits for the chain to drain
+  // before saying goodbye. A pasted block is the same case as a pipe, so this is not only about scripts.
+  let work: Promise<void> = Promise.resolve()
 
-    if (line.trim() === '') {
-      await flush()
-      rl.prompt()
+  const queue = (job: () => Promise<void>): void => {
+    work = work.then(job)
+  }
+
+  rl.prompt()
+  rl.on('line', line => {
+    if (line.trim() === 'exit') {
+      rl.close()
 
       return
     }
 
-    buffer.push(line)
+    // THE WHOLE STEP GOES IN THE QUEUE, the buffer push included. Deciding here and flushing later is not enough:
+    // the listener runs for every piped line before a single queued job does, so the buffer held the entire input
+    // by the time the first flush looked at it, and a definition swallowed the calls that came after it.
+    queue(async () => {
+      if (line.trim() === '') {
+        await flush()
+      } else {
+        buffer.push(line)
 
-    // a single-line expression evaluates immediately; an indented block waits for a blank line
-    if (buffer.length === 1 && !isDefinition(line.trimStart())) {
-      await flush()
-    }
+        // a single-line expression evaluates immediately; an indented block waits for a blank line
+        if (buffer.length === 1 && !isDefinition(line.trimStart())) {
+          await flush()
+        }
+      }
 
-    rl.prompt()
+      rl.prompt()
+    })
   })
   rl.on('close', () => {
-    logGood('bye')
-    process.exit(0)
+    // whatever is still evaluating gets to finish and print. An input that ended without a blank line still has a
+    // block in the buffer, and dropping it silently would be the same class of bug as exiting early.
+    void work
+      .then(flush)
+      .catch(error => {
+        logFail(String((error as Error).message ?? error))
+      })
+      .then(() => {
+        logGood('bye')
+        process.exit(0)
+      })
   })
 }

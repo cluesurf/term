@@ -20,15 +20,21 @@
 // branch it's in.
 
 import type { GroupNode, Node, RootNode } from '@term/make/code/parser/tree'
+import { readGroups } from '@term/make/code/parser/stream'
 import { headWord, textOf, wordOf } from './mill-run'
 
 // ---- reading the mine grammar into rule objects ----
 
 export type FeedMineRule =
-  | { kind: 'list'; children: FeedMineRule[] }
+  // `mine list` with an optional `bind count, read table-count`: a repetition, COUNT-DIRECTED when it says how
+  // many. Without the count it reads until the input ends, which is right for a whole file and wrong for a table
+  // that declares its own length.
+  | { kind: 'list'; children: FeedMineRule[]; count?: Node }
   | { kind: 'any'; children: FeedMineRule[]; send?: string }
   | { kind: 'range'; base: string; head: string }
-  | { kind: 'form'; name: string; send?: string }
+  // `mine form, form row` with `bind separator, share separator` children: a reference to another rule, with the
+  // ARGUMENTS that rule's own `start` parameters receive. csv threads its separator down five rules this way.
+  | { kind: 'form'; name: string; send?: string; args?: FeedMineArg[] }
   | { kind: 'value'; expr: GroupNode }
   | { kind: 'send'; name: string }
   | { kind: 'byte'; literal?: number; send?: string }
@@ -46,9 +52,30 @@ export type FeedMineRule =
   | { kind: 'mark'; width: number; children: FeedMineRule[]; send?: string }
   | { kind: 'int'; width: number; order: 'big' | 'little'; sign: 'signed' | 'unsigned'; send?: string }
   | { kind: 'bytes'; width: GroupNode; send?: string }
-  | { kind: 'maybe'; test: GroupNode; children: FeedMineRule[]; send?: string }
+  | { kind: 'maybe'; test?: GroupNode; children: FeedMineRule[]; send?: string }
   | { kind: 'until'; terminator: number; send?: string }
   | { kind: 'let'; name: string; expr: GroupNode }
+  // `bind value / mine text / <rules>`: a SPAN CAPTURE. The value is the text its children consumed, which is how
+  // JSON's `number` says "whatever these rules matched, as written". It ACCUMULATES what each read returns rather
+  // than slicing the cursor: text-cursor-compact discards consumed text past 64 KiB and resets the position, so a
+  // start offset is not a thing a streaming cursor can be asked to remember.
+  | { kind: 'span'; children: FeedMineRule[]; send: string }
+  // `start separator, share <,>`: a rule PARAMETER, with an optional default. A rule is not always readable from
+  // the cursor alone: csv's every rule needs the separator, png's chunk needs its length, and OTF's value-record
+  // is read against a value-format its caller holds. It is the same need `mine at` has for an offset.
+  //
+  // It sits in the rules array rather than in a separate table because that is how `value` already works: the
+  // named-rule compiler pulls both out before walking the body, and every consumer that counts rules keeps
+  // counting the same way.
+  | { kind: 'start'; name: string; fall?: Node }
+  // `check bitwise-and / bind start, share value-format / bind front, share 0x0001 / <body>`: a read gated on a
+  // condition. This is `mine maybe` with an explicit `test` written in another notation, and it compiles to
+  // exactly that: gzip already spells this shape as a maybe, because a flag bit read earlier is a condition no
+  // lookahead can know. 32 uses across 8 grammars, all of them OTF tables and ELF.
+  | { kind: 'check'; op: string; base: Node; head: Node; children: FeedMineRule[]; send?: string }
+
+// an argument at a call: `bind separator, share separator`
+export type FeedMineArg = { name: string; value: Node }
 
 export type FeedMineGrammar = Map<string, FeedMineRule[]>
 
@@ -57,6 +84,13 @@ export type FeedMineGrammar = Map<string, FeedMineRule[]>
 // `readFeedMineRule`'s `form` case; this is for every OTHER kind, where `send` is a trailing sibling instead).
 // Runs once over every rules array as it's built, so a compiler pass never has to guess which capture a trailing
 // `send` belongs to.
+// every word that names a CONSTRUCT rather than a rule. A `mine <word>` outside this set is a reference to another
+// rule by name, which is the short spelling of `mine form, form <word>`.
+const CONSTRUCTS = new Set([
+  'list', 'any', 'range', 'form', 'value', 'byte', 'char', 'text', 'not',
+  'mark', 'int', 'bytes', 'maybe', 'until', 'let', 'send', 'at',
+])
+
 const SENDABLE = new Set(['any', 'byte', 'char', 'text', 'mark', 'int', 'bytes', 'until', 'form', 'maybe'])
 
 function mergeSends(rules: FeedMineRule[]): FeedMineRule[] {
@@ -81,12 +115,13 @@ function mergeSends(rules: FeedMineRule[]): FeedMineRule[] {
 // THREE flat siblings (bind-name, key, value), never the value nested inside the key — confirmed against the
 // real parse of hex/mine.tree's `bind base, text <0>`, not assumed from the paren/stacked-form reasoning that
 // caused `printNode`'s `call` bug (see its own comment).
-function bindValueGroup(group: GroupNode, name: string): GroupNode | undefined {
+// the value of a `bind <name>, <value>`, WHATEVER SHAPE it is. It used to return only a group, so a bare literal
+// (`bind base, <0>`, which is how most of @term/feed's grammars write a range bound) was discarded and the rule
+// that needed it read as nothing.
+function bindValueGroup(group: GroupNode, name: string): Node | undefined {
   for (const child of group.nodes) {
     if (child.kind === 'group' && headWord(child) === 'bind' && wordOf(child.nodes[1]) === name) {
-      const value = child.nodes[2]
-
-      return value?.kind === 'group' ? value : undefined
+      return child.nodes[2]
     }
   }
 
@@ -96,15 +131,52 @@ function bindValueGroup(group: GroupNode, name: string): GroupNode | undefined {
 // `bindValueGroup` gets the raw `<value>` group; these three unwrap it for the three literal shapes a `bind`
 // actually carries in this package: `text <...>`, `code <n>`, and `term <word>` (an enum-case reference, e.g.
 // `bind order, term little`).
+// `bind base, text <0>` and `bind base, <0>` are the same binding. The second is how most of @term/feed's grammars
+// write a range bound, and reading only the first dropped every one of them: latin, latin/number and ipv4 all lost
+// their character classes to it.
 function bindTextOf(group: GroupNode, name: string): string | undefined {
   const value = bindValueGroup(group, name)
-  const inner = value?.kind === 'group' && headWord(value) === 'text' ? value.nodes[1] : undefined
 
-  return inner ? textOf(inner) : undefined
+  if (value?.kind === 'text') {
+    return textOf(value)
+  }
+
+  const inner = value?.kind === 'group' && headWord(value) === 'text' ? value.nodes[1] : undefined
+  const written = inner ? textOf(inner) : undefined
+
+  // An EMPTY result is no result. `bind base, text 0` has a `text` head and a NUMBER under it, so textOf gives ''
+  // — and `''` is neither null nor undefined, so a `bindTextOf(...) ?? bindCodeOf(...)` chain stopped there and the
+  // rule read as a range from '' to ''. ascii/mine.tree is written exactly that way.
+  return written === undefined || written === '' ? undefined : written
 }
 
+// `bind base, code 0` and `bind base, 0` are the same binding, the second being how ipv4 writes its octet range.
 function bindCodeOf(group: GroupNode, name: string): number | undefined {
   const value = bindValueGroup(group, name)
+
+  if (value?.kind === 'integer' || value?.kind === 'decimal' || value?.kind === 'radix') {
+    return value.value
+  }
+
+  // `bind base, text 0`, which is how ascii/mine.tree writes its range: the head says `text` and the argument is
+  // a NUMBER, so it is a code point wearing the other keyword.
+  if (value?.kind === 'group' && headWord(value) === 'text') {
+    const written = value.nodes[1]
+
+    if (written?.kind === 'integer' || written?.kind === 'decimal' || written?.kind === 'radix') {
+      return written.value
+    }
+  }
+
+  // `bind base, share 0`, which is how bit/mine.tree writes its octet range
+  if (value?.kind === 'group' && headWord(value) === 'share') {
+    const shared = value.nodes[1]
+
+    if (shared?.kind === 'integer' || shared?.kind === 'decimal' || shared?.kind === 'radix') {
+      return shared.value
+    }
+  }
+
   const inner = value?.kind === 'group' && headWord(value) === 'code' ? value.nodes[1] : undefined
 
   return inner && (inner.kind === 'integer' || inner.kind === 'decimal' || inner.kind === 'radix') ? inner.value : undefined
@@ -122,6 +194,68 @@ function codeValueOf(group: GroupNode): number | undefined {
   const inner = group.nodes[1]
 
   return inner && (inner.kind === 'integer' || inner.kind === 'decimal' || inner.kind === 'radix') ? inner.value : undefined
+}
+
+// `share <thing>`: how a grammar names a VALUE, wherever one is passed rather than read from the cursor — a
+// `start` default, a `check` operand, an argument at a call. Rendered to the Term that means it, with the outer
+// names it reads reported alongside, because a helper that uses one has to take it as a parameter.
+//
+// Three shapes, and the grammars use all three: `share separator` is a NAME (a parameter or a capture in scope),
+// `share 0x0001` is a number, `share <,>` is text. A bare `0x0001` with no `share` is the same number, because a
+// `bind front, 0x0001` is written both ways across these files.
+function shareValue(node: Node | undefined): { text: string; reads: string[] } | undefined {
+  if (!node) {
+    return undefined
+  }
+
+  if (node.kind === 'integer' || node.kind === 'decimal' || node.kind === 'radix') {
+    return { text: `code ${node.value}`, reads: [] }
+  }
+
+  if (node.kind === 'text') {
+    return { text: printNode(node), reads: [] }
+  }
+
+  if (node.kind !== 'group') {
+    return undefined
+  }
+
+  // `share <thing>` and `read <thing>` are both WRAPPERS around the value. Unwrap and read what they hold: a
+  // grammar writes `bind count, read table-count` and `bind separator, share separator` for the same kind of
+  // thing, and taking the group's head word instead of its argument rendered both as `read(read)`.
+  const wrapper = headWord(node)
+
+  if (wrapper === 'share' || wrapper === 'read') {
+    return shareValue(node.nodes[1])
+  }
+
+  const word = wordOf(node)
+
+  // `read(name)`, PARENTHESISED, and that is not a style choice. A rendered operand goes into a comma-separated
+  // argument list, and a comma pops exactly one level: `call bitwise-and(read value-format, code 1)` puts the
+  // `code 1` INSIDE the `read`, so `bitwise-and` is called with one argument. The parens are a floor the comma
+  // cannot cross. This is the trap CLAUDE.md names outright, and it cost eleven check errors before it was.
+  return word ? { text: `read(${word})`, reads: [word] } : undefined
+}
+
+// the arguments a `mine form` passes: `bind separator, share separator` children
+function argsOf(group: GroupNode): FeedMineArg[] {
+  const out: FeedMineArg[] = []
+
+  for (const child of siblingsOf(group)) {
+    if (child.kind !== 'group' || headWord(child) !== 'bind') {
+      continue
+    }
+
+    const name = wordOf(child.nodes[1])
+    const value = child.nodes[2]
+
+    if (name && value) {
+      out.push({ name, value })
+    }
+  }
+
+  return out
 }
 
 // every rule kind's "what comes after the kind word" lives at `group.nodes.slice(2)` — confirmed empirically
@@ -147,14 +281,130 @@ function nestedSend(group: GroupNode): string | undefined {
 function readFeedMineRule(group: GroupNode): FeedMineRule | undefined {
   const head = headWord(group)
 
+  // `bind <name>` wrapping a bare `mine text`: a span capture named <name>. The `take <name>, like <type>` beside
+  // it declares the same name and carries no rules of its own, so it is read for nothing here.
+  if (head === 'bind') {
+    const name = wordOf(group.nodes[1])
+    const inner = siblingsOf(group)
+      .filter((n): n is GroupNode => n.kind === 'group')
+      .find(n => headWord(n) === 'mine' && wordOf(n.nodes[1]) === 'text')
+
+    if (!name) {
+      return undefined
+    }
+
+    // `bind <name>` around anything OTHER than a bare `mine text` is a plain NAMED CAPTURE: run that rule and call
+    // its result <name>, which is what `pair`'s `bind key / mine form, form string` says. Reading only the span
+    // shape left `pair` with no captures at all, so it declared `like text` and returned the whitespace list that
+    // happened to be last.
+    if (!inner) {
+      const rules: FeedMineRule[] = []
+
+      for (const child of siblingsOf(group).filter((n): n is GroupNode => n.kind === 'group')) {
+        const rule = readFeedMineRule(child)
+
+        if (rule) {
+          rules.push(rule)
+        }
+      }
+
+      const only = rules.length === 1 ? rules[0] : undefined
+
+      return only && 'send' in only ? { ...only, send: name } : only
+    }
+
+    const children: FeedMineRule[] = []
+
+    for (const child of siblingsOf(inner).filter((n): n is GroupNode => n.kind === 'group')) {
+      const rule = readFeedMineRule(child)
+
+      if (rule) {
+        children.push(rule)
+      }
+    }
+
+    return children.length > 0 ? { kind: 'span', children, send: name } : undefined
+  }
+
   if (head === 'send') {
     const name = wordOf(group.nodes[1])
 
     return name ? { kind: 'send', name } : undefined
   }
 
+  // `start separator, share <,>`: a rule parameter, with an optional default
+  if (head === 'start') {
+    const name = wordOf(group.nodes[1])
+
+    return name ? { kind: 'start', name, fall: group.nodes[2] } : undefined
+  }
+
+  // `check <op> / bind start, <a> / bind front, <b> / <body>`: a read gated on a condition. The two operands are
+  // named `start` and `front` here, the same two names a `range` uses for its bounds.
+  if (head === 'check') {
+    const op = wordOf(group.nodes[1])
+    const kids = siblingsOf(group).filter((n): n is GroupNode => n.kind === 'group')
+    const base = kids.find(n => headWord(n) === 'bind' && wordOf(n.nodes[1]) === 'start')?.nodes[2]
+    const front = kids.find(n => headWord(n) === 'bind' && wordOf(n.nodes[1]) === 'front')?.nodes[2]
+
+    if (!op || !base || !front) {
+      return undefined
+    }
+
+    const children: FeedMineRule[] = []
+
+    for (const child of kids) {
+      // the two `bind`s are the condition, not the body
+      if (headWord(child) === 'bind' && ['start', 'front'].includes(wordOf(child.nodes[1]) ?? '')) {
+        continue
+      }
+
+      const rule = readFeedMineRule(child)
+
+      if (rule) {
+        children.push(rule)
+      }
+    }
+
+    return children.length > 0
+      ? { kind: 'check', op, base, head: front, children }
+      : undefined
+  }
+
+  // `look after` with `mine form` children is an ALTERNATION, the same construct `mine any` spells. 24 uses across
+  // @term/feed (cookie, uri, css, latin), and read as nothing without this.
+  if (head === 'look' && wordOf(group.nodes[1]) === 'after') {
+    const out: FeedMineRule[] = []
+
+    for (const child of siblingsOf(group).filter((n): n is GroupNode => n.kind === 'group')) {
+      const rule = readFeedMineRule(child)
+
+      if (rule) {
+        out.push(rule)
+      }
+    }
+
+    return out.length > 0 ? { kind: 'any', children: out } : undefined
+  }
+
   if (head !== 'mine') {
     return undefined
+  }
+
+  // `mine <->`: a bare TEXT LITERAL as the whole body, with no `text` or `char` keyword. It is how a grammar
+  // writes a single delimiter, and ipv4's `dot` and latin/number's `minus` are both this.
+  const bare = group.nodes[1]
+
+  if (bare?.kind === 'text') {
+    const literal = textOf(bare)
+
+    if (literal.length === 1) {
+      return { kind: 'char', literal: literal.codePointAt(0)!, send: nestedSend(group) }
+    }
+
+    if (literal.length > 1) {
+      return { kind: 'text', literal, send: nestedSend(group) }
+    }
   }
 
   const kind = wordOf(group.nodes[1])
@@ -174,8 +424,15 @@ function readFeedMineRule(group: GroupNode): FeedMineRule | undefined {
   }
 
   switch (kind) {
-    case 'list':
-      return { kind: 'list', children: children() }
+    case 'list': {
+      // `bind count, read table-count`: how many to read. OTF's cmap declares its encoding-record count in the
+      // two bytes before them, which is the ordinary shape of a binary table.
+      const countBind = siblingsOf(group)
+        .filter((n): n is GroupNode => n.kind === 'group')
+        .find(n => headWord(n) === 'bind' && wordOf(n.nodes[1]) === 'count')
+
+      return { kind: 'list', children: children(), count: countBind?.nodes[2] }
+    }
 
     case 'any':
       return { kind: 'any', children: children() }
@@ -184,11 +441,12 @@ function readFeedMineRule(group: GroupNode): FeedMineRule | undefined {
     // (`bind base, code 0x0020`), and a grammar uses whichever reads better: a digit range as digits, a
     // control-character boundary as a number. Reading only the first spelling dropped the whole rule silently, and
     // with it JSON's `safe-char`, which is every character of every string.
+    // `base`/`head` and `start`/`end` name the same two bounds. Both spellings are in @term/feed's own grammars.
     case 'range': {
-      const baseText = bindTextOf(group, 'base')
-      const headText = bindTextOf(group, 'head')
-      const baseCode = bindCodeOf(group, 'base')
-      const headCode = bindCodeOf(group, 'head')
+      const baseText = bindTextOf(group, 'base') ?? bindTextOf(group, 'start')
+      const headText = bindTextOf(group, 'head') ?? bindTextOf(group, 'end')
+      const baseCode = bindCodeOf(group, 'base') ?? bindCodeOf(group, 'start')
+      const headCode = bindCodeOf(group, 'head') ?? bindCodeOf(group, 'end')
       const base = baseText ?? (baseCode === undefined ? undefined : String.fromCodePoint(baseCode))
       const head2 = headText ?? (headCode === undefined ? undefined : String.fromCodePoint(headCode))
 
@@ -200,8 +458,12 @@ function readFeedMineRule(group: GroupNode): FeedMineRule | undefined {
       const name = formGroup ? wordOf(formGroup.nodes[1]) : undefined
       const sendGroup = rawChildren().find(n => headWord(n) === 'send')
       const send = sendGroup ? wordOf(sendGroup.nodes[1]) : undefined
+      // `bind separator, share separator`: the arguments the referenced rule's own `start` parameters receive
+      const args = argsOf(group)
 
-      return name ? { kind: 'form', name, send } : undefined
+      return name
+        ? { kind: 'form', name, send, args: args.length > 0 ? args : undefined }
+        : undefined
     }
 
     case 'value': {
@@ -211,6 +473,7 @@ function readFeedMineRule(group: GroupNode): FeedMineRule | undefined {
 
       return exprGroup ? { kind: 'value', expr: exprGroup } : undefined
     }
+
 
     case 'byte': {
       const literalGroup = rawChildren().find(n => headWord(n) === 'code')
@@ -271,8 +534,22 @@ function readFeedMineRule(group: GroupNode): FeedMineRule | undefined {
         : { kind: 'mark', width, children, send: nestedSend(group) }
     }
 
-    // `mine text, text <true>`: a fixed multi-character literal
+    // `mine text, text <true>`: a fixed multi-character literal.
+    //
+    // `mine text 13` is the same construct with the literal written as a CODE POINT, which is how a grammar spells
+    // a control character it cannot type: @term/feed's latin/whitespace says `mine text 13` for a carriage return.
+    // Read only as a text literal, those rules were dropped and the whole whitespace grammar lost half its rules.
     case 'text': {
+      // `mine text 13` nests the code INSIDE the kind group (`mine > text > 13`), not beside it, because a space
+      // nests: the `13` is a child of `text`. Reading it off the `mine` group finds the `text` group itself.
+      const kindGroup = group.nodes[1]
+      const inlineCode =
+        kindGroup?.kind === 'group' ? codeValueOf(kindGroup) : undefined
+
+      if (inlineCode !== undefined) {
+        return { kind: 'char', literal: inlineCode, send: nestedSend(group) }
+      }
+
       const textGroup = rawChildren().find(n => headWord(n) === 'text')
       const literalNode = textGroup?.nodes[1]
       const literal = literalNode ? textOf(literalNode) : undefined
@@ -297,7 +574,10 @@ function readFeedMineRule(group: GroupNode): FeedMineRule | undefined {
     case 'bytes': {
       const width = bindValueGroup(group, 'width')
 
-      return width ? { kind: 'bytes', width, send: nestedSend(group) } : undefined
+      // a width is an EXPRESSION and so is always a group; a bare literal there would not be one to evaluate
+      return width?.kind === 'group'
+        ? { kind: 'bytes', width, send: nestedSend(group) }
+        : undefined
     }
 
     case 'maybe': {
@@ -328,7 +608,11 @@ function readFeedMineRule(group: GroupNode): FeedMineRule | undefined {
         }
       }
 
-      return testExpr ? { kind: 'maybe', test: testExpr, children: mergeSends(bodyRules), send } : undefined
+      // A `maybe` with NO `test` is decided by its own FIRST set: try it if the next character could begin it.
+      // gzip writes an explicit test because its condition is a flag bit read earlier, which no lookahead can
+      // know; JSON writes a bare `mine maybe` around the rules it makes optional, and the condition IS "does the
+      // next character start one of these". Both are the same construct with the condition supplied differently.
+      return { kind: 'maybe', test: testExpr, children: mergeSends(bodyRules), send }
     }
 
     case 'until': {
@@ -348,9 +632,174 @@ function readFeedMineRule(group: GroupNode): FeedMineRule | undefined {
       return name && exprGroup ? { kind: 'let', name, expr: exprGroup } : undefined
     }
 
+    // `mine <rule-name>`: a bare reference to another rule, the short spelling of `mine form, form <rule-name>`.
+    // A word that is not one of the constructs above can only be a rule name, and grammars use it freely:
+    // latin/whitespace's `carriage-return-line-feed` is two of them, and read as nothing without this.
     default:
-      return undefined
+      return kind && !CONSTRUCTS.has(kind)
+        ? { kind: 'form', name: kind, send: nestedSend(group) }
+        : undefined
   }
+}
+
+// Which substrate a grammar reads: bytes or characters.
+//
+// It is INFERRED from the constructs the grammar uses rather than declared, because it does not need declaring:
+// `byte`, `int` and `bytes` can only read a byte cursor, and `char`, `text`, `range` and `span` can only read a
+// text one. Measured across @term/feed's 30 readable grammars on 2026-08-31, SIX are byte-only, EIGHT are
+// text-only, and ZERO use both, so there is nothing to disambiguate and no new syntax to add. The remaining
+// sixteen use neither: they are pure combinators over rules that are still stubs, and have no leaf to infer from
+// yet, which is why this answers undefined rather than guessing.
+//
+// `term make` needs this to compile a dialect's mine.tree as part of an ordinary build (format-mill-0009): the
+// harness passes the substrate in today, and a build has nobody to ask.
+export function feedMineSubstrate(
+  grammar: FeedMineGrammar,
+): Substrate | undefined {
+  const BYTE = new Set(['byte', 'int', 'bytes'])
+  const TEXT = new Set(['char', 'text', 'range', 'span'])
+
+  let byte = false
+  let text = false
+
+  const walk = (rules: readonly FeedMineRule[]): void => {
+    for (const rule of rules) {
+      if (BYTE.has(rule.kind)) {
+        byte = true
+      }
+
+      if (TEXT.has(rule.kind)) {
+        text = true
+      }
+
+      const children = (rule as { children?: FeedMineRule[] }).children
+
+      if (Array.isArray(children)) {
+        walk(children)
+      }
+    }
+  }
+
+  for (const rules of grammar.values()) {
+    walk(rules)
+  }
+
+  // a grammar that somehow used both would be a grammar with a mistake in it, and guessing would hide it
+  if (byte === text) {
+    return undefined
+  }
+
+  return byte ? 'byte' : 'text'
+}
+
+// The `load` blocks a grammar writes for itself, as source lines.
+//
+// A `mine value` is an ORDINARY TERM EXPRESSION over the rule's captures, and it may call a real helper: hex's
+// digit rule calls `hex-digit-value`, because turning a character into a number is arithmetic and not something
+// to reinvent as grammar syntax. That helper has to be imported, and the only party who knows where it lives is
+// the grammar. The test harness used to hand the import in from outside, which is exactly why a grammar could be
+// compiled by the harness and by nobody else.
+//
+// So a grammar writes `load` the way every other `.tree` file does, and the generated reader carries those blocks
+// through verbatim. No new syntax: `load` is Term's import statement, parsed here by the same parser.
+//
+// THE PARSER FINDS THE BOUNDARIES. `readGroups` says where each top-level group ends, and the raw lines of the
+// ones headed `load` are taken from the source untouched. Counting indentation to find a block's extent would be
+// a second reader of the grammar, which is the thing that must not exist.
+export function feedMineLoads(file: string, text: string): string[] {
+  const lines = text.split('\n')
+  const out: string[] = []
+  let at = 0
+
+  for (const result of readGroups({ file, text })) {
+    if (result.kind !== 'group') {
+      break
+    }
+
+    const span = lines.slice(at, at + result.lines)
+
+    at += result.lines
+
+    if (headWord(result.group) === 'load') {
+      out.push(...span.map(line => line.replace(/\s+$/, '')))
+    }
+  }
+
+  // a trailing blank so the generated file's own `load` blocks do not run into these
+  return out.length > 0 ? [...out, ''] : out
+}
+
+// The rules a grammar DECLARES that read to nothing.
+//
+// `readFeedMineRule` returns undefined for a shape it does not know, and the rule then vanishes from the grammar
+// without a word: the reader still generates, still parses, still mills, and is simply missing a rule. Measured
+// across the 99 mine.tree grammars in @term/feed on 2026-08-31, 18 of the 30 that generate at all are missing at
+// least one, and some are missing every rule they declare.
+//
+// The rule NAMES a grammar refers to and never defines.
+//
+// `mine <word>` outside the construct set is the short spelling of `mine form, form <word>`, a reference to
+// another rule. That is a real and used feature, so an unknown word cannot simply be refused. But a reference to
+// a rule the grammar does NOT DEFINE is wrong under every reading of it, and today it is silent all the way
+// down: the grammar reads, the drop count stays at zero (it counts top-level rules that read to NOTHING, and a
+// reference is something), the reader generates, and it mills. The first complaint is `read-crown is not
+// defined` from the type checker, if anyone ever compiles it.
+//
+// It is not a small number. A SECOND CONSTRUCT VOCABULARY runs through these grammars that the reader does not
+// know — `chunk`, `bound`, `crown`, `chord`, `chain`, `sieve`, `count`, `shard`, `block`, `leave`, `flow`,
+// `crest`, `shift`, `binary` — and every use of one lands here. Those words are not in note/term/feed's grammar
+// spec, so what each MEANS is an open question and not one this function answers. What it does is stop the
+// question being invisible.
+export function feedMineUnknownRefs(grammar: FeedMineGrammar): string[] {
+  const missing = new Set<string>()
+
+  const walk = (rules: readonly FeedMineRule[]): void => {
+    for (const rule of rules) {
+      if (rule.kind === 'form' && !grammar.has(rule.name)) {
+        missing.add(rule.name)
+      }
+
+      const children = (rule as { children?: FeedMineRule[] }).children
+
+      if (Array.isArray(children)) {
+        walk(children)
+      }
+    }
+  }
+
+  for (const rules of grammar.values()) {
+    walk(rules)
+  }
+
+  return [...missing].sort()
+}
+
+// This is what makes that visible. A caller that cares (the build, a gate) asks for the drops and refuses; one
+// that does not is unaffected, so nothing existing changes behaviour.
+export function feedMineDrops(tree: RootNode): string[] {
+  const grammar = readFeedMineGrammar(tree)
+  const out: string[] = []
+
+  for (const group of tree.nodes) {
+    if (headWord(group) !== 'mine') {
+      continue
+    }
+
+    const name = wordOf(group.nodes[1])
+
+    if (!name || (grammar.get(name) ?? []).length > 0) {
+      continue
+    }
+
+    // A rule DECLARED WITH NO BODY is a stub in the grammar, not something the reader failed to read: `mine aif`
+    // and gdef's `mine version` are a name and nothing else. Counting those as drops would blame the reader for
+    // work the grammar has not done, and would make the number impossible to drive to zero from this side.
+    if (siblingsOf(group).some(n => n.kind === 'group')) {
+      out.push(name)
+    }
+  }
+
+  return out
 }
 
 export function readFeedMineGrammar(tree: RootNode): FeedMineGrammar {
@@ -576,10 +1025,18 @@ export function compileFeedMine(
   lines.push('')
   lines.push('load @term/seed/code/list')
   lines.push('  find push')
+  // `size` is how a COUNT-DIRECTED list knows how many it has read: the list's own length is the counter, so the
+  // loop needs no reassignment
+  lines.push('  find size')
   // `join` is what a text-substrate `mine until` folds its collected characters back into one value with. It
   // used to be emitted without being imported, so a text dialect with an `until` rule generated a file that did
   // not resolve — invisible while only gzip (a byte dialect) exercised that rule.
   lines.push('  find join')
+  lines.push('')
+  // `unwrap-or` is how a SPAN turns an optional part into text: absent means the empty string, which is exactly
+  // what "the text these rules consumed" means for a part that matched nothing.
+  lines.push('load @term/seed/code/maybe')
+  lines.push('  find unwrap-or')
   lines.push('')
   lines.push('load @term/seed/code/boolean')
   lines.push('  find and')
@@ -637,15 +1094,34 @@ function captureTypeOf(rule: FeedMineRule, ops: Ops, grammar: FeedMineGrammar, s
       return ['like number']
     case 'range':
       return text ? ['like text'] : ['like u8']
+    // a span's value is the text it consumed
+    case 'span':
+      return ['like text']
     case 'mark':
       return ['like list', '  like text']
     case 'bytes':
       return BYTE_BLOCK
     case 'until':
       return text ? ['like text'] : BYTE_BLOCK
-    // the payload stays `like unknown` (see compileMaybeHelper for why), so the maybe itself is a maybe of it.
+    // the payload stays `like unknown` (see compileMaybeHelper for why), so the maybe itself is a maybe of it. A
+    // `check` compiles to the same helper and so has the same type: without this it fell to the `like number`
+    // default and every rule ending in one declared a number for a maybe.
+    case 'check':
     case 'maybe':
       return ['like maybe', '  like unknown']
+    // A NESTED LIST is a list of whatever its last child captures. There was no case for it, so a rule ending in
+    // one fell to the `like number` default and declared a number for an array: `cmap-table` reads two ints and
+    // then a list of encoding records, and `latin/number` does the same. The whole-body form of this is already
+    // handled in returnTypeOf; this is the same answer for a list that is one rule among several.
+    case 'list': {
+      const kids = capturingRules(rule.children)
+      const last = kids[kids.length - 1]
+
+      return [
+        'like list',
+        ...(last ? captureTypeOf(last, ops, grammar, seen) : ['like unknown']).map(line => `  ${line}`),
+      ]
+    }
     case 'int':
     case 'let':
       return ['like number']
@@ -654,9 +1130,20 @@ function captureTypeOf(rule: FeedMineRule, ops: Ops, grammar: FeedMineGrammar, s
   }
 }
 
-// the rules of a sequence that actually bind a local, in order.
+// The rules of a sequence that actually bind a local, in order.
+//
+// `range` IS one now: a range standing alone in a sequence reads a character and saves it, where before it only
+// appeared inside an `any` and captured nothing. Leaving it out made `read-digits` declare `like list, like number`
+// for a list of characters. `not` is NOT one: a negative lookahead consumes nothing and binds nothing, and counting
+// it made `read-safe-char` declare `like number` for a rule that returns a character.
 function capturingRules(rules: FeedMineRule[]): FeedMineRule[] {
-  return rules.filter(r => r.kind !== 'value' && r.kind !== 'send' && r.kind !== 'range' && r.kind !== 'list')
+  return rules.filter(
+    r =>
+      r.kind !== 'value' &&
+      r.kind !== 'send' &&
+      r.kind !== 'not' &&
+      r.kind !== 'list',
+  )
 }
 
 // a named rule's declared return type. `seen` breaks a grammar that refers to itself (a recursive rule, which
@@ -677,15 +1164,18 @@ function returnTypeOf(name: string, ops: Ops, grammar: FeedMineGrammar, seen: Se
 
   inner.add(name)
 
-  if (rules.length === 1 && rules[0]!.kind === 'list') {
-    const children = capturingRules((rules[0] as { children: FeedMineRule[] }).children)
+  // a `start` is a PARAMETER, not part of the body, so a rule whose body is one list still reads as one here
+  const body = rules.filter(r => r.kind !== 'start')
+
+  if (body.length === 1 && body[0]!.kind === 'list') {
+    const children = capturingRules((body[0] as { children: FeedMineRule[] }).children)
     const last = children[children.length - 1]
     const element = last ? captureTypeOf(last, ops, grammar, inner) : ['like number']
 
     return ['like list', ...element.map(line => `  ${line}`)]
   }
 
-  return inferReturnType(rules, ops, grammar, inner)
+  return inferReturnType(body, ops, grammar, inner)
 }
 
 // a non-list rule's return type: the `mine value` expression's own shape when there is one, otherwise the last
@@ -718,7 +1208,14 @@ function inferReturnType(rules: FeedMineRule[], ops: Ops, grammar: FeedMineGramm
     return ['like number']
   }
 
-  const captures = capturingRules(rules)
+  // A NESTED LIST BINDS, so it is a candidate for "the last capture" here even though `capturingRules` leaves it
+  // out. That exclusion is right where it is used on a list's own CHILDREN (a list inside a list is not the
+  // element type), and wrong here: the emitter pushes the list's local last and sends it back, so a rule that
+  // ends in one returns the LIST. Without this `cmap-table` read two ints and a list of encoding records and
+  // declared `like number`, and the generated reader could not typecheck.
+  const captures = rules.filter(
+    r => r.kind === 'list' || capturingRules([r]).length > 0,
+  )
   const last = captures[captures.length - 1]
 
   return last ? captureTypeOf(last, ops, grammar, seen) : ['like number']
@@ -740,16 +1237,48 @@ function compileNamedRule(
   const taskName = `read-${name}`
   const scope: Scope = { sends: [], types: new Map() }
 
-  if (rules.length === 1 && rules[0]!.kind === 'list') {
-    const inner = rules[0] as { kind: 'list'; children: FeedMineRule[] }
+  // The rule's PARAMETERS, pulled off the front the way `value` is pulled out of the body below. They become
+  // `take` lines after the cursor, and they go into the scope's types so a helper nested inside this rule takes
+  // them too: `freeReads` already asks the outer scope which names it has to thread through, and a parameter is
+  // one of those names.
+  //
+  // The declared type comes from the DEFAULT when there is one, because that is the only thing in the grammar
+  // that says what the value is. Without one it is `like unknown`, the gradual type, which is consistent with
+  // every concrete type in both directions and so unifies at whatever the call site actually passes. Guessing
+  // `like number` instead would be right for OTF's flags and wrong for csv's separator.
+  const starts = rules.filter((r): r is Extract<FeedMineRule, { kind: 'start' }> => r.kind === 'start')
+  const takes: string[] = []
 
-    out.push(`task ${taskName}`, `  take cursor, like ${ops.cursorType}`)
+  for (const start of starts) {
+    const fall = shareValue(start.fall)
+    const type = fall?.text.startsWith('text ')
+      ? 'like text'
+      : fall?.text.startsWith('code ')
+        ? 'like number'
+        : 'like unknown'
+
+    scope.types.set(start.name, [type])
+    takes.push(`  take ${start.name}, ${type}${fall ? `, fall ${fall.text}` : ''}`)
+  }
+
+  const body0 = rules.filter(r => r.kind !== 'start')
+
+  if (body0.length === 1 && body0[0]!.kind === 'list') {
+    const inner = body0[0] as { kind: 'list'; children: FeedMineRule[] }
+
+    out.push(`task ${taskName}`, `  take cursor, like ${ops.cursorType}`, ...takes)
     out.push(...returnTypeOf(name, ops, grammar).map(line => `  ${line}`))
     out.push('  save result', '    make list', '  walk test', '    hook test')
     out.push(`      call not, call ${ops.atEnd}(read(cursor))`)
     out.push('    hook hold')
 
+    // a whole rule's body that IS a list is a repetition too, so its inner rules end it rather than raising on the
+    // first non-match, exactly as a nested `mine list` does. Without this `read-digits` threw
+    // `expected a character between 48 and 57` on the first character after the digits, which is every number that
+    // is not the entire input.
+    inRepetition++
     compileSequence(inner.children, 3, ops, grammar, scope, nextHelperName, out, helpers)
+    inRepetition--
 
     const captured = scope.sends[scope.sends.length - 1] ?? 'item'
 
@@ -762,7 +1291,7 @@ function compileNamedRule(
   const body: string[] = []
   let valueExpr: GroupNode | undefined
 
-  for (const rule of rules) {
+  for (const rule of body0) {
     if (rule.kind === 'value') {
       valueExpr = rule.expr
       continue
@@ -771,7 +1300,7 @@ function compileNamedRule(
     compileExpr(rule, 1, ops, grammar, scope, nextHelperName, body, helpers)
   }
 
-  out.push(`task ${taskName}`, `  take cursor, like ${ops.cursorType}`)
+  out.push(`task ${taskName}`, `  take cursor, like ${ops.cursorType}`, ...takes)
   out.push(...returnTypeOf(name, ops, grammar).map(line => `  ${line}`))
   out.push(...body)
 
@@ -816,6 +1345,18 @@ function pad(indent: number): string {
   return '  '.repeat(indent)
 }
 
+// Inside a `mine list`, a rule that does not match ENDS THE REPETITION rather than failing the parse: that is what
+// "zero or more" means. Bare `halt` breaks a loop in Term and `halt <text>` raises, so the same guard emits one or
+// the other depending on where it sits. Without this a list of digits halted the whole read on the first character
+// that was not a digit, which is every list that is not the entire input.
+let inRepetition = 0
+
+// Inside a SPAN, every part has to answer with the text it consumed, and that applies to a `maybe` as much as to a
+// character. A maybe's payload is otherwise its LAST capture, which drops everything before it: JSON's fractional
+// part is `.` then digits, so the payload was the digits and `3.5` read back as `35`. Same for the exponent, whose
+// `e` vanished the same way.
+let inSpan = 0
+
 function compileExpr(
   rule: FeedMineRule,
   indent: number,
@@ -834,7 +1375,24 @@ function compileExpr(
       const localName = rule.send ?? `match-${sends.length}`
 
       bindCapture(scope, localName, rule, ops, grammar)
-      out.push(`${p}save ${localName}`, `${p}  call read-${rule.name}(read(cursor))`)
+
+      // the arguments this rule's `start` parameters receive, as NAMED arguments so the checker puts each in the
+      // callee's declared position: the cursor is positional and first, everything else is named.
+      const args = (rule.args ?? [])
+        .map(arg => ({ name: arg.name, value: shareValue(arg.value) }))
+        .filter((a): a is { name: string; value: { text: string; reads: string[] } } => a.value !== undefined)
+
+      if (args.length === 0) {
+        out.push(`${p}save ${localName}`, `${p}  call read-${rule.name}(read(cursor))`)
+
+        return
+      }
+
+      out.push(`${p}save ${localName}`, `${p}  call read-${rule.name}`, `${p}    read cursor`)
+
+      for (const arg of args) {
+        out.push(`${p}    bind ${arg.name}, ${arg.value.text}`)
+      }
 
       return
     }
@@ -886,7 +1444,7 @@ function compileExpr(
       out.push(`${p}  hook test`)
       out.push(`${p}    call not, call is-equal(call ${ops.peekCode}(read(cursor)), code ${rule.literal})`)
       out.push(`${p}  hook hold`)
-      out.push(`${p}    halt <expected character ${rule.literal}>`)
+      out.push(inRepetition > 0 ? `${p}    halt` : `${p}    halt <expected character ${rule.literal}>`)
       out.push(`${p}save ${localName}`)
       out.push(`${p}  call ${ops.advance}(read(cursor))`)
 
@@ -907,7 +1465,7 @@ function compileExpr(
         out.push(`${p}  hook test`)
         out.push(`${p}    call not, call is-equal(call ${ops.peekCode}(read(cursor)), code ${code})`)
         out.push(`${p}  hook hold`)
-        out.push(`${p}    halt <expected ${rule.literal}>`)
+        out.push(inRepetition > 0 ? `${p}    halt` : `${p}    halt <expected ${rule.literal}>`)
         out.push(`${p}  hook miss`)
         out.push(`${p}    call ${ops.advance}(read(cursor))`)
       }
@@ -935,7 +1493,7 @@ function compileExpr(
       out.push(`${p}        call is-minimum(call ${ops.peekCode}(read(cursor)), code ${baseCode})`)
       out.push(`${p}        call is-maximum(call ${ops.peekCode}(read(cursor)), code ${headCode})`)
       out.push(`${p}  hook hold`)
-      out.push(`${p}    halt <expected a character between ${baseCode} and ${headCode}>`)
+      out.push(inRepetition > 0 ? `${p}    halt` : `${p}    halt <expected a character between ${baseCode} and ${headCode}>`)
       out.push(`${p}save ${localName}`)
       out.push(`${p}  call ${ops.advance}(read(cursor))`)
 
@@ -992,6 +1550,99 @@ function compileExpr(
       return
     }
 
+    // `mine list` NESTED inside another rule (rather than as a whole rule's body, which compileNamedRule handles):
+    // repeat the children while the cursor has more, collecting each turn. A span's `mine list / mine range` is
+    // this, and without it the span's children emitted nothing at all.
+    case 'list': {
+      const localName = `list-${sends.length}`
+
+      out.push(`${p}save ${localName}`)
+      out.push(`${p}  make list`)
+      out.push(`${p}walk test`)
+      out.push(`${p}  hook test`)
+
+      // A COUNT-DIRECTED list stops at its count, and it counts with the LIST'S OWN LENGTH rather than a
+      // separate counter, so nothing has to be reassigned inside the loop. `walk size` would say this directly
+      // and is a view-role construct, not available here.
+      //
+      // The end-of-input guard stays either way: a truncated file must end the loop rather than read past the
+      // end, and a count read from that same file is not to be trusted on its own.
+      const bound = rule.count ? shareValue(rule.count) : undefined
+
+      if (bound) {
+        out.push(`${p}    call and`)
+        out.push(`${p}      call not, call ${ops.atEnd}(read(cursor))`)
+        out.push(`${p}      call is-below(call size(read(${localName})), ${bound.text})`)
+      } else {
+        out.push(`${p}    call not, call ${ops.atEnd}(read(cursor))`)
+      }
+
+      out.push(`${p}  hook hold`)
+
+      const before = scope.sends.length
+      const inner: string[] = []
+
+      inRepetition++
+      compileSequence(rule.children, indent + 2, ops, grammar, scope, nextHelperName, inner, helpers)
+      inRepetition--
+      out.push(...inner)
+
+      const captured = scope.sends[scope.sends.length - 1] ?? scope.sends[before] ?? 'item'
+
+      out.push(`${p}    call push(read(${localName}), read(${captured}))`)
+
+      scope.sends.push(localName)
+
+      return
+    }
+
+    // `bind value / mine text / <rules>`: run the children, then join what they consumed.
+    //
+    // It reads the locals the children BOUND rather than threading an accumulator into every emitter, because each
+    // consuming rule already saves what it read: a `range` or a `char` saves one character, a `list` saves the list
+    // it collected. Joining those in order is the text the span covers. A `list` local is a list and a character
+    // local is a text, so each is joined on its own and the results concatenated, which `join` over a list of one
+    // handles without a special case.
+    case 'span': {
+      const inner: string[] = []
+
+      inSpan++
+      compileSequence(rule.children, indent, ops, grammar, scope, nextHelperName, inner, helpers)
+      inSpan--
+      out.push(...inner)
+
+      // only the span's OWN saves, at its own indent. A `save` deeper than that belongs to a loop body and is
+      // already inside the list that loop collected, so counting it again would repeat every character.
+      const bound = inner
+        .filter(line => line.startsWith(`${p}save `))
+        .map(line => line.trim().slice('save '.length))
+
+      bindCapture(scope, rule.send, rule, ops, grammar)
+      out.push(`${p}save ${rule.send}-parts`)
+      out.push(`${p}  make list`)
+
+      // Each part becomes text ACCORDING TO ITS OWN TYPE, which the scope already recorded: a character is
+      // already text, a list of characters is joined, and an optional part is unwrapped to the empty string when
+      // it is absent. Joining every part the same way was wrong in both directions - it fed `join` a maybe, and
+      // it fed the result a list where a string belonged.
+      for (const name of bound) {
+        const kind = (scope.types.get(name) ?? []).join(' ')
+
+        if (kind.startsWith('like maybe')) {
+          out.push(`${p}    call unwrap-or(read(${name}), text <>)`)
+        } else if (kind.startsWith('like list')) {
+          out.push(`${p}    call join(read(${name}), text <>)`)
+        } else {
+          out.push(`${p}    read ${name}`)
+        }
+      }
+
+      out.push(`${p}save ${rule.send}`)
+      out.push(`${p}  call join(read(${rule.send}-parts), text <>)`)
+
+      return
+    }
+
     case 'int': {
       const localName = rule.send ?? `int-${sends.length}`
 
@@ -1023,10 +1674,20 @@ function compileExpr(
       return
     }
 
+    // a `check` IS a `maybe` with an explicit test, written in the notation the OTF tables use, so it compiles
+    // through the same helper rather than through a second path that could drift from it
+    case 'check':
     case 'maybe': {
       const localName = rule.send ?? `maybe-${sends.length}`
       const helperName = nextHelperName()
-      const built = compileMaybeHelper(helperName, rule, ops, grammar, scope, nextHelperName)
+      const built = compileMaybeHelper(
+        helperName,
+        rule.kind === 'check' ? asMaybe(rule) : rule,
+        ops,
+        grammar,
+        scope,
+        nextHelperName,
+      )
 
       helpers.push(...built.lines)
       bindCapture(scope, localName, rule, ops, grammar)
@@ -1093,6 +1754,17 @@ function firstOf(
       ]
     case 'form':
       return firstOfRule(rule.name, grammar, seen)
+    // a span's first characters are its children's, read as a sequence
+    case 'span':
+      return firstOfSequence(rule.children, grammar, seen)
+    // an OPTIONAL rule contributes its own first characters, and the sequence must keep looking past it, because
+    // it can be skipped. firstOfSequence is what knows that; on its own a maybe cannot decide anything. A `check`
+    // is optional in exactly the same way: its condition may be false.
+    case 'check':
+    case 'maybe':
+      return firstOfSequence(rule.children, grammar, seen)
+    case 'list':
+      return firstOfSequence(rule.children, grammar, seen)
     case 'any': {
       const out: Span[] = []
 
@@ -1119,6 +1791,39 @@ function firstOf(
   }
 }
 
+// The first characters a SEQUENCE can begin with: every optional rule's own, plus the first required rule's, then
+// stop. A `maybe` can be skipped, so what follows it can also begin the sequence, which is exactly why JSON's
+// `number` (an optional sign, then digits) starts with a digit as well as with `-`.
+function firstOfSequence(
+  rules: FeedMineRule[],
+  grammar: FeedMineGrammar,
+  seen: Set<string>,
+): Span[] | undefined {
+  const out: Span[] = []
+
+  for (const rule of rules) {
+    // consumes nothing, decides nothing
+    if (rule.kind === 'not' || rule.kind === 'send' || rule.kind === 'let' || rule.kind === 'value') {
+      continue
+    }
+
+    const spans = firstOf(rule, grammar, seen)
+
+    if (!spans) {
+      return out.length > 0 ? out : undefined
+    }
+
+    out.push(...spans)
+
+    // a required rule ends the search; an optional one lets the next rule begin the sequence too
+    if (rule.kind !== 'maybe') {
+      return out
+    }
+  }
+
+  return out.length > 0 ? out : undefined
+}
+
 // the FIRST set of a named rule: the first of its first rule that can actually begin it
 function firstOfRule(
   name: string,
@@ -1139,21 +1844,21 @@ function firstOfRule(
 
   inner.add(name)
 
-  for (const rule of rules) {
-    // skip the rules that consume nothing and so cannot decide the branch
-    if (rule.kind === 'not' || rule.kind === 'send' || rule.kind === 'let' || rule.kind === 'value') {
-      continue
-    }
-
-    return firstOf(rule, grammar, inner)
-  }
-
-  return undefined
+  return firstOfSequence(rules, grammar, inner)
 }
 
 function compileAnyHelper(name: string, branches: FeedMineRule[], ops: Ops, grammar: FeedMineGrammar): string[] {
   const ranges = branches.filter((b): b is { kind: 'range'; base: string; head: string } => b.kind === 'range')
-  const element = ops.cursorType === 'text-cursor' ? 'like text' : 'like u8'
+  // A helper whose branches are all CHARACTERS returns a character. One with a FORM branch returns whatever that
+  // rule returns, and different branches return different things: JSON's `escape` chooses between a character and
+  // `unicode-escape`'s four-digit list. `like unknown` is the documented gradual type, consistent with every
+  // concrete type in both directions, so it unifies wherever a caller actually uses the value. Declaring `like
+  // text` for all of them was right only while every dialect's `any` was ranges.
+  const element = branches.some(b => b.kind === 'form')
+    ? 'like unknown'
+    : ops.cursorType === 'text-cursor'
+      ? 'like text'
+      : 'like u8'
   // one peek, held in a local, rather than one per COMPARISON. Each `peek` walks the cursor's cell indirection
   // and its refill check, and the branch chain used it twice per alternative, so matching a character against
   // the last of three ranges peeked six times to read one byte that never moved. Hoisting it is safe precisely
@@ -1305,9 +2010,71 @@ function freeReads(node: Node, out: Set<string> = new Set()): Set<string> {
 // `mine maybe / test <expr> / <body> / send <name>`: a real `maybe` (this package's own `@term/seed/code/maybe`
 // tagged union, matching every dialect's hand-written reader), gated by the embedded boolean `test` expression.
 // `some`'s payload is the body's own last capture, or the `mine value` expression if the body has one.
+// the condition for a `maybe` with no explicit test: the next character is within its own FIRST set. Falls back to
+// refusing the branch when the FIRST set cannot be computed, so an undecidable maybe is skipped rather than entered
+// on a guess.
+function firstTest(children: FeedMineRule[], ops: Ops, grammar: FeedMineGrammar): string {
+  const spans: Span[] = []
+
+  for (const child of children) {
+    const got = firstOf(child, grammar, new Set<string>())
+
+    if (!got) {
+      continue
+    }
+
+    spans.push(...got)
+
+    // only the FIRST rule that can begin the body decides it
+    break
+  }
+
+  if (spans.length === 0) {
+    return 'false'
+  }
+
+  return spans
+    .map(span =>
+      span.base === span.head
+        ? `call is-equal(call ${ops.peekCode}(read(cursor)), code ${span.base})`
+        : `call and(call is-minimum(call ${ops.peekCode}(read(cursor)), code ${span.base}), call is-maximum(call ${ops.peekCode}(read(cursor)), code ${span.head}))`,
+    )
+    .reduce((left, right) => `call or(${left}, ${right})`)
+}
+
+// A `check` as the `maybe` it is. The test is rendered here rather than synthesized as a tree: the two operands
+// are already nodes, `shareValue` turns each into the Term that means it, and the names they read are exactly the
+// ones the helper has to take as parameters. Building a GroupNode by hand to hand back to `printNode` would be
+// the same answer through more machinery, and machinery that could disagree with the one parser.
+function asMaybe(rule: {
+  op: string
+  base: Node
+  head: Node
+  children: FeedMineRule[]
+}): { testText?: string; testReads?: string[]; children: FeedMineRule[] } {
+  const base = shareValue(rule.base)
+  const front = shareValue(rule.head)
+
+  if (!base || !front) {
+    return { children: rule.children }
+  }
+
+  return {
+    testText: `call ${rule.op}(${base.text}, ${front.text})`,
+    testReads: [...base.reads, ...front.reads],
+    children: rule.children,
+  }
+}
+
 function compileMaybeHelper(
   name: string,
-  rule: { test: GroupNode; children: FeedMineRule[] },
+  rule: {
+    test?: GroupNode
+    // a `check`'s test, already rendered, with the outer names it reads. Same meaning as `test`, different source.
+    testText?: string
+    testReads?: string[]
+    children: FeedMineRule[]
+  },
   ops: Ops,
   grammar: FeedMineGrammar,
   outer: Scope,
@@ -1327,11 +2094,31 @@ function compileMaybeHelper(
     compileExpr(child, 3, ops, grammar, scope, nextHelperName, body, helpers)
   }
 
-  const payload = valueExpr ? printNode(valueExpr) : `read ${scope.sends[scope.sends.length - 1] ?? 'result'}`
+  // inside a span the payload is the TEXT this maybe consumed, joined from every part it bound, each converted by
+  // its own type the way the span converts its own parts. Outside one it is the last capture, as before.
+  const payload = valueExpr
+    ? printNode(valueExpr)
+    : inSpan > 0 && scope.sends.length > 0
+      ? `call join(make(list${scope.sends
+          .map(name => {
+            const kind = (scope.types.get(name) ?? []).join(' ')
+
+            return kind.startsWith('like maybe')
+              ? `, call unwrap-or(read(${name}), text <>)`
+              : kind.startsWith('like list')
+                ? `, call join(read(${name}), text <>)`
+                : `, read(${name})`
+          })
+          .join('')}), text <>)`
+      : `read ${scope.sends[scope.sends.length - 1] ?? 'result'}`
   // only the names the test expression reads from OUTSIDE this helper, and each declared as the type the
   // enclosing rule's own capture holds — not `like number` for all of them, which was right only because gzip's
   // four gate tests happen to read one byte-valued `flags` field.
-  const params = [...freeReads(rule.test)].filter(p => outer.types.has(p))
+  const params = (
+    rule.test
+      ? [...freeReads(rule.test)]
+      : rule.testReads ?? []
+  ).filter(p => outer.types.has(p))
   const lines: string[] = [
     ...helpers,
     `task ${name}`,
@@ -1352,7 +2139,15 @@ function compileMaybeHelper(
     '    like unknown',
     '  fork test',
     '    hook test',
-    `      call is-above(${printNode(rule.test)}, code 0)`,
+    // an explicit `test` is an expression over locals read earlier (gzip's flag bits); an absent one means the
+    // maybe is decided by its own FIRST set, which is `does the next character start one of these`
+    `      ${
+      rule.test
+        ? `call is-above(${printNode(rule.test)}, code 0)`
+        : rule.testText
+          ? `call is-above(${rule.testText}, code 0)`
+          : firstTest(rule.children, ops, grammar)
+    }`,
     '    hook hold',
     ...body,
     '      send back',

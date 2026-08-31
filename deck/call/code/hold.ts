@@ -1,7 +1,7 @@
 /**
- * `seed hold` - the verification CLI verb. "Hold" is the kernel's word
+ * `term hold` - the verification CLI verb. "Hold" is the kernel's word
  * for a verified property: a goal `show hold`s, and a passing proof
- * holds. `seed hold [paths..]` asks whether the files hold - it compiles
+ * holds. `term hold [paths..]` asks whether the files hold - it compiles
  * each Seed file, reports every verification gap (the checker's
  * diagnostics as structured, actionable items), optionally runs the
  * cross-backend differential, and exits non-zero so it gates CI.

@@ -109,7 +109,7 @@ async function findTestFiles(input: {
 
         // a file is collected if it carries runnable tests (`test`) OR proof obligations (`hold` / `rule`), at any
         // indentation -- a `hold` inside a `task` states a UNIVERSAL law over the task's parameters (proved by the
-        // linear prover for all values), not just a top-level closed witness. Both are verified by `seed test`:
+        // linear prover for all values), not just a top-level closed witness. Both are verified by `term test`:
         // tests by running, proofs by the kernel and linear prover during compilation.
         if (/^\s*(test|hold|rule) /m.test(text)) {
           if (input.filter) {
@@ -180,8 +180,8 @@ async function runSeedTests(input: {
 
   // every test file compiles and runs in-process with the project resolver, so each `test` block executes and its
   // `want hold` / `want miss` assertion is reported, not merely that the file compiled. The native runtime is read by
-  // the path nativePrelude derives from each module's RESOLVED file (the `seed link` / import location), not a
-  // hardcoded base.tree path, exactly as `seed boot` runs compiled code.
+  // the path nativePrelude derives from each module's RESOLVED file (the `term link` / import location), not a
+  // hardcoded base.tree path, exactly as `term boot` runs compiled code.
   const resolve = projectResolver(input.root)
   const readRuntime = (p: string): string | undefined =>
     existsSync(p) ? readFileSync(p, 'utf8') : undefined

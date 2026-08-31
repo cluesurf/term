@@ -19,7 +19,7 @@ import {
 import { renderDiagnostic } from '@term/call/code/report'
 import { logFail, logStep, fade } from '@term/make/code/tint'
 
-// `seed look <module>` -- inspect what a module exposes (forms + tasks with signatures), following its load/bear
+// `term look <module>` -- inspect what a module exposes (forms + tasks with signatures), following its load/bear
 // graph. The target is a package path (`@cluesurf/bind/code/browser/dom`) or a `.tree` file. Output: table (default),
 // `--json`, or `--csv`.
 export async function callLook(input: {
@@ -31,7 +31,7 @@ export async function callLook(input: {
 }): Promise<void> {
   if (!input.target) {
     logFail(
-      'Usage: seed look <module> [--json|--csv] [--kind form|task]',
+      'Usage: term look <module> [--json|--csv] [--kind form|task]',
     )
     process.exit(1)
   }
@@ -46,7 +46,7 @@ export async function callLook(input: {
 
     if (!entry) {
       logFail(
-        `Could not resolve ${input.target} (is the package linked? run \`seed link\`)`,
+        `Could not resolve ${input.target} (is the package linked? run \`term link\`)`,
       )
       process.exit(1)
     }

@@ -1,0 +1,25 @@
+
+# Browser console implementation. Internal: reached only through the public console API.
+#
+# There was none, and `console.tree` is what `log` and `error` reach, so nothing that printed a line could be
+# built for the browser at all. `term cast`, which builds an SSR app for Cloudflare and borrows this env, failed
+# on a FRESHLY SCAFFOLDED project with `the name "write-error" is not defined`, pointing into the stdlib rather
+# than at anything the person had written.
+#
+# `console` is a real global here, in a browser and in a Cloudflare Worker alike, so this docks it directly and
+# needs no runtime shim, exactly as the node implementation does.
+
+dock load
+  load <global:console>, name console
+
+task write-line
+  take message, like text
+  like void
+  call console/log
+    read message
+
+task write-error
+  take message, like text
+  like void
+  call console/error
+    read message

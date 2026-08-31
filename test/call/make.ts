@@ -1,7 +1,7 @@
 // `seed make` project build: incremental artifact writes (only files whose output changed are rewritten) and rich,
 // colored compiler diagnostics. Run: npx tsx test/call/make.ts
 
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compileProject } from '@term/call/code/make'
@@ -86,6 +86,43 @@ ok(
       const frame = renderDiagnostic(broken.diagnostics[0]!, 'task bad\n  take n, like number\n  like text\n  send back\n    read n\n')
       return frame.includes('b.tree:') && frame.includes('send back')
     })(),
+)
+
+// 6. A RELATIVE IMPORT SURVIVES A SYMLINKED PROJECT PATH.
+//
+// A relative import is confined to its own package, so `load ../../../../etc/passwd` cannot read the host
+// filesystem during a compile of untrusted source. The confinement compares the resolved candidate against the
+// package root, and it used to compare a REAL path against an unresolved one: the package root exists and so was
+// resolved through its symlinks, while the candidate is a bare `.../code` with no extension yet and so was not.
+//
+// On any project path crossing a symlink the two are spelled differently, every relative import in the project
+// resolved to nothing, and the failure surfaced far away as `the name "x" is not defined` at the CALL, never at
+// the import. Every macOS temporary directory is such a path (`/var` -> `/private/var`), which is how this was
+// found, and a project under a symlinked home or volume is the same case.
+//
+// The symlink is made HERE rather than relied on from the platform, so this holds on Linux too.
+const realRoot = mkdtempSync(join(tmpdir(), 'seed-make-real-'))
+const linkRoot = join(mkdtempSync(join(tmpdir(), 'seed-make-link-')), 'project')
+
+mkdirSync(join(realRoot, 'code'), { recursive: true })
+writeFileSync(join(realRoot, 'deck.tree'), 'deck @term/probe\n')
+writeFileSync(
+  join(realRoot, 'code/helper.tree'),
+  'task triple\n  take n, like number\n  like number\n  send back\n    call multiply(read(n), code 3)\n',
+)
+writeFileSync(
+  join(realRoot, 'code/use.tree'),
+  'load ./helper\n  find triple\n\ntask nine\n  like number\n  send back\n    call triple(code 3)\n',
+)
+
+symlinkSync(realRoot, linkRoot)
+
+const linked = compileProject(linkRoot)
+
+ok(
+  'a relative import resolves when the project is reached through a symlink',
+  linked.failed === 0 && linked.compiled === 2,
+  `${linked.compiled} compiled, ${linked.failed} failed: ${linked.errors.join(' | ').slice(0, 200)}`,
 )
 
 rmSync(root, { recursive: true, force: true })

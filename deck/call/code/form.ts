@@ -10,7 +10,7 @@ import {
   fade,
 } from '@term/make/code/tint'
 
-// `seed form` -- format `.tree` files into canonical layout. By default it rewrites them in place; `--check` only
+// `term form` -- format `.tree` files into canonical layout. By default it rewrites them in place; `--check` only
 // reports which files would change (for CI); `--list` prints the formatted source to stdout without writing. Files
 // with parse errors are reported and left untouched, so a broken file is never overwritten.
 export async function callForm(input: {

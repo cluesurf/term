@@ -117,36 +117,36 @@ mine value-record
 
   check bitwise-and
     bind start, share value-format
-    bind front, share #h0001
+    bind front, share 0x0001
     mine form, form x-placement
   check bitwise-and
     bind start, share value-format
-    bind front, share #h0002
+    bind front, share 0x0002
     mine form, form y-placement
   check bitwise-and
     bind start, share value-format
-    bind front, share #h0004
+    bind front, share 0x0004
     mine form, form x-advance
   check bitwise-and
     bind start, share value-format
-    bind front, share #h0008
+    bind front, share 0x0008
     mine form, form y-advance
 
   check bitwise-and
     bind start, share value-format
-    bind front, share #h0010
+    bind front, share 0x0010
     mine form, form x-pla-device
   check bitwise-and
     bind start, share value-format
-    bind front, share #h0020
+    bind front, share 0x0020
     mine form, form y-pla-device
   check bitwise-and
     bind start, share value-format
-    bind front, share #h0040
+    bind front, share 0x0040
     mine form, form x-adv-device
   check bitwise-and
     bind start, share value-format
-    bind front, share #h0080
+    bind front, share 0x0080
     mine form, form y-adv-device
 
 mine x-placement

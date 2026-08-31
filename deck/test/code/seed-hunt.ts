@@ -10,8 +10,8 @@
  * package free of a call<->test cycle - same discipline as `prove-file`.
  */
 
-import { readFileSync, existsSync, mkdtempSync } from 'node:fs'
-import { execSync, spawnSync } from 'node:child_process'
+import { readFileSync, existsSync, mkdtempSync, readdirSync, statSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -29,6 +29,29 @@ export type HuntResult = {
   findings: number
 }
 
+// every `.tree` beneath a directory, or nothing when the directory is absent
+function treeFilesUnder(dir: string, out: string[] = []): string[] {
+  if (!existsSync(dir)) {
+    return out
+  }
+
+  for (const entry of readdirSync(dir)) {
+    if (entry === 'node_modules' || entry === 'host' || entry.startsWith('.')) {
+      continue
+    }
+
+    const full = path.join(dir, entry)
+
+    if (statSync(full).isDirectory()) {
+      treeFilesUnder(full, out)
+    } else if (entry.endsWith('.tree')) {
+      out.push(full)
+    }
+  }
+
+  return out
+}
+
 /** Run the full Seed-compiler bug-hunt: corpus oracles + watchdog fuzz. */
 export function huntSeedCompiler(input: {
   root: string
@@ -40,19 +63,19 @@ export function huntSeedCompiler(input: {
   fuzzTimeoutSec?: number
 }): HuntResult {
   const { root, resolve } = input
-  const glob = input.glob ?? 'deck/base/code'
+  // the stdlib, at its CURRENT path. This defaulted to `deck/base/code`, the pre-rename location, which has not
+  // existed since the package became `deck/seed`: `find` failed, the catch below set the corpus to empty, and the
+  // run reported `no oracle violations` having read nothing at all. A check that passes on an empty corpus is
+  // worse than no check, because it answers the question it was asked.
+  const glob = input.glob ?? 'deck/seed/code'
   const runs = input.runs ?? 3000
   const seeds = input.seeds ?? 4
   const fuzzTimeoutSec = input.fuzzTimeoutSec ?? 90
 
   // ---- phase 1: corpus oracles ----
-  let files: string[] = []
-  try {
-    files = execSync(`find ${glob} -name "*.tree"`, { encoding: 'utf8', cwd: root })
-      .trim().split('\n').filter(Boolean)
-  } catch {
-    files = []
-  }
+  // walked here rather than shelled out to `find`: the old call interpolated `glob` straight into a shell command,
+  // and let `find`'s own stderr through to the user when the path was missing.
+  const files = treeFilesUnder(path.resolve(root, glob)).map(f => path.relative(root, f))
 
   const corpus = auditCorpus({
     files,
@@ -102,7 +125,13 @@ export function huntSeedCompiler(input: {
 export function renderHunt(result: HuntResult): string {
   const out: string[] = []
   out.push(`=== corpus oracles: ${result.corpus.files} files ===`)
-  if (result.corpus.violations.length === 0) {
+
+  // An EMPTY corpus is not a clean one, and saying so is the whole point. This reported `no oracle violations`
+  // over zero files for as long as the default glob pointed at the pre-rename `deck/base/code`: the oracles held
+  // vacuously, and the line read exactly like a real pass.
+  if (result.corpus.files === 0) {
+    out.push('  NO FILES READ, so the oracles held over nothing. Check the corpus path.')
+  } else if (result.corpus.violations.length === 0) {
     out.push('  no oracle violations (round-trip, determinism, cross-backend, tolerant all hold)')
   } else {
     out.push(`  ${result.corpus.violations.length} VIOLATION(S):`)

@@ -1,10 +1,10 @@
-// `seed halt` — stop running `seed boot` servers.
-//   seed halt <port>   stop the app serving on that port
-//   seed halt          stop every seed boot instance on the machine
+// `term halt` — stop running `term boot` servers.
+//   term halt <port>   stop the app serving on that port
+//   term halt          stop every term boot instance on the machine
 //
 // Seed boot servers are easy to find without a registry: each runs `node <project>/.base/@cluesurf/term/boot/<hash>/run.mjs`, a path
-// that is unique to seed boot. We match that in the process table (cross-process, machine-wide), so `seed halt` works
-// from anywhere with no shared state to go stale. `seed halt <port>` instead asks the OS who is listening on the port.
+// that is unique to term boot. We match that in the process table (cross-process, machine-wide), so `term halt` works
+// from anywhere with no shared state to go stale. `term halt <port>` instead asks the OS who is listening on the port.
 
 import { execSync } from 'child_process'
 import {
@@ -14,10 +14,10 @@ import {
   fade,
 } from '@term/make/code/tint'
 
-// the marker that identifies a seed boot server process in the process table
+// the marker that identifies a term boot server process in the process table
 const BOOT_MARKER = '.base/@cluesurf/term/boot/'
 
-// the PIDs of every running seed boot server (match the run.mjs path in each process's command line)
+// the PIDs of every running term boot server (match the run.mjs path in each process's command line)
 function bootPids(): number[] {
   try {
     const out = execSync('ps -ax -o pid=,command=', {
@@ -67,7 +67,7 @@ function stop(pid: number): boolean {
 export async function callHalt(input: {
   ports?: number[]
 }): Promise<void> {
-  // `seed halt -p 2400,2401` stops the apps on those ports; bare `seed halt` stops every seed boot instance
+  // `term halt -p 2400,2401` stops the apps on those ports; bare `term halt` stops every term boot instance
   if (input.ports?.length) {
     logStep(`Halting app(s) on port ${input.ports.join(', ')}...`)
 
@@ -95,12 +95,12 @@ export async function callHalt(input: {
     return
   }
 
-  logStep('Halting all seed boot instances...')
+  logStep('Halting all term boot instances...')
 
   const pids = bootPids()
 
   if (!pids.length) {
-    logGood('No seed boot instances running')
+    logGood('No term boot instances running')
 
     return
   }
@@ -114,5 +114,5 @@ export async function callHalt(input: {
     }
   }
 
-  logGood(`Stopped ${stopped} seed boot instance(s)`)
+  logGood(`Stopped ${stopped} term boot instance(s)`)
 }

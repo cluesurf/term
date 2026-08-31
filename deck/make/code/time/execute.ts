@@ -4,6 +4,7 @@
 
 import { compile } from '@term/make/code/compile/compile'
 import type { Program } from '@term/make/code/compile/node'
+import type { Resolver } from '@term/make/code/compile/load'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { spawn } from 'node:child_process'
 import * as fs from 'node:fs/promises'
@@ -15,12 +16,22 @@ export class CompileFailure extends Error {
   }
 }
 
-// compile a self-contained `.tree` file to a runnable TypeScript module plus its checked program (for discovery).
+// Compile a `.tree` file to a runnable TypeScript module plus its checked program (for discovery).
+//
+// The RESOLVER is what makes this work on a real project rather than only on a file with no imports. Without one
+// `compile` never collects the module graph, so every imported name is undefined: `term time` on a freshly
+// scaffolded project reported `the name "log" is not defined` for the entry `term make` compiles without
+// complaint, because the scaffold's `load @term/seed/code/console` was never followed. It is optional so a caller
+// with a genuinely self-contained file (the benchmark fixtures) can still leave it out.
 export function compileToModule(input: {
   text: string
   file: string
+  resolve?: Resolver
 }): { code: string; program: Program } {
-  const result = compile({ file: input.file, text: input.text })
+  const result = compile(
+    { file: input.file, text: input.text },
+    input.resolve ? { resolve: input.resolve } : undefined,
+  )
 
   if (!result.ok) {
     throw new CompileFailure(result.diagnostics)

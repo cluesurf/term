@@ -1,7 +1,7 @@
 // The `test` preprocessor. A test file is ordinary Seed plus `test <phrase>` blocks. This rewrites each block, before
 // the compiler sees it, into a top-level async task that returns whether the test held: every assertion (`want hold` /
 // `want miss`) becomes a fail-fast guard, and the task ends `send back, true`. Helper `task`/`form`/`load`/`host`
-// declarations are passed through untouched. This is used by `seed test` (the CLI runner). When the self-hosting mill
+// declarations are passed through untouched. This is used by `term test` (the CLI runner). When the self-hosting mill
 // consumes the `test` grammar (term.tree/code/code/test), this step folds into the mint with no change to any test
 // file. See note/library/seed/test-dsl.md.
 

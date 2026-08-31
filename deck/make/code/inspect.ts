@@ -1,6 +1,6 @@
 // The module inspector: compile a module (following its `load`/`bear` graph) and report the symbols it exposes —
 // forms (with fields and variants) and tasks (with parameter and result types). Pure and browser-safe: it returns
-// structured data; rendering to JSON / CSV / a table is separate. The CLI `seed look` drives it. This is the easy way
+// structured data; rendering to JSON / CSV / a table is separate. The CLI `term look` drives it. This is the easy way
 // to see "what's on" a module — including transitively re-exported (`bear`'d) definitions.
 
 import { collectModules } from '@term/make/code/compile/load'
