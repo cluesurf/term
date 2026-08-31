@@ -1,5 +1,10 @@
-// `seed wake [name]`: scaffold a new Seed project. Creates a deck.tree manifest, a starter entry module, a readme, and
-// a .gitignore. With a name it makes a new directory; without one it scaffolds the current directory (if empty).
+// `term wake [name]`: scaffold a new Term project. Creates a deck.tree manifest, a starter entry module, a readme,
+// and a .gitignore. With a name it makes a new directory; without one it scaffolds the current directory (if empty).
+//
+// WHAT IT SCAFFOLDS HAS TO BE CLEAN, because it is the first Term anyone reads. It said `seed` throughout (the
+// language was renamed), imported `@cluesurf/seed` (the legacy prefix, which resolves but is not the name any more),
+// and its entry comment was 87 characters, so a new project failed `term lint` on the line the scaffold itself
+// wrote. test/call/lifecycle.ts runs `wake` then `lint` and holds it.
 
 import fsp from 'fs/promises'
 import path from 'path'
@@ -18,28 +23,29 @@ const DECK_TREE = (project: string): string => `deck ${project}
   boot ./code/boot
 `
 
-const BOOT_TREE = `# The application entry point. \`seed boot\` compiles and runs this module's \`boot\` task.
+const BOOT_TREE = `# The application entry point. \`term boot\` compiles and runs
+# this module's \`boot\` task.
 
-load @cluesurf/seed/code/console
+load @term/seed/code/console
   find log
 
 task boot
   note async
   call log
-    text <hello from seed>
+    text <hello from term>
 `
 
 const README = (project: string): string => `# ${project}
 
-A Seed project.
+A Term project.
 
 ## Develop
 
 \`\`\`
-seed boot     # compile and run
-seed feed     # dev server with hot reload
-seed test     # run tests
-seed make     # build
+term boot     # compile and run
+term feed     # dev server with hot reload
+term test     # run tests
+term make     # build
 \`\`\`
 `
 

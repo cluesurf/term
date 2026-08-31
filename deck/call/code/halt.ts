@@ -2,7 +2,7 @@
 //   seed halt <port>   stop the app serving on that port
 //   seed halt          stop every seed boot instance on the machine
 //
-// Seed boot servers are easy to find without a registry: each runs `node <project>/.base/term/boot/<hash>/run.mjs`, a path
+// Seed boot servers are easy to find without a registry: each runs `node <project>/.base/@cluesurf/term/boot/<hash>/run.mjs`, a path
 // that is unique to seed boot. We match that in the process table (cross-process, machine-wide), so `seed halt` works
 // from anywhere with no shared state to go stale. `seed halt <port>` instead asks the OS who is listening on the port.
 
@@ -15,7 +15,7 @@ import {
 } from '@term/make/code/tint'
 
 // the marker that identifies a seed boot server process in the process table
-const BOOT_MARKER = '.base/term/boot/'
+const BOOT_MARKER = '.base/@cluesurf/term/boot/'
 
 // the PIDs of every running seed boot server (match the run.mjs path in each process's command line)
 function bootPids(): number[] {

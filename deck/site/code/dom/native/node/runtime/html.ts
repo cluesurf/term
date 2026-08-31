@@ -7,6 +7,12 @@
 // escaping + void-element handling. A text node has an empty `tag`; an element has children (each a view wrapping its
 // own record).
 
+// TERM_HTML since the Seed rename; the SEED_ spelling is still honored so an existing shell profile keeps working.
+// This is a prepended runtime shim, so it cannot import deck/call/code/home.ts and spells the pair out.
+function htmlMode(): string | undefined {
+  return process.env.TERM_HTML ?? process.env.SEED_HTML
+}
+
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -121,13 +127,13 @@ function htmlNamespace() {
   }
 
   // HTML output mode. Default: PRETTY in dev (indented, nice View-Source), COMPACT in prod (smallest payload). Override
-  // either way explicitly: `SEED_HTML=pretty` forces pretty (even in prod), `SEED_HTML=compact` forces compact (even in
+  // either way explicitly: `TERM_HTML=pretty` forces pretty (even in prod), `TERM_HTML=compact` forces compact (even in
   // dev). Pretty is whitespace-SAFE: an element whose children include a text node (inline content like `<p>... <a>x</a>
   // ...`) stays compact, so no rendered whitespace is introduced; only all-element ("block") parents break onto lines.
   const PRETTY =
-    process.env.SEED_HTML === 'pretty'
+    htmlMode() === 'pretty'
       ? true
-      : process.env.SEED_HTML === 'compact'
+      : htmlMode() === 'compact'
         ? false
         : process.env.NODE_ENV !== 'production'
 

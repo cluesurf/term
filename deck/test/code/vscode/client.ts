@@ -11,6 +11,7 @@
 import * as path from 'node:path'
 import * as vscode from 'vscode'
 import {
+import { env } from '@term/call/code/home'
   LanguageClient,
   TransportKind,
   type ServerOptions,
@@ -24,7 +25,7 @@ export function startSeedLanguageClient(
   // The Seed flow server entry. In a packaged extension this points at
   // the bundled server; in development at deck/flow's compiled main.
   const serverModule =
-    process.env.SEED_FLOW_SERVER ??
+    env('FLOW_SERVER') ??
     context.asAbsolutePath(path.join('server', 'flow', 'main.js'))
 
   const serverOptions: ServerOptions = {

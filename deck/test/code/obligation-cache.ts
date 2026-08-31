@@ -15,7 +15,7 @@
  *   - a pure `ObligationCache` (get/set over string keys) - browser-safe,
  *     no fs, the unit the verifier talks to.
  *   - `diskObligationCache(dir)` - a node-backed store that persists the
- *     map as one JSON file under `.base/term/hold`, loaded once and flushed
+ *     map as one JSON file under `.base/@cluesurf/term/hold`, loaded once and flushed
  *     on `save()`. Writes are atomic (temp then rename).
  */
 
@@ -72,7 +72,7 @@ export function memoryObligationCache(): ObligationCache {
 
 /**
  * A disk-backed obligation cache rooted at `dir` (e.g.
- * `<project>/.base/term/hold`). The whole map is one JSON file, loaded once
+ * `<project>/.base/@cluesurf/term/hold`). The whole map is one JSON file, loaded once
  * at construction and flushed on `save()`. A corrupt or missing file is
  * treated as an empty cache (a cache must never fail the verifier).
  */

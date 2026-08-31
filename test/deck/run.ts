@@ -105,7 +105,7 @@ function main(): void {
   expect(
     'store path',
     storePath('/home/me', 'termsurf', 'wolf', '0.0.1'),
-    '/home/me/.base/term/deck/link/termsurf/wolf/0.0.1',
+    '/home/me/.base/@cluesurf/term/deck/link/termsurf/wolf/0.0.1',
   )
 
   console.log(`\ndeck: ${pass} pass, ${fail} fail`)

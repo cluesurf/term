@@ -1,0 +1,144 @@
+# The x86 instruction table dialect, read.
+#
+# `deck/bind/code/linux/operand.tree` is 11,489 lines describing 1,270 x86 instructions, and it is not ordinary
+# Term: `force adc` / `start 1, share al` / `write 0x14` are its own vocabulary. The house rule is that a custom
+# `.tree` dialect is integrated by defining a MILL, never by teaching the core compiler its heads, so this is that
+# mill. See deck/term/CLAUDE.md and note/term/one-parser.md.
+#
+# THE WHOLE VOCABULARY, counted from the file on 2026-08-30: one top-level head (`force`, 1,270 times) and five
+# nested ones (`write` 4,266, `start` 2,384, `shift` 1,760, `state` 373, `slate` 161). Nothing else.
+#
+#   force <name>        an instruction, by mnemonic
+#     start <n>, share <register>    operand n is a fixed register, or a literal (`share 1`) (357)
+#     start <n>, field <kind>        operand n is an encoded field (2,027)
+#     write <byte>                   a literal opcode byte, hex (2,683)
+#     write <text>                   an opcode byte carrying a register, `<0x14+r>` (24)
+#     write field, field <kind>      an encoded field in the instruction stream (1,559)
+#     shift <flag>, <action>         what it does to a flag: write / cloud / clear / mount, on o s z a p c (1,760)
+#     state <n>                      an encoding state (373)
+#     slate white                    a marker, one value in the whole table (161)
+
+mine operand
+  mine list
+    mine any
+      mine form, like force
+        site force
+      mine form, like shelved
+        site note
+
+# `note draft`: the marker that keeps the file out of the build until this mill is wired in. Read rather than
+# refused, so the grammar describes the file as it actually sits on disk.
+mine shelved
+  mine term, term note
+    mine term
+      site mark
+
+# `force <mnemonic>` with its encoding beneath it.
+#
+# The mnemonic may be a SLASH LIST of synonyms (`shl/sal`, `cmovae/cmovnb/cmovnc`), which the parser already reads
+# as one name, so nothing special is needed for it. 151 of the 1,270 carry a `shift white` marker on the head line
+# itself, which a comma makes a sibling of the mnemonic.
+mine force
+  mine term, term force
+    mine term
+      site name
+    mine maybe
+      mine form, like force-mark
+        site mark
+    mine list
+      mine any
+        mine form, like start-share
+          site start
+        mine form, like start-field
+          site start
+        mine form, like write-byte
+          site write
+        mine form, like write-text
+          site write
+        mine form, like write-field
+          site write
+        mine form, like shift-flag
+          site shift
+        mine form, like state-code
+          site state
+        mine form, like slate-mark
+          site slate
+
+# `start 1, share al`: operand n is a fixed register
+mine start-share
+  mine term, term start
+    mine code
+      site place
+    mine term, term share
+      mine any
+        mine term
+          site register
+        mine code
+          site register
+    mine maybe
+      mine form, like slate-mark
+        site slate
+
+# `start 2, field state-8`: operand n is an encoded field
+mine start-field
+  mine term, term start
+    mine code
+      site place
+    mine term, term field
+      mine term
+        site kind
+    mine maybe
+      mine form, like slate-mark
+        site slate
+
+# `write 0x14`: a literal opcode byte
+mine write-byte
+  mine term, term write
+    mine code
+      site byte
+
+# `write <0x14+r>`: an opcode byte that carries a register in its low bits
+mine write-text
+  mine term, term write
+    mine text
+      site byte
+
+# `write field, field mount`: an encoded field in the instruction stream, optionally carrying its own encoding
+# state (`write field, field raise` / `state 2`, where the `state` is a SIBLING of the two `field` terms under
+# `write`, because a comma pops exactly one level)
+mine write-field
+  mine term, term write
+    mine term, term field
+    mine term, term field
+      mine term
+        site kind
+    mine maybe
+      mine form, like state-code
+        site state
+
+# `shift z, write`: what this instruction does to a flag. Four actions across the table: `write` 1,221, `cloud`
+# 298 (leaves it undefined), `clear` 237, `mount` 4. Six flags: o s z a p c.
+mine shift-flag
+  mine term, term shift
+    mine term
+      site flag
+    mine term
+      site action
+
+# `state 16`: an encoding state
+mine state-code
+  mine term, term state
+    mine code
+      site code
+
+# `force adc, shift white`: a marker on the instruction itself
+mine force-mark
+  mine term, term shift
+    mine term
+      site mark
+
+# `slate white`: a marker
+mine slate-mark
+  mine term, term slate
+    mine term
+      site mark

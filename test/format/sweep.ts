@@ -9,6 +9,14 @@
 //                      same call, and moving between those forms is exactly what a formatter is allowed to do.
 //                      A tree-level comparison would refuse a correct formatter.
 //
+//   IMPORTS PRESERVED  The `load` / `bear` paths a file names are identical before and after. Compared SEPARATELY
+//                      because a load directive never becomes a mill Statement: it is resolved by the loader, so
+//                      the mill comparison above is blind to it. That blindness hid a real, meaning-changing bug
+//                      for as long as the sweep has existed: the formatter re-emitted every name interpolation as
+//                      `{{...}}` regardless of its actual brace depth, turning the compile-time substitution in
+//                      `load @term/seed/code/native/{platform}/atomic` into a runtime interpolation. Every
+//                      platform-slot import in the stdlib, silently, the moment anyone ran `term form`.
+//
 //   IDEMPOTENT         format(format(x)) equals format(x). A formatter that keeps changing its mind cannot be
 //                      run on save, and every diff carries noise that hides the real change.
 //
@@ -21,6 +29,7 @@ import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { format } from '@term/make/code/format/format'
 import { parse } from '@term/make/code/parser/tree'
+import { importPathsOf, makeParseMemo } from '@term/make/code/compile/load'
 import { mill } from '@term/make/code/compile/mill'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
@@ -74,6 +83,11 @@ function treeFiles(dir: string, out: string[] = []): string[] {
   }
 
   return out
+}
+
+// the `load` / `bear` paths a file names, through the compiler's own reader so this cannot disagree with the build
+function importsOf(file: string, text: string): string {
+  return importPathsOf({ file, text }, makeParseMemo()).join('|')
 }
 
 // Adjacent literal pieces of a template mean the same thing however they are split: `["<", "<", x]` and
@@ -181,6 +195,18 @@ for (const file of files) {
     same ? note(`${label}: meaning is preserved now, so take it off KNOWN_MEANING`) : knownMeaning++
   } else if (!same) {
     note(`${label}: formatting changed the mill Program${after === undefined ? ' (the formatted file does not compile)' : ''}`)
+  } else {
+    pass++
+  }
+
+  // IMPORTS PRESERVED
+  const importsBefore = importsOf(file, text)
+  const importsAfter = importsOf(file, once)
+
+  if (importsBefore !== importsAfter) {
+    note(
+      `${label}: formatting changed the import paths\n    before ${importsBefore}\n    after  ${importsAfter}`,
+    )
   } else {
     pass++
   }

@@ -1,6 +1,6 @@
 // The parallel batch build driver (node). It fans the project's .tree files out across a pool of worker threads, each
 // running the ordinary `compile()` on one file at a time, so routes / env / every whole-program transform is handled
-// exactly as in the sequential `compileProject`. The on-disk `.base/term/cache` is shared across workers, so the stdlib is
+// exactly as in the sequential `compileProject`. The on-disk `.base/@cluesurf/term/cache` is shared across workers, so the stdlib is
 // parsed and milled once for the whole pool. Output is byte-identical to the sequential build; only the work is spread
 // across cores. All filesystem writes stay on the main thread (workers only compile and post the emitted text back).
 //

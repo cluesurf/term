@@ -1,0 +1,27 @@
+
+task one
+  send back, read x
+
+task two
+  send back
+    make user
+      bind name, text <ada>
+
+---
+
+task
+  one
+  send
+    back
+    read
+      x
+task
+  two
+  send
+    back
+    make
+      user
+      bind
+        name
+        text
+          <ada>

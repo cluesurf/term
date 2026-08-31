@@ -1,0 +1,19 @@
+
+form thing
+  mark <0192f3c1-0000-7000-8000-000000000000>
+
+rule collide-is-reversible
+  mark a, like tone
+
+---
+
+form
+  thing
+  mark
+    <0192f3c1-0000-7000-8000-000000000000>
+rule
+  collide-is-reversible
+  mark
+    a
+    like
+      tone

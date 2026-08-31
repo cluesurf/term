@@ -1,6 +1,6 @@
 // CLI-level tests for `seed time` (the `callTime` handler). Run: npx tsx test/time/call.ts
 // These exercise the command's own logic -- discovery + run against a real project, baseline persistence under
-// `.base/term/time/<name>.json`, and the save -> compare round-trip with regression gating -- without measuring anything.
+// `.base/@cluesurf/term/time/<name>.json`, and the save -> compare round-trip with regression gating -- without measuring anything.
 // A trivial `time-noop` task keeps each run sub-millisecond, so the default iteration count is harmless: the point is
 // that the plumbing (collect files -> compile -> run -> table/json -> save -> compare -> gate) works end to end.
 
@@ -45,7 +45,7 @@ async function readBaseline(
   root: string,
   name: string,
 ): Promise<{ results: { name: string; mean_ns: number }[] }> {
-  const file = path.join(root, '.base/term', 'time', `${name}.json`)
+  const file = path.join(root, '.base/@cluesurf/term', 'time', `${name}.json`)
 
   return JSON.parse(await fs.readFile(file, 'utf-8'))
 }
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
           baseline.results[0]!.mean_ns >= 0,
       )
 
-      const history = path.join(root, '.base/term', 'time', 'history')
+      const history = path.join(root, '.base/@cluesurf/term', 'time', 'history')
       const entries = await fs.readdir(history).catch(() => [])
       ok(
         'save also appended a history entry',
@@ -120,7 +120,7 @@ async function main(): Promise<void> {
   // --fail-on-regression must trip the CI gate (process.exit(1)).
   {
     const root = await makeProject(source)
-    const dir = path.join(root, '.base/term', 'time')
+    const dir = path.join(root, '.base/@cluesurf/term', 'time')
     await fs.mkdir(dir, { recursive: true })
     await fs.writeFile(
       path.join(dir, 'tight.json'),

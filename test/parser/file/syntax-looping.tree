@@ -1,0 +1,21 @@
+
+walk list, read items
+  hook next
+    take site, name item
+    show read item
+
+---
+
+walk
+  list
+  read
+    items
+  hook
+    next
+    take
+      site
+      name
+        item
+    show
+      read
+        item

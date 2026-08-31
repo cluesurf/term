@@ -1,4 +1,4 @@
-// A node-backed persistent cache store for the compiler (Tier 1). Reads / writes JSON entries under `.base/term/cache`, so a
+// A node-backed persistent cache store for the compiler (Tier 1). Reads / writes JSON entries under `.base/@cluesurf/term/cache`, so a
 // cold `seed boot` / `seed make` reuses the parse + mill + compile work of a prior run. Writes are atomic (temp file
 // then rename), so a killed build never leaves a truncated entry a later run would trust. Injected into `CompileCache`,
 // which keeps its own logic browser-safe. See note/seed/plan/compilation-performance.md (Tier 1).
@@ -14,13 +14,14 @@ import os from 'os'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import type { CacheStore } from '@term/make/code/compile/cache'
+import { env, userHome } from '@term/call/code/home'
 import {
   CACHE_EPOCH,
   CompileCache,
   hashText,
 } from '@term/make/code/compile/cache'
 
-// a disk-backed cache store rooted at `dir` (e.g. `<project>/.base/term/cache`). One subdir per kind, one file per key.
+// a disk-backed cache store rooted at `dir` (e.g. `<project>/.base/@cluesurf/term/cache`). One subdir per kind, one file per key.
 export function diskCacheStore(dir: string): CacheStore {
   const ensured = new Set<string>()
 
@@ -146,11 +147,10 @@ export function compilerVersion(): string {
 
 // the machine-wide shared cache home (Tier 5). Mill entries are content + path addressed, and linked stdlib files
 // share a realpath across projects, so the stdlib is milled once for every project on the machine. Overridable for
-// tests / CI via SEED_CACHE_HOME.
+// tests / CI via TERM_CACHE_HOME (the SEED_ spelling is still honored; see code/home.ts).
 export function cacheHome(): string {
   return (
-    process.env.SEED_CACHE_HOME ??
-    path.join(os.homedir(), '.base/term', 'store')
+    env('CACHE_HOME') ?? userHome('store')
   )
 }
 
@@ -176,7 +176,7 @@ export function sharedCacheStore(
 export function projectCache(projectRoot: string): CompileCache {
   return new CompileCache(
     sharedCacheStore(
-      path.join(projectRoot, '.base/term', 'cache'),
+      path.join(projectRoot, '.base/@cluesurf/term', 'cache'),
       cacheHome(),
     ),
     compilerVersion(),

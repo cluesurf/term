@@ -10,7 +10,10 @@ import { verifyHash } from './hash'
 import { FetchConfig } from './form'
 
 const LINK_DIR = 'link'
-const SEED_DIR = '.base/term'
+// The toolchain's directory under `.base`, scoped the way the packages are. Spelled out rather than imported from
+// deck/call/code/home.ts on purpose: @term/deck is PUBLISHED and consumed as an installed package, so it must not
+// reach back into the CLI's source. Keep the two in step; home.ts is the source of truth.
+const TERM_DIR = path.join('.base', '@cluesurf', 'term')
 
 export async function linkPackages(input: {
   root: string
@@ -18,7 +21,7 @@ export async function linkPackages(input: {
   config: FetchConfig
 }): Promise<void> {
   const linkDir = path.join(input.root, LINK_DIR)
-  const seedDir = path.join(linkDir, SEED_DIR)
+  const seedDir = path.join(linkDir, TERM_DIR)
 
   await fsp.mkdir(linkDir, { recursive: true })
   await fsp.mkdir(seedDir, { recursive: true })
@@ -341,7 +344,7 @@ export async function devUnlink(input: {
   await fsp.rm(targetLink, { force: true })
 }
 
-// the global link registry lives at ~/.base/term/link/<name>, a symlink to a package's working directory. `seed link` (no
+// the global link registry lives at ~/.base/@cluesurf/term/link/<name>, a symlink to a package's working directory. `seed link` (no
 // argument) registers the current package there; `seed link <name>` symlinks a registered package into a project. This
 // is the two-step `npm link` model: register once globally, consume from any project.
 function globalLinkPath(fullName: string): string {

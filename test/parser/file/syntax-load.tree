@@ -1,0 +1,15 @@
+
+load @term/seed/code/list
+  find get, name list-get
+  find push
+
+---
+
+load
+  @term/seed/code/list
+  find
+    get
+    name
+      list-get
+  find
+    push

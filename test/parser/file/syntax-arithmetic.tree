@@ -1,0 +1,20 @@
+
+call subtract
+  code 24
+  read x
+call subtract(code 24, read(x))
+
+---
+
+call
+  subtract
+  code
+    24
+  read
+    x
+call
+  subtract
+    code
+      24
+    read
+      x

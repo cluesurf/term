@@ -1,0 +1,25 @@
+
+fork case
+  read shape
+  case circle
+    read radius
+  case text
+    link content
+    read content
+
+---
+
+fork
+  case
+  read
+    shape
+  case
+    circle
+    read
+      radius
+  case
+    text
+    link
+      content
+    read
+      content

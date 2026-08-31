@@ -10,6 +10,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
 import type { GroupNode, Node } from '@term/make/code/parser/tree'
+import { parse, renderHead } from '@term/make/code/parser/tree'
 
 let pass = 0
 let fail = 0
@@ -22,6 +23,42 @@ function ok(name: string, cond: boolean, info = ''): void {
     fail++
     console.log(`FAIL  ${name}  ${info}`)
   }
+}
+
+// the argument of every top-level `<head> <name>` statement, read with the parser. There is ONE parser for `.tree`
+// (note/term/one-parser.md): a line-anchored regex on the head word also matches a line inside a `text <...>`
+// literal and misses a name carrying an interpolation, and a gate that disagrees with the grammar mis-reports
+// rather than fails loudly.
+function topLevel(file: string, text: string, head: string): string[] {
+  const parsed = parse({ file, text })
+
+  if (!parsed.ok) {
+    return []
+  }
+
+  const out: string[] = []
+
+  for (const group of parsed.tree.nodes) {
+    const first = group.nodes[0]
+
+    if (first?.kind !== 'name' || renderHead(first) !== head) {
+      continue
+    }
+
+    const argument = group.nodes[1]
+
+    // `mine <name>` only: a statement carrying more (`mine form, form x`) is a rule reference, not a definition
+    if (
+      group.nodes.length === 2 &&
+      argument?.kind === 'group' &&
+      argument.nodes.length === 1 &&
+      argument.nodes[0]?.kind === 'name'
+    ) {
+      out.push(renderHead(argument.nodes[0]))
+    }
+  }
+
+  return out
 }
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
@@ -292,11 +329,11 @@ for (const role of ['code', 'deck', 'note', 'test', 'view', 'host', 'mill']) {
 
     const text = readFileSync(file, 'utf8')
 
-    for (const m of text.matchAll(/^load (\S+)$/gm)) {
-      const target = resolveLoad(m[1]!, file)
+    for (const target of topLevel(file, text, 'load')) {
+      const resolved = resolveLoad(target, file)
 
-      if (target && target.startsWith(MILL)) {
-        queue.push(target)
+      if (resolved && resolved.startsWith(MILL)) {
+        queue.push(resolved)
       }
     }
   }
@@ -304,10 +341,10 @@ for (const role of ['code', 'deck', 'note', 'test', 'view', 'host', 'mill']) {
   const where = new Map<string, string[]>()
 
   for (const file of files) {
-    for (const m of readFileSync(file, 'utf8').matchAll(/^mine (\S+)$/gm)) {
-      const list = where.get(m[1]!) ?? []
+    for (const name of topLevel(file, readFileSync(file, 'utf8'), 'mine')) {
+      const list = where.get(name) ?? []
       list.push(relative(MILL, file))
-      where.set(m[1]!, list)
+      where.set(name, list)
     }
   }
 

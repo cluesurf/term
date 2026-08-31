@@ -1,0 +1,26 @@
+
+task hidden
+  note private
+  note deprecated
+  note feature, name x
+  note platform, name node
+  note keep
+
+---
+
+task
+  hidden
+  note
+    private
+  note
+    deprecated
+  note
+    feature
+    name
+      x
+  note
+    platform
+    name
+      node
+  note
+    keep

@@ -132,7 +132,7 @@ export async function callTime(input: {
     }
 
     if (input.save) {
-      const dir = path.join(input.root, '.base/term', 'time')
+      const dir = path.join(input.root, '.base/@cluesurf/term', 'time')
       await fs.mkdir(dir, { recursive: true })
       await fs.writeFile(
         path.join(dir, `${input.save}.json`),
@@ -151,7 +151,7 @@ export async function callTime(input: {
     if (input.compare) {
       const comparePath = path.join(
         input.root,
-        '.base/term',
+        '.base/@cluesurf/term',
         'time',
         `${input.compare}.json`,
       )
@@ -279,7 +279,7 @@ async function showHistory(input: {
   root: string
   name: string
 }): Promise<void> {
-  const historyDir = path.join(input.root, '.base/term', 'time', 'history')
+  const historyDir = path.join(input.root, '.base/@cluesurf/term', 'time', 'history')
 
   try {
     const files = (await fs.readdir(historyDir))

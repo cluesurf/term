@@ -126,7 +126,7 @@ export async function verifyInstall(input: { root: string }): Promise<{
     const linkPath = path.join(
       input.root,
       'link',
-      '.base/term',
+      '.base/@cluesurf/term',
       `${entry.name}@${codeStr}`,
     )
 

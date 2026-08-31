@@ -1,0 +1,28 @@
+
+tree greet
+  take name
+  text <hello {name}>
+
+fuse greet
+  bind name, text <ada>
+
+save s, text <hi {{who}} and {{e/form}}>
+
+---
+
+tree
+  greet
+  take
+    name
+  text
+    <hello {name}>
+fuse
+  greet
+  bind
+    name
+    text
+      <ada>
+save
+  s
+  text
+    <hi {{who}} and {{e/form}}>

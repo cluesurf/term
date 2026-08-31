@@ -1,8 +1,16 @@
 note draft
-# A glob-to-role mapping (`file ../book/**/*.note` / `bind role, loan book`) in what looks like the superseded
-# spelling of what `role.tree` now expresses (`role host` / `take @/data/**`). Shelved until it is either
-# rewritten in the current spelling or given a mill.
-
+# A glob-to-role mapping from the repository these bindings were AUTHORED in, not from this one. Measured
+# 2026-08-30: it maps four `*.note` globs, and @term/bind holds ZERO `.note` files. `../book/**` does not exist
+# here at all, and the three `../code/{javascript,browser,node}/**` directories that do exist hold 392, 1768 and
+# 730 `.tree` files respectively, which this file does not mention.
+#
+# So there is nothing here to rewrite in the current `role.tree` spelling (`role host` / `take @/data/**`): the
+# package declares no `role` in its deck.tree, builds clean at 3,091 files without one, and adding a role file
+# could only change that for the worse. The `bind dock, loan js` half has no equivalent either, because a modern
+# Term module picks its backend by the native path (`native/{platform}/...`) rather than by a glob mapping.
+#
+# Kept, not deleted, because it records how the binding library was laid out where it was generated, which is
+# what package-builds-0013 is about. Nothing reads it. See note/term/project/package-builds.md.
 
 load @term/mesh
   find mill code

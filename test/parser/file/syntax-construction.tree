@@ -1,0 +1,17 @@
+
+make user
+  bind name, text <ada>
+  bind age, code 36
+
+---
+
+make
+  user
+  bind
+    name
+    text
+      <ada>
+  bind
+    age
+    code
+      36

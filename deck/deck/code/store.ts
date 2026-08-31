@@ -2,11 +2,25 @@ import fsp from 'fs/promises'
 import path from 'path'
 import os from 'os'
 import { hashFile } from './hash'
+import { existsSync } from 'fs'
 
-const SEED_DIR = '.base/term'
+// The toolchain's directory under `.base`, scoped the way the packages are. Spelled out rather than imported from
+// deck/call/code/home.ts on purpose: @term/deck is PUBLISHED and consumed as an installed package, so it must not
+// reach back into the CLI's source. Keep the two in step; home.ts is the source of truth.
+const HOME = path.join('@cluesurf', 'term')
+const LEGACY_HOME = 'term'
+const TERM_DIR = path.join('.base', HOME)
+
+// use the pre-rename location when it is the one that exists, so a link registry is never lost
+function keptAt(current: string, legacy: string): string {
+  return !existsSync(current) && existsSync(legacy) ? legacy : current
+}
 
 export function getStoreRoot(): string {
-  return path.join(os.homedir(), SEED_DIR)
+  return keptAt(
+    path.join(os.homedir(), TERM_DIR),
+    path.join(os.homedir(), '.base', LEGACY_HOME),
+  )
 }
 
 export function getTreeDir(): string {

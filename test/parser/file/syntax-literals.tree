@@ -1,0 +1,30 @@
+
+save a, text <hello>
+save b, true
+save c, false
+save d, code 42
+save e, -3.5
+save f, 0x1f
+
+---
+
+save
+  a
+  text
+    <hello>
+save
+  b
+  true
+save
+  c
+  false
+save
+  d
+  code
+    42
+save
+  e
+  -3.5
+save
+  f
+  0x1f

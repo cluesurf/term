@@ -63,7 +63,7 @@ EOF
 KEY="$(cd "$ZONE" && pnpm exec tsx test/make-cache.ts "$PROJ" 2>/dev/null | tail -1)"
 
 export HOME="$SBOX"
-export SEED_CACHE_HOME="$SBOX/.cache"
+export TERM_CACHE_HOME="$SBOX/.cache"
 export ZONE_SAVE=env
 export ZONE_LOCK="$KEY"
 

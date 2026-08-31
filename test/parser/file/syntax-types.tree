@@ -1,0 +1,29 @@
+
+task any
+  take a, like unknown
+  take b, like dynamic
+  take c, like list
+  take d, like list, like unknown
+
+---
+
+task
+  any
+  take
+    a
+    like
+      unknown
+  take
+    b
+    like
+      dynamic
+  take
+    c
+    like
+      list
+  take
+    d
+    like
+      list
+      like
+        unknown

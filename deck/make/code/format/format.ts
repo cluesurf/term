@@ -29,6 +29,20 @@ const WIDTH = 84
 // thing this produced, and it is unreadable.
 const ALWAYS_STACK = new Set(['load', 'task', 'form', 'view', 'walk', 'fork', 'hook', 'case'])
 
+// heads that DECLARE rather than call: their children name and type a thing. One of these does not collapse when a
+// non-last child would have to be parenthesized, because such a child is another declaration. See needsParens.
+const DECLARATION_HEADS = new Set([
+  'host',
+  'take',
+  'save',
+  'link',
+  'slot',
+  'free',
+  'mark',
+  'like',
+  'head',
+])
+
 // the inline (comma-joined) rendering of a node: `head a, b, c`
 //
 // A child that has children of its own is written PARENTHESIZED (`loan(n)`), not space-separated. A comma pops
@@ -64,11 +78,15 @@ function flatten(node: Node, nested = false): string {
     }
 
     case 'name':
+      // an interpolation is re-emitted at ITS OWN brace depth, never a fixed `{{...}}`. A single brace is
+      // compile-time SUBSTITUTION and a double brace is RUNTIME interpolation, so hardcoding two turned
+      // `load @term/seed/code/native/{platform}/atomic` into `{{platform}}` and changed what the line means:
+      // every platform-slot import in the stdlib, silently, the moment anyone ran `term form` over it.
       return node.parts
         .map(p =>
           p.kind === 'chunk'
             ? p.text
-            : `{{${p.group ? flatten(p.group) : ''}}}`,
+            : `${'{'.repeat(p.depth)}${p.group ? flatten(p.group) : ''}${'}'.repeat(p.depth)}`,
         )
         .join('')
     case 'text': {
@@ -130,6 +148,33 @@ function headName(group: GroupNode): string {
 
 function isLeaf(node: Node): boolean {
   return node.kind !== 'group' || node.nodes.length <= 1
+}
+
+// would this child have to be PARENTHESIZED to survive an inline rendering? That is the same test `flatten` makes,
+// and it is the tell that the child is a DECLARATION rather than an atom: it has a head and children of its own.
+//
+// A group with such a child is not collapsed, however well it fits. Collapsing one is meaning-preserving and
+// unreadable, which is the same reason the ALWAYS_STACK heads exist, except that this catches it by SHAPE rather
+// than by naming a head. Two real examples from the stdlib:
+//
+//   host h, host(start, code 0), host end, code 360        was three legible lines
+//   take precise, like(boolean), fall false                was four
+//
+// while `call add, code 1, code 2` still collapses, because `code 1`'s only child is a literal and a literal does
+// not open a level for a comma to pop into.
+//
+// It applies to DECLARATION heads only. `call is-below, loan(n), code 2` is a call with arguments, and
+// parenthesizing an argument reads fine; `host h, host(start, code 0), ...` is a declaration whose children are
+// themselves declarations, and squashing those onto one line does not. Same shape, different head, different
+// answer, so the head has to be part of the test.
+function needsParens(node: Node): boolean {
+  return (
+    node.kind === 'group' &&
+    node.nodes.length > 1 &&
+    node.nodes
+      .slice(1)
+      .some(k => k.kind === 'name' || k.kind === 'group')
+  )
 }
 
 // word-wrap a comment so no line exceeds WIDTH. A comment that already fits is emitted unchanged (so short directive
@@ -194,6 +239,13 @@ function formatGroup(group: GroupNode, depth: number): string[] {
   if (
     !ALWAYS_STACK.has(headName(group)) &&
     !group.nodes.some(hasComment) &&
+    // a NON-LAST child that would need parentheses is another declaration, not an argument: see needsParens. The
+    // last part is exempt for the same reason `flatten` exempts it, and it is the difference between the house
+    // `take n, like number` (fine) and `take precise, like(boolean), fall false` (three lines squashed into one).
+    !(
+      DECLARATION_HEADS.has(headName(group)) &&
+      group.nodes.slice(1, -1).some(needsParens)
+    ) &&
     indent.length + flat.length <= WIDTH
   ) {
     const reparsed = parse({ file: 'format', text: flat })

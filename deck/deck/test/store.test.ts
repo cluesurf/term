@@ -23,13 +23,13 @@ describe('getFilePath', () => {
 describe('getStoreRoot', () => {
   it('lives under home directory', () => {
     const root = getStoreRoot()
-    expect(root).toBe(path.join(os.homedir(), '.base/term'))
+    expect(root).toBe(path.join(os.homedir(), '.base/@cluesurf/term'))
   })
 })
 
 describe('getTreeDir', () => {
   it('is tree/ under store root', () => {
     const dir = getTreeDir()
-    expect(dir).toBe(path.join(os.homedir(), '.base/term', 'tree'))
+    expect(dir).toBe(path.join(os.homedir(), '.base/@cluesurf/term', 'tree'))
   })
 })

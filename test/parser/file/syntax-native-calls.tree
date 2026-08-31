@@ -1,0 +1,24 @@
+
+dock load
+  load <node:fs/promises>, name fs-promise
+  note native
+
+call fs-promise/read-file
+  bind path, read p
+
+---
+
+dock
+  load
+  load
+    <node:fs/promises>
+    name
+      fs-promise
+  note
+    native
+call
+  fs-promise/read-file
+  bind
+    path
+    read
+      p

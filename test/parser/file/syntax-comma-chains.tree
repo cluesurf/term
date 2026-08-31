@@ -1,0 +1,39 @@
+
+foo bar baz bang boom, a b c, d e f
+call add, read(a), read(b)
+call(add, read(a), read(b))
+call add
+  read a
+  read b
+
+---
+
+foo
+  bar
+    baz
+      bang
+        boom
+        a
+          b
+            c
+            d
+              e
+                f
+call
+  add
+  read
+    a
+  read
+    b
+call
+  add
+  read
+    a
+  read
+    b
+call
+  add
+  read
+    a
+  read
+    b

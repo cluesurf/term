@@ -1,0 +1,18 @@
+
+task run
+  take body
+    like task
+      take dir, like text
+
+---
+
+task
+  run
+  take
+    body
+    like
+      task
+      take
+        dir
+        like
+          text

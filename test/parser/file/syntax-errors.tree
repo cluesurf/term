@@ -1,0 +1,23 @@
+
+task risky
+  halt
+  call work
+    halt kink
+  halt upload-excess
+    bind policy, text <10mb>
+
+---
+
+task
+  risky
+  halt
+  call
+    work
+    halt
+      kink
+  halt
+    upload-excess
+    bind
+      policy
+      text
+        <10mb>

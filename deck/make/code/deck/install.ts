@@ -167,7 +167,7 @@ export type InstallResult =
   | { ok: false; error: string }
 
 // install a project's dependencies. registryDir holds <host>/<deck>/<version>/ packages; storeHome is the
-// content-addressed store root (the ~/.base/term equivalent, parameterized for testing).
+// content-addressed store root (the ~/.base/@cluesurf/term equivalent, parameterized for testing).
 export function install(
   projectDir: string,
   registryDir: string,

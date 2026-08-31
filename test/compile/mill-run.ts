@@ -5,12 +5,13 @@
 
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { parse } from '@term/make/code/parser/tree'
+import { parse, renderHead } from '@term/make/code/parser/tree'
 import {
   readMineGrammar,
   readMintGrammar,
   runMine,
   runMint,
+  spanOfNode,
 } from '@term/make/code/compile/mill-run'
 import type { Minted } from '@term/make/code/compile/mill-run'
 import {
@@ -365,10 +366,51 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
 
     collected.add(file)
     const text = readFileSync(file, 'utf8')
-    parts.push(text.replace(/^load .*$\n(?:  find .*$\n)*/gm, ''))
 
-    for (const m of text.matchAll(/^load @term\/mill\/code\/(\S+)$/gm)) {
-      for (const c of [join(MILL, `${m[1]}.tree`), join(MILL, m[1]!, 'base.tree')]) {
+    // the grammar text WITHOUT its import block, and the paths it imports, read from the parse tree. There is ONE
+    // parser for `.tree` (note/term/one-parser.md): the regexes this replaced stripped a `load` line written inside
+    // a `text <...>` literal and missed a path carrying an interpolation. tree-parser-0010.
+    const parsed = parse({ file, text })
+    const lines = text.split('\n')
+    const drop = new Set<number>()
+    const imports: string[] = []
+
+    if (parsed.ok) {
+      for (const group of parsed.tree.nodes) {
+        const first = group.nodes[0]
+
+        if (first?.kind !== 'name' || renderHead(first) !== 'load') {
+          continue
+        }
+
+        const start = spanOfNode(group)?.start.line ?? 0
+        const last = group.nodes[group.nodes.length - 1]!
+        const end = spanOfNode(last)?.end.line ?? start
+
+        for (let i = start; i <= end; i++) {
+          drop.add(i)
+        }
+
+        const target = group.nodes[1]
+
+        if (target?.kind === 'group' && target.nodes[0]?.kind === 'name') {
+          imports.push(renderHead(target.nodes[0]))
+        }
+      }
+
+      parts.push(lines.filter((_, i) => !drop.has(i)).join('\n'))
+    } else {
+      parts.push(text)
+    }
+
+    for (const path of imports) {
+      const inMill = /^@term\/mill\/code\/(.+)$/.exec(path)
+
+      if (!inMill) {
+        continue
+      }
+
+      for (const c of [join(MILL, `${inMill[1]}.tree`), join(MILL, inMill[1]!, 'base.tree')]) {
         try {
           readFileSync(c)
           collect(c)

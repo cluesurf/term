@@ -324,7 +324,7 @@ export async function buildClientBundle(opts: {
     }
 
     // bundle once into the shared cache dir (keyed by content), then copy into the app's build output
-    const cacheOut = path.join(projectRoot, '.base/term', 'client', key)
+    const cacheOut = path.join(projectRoot, '.base/@cluesurf/term', 'client', key)
     const cacheFile = path.join(cacheOut, 'boot.js')
     const cacheMap = path.join(cacheOut, 'import-map.json')
 
@@ -604,7 +604,7 @@ export async function callBoot(input: {
     }
 
     // warm the local cache from a remote (Tier 5) before compiling, so a cold machine / CI reuses shared artifacts
-    const cacheDir = path.join(projectRoot, '.base/term', 'cache')
+    const cacheDir = path.join(projectRoot, '.base/@cluesurf/term', 'cache')
 
     if (input.remote) {
       try {
@@ -633,7 +633,7 @@ export async function callBoot(input: {
     )
 
     // compile the entry (and everything it loads) through the package manager, targeting the chosen env. A persistent
-    // cache (`.base/term/cache`) makes a cold re-boot reuse the prior parse + mill + compile (Tier 1).
+    // cache (`.base/@cluesurf/term/cache`) makes a cold re-boot reuse the prior parse + mill + compile (Tier 1).
     // resolve modules against the APP dir (the entry's package root, holding `deck.tree`), not the link/cache
     // `projectRoot`, so the app's own `@scope/...` and relative imports resolve correctly.
     const resolve = projectResolver(
@@ -667,7 +667,7 @@ export async function callBoot(input: {
     const dev = process.env.NODE_ENV !== 'production'
 
     // ONE persistent cache, reused across every rebuild (exactly as `seed make --watch` does). It is the turborepo-style
-    // content-addressed store at `.base/term/cache`: the in-memory layer survives across rebuilds in this process, and the
+    // content-addressed store at `.base/@cluesurf/term/cache`: the in-memory layer survives across rebuilds in this process, and the
     // disk layer survives across runs and machines (and a remote, via pull/push above). So an unchanged module reuses
     // its parse + mill, and an unchanged graph returns its whole result instantly -- the same reuse `seed make` gets.
     const cache = projectCache(projectRoot)
@@ -675,7 +675,7 @@ export async function callBoot(input: {
     // build the app ONCE: compile the entry, (re)build the client bundle + styles, bundle to ESM, and write the run
     // entry `run.mjs`. Returns its path plus whether the program is a command-line tool (top-level `hook` commands),
     // or null on a compile error (the rich diagnostics are printed and any running server is left up). This is the
-    // SAME incremental compile (shared `.base/term/cache`) and the SAME diagnostic renderer (`report.ts`) that
+    // SAME incremental compile (shared `.base/@cluesurf/term/cache`) and the SAME diagnostic renderer (`report.ts`) that
     // `seed make` uses; only the output step (esbuild bundle + run entry) differs.
     const buildOnce = async (): Promise<{
       run: string
@@ -744,7 +744,7 @@ export async function callBoot(input: {
               banner: {
                 // ANCHORED AT THE PROJECT, NOT THE BUNDLE.
                 //
-                // The bundle lives in `.base/term/boot/<hash>/`, so a
+                // The bundle lives in `.base/@cluesurf/term/boot/<hash>/`, so a
                 // `require` made from `import.meta.url` resolves relative
                 // paths under that directory and finds a project's own
                 // node_modules only by walking up past it. A runtime shim
@@ -764,7 +764,7 @@ export async function callBoot(input: {
             }),
       }
 
-      // incremental cache in `.base/term/boot/<hash>`. The key folds in everything that can change the output.
+      // incremental cache in `.base/@cluesurf/term/boot/<hash>`. The key folds in everything that can change the output.
       const key = hashText(
         [
           BOOT_CACHE_EPOCH,
@@ -776,12 +776,12 @@ export async function callBoot(input: {
         ].join('\n'),
       )
 
-      const out = path.join(projectRoot, '.base/term', 'boot', key)
+      const out = path.join(projectRoot, '.base/@cluesurf/term', 'boot', key)
       const bundle = path.join(out, 'app.mjs')
 
       if (existsSync(bundle)) {
         logGood(
-          `Cached ${path.relative(cwd, entry)} (.base/term/boot/${key.slice(0, 8)})`,
+          `Cached ${path.relative(cwd, entry)} (.base/@cluesurf/term/boot/${key.slice(0, 8)})`,
         )
       } else {
         mkdirSync(out, { recursive: true })
@@ -792,7 +792,7 @@ export async function callBoot(input: {
           ...bundleConfig,
         })
         logGood(
-          `Built ${path.relative(cwd, entry)} -> .base/term/boot/${key.slice(0, 8)}`,
+          `Built ${path.relative(cwd, entry)} -> .base/@cluesurf/term/boot/${key.slice(0, 8)}`,
         )
       }
 
@@ -971,7 +971,7 @@ export async function callBoot(input: {
             logGood('reloaded')
           }
         },
-        ['build/', '.base/term/', 'node_modules/', 'host/'],
+        ['build/', '.base/@cluesurf/term/', 'node_modules/', 'host/'],
       )
       stops.push(() => codeWatcher.close())
 

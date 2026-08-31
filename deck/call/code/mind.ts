@@ -1,4 +1,4 @@
-// `seed mind`: the project's durable memory -- one fact per file under `.base/term/memory/`, with an index. This is what
+// `seed mind`: the project's durable memory -- one fact per file under `.base/@cluesurf/term/memory/`, with an index. This is what
 // lets an unattended session (a disposable agent) start cold and still know the project's decisions and conventions.
 //
 //   seed mind <fact>            remember a fact
@@ -16,6 +16,7 @@ import {
 } from 'node:fs'
 import path from 'node:path'
 import { logGood, fade, logStep } from '@term/make/code/tint'
+import { keptAt, projectHome, legacyProjectHome } from '@term/call/code/home'
 
 const KINDS = [
   'decision',
@@ -35,8 +36,13 @@ function slug(text: string): string {
   )
 }
 
+// the project's memory, which is the one thing here a person WROTE. If a project still has its facts at the
+// pre-2026-08-30 path, they are read and written there rather than abandoned. See keptAt.
 function memoryDir(root: string): string {
-  return path.join(root, '.base/term', 'memory')
+  return keptAt(
+    projectHome(root, 'memory'),
+    legacyProjectHome(root, 'memory'),
+  )
 }
 
 type Fact = {

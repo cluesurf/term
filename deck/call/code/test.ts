@@ -86,7 +86,7 @@ async function findTestFiles(input: {
       const full = path.join(dir, entry.name)
 
       if (entry.isDirectory()) {
-        if (entry.name === 'node_modules' || entry.name === '.base/term') {
+        if (entry.name === 'node_modules' || entry.name === '.base/@cluesurf/term') {
           continue
         }
 

@@ -10,6 +10,7 @@ import {
   BASE_API,
 } from '@cluesurf/deck.tree'
 
+import { keptAt, userHome, legacyUserHome } from '@term/call/code/home'
 import {
   logGood,
   logFail,
@@ -84,7 +85,7 @@ export async function callHost(input: {
 
     if (!token) {
       logFail(
-        'Not authenticated. Set TERM_TOKEN, or write the token to ~/.base/term/auth',
+        'Not authenticated. Set TERM_TOKEN, or write the token to ~/.base/@cluesurf/term/auth',
       )
       process.exit(1)
     }
@@ -131,7 +132,7 @@ async function loadPublishToken(): Promise<string | undefined> {
 
   try {
     const text = await fs.readFile(
-      nodePath.join(os.homedir(), '.base/term/auth'),
+      keptAt(userHome('auth'), legacyUserHome('auth')),
       'utf-8',
     )
 
@@ -150,7 +151,7 @@ async function loadPublishKeypair(): Promise<{
   const os = await import('os')
   const nodePath = await import('path')
   const fs = await import('fs/promises')
-  const file = nodePath.join(os.homedir(), '.base/term/key')
+  const file = keptAt(userHome('key'), legacyUserHome('key'))
 
   try {
     return JSON.parse(await fs.readFile(file, 'utf-8')) as {

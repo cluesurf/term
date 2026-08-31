@@ -1,0 +1,26 @@
+
+read x
+read x/foo
+read x/{key}
+read x/0
+save y, code 20
+host z, code 10
+
+---
+
+read
+  x
+read
+  x/foo
+read
+  x/{key}
+read
+  x/0
+save
+  y
+  code
+    20
+host
+  z
+  code
+    10

@@ -1,0 +1,17 @@
+
+task tsc
+task vitest run
+hook test, task vitest run
+
+---
+
+task
+  tsc
+task
+  vitest
+    run
+hook
+  test
+  task
+    vitest
+      run

@@ -53,7 +53,7 @@ EOF
 # every assertion failed. `NODE_PATH` is how the shim's `require` finds it.
 export NODE_PATH="$ZONE/test/fixture/sdk/node_modules"
 export HOME="$SBOX"
-export SEED_CACHE_HOME="$SBOX/.cache"
+export TERM_CACHE_HOME="$SBOX/.cache"
 export ZONE_SAVE=env
 export ZONE_CODE=fake-machine-token
 export ZONE_FAKE_LOG="$WORK/calls.log"

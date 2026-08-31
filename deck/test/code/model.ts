@@ -14,6 +14,7 @@
 
 import type { Expr } from './synthesize'
 import { modelProposer, type AsyncProposer } from './ai-proposer'
+import { env } from '@term/call/code/home'
 
 // --- parse a model's textual reply into an Expr ---
 
@@ -97,9 +98,9 @@ export type ModelConfig = {
 
 /** Read a model config from environment variables, or null if unset. */
 export function modelConfigFromEnv(names: string[]): ModelConfig | null {
-  const endpoint = process.env.SEED_MODEL_ENDPOINT
-  const apiKey = process.env.SEED_MODEL_KEY
-  const model = process.env.SEED_MODEL ?? 'gpt-4o-mini'
+  const endpoint = env('MODEL_ENDPOINT')
+  const apiKey = env('MODEL_KEY')
+  const model = env('MODEL') ?? 'gpt-4o-mini'
   if (!endpoint || !apiKey) return null
   return { endpoint, apiKey, model, names }
 }

@@ -1,0 +1,17 @@
+
+call add
+  bind left, code 1
+  bind right, code 2
+
+---
+
+call
+  add
+  bind
+    left
+    code
+      1
+  bind
+    right
+    code
+      2

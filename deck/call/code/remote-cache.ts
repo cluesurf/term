@@ -1,4 +1,4 @@
-// Remote compile cache (Tier 5). The local `.base/term/cache` is content-addressed, so it shares across machines / CI with
+// Remote compile cache (Tier 5). The local `.base/@cluesurf/term/cache` is content-addressed, so it shares across machines / CI with
 // a trivial protocol: GET an index of keys, GET / PUT an artifact by `<kind>/<key>`. Because the in-process CacheStore
 // is synchronous and HTTP is not, the remote cache is a warm-before / push-after step around the build (not a per-key
 // fetch): `pull` downloads missing artifacts into the local dir before compiling, `push` uploads new local artifacts

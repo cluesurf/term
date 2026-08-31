@@ -25,7 +25,7 @@ cleanup(){ rm -rf "$WORK"; }
 trap cleanup EXIT
 
 export PATH="$FIX/bin:$PATH"
-export SEED_CACHE_HOME="$SBOX/.cache"
+export TERM_CACHE_HOME="$SBOX/.cache"
 export HOME="$SBOX"
 export ZONE_SAVE=env               # headless store: no keychain
 export ZONE_CODE=fake-machine-token # the one bootstrap secret CI injects

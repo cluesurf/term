@@ -1,0 +1,31 @@
+
+fork test
+  hook test
+    call is-above
+      read n
+      code 10
+  hook hold
+    text <big>
+  hook miss
+    text <small>
+
+---
+
+fork
+  test
+  hook
+    test
+    call
+      is-above
+      read
+        n
+      code
+        10
+  hook
+    hold
+    text
+      <big>
+  hook
+    miss
+    text
+      <small>
