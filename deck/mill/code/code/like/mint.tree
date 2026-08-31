@@ -1,24 +1,87 @@
+load @term/mill/code/code/fall/mint
+  find fall
 
-mint like
-  case or, mint or
-    site value
-  case and, mint and
-    site value
-  case task, mint task
-    site value
-  case name
-    site value
+load @term/mill/code/code/form/link/mint
+  find link
+
+load @term/mill/code/code/head/mint
+  find head
+
+load @term/mill/code/code/need/mint
+  find need
+
+load @term/mill/code/code/seed/mint
+  find seed
+
+load @term/mill/code/code/take/mint
+  find take
+
+load @term/mill/code/code/task/mint
+  find task
 
 mint or
-  case like, mint like
+  case like
     site like
   hook make
     make or
       bind like, read like
 
 mint and
-  case like, mint like
+  case like
     site like
   hook make
     make and
       bind like, read like
+
+mint like-bind
+  case name
+    site name
+  case seed
+    site seed
+  case text
+    site text
+  hook make
+    make like-bind
+      bind name, read name
+      bind seed, read seed
+      bind text, read text
+
+mint like
+  case name
+    site name
+  case or
+    site or
+  case and
+    site and
+  case task
+    site task
+  case child, mint like
+    site child
+  case take
+    site take
+  case need
+    site need
+  case fall
+    site fall
+  case arg
+    site arg
+  case bind, mint like-bind
+    site bind
+  case link
+    site link
+  case head
+    site head
+  hook make
+    make like
+      bind name, read name
+      bind or, read or
+      bind and, read and
+      bind task, read task
+      bind child, read child
+      bind take, read take
+      bind need, read need
+      bind fall, read fall
+      bind arg, read arg
+      bind bind, read bind
+      bind link, read link
+      bind head, read head

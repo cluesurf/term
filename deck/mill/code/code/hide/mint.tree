@@ -1,0 +1,6 @@
+mint hide
+  case term
+    site term
+  hook make
+    make hide
+      bind term, read term

@@ -1,8 +1,10 @@
+load @term/mill/code/code/seed/mint
+  find seed
 
 mint save
   case name
     site name
-  case seed, mint seed
+  case seed
     site seed
   hook make
     make save

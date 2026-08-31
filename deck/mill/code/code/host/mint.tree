@@ -1,3 +1,17 @@
+load @term/mill/code/code/head/mint
+  find head
+
+load @term/mill/code/code/like/mint
+  find like
+
+load @term/mill/code/code/note/mint
+  find note
+
+load @term/mill/code/code/seed/seed/mint
+  find host-item
+
+load @term/mill/code/code/take/mint
+  find take
 
 load @term/seed/code/lang
   find host-form
@@ -5,15 +19,17 @@ load @term/seed/code/lang
   find host-hook
   find host-bind
 
-mint host
-  case form, mint host-form
-    site form
-  case task, mint host-task
-    site task
-  case hook, mint host-hook
-    site hook
-  case bind, mint host-bind
-    site bind
+mint host-def
+  case name
+    site name
+  case like
+    site like
+  case seed
+    site seed
+  case item, mint host-item
+    site item
+  case host
+    site host
 
 mint host-form, like host-form
   case name

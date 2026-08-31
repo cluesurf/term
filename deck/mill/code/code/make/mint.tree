@@ -1,13 +1,24 @@
+load @term/mill/code/code/bind/mint
+  find bind
+
+load @term/mill/code/code/save/mint
+  find save
+
+load @term/mill/code/code/seed/mint
+  find seed
 
 mint make
   case name
     site name
-  case bind, mint bind
+  case bind
     site bind
-  case save, mint save
+  case save
     site save
+  case seed
+    site seed
   hook make
     make make
       bind name, read name
       bind bind, read bind
       bind save, read save
+      bind seed, read seed

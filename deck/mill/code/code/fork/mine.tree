@@ -44,16 +44,24 @@ mine fork-name
     mine term
       site name
 
-# one arm of a fork test: `hook test` (condition), `hook hold` (then), `hook miss` (else), `hook step`
+# one arm of a fork test: `hook test` (condition), `hook hold` (then), `hook miss` (else), `hook step`.
+# The arm's WORD is the whole meaning of the arm, so it is captured. It used to be matched and discarded, which
+# left every fork minting three indistinguishable arms and no way to tell a condition from a consequence.
 mine fork-arm-hook
   mine term, term hook
     mine any
       mine term, term test
+        site kind
       mine term, term hold
+        site kind
       mine term, term miss
+        site kind
       mine term, term step
+        site kind
       mine term, term fall
+        site kind
       mine term, term else
+        site kind
     mine list
       mine form, like flow
         site flow

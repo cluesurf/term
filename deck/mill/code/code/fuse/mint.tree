@@ -1,3 +1,5 @@
+load @term/mill/code/code/seed/mint
+  find seed
 
 load @term/seed/code/lang
   find code-fuse
@@ -8,17 +10,33 @@ mint fuse, like code-fuse
     site name
   case bind, mint fuse-bind
     site bind
+  case term, mint fuse-term
+    site term
+  case seed
+    site seed
+  case word
+    site word
   hook make
-    make code-fuse
+    make fuse
       bind name, read name
       bind bind, read bind
+      bind term, read term
+      bind seed, read seed
+      bind word, read word
 
 mint fuse-bind, like code-fuse-bind
   case name
     site name
-  case value
-    site value
+  case seed
+    site seed
   hook make
-    make code-fuse-bind
+    make fuse-bind
       bind name, read name
-      bind value, read value
+      bind seed, read seed
+
+mint fuse-term
+  case name
+    site name
+  hook make
+    make fuse-term
+      bind name, read name

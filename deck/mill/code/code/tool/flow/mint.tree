@@ -1,48 +1,91 @@
+load @term/mill/code/code/call/mint
+  find call
+
+load @term/mill/code/code/fork/mint
+  find fork
+
+load @term/mill/code/code/form/case/mint
+  find free
+
+load @term/mill/code/code/fuse/mint
+  find fuse
+
+load @term/mill/code/code/halt/mint
+  find halt
+
+load @term/mill/code/code/make/mint
+  find make
+
+load @term/mill/code/code/note/mint
+  find note
+
+load @term/mill/code/code/read/mint
+  find read
+
+load @term/mill/code/code/rule/hold/mint
+  find rest
+
+load @term/mill/code/code/save/mint
+  find save
+
+load @term/mill/code/code/seed/mint
+  find seed
+
+load @term/mill/code/code/seed/seed/mint
+  find host
+
+load @term/mill/code/code/send/mint
+  find send
+
+load @term/mill/code/code/walk/mint
+  find walk
+
+
+# The flow statements: what may appear in a task body. Each head's mint lives in its own file beside its mine;
+# this one dispatches to them. `halt` and `save` used to be re-declared here, byte-identical to the canonical
+# definitions, which made them collisions the moment the mint graph was connected (mint-bridge-0001).
+
 
 mint flow
-  case call, mint call
+  case call
     site call
-  case make, mint make
-    site make
-  case save, mint save
+  case save
     site save
-  case fork, mint fork
+  case send
+    site send
+  case fork
     site fork
-  case walk, mint walk
+  case halt
+    site halt
+  case bust
+    site bust
+  case walk
     site walk
-  case back, mint back
-    site back
-  case meet, mint meet
-    site meet
-  case turn, mint turn
+  case turn
     site turn
-  case next
-    site next
+  case fuse
+    site fuse
+  case show
+    site show
   case rest
     site rest
-  case rein
-    site rein
-  case show, mint show
-    site show
-  case dive, mint dive
-    site dive
-  case hint, mint hint
-    site hint
-  case tell, mint tell
-    site tell
-  case bust, mint bust
-    site bust
-  case halt, mint halt
-    site halt
-  case fuse, mint fuse
-    site fuse
-  case slot, mint slot
-    site slot
-  case beam, mint beam
-    site beam
+  case note
+    site note
+  case read
+    site read
+  case free
+    site free
+  case make
+    site make
+  case seed
+    site seed
+  case move
+    site move
+  case host
+    site host
 
 mint show
-  case seed, mint seed
+  case seed
     site seed
   hook make
     make show
@@ -76,42 +119,16 @@ mint bust
     make bust
       bind seed, read seed
 
-mint halt
-  case mode
-    site mode
-  case seed, mint seed
-    site seed
-  hook make
-    make halt
-      bind mode, read mode
-      bind seed, read seed
-
-mint save
-  case name
-    site name
-  case seed, mint seed
-    site seed
-  hook make
-    make save
-      bind name, read name
-      bind seed, read seed
-
 mint turn
-  case name
-    site name
-  case seed, mint seed
-    site seed
-  case line
-    site line
+  case term
+    site term
   hook make
     make turn
-      bind name, read name
-      bind seed, read seed
-      bind line, read line
+      bind term, read term
 
-mint back
-  case seed, mint seed
-    site seed
+mint move
+  case name
+    site name
   hook make
-    make back
-      bind seed, read seed
+    make move
+      bind name, read name

@@ -1,10 +1,18 @@
+load @term/mill/code/code/head/mint
+  find head
+
+load @term/mill/code/code/task/mint
+  find task
 
 mint wear
   case name
     site name
-  case task, mint task
+  case head
+    site head
+  case task
     site task
   hook make
     make wear
       bind name, read name
+      bind head, read head
       bind task, read task

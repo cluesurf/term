@@ -1,9 +1,9 @@
 load @term/mill/code/code/seed/mint
   find seed
 
-mint send
+mint fall
   case seed
     site seed
   hook make
-    make send
+    make fall
       bind seed, read seed

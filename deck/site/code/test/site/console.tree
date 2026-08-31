@@ -1,8 +1,8 @@
 
-# CLI command in the dock DSL. A `make` command with options and a handler.
+# CLI command in the hook DSL. A `make` command with options and a handler.
 # Arg-policy resolution is ours; argv tokenizing delegates to native per backend.
 
-dock make
+hook make
   take name
     like text
     need true

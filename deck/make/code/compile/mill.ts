@@ -8,6 +8,19 @@ import type {
   Span,
 } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
+// one span implementation, shared with the mill executor, so the hand-written mill and the grammar-driven
+// path can never disagree on where a node begins and ends (mint-bridge-0001)
+import {
+  ZERO_SPAN,
+  spanOfWhole as spanOf,
+} from '@term/make/code/compile/mill-run'
+// the surface vocabulary, shared with the grammar-driven bridge that is replacing this file
+import {
+  TYPE_NAME,
+  BINARY_BUILTIN,
+  UNARY_BUILTIN,
+  HALT_WORDS,
+} from '@term/make/code/compile/surface'
 import type {
   GroupNode,
   NameNode,
@@ -42,54 +55,6 @@ import {
 } from '@term/make/code/compile/node'
 
 // like-type names to surface types
-const TYPE_NAME: Record<string, Type> = {
-  // `size`: a count or a length, the number every backend already has (94 stdlib signatures said `like size` and
-  // no form declared it, so each backend was handed a `Size` it never defined)
-  size: NUMBER,
-  u8: NUMBER,
-  u16: NUMBER,
-  u32: NUMBER,
-  u64: NUMBER,
-  u128: NUMBER,
-  i8: NUMBER,
-  i16: NUMBER,
-  i32: NUMBER,
-  i64: NUMBER,
-  i128: NUMBER,
-  'natural-number': NUMBER,
-  integer: NUMBER,
-  number: NUMBER,
-  // floating point: `decimal` / `float` and the sized floats are the distinct float type
-  decimal: FLOAT,
-  float: FLOAT,
-  f32: FLOAT,
-  f64: FLOAT,
-  // the host's dynamic value (the opaque result of json parse)
-  dynamic: DYNAMIC,
-  json: DYNAMIC,
-  // a raw byte buffer (Uint8Array / Vec<u8> / Data / ByteArray), the zero-copy currency for crypto and IO
-  bytes: BYTES,
-  'byte-array': BYTES,
-  buffer: BYTES,
-  text: STRING,
-  boolean: BOOLEAN,
-  void: UNIT,
-  unit: UNIT,
-  // bind's native primitives ARE seed's primitives (a JS string is seed's `string`, etc.): map them to the same
-  // surface type so a seed value passes to a bind method param and vice versa, with no subtyping needed.
-  'native-string': STRING,
-  'native-number': NUMBER,
-  'native-boolean': BOOLEAN,
-  'native-bigint': NUMBER,
-  'native-void': UNIT,
-  'native-null': UNIT,
-  'native-undefined': UNIT,
-  // `any` is the gradual type: consistent with everything (an opaque bind type, a callback union, etc.), and
-  // `unknown` is the same value spelled from the holder's side: a slot that carries anything (a hive entry's record).
-  // Both lower to the boxed dynamic on the native backends (Rc<dyn Any> / Any), never to a number.
-  any: UNKNOWN,
-  unknown: UNKNOWN,
-}
 
 // signature annotation keywords that decorate a `host`/`save` declaration rather than supplying its value:
 // `name <X>` (foreign / display name), `like <T>` (type), plus the generic / output markers. Filtered out so an
@@ -255,6 +220,18 @@ function isAnnotation(node: Node, name: string): boolean {
 
   const head = headName(node)
 
+  // `note` is the documented spelling for all metadata and `mark` is accepted alongside it. CLAUDE.md calls
+  // `mark async` dead syntax, and that is ASPIRATIONAL rather than descriptive: `mark` metadata is live in about
+  // thirty files, most of it `link <field>, mark private` on a record field, plus `mark async` in the stdlib's
+  // async tasks and several test fixtures.
+  //
+  // Refusing it here was tried on 2026-08-31 and REVERTED the same day. The measurement behind it was wrong (a
+  // whole-line grep that matched none of the real uses, which are trailing modifiers), and the change was
+  // inconsistent besides: a field's `mark private` goes through another path and kept working, so `mark private`
+  // would have been legal on a field and refused on a task.
+  //
+  // Retiring it is a migration across those files, not a line in this function. Until someone does that, one
+  // spelling that works everywhere beats two that disagree by position.
   if (head !== 'note' && head !== 'mark') {
     return false
   }
@@ -604,9 +581,6 @@ function parseLikeType(likeGroup: GroupNode): Type {
   return first ? parseType(first) : UNKNOWN
 }
 
-// arithmetic the emitter lowers to a UNARY operation: `increment x` becomes `x + 1`. Like BINARY_BUILTIN these have
-// no definition to bind to and are never imported, so the resolver has to know them by name.
-export const UNARY_BUILTIN = new Set(['increment', 'decrement'])
 
 // A head that takes ONE value (`save x, V`, `host x, V`, `send back, V`, `bind f, V`) refuses anything after it.
 // A comma returns to the head of the line, so `save x, call f, read y` is `save(x, call(f), read(y))`: `read y` is
@@ -619,34 +593,12 @@ function extraValueMessage(head: string, value: Node | undefined, extra: Node): 
   return `\`${head}\` takes one value, and \`${shown(extra)}\` follows \`${valueText}\`. A comma returns to \`${head}\`, so it is not an argument of \`${valueText}\`. Write \`${valueText}(...)\` with the arguments inside the parentheses, or put them on their own indented lines`
 }
 
-// the `halt` arguments that are control flow rather than an exception to raise. An exception form may not take one
-// of these names.
-export const HALT_WORDS = new Set(['fork', 'flow', 'code', 'kink', 'take'])
 
-export const BINARY_BUILTIN: Record<string, BinaryOp> = {
-  add: '+',
-  subtract: '-',
-  multiply: '*',
-  divide: '/',
-  modulo: '%',
-  'is-above': '>',
-  'is-below': '<',
-  'is-equal': '==',
-  'is-unequal': '!=',
-  'is-minimum': '>=',
-  'is-maximum': '<=',
-  and: '&&',
-  or: '||',
-}
 
 export type MillResult =
   | { ok: true; program: Program }
   | { ok: false; diagnostics: Diagnostic[] }
 
-const ZERO_SPAN: Span = {
-  start: { line: 0, column: 0 },
-  end: { line: 0, column: 0 },
-}
 
 function nameText(name: NameNode): string {
   return name.parts
@@ -710,41 +662,6 @@ function rest(group: GroupNode): Node[] {
 }
 
 // the source span of any node
-function spanOf(node: Node): Span {
-  switch (node.kind) {
-    case 'integer':
-    case 'decimal':
-    case 'radix':
-      return node.token.span
-    case 'name':
-
-    case 'text': {
-      const chunk = node.parts.find(p => p.kind === 'chunk')
-
-      return chunk?.kind === 'chunk' ? chunk.token.span : ZERO_SPAN
-    }
-
-    case 'chunk':
-      return node.token.span
-
-    case 'group': {
-      const head = node.nodes[0]
-
-      if (!head) {
-        return ZERO_SPAN
-      }
-
-      // span the whole construct, head through the last child, so diagnostics underline the full term and
-      // source-slice autofixes (the linter) capture the exact surface syntax, not just the head keyword.
-      const last = node.nodes[node.nodes.length - 1]!
-
-      return { start: spanOf(head).start, end: spanOf(last).end }
-    }
-
-    default:
-      return ZERO_SPAN
-  }
-}
 
 export function mill(tree: RootNode, file: string): MillResult {
   const diagnostics: Diagnostic[] = []
@@ -4933,11 +4850,23 @@ export function mill(tree: RootNode, file: string): MillResult {
     const path =
       nameGroup?.kind === 'group' ? (headName(nameGroup) ?? '') : ''
 
-    // the implementation: a `task <impl>` child binds the function that runs this command
+    // The implementation. TWO SPELLINGS, and both are collected because both are written:
+    //   `task <impl>` names the handler and passes the takes in order. The zone console uses this throughout.
+    //   `call <impl>` with `bind <name>, <value>` children names it AND binds its arguments explicitly.
+    //
+    // Only `task` was read here, so a `call` handler was DROPPED without a word: the command lowered with an
+    // empty `calls` list, compiled clean, and had nothing to run. That was invisible while a `call`-handler
+    // command was still spelled `dock make` and went down the route builder instead, which does read `call`.
     const calls: DockCall[] = []
 
     for (const child of rest(group)) {
-      if (child.kind !== 'group' || headName(child) !== 'task') {
+      if (child.kind !== 'group') {
+        continue
+      }
+
+      const head = headName(child)
+
+      if (head !== 'task' && head !== 'call') {
         continue
       }
 
@@ -4946,7 +4875,11 @@ export function mill(tree: RootNode, file: string): MillResult {
         implGroup?.kind === 'group' ? headName(implGroup) : undefined
 
       if (impl) {
-        calls.push({ name: impl, args: [], span: spanOf(child) })
+        calls.push({
+          name: impl,
+          args: head === 'call' ? buildBindArgs(child, new Set()) : [],
+          span: spanOf(child),
+        })
       }
     }
 
@@ -5101,21 +5034,31 @@ export function mill(tree: RootNode, file: string): MillResult {
     } else if (keyword === 'suit') {
       program.push(...buildSuit(group))
     } else if (keyword === 'hook') {
-      // `hook` is the routing / CLI DSL, with two SEPARATE shapes distinguished by content:
-      //  - a SITE ROUTE: `hook </path> / zone <component>` (has a `zone`) -> buildDockRoute -> the route-lowering pass
-      //    turns it into a `route(host, path)` dispatcher + boot (client mount / server render).
-      //  - a CLI COMMAND: `hook <command> / task <impl>` (no `zone`) -> buildHookCommand -> the CLI command tree.
-      // Both lower to a route statement (shared structure), but a route carries a component and a command does not, so
-      // downstream passes treat them apart. (`dock` is reserved for native FFI bindings -- `dock load`.)
-      const isRoute = rest(group).some(
-        n =>
-          n.kind === 'group' &&
-          (headName(n) === 'view' ||
-            // a resource route: `hook </vibe.pdf> / seed proxy, text <url>` has no zone; the server streams the asset
-            (headName(n) === 'seed' &&
-              rest(n)[0]?.kind === 'group' &&
-              headName(rest(n)[0] as GroupNode) === 'proxy')),
-      )
+      // `hook` is the routing / CLI DSL, with two SEPARATE shapes:
+      //  - a SITE ROUTE: `hook </path>` -> buildDockRoute -> the route-lowering pass turns it into a
+      //    `route(host, path)` dispatcher + boot (client mount / server render).
+      //  - a CLI COMMAND: `hook <command> / task <impl>` -> buildHookCommand -> the CLI command tree.
+      // Both lower to a route statement (shared structure), but downstream passes treat them apart.
+      // (`dock` is the native FFI binding -- `dock load`, `dock type` -- and nothing else.)
+      //
+      // THE PATH IS WHAT TELLS THEM APART. A command is a word (`hook bind`, `hook make`); a route is a path
+      // (`hook /users`). This used to look for a `view` child instead, which is true of a PAGE route and false of
+      // an API route: `hook /users / task get / task post` has no view, so it was built as a CLI command and its
+      // methods and calls were collected into the wrong shape. That was invisible while the only `dock`-spelled
+      // API route in the tree still went down the old `dock` path.
+      const first = rest(group)[0]
+      const name = first?.kind === 'group' ? headName(first) : undefined
+      const isRoute =
+        (name?.startsWith('/') ?? false) ||
+        rest(group).some(
+          n =>
+            n.kind === 'group' &&
+            (headName(n) === 'view' ||
+              // a resource route: `hook </vibe.pdf> / seed proxy, text <url>` has no view; the server streams it
+              (headName(n) === 'seed' &&
+                rest(n)[0]?.kind === 'group' &&
+                headName(rest(n)[0] as GroupNode) === 'proxy')),
+        )
 
       program.push({
         form: 'dock',
@@ -5136,11 +5079,16 @@ export function mill(tree: RootNode, file: string): MillResult {
       } else if (isFfiDock(group)) {
         program.push(...buildDock(group))
       } else {
-        program.push({
-          form: 'dock',
-          route: buildDockRoute(group),
-          span: spanOf(group),
-        })
+        // RETIRED 2026-08-31. `dock` was also a routing form, an alias for `hook`, so one word meant both the FFI
+        // binding and a URL route. A route is written `hook </path>` and only that, the same way `bust` and
+        // `send kink` were retired rather than left as second spellings.
+        //
+        // Four uses existed, all in deck/site/code/test/site, and all were ported. Refusing it here is what stops
+        // it coming back: a second spelling nobody removes is a second spelling somebody writes.
+        fail(
+          group,
+          '`dock` is the native FFI binding (`dock load`, `dock type`). A URL route is `hook </path>`',
+        )
       }
     } else if (
       keyword === 'load' ||
@@ -5324,3 +5272,7 @@ export function mill(tree: RootNode, file: string): MillResult {
 
   return { ok: true, program }
 }
+
+// re-exported from their new home so the readers that import them from here keep working while mill.ts
+// is retired (mint-bridge-0004)
+export { BINARY_BUILTIN, UNARY_BUILTIN, HALT_WORDS }

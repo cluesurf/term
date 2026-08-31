@@ -1,3 +1,11 @@
+load @term/mill/code/code/form/link/mint
+  find link
+
+load @term/mill/code/code/seed/mint
+  find seed
+
+load @term/mill/code/code/tool/flow/mint
+  find flow
 
 load @term/seed/code/lang
   find fork-test
@@ -14,21 +22,26 @@ mint fork
     site case
   case tree, mint fork-tree
     site tree
+  case roll, mint fork-roll
+    site roll
 
 mint fork-test, like fork-test
-  case pair, mint fork-test-pair
-    site pair
-  case miss, mint fork-miss
-    site miss
+  case condition, mint seed
+    site condition
+  case name, mint fork-name
+    site name
+  case arm, mint fork-arm-hook
+    site arm
   hook make
     make fork-test
-      bind pair, read pair
-      bind miss, read miss
+      bind condition, read condition
+      bind name, read name
+      bind arm, read arm
 
 mint fork-test-pair, like fork-test-pair
-  case test
+  case test, mint flow
     site test
-  case hold
+  case hold, mint flow
     site hold
   hook make
     make fork-test-pair
@@ -43,7 +56,7 @@ mint fork-miss, like fork-miss
       bind flow, read flow
 
 mint fork-case, like fork-case
-  case seed, mint seed
+  case seed
     site seed
   case arm, mint fork-arm
     site arm
@@ -57,12 +70,15 @@ mint fork-arm, like fork-arm
     site name
   case base
     site base
+  case link
+    site link
   case flow
     site flow
   hook make
     make fork-arm
       bind name, read name
       bind base, read base
+      bind link, read link
       bind flow, read flow
 
 mint fork-tree, like fork-tree
@@ -70,4 +86,28 @@ mint fork-tree, like fork-tree
     site flow
   hook make
     make fork-tree
+      bind flow, read flow
+
+mint fork-roll
+  case arm, mint fork-arm-hook
+    site arm
+  hook make
+    make fork-roll
+      bind arm, read arm
+
+mint fork-name
+  case name
+    site name
+  hook make
+    make fork-name
+      bind name, read name
+
+mint fork-arm-hook
+  case kind
+    site kind
+  case flow
+    site flow
+  hook make
+    make fork-arm-hook
+      bind kind, read kind
       bind flow, read flow

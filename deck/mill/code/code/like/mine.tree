@@ -13,14 +13,18 @@ load @term/mill/code/code/head/mine
 load @term/mill/code/code/seed/mine
   find seed
 
+# `like <name>` names a type. What follows it inside the same group is either a bare type ARGUMENT
+# (`like stack number`) or a nested `like` (`like list` over `like number`, the element).
+#
+# The alternatives are ordered so a nested `like` matches as a rule BEFORE the bare-word argument does. They
+# read the same to `mine term`, which takes any word and would capture a whole `like number` group as the word
+# "like", dropping the type inside it. Every element, key, value and function parameter type in the stdlib was
+# being lost that way (mint-bridge-0002).
 mine like
   mine term, term like
-    mine term
+    mine path
       site name
     mine list
-      mine term
-        site arg
-    mine maybe
       mine any
         mine form, like or
           site or
@@ -29,9 +33,19 @@ mine like
         mine form, like task
           site task
         mine form, like like
-          site like
+          site child
+        mine form, like take
+          site take
+        mine form, like need
+          site need
+        mine form, like fall
+          site fall
         mine term
-          site name
+          site arg
+  # The parts that follow the `like` group as SIBLINGS: the extension syntax of a form that is `like` a base
+  # (`bind` pins a field, `link` adds a prop, `head` names a type argument). A nested `like` is deliberately NOT
+  # here: `like hash` over `like text` and `like number` wants two siblings under hash, and a trailing
+  # alternative would let the first one swallow the second as its own child.
   mine list
     mine any
       mine form, like like-bind
@@ -40,12 +54,8 @@ mine like
         site link
       mine form, like head
         site head
-      mine form, like like
-        site child
       mine form, like take
         site take
-      mine form, like call
-        site call
 
 # `bind note, <Invalid>` under an exception `like`: pins a field of the base form
 mine like-bind

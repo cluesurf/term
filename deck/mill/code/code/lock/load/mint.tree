@@ -1,8 +1,7 @@
-
 load @term/seed/code/lang
   find lock-load
 
-mint load, like lock-load
+mint lock-load, like lock-load
   case path
     site path
   case mark

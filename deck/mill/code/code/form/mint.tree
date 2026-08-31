@@ -1,31 +1,90 @@
+load @term/mill/code/code/call/mint
+  find call
+
+load @term/mill/code/code/form/link/mint
+  find link
+
+load @term/mill/code/code/fuse/mint
+  find fuse
+
+load @term/mill/code/code/head/mint
+  find head
+
+load @term/mill/code/code/hide/mint
+  find hide
+
+load @term/mill/code/code/hold/mint
+  find hold
+
+load @term/mill/code/code/hook/mint
+  find hook
+
+load @term/mill/code/code/like/mint
+  find like
+
+load @term/mill/code/code/note/mint
+  find note
+
+load @term/mill/code/code/rule/hold/mint
+  find case
+  find fold
+
+load @term/mill/code/code/save/mint
+  find save
+
+load @term/mill/code/code/seed/seed/mint
+  find host
+
+load @term/mill/code/code/tag/mint
+  find tag
+
+load @term/mill/code/code/task/mint
+  find task
+
+load @term/mill/code/code/wear/mint
+  find wear
 
 mint form
   case name
     site name
-  case head, mint head
+  case head
     site head
-  case like, mint like
+  case like
     site like
-  case link, mint link
+  case link
     site link
-  case case, mint case
+  case case
     site case
-  case bond, mint bond
+  case bond
     site bond
   case rein
     site rein
-  case task, mint task
+  case task
     site task
-  case hold, mint hold
+  case hold
     site hold
   case hide
     site hide
   case fold
     site fold
-  case note, mint note
+  case note
     site note
-  case tag, mint tag
+  case tag
     site tag
+  case fuse
+    site fuse
+  case hook
+    site hook
+  case save
+    site save
+  case host
+    site host
+  case wear
+    site wear
+  case dock, mint form-dock
+    site dock
+  case accessor, mint form-accessor
+    site accessor
   hook make
     make form
       bind name, read name
@@ -41,16 +100,44 @@ mint form
       bind fold, read fold
       bind note, read note
       bind tag, read tag
+      bind fuse, read fuse
+      bind hook, read hook
+      bind save, read save
+      bind host, read host
+      bind wear, read wear
+      bind dock, read dock
+      bind accessor, read accessor
 
 mint bond
   case name
     site name
   case line
     site line
-  case call, mint call
+  case call
     site call
   hook make
     make bond
       bind name, read name
       bind line, read line
       bind call, read call
+
+mint rein
+  case task
+    site task
+  hook make
+    make rein
+      bind task, read task
+
+mint form-dock
+  case name
+    site name
+  hook make
+    make form-dock
+      bind name, read name
+
+mint form-accessor
+  case name
+    site name
+  hook make
+    make form-accessor
+      bind name, read name

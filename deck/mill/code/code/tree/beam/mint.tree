@@ -1,21 +1,17 @@
-
 load @term/seed/code/lang
   find code-beam
   find code-beam-body
 
 mint beam, like code-beam
-  case name
-    site name
   case body, mint beam-body
     site body
+  case name
+    site name
   hook make
-    make code-beam
-      bind name, read name
+    make beam
       bind body, read body
+      bind name, read name
 
 mint beam-body, like code-beam-body
-  case node
-    site node
   hook make
-    make code-beam-body
-      bind node, read node
+    make beam-body

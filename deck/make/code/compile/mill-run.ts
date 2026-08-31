@@ -27,13 +27,27 @@ import type {
 } from '@term/make/code/parser/tree'
 import type { Span } from '@term/make/code/parser/diagnostic'
 
-// a captured value: a word or literal, or a nested rule match to be minted. Each carries the SPAN of the node
-// it came from, so a consumer's diagnostic (a manifest error, a lockfile error) points at the line in the file
+// a captured value: a word or literal, or a nested rule match to be minted. Each carries the SPAN of the node it
+// came from, so a consumer's diagnostic (a manifest error, a lockfile error) points at the line in the file, and
+// the CST `node` itself, so a built AST node can point back at the exact surface syntax it was read from. A span
+// alone loses the shape, and the shape is what an accurate diagnostic needs (mint-bridge-0001).
 export type MillCapture =
-  | { kind: 'word'; value: string; span?: Span }
-  | { kind: 'text'; value: string; span?: Span }
-  | { kind: 'number'; value: number; decimal: boolean; span?: Span }
-  | { kind: 'match'; rule: string; match: MillMatch; span?: Span }
+  | { kind: 'word'; value: string; span?: Span; node?: Node }
+  | { kind: 'text'; value: string; span?: Span; node?: Node }
+  | {
+      kind: 'number'
+      value: number
+      decimal: boolean
+      span?: Span
+      node?: Node
+    }
+  | {
+      kind: 'match'
+      rule: string
+      match: MillMatch
+      span?: Span
+      node?: Node
+    }
 
 // one rule's fill: site name -> the captures that landed there, in order
 export type MillMatch = Map<string, MillCapture[]>
@@ -54,6 +68,53 @@ export type MineRule =
 
 export type MineGrammar = Map<string, MineRule[]>
 
+
+export const ZERO_SPAN: Span = {
+  start: { line: 0, column: 0 },
+  end: { line: 0, column: 0 },
+}
+
+// The EXTENT a node covers: head through the last child, so a diagnostic underlines the whole construct and a
+// source-slice autofix captures the exact surface syntax. This is the span every AST node carries, and it is the
+// one `compile/mill.ts` imports as its own `spanOf` — one implementation, so the hand-written mill and the
+// executor can never drift on where a node begins and ends (mint-bridge-0001).
+//
+// Distinct from `spanOfNode` below, which answers a different question: where to point a caret. Keep both.
+export function spanOfWhole(node: Node): Span {
+  switch (node.kind) {
+    case 'integer':
+    case 'decimal':
+    case 'radix':
+      return node.token.span
+    case 'name':
+
+    case 'text': {
+      const chunk = node.parts.find(p => p.kind === 'chunk')
+
+      return chunk?.kind === 'chunk' ? chunk.token.span : ZERO_SPAN
+    }
+
+    case 'chunk':
+      return node.token.span
+
+    case 'group': {
+      const head = node.nodes[0]
+
+      if (!head) {
+        return ZERO_SPAN
+      }
+
+      // span the whole construct, head through the last child, so diagnostics underline the full term and
+      // source-slice autofixes (the linter) capture the exact surface syntax, not just the head keyword.
+      const last = node.nodes[node.nodes.length - 1]!
+
+      return { start: spanOfWhole(head).start, end: spanOfWhole(last).end }
+    }
+
+    default:
+      return ZERO_SPAN
+  }
+}
 
 // the source span a node covers (its first token's), so a consumer's diagnostic can point at the line
 export function spanOfNode(node: Node | undefined): Span | undefined {
@@ -339,6 +400,7 @@ function matchSequence(
               kind: 'word',
               value: rule.word,
               span: spanOfNode(node),
+              node,
             })
 
             for (const trial of [inner, after]) {
@@ -408,6 +470,7 @@ function matchRule(
             kind: 'word',
             value: rule.word,
             span: spanOfNode(node),
+            node,
           })
 
           return at + 1
@@ -418,6 +481,7 @@ function matchRule(
             kind: 'word',
             value: rule.word,
             span: spanOfNode(node),
+            node,
           })
 
           return at + 1
@@ -437,6 +501,7 @@ function matchRule(
         kind: 'word',
         value: word,
         span: spanOfNode(node),
+        node,
       })
 
       return at + 1
@@ -451,6 +516,7 @@ function matchRule(
         kind: 'text',
         value: textOf(node),
         span: spanOfNode(node),
+        node,
       })
 
       return at + 1
@@ -469,6 +535,7 @@ function matchRule(
         kind: 'word',
         value: phrase,
         span: spanOfNode(node),
+        node,
       })
 
       return at + 1
@@ -492,6 +559,7 @@ function matchRule(
         value,
         decimal: node.kind === 'decimal',
         span: spanOfNode(node),
+        node,
       })
 
       return at + 1
@@ -523,6 +591,7 @@ function matchRule(
         kind: 'word',
         value: head,
         span: spanOfNode(node),
+        node,
       })
 
       return at + 1
@@ -624,6 +693,7 @@ function matchRule(
         rule: rule.like,
         match: inner,
         span: spanOfNode(node),
+        node,
       })
 
       return next
@@ -789,16 +859,33 @@ function readMake(group: GroupNode): MintMake {
 
 // ---- minting ----
 
+// A minted value keeps the CST node it was built from (and that node's extent), so the bridge that turns these
+// into compiler AST nodes can carry an exact span onto every one of them. Minting used to drop both, which made
+// the executor's output unusable for diagnostics no matter how correct its shapes were.
 export type Minted =
-  | { kind: 'word'; value: string }
-  | { kind: 'text'; value: string }
-  | { kind: 'number'; value: number; decimal: boolean }
-  | { kind: 'form'; form: string; fields: Record<string, Minted[]> }
+  | { kind: 'word'; value: string; span?: Span; node?: Node }
+  | { kind: 'text'; value: string; span?: Span; node?: Node }
+  | {
+      kind: 'number'
+      value: number
+      decimal: boolean
+      span?: Span
+      node?: Node
+    }
+  | {
+      kind: 'form'
+      form: string
+      fields: Record<string, Minted[]>
+      span?: Span
+      node?: Node
+    }
 
 export function runMint(
   mints: MintGrammar,
   name: string,
   match: MillMatch,
+  // the CST node this match was read from: it becomes the built form's own node, so the bridge can span it
+  node?: Node,
 ): Minted[] {
   const mint = mints.get(name)
 
@@ -817,7 +904,7 @@ export function runMint(
     for (const cap of captures) {
       if (cap.kind === 'match') {
         const sub = c.mint ?? cap.rule
-        values.push(...runMint(mints, sub, cap.match))
+        values.push(...runMint(mints, sub, cap.match, cap.node))
       } else {
         values.push(cap)
       }
@@ -829,14 +916,25 @@ export function runMint(
   }
 
   if (mint.make) {
-    return [buildMake(mint.make, byCase)]
+    return [buildMake(mint.make, byCase, node)]
   }
 
-  // pass-through: the matched cases' values in case order (an alternation yields its one branch)
+  // Pass-through: the matched cases' values in case order (an alternation yields its one branch).
+  //
+  // The branch's value takes THIS rule's extent, not its own. A pass-through says "this construct is its
+  // branch", and the construct is the wider text: `mine fork` passes through to `fork-test`, which matched at
+  // the inner `test` group, while the statement it becomes covers `fork test` and every arm under it. Without
+  // this the built node's span points at one word in the middle of the construct it describes.
   const out: Minted[] = []
 
   for (const c of mint.cases) {
-    out.push(...(byCase.get(c.name) ?? []))
+    for (const value of byCase.get(c.name) ?? []) {
+      out.push(
+        node && value.kind === 'form'
+          ? { ...value, span: spanOfWhole(node), node }
+          : value,
+      )
+    }
   }
 
   return out
@@ -845,16 +943,23 @@ export function runMint(
 function buildMake(
   make: MintMake,
   byCase: Map<string, Minted[]>,
+  node?: Node,
 ): Minted {
   const fields: Record<string, Minted[]> = {}
 
   for (const bind of make.binds) {
     if (bind.nested) {
-      fields[bind.name] = [buildMake(bind.nested, byCase)]
+      fields[bind.name] = [buildMake(bind.nested, byCase, node)]
     } else {
       fields[bind.name] = byCase.get(bind.read) ?? []
     }
   }
 
-  return { kind: 'form', form: make.form, fields }
+  return {
+    kind: 'form',
+    form: make.form,
+    fields,
+    span: node ? spanOfWhole(node) : undefined,
+    node,
+  }
 }

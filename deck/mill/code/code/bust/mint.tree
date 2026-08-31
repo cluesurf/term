@@ -1,6 +1,8 @@
+load @term/mill/code/code/seed/mint
+  find seed
 
 mint bust
-  case seed, mint seed
+  case seed
     site seed
   hook make
     make bust

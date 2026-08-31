@@ -23,7 +23,9 @@ mine dock-bind
   mine term, term dock
     mine any
       mine term, term load
+        site kind
       mine term, term type
+        site kind
     mine list
       mine form, like dock-bind-line
         site line

@@ -1,13 +1,30 @@
+load @term/mill/code/code/fall/mint
+  find fall
+
+load @term/mill/code/code/like/mint
+  find like
+
+load @term/mill/code/code/need/mint
+  find need
+
+load @term/mill/code/code/seed/mint
+  find seed
 
 mint head
   case name
     site name
+  case like
+    site like
   case need
     site need
   case fall
     site fall
+  case base, mint seed
+    site base
   hook make
     make head
       bind name, read name
+      bind like, read like
       bind need, read need
       bind fall, read fall
+      bind base, read base

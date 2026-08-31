@@ -1,17 +1,104 @@
+load @term/mill/code/code/call/mint
+  find call
+
+load @term/mill/code/code/fork/mint
+  find fork
+
+load @term/mill/code/code/make/mint
+  find make
+
+load @term/mill/code/code/task/mint
+  find task
+
+load @term/mill/code/code/tool/flow/mint
+  find move
 
 load @term/seed/code/lang
   find seed-def
 
 mint seed
-  case seed, mint seed-def
-    site seed
+  case call
+    site call
+  case make
+    site make
+  case read, mint seed-read
+    site read
+  case code, mint seed-code
+    site code
+  case text, mint seed-text
+    site text
+  case fork
+    site fork
+  case flag
+    site flag
+  case void
+    site void
+  case number
+    site number
+  case quote
+    site quote
+  case task
+    site task
+  case move
+    site move
+  case term, mint seed-term
+    site term
+  case meet, mint seed-meet
+    site meet
+  case open, mint seed-call-open
+    site open
 
 mint seed-def, like seed-def
   case name
     site name
-  case seed, mint seed
+  case seed
     site seed
   hook make
     make seed-def
       bind name, read name
+      bind seed, read seed
+
+mint seed-read
+  case path
+    site path
+  hook make
+    make seed-read
+      bind path, read path
+
+mint seed-code
+  case value
+    site value
+  hook make
+    make seed-code
+      bind value, read value
+
+mint seed-text
+  case value
+    site value
+  hook make
+    make seed-text
+      bind value, read value
+
+mint seed-call-open
+  case seed
+    site seed
+  case name
+    site name
+  hook make
+    make seed-call-open
+      bind seed, read seed
+      bind name, read name
+
+mint seed-term
+  case name
+    site name
+  hook make
+    make seed-term
+      bind name, read name
+
+mint seed-meet
+  case seed
+    site seed
+  hook make
+    make seed-meet
       bind seed, read seed

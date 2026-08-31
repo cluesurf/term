@@ -1,10 +1,63 @@
+load @term/mill/code/code/head/mint
+  find head
+
+load @term/mill/code/code/like/mint
+  find and
+  find like
+  find or
+
+load @term/mill/code/code/task/mint
+  find task
+
+load @term/mill/code/code/wear/mint
+  find wear
 
 mint suit
   case name
     site name
-  case wear, mint wear
+  case and
+    site and
+  case or
+    site or
+  case like
+    site like
+  case base, mint suit-base
+    site base
+  case base-like, mint like
+    site base-like
+  case head
+    site head
+  case task
+    site task
+  case wear
     site wear
   hook make
     make suit
       bind name, read name
+      bind and, read and
+      bind or, read or
+      bind like, read like
+      bind base, read base
+      bind base-like, read base-like
+      bind head, read head
+      bind task, read task
       bind wear, read wear
+
+mint suit-base
+  case and
+    site and
+  case or
+    site or
+  case like
+    site like
+  case term
+    site term
+  case base-like, mint like
+    site base-like
+  hook make
+    make suit-base
+      bind and, read and
+      bind or, read or
+      bind like, read like
+      bind term, read term
+      bind base-like, read base-like

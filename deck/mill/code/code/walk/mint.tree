@@ -1,12 +1,26 @@
+load @term/mill/code/code/bind/mint
+  find bind
+
+load @term/mill/code/code/form/case/mint
+  find base
+
+load @term/mill/code/code/hook/mint
+  find hook
+
+load @term/mill/code/code/seed/mint
+  find seed
+
+load @term/mill/code/code/tool/flow/mint
+  find flow
 
 mint walk
   case mode
     site mode
-  case seed, mint seed
+  case seed
     site seed
-  case bind, mint bind
+  case bind
     site bind
-  case hook, mint hook
+  case hook
     site hook
   hook make
     make walk
@@ -15,7 +29,7 @@ mint walk
       bind bind, read bind
       bind hook, read hook
 
-mint hook
+mint walk-hook
   case name
     site name
   case base, mint base

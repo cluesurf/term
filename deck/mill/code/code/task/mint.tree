@@ -1,23 +1,59 @@
+load @term/mill/code/code/form/link/mint
+  find link
 
-load @term/seed/code/lang
-  find code-task
+load @term/mill/code/code/head/mint
+  find head
+
+load @term/mill/code/code/hide/mint
+  find hide
+
+load @term/mill/code/code/like/mint
+  find like
+
+load @term/mill/code/code/note/mint
+  find note
+
+load @term/mill/code/code/rule/hold/mint
+  find fold
+
+load @term/mill/code/code/tag/mint
+  find tag
+
+load @term/mill/code/code/take/mint
+  find take
+
+load @term/mill/code/code/task/risk/mint
+  find risk
 
 load @term/mill/code/code/tool/flow/mint
   find flow
 
+load @term/mill/code/code/tree/slot/mint
+  find slot
+
+load @term/mill/code/code/wait/mint
+  find wait
+
+
+# `head` and `take` are NOT redefined here. `mine task` matches them with `mine form, like head` and
+# `like take`, so the canonical rules in head/ and take/ are what fill those sites; the local copies this file
+# used to carry read a different set of sites and silently won the merge (mint-bridge-0001).
+
+
+load @term/seed/code/lang
+  find code-task
+
 mint task, like code-task
   case name
     site name
-  case head, mint head
+  case head
     site head
-  case take, mint take
+  case take
     site take
-  case flow, mint flow
-    site flow
-  case task, mint task
-    site task
-  case like, mint like
+  case like
     site like
+  case note
+    site note
   case wait
     site wait
   case risk
@@ -26,47 +62,29 @@ mint task, like code-task
     site hide
   case fold
     site fold
-  case note, mint note
-    site note
-  case tag, mint tag
+  case tag
     site tag
+  case task
+    site task
+  case link
+    site link
+  case slot
+    site slot
+  case flow
+    site flow
   hook make
     make task
       bind name, read name
       bind head, read head
       bind take, read take
-      bind flow, read flow
-      bind task, read task
       bind like, read like
+      bind note, read note
       bind wait, read wait
       bind risk, read risk
       bind hide, read hide
       bind fold, read fold
-      bind note, read note
       bind tag, read tag
-
-mint head
-  case name
-    site name
-  case form, mint form
-    site form
-  case fall
-    site fall
-  hook make
-    make head
-      bind name, read name
-      bind head-form, read form
-      bind fall, read fall
-
-mint take
-  case name
-    site name
-  case like, mint like
-    site like
-  case base, mint seed
-    site base
-  hook make
-    make take
-      bind name, read name
-      bind like, read like
-      bind base, read base
+      bind task, read task
+      bind link, read link
+      bind slot, read slot
+      bind flow, read flow

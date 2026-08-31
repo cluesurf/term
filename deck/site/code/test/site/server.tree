@@ -1,8 +1,8 @@
 
-# Server route in the dock DSL. A small users API: list and create.
+# Server route in the route DSL. A small users API: list and create.
 # The matcher and handler binding are ours; HTTP transport delegates to native per backend.
 
-dock /users
+hook /users
   task get
     take query
       like hash

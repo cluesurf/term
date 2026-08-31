@@ -1,3 +1,6 @@
+load @term/mill/code/code/rule/hold/mint
+  find find
+
 
 # `like load` references the import form
 load @term/seed/code/lang
@@ -7,12 +10,21 @@ load @term/seed/code/lang
 mint load, like code-import
   case path
     site path
-  case find, mint reference
-    site reference
+  case name
+    site name
+  case host, mint load-host
+    site host
+  case find
+    site find
+  case load
+    site load
   hook make
-    make import
+    make load
       bind path, read path
-      bind reference, read reference
+      bind name, read name
+      bind host, read host
+      bind find, read find
+      bind load, read load
 
 mint reference, like import-reference
   case text
@@ -23,3 +35,10 @@ mint reference, like import-reference
     make import-reference
       bind name, read name
       bind alias, read alias
+
+mint load-host
+  case value
+    site value
+  hook make
+    make load-host
+      bind value, read value

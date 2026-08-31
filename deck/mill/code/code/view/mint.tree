@@ -1,3 +1,15 @@
+load @term/mill/code/code/hook/mint
+  find hook
+
+load @term/mill/code/code/note/mint
+  find note
+
+load @term/mill/code/code/take/mint
+  find take
+
+load @term/mill/code/code/tune/mint
+  find tune
+
 
 # Targets `code-view-def` in @term/seed/code/lang, which is what this grammar has always built. That form is the
 # flat one (every field `like text`), not the component AST in @term/seed/code/view. The two were both called
@@ -15,18 +27,18 @@ mint view
 mint view-def, like code-view-def
   case name
     site name
-  case take, mint take
+  case take
     site take
-  case hook, mint hook
+  case hook
     site hook
-  case tune, mint tune
+  case tune
     site tune
   case view, mint view-def
     site view
-  case note, mint note
+  case note
     site note
   hook make
-    make code-view-def
+    make view-def
       bind name, read name
       bind take, read take
       bind hook, read hook

@@ -1,4 +1,7 @@
-// Tests that the mill lowers the zone (component) and dock (routing/CLI) DSL surfaces to the compile AST.
+// Tests that the mill lowers the view (component) and hook (routing/CLI) DSL surfaces to the compile AST.
+//
+// `dock` was a second spelling of a route and was retired on 2026-08-31: it is the native FFI binding now
+// (`dock load`, `dock type`) and nothing else. A route and a CLI command are both `hook`.
 // Run: npx tsx test/compile/dsl.ts
 
 import { parse } from '@term/make/code/parser/tree'
@@ -63,7 +66,7 @@ function main(): void {
   // a server route lowers to a `dock` with HTTP method handlers
   {
     const program = lower(
-      `dock /users\n  task get\n    call list-users\n  task post\n    call make-user\n`,
+      `hook /users\n  task get\n    call list-users\n  task post\n    call make-user\n`,
     )
 
     const dock = program.find(
@@ -87,7 +90,7 @@ function main(): void {
   // a CLI command lowers to a dock with options and a handler
   {
     const program = lower(
-      `dock make\n  take name\n    like text\n    need true\n  call make-deck\n    bind name, read name\n`,
+      `hook make\n  take name\n    like text\n    need true\n  call make-deck\n    bind name, read name\n`,
     )
 
     const dock = program.find(
@@ -105,6 +108,26 @@ function main(): void {
       'dock collects the handler call',
       dock?.route.calls[0]?.name === 'make-deck',
     )
+  }
+
+  // A COMMAND'S HANDLER, both spellings. `task <impl>` names it and passes the takes in order (the zone console
+  // uses this throughout); `call <impl>` with `bind` children names it and binds its arguments. Only `task` was
+  // read, so a `call` handler was DROPPED without a word: the command lowered with an empty `calls` list,
+  // compiled clean, and had nothing to run. Invisible while such a command was still spelled `dock make`, which
+  // went down the route builder instead.
+  {
+    const withCall = lower(
+      `hook one\n  take name\n    like text\n  call run-it\n    bind name, read name\n`,
+    )
+    const withTask = lower(`hook two\n  take name\n    like text\n  task run-it\n`)
+    const routeOf = (program: Statement[]): { calls: { name: string; args: unknown[] }[] } | undefined =>
+      (program.find((s): s is Extract<Statement, { form: 'dock' }> => s.form === 'dock') as
+        | { route: { calls: { name: string; args: unknown[] }[] } }
+        | undefined)?.route
+
+    ok('a `call` handler is collected', routeOf(withCall)?.calls[0]?.name === 'run-it')
+    ok('and its bound arguments come with it', (routeOf(withCall)?.calls[0]?.args.length ?? 0) === 1)
+    ok('a `task` handler is collected', routeOf(withTask)?.calls[0]?.name === 'run-it')
   }
 
   // a CLI command tree in the `hook` DSL lowers to a route: command name, its takes, the bound implementation task,
@@ -136,7 +159,7 @@ function main(): void {
   // a client route lowers to a dock that renders a zone component
   {
     const program = lower(
-      `dock /counter\n  view counter\n    bind label, text <hits>\n`,
+      `hook /counter\n  view counter\n    bind label, text <hits>\n`,
     )
 
     const dock = program.find(

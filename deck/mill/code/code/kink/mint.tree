@@ -1,6 +1,6 @@
-mint name
+mint kink
   case name
     site name
   hook make
-    make name
+    make kink
       bind name, read name

@@ -1,9 +1,8 @@
-
 load @term/seed/code/lang
   find text-def
 
 mint text
-  case text, mint text-def
+  case text
     site text
 
 mint text-def, like text-def

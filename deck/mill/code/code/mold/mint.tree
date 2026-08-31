@@ -1,3 +1,14 @@
+load @term/mill/code/code/bind/mint
+  find bind
+
+load @term/mill/code/code/form/link/mint
+  find link
+
+load @term/mill/code/code/head/mint
+  find head
+
+load @term/mill/code/code/like/mint
+  find like
 
 load @term/seed/code/lang
   find case-type

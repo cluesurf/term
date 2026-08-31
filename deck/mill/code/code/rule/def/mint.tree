@@ -1,0 +1,52 @@
+load @term/mill/code/code/call/mint
+  find call
+
+load @term/mill/code/code/head/mint
+  find head
+
+load @term/mill/code/code/like/mint
+  find like
+
+load @term/mill/code/code/rule/hold/mint
+  find rule-mark
+
+load @term/mill/code/code/seed/mint
+  find seed
+
+load @term/mill/code/code/take/mint
+  find take
+
+mint rule-def
+  case name
+    site name
+  case head
+    site head
+  case take
+    site take
+  case like
+    site like
+  case mark, mint rule-mark
+    site mark
+  case call
+    site call
+  case seed
+    site seed
+  hook make
+    make rule-def
+      bind name, read name
+      bind head, read head
+      bind take, read take
+      bind like, read like
+      bind mark, read mark
+      bind call, read call
+      bind seed, read seed
+
+mint roll-def
+  case name
+    site name
+  case like
+    site like
+  hook make
+    make roll-def
+      bind name, read name
+      bind like, read like

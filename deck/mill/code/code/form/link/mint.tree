@@ -1,3 +1,23 @@
+load @term/mill/code/code/call/mint
+  find call
+
+load @term/mill/code/code/hide/mint
+  find hide
+
+load @term/mill/code/code/like/mint
+  find like
+
+load @term/mill/code/code/note/mint
+  find note
+
+load @term/mill/code/code/seed/mint
+  find seed
+
+load @term/mill/code/code/tag/mint
+  find tag
+
+load @term/mill/code/code/task/mint
+  find task
 
 load @term/seed/code/lang
   find link-take
@@ -5,15 +25,31 @@ load @term/seed/code/lang
 mint link
   case name
     site name
-  case like, mint like
+  case like
     site like
+  case call, mint link-call
+    site call
+  case list, mint link-list
+    site list
+  case hash, mint link-hash
+    site hash
+  case mesh, mint link-mesh
+    site mesh
+  case void, mint link-void
+    site void
+  case form, mint link-form
+    site form
   case hide
     site hide
   case need
     site need
   case base, mint seed
     site base
-  case tag, mint tag
+  case task
+    site task
+  case note
+    site note
+  case tag
     site tag
   case take, mint link-take
     site take
@@ -21,9 +57,17 @@ mint link
     make link
       bind name, read name
       bind like, read like
+      bind call, read call
+      bind list, read list
+      bind hash, read hash
+      bind mesh, read mesh
+      bind void, read void
+      bind form, read form
       bind hide, read hide
       bind need, read need
       bind base, read base
+      bind task, read task
+      bind note, read note
       bind tag, read tag
       bind take, read take
 
@@ -32,10 +76,68 @@ mint link-take, like link-take
     site term
   case text
     site text
-  case mark
+  case mark, mint link-take-mark
     site mark
   hook make
     make link-take
       bind term, read term
       bind text, read text
       bind mark, read mark
+
+mint link-take-mark
+  case value
+    site value
+  hook make
+    make link-take-mark
+      bind value, read value
+
+mint link-list
+  case form
+    site form
+  hook make
+    make link-list
+      bind form, read form
+
+mint link-form
+  case form
+    site form
+  hook make
+    make link-form
+      bind form, read form
+
+mint link-void
+  case form
+    site form
+  case like
+    site like
+  hook make
+    make link-void
+      bind form, read form
+      bind like, read like
+
+mint link-hash
+  case form
+    site form
+  case key
+    site key
+  hook make
+    make link-hash
+      bind form, read form
+      bind key, read key
+
+mint link-mesh
+  case form
+    site form
+  case key
+    site key
+  hook make
+    make link-mesh
+      bind form, read form
+      bind key, read key
+
+mint link-call
+  case call
+    site call
+  hook make
+    make link-call
+      bind call, read call

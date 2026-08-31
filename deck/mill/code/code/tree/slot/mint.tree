@@ -1,3 +1,5 @@
+load @term/mill/code/code/like/mint
+  find like
 
 load @term/seed/code/lang
   find code-slot
@@ -5,6 +7,9 @@ load @term/seed/code/lang
 mint slot, like code-slot
   case name
     site name
+  case like
+    site like
   hook make
-    make code-slot
+    make slot
       bind name, read name
+      bind like, read like

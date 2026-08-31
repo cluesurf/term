@@ -1,3 +1,5 @@
+load @term/mill/code/code/seed/mint
+  find seed
 
 mint meet
   case mode

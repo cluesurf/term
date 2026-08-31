@@ -1,56 +1,60 @@
+load @term/mill/code/code/bind/mint
+  find bind
+
+load @term/mill/code/code/halt/mint
+  find halt
+
+load @term/mill/code/code/hook/mint
+  find hook
+
+load @term/mill/code/code/seed/mint
+  find seed
+
+load @term/mill/code/code/wait/mint
+  find wait
 
 load @term/seed/code/lang
   find code-call
-  find code-hook
 
 mint call, like code-call
   case name
     site name
-  case bind, mint bind
+  case wait
+    site wait
+  case bind
     site bind
-  case save, mint save
-    site save
-  case turn, mint turn
-    site turn
-  case hook, mint hook
+  case hook
     site hook
+  case halt
+    site halt
+  case seed
+    site seed
   hook make
     make call
       bind name, read name
+      bind wait, read wait
       bind bind, read bind
-      bind save, read save
-      bind turn, read turn
       bind hook, read hook
+      bind halt, read halt
+      bind seed, read seed
 
-mint hook, like code-hook
-  case name
-    site name
-  case line
-    site line
-  case base, mint base
-    site base
-  case flow, mint flow
-    site flow
-  case task, mint task
-    site task
-  hook make
-    make hook
-      bind name, read name
-      bind line, read line
-      bind base, read base
-      bind flow, read flow
-      bind task, read task
-
-mint save
+mint call-save
   case road
     site road
   hook make
     make save
       bind road, read road
 
-mint turn
+mint call-turn
   case term
     site term
   hook make
     make turn
       bind term, read term
+
+mint line
+  case name
+    site name
+  hook make
+    make line
+      bind name, read name

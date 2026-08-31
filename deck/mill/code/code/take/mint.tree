@@ -1,3 +1,20 @@
+load @term/mill/code/code/call/mint
+  find call
+
+load @term/mill/code/code/fall/mint
+  find fall
+
+load @term/mill/code/code/like/mint
+  find like
+
+load @term/mill/code/code/note/mint
+  find note
+
+load @term/mill/code/code/seed/mint
+  find seed
+
+load @term/mill/code/code/take/name/mint
+  find name
 
 load @term/seed/code/lang
   find take-value
@@ -5,34 +22,56 @@ load @term/seed/code/lang
 mint take
   case name
     site name
-  case like, mint like
+  case like
     site like
-  case alias
+  case fall
+    site fall
+  case alias, mint name
     site alias
   case need
     site need
   case base, mint seed
     site base
+  case void
+    site void
+  case flex
+    site flex
   case take, mint take-value
     site take
+  case call
+    site call
+  case note
+    site note
   hook make
     make take
       bind name, read name
       bind like, read like
+      bind fall, read fall
       bind alias, read alias
       bind need, read need
       bind base, read base
+      bind void, read void
+      bind flex, read flex
       bind take, read take
+      bind call, read call
+      bind note, read note
 
 mint take-value, like take-value
   case term
     site term
   case text
     site text
-  case mark
+  case mark, mint take-value-mark
     site mark
   hook make
     make take-value
       bind term, read term
       bind text, read text
       bind mark, read mark
+
+mint take-value-mark
+  case value
+    site value
+  hook make
+    make take-value-mark
+      bind value, read value

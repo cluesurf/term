@@ -1,3 +1,11 @@
+load @term/mill/code/code/form/link/mint
+  find link
+
+load @term/mill/code/code/like/mint
+  find like
+
+load @term/mill/code/code/seed/mint
+  find seed
 
 load @term/seed/code/lang
   find seed-item
@@ -5,9 +13,28 @@ load @term/seed/code/lang
 mint host, like seed-item
   case name
     site name
-  case seed, mint seed
+  case like
+    site like
+  case seed
     site seed
+  case item, mint host-item
+    site item
+  case host
+    site host
   hook make
-    make seed-item
+    make host
       bind name, read name
+      bind like, read like
       bind seed, read seed
+      bind item, read item
+      bind host, read host
+
+mint host-item
+  case term
+    site term
+  case link
+    site link
+  hook make
+    make host-item
+      bind term, read term
+      bind link, read link

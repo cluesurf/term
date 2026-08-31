@@ -1,3 +1,20 @@
+load @term/mill/code/code/bind/mint
+  find bind
+
+load @term/mill/code/code/form/case/mint
+  find base
+
+load @term/mill/code/code/seed/seed/mint
+  find host
+
+load @term/mill/code/code/take/mint
+  find take
+
+load @term/mill/code/code/task/mint
+  find task
+
+load @term/mill/code/code/tool/flow/mint
+  find flow
 
 load @term/seed/code/lang
   find code-hook
@@ -5,18 +22,27 @@ load @term/seed/code/lang
 mint hook, like code-hook
   case name
     site name
-  case line
-    site line
-  case base, mint base
+  case fork-name
+    site fork-name
+  case take
+    site take
+  case host
+    site host
+  case bind
+    site bind
+  case base
     site base
-  case flow, mint flow
+  case flow
     site flow
-  case task, mint task
+  case task
     site task
   hook make
     make hook
       bind name, read name
-      bind line, read line
+      bind fork-name, read fork-name
+      bind take, read take
+      bind host, read host
+      bind bind, read bind
       bind base, read base
       bind flow, read flow
       bind task, read task

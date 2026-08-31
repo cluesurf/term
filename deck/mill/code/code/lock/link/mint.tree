@@ -1,9 +1,8 @@
-
 load @term/seed/code/lang
   find lock-link
   find lock-link-load
 
-mint link, like lock-link
+mint lock-link, like lock-link
   case name
     site name
   case hash

@@ -1,10 +1,30 @@
+load @term/mill/code/code/bind/mint
+  find bind
+
+load @term/mill/code/code/call/mint
+  find call
+
+load @term/mill/code/code/form/case/mint
+  find base
+
+load @term/mill/code/code/form/mint
+  find form
+
+load @term/mill/code/code/hook/mint
+  find hook
+
+load @term/mill/code/code/task/mint
+  find task
+
+load @term/mill/code/code/text/mint
+  find text
 
 mint lace
   case name
     site name
-  case base, mint base
+  case base
     site base
-  case flow, mint flow
+  case flow, mint lace-flow
     site flow
   hook make
     make lace
@@ -12,44 +32,44 @@ mint lace
       bind base, read base
       bind flow, read flow
 
-mint flow
+mint lace-flow
   case text
     site text
-  case walk, mint walk
+  case walk, mint lace-walk
     site walk
-  case test, mint test
+  case test, mint lace-test
     site test
-  case form, mint form
+  case form
     site form
-  case call, mint call
+  case call
     site call
-  case task, mint task
+  case task
     site task
 
-mint walk
+mint lace-walk
   case road
     site road
-  case base, mint base
+  case base
     site base
-  case flow, mint flow
+  case flow, mint lace-flow
     site flow
   hook make
-    make walk
+    make lace-walk
       bind road, read road
       bind base, read base
       bind flow, read flow
 
-mint test
+mint lace-test
   case road
     site road
-  case bind, mint bind
+  case bind
     site bind
-  case flow, mint flow
+  case flow, mint lace-flow
     site flow
-  case hook, mint hook
+  case hook
     site hook
   hook make
-    make test
+    make lace-test
       bind road, read road
       bind bind, read bind
       bind flow, read flow

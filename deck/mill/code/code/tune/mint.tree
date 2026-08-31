@@ -1,8 +1,13 @@
+load @term/mill/code/code/head/mint
+  find head
+
+load @term/mill/code/code/seed/seed/mint
+  find host
 
 mint tune
   case name
     site name
-  case head, mint head
+  case head
     site head
   case host
     site host

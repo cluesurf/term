@@ -1,3 +1,12 @@
+load @term/mill/code/code/bind/mint
+  find bind
+
+load @term/mill/code/code/seed/mint
+  find seed
+
+load @term/mill/code/code/take/mint
+  find take
+
 
 # Builder for the dock (routing + CLI) DSL: map parsed slots onto the dock AST forms in @term/seed/code/dock.
 # Handlers (`call`) build the clean seed-call value form. Shared builders (take, bind, seed) come from the code mills.
@@ -18,7 +27,7 @@ mint dock
 mint dock-def, like code-dock
   case path
     site path
-  case take, mint take
+  case take
     site take
   case task, mint dock-task
     site task
@@ -35,7 +44,7 @@ mint dock-def, like code-dock
   case dock, mint dock-def
     site dock
   hook make
-    make dock
+    make dock-def
       bind path, read path
       bind take, read take
       bind task, read task
@@ -49,7 +58,7 @@ mint dock-def, like code-dock
 mint dock-task, like dock-task
   case name
     site name
-  case take, mint take
+  case take
     site take
   case call, mint dock-call
     site call
@@ -68,17 +77,17 @@ mint dock-task, like dock-task
 mint dock-call, like seed-call
   case name
     site name
-  case bind, mint bind
+  case bind
     site bind
   hook make
-    make seed-call
+    make dock-call
       bind name, read name
       bind bind, read bind
 
 mint dock-zone, like dock-zone
   case name
     site name
-  case bind, mint bind
+  case bind
     site bind
   hook make
     make dock-zone
@@ -98,7 +107,7 @@ mint dock-seed, like dock-seed
 mint dock-send, like dock-send
   case name
     site name
-  case seed, mint seed
+  case seed
     site seed
   hook make
     make dock-send
@@ -114,3 +123,23 @@ mint dock-hook, like dock-hook
     make dock-hook
       bind name, read name
       bind call, read call
+
+mint dock-bind
+  case kind
+    site kind
+  case line, mint dock-bind-line
+    site line
+  hook make
+    make dock-bind
+      bind kind, read kind
+      bind line, read line
+
+mint dock-bind-line
+  case path
+    site path
+  case name
+    site name
+  hook make
+    make dock-bind-line
+      bind path, read path
+      bind name, read name

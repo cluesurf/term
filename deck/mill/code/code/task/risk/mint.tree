@@ -1,7 +1,3 @@
-
 mint risk
-  case text
-    site text
   hook make
     make risk
-      bind text, read text

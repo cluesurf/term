@@ -1,13 +1,59 @@
+load @term/mill/code/code/dock/mint
+  find dock-bind-line
+
+load @term/mill/code/code/like/mint
+  find like
+
+load @term/mill/code/code/seed/mint
+  find seed
+
+load @term/mill/code/code/take/mint
+  find take
 
 load @term/seed/code/lang
   find code-bind
 
 mint bind, like code-bind
   case name
-    site term
-  case seed, mint seed
-    site bond
+    site name
+  case seed
+    site seed
   hook make
     make bind
-      bind term, read term
-      bind bond, read bond
+      bind name, read name
+      bind seed, read seed
+
+mint bind-def
+  case name
+    site name
+  case take
+    site take
+  case like
+    site like
+  case case, mint bind-def-case
+    site case
+  hook make
+    make bind-def
+      bind name, read name
+      bind take, read take
+      bind like, read like
+      bind case, read case
+
+mint bind-def-case
+  case platform
+    site platform
+  case seed
+    site seed
+  case load, mint dock-bind-line
+    site load
+  case text
+    site text
+  case code
+    site code
+  hook make
+    make bind-def-case
+      bind platform, read platform
+      bind seed, read seed
+      bind load, read load
+      bind text, read text
+      bind code, read code

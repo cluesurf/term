@@ -1,3 +1,17 @@
+load @term/mill/code/code/call/mint
+  find call
+
+load @term/mill/code/code/form/case/mint
+  find case-hold
+
+load @term/mill/code/code/form/link/mint
+  find link
+
+load @term/mill/code/code/like/mint
+  find like
+
+load @term/mill/code/code/seed/mint
+  find seed
 
 load @term/seed/code/lang
   find code-hold
@@ -18,13 +32,7 @@ load @term/seed/code/lang
   find code-link
   find code-have
 
-load @term/mill/code/code/call/mint
-  find call
-
-load @term/mill/code/code/like/mint
-  find like
-
-mint hold, like code-hold
+mint rule-hold, like code-hold
   case name
     site name
   case step, mint step
@@ -35,11 +43,11 @@ mint hold, like code-hold
       bind step, read step
 
 mint step
-  case show, mint show
+  case show, mint show-claim
     site show
-  case mark, mint mark
+  case mark, mint rule-mark
     site mark
-  case take, mint take
+  case take, mint rule-take
     site take
   case have, mint have
     site have
@@ -56,42 +64,48 @@ mint step
   case find, mint find
     site find
 
-mint show, like code-show
+mint show-claim, like code-show
   case claim, mint call
     site claim
   hook make
     make show
       bind claim, read claim
 
-mint mark, like code-mark
+mint rule-mark, like code-mark
   case name
     site name
-  case like, mint like
+  case like
     site like
   hook make
-    make mark
+    make rule-mark
       bind name, read name
       bind like, read like
 
 mint fold, like code-fold
-  case arg
-    site arg
-  case step, mint step
-    site step
+  case name
+    site name
   hook make
     make fold
-      bind arg, read arg
-      bind step, read step
+      bind name, read name
 
 mint case, like code-case
-  case arg
-    site arg
-  case step, mint step
-    site step
+  case name
+    site name
+  case like
+    site like
+  case seed
+    site seed
+  case link
+    site link
+  case hold, mint case-hold
+    site hold
   hook make
     make case
-      bind arg, read arg
-      bind step, read step
+      bind name, read name
+      bind like, read like
+      bind seed, read seed
+      bind link, read link
+      bind hold, read hold
 
 mint melt, like code-melt
   case arg
@@ -114,14 +128,14 @@ mint cite, like code-cite
     make cite
       bind arg, read arg
 
-mint turn, like code-turn
+mint rule-turn, like code-turn
   case arg
     site arg
   hook make
     make turn
       bind arg, read arg
 
-mint take, like code-take
+mint rule-take, like code-take
   case arg
     site arg
   hook make
@@ -129,11 +143,14 @@ mint take, like code-take
       bind arg, read arg
 
 mint find, like code-find
-  case arg
-    site arg
+  case text
+    site text
+  case name
+    site name
   hook make
     make find
-      bind arg, read arg
+      bind text, read text
+      bind name, read name
 
 mint self, like code-self
   case arg
@@ -145,7 +162,7 @@ mint self, like code-self
       bind arg, read arg
       bind step, read step
 
-mint seed, like code-seed
+mint rule-seed, like code-seed
   case arg
     site arg
   case step, mint step
@@ -156,14 +173,11 @@ mint seed, like code-seed
       bind step, read step
 
 mint rest, like code-rest
-  case arg
-    site arg
-  case step, mint step
-    site step
+  case term
+    site term
   hook make
     make rest
-      bind arg, read arg
-      bind step, read step
+      bind term, read term
 
 mint weld, like code-weld
   case arg
@@ -175,7 +189,7 @@ mint weld, like code-weld
       bind arg, read arg
       bind step, read step
 
-mint link, like code-link
+mint rule-link, like code-link
   case arg
     site arg
   case step, mint step

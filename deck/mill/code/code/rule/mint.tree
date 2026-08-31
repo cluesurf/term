@@ -1,5 +1,4 @@
-
-load @term/mill/code/code/rule/hold/mint
+load @term/mill/code/code/hold/mint
   find hold
 
 mint rule

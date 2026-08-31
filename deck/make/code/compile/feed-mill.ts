@@ -1711,8 +1711,12 @@ function compileExpr(
 
       return
 
-    case 'range':
-    case 'list':
+    // `value` is read by the enclosing rule (compileNamedRule pulls it out to build the return), so reaching it
+    // here means it sits somewhere that has no return to build, and it emits nothing.
+    //
+    // `range` and `list` USED to be listed here too, and had been unreachable since each grew a real case above
+    // (1483 and 1556). esbuild warned about the duplicate on every build. A dead case label is the mildest form
+    // of the thing this compiler keeps producing: a construct that looks like it handles something and does not.
     case 'value':
       return
   }

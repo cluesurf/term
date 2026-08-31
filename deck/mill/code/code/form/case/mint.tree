@@ -1,45 +1,62 @@
+load @term/mill/code/code/fall/mint
+  find fall
 
-mint head
+load @term/mill/code/code/form/mint
+  find form
+
+load @term/mill/code/code/like/mint
+  find like
+
+load @term/mill/code/code/take/mint
+  find take
+
+mint case-head
   case name
     site name
-  case list, mint list
+  case list, mint case-list
+    site list
+  case draw
+    site draw
+  case form
     site form
-  case draw, mint draw
-    site form
-  case form, mint form
-    site form
-  case take, mint take
-    site form
-  case free
+  case take
+    site take
+  case free, mint case-free
     site free
   case fall
     site fall
   hook make
-    make head
+    make case-head
       bind name, read name
+      bind list, read list
+      bind draw, read draw
       bind form, read form
+      bind take, read take
       bind free, read free
       bind fall, read fall
 
 mint base
   case name
     site name
-  case list, mint list
+  case list, mint case-list
+    site list
+  case draw
+    site draw
+  case form
     site form
-  case draw, mint draw
-    site form
-  case form, mint form
-    site form
-  case take, mint take
-    site form
-  case free
+  case take
+    site take
+  case free, mint case-free
     site free
   case fall
     site fall
   hook make
     make base
       bind name, read name
+      bind list, read list
+      bind draw, read draw
       bind form, read form
+      bind take, read take
       bind free, read free
       bind fall, read fall
 
@@ -58,8 +75,57 @@ mint draw
       bind form, read form
 
 mint free
+  case name
+    site name
+  case like
+    site like
+  case flex
+    site flex
+  hook make
+    make free
+      bind name, read name
+      bind like, read like
+      bind flex, read flex
+
+mint base-host
+  case name
+    site name
+  case list, mint case-list
+    site list
+  case draw
+    site draw
+  case form
+    site form
+  case fall
+    site fall
+  hook make
+    make base-host
+      bind name, read name
+      bind list, read list
+      bind draw, read draw
+      bind form, read form
+      bind fall, read fall
+
+mint case-list
+  case form
+    site form
+  hook make
+    make case-list
+      bind form, read form
+
+mint case-free
   case term
     site term
   hook make
-    make free
+    make case-free
       bind term, read term
+
+mint case-hold
+  case name
+    site name
+  case like
+    site like
+  hook make
+    make case-hold
+      bind name, read name
+      bind like, read like
