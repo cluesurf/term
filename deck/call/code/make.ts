@@ -25,7 +25,7 @@ import { projectRoleOf } from '@term/call/code/role-of'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import type { Resolver, Source } from '@term/make/code/compile/load'
-import { stdlibResolver, linkResolver } from '@term/call/code/walk'
+import { stdlibResolver, linkResolver, siblingResolver } from '@term/call/code/walk'
 import { renderDiagnostic } from '@term/call/code/report'
 import {
   logGood,
@@ -58,6 +58,13 @@ function isDraftTree(file: string): boolean {
   } catch {
     return false
   }
+}
+
+// is this file a package MANIFEST (a `deck @scope/name` statement), as opposed to a code module that merely shares
+// the name? Parsed, never matched: deck/seed/code/deck.tree is a module, and telling them apart by filename skipped
+// the entire stdlib.
+function isPackageManifest(file: string): boolean {
+  return existsSync(file) && manifestNameOf(file) !== undefined
 }
 
 export function findTreeFiles(
@@ -105,23 +112,30 @@ export function findTreeFiles(
         continue
       }
 
-      // a subdirectory with its own `deck.tree` is a DIFFERENT package, and builds itself. Compiling its sources into
-      // this one resolves its imports against the wrong root: the blog sample app in deck/site/test/site declares
-      // `deck @term/blog` and loads `@term/site/...`, which is a foreign package from there and needs a `link/` entry,
-      // so every one of its imports came back undefined and site's build reported five phantom unknown names. The
-      // same files compile clean from the term root, which is how test/site/{serve,router,blog}.ts build them.
-      if (existsSync(path.join(full, 'deck.tree'))) {
+      // a subdirectory holding its own package MANIFEST is a DIFFERENT package, and builds itself. Compiling its
+      // sources into this one resolves its imports against the wrong root: the blog sample app in deck/site/test/site
+      // declares `deck @term/blog` and loads `@term/site/...`, which is a foreign package from there and needs a
+      // `link/` entry, so every one of its imports came back undefined and site's build reported five phantom unknown
+      // names. The same files compile clean from the term root, which is how test/site/{serve,router,blog}.ts build.
+      //
+      // It has to be a MANIFEST, not merely a file called deck.tree. The stdlib has a code module at
+      // deck/seed/code/deck.tree (`load ./text ...`, the manifest's own shape as Term), so a filename test skipped
+      // the whole of deck/seed/code — 803 files, the entire stdlib — and the build cheerfully reported success on
+      // the 20 that were left. manifestNameOf parses it and answers only for a real `deck @scope/name`.
+      if (isPackageManifest(path.join(full, 'deck.tree'))) {
         continue
       }
 
       findTreeFiles(full, out, platform)
     } else if (entry.endsWith('.tree')) {
-      // a `deck.tree` is a package MANIFEST, read by the package manager, and is not Term code. Compiling it emitted
-      // an empty module that nothing imports, and only ever produced misleading errors: a manifest head the code mill
-      // does not know (`boot`, `back`, `hook`, `face`, `book` in test/site/deck.tree) was reported as an undefined
-      // NAME. A root manifest happened to compile clean because its heads (`deck`, `load`, `bear`) are also code
-      // heads, so the rule looked like it worked. The manifest grammar is checked where it is read, not here.
-      if (entry === 'deck.tree') {
+      // a package MANIFEST is read by the package manager and is not Term code. Compiling one emitted an empty
+      // module that nothing imports, and only ever produced misleading errors: a manifest head the code mill does not
+      // know (`boot`, `back`, `hook`, `face`, `book` in test/site/deck.tree) was reported as an undefined NAME. A
+      // root manifest happened to compile clean because its heads (`deck`, `load`, `bear`) are also code heads, so
+      // the rule looked like it worked. The manifest grammar is checked where it is read, not here.
+      //
+      // Again: MANIFEST, not filename. deck/seed/code/deck.tree is an ordinary stdlib module.
+      if (entry === 'deck.tree' && isPackageManifest(full)) {
         continue
       }
 
@@ -184,6 +198,7 @@ export function projectResolver(
   fallbackLinkRoot?: string,
 ): Resolver {
   const stdlib = stdlibResolver()
+  const sibling = siblingResolver()
   const linked = linkResolver(root)
   const fallbackLinked =
     fallbackLinkRoot && fallbackLinkRoot !== root
@@ -353,6 +368,14 @@ export function projectResolver(
 
     if (fromStdlib) {
       return fromStdlib
+    }
+
+    // any other package in the same tree as the stdlib, by name and without a `link/` entry. After the link dir, so
+    // a project that genuinely links its own copy of a package still wins. See siblingResolver.
+    const fromSibling = sibling?.(importPath, fromFile)
+
+    if (fromSibling) {
+      return fromSibling
     }
 
     // `@scope/pkg/code/sub` -> `<that package's root>/code/sub.tree` when it names the importer's OWN package.
@@ -731,6 +754,13 @@ export async function callMake(input: {
   // separate compilation: per-module artifacts + cross-boundary early cutoff (opt-in while the differential
   // harness matures; see compileProjectSeparate)
   separate?: boolean
+  // compile the .tree files even when package.json carries a `make` script.
+  //
+  // A package.json `make` script normally REPLACES the .tree build entirely, which is right when the script IS the
+  // build, and a blind spot when the package has both: @term/seed's script builds its 62 TypeScript runtime shims
+  // while 825 .tree files sat uncompiled by anything, and nothing said so. This flag asks for the .tree half, and
+  // task/term/build-all.ts uses it so no package can hide behind a script again.
+  trees?: boolean
 }): Promise<void> {
   logStep(input.ride ? 'Watching and compiling...' : 'Compiling...')
 
@@ -748,7 +778,7 @@ export async function callMake(input: {
       // no package.json
     }
 
-    if (hasMakeScript) {
+    if (hasMakeScript && !input.trees) {
       if (input.ride) {
         // watch mode with a custom build: re-run the project's `make` script on every change
         watchScript(input.root) // runs until interrupted
@@ -766,7 +796,9 @@ export async function callMake(input: {
     } else {
       console.log(
         fade(
-          '  No build script found. Compiling .tree files directly...',
+          hasMakeScript
+            ? '  Compiling .tree files directly (--trees; its `make` script was not run)...'
+            : '  No build script found. Compiling .tree files directly...',
         ),
       )
 

@@ -21,6 +21,7 @@ import {
 export {
   stdlibResolver,
   linkResolver,
+  siblingResolver,
 } from '@term/make/code/resolve'
 import { parse, renderHead } from '@term/make/code/parser/tree'
 

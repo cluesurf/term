@@ -556,12 +556,18 @@ const cli = yargs(hideBin(process.argv))
           type: 'boolean',
           description:
             'Separate compilation: per-module artifacts, dependents check against interfaces (early cutoff)',
+        })
+        .option('trees', {
+          type: 'boolean',
+          description:
+            'Compile .tree files even when package.json owns `make` (which otherwise runs that script instead)',
         }),
     async argv => {
       await callMake({
         root,
         ride: argv.ride,
         separate: argv.separate,
+        trees: argv.trees,
       })
     },
   )

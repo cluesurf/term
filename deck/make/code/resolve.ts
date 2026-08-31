@@ -96,6 +96,57 @@ export function stdlibResolver(): Resolver | undefined {
   }
 }
 
+// Every package that lives in the SAME tree as the stdlib, resolved without a `link/` entry.
+//
+// `@term/seed` used to be the only package that resolved on its own (STDLIB_PREFIXES above named it and nothing
+// else), so every other in-tree `@term/*` import needed a `link/@term/<name>` symlink in the importing package. Those
+// symlinks are gitignored and were written with ABSOLUTE paths, so on any other checkout they do not exist and the
+// import resolves to NOTHING - and an import that resolves to nothing fails silently, as a pile of unknown names in
+// files that never mention the missing package. @term/face carried 40 such errors from exactly this.
+//
+// The packages in `<deck root>/<name>` are one repository and one version. They should reach each other by name, the
+// way the stdlib already did. This is tried AFTER the link dir, so a project that really does link a different copy
+// of a package still wins.
+export function siblingResolver(): Resolver | undefined {
+  const stdlib = stdlibBase()
+
+  if (!stdlib) {
+    return undefined
+  }
+
+  // the directory holding every in-tree package: the stdlib's own parent (`.../deck/seed` -> `.../deck`)
+  const deckRoot = dirname(stdlib)
+
+  return (importPath: string): Source | undefined => {
+    const match = /^@(?:term|cluesurf)\/([^/]+)\/(.+)$/.exec(importPath)
+
+    if (!match) {
+      return undefined
+    }
+
+    const [, pkg, rest] = match
+    const root = join(deckRoot, pkg!)
+
+    // it is a package only if it declares itself one. Without this, `@term/anything/...` would resolve against any
+    // directory that happens to share the name.
+    if (!existsSync(join(root, 'deck.tree'))) {
+      return undefined
+    }
+
+    for (const candidate of [
+      join(root, `${rest}.tree`),
+      join(root, rest!, 'base.tree'),
+      join(root, rest!, 'note.tree'),
+    ]) {
+      if (existsSync(candidate)) {
+        return { file: candidate, text: readFileSync(candidate, 'utf8') }
+      }
+    }
+
+    return undefined
+  }
+}
+
 // resolve any `@scope/pkg/sub/path` import via the package manager's link dir (`<root>/link/@scope/pkg/...`), where
 // `seed link` symlinks each dependency. Follows the file-resolution rules (foo.tree, then foo/base.tree, foo/note.tree).
 // This is how a project resolves its linked packages (@cluesurf/seed, @cluesurf/bind, @cluesurf/term, @cluesurf/site).

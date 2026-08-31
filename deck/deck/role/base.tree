@@ -1,3 +1,19 @@
+note draft
+
+# SHELVED 2026-08-30, and the decision it is waiting on is written here rather than left implicit.
+#
+# This is a ROLE MANIFEST (`role book` / `take @/book/**`), not Term code, and nothing reads it: deck.tree declares
+# no `role`, and projectRoleOf (deck/call/code/role-of.ts) looks only for `<root>/role.tree` or the path a manifest's
+# `role` head names. So it was reached by exactly one thing, the build walk, which compiled it as code and reported
+# its manifest heads as undefined NAMES (`role`, `book`) - the same false error a `deck.tree` gave before manifests
+# were taken out of the walk.
+#
+# Two ways to settle it, and they are not the same:
+#   - it is meant to BE @term/deck's role manifest, in which case it belongs at deck/role.tree (or deck.tree grows a
+#     `role ./role` line), and the walk should skip it the way it skips deck.tree
+#   - it is a FIXTURE for the role parser, in which case it belongs under test/ with the other fixtures
+#
+# Whoever knows which should move it and delete this marker. See package-builds-0006.
 
 load @term/code
   find code
