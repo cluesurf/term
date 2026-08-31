@@ -193,6 +193,57 @@ ok(
   )
 }
 
+// ---- a role file is PER PACKAGE ----
+//
+// A build pulls in a dependency's source, and that source is written against its OWN package's conventions:
+// @term/site says its `code/test/site/route.tree` holds routes, and no project depending on it should have to
+// know or repeat that. One role file read at the build root gave a dependency's files the ROOT project's rules,
+// which describe the root's layout and say nothing true about the dependency's.
+//
+// It is also what makes `@` mean the right thing. A glob's `@` is the package root, so `@/code/**` in a
+// dependency's role file has to expand against THAT package's directory, not against whoever is building.
+
+{
+  const { projectRoleOf } = await import('@term/call/code/role-of')
+
+  const outer = mkdtempSync(join(tmpdir(), 'term-pkg-role-'))
+  const add = (name: string, text: string): void => {
+    mkdirSync(dirname(join(outer, name)), { recursive: true })
+    writeFileSync(join(outer, name), text)
+  }
+
+  // the outer project: everything under code/ is `code`
+  add('deck.tree', 'deck @term/outer\n  code <0.0.1>\n')
+  add('base/role.tree', 'role code\n  take @/code/**/*.tree\n')
+  add('code/mine.tree', 'task t\n')
+
+  // a nested package with its OWN role file, saying something the outer one does not
+  add('deck/inner/deck.tree', 'deck @term/inner\n  code <0.0.1>\n')
+  add('deck/inner/base/role.tree', 'role site\n  take @/code/route/**/*.tree\n')
+  add('deck/inner/code/route/page.tree', 'task t\n')
+  add('deck/inner/code/other.tree', 'task t\n')
+
+  const roleOf = projectRoleOf(outer)
+
+  ok(
+    "a nested package's file gets ITS OWN role, not the root project's",
+    roleOf(join(outer, 'deck/inner/code/route/page.tree')) === 'site',
+    String(roleOf(join(outer, 'deck/inner/code/route/page.tree'))),
+  )
+
+  ok(
+    "and a file its own role file does not match has none, rather than falling back to the root's",
+    roleOf(join(outer, 'deck/inner/code/other.tree')) === null,
+    String(roleOf(join(outer, 'deck/inner/code/other.tree'))),
+  )
+
+  ok(
+    "the root project's own files still get the root's roles",
+    roleOf(join(outer, 'code/mine.tree')) === 'code',
+    String(roleOf(join(outer, 'code/mine.tree'))),
+  )
+}
+
 console.log(`\nfiles: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

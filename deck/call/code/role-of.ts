@@ -11,13 +11,38 @@ import { manifestValueOf } from '@term/call/code/manifest-name'
 
 export type RoleOf = (file: string) => string | null
 
-export function projectRoleOf(root: string): RoleOf {
-  const config = readRoles(root)
+// The package a file belongs to: its nearest ancestor holding a `deck.tree`, else the project root.
+//
+// This is what makes a role file PER PACKAGE. A build pulls in a dependency's source, and that source is written
+// against its OWN package's conventions: @term/site says its `code/test/site/route.tree` holds routes, and no
+// project that depends on it should have to know or repeat that. Reading one role file at the build root gave a
+// dependency's files the ROOT project's rules, which are about the root project's layout and say nothing true
+// about the dependency's.
+//
+// It also makes `@` mean the right thing. A glob's `@` is the package root, so `@/code/**` in @term/site's role
+// file has to expand against @term/site's directory, not against whoever is building.
+function packageRootOf(file: string, root: string): string {
+  let dir = path.dirname(file)
 
-  if (!config || config.rules.length === 0) {
-    return () => null
+  for (;;) {
+    if (existsSync(path.join(dir, 'deck.tree'))) {
+      return dir
+    }
+
+    const up = path.dirname(dir)
+
+    if (up === dir || dir.length <= root.length) {
+      return root
+    }
+
+    dir = up
   }
+}
 
+export function projectRoleOf(root: string): RoleOf {
+  // one role config per PACKAGE, read once. A build touches thousands of files across a handful of packages, so
+  // the cache is on the package rather than on the file.
+  const byPackage = new Map<string, RoleConfig | undefined>()
   const byFile = new Map<string, string | null>()
 
   return file => {
@@ -27,7 +52,18 @@ export function projectRoleOf(root: string): RoleOf {
       return known
     }
 
-    const role = matchRole({ filePath: file, config })
+    const pkg = packageRootOf(file, root)
+
+    if (!byPackage.has(pkg)) {
+      byPackage.set(pkg, readRoles(pkg))
+    }
+
+    const config = byPackage.get(pkg)
+    const role =
+      config && config.rules.length > 0
+        ? matchRole({ filePath: file, config })
+        : null
+
     byFile.set(file, role)
 
     return role

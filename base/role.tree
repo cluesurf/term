@@ -8,6 +8,12 @@
 # directory named there resolves the way every other Term path does:
 # `<dir>.tree`, then `<dir>/base.tree`, then `<dir>/note.tree`.
 #
+# ROLES ARE PER PACKAGE. A file's roles come from ITS OWN package -- the
+# nearest ancestor holding a `deck.tree` -- not from whoever is building. A
+# dependency is written against its own conventions and no project using it
+# should have to repeat them. That is also what makes `@` right: a glob's `@`
+# is the package root, so `@/code/**` here expands against THIS package.
+#
 # `take` names a glob, `miss` excludes one, and `@` is the package root. A
 # glob carrying braces escapes them (`\{code,view\}`), because a bare `{x}`
 # is an interpolation to the parser. The escape belongs to the tree syntax and
