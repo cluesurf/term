@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/html-element
+  find html-element
+
+load @term/bind/code/javascript/native
+  find native-null
+
+form submit-event, name <SubmitEvent>
+  base event
+
+  link submitter, name <submitter>
+    like or
+      like html-element
+      like native-null

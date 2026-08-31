@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form remote-playback-event-map, name <RemotePlaybackEventMap>
+  link connect, name <connect>
+    like event
+    lock false
+  link connecting, name <connecting>
+    like event
+    lock false
+  link disconnect, name <disconnect>
+    like event
+    lock false

@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/client-types
+  find client-types
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form client-query-options, name <ClientQueryOptions>
+  link include-uncontrolled, name <includeUncontrolled>
+    like native-boolean
+    lock false
+  link type, name <type>
+    like client-types
+    lock false

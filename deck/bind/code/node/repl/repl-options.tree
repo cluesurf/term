@@ -1,0 +1,87 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-string
+  find native-undefined
+  find node-js-readable-stream
+  find node-js-writable-stream
+
+load @term/bind/code/node/readline
+  find async-completer
+  find completer
+
+load @term/bind/code/node/repl
+  find repl-eval
+  find repl-writer
+
+form repl-options, name <ReplOptions>
+  link prompt, name <prompt>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link input, name <input>
+    like or
+      like node-js-readable-stream
+      like native-undefined
+    flex true
+  link output, name <output>
+    like or
+      like node-js-writable-stream
+      like native-undefined
+    flex true
+  link terminal, name <terminal>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link eval, name <eval>
+    like or
+      like repl-eval
+      like native-undefined
+    flex true
+  link preview, name <preview>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link use-colors, name <useColors>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link use-global, name <useGlobal>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link ignore-undefined, name <ignoreUndefined>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link writer, name <writer>
+    like or
+      like repl-writer
+      like native-undefined
+    flex true
+  link completer, name <completer>
+    like or
+      like completer
+      like async-completer
+      like native-undefined
+    flex true
+  link repl-mode, name <replMode>
+    like or
+      like repl-mode-sloppy
+      like repl-mode-strict
+      like native-undefined
+    flex true
+  link break-eval-on-sigint, name <breakEvalOnSigint>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

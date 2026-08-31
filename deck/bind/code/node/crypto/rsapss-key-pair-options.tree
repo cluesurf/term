@@ -1,0 +1,57 @@
+
+load @term/bind
+  find and
+  find form
+  find like
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/crypto
+  find base-private-key-encoding-options
+  find key-format
+
+form rsapss-key-pair-options, name <RSAPSSKeyPairOptions>
+  head pub-f
+    base key-format
+  head priv-f
+    base key-format
+
+  link modulus-length, name <modulusLength>
+    like native-number
+    flex true
+  link public-exponent, name <publicExponent>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link hash-algorithm, name <hashAlgorithm>
+    like native-string
+    flex true
+  link mgf1-hash-algorithm, name <mgf1HashAlgorithm>
+    like native-string
+    flex true
+  link salt-length, name <saltLength>
+    like native-string
+    flex true
+  link public-key-encoding, name <publicKeyEncoding>
+    like form
+      link type, name <type>
+        text <spki>
+        flex true
+      link format, name <format>
+        like pub-f
+        flex true
+    flex true
+  link private-key-encoding, name <privateKeyEncoding>
+    like and
+      like base-private-key-encoding-options
+        like priv-f
+      like form
+        link type, name <type>
+          text <pkcs8>
+          flex true
+    flex true

@@ -1,0 +1,75 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-boolean
+  find native-string
+  find native-undefined
+  find node-js-dict
+
+load @term/bind
+  find any
+  find or
+
+load @term/bind/code/node/worker-threads
+  find resource-limits
+  find transfer-list-item
+
+form worker-options, name <WorkerOptions>
+  link argv, name <argv>
+    like or
+      like array
+        like any
+      like native-undefined
+    flex true
+  link env, name <env>
+    like or
+      like node-js-dict
+        like native-string
+      like share-env
+      like native-undefined
+    flex true
+  link eval, name <eval>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link worker-data, name <workerData>
+    like any
+    flex true
+  link stdin, name <stdin>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link stdout, name <stdout>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link stderr, name <stderr>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link exec-argv, name <execArgv>
+    like or
+      like array
+        like native-string
+      like native-undefined
+    flex true
+  link resource-limits, name <resourceLimits>
+    like or
+      like resource-limits
+      like native-undefined
+    flex true
+  link transfer-list, name <transferList>
+    like or
+      like array
+        like transfer-list-item
+      like native-undefined
+    flex true
+  link track-unmanaged-fds, name <trackUnmanagedFds>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

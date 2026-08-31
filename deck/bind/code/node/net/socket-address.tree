@@ -1,0 +1,18 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+
+load @term/bind/code/node/net
+  find ip-version
+  find socket-address-init-options
+
+form socket-address, name <SocketAddress>
+  link address, name <address>, like native-string
+  link family, name <family>, like ip-version
+  link port, name <port>, like native-number
+  link flowlabel, name <flowlabel>, like native-number
+
+form socket-address-constructor
+  hook make
+    take options, like socket-address-init-options

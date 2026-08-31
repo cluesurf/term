@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/es2015/iterable/uint8-array
+  find uint8-array
+
+form uint8-array, name <Uint8Array>
+  link {symbol/to-string-tag}
+    text <Uint8Array>
+    read true

@@ -1,0 +1,43 @@
+
+load @term/bind/code/browser/dom/mouse-event
+  find mouse-event
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form pointer-event, name <PointerEvent>
+  base mouse-event
+
+  link height, name <height>
+    like native-number
+  link is-primary, name <isPrimary>
+    like native-boolean
+  link pointer-id, name <pointerId>
+    like native-number
+  link pointer-type, name <pointerType>
+    like native-string
+  link pressure, name <pressure>
+    like native-number
+  link tangential-pressure, name <tangentialPressure>
+    like native-number
+  link tilt-x, name <tiltX>
+    like native-number
+  link tilt-y, name <tiltY>
+    like native-number
+  link twist, name <twist>
+    like native-number
+  link width, name <width>
+    like native-number
+
+  task get-coalesced-events, name <getCoalescedEvents>
+    like native-array
+      like pointer-event

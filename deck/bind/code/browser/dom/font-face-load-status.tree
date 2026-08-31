@@ -1,0 +1,7 @@
+
+form font-face-load-status, name <FontFaceLoadStatus>
+  like or
+    text <error>
+    text <loaded>
+    text <loading>
+    text <unloaded>

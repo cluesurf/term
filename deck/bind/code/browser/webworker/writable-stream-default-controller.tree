@@ -1,0 +1,15 @@
+
+load @term/bind/code/browser/dom/writable-stream-default-controller
+  find writable-stream-default-controller
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form writable-stream-default-controller, name <WritableStreamDefaultController>
+  task error, name <error>
+    take e, like maybe
+      like native-any
+    like native-void

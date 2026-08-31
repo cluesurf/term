@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form payment-method-data, name <PaymentMethodData>
+  link data, name <data>
+    like native-any
+    lock false
+  link supported-methods, name <supportedMethods>
+    like native-string
+    lock false

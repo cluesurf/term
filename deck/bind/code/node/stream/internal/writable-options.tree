@@ -1,0 +1,90 @@
+
+load @term/bind
+  find any
+  find form
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find error
+  find native-boolean
+  find native-null
+  find native-undefined
+  find native-void
+  find writable
+
+load @term/bind/code/node/buffer
+  find buffer-encoding
+
+load @term/bind/code/node/globals
+  find array
+
+load @term/bind/code/node/stream/internal
+  find stream-options
+
+form writable-options, name <WritableOptions>
+  base stream-options
+
+  link decode-strings, name <decodeStrings>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link default-encoding, name <defaultEncoding>
+    like or
+      like buffer-encoding
+      like native-undefined
+    flex true
+
+  task write, name <write>
+    like native-void
+
+    take this, like writable
+    take chunk, like any
+    take encoding, like buffer-encoding
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+          void true
+
+  task writev, name <writev>
+    like native-void
+
+    take this, like writable
+    take chunks
+      like array
+        like form
+          link chunk, name <chunk>
+            like any
+            flex true
+          link encoding, name <encoding>
+            like buffer-encoding
+            flex true
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+          void true
+
+  task final, name <final>
+    like native-void
+
+    take this, like writable
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+          void true

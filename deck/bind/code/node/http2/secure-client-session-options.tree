@@ -1,0 +1,7 @@
+
+load @term/bind/code/node/http2
+  find client-session-options
+
+form secure-client-session-options, name <SecureClientSessionOptions>
+  base client-session-options
+  base tls-connection-options

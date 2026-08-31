@@ -1,0 +1,264 @@
+
+form sink, name <std::io::Sink>
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like sink
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like sink
+        cite free
+
+  task write, name <write>
+    note <Write a buffer into this writer, returning how many bytes were written.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task write-vectored, name <write_vectored>
+    note <Like write, except that it writes from a slice of buffers.>
+
+    take self
+      cite free
+    take bufs
+      like list
+        like io-slice
+          time mask
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task is-write-vectored, name <is_write_vectored>
+    note <Determines if this Writer has an efficient write_vectored implementation.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task flush, name <flush>
+    note <Flush this output stream, ensuring that all intermediately buffered contents reach their destination.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-all, name <write_all>
+    note <Attempts to write an entire buffer into this writer.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-all-vectored, name <write_all_vectored>
+    note <Attempts to write multiple buffers into this writer.>
+
+    take self
+      cite free
+    take bufs
+      like list
+        like io-slice
+          time mask
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-fmt, name <write_fmt>
+    note <Writes a formatted string into this writer, returning any error encountered.>
+
+    take self
+      cite free
+    take fmt
+      like arguments
+        time mask
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task by-ref, name <by_ref>
+    note <Creates a “by reference” adapter for this instance of Write.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like self
+
+  task write, name <write>
+    note <Write a buffer into this writer, returning how many bytes were written.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task write-vectored, name <write_vectored>
+    note <Like write, except that it writes from a slice of buffers.>
+
+    take self
+      cite free
+    take bufs
+      like list
+        like io-slice
+          time mask
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task is-write-vectored, name <is_write_vectored>
+    note <Determines if this Writer has an efficient write_vectored implementation.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task flush, name <flush>
+    note <Flush this output stream, ensuring that all intermediately buffered contents reach their destination.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-all, name <write_all>
+    note <Attempts to write an entire buffer into this writer.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-all-vectored, name <write_all_vectored>
+    note <Attempts to write multiple buffers into this writer.>
+
+    take self
+      cite free
+    take bufs
+      like list
+        like io-slice
+          time mask
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-fmt, name <write_fmt>
+    note <Writes a formatted string into this writer, returning any error encountered.>
+
+    take self
+      cite free
+    take fmt
+      like arguments
+        time mask
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task by-ref, name <by_ref>
+    note <Creates a “by reference” adapter for this instance of Write.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like self

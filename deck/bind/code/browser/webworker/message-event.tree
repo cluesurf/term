@@ -1,0 +1,44 @@
+
+load @term/bind/code/browser/dom/iterable/message-event
+  find message-event
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+load @term/bind/code/browser/webworker/message-event-source
+  find message-event-source
+
+load @term/bind/code/browser/webworker/message-port
+  find message-port
+
+load @term/bind/code/javascript/es5/readonly-array
+  find readonly-array
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form message-event, name <MessageEvent>
+  base event
+
+  head t
+    back native-any
+
+  link data, name <data>
+    like t
+  link last-event-id, name <lastEventId>
+    like native-string
+  link origin, name <origin>
+    like native-string
+  link ports, name <ports>
+    like readonly-array
+      like message-port
+  link source, name <source>
+    like or
+      like message-event-source
+      like native-null

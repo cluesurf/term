@@ -1,0 +1,53 @@
+
+load @term/bind/code/browser/dom/constrain-boolean
+  find constrain-boolean
+
+load @term/bind/code/browser/dom/constrain-dom-string
+  find constrain-dom-string
+
+load @term/bind/code/browser/dom/constrain-double
+  find constrain-double
+
+load @term/bind/code/browser/dom/constrain-u-long
+  find constrain-u-long
+
+form media-track-constraint-set, name <MediaTrackConstraintSet>
+  link aspect-ratio, name <aspectRatio>
+    like constrain-double
+    lock false
+  link channel-count, name <channelCount>
+    like constrain-u-long
+    lock false
+  link device-id, name <deviceId>
+    like constrain-dom-string
+    lock false
+  link echo-cancellation, name <echoCancellation>
+    like constrain-boolean
+    lock false
+  link facing-mode, name <facingMode>
+    like constrain-dom-string
+    lock false
+  link frame-rate, name <frameRate>
+    like constrain-double
+    lock false
+  link group-id, name <groupId>
+    like constrain-dom-string
+    lock false
+  link height, name <height>
+    like constrain-u-long
+    lock false
+  link latency, name <latency>
+    like constrain-double
+    lock false
+  link sample-rate, name <sampleRate>
+    like constrain-u-long
+    lock false
+  link sample-size, name <sampleSize>
+    like constrain-u-long
+    lock false
+  link suppress-local-audio-playback, name <suppressLocalAudioPlayback>
+    like constrain-boolean
+    lock false
+  link width, name <width>
+    like constrain-u-long
+    lock false

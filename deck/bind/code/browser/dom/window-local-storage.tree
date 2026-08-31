@@ -1,0 +1,7 @@
+
+load @term/bind/code/browser/dom/storage
+  find storage
+
+form window-local-storage, name <WindowLocalStorage>
+  link local-storage, name <localStorage>
+    like storage

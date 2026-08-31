@@ -1,0 +1,25 @@
+
+load @term/bind/code/browser/dom/audio-node-options
+  find audio-node-options
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form dynamics-compressor-options, name <DynamicsCompressorOptions>
+  base audio-node-options
+
+  link attack, name <attack>
+    like native-number
+    lock false
+  link knee, name <knee>
+    like native-number
+    lock false
+  link ratio, name <ratio>
+    like native-number
+    lock false
+  link release, name <release>
+    like native-number
+    lock false
+  link threshold, name <threshold>
+    like native-number
+    lock false

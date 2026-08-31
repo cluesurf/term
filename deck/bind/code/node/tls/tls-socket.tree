@@ -1,0 +1,458 @@
+
+load @term/bind/code/javascript
+  find array
+  find error
+  find native-boolean
+  find native-null
+  find native-number
+  find native-object
+  find native-string
+  find native-symbol
+  find native-this
+  find native-undefined
+  find native-void
+  find net-socket
+  find x509-certificate
+
+load @term/bind
+  find any
+  find form
+  find or
+  find task
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/tls
+  find cipher-name-and-protocol
+  find detailed-peer-certificate
+  find ephemeral-key-info
+  find peer-certificate
+  find tls-socket-options
+
+form tls-socket, name <TLSSocket>
+  base net-socket
+  link authorized, name <authorized>, like native-boolean
+  link authorization-error, name <authorizationError>, like error
+  link encrypted, name <encrypted>, like native-boolean
+  link alpn-protocol, name <alpnProtocol>
+    like or
+      like native-string
+      text <false>
+      like native-null
+
+  task get-certificate, name <getCertificate>
+    like or
+      like peer-certificate
+      like native-object
+      like native-null
+
+  task get-cipher, name <getCipher>
+    like cipher-name-and-protocol
+
+  task get-ephemeral-key-info, name <getEphemeralKeyInfo>
+    like or
+      like ephemeral-key-info
+      like native-object
+      like native-null
+
+  task get-finished, name <getFinished>
+    like or
+      like buffer
+      like native-undefined
+
+  task get-peer-certificate, name <getPeerCertificate>
+    like detailed-peer-certificate
+
+    take detailed, text <true>
+
+  task get-peer-certificate, name <getPeerCertificate>
+    like peer-certificate
+
+    take detailed, text <false>
+      void true
+
+  task get-peer-certificate, name <getPeerCertificate>
+    like or
+      like peer-certificate
+      like detailed-peer-certificate
+
+    take detailed, like native-boolean
+      void true
+
+  task get-peer-finished, name <getPeerFinished>
+    like or
+      like buffer
+      like native-undefined
+
+  task get-protocol, name <getProtocol>
+    like or
+      like native-string
+      like native-null
+
+  task get-session, name <getSession>
+    like or
+      like buffer
+      like native-undefined
+
+  task get-shared-sigalgs, name <getSharedSigalgs>
+    like array
+      like native-string
+
+  task get-tls-ticket, name <getTLSTicket>
+    like or
+      like buffer
+      like native-undefined
+
+  task is-session-reused, name <isSessionReused>
+    like native-boolean
+
+  task renegotiate, name <renegotiate>
+    like or
+      like native-undefined
+      like native-boolean
+
+    take options
+      like form
+        link reject-unauthorized, name <rejectUnauthorized>
+          like or
+            like native-boolean
+            like native-undefined
+          flex true
+        link request-cert, name <requestCert>
+          like or
+            like native-boolean
+            like native-undefined
+          flex true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+
+  task set-max-send-fragment, name <setMaxSendFragment>
+    like native-boolean
+
+    take size, like native-number
+
+  task disable-renegotiation, name <disableRenegotiation>
+    like native-void
+
+  task enable-trace, name <enableTrace>
+    like native-void
+
+  task get-peer-x509-certificate, name <getPeerX509Certificate>
+    like or
+      like x509-certificate
+      like native-undefined
+
+  task get-x509-certificate, name <getX509Certificate>
+    like or
+      like x509-certificate
+      like native-undefined
+
+  task export-keying-material, name <exportKeyingMaterial>
+    like buffer
+
+    take length, like native-number
+    take label, like native-string
+    take context, like buffer
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <OCSPResponse>
+    take listener
+      like task
+        like native-void
+
+        take response, like buffer
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <secureConnect>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <session>
+    take listener
+      like task
+        like native-void
+
+        take session, like buffer
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <keylog>
+    take listener
+      like task
+        like native-void
+
+        take line, like buffer
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take args
+      like array
+        like any
+      rest true
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <OCSPResponse>
+    take response, like buffer
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <secureConnect>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <session>
+    take session, like buffer
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <keylog>
+    take line, like buffer
+
+  task on, name <on>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task on, name <on>
+    like native-this
+
+    take event, text <OCSPResponse>
+    take listener
+      like task
+        like native-void
+
+        take response, like buffer
+
+  task on, name <on>
+    like native-this
+
+    take event, text <secureConnect>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <session>
+    take listener
+      like task
+        like native-void
+
+        take session, like buffer
+
+  task on, name <on>
+    like native-this
+
+    take event, text <keylog>
+    take listener
+      like task
+        like native-void
+
+        take line, like buffer
+
+  task once, name <once>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task once, name <once>
+    like native-this
+
+    take event, text <OCSPResponse>
+    take listener
+      like task
+        like native-void
+
+        take response, like buffer
+
+  task once, name <once>
+    like native-this
+
+    take event, text <secureConnect>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <session>
+    take listener
+      like task
+        like native-void
+
+        take session, like buffer
+
+  task once, name <once>
+    like native-this
+
+    take event, text <keylog>
+    take listener
+      like task
+        like native-void
+
+        take line, like buffer
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <OCSPResponse>
+    take listener
+      like task
+        like native-void
+
+        take response, like buffer
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <secureConnect>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <session>
+    take listener
+      like task
+        like native-void
+
+        take session, like buffer
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <keylog>
+    take listener
+      like task
+        like native-void
+
+        take line, like buffer
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <OCSPResponse>
+    take listener
+      like task
+        like native-void
+
+        take response, like buffer
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <secureConnect>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <session>
+    take listener
+      like task
+        like native-void
+
+        take session, like buffer
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <keylog>
+    take listener
+      like task
+        like native-void
+
+        take line, like buffer
+
+form tls-socket-constructor
+  hook make
+    take socket, like net-socket
+    take options, like tls-socket-options
+      void true

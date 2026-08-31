@@ -1,0 +1,22 @@
+
+load @term/bind/code/javascript/es2015/symbol/wellknown/string
+  find string
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form string, name <String>
+  task pad-start, name <padStart>
+    take max-length, like native-number
+    take fill-string, like maybe
+      like native-string
+    like native-string
+
+  task pad-end, name <padEnd>
+    take max-length, like native-number
+    take fill-string, like maybe
+      like native-string
+    like native-string

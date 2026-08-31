@@ -1,0 +1,6 @@
+
+load @term/bind/code/browser/dom/character-data
+  find character-data
+
+form comment, name <Comment>
+  base character-data

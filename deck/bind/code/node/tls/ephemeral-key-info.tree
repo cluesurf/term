@@ -1,0 +1,21 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find native-undefined
+
+form ephemeral-key-info, name <EphemeralKeyInfo>
+  link type, name <type>
+    like native-string
+    flex true
+  link name, name <name>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link size, name <size>
+    like native-number
+    flex true

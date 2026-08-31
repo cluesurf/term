@@ -1,0 +1,196 @@
+
+load @term/bind/code/browser/dom/xml-http-request
+  find xml-http-request
+
+load @term/bind/code/browser/webworker/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/webworker/body-init
+  find body-init
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+load @term/bind/code/browser/webworker/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/webworker/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/webworker/xml-http-request-event-map
+  find xml-http-request-event-map
+
+load @term/bind/code/browser/webworker/xml-http-request-event-target
+  find xml-http-request-event-target
+
+load @term/bind/code/browser/webworker/xml-http-request-response-type
+  find xml-http-request-response-type
+
+load @term/bind/code/browser/webworker/xml-http-request-upload
+  find xml-http-request-upload
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form xml-http-request, name <XMLHttpRequest>
+  base xml-http-request-event-target
+
+  link onreadystatechange, name <onreadystatechange>
+    like or
+      like task
+        take this, like xml-http-request
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link ready-state, name <readyState>
+    like native-number
+  link response, name <response>
+    like native-any
+  link response-text, name <responseText>
+    like native-string
+  link response-type, name <responseType>
+    like xml-http-request-response-type
+    lock false
+  link response-url, name <responseURL>
+    like native-string
+  link status, name <status>
+    like native-number
+  link status-text, name <statusText>
+    like native-string
+  link timeout, name <timeout>
+    like native-number
+    lock false
+  link upload, name <upload>
+    like xml-http-request-upload
+  link with-credentials, name <withCredentials>
+    like native-boolean
+    lock false
+  link done, name <DONE>
+    like native-number
+  link headers-received, name <HEADERS_RECEIVED>
+    like native-number
+  link loading, name <LOADING>
+    like native-number
+  link opened, name <OPENED>
+    like native-number
+  link unsent, name <UNSENT>
+    like native-number
+
+  task abort, name <abort>
+    like native-void
+
+  task get-all-response-headers, name <getAllResponseHeaders>
+    like native-string
+
+  task get-response-header, name <getResponseHeader>
+    take name, like native-string
+    like or
+      like native-string
+      like native-null
+
+  task open, name <open>
+    take method, like native-string
+    take url, like native-string
+    like native-void
+
+  task open, name <open>
+    take method, like native-string
+    take url, like native-string
+    take async, like native-boolean
+    take username, like maybe
+      like or
+        like native-string
+        like native-null
+    take password, like maybe
+      like or
+        like native-string
+        like native-null
+    like native-void
+
+  task override-mime-type, name <overrideMimeType>
+    take mime, like native-string
+    like native-void
+
+  task send, name <send>
+    take body, like maybe
+      like or
+        like body-init
+        like native-null
+    like native-void
+
+  task set-request-header, name <setRequestHeader>
+    take name, like native-string
+    take value, like native-string
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like xml-http-request-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like xml-http-request
+        take ev
+          like index
+            like xml-http-request-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like xml-http-request-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like xml-http-request
+        take ev
+          like index
+            like xml-http-request-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

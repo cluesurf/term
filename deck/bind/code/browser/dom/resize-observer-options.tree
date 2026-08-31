@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/resize-observer-box-options
+  find resize-observer-box-options
+
+form resize-observer-options, name <ResizeObserverOptions>
+  link box, name <box>
+    like resize-observer-box-options
+    lock false

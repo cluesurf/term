@@ -1,0 +1,17 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form dom-point-init, name <DOMPointInit>
+  link w, name <w>
+    like native-number
+    lock false
+  link x, name <x>
+    like native-number
+    lock false
+  link y, name <y>
+    like native-number
+    lock false
+  link z, name <z>
+    like native-number
+    lock false

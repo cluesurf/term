@@ -1,0 +1,54 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find data-view
+  find native-null
+  find native-number
+  find native-string
+  find native-undefined
+  find node-js-typed-array
+  find tls-socket
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/tls
+  find common-connection-options
+  find secure-context-options
+
+form tls-options, name <TlsOptions>
+  base secure-context-options
+  base common-connection-options
+  base net-server-opts
+
+  link handshake-timeout, name <handshakeTimeout>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link session-timeout, name <sessionTimeout>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link ticket-keys, name <ticketKeys>
+    like or
+      like buffer
+      like native-undefined
+    flex true
+  link psk-identity-hint, name <pskIdentityHint>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+
+  task psk-callback, name <pskCallback>
+    like or
+      like data-view
+      like node-js-typed-array
+      like native-null
+
+    take socket, like tls-socket
+    take identity, like native-string

@@ -1,0 +1,16 @@
+
+bear @term/bind/code/javascript/node/os/constants/signals
+bear @term/bind/code/javascript/node/os/constants/errno
+bear @term/bind/code/javascript/node/os/constants/priority
+
+load @term/bind/code/javascript
+  find native-number
+
+load @term/bind/code/node/os
+  find signal-constants
+
+host uv-udp-reuseaddr, name <UV_UDP_REUSEADDR>
+  like native-number
+
+host signals, name <signals>
+  like signal-constants

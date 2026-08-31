@@ -1,0 +1,378 @@
+
+load @term/bind/code/javascript
+  find array
+  find error
+  find native-boolean
+  find native-string
+  find native-symbol
+  find native-this
+  find native-void
+  find readonly-array
+
+load @term/bind
+  find any
+  find or
+  find task
+
+load @term/bind/code/node/worker-threads
+  find transfer-list-item
+
+form message-port, name <MessagePort>
+  base event-emitter
+  task close, name <close>
+    like native-void
+
+  task post-message, name <postMessage>
+    like native-void
+
+    take value, like any
+    take transfer-list
+      like readonly-array
+        like transfer-list-item
+      void true
+
+  task ref, name <ref>
+    like native-void
+
+  task unref, name <unref>
+    like native-void
+
+  task start, name <start>
+    like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take value, like any
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <messageerror>
+    take listener
+      like task
+        like native-void
+
+        take error, like error
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <close>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <message>
+    take value, like any
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <messageerror>
+    take error, like error
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take args
+      like array
+        like any
+      rest true
+
+  task on, name <on>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take value, like any
+
+  task on, name <on>
+    like native-this
+
+    take event, text <messageerror>
+    take listener
+      like task
+        like native-void
+
+        take error, like error
+
+  task on, name <on>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task once, name <once>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take value, like any
+
+  task once, name <once>
+    like native-this
+
+    take event, text <messageerror>
+    take listener
+      like task
+        like native-void
+
+        take error, like error
+
+  task once, name <once>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take value, like any
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <messageerror>
+    take listener
+      like task
+        like native-void
+
+        take error, like error
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take value, like any
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <messageerror>
+    take listener
+      like task
+        like native-void
+
+        take error, like error
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task remove-listener, name <removeListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task remove-listener, name <removeListener>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take value, like any
+
+  task remove-listener, name <removeListener>
+    like native-this
+
+    take event, text <messageerror>
+    take listener
+      like task
+        like native-void
+
+        take error, like error
+
+  task remove-listener, name <removeListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task off, name <off>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task off, name <off>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take value, like any
+
+  task off, name <off>
+    like native-this
+
+    take event, text <messageerror>
+    take listener
+      like task
+        like native-void
+
+        take error, like error
+
+  task off, name <off>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true

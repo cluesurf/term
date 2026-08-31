@@ -1,0 +1,6 @@
+
+bear @term/bind/code/javascript/es2018
+bear @term/bind/code/browser/dom
+bear @term/bind/code/browser/webworker/importscripts
+bear @term/bind/code/browser/scripthost
+bear @term/bind/code/browser/dom/iterable

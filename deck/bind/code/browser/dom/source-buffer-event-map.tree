@@ -1,0 +1,20 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form source-buffer-event-map, name <SourceBufferEventMap>
+  link abort, name <abort>
+    like event
+    lock false
+  link error, name <error>
+    like event
+    lock false
+  link update, name <update>
+    like event
+    lock false
+  link updateend, name <updateend>
+    like event
+    lock false
+  link updatestart, name <updatestart>
+    like event
+    lock false

@@ -1,0 +1,18 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-bigint
+  find native-boolean
+  find native-number
+  find native-object
+  find native-string
+
+form serializable, name <Serializable>
+  like or
+    like native-string
+    like native-object
+    like native-number
+    like native-boolean
+    like native-bigint

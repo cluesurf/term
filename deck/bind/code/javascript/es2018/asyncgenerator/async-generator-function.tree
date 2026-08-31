@@ -1,0 +1,30 @@
+
+load @term/bind/code/javascript/es2018/asyncgenerator/async-generator
+  find async-generator
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form async-generator-function, name <AsyncGeneratorFunction>
+  link length, name <length>
+    like native-number
+  link name, name <name>
+    like native-string
+  link prototype, name <prototype>
+    like async-generator
+
+  hook make
+    take args
+      like native-array
+        like native-any
+      rest true
+    like async-generator

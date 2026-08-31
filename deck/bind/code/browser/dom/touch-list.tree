@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/touch
+  find touch
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form touch-list, name <TouchList>
+  link length, name <length>
+    like native-number
+
+  task item, name <item>
+    take index, like native-number
+    like or
+      like touch
+      like native-null
+
+  mesh index, like native-number
+    like touch

@@ -1,0 +1,88 @@
+
+form dir-entry, name <std::fs::DirEntry>
+  task path, name <path>
+    note <Returns the full path to the file that this entry represents.>
+
+    take self
+      cite free
+
+    free seed
+      like path-buf
+        cite free
+
+  task metadata, name <metadata>
+    note <Returns the metadata for the file that this entry points at.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like metadata
+          cite free
+        cite free
+
+  task file-type, name <file_type>
+    note <Returns the file type for the file that this entry points at.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like file-type
+          cite free
+        cite free
+
+  task file-name, name <file_name>
+    note <Returns the bare file name of this directory entry without any other leading path component.>
+
+    take self
+      cite free
+
+    free seed
+      like os-string
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task ino, name <ino>
+    note <Returns the underlying d_ino field of the dirent_t>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task ino, name <ino>
+    note <Returns the underlying d_ino field in the contained dirent structure.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task file-name-ref, name <file_name_ref>
+    note <Returns a reference to the underlying OsStr of this entry's filename.>
+
+    take self
+      cite free
+
+    free seed
+      like os-str

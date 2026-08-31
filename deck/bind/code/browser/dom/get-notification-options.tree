@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form get-notification-options, name <GetNotificationOptions>
+  link tag, name <tag>
+    like native-string
+    lock false

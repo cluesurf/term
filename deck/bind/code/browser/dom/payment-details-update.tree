@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/dom/payment-details-base
+  find payment-details-base
+
+load @term/bind/code/browser/dom/payment-item
+  find payment-item
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form payment-details-update, name <PaymentDetailsUpdate>
+  base payment-details-base
+
+  link payment-method-errors, name <paymentMethodErrors>
+    like native-any
+    lock false
+  link total, name <total>
+    like payment-item
+    lock false

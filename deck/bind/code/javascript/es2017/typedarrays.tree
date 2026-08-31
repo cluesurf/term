@@ -1,0 +1,10 @@
+
+bear @term/bind/code/javascript/es2017/typedarrays/int8-array-constructor
+bear @term/bind/code/javascript/es2017/typedarrays/uint8-array-constructor
+bear @term/bind/code/javascript/es2017/typedarrays/uint8-clamped-array-constructor
+bear @term/bind/code/javascript/es2017/typedarrays/int16-array-constructor
+bear @term/bind/code/javascript/es2017/typedarrays/uint16-array-constructor
+bear @term/bind/code/javascript/es2017/typedarrays/int32-array-constructor
+bear @term/bind/code/javascript/es2017/typedarrays/uint32-array-constructor
+bear @term/bind/code/javascript/es2017/typedarrays/float32-array-constructor
+bear @term/bind/code/javascript/es2017/typedarrays/float64-array-constructor

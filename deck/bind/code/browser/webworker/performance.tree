@@ -1,0 +1,160 @@
+
+load @term/bind/code/browser/dom/performance
+  find performance
+
+load @term/bind/code/browser/webworker/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+load @term/bind/code/browser/webworker/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/webworker/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/webworker/event-target
+  find event-target
+
+load @term/bind/code/browser/webworker/performance-entry-list
+  find performance-entry-list
+
+load @term/bind/code/browser/webworker/performance-event-map
+  find performance-event-map
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form performance, name <Performance>
+  base event-target
+
+  link onresourcetimingbufferfull, name <onresourcetimingbufferfull>
+    like or
+      like task
+        take this, like performance
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link time-origin, name <timeOrigin>
+    like native-number
+
+  task clear-marks, name <clearMarks>
+    take mark-name, like maybe
+      like native-string
+    like native-void
+
+  task clear-measures, name <clearMeasures>
+    take measure-name, like maybe
+      like native-string
+    like native-void
+
+  task clear-resource-timings, name <clearResourceTimings>
+    like native-void
+
+  task get-entries, name <getEntries>
+    like performance-entry-list
+
+  task get-entries-by-name, name <getEntriesByName>
+    take name, like native-string
+    take type, like maybe
+      like native-string
+    like performance-entry-list
+
+  task get-entries-by-type, name <getEntriesByType>
+    take type, like native-string
+    like performance-entry-list
+
+  task mark, name <mark>
+    take mark-name, like native-string
+    like native-void
+
+  task measure, name <measure>
+    take measure-name, like native-string
+    take start-mark, like maybe
+      like native-string
+    take end-mark, like maybe
+      like native-string
+    like native-void
+
+  task now, name <now>
+    like native-number
+
+  task set-resource-timing-buffer-size, name <setResourceTimingBufferSize>
+    take max-size, like native-number
+    like native-void
+
+  task to-json, name <toJSON>
+    like native-any
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like performance-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like performance
+        take ev
+          like index
+            like performance-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like performance-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like performance
+        take ev
+          like index
+            like performance-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

@@ -1,0 +1,25 @@
+
+load @term/bind/code/browser/dom/media-stream
+  find media-stream
+
+load @term/bind/code/browser/dom/rtc-rtp-encoding-parameters
+  find rtc-rtp-encoding-parameters
+
+load @term/bind/code/browser/dom/rtc-rtp-transceiver-direction
+  find rtc-rtp-transceiver-direction
+
+load @term/bind/code/javascript/native
+  find native-array
+
+form rtc-rtp-transceiver-init, name <RTCRtpTransceiverInit>
+  link direction, name <direction>
+    like rtc-rtp-transceiver-direction
+    lock false
+  link send-encodings, name <sendEncodings>
+    like native-array
+      like rtc-rtp-encoding-parameters
+    lock false
+  link streams, name <streams>
+    like native-array
+      like media-stream
+    lock false

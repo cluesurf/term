@@ -1,0 +1,30 @@
+
+load @term/bind/code/browser/webworker/headers
+  find headers
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form headers, name <Headers>
+  task {symbol/iterator}
+    like iterable-iterator
+      like band
+        like native-string
+        like native-string
+
+  task entries, name <entries>
+    like iterable-iterator
+      like band
+        like native-string
+        like native-string
+
+  task keys, name <keys>
+    like iterable-iterator
+      like native-string
+
+  task values, name <values>
+    like iterable-iterator
+      like native-string

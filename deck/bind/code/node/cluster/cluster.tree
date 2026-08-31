@@ -1,0 +1,597 @@
+
+load @term/bind/code/javascript
+  find array
+  find event-emitter
+  find native-boolean
+  find native-number
+  find native-string
+  find native-symbol
+  find native-this
+  find native-undefined
+  find native-void
+  find net-server
+  find net-socket
+  find node-js-dict
+  find worker
+
+load @term/bind
+  find any
+  find or
+  find task
+
+load @term/bind/code/node/cluster
+  find address
+  find cluster-settings
+
+form cluster, name <Cluster>
+  base event-emitter
+
+  link is-master, name <isMaster>
+    like native-boolean
+  link is-primary, name <isPrimary>
+    like native-boolean
+  link is-worker, name <isWorker>
+    like native-boolean
+  link scheduling-policy, name <schedulingPolicy>
+    like native-number
+    flex true
+  link settings, name <settings>
+    like cluster-settings
+  link worker, name <worker>
+    like or
+      like worker
+      like native-undefined
+  link workers, name <workers>
+    like or
+      like node-js-dict
+        like worker
+      like native-undefined
+  link sched-none, name <SCHED_NONE>
+    like native-number
+  link sched-rr, name <SCHED_RR>
+    like native-number
+
+  task disconnect, name <disconnect>
+    like native-void
+
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task fork, name <fork>
+    like worker
+
+    take env, like any
+      void true
+
+  task setup-master, name <setupMaster>
+    like native-void
+
+    take settings, like cluster-settings
+      void true
+
+  task setup-primary, name <setupPrimary>
+    like native-void
+
+    take settings, like cluster-settings
+      void true
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <disconnect>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <exit>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+        take code, like native-number
+        take signal, like native-string
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <fork>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+        take address, like address
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+        take message, like any
+        take handle
+          like or
+            like net-socket
+            like net-server
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <online>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <setup>
+    take listener
+      like task
+        like native-void
+
+        take settings, like cluster-settings
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take args
+      like array
+        like any
+      rest true
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <disconnect>
+    take worker, like worker
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <exit>
+    take worker, like worker
+    take code, like native-number
+    take signal, like native-string
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <fork>
+    take worker, like worker
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <listening>
+    take worker, like worker
+    take address, like address
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <message>
+    take worker, like worker
+    take message, like any
+    take handle
+      like or
+        like net-socket
+        like net-server
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <online>
+    take worker, like worker
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <setup>
+    take settings, like cluster-settings
+
+  task on, name <on>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task on, name <on>
+    like native-this
+
+    take event, text <disconnect>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+
+  task on, name <on>
+    like native-this
+
+    take event, text <exit>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+        take code, like native-number
+        take signal, like native-string
+
+  task on, name <on>
+    like native-this
+
+    take event, text <fork>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+
+  task on, name <on>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+        take address, like address
+
+  task on, name <on>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+        take message, like any
+        take handle
+          like or
+            like net-socket
+            like net-server
+
+  task on, name <on>
+    like native-this
+
+    take event, text <online>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+
+  task on, name <on>
+    like native-this
+
+    take event, text <setup>
+    take listener
+      like task
+        like native-void
+
+        take settings, like cluster-settings
+
+  task once, name <once>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task once, name <once>
+    like native-this
+
+    take event, text <disconnect>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+
+  task once, name <once>
+    like native-this
+
+    take event, text <exit>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+        take code, like native-number
+        take signal, like native-string
+
+  task once, name <once>
+    like native-this
+
+    take event, text <fork>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+
+  task once, name <once>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+        take address, like address
+
+  task once, name <once>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+        take message, like any
+        take handle
+          like or
+            like net-socket
+            like net-server
+
+  task once, name <once>
+    like native-this
+
+    take event, text <online>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+
+  task once, name <once>
+    like native-this
+
+    take event, text <setup>
+    take listener
+      like task
+        like native-void
+
+        take settings, like cluster-settings
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <disconnect>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <exit>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+        take code, like native-number
+        take signal, like native-string
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <fork>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+        take address, like address
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+        take message, like any
+        take handle
+          like or
+            like net-socket
+            like net-server
+          void true
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <online>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <setup>
+    take listener
+      like task
+        like native-void
+
+        take settings, like cluster-settings
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <disconnect>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <exit>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+        take code, like native-number
+        take signal, like native-string
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <fork>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+        take address, like address
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+        take message, like any
+        take handle
+          like or
+            like net-socket
+            like net-server
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <online>
+    take listener
+      like task
+        like native-void
+
+        take worker, like worker
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <setup>
+    take listener
+      like task
+        like native-void
+
+        take settings, like cluster-settings

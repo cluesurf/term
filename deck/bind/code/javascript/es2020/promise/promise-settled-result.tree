@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/es2020/promise/promise-fulfilled-result
+  find promise-fulfilled-result
+
+load @term/bind/code/javascript/es2020/promise/promise-rejected-result
+  find promise-rejected-result
+
+form promise-settled-result, name <PromiseSettledResult>
+  head t
+
+  like or
+    like promise-fulfilled-result
+      like t
+    like promise-rejected-result

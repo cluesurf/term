@@ -1,0 +1,12 @@
+
+load @term/bind/code/node/https
+  find agent-options
+
+form agent, name <Agent>
+  base http-agent
+  link options, name <options>, like agent-options
+
+form agent-constructor
+  hook make
+    take options, like agent-options
+      void true

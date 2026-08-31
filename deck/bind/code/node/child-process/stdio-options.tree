@@ -1,0 +1,25 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find array
+  find native-null
+  find native-number
+  find native-undefined
+  find stream
+
+load @term/bind/code/node/child-process
+  find io-type
+
+form stdio-options, name <StdioOptions>
+  like or
+    like io-type
+    like array
+      like or
+        like io-type
+        text <ipc>
+        like stream
+        like native-number
+        like native-null
+        like native-undefined

@@ -1,0 +1,65 @@
+
+load @term/bind/code/browser/dom/dom-high-res-time-stamp
+  find dom-high-res-time-stamp
+
+load @term/bind/code/browser/dom/performance-entry
+  find performance-entry
+
+load @term/bind/code/browser/dom/performance-server-timing
+  find performance-server-timing
+
+load @term/bind/code/javascript/es5/readonly-array
+  find readonly-array
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form performance-resource-timing, name <PerformanceResourceTiming>
+  base performance-entry
+
+  link connect-end, name <connectEnd>
+    like dom-high-res-time-stamp
+  link connect-start, name <connectStart>
+    like dom-high-res-time-stamp
+  link decoded-body-size, name <decodedBodySize>
+    like native-number
+  link domain-lookup-end, name <domainLookupEnd>
+    like dom-high-res-time-stamp
+  link domain-lookup-start, name <domainLookupStart>
+    like dom-high-res-time-stamp
+  link encoded-body-size, name <encodedBodySize>
+    like native-number
+  link fetch-start, name <fetchStart>
+    like dom-high-res-time-stamp
+  link initiator-type, name <initiatorType>
+    like native-string
+  link next-hop-protocol, name <nextHopProtocol>
+    like native-string
+  link redirect-end, name <redirectEnd>
+    like dom-high-res-time-stamp
+  link redirect-start, name <redirectStart>
+    like dom-high-res-time-stamp
+  link request-start, name <requestStart>
+    like dom-high-res-time-stamp
+  link response-end, name <responseEnd>
+    like dom-high-res-time-stamp
+  link response-start, name <responseStart>
+    like dom-high-res-time-stamp
+  link secure-connection-start, name <secureConnectionStart>
+    like dom-high-res-time-stamp
+  link server-timing, name <serverTiming>
+    like readonly-array
+      like performance-server-timing
+  link transfer-size, name <transferSize>
+    like native-number
+  link worker-start, name <workerStart>
+    like dom-high-res-time-stamp
+
+  task to-json, name <toJSON>
+    like native-any

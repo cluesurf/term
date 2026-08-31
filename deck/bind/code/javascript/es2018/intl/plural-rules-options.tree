@@ -1,0 +1,31 @@
+
+load @term/bind/code/javascript/es2018/intl/plural-rule-type
+  find plural-rule-type
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form plural-rules-options, name <PluralRulesOptions>
+  link locale-matcher, name <localeMatcher>
+    like or
+      text <lookup>
+      text <best fit>
+    lock false
+  link type, name <type>
+    like plural-rule-type
+    lock false
+  link minimum-integer-digits, name <minimumIntegerDigits>
+    like native-number
+    lock false
+  link minimum-fraction-digits, name <minimumFractionDigits>
+    like native-number
+    lock false
+  link maximum-fraction-digits, name <maximumFractionDigits>
+    like native-number
+    lock false
+  link minimum-significant-digits, name <minimumSignificantDigits>
+    like native-number
+    lock false
+  link maximum-significant-digits, name <maximumSignificantDigits>
+    like native-number
+    lock false

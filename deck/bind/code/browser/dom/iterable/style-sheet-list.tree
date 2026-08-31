@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/css-style-sheet
+  find css-style-sheet
+
+load @term/bind/code/browser/dom/style-sheet-list
+  find style-sheet-list
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+form style-sheet-list, name <StyleSheetList>
+  task {symbol/iterator}
+    like iterable-iterator
+      like css-style-sheet

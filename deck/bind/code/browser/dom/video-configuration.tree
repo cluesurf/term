@@ -1,0 +1,44 @@
+
+load @term/bind/code/browser/dom/color-gamut
+  find color-gamut
+
+load @term/bind/code/browser/dom/hdr-metadata-type
+  find hdr-metadata-type
+
+load @term/bind/code/browser/dom/transfer-function
+  find transfer-function
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form video-configuration, name <VideoConfiguration>
+  link bitrate, name <bitrate>
+    like native-number
+    lock false
+  link color-gamut, name <colorGamut>
+    like color-gamut
+    lock false
+  link content-type, name <contentType>
+    like native-string
+    lock false
+  link framerate, name <framerate>
+    like native-number
+    lock false
+  link hdr-metadata-type, name <hdrMetadataType>
+    like hdr-metadata-type
+    lock false
+  link height, name <height>
+    like native-number
+    lock false
+  link scalability-mode, name <scalabilityMode>
+    like native-string
+    lock false
+  link transfer-function, name <transferFunction>
+    like transfer-function
+    lock false
+  link width, name <width>
+    like native-number
+    lock false

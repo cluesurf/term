@@ -1,0 +1,71 @@
+
+load @term/bind/code/browser/dom/iterable/readable-stream
+  find readable-stream
+
+load @term/bind/code/browser/webworker/readable-stream-default-reader
+  find readable-stream-default-reader
+
+load @term/bind/code/browser/webworker/readable-writable-pair
+  find readable-writable-pair
+
+load @term/bind/code/browser/webworker/stream-pipe-options
+  find stream-pipe-options
+
+load @term/bind/code/browser/webworker/writable-stream
+  find writable-stream
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form readable-stream, name <ReadableStream>
+  head r
+    back native-any
+
+  link locked, name <locked>
+    like native-boolean
+
+  task cancel, name <cancel>
+    take reason, like maybe
+      like native-any
+    like promise
+      like native-void
+
+  task get-reader, name <getReader>
+    like readable-stream-default-reader
+      like r
+
+  task pipe-through, name <pipeThrough>
+    head t
+    take transform
+      like readable-writable-pair
+        like t
+        like r
+    take options, like maybe
+      like stream-pipe-options
+    like readable-stream
+      like t
+
+  task pipe-to, name <pipeTo>
+    take dest
+      like writable-stream
+        like r
+    take options, like maybe
+      like stream-pipe-options
+    like promise
+      like native-void
+
+  task tee, name <tee>
+    like band
+      like readable-stream
+        like r
+      like readable-stream
+        like r

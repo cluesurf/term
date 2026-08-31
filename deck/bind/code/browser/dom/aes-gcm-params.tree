@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/algorithm
+  find algorithm
+
+load @term/bind/code/browser/dom/buffer-source
+  find buffer-source
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form aes-gcm-params, name <AesGcmParams>
+  base algorithm
+
+  link additional-data, name <additionalData>
+    like buffer-source
+    lock false
+  link iv, name <iv>
+    like buffer-source
+    lock false
+  link tag-length, name <tagLength>
+    like native-number
+    lock false

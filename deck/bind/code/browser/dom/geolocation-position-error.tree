@@ -1,0 +1,18 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form geolocation-position-error, name <GeolocationPositionError>
+  link code, name <code>
+    like native-number
+  link message, name <message>
+    like native-string
+  link permission-denied, name <PERMISSION_DENIED>
+    like native-number
+  link position-unavailable, name <POSITION_UNAVAILABLE>
+    like native-number
+  link timeout, name <TIMEOUT>
+    like native-number

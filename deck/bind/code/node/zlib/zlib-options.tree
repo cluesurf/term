@@ -1,0 +1,63 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find array-buffer
+  find native-boolean
+  find native-number
+  find native-undefined
+  find node-js-array-buffer-view
+
+form zlib-options, name <ZlibOptions>
+  link flush, name <flush>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link finish-flush, name <finishFlush>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link chunk-size, name <chunkSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link window-bits, name <windowBits>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link level, name <level>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link mem-level, name <memLevel>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link strategy, name <strategy>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link dictionary, name <dictionary>
+    like or
+      like node-js-array-buffer-view
+      like array-buffer
+      like native-undefined
+    flex true
+  link info, name <info>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link max-output-length, name <maxOutputLength>
+    like or
+      like native-number
+      like native-undefined
+    flex true

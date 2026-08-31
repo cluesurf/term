@@ -1,0 +1,7 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form navigator-automation-information, name <NavigatorAutomationInformation>
+  link webdriver, name <webdriver>
+    like native-boolean

@@ -1,0 +1,21 @@
+
+load @term/bind
+  find or
+  find task
+  find unknown
+
+load @term/bind/code/javascript
+  find error
+  find native-boolean
+  find native-object
+  find reg-exp
+
+form assert-predicate, name <AssertPredicate>
+  like or
+    like reg-exp
+    like task
+      like native-boolean
+
+      take thrown, like unknown
+    like native-object
+    like error

@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/audio-node-options
+  find audio-node-options
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form delay-options, name <DelayOptions>
+  base audio-node-options
+
+  link delay-time, name <delayTime>
+    like native-number
+    lock false
+  link max-delay-time, name <maxDelayTime>
+    like native-number
+    lock false

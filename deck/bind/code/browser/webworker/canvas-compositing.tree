@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/canvas-compositing
+  find canvas-compositing
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form canvas-compositing, name <CanvasCompositing>
+  link global-alpha, name <globalAlpha>
+    like native-number
+    lock false
+  link global-composite-operation, name <globalCompositeOperation>
+    like native-string
+    lock false

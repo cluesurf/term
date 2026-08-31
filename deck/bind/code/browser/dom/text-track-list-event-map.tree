@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/track-event
+  find track-event
+
+form text-track-list-event-map, name <TextTrackListEventMap>
+  link addtrack, name <addtrack>
+    like track-event
+    lock false
+  link change, name <change>
+    like event
+    lock false
+  link removetrack, name <removetrack>
+    like track-event
+    lock false

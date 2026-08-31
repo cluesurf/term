@@ -1,0 +1,85 @@
+
+load @term/bind/code/browser/dom/audio-param
+  find audio-param
+
+load @term/bind/code/browser/dom/base-audio-context
+  find base-audio-context
+
+load @term/bind/code/browser/dom/channel-count-mode
+  find channel-count-mode
+
+load @term/bind/code/browser/dom/channel-interpretation
+  find channel-interpretation
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form audio-node, name <AudioNode>
+  base event-target
+
+  link channel-count, name <channelCount>
+    like native-number
+    lock false
+  link channel-count-mode, name <channelCountMode>
+    like channel-count-mode
+    lock false
+  link channel-interpretation, name <channelInterpretation>
+    like channel-interpretation
+    lock false
+  link context, name <context>
+    like base-audio-context
+  link number-of-inputs, name <numberOfInputs>
+    like native-number
+  link number-of-outputs, name <numberOfOutputs>
+    like native-number
+
+  task connect, name <connect>
+    take destination-node, like audio-node
+    take output, like maybe
+      like native-number
+    take input, like maybe
+      like native-number
+    like audio-node
+
+  task connect, name <connect>
+    take destination-param, like audio-param
+    take output, like maybe
+      like native-number
+    like native-void
+
+  task disconnect, name <disconnect>
+    like native-void
+
+  task disconnect, name <disconnect>
+    take output, like native-number
+    like native-void
+
+  task disconnect, name <disconnect>
+    take destination-node, like audio-node
+    like native-void
+
+  task disconnect, name <disconnect>
+    take destination-node, like audio-node
+    take output, like native-number
+    like native-void
+
+  task disconnect, name <disconnect>
+    take destination-node, like audio-node
+    take output, like native-number
+    take input, like native-number
+    like native-void
+
+  task disconnect, name <disconnect>
+    take destination-param, like audio-param
+    like native-void
+
+  task disconnect, name <disconnect>
+    take destination-param, like audio-param
+    take output, like native-number
+    like native-void

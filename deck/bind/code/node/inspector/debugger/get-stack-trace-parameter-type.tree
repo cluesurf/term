@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript
+  find runtime-stack-trace-id
+
+form get-stack-trace-parameter-type, name <GetStackTraceParameterType>
+  link stack-trace-id, name <stackTraceId>
+    like runtime-stack-trace-id
+    flex true

@@ -1,0 +1,23 @@
+
+load @term/bind/code/browser/dom/stream-pipe-options
+  find stream-pipe-options
+
+load @term/bind/code/browser/webworker/abort-signal
+  find abort-signal
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form stream-pipe-options, name <StreamPipeOptions>
+  link prevent-abort, name <preventAbort>
+    like native-boolean
+    lock false
+  link prevent-cancel, name <preventCancel>
+    like native-boolean
+    lock false
+  link prevent-close, name <preventClose>
+    like native-boolean
+    lock false
+  link signal, name <signal>
+    like abort-signal
+    lock false

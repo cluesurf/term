@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/key-algorithm
+  find key-algorithm
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form key-algorithm, name <KeyAlgorithm>
+  link name, name <name>
+    like native-string
+    lock false

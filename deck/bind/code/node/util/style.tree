@@ -1,0 +1,17 @@
+
+load @term/bind
+  find or
+
+form style, name <Style>
+  like or
+    text <special>
+    text <number>
+    text <bigint>
+    text <boolean>
+    text <undefined>
+    text <null>
+    text <string>
+    text <symbol>
+    text <date>
+    text <regexp>
+    text <module>

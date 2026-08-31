@@ -1,0 +1,8 @@
+
+load @term/bind
+  find or
+
+form measure-memory-mode, name <MeasureMemoryMode>
+  like or
+    text <summary>
+    text <detailed>

@@ -1,0 +1,136 @@
+
+load @term/bind/code/javascript/es2015/core/function
+  find function
+
+load @term/bind/code/javascript/es5/array-like
+  find array-like
+
+load @term/bind/code/javascript/es5/property-descriptor
+  find property-descriptor
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-object
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-symbol
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+form proxy-handler, name <ProxyHandler>
+  head t
+    base native-object
+
+  task apply, name <apply>
+    take target, like t
+    take this-arg, like native-any
+    take arg-array
+      like native-array
+        like native-any
+    like native-any
+
+  task construct, name <construct>
+    take target, like t
+    take arg-array
+      like native-array
+        like native-any
+    take new-target, like function
+    like native-object
+
+  task define-property, name <defineProperty>
+    take target, like t
+    take p
+      like or
+        like native-string
+        like native-symbol
+    take attributes, like property-descriptor
+    like native-boolean
+
+  task delete-property, name <deleteProperty>
+    take target, like t
+    take p
+      like or
+        like native-string
+        like native-symbol
+    like native-boolean
+
+  task get, name <get>
+    take target, like t
+    take p
+      like or
+        like native-string
+        like native-symbol
+    take receiver, like native-any
+    like native-any
+
+  task get-own-property-descriptor, name <getOwnPropertyDescriptor>
+    take target, like t
+    take p
+      like or
+        like native-string
+        like native-symbol
+    like or
+      like property-descriptor
+      like native-undefined
+
+  task get-prototype-of, name <getPrototypeOf>
+    take target, like t
+    like or
+      like native-object
+      like native-null
+
+  task has, name <has>
+    take target, like t
+    take p
+      like or
+        like native-string
+        like native-symbol
+    like native-boolean
+
+  task is-extensible, name <isExtensible>
+    take target, like t
+    like native-boolean
+
+  task own-keys, name <ownKeys>
+    take target, like t
+    like array-like
+      like or
+        like native-string
+        like native-symbol
+
+  task prevent-extensions, name <preventExtensions>
+    take target, like t
+    like native-boolean
+
+  task set, name <set>
+    take target, like t
+    take p
+      like or
+        like native-string
+        like native-symbol
+    take value, like native-any
+    take receiver, like native-any
+    like native-boolean
+
+  task set-prototype-of, name <setPrototypeOf>
+    take target, like t
+    take v
+      like or
+        like native-object
+        like native-null
+    like native-boolean

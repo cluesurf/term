@@ -1,0 +1,55 @@
+
+load @term/bind/code/browser/dom/document
+  find document
+
+load @term/bind/code/browser/dom/document-type
+  find document-type
+
+load @term/bind/code/browser/dom/xml-document
+  find xml-document
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form dom-implementation, name <DOMImplementation>
+  task create-document, name <createDocument>
+    take namespace
+      like or
+        like native-string
+        like native-null
+    take qualified-name
+      like or
+        like native-string
+        like native-null
+    take doctype, like maybe
+      like or
+        like document-type
+        like native-null
+    like xml-document
+
+  task create-document-type, name <createDocumentType>
+    take qualified-name, like native-string
+    take public-id, like native-string
+    take system-id, like native-string
+    like document-type
+
+  task create-html-document, name <createHTMLDocument>
+    take title, like maybe
+      like native-string
+    like document
+
+  task has-feature, name <hasFeature>
+    take args
+      like native-array
+        like native-any
+      rest true
+    text <true>

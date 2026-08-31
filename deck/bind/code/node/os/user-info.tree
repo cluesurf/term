@@ -1,0 +1,25 @@
+
+load @term/bind
+  find like
+
+load @term/bind/code/javascript
+  find native-number
+
+form user-info, name <UserInfo>
+  head t
+
+  link username, name <username>
+    like t
+    flex true
+  link uid, name <uid>
+    like native-number
+    flex true
+  link gid, name <gid>
+    like native-number
+    flex true
+  link shell, name <shell>
+    like t
+    flex true
+  link homedir, name <homedir>
+    like t
+    flex true

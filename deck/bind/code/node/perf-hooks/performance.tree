@@ -1,0 +1,75 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-number
+  find native-string
+  find native-void
+  find performance-node-timing
+
+load @term/bind
+  find any
+  find like
+  find task
+
+load @term/bind/code/node/perf-hooks
+  find event-loop-utility-function
+  find mark-options
+  find measure-options
+  find timerify-options
+
+form performance, name <Performance>
+  link node-timing, name <nodeTiming>
+    like performance-node-timing
+  link time-origin, name <timeOrigin>
+    like native-number
+  link event-loop-utilization, name <eventLoopUtilization>
+    like event-loop-utility-function
+    flex true
+
+  task clear-marks, name <clearMarks>
+    like native-void
+
+    take name, like native-string
+      void true
+
+  task mark, name <mark>
+    like native-void
+
+    take name, like native-string
+      void true
+    take options, like mark-options
+      void true
+
+  task measure, name <measure>
+    like native-void
+
+    take name, like native-string
+    take start-mark, like native-string
+      void true
+    take end-mark, like native-string
+      void true
+
+  task measure, name <measure>
+    like native-void
+
+    take name, like native-string
+    take options, like measure-options
+
+  task now, name <now>
+    like native-number
+
+  task timerify, name <timerify>
+    like t
+
+    head t
+      base task
+        like any
+
+        take params
+          like array
+            like any
+          rest true
+
+    take fn, like t
+    take options, like timerify-options
+      void true

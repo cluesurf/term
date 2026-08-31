@@ -1,0 +1,48 @@
+
+bear @term/bind/code/javascript/node/repl/repl-options
+bear @term/bind/code/javascript/node/repl/repl-eval
+bear @term/bind/code/javascript/node/repl/repl-writer
+bear @term/bind/code/javascript/node/repl/repl-command-action
+bear @term/bind/code/javascript/node/repl/repl-command
+bear @term/bind/code/javascript/node/repl/repl-server
+bear @term/bind/code/javascript/node/repl/recoverable
+
+load @term/bind
+  find and
+  find form
+  find or
+
+load @term/bind/code/javascript
+  find inspect-options
+  find native-string
+  find native-symbol
+  find repl-server
+
+load @term/bind/code/node/repl
+  find repl-options
+  find repl-writer
+
+host writer, name <writer>
+  like and
+    like repl-writer
+    like form
+      link options, name <options>
+        like inspect-options
+        flex true
+
+host repl-mode-sloppy, name <REPL_MODE_SLOPPY>
+  like native-symbol
+    cool true
+
+host repl-mode-strict, name <REPL_MODE_STRICT>
+  like native-symbol
+    cool true
+
+task start, name <start>
+  like repl-server
+
+  take options
+    like or
+      like native-string
+      like repl-options
+    void true

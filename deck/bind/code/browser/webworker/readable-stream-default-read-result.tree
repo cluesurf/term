@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/webworker/readable-stream-default-read-done-result
+  find readable-stream-default-read-done-result
+
+load @term/bind/code/browser/webworker/readable-stream-default-read-value-result
+  find readable-stream-default-read-value-result
+
+form readable-stream-default-read-result, name <ReadableStreamDefaultReadResult>
+  head t
+
+  like or
+    like readable-stream-default-read-value-result
+      like t
+    like readable-stream-default-read-done-result

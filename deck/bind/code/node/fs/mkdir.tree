@@ -1,0 +1,65 @@
+
+load @term/bind
+  find and
+  find form
+  find or
+
+load @term/bind/code/javascript
+  find native-null
+  find native-string
+  find native-undefined
+  find native-void
+  find promise
+
+load @term/bind/code/node/fs
+  find make-directory-options
+  find mode
+  find path-like
+
+task promisify, name <__promisify__>
+  like promise
+    like or
+      like native-string
+      like native-undefined
+
+  take path, like path-like
+  take options
+    like and
+      like make-directory-options
+      like form
+        link recursive, name <recursive>
+          text <true>
+          flex true
+
+task promisify, name <__promisify__>
+  like promise
+    like native-void
+
+  take path, like path-like
+  take options
+    like or
+      like mode
+      like and
+        like make-directory-options
+        like form
+          link recursive, name <recursive>
+            like or
+              text <false>
+              like native-undefined
+            flex true
+      like native-null
+    void true
+
+task promisify, name <__promisify__>
+  like promise
+    like or
+      like native-string
+      like native-undefined
+
+  take path, like path-like
+  take options
+    like or
+      like mode
+      like make-directory-options
+      like native-null
+    void true

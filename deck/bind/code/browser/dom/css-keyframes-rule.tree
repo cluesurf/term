@@ -1,0 +1,41 @@
+
+load @term/bind/code/browser/dom/css-keyframe-rule
+  find css-keyframe-rule
+
+load @term/bind/code/browser/dom/css-rule
+  find css-rule
+
+load @term/bind/code/browser/dom/css-rule-list
+  find css-rule-list
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form css-keyframes-rule, name <CSSKeyframesRule>
+  base css-rule
+
+  link css-rules, name <cssRules>
+    like css-rule-list
+  link name, name <name>
+    like native-string
+    lock false
+
+  task append-rule, name <appendRule>
+    take rule, like native-string
+    like native-void
+
+  task delete-rule, name <deleteRule>
+    take select, like native-string
+    like native-void
+
+  task find-rule, name <findRule>
+    take select, like native-string
+    like or
+      like css-keyframe-rule
+      like native-null

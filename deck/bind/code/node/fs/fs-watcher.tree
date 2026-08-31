@@ -1,0 +1,249 @@
+
+load @term/bind/code/javascript
+  find array
+  find error
+  find native-string
+  find native-this
+  find native-void
+
+load @term/bind
+  find any
+  find or
+  find task
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/events
+  find event-emitter
+
+form fs-watcher, name <FSWatcher>
+  base event-emitter
+
+  task close, name <close>
+    like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <change>
+    take listener
+      like task
+        like native-void
+
+        take event-type, like native-string
+        take filename
+          like or
+            like native-string
+            like buffer
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take error, like error
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task on, name <on>
+    like native-this
+
+    take event, text <change>
+    take listener
+      like task
+        like native-void
+
+        take event-type, like native-string
+        take filename
+          like or
+            like native-string
+            like buffer
+
+  task on, name <on>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take error, like error
+
+  task on, name <on>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task once, name <once>
+    like native-this
+
+    take event, text <change>
+    take listener
+      like task
+        like native-void
+
+        take event-type, like native-string
+        take filename
+          like or
+            like native-string
+            like buffer
+
+  task once, name <once>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take error, like error
+
+  task once, name <once>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <change>
+    take listener
+      like task
+        like native-void
+
+        take event-type, like native-string
+        take filename
+          like or
+            like native-string
+            like buffer
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take error, like error
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <change>
+    take listener
+      like task
+        like native-void
+
+        take event-type, like native-string
+        take filename
+          like or
+            like native-string
+            like buffer
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take error, like error
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void

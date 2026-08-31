@@ -1,0 +1,10 @@
+
+load @term/bind/code/node/dns
+  find soa-record
+
+form any-soa-record, name <AnySoaRecord>
+  base soa-record
+
+  link type, name <type>
+    text <SOA>
+    flex true

@@ -1,0 +1,21 @@
+
+load @term/bind/code/browser/dom/promise-rejection-event
+  find promise-rejection-event
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form promise-rejection-event, name <PromiseRejectionEvent>
+  base event
+
+  link promise, name <promise>
+    like promise
+      like native-any
+  link reason, name <reason>
+    like native-any

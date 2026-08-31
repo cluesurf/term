@@ -1,0 +1,6 @@
+
+form web-gl-power-preference, name <WebGLPowerPreference>
+  like or
+    text <default>
+    text <high-performance>
+    text <low-power>

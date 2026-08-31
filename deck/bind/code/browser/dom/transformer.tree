@@ -1,0 +1,41 @@
+
+load @term/bind/code/browser/dom/transformer-flush-callback
+  find transformer-flush-callback
+
+load @term/bind/code/browser/dom/transformer-start-callback
+  find transformer-start-callback
+
+load @term/bind/code/browser/dom/transformer-transform-callback
+  find transformer-transform-callback
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+form transformer, name <Transformer>
+  head i
+    back native-any
+  head o
+    back native-any
+
+  link flush, name <flush>
+    like transformer-flush-callback
+      like o
+    lock false
+  link readable-type, name <readableType>
+    like native-undefined
+    lock false
+  link start, name <start>
+    like transformer-start-callback
+      like o
+    lock false
+  link transform, name <transform>
+    like transformer-transform-callback
+      like i
+      like o
+    lock false
+  link writable-type, name <writableType>
+    like native-undefined
+    lock false

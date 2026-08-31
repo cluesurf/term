@@ -1,0 +1,24 @@
+
+load @term/bind/code/browser/dom/computed-effect-timing
+  find computed-effect-timing
+
+load @term/bind/code/browser/dom/effect-timing
+  find effect-timing
+
+load @term/bind/code/browser/dom/optional-effect-timing
+  find optional-effect-timing
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form animation-effect, name <AnimationEffect>
+  task get-computed-timing, name <getComputedTiming>
+    like computed-effect-timing
+
+  task get-timing, name <getTiming>
+    like effect-timing
+
+  task update-timing, name <updateTiming>
+    take timing, like maybe
+      like optional-effect-timing
+    like native-void

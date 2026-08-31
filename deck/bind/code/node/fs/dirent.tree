@@ -1,0 +1,28 @@
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-string
+
+form dirent, name <Dirent>
+  link name, name <name>, like native-string
+
+  task is-file, name <isFile>
+    like native-boolean
+
+  task is-directory, name <isDirectory>
+    like native-boolean
+
+  task is-block-device, name <isBlockDevice>
+    like native-boolean
+
+  task is-character-device, name <isCharacterDevice>
+    like native-boolean
+
+  task is-symbolic-link, name <isSymbolicLink>
+    like native-boolean
+
+  task is-fifo, name <isFIFO>
+    like native-boolean
+
+  task is-socket, name <isSocket>
+    like native-boolean

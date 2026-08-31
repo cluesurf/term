@@ -1,0 +1,5 @@
+
+load @term/bind/code/browser/dom/oes-texture-half-float-linear
+  find oes-texture-half-float-linear
+
+form oes-texture-half-float-linear, name <OES_texture_half_float_linear>

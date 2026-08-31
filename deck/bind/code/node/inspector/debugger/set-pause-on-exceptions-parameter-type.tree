@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript
+  find native-string
+
+form set-pause-on-exceptions-parameter-type, name <SetPauseOnExceptionsParameterType>
+  link state, name <state>
+    like native-string
+    flex true

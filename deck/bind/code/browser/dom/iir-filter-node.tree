@@ -1,0 +1,18 @@
+
+load @term/bind/code/browser/dom/audio-node
+  find audio-node
+
+load @term/bind/code/javascript/es5/float32-array
+  find float32-array
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form iir-filter-node, name <IIRFilterNode>
+  base audio-node
+
+  task get-frequency-response, name <getFrequencyResponse>
+    take frequency-hz, like float32-array
+    take mag-response, like float32-array
+    take phase-response, like float32-array
+    like native-void

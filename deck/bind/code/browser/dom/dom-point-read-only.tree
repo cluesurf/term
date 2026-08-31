@@ -1,0 +1,30 @@
+
+load @term/bind/code/browser/dom/dom-matrix-init
+  find dom-matrix-init
+
+load @term/bind/code/browser/dom/dom-point
+  find dom-point
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form dom-point-read-only, name <DOMPointReadOnly>
+  link w, name <w>
+    like native-number
+  link x, name <x>
+    like native-number
+  link y, name <y>
+    like native-number
+  link z, name <z>
+    like native-number
+
+  task matrix-transform, name <matrixTransform>
+    take matrix, like maybe
+      like dom-matrix-init
+    like dom-point
+
+  task to-json, name <toJSON>
+    like native-any

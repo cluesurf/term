@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/ending-type
+  find ending-type
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form blob-property-bag, name <BlobPropertyBag>
+  link endings, name <endings>
+    like ending-type
+    lock false
+  link type, name <type>
+    like native-string
+    lock false

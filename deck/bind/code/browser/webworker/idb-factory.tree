@@ -1,0 +1,31 @@
+
+load @term/bind/code/browser/dom/idb-factory
+  find idb-factory
+
+load @term/bind/code/browser/webworker/idb-open-db-request
+  find idb-open-db-request
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form idb-factory, name <IDBFactory>
+  task cmp, name <cmp>
+    take first, like native-any
+    take second, like native-any
+    like native-number
+
+  task delete-database, name <deleteDatabase>
+    take name, like native-string
+    like idb-open-db-request
+
+  task open, name <open>
+    take name, like native-string
+    take version, like maybe
+      like native-number
+    like idb-open-db-request

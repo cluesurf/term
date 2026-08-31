@@ -1,0 +1,25 @@
+
+load @term/bind/code/browser/webworker/blob
+  find blob
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form push-message-data, name <PushMessageData>
+  task array-buffer, name <arrayBuffer>
+    like array-buffer
+
+  task blob, name <blob>
+    like blob
+
+  task json, name <json>
+    like native-any
+
+  task text, name <text>
+    like native-string

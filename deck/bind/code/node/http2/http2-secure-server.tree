@@ -1,0 +1,525 @@
+
+load @term/bind/code/javascript
+  find array
+  find error
+  find http2-server-request
+  find http2-server-response
+  find native-boolean
+  find native-number
+  find native-string
+  find native-symbol
+  find native-this
+  find native-void
+  find tls-tls-socket
+
+load @term/bind
+  find any
+  find or
+  find task
+
+load @term/bind/code/node/http2
+  find http2-server-common
+  find incoming-http-headers
+  find server-http2-session
+  find server-http2-stream
+
+form http2-secure-server, name <Http2SecureServer>
+  base tls-server
+  base http2-server-common
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <checkContinue>
+    take listener
+      like task
+        like native-void
+
+        take request, like http2-server-request
+        take response, like http2-server-response
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <request>
+    take listener
+      like task
+        like native-void
+
+        take request, like http2-server-request
+        take response, like http2-server-response
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <session>
+    take listener
+      like task
+        like native-void
+
+        take session, like server-http2-session
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <sessionError>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <stream>
+    take listener
+      like task
+        like native-void
+
+        take stream, like server-http2-stream
+        take headers, like incoming-http-headers
+        take flags, like native-number
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <timeout>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <unknownProtocol>
+    take listener
+      like task
+        like native-void
+
+        take socket, like tls-tls-socket
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <checkContinue>
+    take request, like http2-server-request
+    take response, like http2-server-response
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <request>
+    take request, like http2-server-request
+    take response, like http2-server-response
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <session>
+    take session, like server-http2-session
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <sessionError>
+    take err, like error
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <stream>
+    take stream, like server-http2-stream
+    take headers, like incoming-http-headers
+    take flags, like native-number
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <timeout>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <unknownProtocol>
+    take socket, like tls-tls-socket
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take args
+      like array
+        like any
+      rest true
+
+  task on, name <on>
+    like native-this
+
+    take event, text <checkContinue>
+    take listener
+      like task
+        like native-void
+
+        take request, like http2-server-request
+        take response, like http2-server-response
+
+  task on, name <on>
+    like native-this
+
+    take event, text <request>
+    take listener
+      like task
+        like native-void
+
+        take request, like http2-server-request
+        take response, like http2-server-response
+
+  task on, name <on>
+    like native-this
+
+    take event, text <session>
+    take listener
+      like task
+        like native-void
+
+        take session, like server-http2-session
+
+  task on, name <on>
+    like native-this
+
+    take event, text <sessionError>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task on, name <on>
+    like native-this
+
+    take event, text <stream>
+    take listener
+      like task
+        like native-void
+
+        take stream, like server-http2-stream
+        take headers, like incoming-http-headers
+        take flags, like native-number
+
+  task on, name <on>
+    like native-this
+
+    take event, text <timeout>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <unknownProtocol>
+    take listener
+      like task
+        like native-void
+
+        take socket, like tls-tls-socket
+
+  task on, name <on>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task once, name <once>
+    like native-this
+
+    take event, text <checkContinue>
+    take listener
+      like task
+        like native-void
+
+        take request, like http2-server-request
+        take response, like http2-server-response
+
+  task once, name <once>
+    like native-this
+
+    take event, text <request>
+    take listener
+      like task
+        like native-void
+
+        take request, like http2-server-request
+        take response, like http2-server-response
+
+  task once, name <once>
+    like native-this
+
+    take event, text <session>
+    take listener
+      like task
+        like native-void
+
+        take session, like server-http2-session
+
+  task once, name <once>
+    like native-this
+
+    take event, text <sessionError>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task once, name <once>
+    like native-this
+
+    take event, text <stream>
+    take listener
+      like task
+        like native-void
+
+        take stream, like server-http2-stream
+        take headers, like incoming-http-headers
+        take flags, like native-number
+
+  task once, name <once>
+    like native-this
+
+    take event, text <timeout>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <unknownProtocol>
+    take listener
+      like task
+        like native-void
+
+        take socket, like tls-tls-socket
+
+  task once, name <once>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <checkContinue>
+    take listener
+      like task
+        like native-void
+
+        take request, like http2-server-request
+        take response, like http2-server-response
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <request>
+    take listener
+      like task
+        like native-void
+
+        take request, like http2-server-request
+        take response, like http2-server-response
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <session>
+    take listener
+      like task
+        like native-void
+
+        take session, like server-http2-session
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <sessionError>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <stream>
+    take listener
+      like task
+        like native-void
+
+        take stream, like server-http2-stream
+        take headers, like incoming-http-headers
+        take flags, like native-number
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <timeout>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <unknownProtocol>
+    take listener
+      like task
+        like native-void
+
+        take socket, like tls-tls-socket
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <checkContinue>
+    take listener
+      like task
+        like native-void
+
+        take request, like http2-server-request
+        take response, like http2-server-response
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <request>
+    take listener
+      like task
+        like native-void
+
+        take request, like http2-server-request
+        take response, like http2-server-response
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <session>
+    take listener
+      like task
+        like native-void
+
+        take session, like server-http2-session
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <sessionError>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <stream>
+    take listener
+      like task
+        like native-void
+
+        take stream, like server-http2-stream
+        take headers, like incoming-http-headers
+        take flags, like native-number
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <timeout>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <unknownProtocol>
+    take listener
+      like task
+        like native-void
+
+        take socket, like tls-tls-socket
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true

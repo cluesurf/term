@@ -1,0 +1,38 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find native-undefined
+
+form set-breakpoint-by-url-parameter-type, name <SetBreakpointByUrlParameterType>
+  link line-number, name <lineNumber>
+    like native-number
+    flex true
+  link url, name <url>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link url-regex, name <urlRegex>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link script-hash, name <scriptHash>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link column-number, name <columnNumber>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link condition, name <condition>
+    like or
+      like native-string
+      like native-undefined
+    flex true

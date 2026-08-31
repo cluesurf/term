@@ -1,0 +1,94 @@
+
+form debug-map, name <std::fmt::DebugMap>
+  task entry, name <entry>
+    note <Adds a new entry to the map output.>
+
+    take self
+      cite free
+    take key
+      like debug
+      dash take
+    take value
+      like debug
+      dash take
+
+    free seed
+      like debug-map
+        time a
+        time b
+
+  task key, name <key>
+    note <Adds the key part of a new entry to the map output.>
+
+    take self
+      cite free
+    take key
+      like debug
+      dash take
+
+    free seed
+      like debug-map
+        time a
+        time b
+
+  task value, name <value>
+    note <Adds the value part of a new entry to the map output.>
+
+    take self
+      cite free
+    take value
+      like debug
+      dash take
+
+    free seed
+      like debug-map
+        time a
+        time b
+
+  task entries, name <entries>
+    note <Adds the contents of an iterator of entries to the map output.>
+
+    lead k
+      like debug
+        cite free
+    lead v
+      like debug
+        cite free
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like form
+              take t-1, like k
+              take t-2, like v
+        cite free
+
+    head k
+    head v
+    head i
+
+    take self
+      cite free
+    take entries
+      like i
+        cite free
+      cite free
+
+    free seed
+      like debug-map
+        time a
+        time b
+
+  task finish, name <finish>
+    note <Finishes output and returns any error encountered.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free

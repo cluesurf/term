@@ -1,0 +1,35 @@
+
+load @term/bind/code/javascript/native
+  find native-object
+  find native-void
+
+load @term/bind/code/javascript/es2015/proxy
+  find proxy-handler
+
+form proxy
+  hook self
+    task revocable, name <revocable>
+      like form
+        link proxy, name <proxy>
+          like t
+          flex true
+        link revoke, name <revoke>
+          like task
+            like native-void
+
+          flex true
+
+      head t
+        base native-object
+
+      take target
+      take handler
+
+  hook make
+    like t
+
+    head t
+      base native-object
+
+    take target
+    take handler

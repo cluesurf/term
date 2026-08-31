@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/dom-exception
+  find dom-exception
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form media-recorder-error-event, name <MediaRecorderErrorEvent>
+  base event
+
+  link error, name <error>
+    like dom-exception

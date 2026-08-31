@@ -1,0 +1,27 @@
+
+load @term/bind/code/node/zlib
+  find input-type
+  find zlib
+  find zlib-options
+  find zlib-params
+  find zlib-reset
+
+load @term/bind/code/javascript
+  find promise
+
+load @term/bind/code/node/buffer
+  find buffer
+
+form deflate-raw, name <DeflateRaw>
+  base stream-transform
+  base zlib
+  base zlib-reset
+  base zlib-params
+
+task promisify, name <__promisify__>
+  like promise
+    like buffer
+
+  take buffer, like input-type
+  take options, like zlib-options
+    void true

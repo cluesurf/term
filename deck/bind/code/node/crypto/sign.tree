@@ -1,0 +1,53 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find native-this
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/crypto
+  find binary-like
+  find binary-to-text-encoding
+  find encoding
+  find key-like
+  find sign-key-object-input
+  find sign-private-key-input
+
+form sign, name <Sign>
+  base stream-writable
+  task update, name <update>
+    like native-this
+
+    take data, like binary-like
+
+  task update, name <update>
+    like native-this
+
+    take data, like native-string
+    take input-encoding, like encoding
+
+  task sign, name <sign>
+    like buffer
+
+    take private-key
+      like or
+        like key-like
+        like sign-key-object-input
+        like sign-private-key-input
+
+  task sign, name <sign>
+    like native-string
+
+    take private-key
+      like or
+        like key-like
+        like sign-key-object-input
+        like sign-private-key-input
+    take output-format, like binary-to-text-encoding
+
+form sign-constructor
+  hook make

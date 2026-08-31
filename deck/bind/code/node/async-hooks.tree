@@ -1,0 +1,28 @@
+
+bear @term/bind/code/javascript/node/async-hooks/hook-callbacks
+bear @term/bind/code/javascript/node/async-hooks/async-hook
+bear @term/bind/code/javascript/node/async-hooks/async-resource-options
+bear @term/bind/code/javascript/node/async-hooks/async-resource
+bear @term/bind/code/javascript/node/async-hooks/async-local-storage
+
+load @term/bind/code/javascript
+  find native-number
+  find native-object
+
+load @term/bind/code/node/async-hooks
+  find async-hook
+  find hook-callbacks
+
+task execution-async-id, name <executionAsyncId>
+  like native-number
+
+task execution-async-resource, name <executionAsyncResource>
+  like native-object
+
+task trigger-async-id, name <triggerAsyncId>
+  like native-number
+
+task create-hook, name <createHook>
+  like async-hook
+
+  take callbacks, like hook-callbacks

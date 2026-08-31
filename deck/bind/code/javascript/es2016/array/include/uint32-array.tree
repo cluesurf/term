@@ -1,0 +1,16 @@
+
+load @term/bind/code/javascript/es2015/symbol/wellknown/uint32-array
+  find uint32-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form uint32-array, name <Uint32Array>
+  task includes, name <includes>
+    take search-element, like native-number
+    take from-index, like maybe
+      like native-number
+    like native-boolean

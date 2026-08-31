@@ -1,0 +1,21 @@
+
+load @term/bind/code/browser/dom/authenticator-response
+  find authenticator-response
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+load @term/bind/code/javascript/native
+  find native-null
+
+form authenticator-assertion-response, name <AuthenticatorAssertionResponse>
+  base authenticator-response
+
+  link authenticator-data, name <authenticatorData>
+    like array-buffer
+  link signature, name <signature>
+    like array-buffer
+  link user-handle, name <userHandle>
+    like or
+      like array-buffer
+      like native-null

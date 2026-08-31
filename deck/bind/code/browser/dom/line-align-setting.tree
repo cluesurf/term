@@ -1,0 +1,6 @@
+
+form line-align-setting, name <LineAlignSetting>
+  like or
+    text <center>
+    text <end>
+    text <start>

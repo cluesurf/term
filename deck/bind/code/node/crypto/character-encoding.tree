@@ -1,0 +1,10 @@
+
+load @term/bind
+  find or
+
+form character-encoding, name <CharacterEncoding>
+  like or
+    text <utf8>
+    text <utf-8>
+    text <utf16le>
+    text <latin1>

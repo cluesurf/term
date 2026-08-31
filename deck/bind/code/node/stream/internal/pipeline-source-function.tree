@@ -1,0 +1,19 @@
+
+load @term/bind
+  find like
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find async-iterable
+  find iterable
+
+form pipeline-source-function, name <PipelineSourceFunction>
+  head t
+
+  like task
+    like or
+      like iterable
+        like t
+      like async-iterable
+        like t

@@ -1,0 +1,15 @@
+
+load @term/bind
+  find task
+
+load @term/bind/code/javascript
+  find incoming-message
+  find native-void
+  find server-response
+
+form request-listener, name <RequestListener>
+  like task
+    like native-void
+
+    take req, like incoming-message
+    take res, like server-response

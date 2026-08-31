@@ -1,0 +1,24 @@
+note draft
+# A glob-to-role mapping (`file ../book/**/*.note` / `bind role, loan book`) in what looks like the superseded
+# spelling of what `role.tree` now expresses (`role host` / `take @/data/**`). Shelved until it is either
+# rewritten in the current spelling or given a mill.
+
+
+load @term/mesh
+  find mill code
+  find mill book
+
+file ../book/**/*.note
+  bind role, loan book
+
+file ../code/javascript/**/*.note
+  bind role, loan code
+  bind dock, loan js
+
+file ../code/browser/**/*.note
+  bind role, loan code
+  bind dock, loan js
+
+file ../code/node/**/*.note
+  bind role, loan code
+  bind dock, loan js

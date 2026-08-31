@@ -1,0 +1,63 @@
+
+load @term/bind/code/browser/dom/dom-matrix2-d-init
+  find dom-matrix2-d-init
+
+load @term/bind/code/browser/dom/svg-transform
+  find svg-transform
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form svg-transform-list, name <SVGTransformList>
+  link length, name <length>
+    like native-number
+  link number-of-items, name <numberOfItems>
+    like native-number
+
+  task append-item, name <appendItem>
+    take new-item, like svg-transform
+    like svg-transform
+
+  task clear, name <clear>
+    like native-void
+
+  task consolidate, name <consolidate>
+    like or
+      like svg-transform
+      like native-null
+
+  task create-svg-transform-from-matrix, name <createSVGTransformFromMatrix>
+    take matrix, like maybe
+      like dom-matrix2-d-init
+    like svg-transform
+
+  task get-item, name <getItem>
+    take index, like native-number
+    like svg-transform
+
+  task initialize, name <initialize>
+    take new-item, like svg-transform
+    like svg-transform
+
+  task insert-item-before, name <insertItemBefore>
+    take new-item, like svg-transform
+    take index, like native-number
+    like svg-transform
+
+  task remove-item, name <removeItem>
+    take index, like native-number
+    like svg-transform
+
+  task replace-item, name <replaceItem>
+    take new-item, like svg-transform
+    take index, like native-number
+    like svg-transform
+
+  mesh index, like native-number
+    like svg-transform

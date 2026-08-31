@@ -1,0 +1,818 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/animation-event
+  find animation-event
+
+load @term/bind/code/browser/dom/drag-event
+  find drag-event
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/focus-event
+  find focus-event
+
+load @term/bind/code/browser/dom/form-data-event
+  find form-data-event
+
+load @term/bind/code/browser/dom/global-event-handlers-event-map
+  find global-event-handlers-event-map
+
+load @term/bind/code/browser/dom/keyboard-event
+  find keyboard-event
+
+load @term/bind/code/browser/dom/mouse-event
+  find mouse-event
+
+load @term/bind/code/browser/dom/on-error-event-handler
+  find on-error-event-handler
+
+load @term/bind/code/browser/dom/pointer-event
+  find pointer-event
+
+load @term/bind/code/browser/dom/progress-event
+  find progress-event
+
+load @term/bind/code/browser/dom/touch-event
+  find touch-event
+
+load @term/bind/code/browser/dom/transition-event
+  find transition-event
+
+load @term/bind/code/browser/dom/ui-event
+  find ui-event
+
+load @term/bind/code/browser/dom/wheel-event
+  find wheel-event
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form global-event-handlers, name <GlobalEventHandlers>
+  link onabort, name <onabort>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like ui-event
+        like native-any
+      like native-null
+    lock false
+  link onanimationcancel, name <onanimationcancel>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like animation-event
+        like native-any
+      like native-null
+    lock false
+  link onanimationend, name <onanimationend>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like animation-event
+        like native-any
+      like native-null
+    lock false
+  link onanimationiteration, name <onanimationiteration>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like animation-event
+        like native-any
+      like native-null
+    lock false
+  link onanimationstart, name <onanimationstart>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like animation-event
+        like native-any
+      like native-null
+    lock false
+  link onauxclick, name <onauxclick>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like mouse-event
+        like native-any
+      like native-null
+    lock false
+  link onblur, name <onblur>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like focus-event
+        like native-any
+      like native-null
+    lock false
+  link oncanplay, name <oncanplay>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link oncanplaythrough, name <oncanplaythrough>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onchange, name <onchange>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onclick, name <onclick>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like mouse-event
+        like native-any
+      like native-null
+    lock false
+  link onclose, name <onclose>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link oncontextmenu, name <oncontextmenu>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like mouse-event
+        like native-any
+      like native-null
+    lock false
+  link oncuechange, name <oncuechange>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link ondblclick, name <ondblclick>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like mouse-event
+        like native-any
+      like native-null
+    lock false
+  link ondrag, name <ondrag>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like drag-event
+        like native-any
+      like native-null
+    lock false
+  link ondragend, name <ondragend>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like drag-event
+        like native-any
+      like native-null
+    lock false
+  link ondragenter, name <ondragenter>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like drag-event
+        like native-any
+      like native-null
+    lock false
+  link ondragleave, name <ondragleave>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like drag-event
+        like native-any
+      like native-null
+    lock false
+  link ondragover, name <ondragover>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like drag-event
+        like native-any
+      like native-null
+    lock false
+  link ondragstart, name <ondragstart>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like drag-event
+        like native-any
+      like native-null
+    lock false
+  link ondrop, name <ondrop>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like drag-event
+        like native-any
+      like native-null
+    lock false
+  link ondurationchange, name <ondurationchange>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onemptied, name <onemptied>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onended, name <onended>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onerror, name <onerror>
+    like on-error-event-handler
+    lock false
+  link onfocus, name <onfocus>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like focus-event
+        like native-any
+      like native-null
+    lock false
+  link onformdata, name <onformdata>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like form-data-event
+        like native-any
+      like native-null
+    lock false
+  link ongotpointercapture, name <ongotpointercapture>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like pointer-event
+        like native-any
+      like native-null
+    lock false
+  link oninput, name <oninput>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link oninvalid, name <oninvalid>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onkeydown, name <onkeydown>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like keyboard-event
+        like native-any
+      like native-null
+    lock false
+  link onkeypress, name <onkeypress>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like keyboard-event
+        like native-any
+      like native-null
+    lock false
+  link onkeyup, name <onkeyup>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like keyboard-event
+        like native-any
+      like native-null
+    lock false
+  link onload, name <onload>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onloadeddata, name <onloadeddata>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onloadedmetadata, name <onloadedmetadata>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onloadstart, name <onloadstart>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onlostpointercapture, name <onlostpointercapture>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like pointer-event
+        like native-any
+      like native-null
+    lock false
+  link onmousedown, name <onmousedown>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like mouse-event
+        like native-any
+      like native-null
+    lock false
+  link onmouseenter, name <onmouseenter>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like mouse-event
+        like native-any
+      like native-null
+    lock false
+  link onmouseleave, name <onmouseleave>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like mouse-event
+        like native-any
+      like native-null
+    lock false
+  link onmousemove, name <onmousemove>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like mouse-event
+        like native-any
+      like native-null
+    lock false
+  link onmouseout, name <onmouseout>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like mouse-event
+        like native-any
+      like native-null
+    lock false
+  link onmouseover, name <onmouseover>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like mouse-event
+        like native-any
+      like native-null
+    lock false
+  link onmouseup, name <onmouseup>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like mouse-event
+        like native-any
+      like native-null
+    lock false
+  link onpause, name <onpause>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onplay, name <onplay>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onplaying, name <onplaying>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onpointercancel, name <onpointercancel>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like pointer-event
+        like native-any
+      like native-null
+    lock false
+  link onpointerdown, name <onpointerdown>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like pointer-event
+        like native-any
+      like native-null
+    lock false
+  link onpointerenter, name <onpointerenter>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like pointer-event
+        like native-any
+      like native-null
+    lock false
+  link onpointerleave, name <onpointerleave>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like pointer-event
+        like native-any
+      like native-null
+    lock false
+  link onpointermove, name <onpointermove>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like pointer-event
+        like native-any
+      like native-null
+    lock false
+  link onpointerout, name <onpointerout>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like pointer-event
+        like native-any
+      like native-null
+    lock false
+  link onpointerover, name <onpointerover>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like pointer-event
+        like native-any
+      like native-null
+    lock false
+  link onpointerup, name <onpointerup>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like pointer-event
+        like native-any
+      like native-null
+    lock false
+  link onprogress, name <onprogress>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like progress-event
+        like native-any
+      like native-null
+    lock false
+  link onratechange, name <onratechange>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onreset, name <onreset>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onresize, name <onresize>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like ui-event
+        like native-any
+      like native-null
+    lock false
+  link onscroll, name <onscroll>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onseeked, name <onseeked>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onseeking, name <onseeking>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onselect, name <onselect>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onselectionchange, name <onselectionchange>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onselectstart, name <onselectstart>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onstalled, name <onstalled>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onsubmit, name <onsubmit>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onsuspend, name <onsuspend>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link ontimeupdate, name <ontimeupdate>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link ontoggle, name <ontoggle>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link ontouchcancel, name <ontouchcancel>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like touch-event
+        like native-any
+      like native-null
+    lock false
+  link ontouchend, name <ontouchend>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like touch-event
+        like native-any
+      like native-null
+    lock false
+  link ontouchmove, name <ontouchmove>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like touch-event
+        like native-any
+      like native-null
+    lock false
+  link ontouchstart, name <ontouchstart>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like touch-event
+        like native-any
+      like native-null
+    lock false
+  link ontransitioncancel, name <ontransitioncancel>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like transition-event
+        like native-any
+      like native-null
+    lock false
+  link ontransitionend, name <ontransitionend>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like transition-event
+        like native-any
+      like native-null
+    lock false
+  link ontransitionrun, name <ontransitionrun>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like transition-event
+        like native-any
+      like native-null
+    lock false
+  link ontransitionstart, name <ontransitionstart>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like transition-event
+        like native-any
+      like native-null
+    lock false
+  link onvolumechange, name <onvolumechange>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onwaiting, name <onwaiting>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onwebkitanimationend, name <onwebkitanimationend>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onwebkitanimationiteration, name <onwebkitanimationiteration>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onwebkitanimationstart, name <onwebkitanimationstart>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onwebkittransitionend, name <onwebkittransitionend>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onwheel, name <onwheel>
+    like or
+      like task
+        take this, like global-event-handlers
+        take ev, like wheel-event
+        like native-any
+      like native-null
+    lock false
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like global-event-handlers-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like global-event-handlers
+        take ev
+          like index
+            like global-event-handlers-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like global-event-handlers-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like global-event-handlers
+        take ev
+          like index
+            like global-event-handlers-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

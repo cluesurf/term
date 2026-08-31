@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form svg-animated-integer, name <SVGAnimatedInteger>
+  link anim-val, name <animVal>
+    like native-number
+  link base-val, name <baseVal>
+    like native-number
+    lock false

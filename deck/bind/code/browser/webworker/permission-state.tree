@@ -1,0 +1,6 @@
+
+form permission-state, name <PermissionState>
+  like or
+    text <denied>
+    text <granted>
+    text <prompt>

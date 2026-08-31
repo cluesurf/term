@@ -1,0 +1,5 @@
+
+load @term/bind/code/browser/dom/module
+  find module
+
+form module, name <Module>

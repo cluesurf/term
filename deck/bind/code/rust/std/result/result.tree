@@ -1,0 +1,1268 @@
+
+form result, name <std::result::Result>
+  task is-ok, name <is_ok>
+    note <Returns true if the result is Ok.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-err, name <is_err>
+    note <Returns true if the result is Err.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ok, name <ok>
+    note <Converts from Result&lt;T, E&gt; to Option&lt;T&gt;.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like t
+          cite free
+        cite free
+
+  task err, name <err>
+    note <Converts from Result&lt;T, E&gt; to Option&lt;E&gt;.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like e
+          cite free
+        cite free
+
+  task as-ref, name <as_ref>
+    note <Converts from &Result&lt;T, E&gt; to Result&lt;&T, &E&gt;.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like t
+        like e
+        cite free
+
+  task as-mut, name <as_mut>
+    note <Converts from &mut Result&lt;T, E&gt; to Result&lt;&mut T, &mut E&gt;.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like t
+        like e
+        cite free
+
+  task map, name <map>
+    note <Maps a Result&lt;T, E&gt; to Result&lt;U, E&gt; by applying a function to a contained Ok value, leaving an Err value untouched.>
+
+    lead f
+      like fn-once
+        take f-1, like t
+        free seed
+          like u
+            cite free
+
+    head u
+    head f
+
+    take self
+      cite free
+    take op
+      like f
+        cite free
+      cite free
+
+    free seed
+      like result
+        like u
+          cite free
+        like e
+          cite free
+        cite free
+
+  task map-or, name <map_or>
+    note <Returns the provided default (if Err), or applies a function to the contained value (if Ok),>
+
+    lead f
+      like fn-once
+        take f-1, like t
+        free seed
+          like u
+            cite free
+
+    head u
+    head f
+
+    take self
+      cite free
+    take default
+      like u
+        cite free
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like u
+        cite free
+
+  task map-or-else, name <map_or_else>
+    note <Maps a Result&lt;T, E&gt; to U by applying fallback function default to a contained Err value, or function f to a contained Ok value.>
+
+    lead d
+      like fn-once
+        take f-1, like e
+        free seed
+          like u
+            cite free
+    lead f
+      like fn-once
+        take f-1, like t
+        free seed
+          like u
+            cite free
+
+    head u
+    head d
+    head f
+
+    take self
+      cite free
+    take default
+      like d
+        cite free
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like u
+        cite free
+
+  task map-err, name <map_err>
+    note <Maps a Result&lt;T, E&gt; to Result&lt;T, F&gt; by applying a function to a contained Err value, leaving an Ok value untouched.>
+
+    lead o
+      like fn-once
+        take f-1, like e
+        free seed
+          like f
+            cite free
+
+    head f
+    head o
+
+    take self
+      cite free
+    take op
+      like o
+        cite free
+      cite free
+
+    free seed
+      like result
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task inspect, name <inspect>
+    note <Calls the provided closure with a reference to the contained value (if Ok).>
+
+    lead f
+      like fn-once
+        take f-1, like t
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like result
+        like t
+          cite free
+        like e
+          cite free
+        cite free
+
+  task inspect-err, name <inspect_err>
+    note <Calls the provided closure with a reference to the contained error (if Err).>
+
+    lead f
+      like fn-once
+        take f-1, like e
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like result
+        like t
+          cite free
+        like e
+          cite free
+        cite free
+
+  task as-deref, name <as_deref>
+    note <Converts from Result&lt;T, E&gt; (or &Result&lt;T, E&gt;) to Result&lt;&&lt;T as Deref&gt;::Target, &E&gt;.>
+
+    cast c-1
+      like t
+      like deref
+
+    lead t
+      like deref
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like c-1/target
+        like e
+        cite free
+
+  task as-deref-mut, name <as_deref_mut>
+    note <Converts from Result&lt;T, E&gt; (or &mut Result&lt;T, E&gt;) to Result&lt;&mut &lt;T as DerefMut&gt;::Target, &mut E&gt;.>
+
+    cast c-1
+      like t
+      like deref
+
+    lead t
+      like deref-mut
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like c-1/target
+        like e
+        cite free
+
+  task iter, name <iter>
+    note <Returns an iterator over the possibly contained value.>
+
+    take self
+      cite free
+
+    free seed
+      like iter
+        time mask
+        like t
+          cite free
+        cite free
+
+  task iter-mut, name <iter_mut>
+    note <Returns a mutable iterator over the possibly contained value.>
+
+    take self
+      cite free
+
+    free seed
+      like iter-mut
+        time mask
+        like t
+          cite free
+        cite free
+
+  task expect, name <expect>
+    note <Returns the contained Ok value, consuming the self value.>
+
+    lead e
+      like debug
+        cite free
+
+    take self
+      cite free
+    take msg
+      like str
+
+    free seed
+      like t
+        cite free
+
+  task unwrap, name <unwrap>
+    note <Returns the contained Ok value, consuming the self value.>
+
+    lead e
+      like debug
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task unwrap-or-default, name <unwrap_or_default>
+    note <Returns the contained Ok value or a default>
+
+    lead t
+      like default
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task expect-err, name <expect_err>
+    note <Returns the contained Err value, consuming the self value.>
+
+    lead t
+      like debug
+        cite free
+
+    take self
+      cite free
+    take msg
+      like str
+
+    free seed
+      like e
+        cite free
+
+  task unwrap-err, name <unwrap_err>
+    note <Returns the contained Err value, consuming the self value.>
+
+    lead t
+      like debug
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like e
+        cite free
+
+  task into-ok, name <into_ok>
+    note <Returns the contained Ok value, but never panics.>
+
+    lead e
+      like into
+        like miss
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task into-err, name <into_err>
+    note <Returns the contained Err value, but never panics.>
+
+    lead t
+      like into
+        like miss
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like e
+        cite free
+
+  task and, name <and>
+    note <Returns res if the result is Ok, otherwise returns the Err value of self.>
+
+    head u
+
+    take self
+      cite free
+    take res
+      like result
+        like u
+          cite free
+        like e
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like result
+        like u
+          cite free
+        like e
+          cite free
+        cite free
+
+  task and-then, name <and_then>
+    note <Calls op if the result is Ok, otherwise returns the Err value of self.>
+
+    lead f
+      like fn-once
+        take f-1, like t
+        free seed
+          like result
+            like u
+              cite free
+            like e
+              cite free
+            cite free
+
+    head u
+    head f
+
+    take self
+      cite free
+    take op
+      like f
+        cite free
+      cite free
+
+    free seed
+      like result
+        like u
+          cite free
+        like e
+          cite free
+        cite free
+
+  task or, name <or>
+    note <Returns res if the result is Err, otherwise returns the Ok value of self.>
+
+    head f
+
+    take self
+      cite free
+    take res
+      like result
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like result
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task or-else, name <or_else>
+    note <Calls op if the result is Err, otherwise returns the Ok value of self.>
+
+    lead o
+      like fn-once
+        take f-1, like e
+        free seed
+          like result
+            like t
+              cite free
+            like f
+              cite free
+            cite free
+
+    head f
+    head o
+
+    take self
+      cite free
+    take op
+      like o
+        cite free
+      cite free
+
+    free seed
+      like result
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task unwrap-or, name <unwrap_or>
+    note <Returns the contained Ok value or a provided default.>
+
+    take self
+      cite free
+    take default
+      like t
+        cite free
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task unwrap-or-else, name <unwrap_or_else>
+    note <Returns the contained Ok value or computes it from a closure.>
+
+    lead f
+      like fn-once
+        take f-1, like e
+        free seed
+          like t
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take op
+      like f
+        cite free
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task unwrap-unchecked, name <unwrap_unchecked>
+    note <Returns the contained Ok value, consuming the self value, without checking that the value is not an Err.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task unwrap-err-unchecked, name <unwrap_err_unchecked>
+    note <Returns the contained Err value, consuming the self value, without checking that the value is not an Ok.>
+
+    take self
+      cite free
+
+    free seed
+      like e
+        cite free
+
+  task contains, name <contains>
+    note <Returns true if the result is an Ok value containing the given value.>
+
+    lead u
+      like partial-eq
+        like t
+          cite free
+        cite free
+
+    head u
+
+    take self
+      cite free
+    take x
+      like u
+
+    free seed
+      like bool
+        cite free
+
+  task contains-err, name <contains_err>
+    note <Returns true if the result is an Err value containing the given value.>
+
+    lead f
+      like partial-eq
+        like e
+          cite free
+        cite free
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+
+    free seed
+      like bool
+        cite free
+
+  task copied, name <copied>
+    note <Maps a Result&lt;&T, E&gt; to a Result&lt;T, E&gt; by copying the contents of the Ok part.>
+
+    lead t
+      like copy
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like t
+          cite free
+        like e
+          cite free
+        cite free
+
+  task cloned, name <cloned>
+    note <Maps a Result&lt;&T, E&gt; to a Result&lt;T, E&gt; by cloning the contents of the Ok part.>
+
+    lead t
+      like clone
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like t
+          cite free
+        like e
+          cite free
+        cite free
+
+  task copied, name <copied>
+    note <Maps a Result&lt;&mut T, E&gt; to a Result&lt;T, E&gt; by copying the contents of the Ok part.>
+
+    lead t
+      like copy
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like t
+          cite free
+        like e
+          cite free
+        cite free
+
+  task cloned, name <cloned>
+    note <Maps a Result&lt;&mut T, E&gt; to a Result&lt;T, E&gt; by cloning the contents of the Ok part.>
+
+    lead t
+      like clone
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like t
+          cite free
+        like e
+          cite free
+        cite free
+
+  task transpose, name <transpose>
+    note <Transposes a Result of an Option into an Option of a Result.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like result
+          like t
+            cite free
+          like e
+            cite free
+          cite free
+        cite free
+
+  task flatten, name <flatten>
+    note <Converts from Result&lt;Result&lt;T, E&gt;, E&gt; to Result&lt;T, E&gt;>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like t
+          cite free
+        like e
+          cite free
+        cite free
+
+  task into-ok-or-err, name <into_ok_or_err>
+    note <Returns the Ok value if self is Ok, and the Err value if self is Err.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like t
+          cite free
+        like e
+          cite free
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like result
+        like t
+          cite free
+        like e
+          cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take res
+      like stream-result
+
+    free seed
+      like result
+        like mz-status
+          cite free
+        like mz-error
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take res
+      like stream-result
+        cite free
+      cite free
+
+    free seed
+      like result
+        like mz-status
+          cite free
+        like mz-error
+          cite free
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Takes each element in the Iterator: if it is an Err, no further elements are taken, and the Err is returned. Should no Err occur, a container with the values of each Result is returned.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like result
+              like a
+                cite free
+              like e
+                cite free
+              cite free
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like result
+        like v
+          cite free
+        like e
+          cite free
+        cite free
+
+  task from-residual, name <from_residual>
+    note <Constructs the type from a compatible Residual type.>
+
+    take x
+      like result
+        like infallible
+          cite free
+        like e
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like poll
+        like option
+          like result
+            like t
+              cite free
+            like f
+              cite free
+            cite free
+          cite free
+        cite free
+
+  task from-residual, name <from_residual>
+    note <Constructs the type from a compatible Residual type.>
+
+    take residual
+      like result
+        like infallible
+          cite free
+        like e
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like result
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task from-residual, name <from_residual>
+    note <Constructs the type from a compatible Residual type.>
+
+    take x
+      like result
+        like infallible
+          cite free
+        like e
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like poll
+        like result
+          like t
+            cite free
+          like f
+            cite free
+          cite free
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task into-iter, name <into_iter>
+    note <Creates an iterator from a value.>
+
+    take self
+      cite free
+
+    free seed
+      like iter-mut
+        time a
+        like t
+          cite free
+        cite free
+
+  task into-iter, name <into_iter>
+    note <Creates an iterator from a value.>
+
+    take self
+      cite free
+
+    free seed
+      like iter
+        time a
+        like t
+          cite free
+        cite free
+
+  task into-iter, name <into_iter>
+    note <Returns a consuming iterator over the possibly contained value.>
+
+    take self
+      cite free
+
+    free seed
+      like into-iter
+        like t
+          cite free
+        cite free
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like result
+        like t
+          cite free
+        like e
+          cite free
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like result
+        like t
+          cite free
+        like e
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like result
+        like t
+          cite free
+        like e
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like result
+        like t
+          cite free
+        like e
+          cite free
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task product, name <product>
+    note <Takes each element in the Iterator: if it is an Err, no further elements are taken, and the Err is returned. Should no Err occur, the product of all elements is returned.>
+
+    lead i
+      like iterator
+        like item
+          cite free
+          fall back
+            like result
+              like u
+                cite free
+              like e
+                cite free
+              cite free
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like result
+        like t
+          cite free
+        like e
+          cite free
+        cite free
+
+  task sum, name <sum>
+    note <Takes each element in the Iterator: if it is an Err, no further elements are taken, and the Err is returned. Should no Err occur, the sum of all elements is returned.>
+
+    lead i
+      like iterator
+        like item
+          cite free
+          fall back
+            like result
+              like u
+                cite free
+              like e
+                cite free
+              cite free
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like result
+        like t
+          cite free
+        like e
+          cite free
+        cite free
+
+  task report, name <report>
+    note <Is called to get the representation of the value as status code. This status code is returned to the operating system.>
+
+    take self
+      cite free
+
+    free seed
+      like i32
+        cite free
+
+  task report, name <report>
+    note <Is called to get the representation of the value as status code. This status code is returned to the operating system.>
+
+    take self
+      cite free
+
+    free seed
+      like i32
+        cite free
+
+  task report, name <report>
+    note <Is called to get the representation of the value as status code. This status code is returned to the operating system.>
+
+    take self
+      cite free
+
+    free seed
+      like i32
+        cite free
+
+  task from-output, name <from_output>
+    note <Constructs the type from its Output type.>
+
+    cast c-1
+      like result
+        like t
+          cite free
+        like e
+          cite free
+      like try
+
+    take output
+      like c-1/output
+      cite free
+
+    free seed
+      like result
+        like t
+          cite free
+        like e
+          cite free
+        cite free
+
+  task branch, name <branch>
+    note <Used in ? to decide whether the operator should produce a value (because this returned ControlFlow::Continue) or propagate a value back to the caller (because this returned ControlFlow::Break).>
+
+    cast c-1
+      like result
+        like t
+          cite free
+        like e
+          cite free
+      like try
+    cast c-2
+      like result
+        like t
+          cite free
+        like e
+          cite free
+      like try
+
+    take self
+      cite free
+
+    free seed
+      like control-flow
+        like c-1/residual
+        like c-2/output
+        cite free

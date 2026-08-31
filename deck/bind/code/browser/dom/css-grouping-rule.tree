@@ -1,0 +1,31 @@
+
+load @term/bind/code/browser/dom/css-rule
+  find css-rule
+
+load @term/bind/code/browser/dom/css-rule-list
+  find css-rule-list
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form css-grouping-rule, name <CSSGroupingRule>
+  base css-rule
+
+  link css-rules, name <cssRules>
+    like css-rule-list
+
+  task delete-rule, name <deleteRule>
+    take index, like native-number
+    like native-void
+
+  task insert-rule, name <insertRule>
+    take rule, like native-string
+    take index, like maybe
+      like native-number
+    like native-number

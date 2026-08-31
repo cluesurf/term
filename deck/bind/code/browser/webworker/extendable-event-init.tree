@@ -1,0 +1,6 @@
+
+load @term/bind/code/browser/webworker/event-init
+  find event-init
+
+form extendable-event-init, name <ExtendableEventInit>
+  base event-init

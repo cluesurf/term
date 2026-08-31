@@ -1,0 +1,25 @@
+
+load @term/bind/code/browser/dom/dom-point
+  find dom-point
+
+load @term/bind/code/browser/dom/dom-rect
+  find dom-rect
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form dom-quad, name <DOMQuad>
+  link p1, name <p1>
+    like dom-point
+  link p2, name <p2>
+    like dom-point
+  link p3, name <p3>
+    like dom-point
+  link p4, name <p4>
+    like dom-point
+
+  task get-bounds, name <getBounds>
+    like dom-rect
+
+  task to-json, name <toJSON>
+    like native-any

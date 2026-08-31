@@ -1,0 +1,15 @@
+
+load @term/bind/code/browser/dom/document
+  find document
+
+load @term/bind/code/browser/dom/dom-parser-supported-type
+  find dom-parser-supported-type
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form dom-parser, name <DOMParser>
+  task parse-from-string, name <parseFromString>
+    take string, like native-string
+    take type, like dom-parser-supported-type
+    like document

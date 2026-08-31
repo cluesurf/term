@@ -1,0 +1,48 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+  find native-number
+  find native-string
+
+load @term/bind/code/javascript/es5/number
+  find number
+
+form number
+  hook self
+    link epsilon, name <EPSILON>
+      like native-number
+    link max-safe-integer, name <MAX_SAFE_INTEGER>
+      like native-number
+    link min-safe-integer, name <MIN_SAFE_INTEGER>
+      like native-number
+
+    task is-finite, name <isFinite>
+      like native-boolean
+
+      take number
+
+    task is-integer, name <isInteger>
+      like native-boolean
+
+      take number
+
+    task is-na-n, name <isNaN>
+      like native-boolean
+
+      take number
+
+    task is-safe-integer, name <isSafeInteger>
+      like native-boolean
+
+      take number
+
+    task parse-float, name <parseFloat>
+      like native-number
+
+      take string
+
+    task parse-int, name <parseInt>
+      like native-number
+
+      take string
+      take radix, like maybe, like native-number

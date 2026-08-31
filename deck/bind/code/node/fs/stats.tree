@@ -1,0 +1,8 @@
+
+load @term/bind/code/node/fs
+  find stats-base
+
+form stats, name <Stats>
+  base stats-base
+
+form stats, name <Stats>

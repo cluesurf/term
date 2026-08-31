@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/es2016/array/include/int16-array
+  find int16-array
+
+form int16-array
+  hook self
+  hook make
+    like int16-array

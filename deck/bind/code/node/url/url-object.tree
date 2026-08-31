@@ -1,0 +1,83 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-null
+  find native-number
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/querystring
+  find parsed-url-query-input
+
+form url-object, name <UrlObject>
+  link auth, name <auth>
+    like or
+      like native-string
+      like native-null
+      like native-undefined
+    flex true
+  link hash, name <hash>
+    like or
+      like native-string
+      like native-null
+      like native-undefined
+    flex true
+  link host, name <host>
+    like or
+      like native-string
+      like native-null
+      like native-undefined
+    flex true
+  link hostname, name <hostname>
+    like or
+      like native-string
+      like native-null
+      like native-undefined
+    flex true
+  link href, name <href>
+    like or
+      like native-string
+      like native-null
+      like native-undefined
+    flex true
+  link pathname, name <pathname>
+    like or
+      like native-string
+      like native-null
+      like native-undefined
+    flex true
+  link protocol, name <protocol>
+    like or
+      like native-string
+      like native-null
+      like native-undefined
+    flex true
+  link search, name <search>
+    like or
+      like native-string
+      like native-null
+      like native-undefined
+    flex true
+  link slashes, name <slashes>
+    like or
+      like native-boolean
+      like native-null
+      like native-undefined
+    flex true
+  link port, name <port>
+    like or
+      like native-string
+      like native-number
+      like native-null
+      like native-undefined
+    flex true
+  link query, name <query>
+    like or
+      like native-string
+      like native-null
+      like parsed-url-query-input
+      like native-undefined
+    flex true

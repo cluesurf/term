@@ -1,0 +1,20 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/inspector/runtime
+  find unique-debugger-id
+
+form stack-trace-id, name <StackTraceId>
+  link id, name <id>
+    like native-string
+    flex true
+  link debugger-id, name <debuggerId>
+    like or
+      like unique-debugger-id
+      like native-undefined
+    flex true

@@ -1,0 +1,7 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form navigator-concurrent-hardware, name <NavigatorConcurrentHardware>
+  link hardware-concurrency, name <hardwareConcurrency>
+    like native-number

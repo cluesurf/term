@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript
+  find native-number
+
+form event-loop-utilization, name <EventLoopUtilization>
+  link idle, name <idle>
+    like native-number
+    flex true
+  link active, name <active>
+    like native-number
+    flex true
+  link utilization, name <utilization>
+    like native-number
+    flex true

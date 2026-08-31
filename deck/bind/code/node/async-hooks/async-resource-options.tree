@@ -1,0 +1,20 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-undefined
+
+form async-resource-options, name <AsyncResourceOptions>
+  link trigger-async-id, name <triggerAsyncId>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link require-manual-destroy, name <requireManualDestroy>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

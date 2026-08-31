@@ -1,0 +1,19 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+task escape, name <escape>
+  take ident, like native-string
+  like native-string
+
+task supports, name <supports>
+  take property, like native-string
+  take value, like native-string
+  like native-boolean
+
+task supports, name <supports>
+  take condition-text, like native-string
+  like native-boolean

@@ -1,0 +1,7 @@
+
+form position-align-setting, name <PositionAlignSetting>
+  like or
+    text <auto>
+    text <center>
+    text <line-left>
+    text <line-right>

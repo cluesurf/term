@@ -1,0 +1,20 @@
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form static-range-init, name <StaticRangeInit>
+  link end-container, name <endContainer>
+    like node
+    lock false
+  link end-offset, name <endOffset>
+    like native-number
+    lock false
+  link start-container, name <startContainer>
+    like node
+    lock false
+  link start-offset, name <startOffset>
+    like native-number
+    lock false

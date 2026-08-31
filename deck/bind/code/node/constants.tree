@@ -1,0 +1,14 @@
+
+load @term/bind
+  find and
+
+load @term/bind/code/javascript
+  find signal-constants
+
+host exp, name <exp>
+  like and
+    like os-constants-errno
+    like os-constants-priority
+    like signal-constants
+    like crypto-constants
+    like fs-constants

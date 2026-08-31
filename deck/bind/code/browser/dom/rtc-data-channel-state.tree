@@ -1,0 +1,7 @@
+
+form rtc-data-channel-state, name <RTCDataChannelState>
+  like or
+    text <closed>
+    text <closing>
+    text <connecting>
+    text <open>

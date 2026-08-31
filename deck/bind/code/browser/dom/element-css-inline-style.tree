@@ -1,0 +1,7 @@
+
+load @term/bind/code/browser/dom/css-style-declaration
+  find css-style-declaration
+
+form element-css-inline-style, name <ElementCSSInlineStyle>
+  link style, name <style>
+    like css-style-declaration

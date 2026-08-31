@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/es2015/iterable/float32-array
+  find float32-array
+
+form float32-array, name <Float32Array>
+  link {symbol/to-string-tag}
+    text <Float32Array>
+    read true

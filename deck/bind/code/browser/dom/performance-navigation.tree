@@ -1,0 +1,23 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form performance-navigation, name <PerformanceNavigation>
+  link redirect-count, name <redirectCount>
+    like native-number
+  link type, name <type>
+    like native-number
+  link type-back-forward, name <TYPE_BACK_FORWARD>
+    like native-number
+  link type-navigate, name <TYPE_NAVIGATE>
+    like native-number
+  link type-reload, name <TYPE_RELOAD>
+    like native-number
+  link type-reserved, name <TYPE_RESERVED>
+    like native-number
+
+  task to-json, name <toJSON>
+    like native-any

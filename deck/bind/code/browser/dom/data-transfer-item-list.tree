@@ -1,0 +1,45 @@
+
+load @term/bind/code/browser/dom/data-transfer-item
+  find data-transfer-item
+
+load @term/bind/code/browser/dom/file
+  find file
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form data-transfer-item-list, name <DataTransferItemList>
+  link length, name <length>
+    like native-number
+
+  task add, name <add>
+    take data, like native-string
+    take type, like native-string
+    like or
+      like data-transfer-item
+      like native-null
+
+  task add, name <add>
+    take data, like file
+    like or
+      like data-transfer-item
+      like native-null
+
+  task clear, name <clear>
+    like native-void
+
+  task remove, name <remove>
+    take index, like native-number
+    like native-void
+
+  mesh index, like native-number
+    like data-transfer-item

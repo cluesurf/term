@@ -1,0 +1,10 @@
+
+form promise-fulfilled-result, name <PromiseFulfilledResult>
+  head t
+
+  link status, name <status>
+    text <fulfilled>
+    lock false
+  link value, name <value>
+    like t
+    lock false

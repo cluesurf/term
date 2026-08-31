@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/idb-cursor
+  find idb-cursor
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form idb-cursor-with-value, name <IDBCursorWithValue>
+  base idb-cursor
+
+  link value, name <value>
+    like native-any

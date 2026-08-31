@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/rsa-key-gen-params
+  find rsa-key-gen-params
+
+load @term/bind/code/browser/webworker/algorithm
+  find algorithm
+
+load @term/bind/code/browser/webworker/big-integer
+  find big-integer
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form rsa-key-gen-params, name <RsaKeyGenParams>
+  base algorithm
+
+  link modulus-length, name <modulusLength>
+    like native-number
+    lock false
+  link public-exponent, name <publicExponent>
+    like big-integer
+    lock false

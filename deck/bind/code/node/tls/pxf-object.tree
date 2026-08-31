@@ -1,0 +1,22 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/buffer
+  find buffer
+
+form pxf-object, name <PxfObject>
+  link buf, name <buf>
+    like or
+      like native-string
+      like buffer
+    flex true
+  link passphrase, name <passphrase>
+    like or
+      like native-string
+      like native-undefined
+    flex true

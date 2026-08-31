@@ -1,0 +1,5 @@
+
+bear @term/bind/code/javascript/es2015/iterable
+bear @term/bind/code/javascript/es2015/generator/generator
+bear @term/bind/code/javascript/es2015/generator/generator-function
+bear @term/bind/code/javascript/es2015/generator/generator-function-constructor

@@ -1,0 +1,18 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form i-text-writer, name <ITextWriter>
+  task write, name <Write>
+    take s, like native-string
+    like native-void
+
+  task write-line, name <WriteLine>
+    take s, like native-string
+    like native-void
+
+  task close, name <Close>
+    like native-void

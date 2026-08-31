@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/web-gl-shader-precision-format
+  find web-gl-shader-precision-format
+
+load @term/bind/code/browser/webworker/g-lint
+  find g-lint
+
+form web-gl-shader-precision-format, name <WebGLShaderPrecisionFormat>
+  link precision, name <precision>
+    like g-lint
+  link range-max, name <rangeMax>
+    like g-lint
+  link range-min, name <rangeMin>
+    like g-lint

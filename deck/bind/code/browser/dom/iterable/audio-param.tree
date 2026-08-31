@@ -1,0 +1,18 @@
+
+load @term/bind/code/browser/dom/audio-param
+  find audio-param
+
+load @term/bind/code/javascript/iterable
+  find iterable
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form audio-param, name <AudioParam>
+  task set-value-curve-at-time, name <setValueCurveAtTime>
+    take values
+      like iterable
+        like native-number
+    take start-time, like native-number
+    take duration, like native-number
+    like audio-param

@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/request-credentials
+  find request-credentials
+
+form worklet-options, name <WorkletOptions>
+  link credentials, name <credentials>
+    like request-credentials
+    lock false

@@ -1,0 +1,15 @@
+
+load @term/bind/code/browser/dom/permission-descriptor
+  find permission-descriptor
+
+load @term/bind/code/browser/dom/permission-status
+  find permission-status
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+form permissions, name <Permissions>
+  task query, name <query>
+    take permission-desc, like permission-descriptor
+    like promise
+      like permission-status

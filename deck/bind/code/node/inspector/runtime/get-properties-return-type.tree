@@ -1,0 +1,29 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-undefined
+
+load @term/bind
+  find or
+
+load @term/bind/code/node/inspector/runtime
+  find exception-details
+  find internal-property-descriptor
+  find property-descriptor
+
+form get-properties-return-type, name <GetPropertiesReturnType>
+  link result, name <result>
+    like array
+      like property-descriptor
+    flex true
+  link internal-properties, name <internalProperties>
+    like or
+      like array
+        like internal-property-descriptor
+      like native-undefined
+    flex true
+  link exception-details, name <exceptionDetails>
+    like or
+      like exception-details
+      like native-undefined
+    flex true

@@ -1,0 +1,313 @@
+
+form socket-addr-v4, name <std::net::SocketAddrV4>
+  task new, name <new>
+    note <Creates a new socket address from an IPv4 address and a port number.>
+
+    take ip
+      like ipv4-addr
+        cite free
+      cite free
+    take port
+      like u16
+        cite free
+      cite free
+
+    free seed
+      like socket-addr-v4
+        cite free
+
+  task ip, name <ip>
+    note <Returns the IP address associated with this socket address.>
+
+    take self
+      cite free
+
+    free seed
+      like ipv4-addr
+
+  task set-ip, name <set_ip>
+    note <Changes the IP address associated with this socket address.>
+
+    take self
+      cite free
+    take new-ip
+      like ipv4-addr
+        cite free
+      cite free
+
+  task port, name <port>
+    note <Returns the port number associated with this socket address.>
+
+    take self
+      cite free
+
+    free seed
+      like u16
+        cite free
+
+  task set-port, name <set_port>
+    note <Changes the port number associated with this socket address.>
+
+    take self
+      cite free
+    take new-port
+      like u16
+        cite free
+      cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like socket-addr-v4
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take fmt
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task from, name <from>
+    note <Converts a SocketAddrV4 into a SocketAddr::V4.>
+
+    take sock4
+      like socket-addr-v4
+        cite free
+      cite free
+
+    free seed
+      like socket-addr
+        cite free
+
+  task from-str, name <from_str>
+    note <Parses a string s to return a value of this type.>
+
+    take s
+      like str
+
+    free seed
+      like result
+        like socket-addr-v4
+          cite free
+        like addr-parse-error
+          cite free
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    head h
+
+    take self
+      cite free
+    take s
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like socket-addr-v4
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like socket-addr-v4
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like socket-addr-v4
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task to-socket-addrs, name <to_socket_addrs>
+    note <Converts this object to an iterator of resolved SocketAddrs.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like into-iter
+          like socket-addr
+            cite free
+          cite free
+        cite free

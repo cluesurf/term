@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/permission-name
+  find permission-name
+
+form permission-descriptor, name <PermissionDescriptor>
+  link name, name <name>
+    like permission-name
+    lock false

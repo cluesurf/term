@@ -1,0 +1,13 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-symbol
+
+form symbol, name <Symbol>
+  task to-string, name <toString>
+    like native-string
+
+  task value-of, name <valueOf>
+    like native-symbol

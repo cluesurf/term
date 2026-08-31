@@ -1,0 +1,403 @@
+
+form ref-cell, name <std::cell::RefCell>
+  task new, name <new>
+    note <Creates a new RefCell containing value.>
+
+    take value
+      like t
+        cite free
+      cite free
+
+    free seed
+      like ref-cell
+        like t
+          cite free
+        cite free
+
+  task into-inner, name <into_inner>
+    note <Consumes the RefCell, returning the wrapped value.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task replace, name <replace>
+    note <Replaces the wrapped value with a new one, returning the old value, without deinitializing either one.>
+
+    take self
+      cite free
+    take t
+      like t
+        cite free
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task replace-with, name <replace_with>
+    note <Replaces the wrapped value with a new one computed from f, returning the old value, without deinitializing either one.>
+
+    lead f
+      like fn-once
+        take f-1, like t
+        free seed
+          like t
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task swap, name <swap>
+    note <Swaps the wrapped value of self with the wrapped value of other, without deinitializing either one.>
+
+    take self
+      cite free
+    take other
+      like ref-cell
+        like t
+          cite free
+
+  task borrow, name <borrow>
+    note <Immutably borrows the wrapped value.>
+
+    take self
+      cite free
+
+    free seed
+      like ref
+        time mask
+        like t
+          cite free
+        cite free
+
+  task try-borrow, name <try_borrow>
+    note <Immutably borrows the wrapped value, returning an error if the value is currently mutably borrowed.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like ref
+          time mask
+          like t
+            cite free
+          cite free
+        like borrow-error
+          cite free
+        cite free
+
+  task borrow-mut, name <borrow_mut>
+    note <Mutably borrows the wrapped value.>
+
+    take self
+      cite free
+
+    free seed
+      like ref-mut
+        time mask
+        like t
+          cite free
+        cite free
+
+  task try-borrow-mut, name <try_borrow_mut>
+    note <Mutably borrows the wrapped value, returning an error if the value is currently borrowed.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like ref-mut
+          time mask
+          like t
+            cite free
+          cite free
+        like borrow-mut-error
+          cite free
+        cite free
+
+  task as-ptr, name <as_ptr>
+    note <Returns a raw pointer to the underlying data in this cell.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the underlying data.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+
+  task undo-leak, name <undo_leak>
+    note <Undo the effect of leaked guards on the borrow state of the RefCell.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+
+  task try-borrow-unguarded, name <try_borrow_unguarded>
+    note <Immutably borrows the wrapped value, returning an error if the value is currently mutably borrowed.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like t
+        like borrow-error
+          cite free
+        cite free
+
+  task take, name <take>
+    note <Takes the wrapped value, leaving Default::default() in its place.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task clone, name <clone>
+    note <Panics if the value is currently mutably borrowed.>
+
+    take self
+      cite free
+
+    free seed
+      like ref-cell
+        like t
+          cite free
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Panics if other is currently mutably borrowed.>
+
+    take self
+      cite free
+    take other
+      like ref-cell
+        like t
+          cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Creates a RefCell&lt;T&gt;, with the Default value for T.>
+
+    free seed
+      like ref-cell
+        like t
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take t
+      like t
+        cite free
+      cite free
+
+    free seed
+      like ref-cell
+        like t
+          cite free
+        cite free
+
+  task cmp, name <cmp>
+    note <Panics if the value in either RefCell is currently borrowed.>
+
+    take self
+      cite free
+    take other
+      like ref-cell
+        like t
+          cite free
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <Panics if the value in either RefCell is currently borrowed.>
+
+    take self
+      cite free
+    take other
+      like ref-cell
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <Panics if the value in either RefCell is currently borrowed.>
+
+    take self
+      cite free
+    take other
+      like ref-cell
+        like t
+          cite free
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <Panics if the value in either RefCell is currently borrowed.>
+
+    take self
+      cite free
+    take other
+      like ref-cell
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <Panics if the value in either RefCell is currently borrowed.>
+
+    take self
+      cite free
+    take other
+      like ref-cell
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <Panics if the value in either RefCell is currently borrowed.>
+
+    take self
+      cite free
+    take other
+      like ref-cell
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <Panics if the value in either RefCell is currently borrowed.>
+
+    take self
+      cite free
+    take other
+      like ref-cell
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free

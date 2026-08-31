@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/readable-stream-default-read-done-result
+  find readable-stream-default-read-done-result
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+form readable-stream-default-read-done-result, name <ReadableStreamDefaultReadDoneResult>
+  link done, name <done>
+    text <true>
+    lock false
+  link value, name <value>
+    like native-undefined
+    lock false

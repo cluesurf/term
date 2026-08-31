@@ -1,0 +1,36 @@
+
+load @term/bind/code/javascript
+  find array
+  find incoming-message
+  find native-number
+  find native-void
+  find node-js-read-only-dict
+  find socket
+
+load @term/bind/code/node/http
+  find agent-options
+
+form agent, name <Agent>
+  link max-free-sockets, name <maxFreeSockets>, like native-number
+  link max-sockets, name <maxSockets>, like native-number
+  link max-total-sockets, name <maxTotalSockets>, like native-number
+  link free-sockets, name <freeSockets>
+    like node-js-read-only-dict
+      like array
+        like socket
+  link sockets, name <sockets>
+    like node-js-read-only-dict
+      like array
+        like socket
+  link requests, name <requests>
+    like node-js-read-only-dict
+      like array
+        like incoming-message
+
+  task destroy, name <destroy>
+    like native-void
+
+form agent-constructor
+  hook make
+    take opts, like agent-options
+      void true

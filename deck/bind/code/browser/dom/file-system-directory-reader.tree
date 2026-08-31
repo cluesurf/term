@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/error-callback
+  find error-callback
+
+load @term/bind/code/browser/dom/file-system-entries-callback
+  find file-system-entries-callback
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form file-system-directory-reader, name <FileSystemDirectoryReader>
+  task read-entries, name <readEntries>
+    take success-callback, like file-system-entries-callback
+    take error-callback, like maybe
+      like error-callback
+    like native-void

@@ -1,0 +1,43 @@
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form child-node, name <ChildNode>
+  task after, name <after>
+    take nodes
+      like native-array
+        like or
+          like node
+          like native-string
+      rest true
+    like native-void
+
+  task before, name <before>
+    take nodes
+      like native-array
+        like or
+          like node
+          like native-string
+      rest true
+    like native-void
+
+  task remove, name <remove>
+    like native-void
+
+  task replace-with, name <replaceWith>
+    take nodes
+      like native-array
+        like or
+          like node
+          like native-string
+      rest true
+    like native-void

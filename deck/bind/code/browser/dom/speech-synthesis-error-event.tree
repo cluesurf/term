@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/speech-synthesis-error-code
+  find speech-synthesis-error-code
+
+load @term/bind/code/browser/dom/speech-synthesis-event
+  find speech-synthesis-event
+
+form speech-synthesis-error-event, name <SpeechSynthesisErrorEvent>
+  base speech-synthesis-event
+
+  link error, name <error>
+    like speech-synthesis-error-code

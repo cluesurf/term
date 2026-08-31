@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/g-lenum
+  find g-lenum
+
+form ext-color-buffer-half-float, name <EXT_color_buffer_half_float>
+  link framebuffer-attachment-component-type-ext
+    name <FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT>
+    like g-lenum
+  link rgb16-f-ext, name <RGB16F_EXT>
+    like g-lenum
+  link rgba16-f-ext, name <RGBA16F_EXT>
+    like g-lenum
+  link unsigned-normalized-ext, name <UNSIGNED_NORMALIZED_EXT>
+    like g-lenum

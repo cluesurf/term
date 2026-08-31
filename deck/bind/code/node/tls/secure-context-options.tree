@@ -1,0 +1,155 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/globals
+  find array
+
+load @term/bind/code/node/tls
+  find key-object
+  find pxf-object
+  find secure-version
+
+form secure-context-options, name <SecureContextOptions>
+  link ca, name <ca>
+    like or
+      like native-string
+      like buffer
+      like array
+        like or
+          like native-string
+          like buffer
+      like native-undefined
+    flex true
+  link cert, name <cert>
+    like or
+      like native-string
+      like buffer
+      like array
+        like or
+          like native-string
+          like buffer
+      like native-undefined
+    flex true
+  link sigalgs, name <sigalgs>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link ciphers, name <ciphers>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link client-cert-engine, name <clientCertEngine>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link crl, name <crl>
+    like or
+      like native-string
+      like buffer
+      like array
+        like or
+          like native-string
+          like buffer
+      like native-undefined
+    flex true
+  link dhparam, name <dhparam>
+    like or
+      like native-string
+      like buffer
+      like native-undefined
+    flex true
+  link ecdh-curve, name <ecdhCurve>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link honor-cipher-order, name <honorCipherOrder>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link key, name <key>
+    like or
+      like native-string
+      like buffer
+      like array
+        like or
+          like native-string
+          like buffer
+          like key-object
+      like native-undefined
+    flex true
+  link private-key-engine, name <privateKeyEngine>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link private-key-identifier, name <privateKeyIdentifier>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link max-version, name <maxVersion>
+    like or
+      like secure-version
+      like native-undefined
+    flex true
+  link min-version, name <minVersion>
+    like or
+      like secure-version
+      like native-undefined
+    flex true
+  link passphrase, name <passphrase>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link pfx, name <pfx>
+    like or
+      like native-string
+      like buffer
+      like array
+        like or
+          like native-string
+          like buffer
+          like pxf-object
+      like native-undefined
+    flex true
+  link secure-options, name <secureOptions>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link secure-protocol, name <secureProtocol>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link session-id-context, name <sessionIdContext>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link ticket-keys, name <ticketKeys>
+    like or
+      like buffer
+      like native-undefined
+    flex true
+  link session-timeout, name <sessionTimeout>
+    like or
+      like native-number
+      like native-undefined
+    flex true

@@ -1,0 +1,14 @@
+
+load @term/bind
+  find and
+
+load @term/bind/code/javascript
+  find node-js-errno-exception
+
+load @term/bind/code/node/child-process
+  find exec-exception
+
+form exec-file-exception, name <ExecFileException>
+  like and
+    like exec-exception
+    like node-js-errno-exception

@@ -1,0 +1,9 @@
+
+form global, name <Global>
+  home true
+  link url, name <URL>
+    like url
+    flex true
+  link url-search-params, name <URLSearchParams>
+    like url-search-params
+    flex true

@@ -1,0 +1,169 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/browser/dom/media-stream-track-event-map
+  find media-stream-track-event-map
+
+load @term/bind/code/browser/dom/media-stream-track-state
+  find media-stream-track-state
+
+load @term/bind/code/browser/dom/media-track-capabilities
+  find media-track-capabilities
+
+load @term/bind/code/browser/dom/media-track-constraints
+  find media-track-constraints
+
+load @term/bind/code/browser/dom/media-track-settings
+  find media-track-settings
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form media-stream-track, name <MediaStreamTrack>
+  base event-target
+
+  link content-hint, name <contentHint>
+    like native-string
+    lock false
+  link enabled, name <enabled>
+    like native-boolean
+    lock false
+  link id, name <id>
+    like native-string
+  link kind, name <kind>
+    like native-string
+  link label, name <label>
+    like native-string
+  link muted, name <muted>
+    like native-boolean
+  link onended, name <onended>
+    like or
+      like task
+        take this, like media-stream-track
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onmute, name <onmute>
+    like or
+      like task
+        take this, like media-stream-track
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onunmute, name <onunmute>
+    like or
+      like task
+        take this, like media-stream-track
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link ready-state, name <readyState>
+    like media-stream-track-state
+
+  task apply-constraints, name <applyConstraints>
+    take constraints, like maybe
+      like media-track-constraints
+    like promise
+      like native-void
+
+  task clone, name <clone>
+    like media-stream-track
+
+  task get-capabilities, name <getCapabilities>
+    like media-track-capabilities
+
+  task get-constraints, name <getConstraints>
+    like media-track-constraints
+
+  task get-settings, name <getSettings>
+    like media-track-settings
+
+  task stop, name <stop>
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like media-stream-track-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like media-stream-track
+        take ev
+          like index
+            like media-stream-track-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like media-stream-track-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like media-stream-track
+        take ev
+          like index
+            like media-stream-track-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

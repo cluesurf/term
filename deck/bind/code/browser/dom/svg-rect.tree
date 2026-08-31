@@ -1,0 +1,6 @@
+
+load @term/bind/code/browser/dom/dom-rect
+  find dom-rect
+
+form svg-rect, name <SVGRect>
+  like dom-rect

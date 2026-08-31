@@ -1,0 +1,24 @@
+
+load @term/bind
+  find like
+  find or
+
+load @term/bind/code/javascript
+  find async-iterable
+  find iterable
+  find node-js-readable-stream
+
+load @term/bind/code/node/stream/internal
+  find pipeline-source-function
+
+form pipeline-source, name <PipelineSource>
+  head t
+
+  like or
+    like iterable
+      like t
+    like async-iterable
+      like t
+    like node-js-readable-stream
+    like pipeline-source-function
+      like t

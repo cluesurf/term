@@ -1,0 +1,140 @@
+
+form child, name <std::process::Child>
+  task kill, name <kill>
+    note <Forces the child process to exit. If the child has already exited, an InvalidInput error is returned.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task id, name <id>
+    note <Returns the OS-assigned process identifier associated with this child.>
+
+    take self
+      cite free
+
+    free seed
+      like u32
+        cite free
+
+  task wait, name <wait>
+    note <Waits for the child to exit completely, returning the status that it exited with. This function will continue to have the same return value after it has been called at least once.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like exit-status
+          cite free
+        cite free
+
+  task try-wait, name <try_wait>
+    note <Attempts to collect the exit status of the child if it has already exited.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like option
+          like exit-status
+            cite free
+          cite free
+        cite free
+
+  task wait-with-output, name <wait_with_output>
+    note <Simultaneously waits for the child to exit and collect all remaining output on the stdout/stderr handles, returning an Output instance.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like output
+          cite free
+        cite free
+
+  task as-handle, name <as_handle>
+    note <Borrows the handle.>
+
+    take self
+      cite free
+
+    free seed
+      like borrowed-handle
+        time mask
+        cite free
+
+  task as-raw-handle, name <as_raw_handle>
+    note <Extracts the raw handle, without taking any ownership.>
+
+    take self
+      cite free
+
+    free seed
+      like raw-handle
+        cite free
+
+  task pidfd, name <pidfd>
+    note <Obtains a reference to the PidFd created for this Child, if available.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like pid-fd
+        cite free
+
+  task take-pidfd, name <take_pidfd>
+    note <Takes ownership of the PidFd created for this Child, if available.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like pid-fd
+          cite free
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take child
+      like child
+        cite free
+      cite free
+
+    free seed
+      like owned-handle
+        cite free
+
+  task into-raw-handle, name <into_raw_handle>
+    note <Consumes this object, returning the raw underlying handle.>
+
+    take self
+      cite free
+
+    free seed
+      like raw-handle
+        cite free

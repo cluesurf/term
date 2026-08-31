@@ -1,0 +1,21 @@
+
+load @term/bind/code/javascript/es5/array-buffer-like
+  find array-buffer-like
+
+load @term/bind/code/javascript/es5/data-view
+  find data-view
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form data-view-constructor, name <DataViewConstructor>
+  link prototype, name <prototype>
+    like data-view
+
+  hook make
+    take buffer, like array-buffer-like
+    take byte-offset, like maybe
+      like native-number
+    take byte-length, like maybe
+      like native-number
+    like data-view

@@ -1,0 +1,1029 @@
+
+form tcp-stream, name <std::net::TcpStream>
+  task connect, name <connect>
+    note <Opens a TCP connection to a remote host.>
+
+    head a
+
+    take addr
+      like a
+        cite free
+      cite free
+
+    free seed
+      like result
+        like tcp-stream
+          cite free
+        cite free
+
+  task connect-timeout, name <connect_timeout>
+    note <Opens a TCP connection to a remote host with a timeout.>
+
+    take addr
+      like socket-addr
+    take timeout
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like result
+        like tcp-stream
+          cite free
+        cite free
+
+  task peer-addr, name <peer_addr>
+    note <Returns the socket address of the remote peer of this TCP connection.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like socket-addr
+          cite free
+        cite free
+
+  task local-addr, name <local_addr>
+    note <Returns the socket address of the local half of this TCP connection.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like socket-addr
+          cite free
+        cite free
+
+  task shutdown, name <shutdown>
+    note <Shuts down the read, write, or both halves of this connection.>
+
+    take self
+      cite free
+    take how
+      like shutdown
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task try-clone, name <try_clone>
+    note <Creates a new independently owned handle to the underlying socket.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like tcp-stream
+          cite free
+        cite free
+
+  task set-read-timeout, name <set_read_timeout>
+    note <Sets the read timeout to the timeout specified.>
+
+    take self
+      cite free
+    take dur
+      like option
+        like duration
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task set-write-timeout, name <set_write_timeout>
+    note <Sets the write timeout to the timeout specified.>
+
+    take self
+      cite free
+    take dur
+      like option
+        like duration
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task read-timeout, name <read_timeout>
+    note <Returns the read timeout of this socket.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like option
+          like duration
+            cite free
+          cite free
+        cite free
+
+  task write-timeout, name <write_timeout>
+    note <Returns the write timeout of this socket.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like option
+          like duration
+            cite free
+          cite free
+        cite free
+
+  task peek, name <peek>
+    note <Receives data on the socket from the remote address to which it is connected, without removing that data from the queue. On success, returns the number of bytes peeked.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task set-linger, name <set_linger>
+    note <Sets the value of the SO_LINGER option on this socket.>
+
+    take self
+      cite free
+    take linger
+      like option
+        like duration
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task linger, name <linger>
+    note <Gets the value of the SO_LINGER option on this socket.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like option
+          like duration
+            cite free
+          cite free
+        cite free
+
+  task set-nodelay, name <set_nodelay>
+    note <Sets the value of the TCP_NODELAY option on this socket.>
+
+    take self
+      cite free
+    take nodelay
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task nodelay, name <nodelay>
+    note <Gets the value of the TCP_NODELAY option on this socket.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like bool
+          cite free
+        cite free
+
+  task set-ttl, name <set_ttl>
+    note <Sets the value for the IP_TTL option on this socket.>
+
+    take self
+      cite free
+    take ttl
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task ttl, name <ttl>
+    note <Gets the value of the IP_TTL option for this socket.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like u32
+          cite free
+        cite free
+
+  task take-error, name <take_error>
+    note <Gets the value of the SO_ERROR option on this socket.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like option
+          like error
+            cite free
+          cite free
+        cite free
+
+  task set-nonblocking, name <set_nonblocking>
+    note <Moves this TCP stream into or out of nonblocking mode.>
+
+    take self
+      cite free
+    take nonblocking
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task as-fd, name <as_fd>
+    note <Borrows the file descriptor.>
+
+    take self
+      cite free
+
+    free seed
+      like borrowed-fd
+        time mask
+        cite free
+
+  task as-raw-fd, name <as_raw_fd>
+    note <Extracts the raw file descriptor.>
+
+    take self
+      cite free
+
+    free seed
+      like raw-fd
+        cite free
+
+  task as-raw-socket, name <as_raw_socket>
+    note <Extracts the underlying raw socket from this object.>
+
+    take self
+      cite free
+
+    free seed
+      like raw-socket
+        cite free
+
+  task as-socket, name <as_socket>
+    note <Borrows the socket.>
+
+    take self
+      cite free
+
+    free seed
+      like borrowed-socket
+        time mask
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take owned-fd
+      like owned-fd
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take owned
+      like owned-socket
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take tcp-stream
+      like tcp-stream
+        cite free
+      cite free
+
+    free seed
+      like owned-socket
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take tcp-stream
+      like tcp-stream
+        cite free
+      cite free
+
+    free seed
+      like owned-fd
+        cite free
+
+  task from-raw-fd, name <from_raw_fd>
+    note <Constructs a new instance of Self from the given raw file descriptor.>
+
+    take fd
+      like raw-fd
+        cite free
+      cite free
+
+    free seed
+      like tcp-stream
+        cite free
+
+  task from-raw-socket, name <from_raw_socket>
+    note <Creates a new I/O object from the given raw socket.>
+
+    take sock
+      like raw-socket
+        cite free
+      cite free
+
+    free seed
+      like tcp-stream
+        cite free
+
+  task into-raw-fd, name <into_raw_fd>
+    note <Consumes this object, returning the raw underlying file descriptor.>
+
+    take self
+      cite free
+
+    free seed
+      like raw-fd
+        cite free
+
+  task into-raw-socket, name <into_raw_socket>
+    note <Consumes this object, returning the raw underlying socket.>
+
+    take self
+      cite free
+
+    free seed
+      like raw-socket
+        cite free
+
+  task read, name <read>
+    note <Pull some bytes from this source into the specified buffer, returning how many bytes were read.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task read-vectored, name <read_vectored>
+    note <Like read, except that it reads into a slice of buffers.>
+
+    take self
+      cite free
+    take bufs
+      like list
+        like io-slice-mut
+          time mask
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task is-read-vectored, name <is_read_vectored>
+    note <Determines if this Reader has an efficient read_vectored implementation.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task read-to-end, name <read_to_end>
+    note <Read all bytes until EOF in this source, placing them into buf.>
+
+    take self
+      cite free
+    take buf
+      like vec
+        like u8
+          cite free
+      lock free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task read-to-string, name <read_to_string>
+    note <Read all bytes until EOF in this source, appending them to buf.>
+
+    take self
+      cite free
+    take buf
+      like string
+      lock free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task read-exact, name <read_exact>
+    note <Read the exact number of bytes required to fill buf.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task read-buf, name <read_buf>
+    note <Pull some bytes from this source into the specified buffer.>
+
+    take self
+      cite free
+    take buf
+      like read-buf
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task read-buf-exact, name <read_buf_exact>
+    note <Read the exact number of bytes required to fill buf.>
+
+    take self
+      cite free
+    take buf
+      like read-buf
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task by-ref, name <by_ref>
+    note <Creates a “by reference” adaptor for this instance of Read.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like self
+
+  task bytes, name <bytes>
+    note <Transforms this Read instance to an Iterator over its bytes.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like bytes
+        like self
+          cite free
+        cite free
+
+  task chain, name <chain>
+    note <Creates an adapter which will chain this stream with another.>
+
+    lead self
+      like sized
+        cite free
+
+    head r
+
+    take self
+      cite free
+    take next
+      like r
+        cite free
+      cite free
+
+    free seed
+      like chain
+        like self
+          cite free
+        like r
+          cite free
+        cite free
+
+  task take, name <take>
+    note <Creates an adapter which will read at most limit bytes from it.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+    take limit
+      like u64
+        cite free
+      cite free
+
+    free seed
+      like take
+        like self
+          cite free
+        cite free
+
+  task read, name <read>
+    note <Pull some bytes from this source into the specified buffer, returning how many bytes were read.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task read-vectored, name <read_vectored>
+    note <Like read, except that it reads into a slice of buffers.>
+
+    take self
+      cite free
+    take bufs
+      like list
+        like io-slice-mut
+          time mask
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task is-read-vectored, name <is_read_vectored>
+    note <Determines if this Reader has an efficient read_vectored implementation.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task read-to-end, name <read_to_end>
+    note <Read all bytes until EOF in this source, placing them into buf.>
+
+    take self
+      cite free
+    take buf
+      like vec
+        like u8
+          cite free
+      lock free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task read-to-string, name <read_to_string>
+    note <Read all bytes until EOF in this source, appending them to buf.>
+
+    take self
+      cite free
+    take buf
+      like string
+      lock free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task read-exact, name <read_exact>
+    note <Read the exact number of bytes required to fill buf.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task read-buf, name <read_buf>
+    note <Pull some bytes from this source into the specified buffer.>
+
+    take self
+      cite free
+    take buf
+      like read-buf
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task read-buf-exact, name <read_buf_exact>
+    note <Read the exact number of bytes required to fill buf.>
+
+    take self
+      cite free
+    take buf
+      like read-buf
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task by-ref, name <by_ref>
+    note <Creates a “by reference” adaptor for this instance of Read.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like self
+
+  task bytes, name <bytes>
+    note <Transforms this Read instance to an Iterator over its bytes.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like bytes
+        like self
+          cite free
+        cite free
+
+  task chain, name <chain>
+    note <Creates an adapter which will chain this stream with another.>
+
+    lead self
+      like sized
+        cite free
+
+    head r
+
+    take self
+      cite free
+    take next
+      like r
+        cite free
+      cite free
+
+    free seed
+      like chain
+        like self
+          cite free
+        like r
+          cite free
+        cite free
+
+  task take, name <take>
+    note <Creates an adapter which will read at most limit bytes from it.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+    take limit
+      like u64
+        cite free
+      cite free
+
+    free seed
+      like take
+        like self
+          cite free
+        cite free
+
+  task write, name <write>
+    note <Write a buffer into this writer, returning how many bytes were written.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task write-vectored, name <write_vectored>
+    note <Like write, except that it writes from a slice of buffers.>
+
+    take self
+      cite free
+    take bufs
+      like list
+        like io-slice
+          time mask
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task is-write-vectored, name <is_write_vectored>
+    note <Determines if this Writer has an efficient write_vectored implementation.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task flush, name <flush>
+    note <Flush this output stream, ensuring that all intermediately buffered contents reach their destination.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-all, name <write_all>
+    note <Attempts to write an entire buffer into this writer.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-all-vectored, name <write_all_vectored>
+    note <Attempts to write multiple buffers into this writer.>
+
+    take self
+      cite free
+    take bufs
+      like list
+        like io-slice
+          time mask
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-fmt, name <write_fmt>
+    note <Writes a formatted string into this writer, returning any error encountered.>
+
+    take self
+      cite free
+    take fmt
+      like arguments
+        time mask
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task by-ref, name <by_ref>
+    note <Creates a “by reference” adapter for this instance of Write.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like self
+
+  task write, name <write>
+    note <Write a buffer into this writer, returning how many bytes were written.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task write-vectored, name <write_vectored>
+    note <Like write, except that it writes from a slice of buffers.>
+
+    take self
+      cite free
+    take bufs
+      like list
+        like io-slice
+          time mask
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task is-write-vectored, name <is_write_vectored>
+    note <Determines if this Writer has an efficient write_vectored implementation.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task flush, name <flush>
+    note <Flush this output stream, ensuring that all intermediately buffered contents reach their destination.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-all, name <write_all>
+    note <Attempts to write an entire buffer into this writer.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-all-vectored, name <write_all_vectored>
+    note <Attempts to write multiple buffers into this writer.>
+
+    take self
+      cite free
+    take bufs
+      like list
+        like io-slice
+          time mask
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-fmt, name <write_fmt>
+    note <Writes a formatted string into this writer, returning any error encountered.>
+
+    take self
+      cite free
+    take fmt
+      like arguments
+        time mask
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task by-ref, name <by_ref>
+    note <Creates a “by reference” adapter for this instance of Write.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like self

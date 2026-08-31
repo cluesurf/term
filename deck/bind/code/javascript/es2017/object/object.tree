@@ -1,0 +1,56 @@
+
+load @term/bind/code/javascript
+  find array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/es5
+  find array-like
+  find property-descriptor
+  find typed-property-descriptor
+
+form object
+  hook self
+    task values, name <values>
+      like array
+        like t
+
+      head t
+
+      take o
+
+    task values, name <values>
+      like array
+        like any
+
+      take o
+
+    task entries, name <entries>
+      like array
+        like tuple
+          like native-string
+          like t
+
+      head t
+
+      take o
+
+    task entries, name <entries>
+      like array
+        like tuple
+          like native-string
+          like any
+
+      take o
+
+    task get-own-property-descriptors, name <getOwnPropertyDescriptors>
+      like and
+        like any
+        like form
+          mesh x
+            like property-descriptor
+
+      head t
+
+      take o

@@ -1,0 +1,16 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-number
+
+load @term/bind/code/node/inspector/profiler
+  find type-object
+
+form type-profile-entry, name <TypeProfileEntry>
+  link offset, name <offset>
+    like native-number
+    flex true
+  link types, name <types>
+    like array
+      like type-object
+    flex true

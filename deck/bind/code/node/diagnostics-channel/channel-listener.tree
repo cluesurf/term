@@ -1,0 +1,15 @@
+
+load @term/bind
+  find task
+  find unknown
+
+load @term/bind/code/javascript
+  find native-string
+  find native-void
+
+form channel-listener, name <ChannelListener>
+  like task
+    like native-void
+
+    take name, like native-string
+    take message, like unknown

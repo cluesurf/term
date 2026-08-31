@@ -1,0 +1,5 @@
+
+load @term/bind/code/browser/dom/ext-frag-depth
+  find ext-frag-depth
+
+form ext-frag-depth, name <EXT_frag_depth>

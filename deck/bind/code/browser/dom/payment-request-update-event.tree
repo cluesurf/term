@@ -1,0 +1,23 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/payment-details-update
+  find payment-details-update
+
+load @term/bind/code/javascript/es5/promise-like
+  find promise-like
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form payment-request-update-event, name <PaymentRequestUpdateEvent>
+  base event
+
+  task update-with, name <updateWith>
+    take details-promise
+      like or
+        like payment-details-update
+        like promise-like
+          like payment-details-update
+    like native-void

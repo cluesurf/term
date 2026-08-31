@@ -1,0 +1,24 @@
+
+load @term/bind/code/browser/dom/file
+  find file
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form share-data, name <ShareData>
+  link files, name <files>
+    like native-array
+      like file
+    lock false
+  link text, name <text>
+    like native-string
+    lock false
+  link title, name <title>
+    like native-string
+    lock false
+  link url, name <url>
+    like native-string
+    lock false

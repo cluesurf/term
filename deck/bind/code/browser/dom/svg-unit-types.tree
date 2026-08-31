@@ -1,0 +1,11 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form svg-unit-types, name <SVGUnitTypes>
+  link svg-unit-type-objectboundingbox, name <SVG_UNIT_TYPE_OBJECTBOUNDINGBOX>
+    like native-number
+  link svg-unit-type-unknown, name <SVG_UNIT_TYPE_UNKNOWN>
+    like native-number
+  link svg-unit-type-userspaceonuse, name <SVG_UNIT_TYPE_USERSPACEONUSE>
+    like native-number

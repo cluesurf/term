@@ -1,0 +1,35 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-object
+  find native-string
+  find native-void
+
+form hook-callbacks, name <HookCallbacks>
+  task init, name <init>
+    like native-void
+
+    take async-id, like native-number
+    take type, like native-string
+    take trigger-async-id, like native-number
+    take resource, like native-object
+
+  task before, name <before>
+    like native-void
+
+    take async-id, like native-number
+
+  task after, name <after>
+    like native-void
+
+    take async-id, like native-number
+
+  task promise-resolve, name <promiseResolve>
+    like native-void
+
+    take async-id, like native-number
+
+  task destroy, name <destroy>
+    like native-void
+
+    take async-id, like native-number

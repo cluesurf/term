@@ -1,0 +1,44 @@
+
+load @term/bind/code/javascript/es5/reg-exp-exec-array
+  find reg-exp-exec-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-this
+
+form reg-exp, name <RegExp>
+  link source, name <source>
+    like native-string
+  link global, name <global>
+    like native-boolean
+  link ignore-case, name <ignoreCase>
+    like native-boolean
+  link multiline, name <multiline>
+    like native-boolean
+  link last-index, name <lastIndex>
+    like native-number
+    lock false
+
+  task exec, name <exec>
+    take string, like native-string
+    like or
+      like reg-exp-exec-array
+      like native-null
+
+  task test, name <test>
+    take string, like native-string
+    like native-boolean
+
+  task compile, name <compile>
+    like native-this

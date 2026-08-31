@@ -1,0 +1,47 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find abort-signal
+  find abortable
+  find native-boolean
+  find native-number
+  find native-string
+  find native-undefined
+  find node-js-signals
+
+load @term/bind/code/node/child-process
+  find common-options
+
+form exec-file-options, name <ExecFileOptions>
+  base common-options
+  base abortable
+
+  link max-buffer, name <maxBuffer>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link kill-signal, name <killSignal>
+    like or
+      like node-js-signals
+      like native-number
+      like native-undefined
+    flex true
+  link windows-verbatim-arguments, name <windowsVerbatimArguments>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link shell, name <shell>
+    like or
+      like native-boolean
+      like native-string
+      like native-undefined
+    flex true
+  link signal, name <signal>
+    like or
+      like abort-signal
+      like native-undefined
+    flex true

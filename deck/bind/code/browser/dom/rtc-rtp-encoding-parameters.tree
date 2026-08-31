@@ -1,0 +1,28 @@
+
+load @term/bind/code/browser/dom/rtc-priority-type
+  find rtc-priority-type
+
+load @term/bind/code/browser/dom/rtc-rtp-coding-parameters
+  find rtc-rtp-coding-parameters
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form rtc-rtp-encoding-parameters, name <RTCRtpEncodingParameters>
+  base rtc-rtp-coding-parameters
+
+  link active, name <active>
+    like native-boolean
+    lock false
+  link max-bitrate, name <maxBitrate>
+    like native-number
+    lock false
+  link priority, name <priority>
+    like rtc-priority-type
+    lock false
+  link scale-resolution-down-by, name <scaleResolutionDownBy>
+    like native-number
+    lock false

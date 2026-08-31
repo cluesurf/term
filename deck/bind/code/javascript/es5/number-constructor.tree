@@ -1,0 +1,28 @@
+
+load @term/bind/code/javascript/es5/number
+  find number
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form number-constructor, name <NumberConstructor>
+  link prototype, name <prototype>
+    like number
+  link max-value, name <MAX_VALUE>
+    like native-number
+  link min-value, name <MIN_VALUE>
+    like native-number
+  link na-n, name <NaN>
+    like native-number
+  link negative-infinity, name <NEGATIVE_INFINITY>
+    like native-number
+  link positive-infinity, name <POSITIVE_INFINITY>
+    like native-number
+
+  hook make
+    take value, like maybe
+      like native-any
+    like number

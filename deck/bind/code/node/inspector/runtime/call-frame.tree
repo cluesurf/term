@@ -1,0 +1,24 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+
+load @term/bind/code/node/inspector/runtime
+  find script-id
+
+form call-frame, name <CallFrame>
+  link function-name, name <functionName>
+    like native-string
+    flex true
+  link script-id, name <scriptId>
+    like script-id
+    flex true
+  link url, name <url>
+    like native-string
+    flex true
+  link line-number, name <lineNumber>
+    like native-number
+    flex true
+  link column-number, name <columnNumber>
+    like native-number
+    flex true

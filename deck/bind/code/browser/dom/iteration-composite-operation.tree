@@ -1,0 +1,5 @@
+
+form iteration-composite-operation, name <IterationCompositeOperation>
+  like or
+    text <accumulate>
+    text <replace>

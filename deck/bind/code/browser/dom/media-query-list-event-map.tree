@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/media-query-list-event
+  find media-query-list-event
+
+form media-query-list-event-map, name <MediaQueryListEventMap>
+  link change, name <change>
+    like media-query-list-event
+    lock false

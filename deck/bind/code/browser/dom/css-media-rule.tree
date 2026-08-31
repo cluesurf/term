@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/css-condition-rule
+  find css-condition-rule
+
+load @term/bind/code/browser/dom/media-list
+  find media-list
+
+form css-media-rule, name <CSSMediaRule>
+  base css-condition-rule
+
+  link media, name <media>
+    like media-list

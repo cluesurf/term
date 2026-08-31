@@ -1,0 +1,19 @@
+
+bear @term/bind/code/javascript/node/inspector/heap-profiler/heap-snapshot-object-id
+bear @term/bind/code/javascript/node/inspector/heap-profiler/sampling-heap-profile-node
+bear @term/bind/code/javascript/node/inspector/heap-profiler/sampling-heap-profile
+bear @term/bind/code/javascript/node/inspector/heap-profiler/start-tracking-heap-objects-parameter-type
+bear @term/bind/code/javascript/node/inspector/heap-profiler/stop-tracking-heap-objects-parameter-type
+bear @term/bind/code/javascript/node/inspector/heap-profiler/take-heap-snapshot-parameter-type
+bear @term/bind/code/javascript/node/inspector/heap-profiler/get-object-by-heap-object-id-parameter-type
+bear @term/bind/code/javascript/node/inspector/heap-profiler/add-inspected-heap-object-parameter-type
+bear @term/bind/code/javascript/node/inspector/heap-profiler/get-heap-object-id-parameter-type
+bear @term/bind/code/javascript/node/inspector/heap-profiler/start-sampling-parameter-type
+bear @term/bind/code/javascript/node/inspector/heap-profiler/get-object-by-heap-object-id-return-type
+bear @term/bind/code/javascript/node/inspector/heap-profiler/get-heap-object-id-return-type
+bear @term/bind/code/javascript/node/inspector/heap-profiler/stop-sampling-return-type
+bear @term/bind/code/javascript/node/inspector/heap-profiler/get-sampling-profile-return-type
+bear @term/bind/code/javascript/node/inspector/heap-profiler/add-heap-snapshot-chunk-event-data-type
+bear @term/bind/code/javascript/node/inspector/heap-profiler/report-heap-snapshot-progress-event-data-type
+bear @term/bind/code/javascript/node/inspector/heap-profiler/last-seen-object-id-event-data-type
+bear @term/bind/code/javascript/node/inspector/heap-profiler/heap-stats-update-event-data-type

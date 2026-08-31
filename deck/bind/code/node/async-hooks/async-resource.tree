@@ -1,0 +1,104 @@
+
+load @term/bind/code/javascript
+  find array
+  find async-resource
+  find native-number
+  find native-string
+  find native-this
+  find this-arg
+
+load @term/bind
+  find and
+  find any
+  find form
+  find like
+  find or
+  find task
+
+load @term/bind/code/node/async-hooks
+  find async-resource-options
+
+form async-resource, name <AsyncResource>
+  task bind, name <bind>
+    like and
+      like func
+      like form
+        link async-resource, name <asyncResource>
+          like async-resource
+          flex true
+
+    head func
+      base task
+        like any
+
+        take args
+          like array
+            like any
+          rest true
+
+    take fn, like func
+
+  task run-in-async-scope, name <runInAsyncScope>
+    like result
+
+    head this
+    head result
+
+    take fn
+      like task
+        like result
+
+        take this, like this
+        take args
+          like array
+            like any
+          rest true
+    take this-arg, like this
+      void true
+    take args
+      like array
+        like any
+      rest true
+
+  task emit-destroy, name <emitDestroy>
+    like native-this
+
+  task async-id, name <asyncId>
+    like native-number
+
+  task trigger-async-id, name <triggerAsyncId>
+    like native-number
+
+form async-resource-constructor
+  hook make
+    take type, like native-string
+    take trigger-async-id
+      like or
+        like native-number
+        like async-resource-options
+      void true
+
+  task bind, name <bind>
+    like and
+      like func
+      like form
+        link async-resource, name <asyncResource>
+          like async-resource
+          flex true
+
+    head func
+      base task
+        like any
+
+        take this, like this-arg
+        take args
+          like array
+            like any
+          rest true
+    head this-arg
+
+    take fn, like func
+    take type, like native-string
+      void true
+    take this-arg, like this-arg
+      void true

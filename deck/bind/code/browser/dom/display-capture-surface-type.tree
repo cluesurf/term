@@ -1,0 +1,7 @@
+
+form display-capture-surface-type, name <DisplayCaptureSurfaceType>
+  like or
+    text <application>
+    text <browser>
+    text <monitor>
+    text <window>

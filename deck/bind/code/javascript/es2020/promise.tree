@@ -1,0 +1,5 @@
+
+bear @term/bind/code/javascript/es2020/promise/promise-fulfilled-result
+bear @term/bind/code/javascript/es2020/promise/promise-rejected-result
+bear @term/bind/code/javascript/es2020/promise/promise-settled-result
+bear @term/bind/code/javascript/es2020/promise/promise-constructor

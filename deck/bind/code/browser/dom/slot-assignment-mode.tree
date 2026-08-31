@@ -1,0 +1,5 @@
+
+form slot-assignment-mode, name <SlotAssignmentMode>
+  like or
+    text <manual>
+    text <named>

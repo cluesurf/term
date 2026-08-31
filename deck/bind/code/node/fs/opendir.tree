@@ -1,0 +1,16 @@
+
+load @term/bind/code/javascript
+  find dir
+  find promise
+
+load @term/bind/code/node/fs
+  find open-dir-options
+  find path-like
+
+task promisify, name <__promisify__>
+  like promise
+    like dir
+
+  take path, like path-like
+  take options, like open-dir-options
+    void true

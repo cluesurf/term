@@ -1,0 +1,27 @@
+
+load @term/bind/code/browser/scripthost/text-stream-base
+  find text-stream-base
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form text-stream-writer, name <TextStreamWriter>
+  base text-stream-base
+
+  task write, name <Write>
+    take s, like native-string
+    like native-void
+
+  task write-blank-lines, name <WriteBlankLines>
+    take int-lines, like native-number
+    like native-void
+
+  task write-line, name <WriteLine>
+    take s, like native-string
+    like native-void

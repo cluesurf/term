@@ -1,0 +1,15 @@
+
+bear @term/bind/code/browser/webworker/iterable/cache
+bear @term/bind/code/browser/webworker/iterable/canvas-path-drawing-styles
+bear @term/bind/code/browser/webworker/iterable/dom-string-list
+bear @term/bind/code/browser/webworker/iterable/file-list
+bear @term/bind/code/browser/webworker/iterable/form-data
+bear @term/bind/code/browser/webworker/iterable/headers
+bear @term/bind/code/browser/webworker/iterable/idb-database
+bear @term/bind/code/browser/webworker/iterable/idb-object-store
+bear @term/bind/code/browser/webworker/iterable/url-search-params
+bear @term/bind/code/browser/webworker/iterable/webgl-draw-buffers
+bear @term/bind/code/browser/webworker/iterable/web-gl2-rendering-context-base
+bear @term/bind/code/browser/webworker/iterable/web-gl2-rendering-context-overloads
+bear @term/bind/code/browser/webworker/iterable/web-gl-rendering-context-base
+bear @term/bind/code/browser/webworker/iterable/web-gl-rendering-context-overloads

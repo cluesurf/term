@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/ext-texture-filter-anisotropic
+  find ext-texture-filter-anisotropic
+
+load @term/bind/code/browser/webworker/g-lenum
+  find g-lenum
+
+form ext-texture-filter-anisotropic, name <EXT_texture_filter_anisotropic>
+  link max-texture-max-anisotropy-ext, name <MAX_TEXTURE_MAX_ANISOTROPY_EXT>
+    like g-lenum
+  link texture-max-anisotropy-ext, name <TEXTURE_MAX_ANISOTROPY_EXT>
+    like g-lenum

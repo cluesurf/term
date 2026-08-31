@@ -1,0 +1,32 @@
+
+load @term/bind/code/browser/dom/text-encoder-stream
+  find text-encoder-stream
+
+load @term/bind/code/browser/webworker/generic-transform-stream
+  find generic-transform-stream
+
+load @term/bind/code/browser/webworker/readable-stream
+  find readable-stream
+
+load @term/bind/code/browser/webworker/text-encoder-common
+  find text-encoder-common
+
+load @term/bind/code/browser/webworker/writable-stream
+  find writable-stream
+
+load @term/bind/code/javascript/es5/uint8-array
+  find uint8-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form text-encoder-stream, name <TextEncoderStream>
+  base generic-transform-stream
+  base text-encoder-common
+
+  link readable, name <readable>
+    like readable-stream
+      like uint8-array
+  link writable, name <writable>
+    like writable-stream
+      like native-string

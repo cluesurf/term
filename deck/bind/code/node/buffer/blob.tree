@@ -1,0 +1,51 @@
+
+load @term/bind
+  find or
+  find unknown
+
+load @term/bind/code/javascript
+  find array
+  find array-buffer
+  find binary-like
+  find blob
+  find native-number
+  find native-string
+  find promise
+
+load @term/bind/code/node/buffer
+  find blob-options
+
+form blob, name <Blob>
+  link size, name <size>, like native-number
+  link type, name <type>, like native-string
+
+  task array-buffer, name <arrayBuffer>
+    like promise
+      like array-buffer
+
+  task slice, name <slice>
+    like blob
+
+    take start, like native-number
+      void true
+    take end, like native-number
+      void true
+    take type, like native-string
+      void true
+
+  task text, name <text>
+    like promise
+      like native-string
+
+  task stream, name <stream>
+    like unknown
+
+form blob-constructor
+  hook make
+    take sources
+      like array
+        like or
+          like binary-like
+          like blob
+    take options, like blob-options
+      void true

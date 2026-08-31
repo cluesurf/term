@@ -1,0 +1,8 @@
+
+bear @term/bind/code/javascript/es2017
+bear @term/bind/code/javascript/es2018/asynciterable
+bear @term/bind/code/javascript/es2018/asyncgenerator
+bear @term/bind/code/javascript/es2018/promise
+bear @term/bind/code/javascript/es2018/regexp
+bear @term/bind/code/javascript/es2018/intl
+bear @term/bind/code/javascript/es2018/full

@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/export-value
+  find export-value
+
+load @term/bind/code/javascript/es5/record
+  find record
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form exports, name <Exports>
+  like record
+    like native-string
+    like export-value

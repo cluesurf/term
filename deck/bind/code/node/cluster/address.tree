@@ -1,0 +1,21 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+
+form address, name <Address>
+  link address, name <address>
+    like native-string
+    flex true
+  link port, name <port>
+    like native-number
+    flex true
+  link address-type, name <addressType>
+    like or
+      like native-number
+      text <udp4>
+      text <udp6>
+    flex true

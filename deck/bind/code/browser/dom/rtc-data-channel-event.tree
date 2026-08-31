@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/rtc-data-channel
+  find rtc-data-channel
+
+form rtc-data-channel-event, name <RTCDataChannelEvent>
+  base event
+
+  link channel, name <channel>
+    like rtc-data-channel

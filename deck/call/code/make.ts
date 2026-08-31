@@ -19,6 +19,7 @@ import { compileSeparate } from '@term/make/code/compile/separate'
 import { CompileCache } from '@term/make/code/compile/cache'
 import { projectCache } from '@term/call/code/cache-store'
 import { preprocessTests } from '@term/call/code/test-preprocess'
+import { manifestNameOf } from '@term/call/code/manifest-name'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectRoleOf } from '@term/call/code/role-of'
 import { withNativeEnv } from '@term/make/code/compile/native'
@@ -264,13 +265,7 @@ export function projectResolver(
 
     let name: string | undefined
 
-    try {
-      const manifest = readFileSync(path.join(dir, 'deck.tree'), 'utf8')
-      const m = /^\s*deck\s+(@[^\s]+)/m.exec(manifest)
-      name = m ? m[1] : undefined
-    } catch {
-      name = undefined
-    }
+    name = manifestNameOf(path.join(dir, 'deck.tree'))
 
     packageNameCache.set(dir, name)
 

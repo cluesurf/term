@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/audio-configuration
+  find audio-configuration
+
+load @term/bind/code/browser/dom/video-configuration
+  find video-configuration
+
+form media-configuration, name <MediaConfiguration>
+  link audio, name <audio>
+    like audio-configuration
+    lock false
+  link video, name <video>
+    like video-configuration
+    lock false

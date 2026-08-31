@@ -1,0 +1,53 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form performance-timing, name <PerformanceTiming>
+  link connect-end, name <connectEnd>
+    like native-number
+  link connect-start, name <connectStart>
+    like native-number
+  link dom-complete, name <domComplete>
+    like native-number
+  link dom-content-loaded-event-end, name <domContentLoadedEventEnd>
+    like native-number
+  link dom-content-loaded-event-start, name <domContentLoadedEventStart>
+    like native-number
+  link dom-interactive, name <domInteractive>
+    like native-number
+  link dom-loading, name <domLoading>
+    like native-number
+  link domain-lookup-end, name <domainLookupEnd>
+    like native-number
+  link domain-lookup-start, name <domainLookupStart>
+    like native-number
+  link fetch-start, name <fetchStart>
+    like native-number
+  link load-event-end, name <loadEventEnd>
+    like native-number
+  link load-event-start, name <loadEventStart>
+    like native-number
+  link navigation-start, name <navigationStart>
+    like native-number
+  link redirect-end, name <redirectEnd>
+    like native-number
+  link redirect-start, name <redirectStart>
+    like native-number
+  link request-start, name <requestStart>
+    like native-number
+  link response-end, name <responseEnd>
+    like native-number
+  link response-start, name <responseStart>
+    like native-number
+  link secure-connection-start, name <secureConnectionStart>
+    like native-number
+  link unload-event-end, name <unloadEventEnd>
+    like native-number
+  link unload-event-start, name <unloadEventStart>
+    like native-number
+
+  task to-json, name <toJSON>
+    like native-any

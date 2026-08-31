@@ -1,0 +1,186 @@
+
+load @term/bind/code/javascript
+  find array
+  find array-buffer
+  find native-boolean
+  find native-number
+  find native-string
+  find node-js-array-buffer-view
+  find readonly-array
+  find shared-array-buffer
+  find uint8-array
+
+load @term/bind
+  find any
+  find form
+  find or
+
+load @term/bind/code/node/buffer
+  find buffer
+  find buffer-encoding
+  find with-implicit-coercion
+
+form buffer-constructor, name <BufferConstructor>
+  home true
+  link pool-size, name <poolSize>
+    like native-number
+    flex true
+
+  task from, name <from>
+    like buffer
+
+    take array-buffer
+      like with-implicit-coercion
+        like or
+          like array-buffer
+          like shared-array-buffer
+    take byte-offset, like native-number
+      void true
+    take length, like native-number
+      void true
+
+  task from, name <from>
+    like buffer
+
+    take data
+      like or
+        like uint8-array
+        like readonly-array
+          like native-number
+
+  task from, name <from>
+    like buffer
+
+    take data
+      like with-implicit-coercion
+        like or
+          like uint8-array
+          like readonly-array
+            like native-number
+          like native-string
+
+  task from, name <from>
+    like buffer
+
+    take str
+      like or
+        like with-implicit-coercion
+          like native-string
+        like form
+          task {symbol/to-primitive}
+            like native-string
+
+            take hint, text <string>
+
+    take encoding, like buffer-encoding
+      void true
+
+  task of, name <of>
+    like buffer
+
+    take items
+      like array
+        like native-number
+      rest true
+
+  task is-buffer, name <isBuffer>
+    like native-boolean
+    rank obj, like buffer
+
+    take obj, like any
+
+  task is-encoding, name <isEncoding>
+    like native-boolean
+    rank encoding, like buffer-encoding
+
+    take encoding, like native-string
+
+  task byte-length, name <byteLength>
+    like native-number
+
+    take string
+      like or
+        like native-string
+        like node-js-array-buffer-view
+        like array-buffer
+        like shared-array-buffer
+    take encoding, like buffer-encoding
+      void true
+
+  task concat, name <concat>
+    like buffer
+
+    take list
+      like readonly-array
+        like uint8-array
+    take total-length, like native-number
+      void true
+
+  task compare, name <compare>
+    like or
+      text <undefined>
+      text <0>
+      text <1>
+
+    take buf1, like uint8-array
+    take buf2, like uint8-array
+
+  task alloc, name <alloc>
+    like buffer
+
+    take size, like native-number
+    take fill
+      like or
+        like native-string
+        like buffer
+        like native-number
+      void true
+    take encoding, like buffer-encoding
+      void true
+
+  task alloc-unsafe, name <allocUnsafe>
+    like buffer
+
+    take size, like native-number
+
+  task alloc-unsafe-slow, name <allocUnsafeSlow>
+    like buffer
+
+    take size, like native-number
+
+  hook make
+    like buffer
+
+    take str, like native-string
+    take encoding, like buffer-encoding
+      void true
+
+  hook make
+    like buffer
+
+    take size, like native-number
+
+  hook make
+    like buffer
+
+    take array, like uint8-array
+
+  hook make
+    like buffer
+
+    take array-buffer
+      like or
+        like array-buffer
+        like shared-array-buffer
+
+  hook make
+    like buffer
+
+    take array
+      like readonly-array
+        like any
+
+  hook make
+    like buffer
+
+    take buffer, like buffer

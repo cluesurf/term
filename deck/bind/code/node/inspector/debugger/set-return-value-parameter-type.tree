@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript
+  find runtime-call-argument
+
+form set-return-value-parameter-type, name <SetReturnValueParameterType>
+  link new-value, name <newValue>
+    like runtime-call-argument
+    flex true

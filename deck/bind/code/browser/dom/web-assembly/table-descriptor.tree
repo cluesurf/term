@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/table-kind
+  find table-kind
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form table-descriptor, name <TableDescriptor>
+  link element, name <element>
+    like table-kind
+    lock false
+  link initial, name <initial>
+    like native-number
+    lock false
+  link maximum, name <maximum>
+    like native-number
+    lock false

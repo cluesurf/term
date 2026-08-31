@@ -1,0 +1,44 @@
+
+load @term/bind/code/browser/dom/media-metadata
+  find media-metadata
+
+load @term/bind/code/browser/dom/media-position-state
+  find media-position-state
+
+load @term/bind/code/browser/dom/media-session-action
+  find media-session-action
+
+load @term/bind/code/browser/dom/media-session-action-handler
+  find media-session-action-handler
+
+load @term/bind/code/browser/dom/media-session-playback-state
+  find media-session-playback-state
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form media-session, name <MediaSession>
+  link metadata, name <metadata>
+    like or
+      like media-metadata
+      like native-null
+    lock false
+  link playback-state, name <playbackState>
+    like media-session-playback-state
+    lock false
+
+  task set-action-handler, name <setActionHandler>
+    take action, like media-session-action
+    take handler
+      like or
+        like media-session-action-handler
+        like native-null
+    like native-void
+
+  task set-position-state, name <setPositionState>
+    take state, like maybe
+      like media-position-state
+    like native-void

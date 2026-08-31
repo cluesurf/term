@@ -1,0 +1,16 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-undefined
+
+load @term/bind/code/node/net
+  find on-read-opts
+
+form connect-opts, name <ConnectOpts>
+  link onread, name <onread>
+    like or
+      like on-read-opts
+      like native-undefined
+    flex true

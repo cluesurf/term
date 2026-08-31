@@ -1,0 +1,23 @@
+
+load @term/bind/code/javascript/es2020/bigint/big-int
+  find big-int
+
+load @term/bind/code/javascript/native
+  find native-bigint
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form big-int-constructor, name <BigIntConstructor>
+  link prototype, name <prototype>
+    like big-int
+
+  task as-int-n, name <asIntN>
+    take bits, like native-number
+    take int, like native-bigint
+    like native-bigint
+
+  task as-uint-n, name <asUintN>
+    take bits, like native-number
+    take int, like native-bigint
+    like native-bigint

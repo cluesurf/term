@@ -1,0 +1,113 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form aria-mixin, name <ARIAMixin>
+  link aria-atomic, name <ariaAtomic>
+    like native-string
+    lock false
+  link aria-auto-complete, name <ariaAutoComplete>
+    like native-string
+    lock false
+  link aria-busy, name <ariaBusy>
+    like native-string
+    lock false
+  link aria-checked, name <ariaChecked>
+    like native-string
+    lock false
+  link aria-col-count, name <ariaColCount>
+    like native-string
+    lock false
+  link aria-col-index, name <ariaColIndex>
+    like native-string
+    lock false
+  link aria-col-span, name <ariaColSpan>
+    like native-string
+    lock false
+  link aria-current, name <ariaCurrent>
+    like native-string
+    lock false
+  link aria-disabled, name <ariaDisabled>
+    like native-string
+    lock false
+  link aria-expanded, name <ariaExpanded>
+    like native-string
+    lock false
+  link aria-has-popup, name <ariaHasPopup>
+    like native-string
+    lock false
+  link aria-hidden, name <ariaHidden>
+    like native-string
+    lock false
+  link aria-key-shortcuts, name <ariaKeyShortcuts>
+    like native-string
+    lock false
+  link aria-label, name <ariaLabel>
+    like native-string
+    lock false
+  link aria-level, name <ariaLevel>
+    like native-string
+    lock false
+  link aria-live, name <ariaLive>
+    like native-string
+    lock false
+  link aria-modal, name <ariaModal>
+    like native-string
+    lock false
+  link aria-multi-line, name <ariaMultiLine>
+    like native-string
+    lock false
+  link aria-multi-selectable, name <ariaMultiSelectable>
+    like native-string
+    lock false
+  link aria-orientation, name <ariaOrientation>
+    like native-string
+    lock false
+  link aria-placeholder, name <ariaPlaceholder>
+    like native-string
+    lock false
+  link aria-pos-in-set, name <ariaPosInSet>
+    like native-string
+    lock false
+  link aria-pressed, name <ariaPressed>
+    like native-string
+    lock false
+  link aria-read-only, name <ariaReadOnly>
+    like native-string
+    lock false
+  link aria-required, name <ariaRequired>
+    like native-string
+    lock false
+  link aria-role-description, name <ariaRoleDescription>
+    like native-string
+    lock false
+  link aria-row-count, name <ariaRowCount>
+    like native-string
+    lock false
+  link aria-row-index, name <ariaRowIndex>
+    like native-string
+    lock false
+  link aria-row-span, name <ariaRowSpan>
+    like native-string
+    lock false
+  link aria-selected, name <ariaSelected>
+    like native-string
+    lock false
+  link aria-set-size, name <ariaSetSize>
+    like native-string
+    lock false
+  link aria-sort, name <ariaSort>
+    like native-string
+    lock false
+  link aria-value-max, name <ariaValueMax>
+    like native-string
+    lock false
+  link aria-value-min, name <ariaValueMin>
+    like native-string
+    lock false
+  link aria-value-now, name <ariaValueNow>
+    like native-string
+    lock false
+  link aria-value-text, name <ariaValueText>
+    like native-string
+    lock false

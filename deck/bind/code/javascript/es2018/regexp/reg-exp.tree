@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript/es2015/symbol/wellknown/reg-exp
+  find reg-exp
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form reg-exp, name <RegExp>
+  link dot-all, name <dotAll>
+    like native-boolean

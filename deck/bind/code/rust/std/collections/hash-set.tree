@@ -1,0 +1,830 @@
+
+form hash-set, name <std::collections::HashSet>
+  task new, name <new>
+    note <Creates an empty HashSet.>
+
+    free seed
+      like hash-set
+        like t
+          cite free
+        like random-state
+          cite free
+        cite free
+
+  task with-capacity, name <with_capacity>
+    note <Creates an empty HashSet with the specified capacity.>
+
+    take capacity
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like hash-set
+        like t
+          cite free
+        like random-state
+          cite free
+        cite free
+
+  task capacity, name <capacity>
+    note <Returns the number of elements the set can hold without reallocating.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task iter, name <iter>
+    note <An iterator visiting all elements in arbitrary order. The iterator element type is &'a T.>
+
+    take self
+      cite free
+
+    free seed
+      like iter
+        time mask
+        like t
+          cite free
+        cite free
+
+  task len, name <len>
+    note <Returns the number of elements in the set.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task is-empty, name <is_empty>
+    note <Returns true if the set contains no elements.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task drain, name <drain>
+    note <Clears the set, returning all elements in an iterator.>
+
+    take self
+      cite free
+
+    free seed
+      like drain
+        time mask
+        like t
+          cite free
+        cite free
+
+  task drain-filter, name <drain_filter>
+    note <Creates an iterator which uses a closure to determine if a value should be removed.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take pred
+      like f
+        cite free
+      cite free
+
+    free seed
+      like drain-filter
+        time mask
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task retain, name <retain>
+    note <Retains only the elements specified by the predicate.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+  task clear, name <clear>
+    note <Clears the set, removing all values.>
+
+    take self
+      cite free
+
+  task with-hasher, name <with_hasher>
+    note <Creates a new empty hash set which will use the given hasher to hash keys.>
+
+    take hasher
+      like s
+        cite free
+      cite free
+
+    free seed
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+        cite free
+
+  task with-capacity-and-hasher, name <with_capacity_and_hasher>
+    note <Creates an empty HashSet with the specified capacity, using hasher to hash the keys.>
+
+    take capacity
+      like usize
+        cite free
+      cite free
+    take hasher
+      like s
+        cite free
+      cite free
+
+    free seed
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+        cite free
+
+  task hasher, name <hasher>
+    note <Returns a reference to the set's BuildHasher.>
+
+    take self
+      cite free
+
+    free seed
+      like s
+
+  task reserve, name <reserve>
+    note <Reserves capacity for at least additional more elements to be inserted in the HashSet. The collection may reserve more space to avoid frequent reallocations.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task try-reserve, name <try_reserve>
+    note <Tries to reserve capacity for at least additional more elements to be inserted in the given HashSet&lt;K, V&gt;. The collection may reserve more space to avoid frequent reallocations.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        like try-reserve-error
+          cite free
+        cite free
+
+  task shrink-to-fit, name <shrink_to_fit>
+    note <Shrinks the capacity of the set as much as possible. It will drop down as much as possible while maintaining the internal rules and possibly leaving some space in accordance with the resize policy.>
+
+    take self
+      cite free
+
+  task shrink-to, name <shrink_to>
+    note <Shrinks the capacity of the set with a lower limit. It will drop down no lower than the supplied limit while maintaining the internal rules and possibly leaving some space in accordance with the resize policy.>
+
+    take self
+      cite free
+    take min-capacity
+      like usize
+        cite free
+      cite free
+
+  task difference, name <difference>
+    note <Visits the values representing the difference, i.e., the values that are in self but not in other.>
+
+    time a
+
+    take self
+      cite free
+    take other
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+        time a
+
+    free seed
+      like difference
+        time a
+        like t
+          cite free
+        like s
+          cite free
+        cite free
+
+  task symmetric-difference, name <symmetric_difference>
+    note <Visits the values representing the symmetric difference, i.e., the values that are in self or in other but not in both.>
+
+    time a
+
+    take self
+      cite free
+    take other
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+        time a
+
+    free seed
+      like symmetric-difference
+        time a
+        like t
+          cite free
+        like s
+          cite free
+        cite free
+
+  task intersection, name <intersection>
+    note <Visits the values representing the intersection, i.e., the values that are both in self and other.>
+
+    time a
+
+    take self
+      cite free
+    take other
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+        time a
+
+    free seed
+      like intersection
+        time a
+        like t
+          cite free
+        like s
+          cite free
+        cite free
+
+  task union, name <union>
+    note <Visits the values representing the union, i.e., all the values in self or other, without duplicates.>
+
+    time a
+
+    take self
+      cite free
+    take other
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+        time a
+
+    free seed
+      like union
+        time a
+        like t
+          cite free
+        like s
+          cite free
+        cite free
+
+  task contains, name <contains>
+    note <Returns true if the set contains a value.>
+
+    lead t
+      like borrow
+        like q
+          cite free
+        cite free
+    lead q
+      like hash
+        cite free
+
+    head q
+
+    take self
+      cite free
+    take value
+      like q
+
+    free seed
+      like bool
+        cite free
+
+  task get, name <get>
+    note <Returns a reference to the value in the set, if any, that is equal to the given value.>
+
+    lead t
+      like borrow
+        like q
+          cite free
+        cite free
+    lead q
+      like hash
+        cite free
+
+    head q
+
+    take self
+      cite free
+    take value
+      like q
+
+    free seed
+      like option
+        like t
+        cite free
+
+  task get-or-insert, name <get_or_insert>
+    note <Inserts the given value into the set if it is not present, then returns a reference to the value in the set.>
+
+    take self
+      cite free
+    take value
+      like t
+        cite free
+      cite free
+
+    free seed
+      like t
+
+  task get-or-insert-owned, name <get_or_insert_owned>
+    note <Inserts an owned copy of the given value into the set if it is not present, then returns a reference to the value in the set.>
+
+    lead t
+      like borrow
+        like q
+          cite free
+        cite free
+    lead q
+      like hash
+        cite free
+
+    head q
+
+    take self
+      cite free
+    take value
+      like q
+
+    free seed
+      like t
+
+  task get-or-insert-with, name <get_or_insert_with>
+    note <Inserts a value computed from f into the set if the given value is not present, then returns a reference to the value in the set.>
+
+    lead t
+      like borrow
+        like q
+          cite free
+        cite free
+    lead q
+      like hash
+        cite free
+    lead f
+      like fn-once
+        take f-1, like q
+        free seed
+          like t
+            cite free
+
+    head q
+    head f
+
+    take self
+      cite free
+    take value
+      like q
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like t
+
+  task is-disjoint, name <is_disjoint>
+    note <Returns true if self has no elements in common with other. This is equivalent to checking for an empty intersection.>
+
+    take self
+      cite free
+    take other
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-subset, name <is_subset>
+    note <Returns true if the set is a subset of another, i.e., other contains at least all the values in self.>
+
+    take self
+      cite free
+    take other
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-superset, name <is_superset>
+    note <Returns true if the set is a superset of another, i.e., self contains at least all the values in other.>
+
+    take self
+      cite free
+    take other
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task insert, name <insert>
+    note <Adds a value to the set.>
+
+    take self
+      cite free
+    take value
+      like t
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task replace, name <replace>
+    note <Adds a value to the set, replacing the existing value, if any, that is equal to the given one. Returns the replaced value.>
+
+    take self
+      cite free
+    take value
+      like t
+        cite free
+      cite free
+
+    free seed
+      like option
+        like t
+          cite free
+        cite free
+
+  task remove, name <remove>
+    note <Removes a value from the set. Returns whether the value was present in the set.>
+
+    lead t
+      like borrow
+        like q
+          cite free
+        cite free
+    lead q
+      like hash
+        cite free
+
+    head q
+
+    take self
+      cite free
+    take value
+      like q
+
+    free seed
+      like bool
+        cite free
+
+  task take, name <take>
+    note <Removes and returns the value in the set, if any, that is equal to the given one.>
+
+    lead t
+      like borrow
+        like q
+          cite free
+        cite free
+    lead q
+      like hash
+        cite free
+
+    head q
+
+    take self
+      cite free
+    take value
+      like q
+
+    free seed
+      like option
+        like t
+          cite free
+        cite free
+
+  task bitand, name <bitand>
+    note <Returns the intersection of self and rhs as a new HashSet&lt;T, S&gt;.>
+
+    take self
+      cite free
+    take rhs
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+
+    free seed
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+        cite free
+
+  task bitor, name <bitor>
+    note <Returns the union of self and rhs as a new HashSet&lt;T, S&gt;.>
+
+    take self
+      cite free
+    take rhs
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+
+    free seed
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+        cite free
+
+  task bitxor, name <bitxor>
+    note <Returns the symmetric difference of self and rhs as a new HashSet&lt;T, S&gt;.>
+
+    take self
+      cite free
+    take rhs
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+
+    free seed
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+        cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take other
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task default, name <default>
+    note <Creates an empty HashSet&lt;T, S&gt; with the Default value for the hasher.>
+
+    free seed
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+        cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take item
+      like t
+        time a
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take item
+      like t
+        cite free
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task from, name <from>
+    take arr
+      like list
+        like t
+        name n
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+        cite free
+
+  task into-iter, name <into_iter>
+    note <Creates an iterator from a value.>
+
+    take self
+      cite free
+
+    free seed
+      like iter
+        time a
+        like t
+          cite free
+        cite free
+
+  task into-iter, name <into_iter>
+    note <Creates a consuming iterator, that is, one that moves each value out of the set in arbitrary order. The set cannot be used after calling this.>
+
+    take self
+      cite free
+
+    free seed
+      like into-iter
+        like t
+          cite free
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task sub, name <sub>
+    note <Returns the difference of self and rhs as a new HashSet&lt;T, S&gt;.>
+
+    take self
+      cite free
+    take rhs
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+
+    free seed
+      like hash-set
+        like t
+          cite free
+        like s
+          cite free
+        cite free

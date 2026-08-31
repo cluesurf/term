@@ -1,0 +1,234 @@
+
+form error, name <std::io::Error>
+  task new, name <new>
+    note <Creates a new I/O error from a known kind of error as well as an arbitrary error payload.>
+
+    lead e
+      like into
+        like box
+          like error
+            cite free
+          cite free
+        cite free
+
+    head e
+
+    take kind
+      like error-kind
+        cite free
+      cite free
+    take error
+      like e
+        cite free
+      cite free
+
+    free seed
+      like error
+        cite free
+
+  task other, name <other>
+    note <Creates a new I/O error from an arbitrary error payload.>
+
+    lead e
+      like into
+        like box
+          like error
+            cite free
+          cite free
+        cite free
+
+    head e
+
+    take error
+      like e
+        cite free
+      cite free
+
+    free seed
+      like error
+        cite free
+
+  task last-os-error, name <last_os_error>
+    note <Returns an error representing the last OS error which occurred.>
+
+    free seed
+      like error
+        cite free
+
+  task from-raw-os-error, name <from_raw_os_error>
+    note <Creates a new instance of an Error from a particular OS error code.>
+
+    take code
+      like i32
+        cite free
+      cite free
+
+    free seed
+      like error
+        cite free
+
+  task raw-os-error, name <raw_os_error>
+    note <Returns the OS error that this error represents (if any).>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like i32
+          cite free
+        cite free
+
+  task get-ref, name <get_ref>
+    note <Returns a reference to the inner error wrapped by this error (if any).>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like error
+          cite free
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the inner error wrapped by this error (if any).>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like error
+          cite free
+        cite free
+
+  task into-inner, name <into_inner>
+    note <Consumes the Error, returning its inner error (if any).>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like box
+          like error
+            cite free
+          cite free
+        cite free
+
+  task kind, name <kind>
+    note <Returns the corresponding ErrorKind for this error.>
+
+    take self
+      cite free
+
+    free seed
+      like error-kind
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take fmt
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task description, name <description>
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task cause, name <cause>
+    take self
+      cite free
+
+    free seed
+      like option
+        like error
+          cite free
+        cite free
+
+  task source, name <source>
+    note <The lower-level source of this error, if any.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like error
+          cite free
+        cite free
+
+  task backtrace, name <backtrace>
+    note <Returns a stack backtrace, if available, of where this error occurred.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like backtrace
+        cite free
+
+  task from, name <from>
+    note <Converts an ErrorKind into an Error.>
+
+    take kind
+      like error-kind
+        cite free
+      cite free
+
+    free seed
+      like error
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take iie
+      like into-inner-error
+        like w
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like error
+        cite free
+
+  task from, name <from>
+    note <Converts a NulError into a io::Error.>
+
+    take 
+      like nul-error
+        cite free
+      cite free
+
+    free seed
+      like error
+        cite free

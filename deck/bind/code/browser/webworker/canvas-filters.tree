@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/canvas-filters
+  find canvas-filters
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form canvas-filters, name <CanvasFilters>
+  link filter, name <filter>
+    like native-string
+    lock false

@@ -1,0 +1,45 @@
+
+load @term/bind/code/browser/dom/data-transfer
+  find data-transfer
+
+load @term/bind/code/browser/dom/static-range
+  find static-range
+
+load @term/bind/code/browser/dom/ui-event-init
+  find ui-event-init
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form input-event-init, name <InputEventInit>
+  base ui-event-init
+
+  link data, name <data>
+    like or
+      like native-string
+      like native-null
+    lock false
+  link data-transfer, name <dataTransfer>
+    like or
+      like data-transfer
+      like native-null
+    lock false
+  link input-type, name <inputType>
+    like native-string
+    lock false
+  link is-composing, name <isComposing>
+    like native-boolean
+    lock false
+  link target-ranges, name <targetRanges>
+    like native-array
+      like static-range
+    lock false

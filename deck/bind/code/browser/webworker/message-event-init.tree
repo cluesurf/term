@@ -1,0 +1,49 @@
+
+load @term/bind/code/browser/dom/message-event-init
+  find message-event-init
+
+load @term/bind/code/browser/webworker/event-init
+  find event-init
+
+load @term/bind/code/browser/webworker/message-event-source
+  find message-event-source
+
+load @term/bind/code/browser/webworker/message-port
+  find message-port
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form message-event-init, name <MessageEventInit>
+  base event-init
+
+  head t
+    back native-any
+
+  link data, name <data>
+    like t
+    lock false
+  link last-event-id, name <lastEventId>
+    like native-string
+    lock false
+  link origin, name <origin>
+    like native-string
+    lock false
+  link ports, name <ports>
+    like native-array
+      like message-port
+    lock false
+  link source, name <source>
+    like or
+      like message-event-source
+      like native-null
+    lock false

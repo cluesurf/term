@@ -1,0 +1,9 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form resize-observer-size, name <ResizeObserverSize>
+  link block-size, name <blockSize>
+    like native-number
+  link inline-size, name <inlineSize>
+    like native-number

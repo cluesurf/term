@@ -1,0 +1,20 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-boolean
+  find native-string
+
+load @term/bind/code/node/inspector/profiler
+  find coverage-range
+
+form function-coverage, name <FunctionCoverage>
+  link function-name, name <functionName>
+    like native-string
+    flex true
+  link ranges, name <ranges>
+    like array
+      like coverage-range
+    flex true
+  link is-block-coverage, name <isBlockCoverage>
+    like native-boolean
+    flex true

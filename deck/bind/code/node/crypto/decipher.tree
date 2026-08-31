@@ -1,0 +1,64 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-string
+  find native-this
+  find native-undefined
+  find node-js-array-buffer-view
+
+load @term/bind/code/node/buffer
+  find buffer
+  find buffer-encoding
+
+load @term/bind/code/node/crypto
+  find encoding
+
+form decipher, name <Decipher>
+  base stream-transform
+  task update, name <update>
+    like buffer
+
+    take data, like node-js-array-buffer-view
+
+  task update, name <update>
+    like buffer
+
+    take data, like native-string
+    take input-encoding, like encoding
+
+  task update, name <update>
+    like native-string
+
+    take data, like node-js-array-buffer-view
+    take input-encoding, like native-undefined
+    take output-encoding, like encoding
+
+  task update, name <update>
+    like native-string
+
+    take data, like native-string
+    take input-encoding
+      like or
+        like encoding
+        like native-undefined
+    take output-encoding, like encoding
+
+  task final, name <final>
+    like buffer
+
+  task final, name <final>
+    like native-string
+
+    take output-encoding, like buffer-encoding
+
+  task set-auto-padding, name <setAutoPadding>
+    like native-this
+
+    take auto-padding, like native-boolean
+      void true
+
+form decipher-constructor
+  hook make

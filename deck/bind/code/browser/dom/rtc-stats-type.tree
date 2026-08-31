@@ -1,0 +1,18 @@
+
+form rtc-stats-type, name <RTCStatsType>
+  like or
+    text <candidate-pair>
+    text <certificate>
+    text <codec>
+    text <csrc>
+    text <data-channel>
+    text <inbound-rtp>
+    text <local-candidate>
+    text <media-source>
+    text <outbound-rtp>
+    text <peer-connection>
+    text <remote-candidate>
+    text <remote-inbound-rtp>
+    text <remote-outbound-rtp>
+    text <track>
+    text <transport>

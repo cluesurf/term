@@ -1,0 +1,45 @@
+
+load @term/bind
+  find and
+  find form
+  find like
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+
+load @term/bind/code/node/crypto
+  find base-private-key-encoding-options
+  find key-format
+
+form ec-key-pair-options, name <ECKeyPairOptions>
+  head pub-f
+    base key-format
+  head priv-f
+    base key-format
+
+  link named-curve, name <namedCurve>
+    like native-string
+    flex true
+  link public-key-encoding, name <publicKeyEncoding>
+    like form
+      link type, name <type>
+        like or
+          text <pkcs1>
+          text <spki>
+        flex true
+      link format, name <format>
+        like pub-f
+        flex true
+    flex true
+  link private-key-encoding, name <privateKeyEncoding>
+    like and
+      like base-private-key-encoding-options
+        like priv-f
+      like form
+        link type, name <type>
+          like or
+            text <sec1>
+            text <pkcs8>
+          flex true
+    flex true

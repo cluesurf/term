@@ -1,0 +1,17 @@
+
+load @term/bind/code/javascript/native
+  find native-never
+
+load @term/bind/code/javascript/p
+  find p
+
+form constructor-parameters, name <ConstructorParameters>
+  head t
+
+  like test
+    stem roll
+      like t
+      hook true
+        like p
+      hook false
+        like native-never

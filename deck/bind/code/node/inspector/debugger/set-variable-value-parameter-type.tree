@@ -1,0 +1,22 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find runtime-call-argument
+
+load @term/bind/code/node/inspector/debugger
+  find call-frame-id
+
+form set-variable-value-parameter-type, name <SetVariableValueParameterType>
+  link scope-number, name <scopeNumber>
+    like native-number
+    flex true
+  link variable-name, name <variableName>
+    like native-string
+    flex true
+  link new-value, name <newValue>
+    like runtime-call-argument
+    flex true
+  link call-frame-id, name <callFrameId>
+    like call-frame-id
+    flex true

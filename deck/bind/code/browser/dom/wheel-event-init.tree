@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/mouse-event-init
+  find mouse-event-init
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form wheel-event-init, name <WheelEventInit>
+  base mouse-event-init
+
+  link delta-mode, name <deltaMode>
+    like native-number
+    lock false
+  link delta-x, name <deltaX>
+    like native-number
+    lock false
+  link delta-y, name <deltaY>
+    like native-number
+    lock false
+  link delta-z, name <deltaZ>
+    like native-number
+    lock false

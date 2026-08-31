@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/audio-node
+  find audio-node
+
+load @term/bind/code/browser/dom/media-stream
+  find media-stream
+
+form media-stream-audio-destination-node, name <MediaStreamAudioDestinationNode>
+  base audio-node
+
+  link stream, name <stream>
+    like media-stream

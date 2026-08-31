@@ -1,0 +1,71 @@
+
+load @term/bind/code/browser/dom/media-stream
+  find media-stream
+
+load @term/bind/code/browser/dom/media-stream-track
+  find media-stream-track
+
+load @term/bind/code/browser/dom/rtc-dtls-transport
+  find rtc-dtls-transport
+
+load @term/bind/code/browser/dom/rtc-rtp-send-parameters
+  find rtc-rtp-send-parameters
+
+load @term/bind/code/browser/dom/rtc-stats-report
+  find rtc-stats-report
+
+load @term/bind/code/browser/dom/rtcdtmf-sender
+  find rtcdtmf-sender
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form rtc-rtp-sender, name <RTCRtpSender>
+  link dtmf, name <dtmf>
+    like or
+      like rtcdtmf-sender
+      like native-null
+  link track, name <track>
+    like or
+      like media-stream-track
+      like native-null
+  link transport, name <transport>
+    like or
+      like rtc-dtls-transport
+      like native-null
+
+  task get-parameters, name <getParameters>
+    like rtc-rtp-send-parameters
+
+  task get-stats, name <getStats>
+    like promise
+      like rtc-stats-report
+
+  task replace-track, name <replaceTrack>
+    take with-track
+      like or
+        like media-stream-track
+        like native-null
+    like promise
+      like native-void
+
+  task set-parameters, name <setParameters>
+    take parameters, like rtc-rtp-send-parameters
+    like promise
+      like native-void
+
+  task set-streams, name <setStreams>
+    take streams
+      like native-array
+        like media-stream
+      rest true
+    like native-void

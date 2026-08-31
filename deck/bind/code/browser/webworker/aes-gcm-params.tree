@@ -1,0 +1,77 @@
+
+load @term/bind/code/browser/dom/aes-gcm-params
+  find aes-gcm-params
+
+load @term/bind/code/browser/webworker/algorithm
+  find algorithm
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+load @term/bind/code/javascript/es5/data-view
+  find data-view
+
+load @term/bind/code/javascript/es5/float32-array
+  find float32-array
+
+load @term/bind/code/javascript/es5/float64-array
+  find float64-array
+
+load @term/bind/code/javascript/es5/int16-array
+  find int16-array
+
+load @term/bind/code/javascript/es5/int32-array
+  find int32-array
+
+load @term/bind/code/javascript/es5/int8-array
+  find int8-array
+
+load @term/bind/code/javascript/es5/uint16-array
+  find uint16-array
+
+load @term/bind/code/javascript/es5/uint32-array
+  find uint32-array
+
+load @term/bind/code/javascript/es5/uint8-array
+  find uint8-array
+
+load @term/bind/code/javascript/es5/uint8-clamped-array
+  find uint8-clamped-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form aes-gcm-params, name <AesGcmParams>
+  base algorithm
+
+  link additional-data, name <additionalData>
+    like or
+      like int8-array
+      like int16-array
+      like int32-array
+      like uint8-array
+      like uint16-array
+      like uint32-array
+      like uint8-clamped-array
+      like float32-array
+      like float64-array
+      like data-view
+      like array-buffer
+    lock false
+  link iv, name <iv>
+    like or
+      like int8-array
+      like int16-array
+      like int32-array
+      like uint8-array
+      like uint16-array
+      like uint32-array
+      like uint8-clamped-array
+      like float32-array
+      like float64-array
+      like data-view
+      like array-buffer
+    lock false
+  link tag-length, name <tagLength>
+    like native-number
+    lock false

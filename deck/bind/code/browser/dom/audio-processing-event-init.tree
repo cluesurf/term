@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/audio-buffer
+  find audio-buffer
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form audio-processing-event-init, name <AudioProcessingEventInit>
+  base event-init
+
+  link input-buffer, name <inputBuffer>
+    like audio-buffer
+    lock false
+  link output-buffer, name <outputBuffer>
+    like audio-buffer
+    lock false
+  link playback-time, name <playbackTime>
+    like native-number
+    lock false

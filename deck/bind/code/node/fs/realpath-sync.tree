@@ -1,0 +1,36 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/fs
+  find buffer-encoding-option
+  find encoding-option
+  find path-like
+
+task native, name <native>
+  like native-string
+
+  take path, like path-like
+  take options, like encoding-option
+    void true
+
+task native, name <native>
+  like buffer
+
+  take path, like path-like
+  take options, like buffer-encoding-option
+
+task native, name <native>
+  like or
+    like native-string
+    like buffer
+
+  take path, like path-like
+  take options, like encoding-option
+    void true

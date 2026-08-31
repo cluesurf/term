@@ -1,0 +1,13 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form array-buffer, name <ArrayBuffer>
+  link byte-length, name <byteLength>
+    like native-number
+
+  task slice, name <slice>
+    take begin, like native-number
+    take end, like maybe
+      like native-number
+    like array-buffer

@@ -1,0 +1,54 @@
+
+load @term/bind/code/browser/dom/document
+  find document
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/browser/dom/intersection-observer-entry
+  find intersection-observer-entry
+
+load @term/bind/code/javascript/es5/readonly-array
+  find readonly-array
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form intersection-observer, name <IntersectionObserver>
+  link root, name <root>
+    like or
+      like element
+      like document
+      like native-null
+  link root-margin, name <rootMargin>
+    like native-string
+  link thresholds, name <thresholds>
+    like readonly-array
+      like native-number
+
+  task disconnect, name <disconnect>
+    like native-void
+
+  task observe, name <observe>
+    take target, like element
+    like native-void
+
+  task take-records, name <takeRecords>
+    like native-array
+      like intersection-observer-entry
+
+  task unobserve, name <unobserve>
+    take target, like element
+    like native-void

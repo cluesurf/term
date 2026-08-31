@@ -1,0 +1,356 @@
+
+load @term/bind
+  find any
+  find form
+  find like
+  find never
+  find or
+  find test
+  find unknown
+
+load @term/bind/code/javascript
+  find array-buffer
+  find array-buffer-like
+  find big-int
+  find boolean
+  find data-view
+  find date
+  find error
+  find generator
+  find generator-function
+  find i-arguments
+  find map
+  find native-boolean
+  find native-object
+  find node-js-array-buffer-view
+  find node-js-typed-array
+  find number
+  find promise
+  find readonly-map
+  find readonly-set
+  find reg-exp
+  find set
+  find shared-array-buffer
+  find symbol
+  find weak-map
+  find weak-set
+  find webcrypto-crypto-key
+
+load @term/bind/code/node/globals
+  find big-int64-array
+  find big-uint64-array
+  find float32-array
+  find float64-array
+  find int16-array
+  find int32-array
+  find int8-array
+  find string
+  find uint16-array
+  find uint32-array
+  find uint8-array
+  find uint8-clamped-array
+
+load @term/bind/code/node/tls
+  find key-object
+
+task is-any-array-buffer, name <isAnyArrayBuffer>
+  like native-boolean
+  rank object, like array-buffer-like
+
+  take object, like unknown
+
+task is-arguments-object, name <isArgumentsObject>
+  like native-boolean
+  rank object, like i-arguments
+
+  take object, like unknown
+
+task is-array-buffer, name <isArrayBuffer>
+  like native-boolean
+  rank object, like array-buffer
+
+  take object, like unknown
+
+task is-array-buffer-view, name <isArrayBufferView>
+  like native-boolean
+  rank object, like node-js-array-buffer-view
+
+  take object, like unknown
+
+task is-async-function, name <isAsyncFunction>
+  like native-boolean
+
+  take object, like unknown
+
+task is-big-int64-array, name <isBigInt64Array>
+  like native-boolean
+  rank value, like big-int64-array
+
+  take value, like unknown
+
+task is-big-uint64-array, name <isBigUint64Array>
+  like native-boolean
+  rank value, like big-uint64-array
+
+  take value, like unknown
+
+task is-boolean-object, name <isBooleanObject>
+  like native-boolean
+  rank object, like boolean
+
+  take object, like unknown
+
+task is-boxed-primitive, name <isBoxedPrimitive>
+  like native-boolean
+  rank object
+    like or
+      like string
+      like number
+      like big-int
+      like boolean
+      like symbol
+
+  take object, like unknown
+
+task is-data-view, name <isDataView>
+  like native-boolean
+  rank object, like data-view
+
+  take object, like unknown
+
+task is-date, name <isDate>
+  like native-boolean
+  rank object, like date
+
+  take object, like unknown
+
+task is-external, name <isExternal>
+  like native-boolean
+
+  take object, like unknown
+
+task is-float32-array, name <isFloat32Array>
+  like native-boolean
+  rank object, like float32-array
+
+  take object, like unknown
+
+task is-float64-array, name <isFloat64Array>
+  like native-boolean
+  rank object, like float64-array
+
+  take object, like unknown
+
+task is-generator-function, name <isGeneratorFunction>
+  like native-boolean
+  rank object, like generator-function
+
+  take object, like unknown
+
+task is-generator-object, name <isGeneratorObject>
+  like native-boolean
+  rank object, like generator
+
+  take object, like unknown
+
+task is-int8-array, name <isInt8Array>
+  like native-boolean
+  rank object, like int8-array
+
+  take object, like unknown
+
+task is-int16-array, name <isInt16Array>
+  like native-boolean
+  rank object, like int16-array
+
+  take object, like unknown
+
+task is-int32-array, name <isInt32Array>
+  like native-boolean
+  rank object, like int32-array
+
+  take object, like unknown
+
+task is-map, name <isMap>
+  like native-boolean
+  rank object
+    like test
+      stem roll
+        like t
+        like readonly-map
+          like any
+          like any
+        hook true
+          like test
+            stem roll
+              like unknown
+              like t
+              hook true
+                like never
+              hook false
+                like readonly-map
+                  like any
+                  like any
+        hook false
+          like map
+            like unknown
+            like unknown
+
+  head t
+
+  take object
+    like or
+      like t
+      like form
+
+task is-map-iterator, name <isMapIterator>
+  like native-boolean
+
+  take object, like unknown
+
+task is-module-namespace-object, name <isModuleNamespaceObject>
+  like native-boolean
+
+  take value, like unknown
+
+task is-native-error, name <isNativeError>
+  like native-boolean
+  rank object, like error
+
+  take object, like unknown
+
+task is-number-object, name <isNumberObject>
+  like native-boolean
+  rank object, like number
+
+  take object, like unknown
+
+task is-promise, name <isPromise>
+  like native-boolean
+  rank object
+    like promise
+      like unknown
+
+  take object, like unknown
+
+task is-proxy, name <isProxy>
+  like native-boolean
+
+  take object, like unknown
+
+task is-reg-exp, name <isRegExp>
+  like native-boolean
+  rank object, like reg-exp
+
+  take object, like unknown
+
+task is-set, name <isSet>
+  like native-boolean
+  rank object
+    like test
+      stem roll
+        like t
+        like readonly-set
+          like any
+        hook true
+          like test
+            stem roll
+              like unknown
+              like t
+              hook true
+                like never
+              hook false
+                like readonly-set
+                  like any
+        hook false
+          like set
+            like unknown
+
+  head t
+
+  take object
+    like or
+      like t
+      like form
+
+task is-set-iterator, name <isSetIterator>
+  like native-boolean
+
+  take object, like unknown
+
+task is-shared-array-buffer, name <isSharedArrayBuffer>
+  like native-boolean
+  rank object, like shared-array-buffer
+
+  take object, like unknown
+
+task is-string-object, name <isStringObject>
+  like native-boolean
+  rank object, like string
+
+  take object, like unknown
+
+task is-symbol-object, name <isSymbolObject>
+  like native-boolean
+  rank object, like symbol
+
+  take object, like unknown
+
+task is-typed-array, name <isTypedArray>
+  like native-boolean
+  rank object, like node-js-typed-array
+
+  take object, like unknown
+
+task is-uint8-array, name <isUint8Array>
+  like native-boolean
+  rank object, like uint8-array
+
+  take object, like unknown
+
+task is-uint8-clamped-array, name <isUint8ClampedArray>
+  like native-boolean
+  rank object, like uint8-clamped-array
+
+  take object, like unknown
+
+task is-uint16-array, name <isUint16Array>
+  like native-boolean
+  rank object, like uint16-array
+
+  take object, like unknown
+
+task is-uint32-array, name <isUint32Array>
+  like native-boolean
+  rank object, like uint32-array
+
+  take object, like unknown
+
+task is-weak-map, name <isWeakMap>
+  like native-boolean
+  rank object
+    like weak-map
+      like native-object
+      like unknown
+
+  take object, like unknown
+
+task is-weak-set, name <isWeakSet>
+  like native-boolean
+  rank object
+    like weak-set
+      like native-object
+
+  take object, like unknown
+
+task is-key-object, name <isKeyObject>
+  like native-boolean
+  rank object, like key-object
+
+  take object, like unknown
+
+task is-crypto-key, name <isCryptoKey>
+  like native-boolean
+  rank object, like webcrypto-crypto-key
+
+  take object, like unknown

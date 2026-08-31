@@ -1,0 +1,6 @@
+
+form canvas-line-cap, name <CanvasLineCap>
+  like or
+    text <butt>
+    text <round>
+    text <square>

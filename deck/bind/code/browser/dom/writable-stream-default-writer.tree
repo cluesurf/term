@@ -1,0 +1,52 @@
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form writable-stream-default-writer, name <WritableStreamDefaultWriter>
+  head w
+    back native-any
+
+  link closed, name <closed>
+    like promise
+      like native-undefined
+  link desired-size, name <desiredSize>
+    like or
+      like native-number
+      like native-null
+  link ready, name <ready>
+    like promise
+      like native-undefined
+
+  task abort, name <abort>
+    take reason, like maybe
+      like native-any
+    like promise
+      like native-void
+
+  task close, name <close>
+    like promise
+      like native-void
+
+  task release-lock, name <releaseLock>
+    like native-void
+
+  task write, name <write>
+    take chunk, like maybe
+      like w
+    like promise
+      like native-void

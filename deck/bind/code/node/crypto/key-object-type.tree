@@ -1,0 +1,9 @@
+
+load @term/bind
+  find or
+
+form key-object-type, name <KeyObjectType>
+  like or
+    text <secret>
+    text <public>
+    text <private>

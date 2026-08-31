@@ -1,0 +1,7 @@
+
+form insert-position, name <InsertPosition>
+  like or
+    text <beforebegin>
+    text <afterbegin>
+    text <beforeend>
+    text <afterend>

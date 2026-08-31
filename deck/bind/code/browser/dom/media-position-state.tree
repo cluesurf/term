@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form media-position-state, name <MediaPositionState>
+  link duration, name <duration>
+    like native-number
+    lock false
+  link playback-rate, name <playbackRate>
+    like native-number
+    lock false
+  link position, name <position>
+    like native-number
+    lock false

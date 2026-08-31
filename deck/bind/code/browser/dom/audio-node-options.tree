@@ -1,0 +1,20 @@
+
+load @term/bind/code/browser/dom/channel-count-mode
+  find channel-count-mode
+
+load @term/bind/code/browser/dom/channel-interpretation
+  find channel-interpretation
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form audio-node-options, name <AudioNodeOptions>
+  link channel-count, name <channelCount>
+    like native-number
+    lock false
+  link channel-count-mode, name <channelCountMode>
+    like channel-count-mode
+    lock false
+  link channel-interpretation, name <channelInterpretation>
+    like channel-interpretation
+    lock false

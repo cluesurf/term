@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/css-rule
+  find css-rule
+
+load @term/bind/code/browser/dom/css-style-sheet
+  find css-style-sheet
+
+load @term/bind/code/browser/dom/media-list
+  find media-list
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form css-import-rule, name <CSSImportRule>
+  base css-rule
+
+  link href, name <href>
+    like native-string
+  link media, name <media>
+    like media-list
+  link style-sheet, name <styleSheet>
+    like css-style-sheet

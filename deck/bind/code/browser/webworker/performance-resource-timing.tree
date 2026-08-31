@@ -1,0 +1,56 @@
+
+load @term/bind/code/browser/dom/performance-resource-timing
+  find performance-resource-timing
+
+load @term/bind/code/browser/webworker/performance-entry
+  find performance-entry
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form performance-resource-timing, name <PerformanceResourceTiming>
+  base performance-entry
+
+  link connect-end, name <connectEnd>
+    like native-number
+  link connect-start, name <connectStart>
+    like native-number
+  link decoded-body-size, name <decodedBodySize>
+    like native-number
+  link domain-lookup-end, name <domainLookupEnd>
+    like native-number
+  link domain-lookup-start, name <domainLookupStart>
+    like native-number
+  link encoded-body-size, name <encodedBodySize>
+    like native-number
+  link fetch-start, name <fetchStart>
+    like native-number
+  link initiator-type, name <initiatorType>
+    like native-string
+  link next-hop-protocol, name <nextHopProtocol>
+    like native-string
+  link redirect-end, name <redirectEnd>
+    like native-number
+  link redirect-start, name <redirectStart>
+    like native-number
+  link request-start, name <requestStart>
+    like native-number
+  link response-end, name <responseEnd>
+    like native-number
+  link response-start, name <responseStart>
+    like native-number
+  link secure-connection-start, name <secureConnectionStart>
+    like native-number
+  link transfer-size, name <transferSize>
+    like native-number
+  link worker-start, name <workerStart>
+    like native-number
+
+  task to-json, name <toJSON>
+    like native-any

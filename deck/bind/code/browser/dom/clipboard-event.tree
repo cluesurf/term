@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/data-transfer
+  find data-transfer
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/javascript/native
+  find native-null
+
+form clipboard-event, name <ClipboardEvent>
+  base event
+
+  link clipboard-data, name <clipboardData>
+    like or
+      like data-transfer
+      like native-null

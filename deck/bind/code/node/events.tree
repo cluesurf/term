@@ -1,0 +1,6 @@
+
+bear @term/bind/code/javascript/node/events/event-emitter-options
+bear @term/bind/code/javascript/node/events/node-event-target
+bear @term/bind/code/javascript/node/events/dom-event-target
+bear @term/bind/code/javascript/node/events/static-event-emitter-options
+bear @term/bind/code/javascript/node/events/event-emitter

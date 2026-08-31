@@ -1,0 +1,33 @@
+
+load @term/bind/code/browser/dom/buffer-source
+  find buffer-source
+
+load @term/bind/code/browser/dom/media-key-status
+  find media-key-status
+
+load @term/bind/code/browser/dom/media-key-status-map
+  find media-key-status-map
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+form media-key-status-map, name <MediaKeyStatusMap>
+  task {symbol/iterator}
+    like iterable-iterator
+      like band
+        like buffer-source
+        like media-key-status
+
+  task entries, name <entries>
+    like iterable-iterator
+      like band
+        like buffer-source
+        like media-key-status
+
+  task keys, name <keys>
+    like iterable-iterator
+      like buffer-source
+
+  task values, name <values>
+    like iterable-iterator
+      like media-key-status

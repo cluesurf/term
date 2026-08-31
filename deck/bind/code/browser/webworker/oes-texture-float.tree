@@ -1,0 +1,5 @@
+
+load @term/bind/code/browser/dom/oes-texture-float
+  find oes-texture-float
+
+form oes-texture-float, name <OES_texture_float>

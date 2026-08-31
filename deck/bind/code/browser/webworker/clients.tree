@@ -1,0 +1,64 @@
+
+load @term/bind/code/browser/webworker/client
+  find client
+
+load @term/bind/code/browser/webworker/client-query-options
+  find client-query-options
+
+load @term/bind/code/browser/webworker/window-client
+  find window-client
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/es5/readonly-array
+  find readonly-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form clients, name <Clients>
+  task claim, name <claim>
+    like promise
+      like native-void
+
+  task get, name <get>
+    take id, like native-string
+    like promise
+      like or
+        like client
+        like native-undefined
+
+  task match-all, name <matchAll>
+    head t
+      base client-query-options
+    take options, like maybe
+      like t
+    like promise
+      like readonly-array
+        like test
+          stem roll
+            like index
+              like t
+              text <type>
+            text <window>
+            hook true
+              like window-client
+            hook false
+              like client
+
+  task open-window, name <openWindow>
+    take url, like native-string
+    like promise
+      like or
+        like window-client
+        like native-null

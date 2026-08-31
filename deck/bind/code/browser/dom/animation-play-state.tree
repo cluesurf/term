@@ -1,0 +1,7 @@
+
+form animation-play-state, name <AnimationPlayState>
+  like or
+    text <finished>
+    text <idle>
+    text <paused>
+    text <running>

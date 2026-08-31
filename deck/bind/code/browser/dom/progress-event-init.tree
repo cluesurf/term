@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form progress-event-init, name <ProgressEventInit>
+  base event-init
+
+  link length-computable, name <lengthComputable>
+    like native-boolean
+    lock false
+  link loaded, name <loaded>
+    like native-number
+    lock false
+  link total, name <total>
+    like native-number
+    lock false

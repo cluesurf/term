@@ -1,0 +1,954 @@
+
+form b-tree-set, name <std::collections::BTreeSet>
+  task new, name <new>
+    note <Makes a new, empty BTreeSet.>
+
+    free seed
+      like b-tree-set
+        like t
+          cite free
+        cite free
+
+  task range, name <range>
+    note <Constructs a double-ended iterator over a sub-range of elements in the set. The simplest way is to use the range syntax min..max, thus range(min..max) will yield elements from min (inclusive) to max (exclusive). The range may also be entered as (Bound&lt;T&gt;, Bound&lt;T&gt;), so for example range((Excluded(4), Included(10))) will yield a left-exclusive, right-inclusive range from 4 to 10.>
+
+    lead k
+      like ord
+        cite free
+    lead t
+      like borrow
+        like k
+          cite free
+        cite free
+    lead r
+      like range-bounds
+        like k
+          cite free
+        cite free
+
+    head k
+    head r
+
+    take self
+      cite free
+    take range
+      like r
+        cite free
+      cite free
+
+    free seed
+      like range
+        time mask
+        like t
+          cite free
+        cite free
+
+  task difference, name <difference>
+    note <Visits the elements representing the difference, i.e., the elements that are in self but not in other, in ascending order.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+    take other
+      like b-tree-set
+        like t
+          cite free
+        time a
+
+    free seed
+      like difference
+        time a
+        like t
+          cite free
+        cite free
+
+  task symmetric-difference, name <symmetric_difference>
+    note <Visits the elements representing the symmetric difference, i.e., the elements that are in self or in other but not in both, in ascending order.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+    take other
+      like b-tree-set
+        like t
+          cite free
+        time a
+
+    free seed
+      like symmetric-difference
+        time a
+        like t
+          cite free
+        cite free
+
+  task intersection, name <intersection>
+    note <Visits the elements representing the intersection, i.e., the elements that are both in self and other, in ascending order.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+    take other
+      like b-tree-set
+        like t
+          cite free
+        time a
+
+    free seed
+      like intersection
+        time a
+        like t
+          cite free
+        cite free
+
+  task union, name <union>
+    note <Visits the elements representing the union, i.e., all the elements in self or other, without duplicates, in ascending order.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+    take other
+      like b-tree-set
+        like t
+          cite free
+        time a
+
+    free seed
+      like union
+        time a
+        like t
+          cite free
+        cite free
+
+  task clear, name <clear>
+    note <Clears the set, removing all elements.>
+
+    take self
+      cite free
+
+  task contains, name <contains>
+    note <Returns true if the set contains an element equal to the value.>
+
+    lead t
+      like borrow
+        like q
+          cite free
+        cite free
+    lead q
+      like ord
+        cite free
+
+    head q
+
+    take self
+      cite free
+    take value
+      like q
+
+    free seed
+      like bool
+        cite free
+
+  task get, name <get>
+    note <Returns a reference to the element in the set, if any, that is equal to the value.>
+
+    lead t
+      like borrow
+        like q
+          cite free
+        cite free
+    lead q
+      like ord
+        cite free
+
+    head q
+
+    take self
+      cite free
+    take value
+      like q
+
+    free seed
+      like option
+        like t
+        cite free
+
+  task is-disjoint, name <is_disjoint>
+    note <Returns true if self has no elements in common with other. This is equivalent to checking for an empty intersection.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+    take other
+      like b-tree-set
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-subset, name <is_subset>
+    note <Returns true if the set is a subset of another, i.e., other contains at least all the elements in self.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+    take other
+      like b-tree-set
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-superset, name <is_superset>
+    note <Returns true if the set is a superset of another, i.e., self contains at least all the elements in other.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+    take other
+      like b-tree-set
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task first, name <first>
+    note <Returns a reference to the first element in the set, if any. This element is always the minimum of all elements in the set.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like t
+        cite free
+
+  task last, name <last>
+    note <Returns a reference to the last element in the set, if any. This element is always the maximum of all elements in the set.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like t
+        cite free
+
+  task pop-first, name <pop_first>
+    note <Removes the first element from the set and returns it, if any. The first element is always the minimum element in the set.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like t
+          cite free
+        cite free
+
+  task pop-last, name <pop_last>
+    note <Removes the last element from the set and returns it, if any. The last element is always the maximum element in the set.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like t
+          cite free
+        cite free
+
+  task insert, name <insert>
+    note <Adds a value to the set.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+    take value
+      like t
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task replace, name <replace>
+    note <Adds a value to the set, replacing the existing element, if any, that is equal to the value. Returns the replaced element.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+    take value
+      like t
+        cite free
+      cite free
+
+    free seed
+      like option
+        like t
+          cite free
+        cite free
+
+  task remove, name <remove>
+    note <If the set contains an element equal to the value, removes it from the set and drops it. Returns whether such an element was present.>
+
+    lead t
+      like borrow
+        like q
+          cite free
+        cite free
+    lead q
+      like ord
+        cite free
+
+    head q
+
+    take self
+      cite free
+    take value
+      like q
+
+    free seed
+      like bool
+        cite free
+
+  task take, name <take>
+    note <Removes and returns the element in the set, if any, that is equal to the value.>
+
+    lead t
+      like borrow
+        like q
+          cite free
+        cite free
+    lead q
+      like ord
+        cite free
+
+    head q
+
+    take self
+      cite free
+    take value
+      like q
+
+    free seed
+      like option
+        like t
+          cite free
+        cite free
+
+  task retain, name <retain>
+    note <Retains only the elements specified by the predicate.>
+
+    lead t
+      like ord
+        cite free
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+  task append, name <append>
+    note <Moves all elements from other into Self, leaving other empty.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+    take other
+      like b-tree-set
+        like t
+          cite free
+      lock free
+
+  task split-off, name <split_off>
+    note <Splits the collection into two at the value. Returns a new collection with all elements greater than or equal to the value.>
+
+    lead q
+      like ord
+        cite free
+    lead t
+      like borrow
+        like q
+          cite free
+        cite free
+
+    head q
+
+    take self
+      cite free
+    take value
+      like q
+
+    free seed
+      like b-tree-set
+        like t
+          cite free
+        cite free
+
+  task drain-filter, name <drain_filter>
+    note <Creates an iterator that visits all elements in ascending order and uses a closure to determine if an element should be removed.>
+
+    lead t
+      like ord
+        cite free
+    lead f
+      time a
+      base fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    time a
+
+    head f
+
+    take self
+      cite free
+    take pred
+      like f
+        cite free
+      cite free
+
+    free seed
+      like drain-filter
+        time a
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task iter, name <iter>
+    note <Gets an iterator that visits the elements in the BTreeSet in ascending order.>
+
+    take self
+      cite free
+
+    free seed
+      like iter
+        time mask
+        like t
+          cite free
+        cite free
+
+  task len, name <len>
+    note <Returns the number of elements in the set.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task is-empty, name <is_empty>
+    note <Returns true if the set contains no elements.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task bitand, name <bitand>
+    note <Returns the intersection of self and rhs as a new BTreeSet&lt;T&gt;.>
+
+    take self
+      cite free
+    take rhs
+      like b-tree-set
+        like t
+          cite free
+
+    free seed
+      like b-tree-set
+        like t
+          cite free
+        cite free
+
+  task bitor, name <bitor>
+    note <Returns the union of self and rhs as a new BTreeSet&lt;T&gt;.>
+
+    take self
+      cite free
+    take rhs
+      like b-tree-set
+        like t
+          cite free
+
+    free seed
+      like b-tree-set
+        like t
+          cite free
+        cite free
+
+  task bitxor, name <bitxor>
+    note <Returns the symmetric difference of self and rhs as a new BTreeSet&lt;T&gt;.>
+
+    take self
+      cite free
+    take rhs
+      like b-tree-set
+        like t
+          cite free
+
+    free seed
+      like b-tree-set
+        like t
+          cite free
+        cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like b-tree-set
+        like t
+          cite free
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take other
+      like b-tree-set
+        like t
+          cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Creates an empty BTreeSet.>
+
+    free seed
+      like b-tree-set
+        like t
+          cite free
+        cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like t
+              time a
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take t
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead iter
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like t
+              cite free
+        cite free
+
+    head iter
+
+    take self
+      cite free
+    take iter
+      like iter
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take elem
+      like t
+        cite free
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task from, name <from>
+    take arr
+      like list
+        like t
+        name n
+      cite free
+
+    free seed
+      like b-tree-set
+        like t
+          cite free
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like t
+              cite free
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like b-tree-set
+        like t
+          cite free
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task into-iter, name <into_iter>
+    note <Gets an iterator for moving out the BTreeSet's contents.>
+
+    take self
+      cite free
+
+    free seed
+      like into-iter
+        like t
+          cite free
+        cite free
+
+  task into-iter, name <into_iter>
+    note <Creates an iterator from a value.>
+
+    take self
+      cite free
+
+    free seed
+      like iter
+        time a
+        like t
+          cite free
+        cite free
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like b-tree-set
+        like t
+          cite free
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like b-tree-set
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like b-tree-set
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like b-tree-set
+        like t
+          cite free
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task sub, name <sub>
+    note <Returns the difference of self and rhs as a new BTreeSet&lt;T&gt;.>
+
+    take self
+      cite free
+    take rhs
+      like b-tree-set
+        like t
+          cite free
+
+    free seed
+      like b-tree-set
+        like t
+          cite free
+        cite free

@@ -1,0 +1,159 @@
+
+load @term/bind/code/browser/dom/console
+  find console
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form console, name <Console>
+  link memory, name <memory>
+    like native-any
+    lock false
+
+  task assert, name <assert>
+    take condition, like maybe
+      like native-boolean
+    take data
+      like native-array
+        like native-any
+      rest true
+    like native-void
+
+  task clear, name <clear>
+    like native-void
+
+  task count, name <count>
+    take label, like maybe
+      like native-string
+    like native-void
+
+  task count-reset, name <countReset>
+    take label, like maybe
+      like native-string
+    like native-void
+
+  task debug, name <debug>
+    take data
+      like native-array
+        like native-any
+      rest true
+    like native-void
+
+  task dir, name <dir>
+    take item, like maybe
+      like native-any
+    take options, like maybe
+      like native-any
+    like native-void
+
+  task dirxml, name <dirxml>
+    take data
+      like native-array
+        like native-any
+      rest true
+    like native-void
+
+  task error, name <error>
+    take data
+      like native-array
+        like native-any
+      rest true
+    like native-void
+
+  task exception, name <exception>
+    take message, like maybe
+      like native-string
+    take optional-params
+      like native-array
+        like native-any
+      rest true
+    like native-void
+
+  task group, name <group>
+    take data
+      like native-array
+        like native-any
+      rest true
+    like native-void
+
+  task group-collapsed, name <groupCollapsed>
+    take data
+      like native-array
+        like native-any
+      rest true
+    like native-void
+
+  task group-end, name <groupEnd>
+    like native-void
+
+  task info, name <info>
+    take data
+      like native-array
+        like native-any
+      rest true
+    like native-void
+
+  task log, name <log>
+    take data
+      like native-array
+        like native-any
+      rest true
+    like native-void
+
+  task table, name <table>
+    take tabular-data, like maybe
+      like native-any
+    take properties, like maybe
+      like native-array
+        like native-string
+    like native-void
+
+  task time, name <time>
+    take label, like maybe
+      like native-string
+    like native-void
+
+  task time-end, name <timeEnd>
+    take label, like maybe
+      like native-string
+    like native-void
+
+  task time-log, name <timeLog>
+    take label, like maybe
+      like native-string
+    take data
+      like native-array
+        like native-any
+      rest true
+    like native-void
+
+  task time-stamp, name <timeStamp>
+    take label, like maybe
+      like native-string
+    like native-void
+
+  task trace, name <trace>
+    take data
+      like native-array
+        like native-any
+      rest true
+    like native-void
+
+  task warn, name <warn>
+    take data
+      like native-array
+        like native-any
+      rest true
+    like native-void

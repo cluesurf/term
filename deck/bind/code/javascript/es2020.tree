@@ -1,0 +1,9 @@
+
+bear @term/bind/code/javascript/es2019
+bear @term/bind/code/javascript/es2020/bigint
+bear @term/bind/code/javascript/es2020/promise
+bear @term/bind/code/javascript/es2020/sharedmemory
+bear @term/bind/code/javascript/es2020/string
+bear @term/bind/code/javascript/es2020/symbol/wellknown
+bear @term/bind/code/javascript/es2020/intl
+bear @term/bind/code/javascript/es2020/full

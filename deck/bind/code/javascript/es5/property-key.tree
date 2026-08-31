@@ -1,0 +1,15 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-symbol
+
+form property-key, name <PropertyKey>
+  like or
+    like native-string
+    like native-number
+    like native-symbol

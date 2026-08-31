@@ -1,0 +1,17 @@
+
+load @term/bind
+  find or
+
+form cipher-mode, name <CipherMode>
+  like or
+    text <cbc>
+    text <ccm>
+    text <cfb>
+    text <ctr>
+    text <ecb>
+    text <gcm>
+    text <ocb>
+    text <ofb>
+    text <stream>
+    text <wrap>
+    text <xts>

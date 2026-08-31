@@ -1,0 +1,6 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form cose-algorithm-identifier, name <COSEAlgorithmIdentifier>
+  like native-number

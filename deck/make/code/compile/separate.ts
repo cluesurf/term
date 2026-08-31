@@ -27,8 +27,8 @@ import {
   collectTemplates,
 } from '@term/make/code/compile/template'
 import type { Template } from '@term/make/code/compile/template'
-import { collectModules } from '@term/make/code/compile/load'
-import type { Resolver, Source } from '@term/make/code/compile/load'
+import { collectModules, importPathsOf, makeParseMemo } from '@term/make/code/compile/load'
+import type { ParseMemo, Resolver, Source } from '@term/make/code/compile/load'
 import { compileProgram } from '@term/make/code/compile/compile'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
 import { stubProgram } from '@term/make/code/compile/stub'
@@ -60,10 +60,12 @@ type UnitBuild = {
   warnings: Diagnostic[]
 }
 
-// import edges between FILES, from the same cheap scan collectModules uses (via the resolver)
+// import edges between FILES, read from the same parse trees collectModules walks, so the two cannot disagree about
+// what a file imports
 function fileEdges(
   sources: Source[],
   resolve: Resolver,
+  parsed: ParseMemo,
 ): Map<string, string[]> {
   const known = new Set(sources.map(s => s.file))
   const edges = new Map<string, string[]>()
@@ -71,15 +73,11 @@ function fileEdges(
   for (const unit of sources) {
     const deps: string[] = []
 
-    for (const line of unit.text.split('\n')) {
-      const head = /^(load|bear)\s+([^\s,]+)/.exec(line)
+    for (const path of importPathsOf(unit, parsed)) {
+      const dep = resolve(path, unit.file)
 
-      if (head && !head[2]!.startsWith('<')) {
-        const dep = resolve(head[2]!, unit.file)
-
-        if (dep && known.has(dep.file) && dep.file !== unit.file) {
-          deps.push(dep.file)
-        }
+      if (dep && known.has(dep.file) && dep.file !== unit.file) {
+        deps.push(dep.file)
       }
     }
 
@@ -155,8 +153,10 @@ export function compileSeparate(
     env?: string
   },
 ): SeparateResult {
-  const { sources } = collectModules(source, options.resolve)
-  const edges = fileEdges(sources, options.resolve)
+  // one parse per module, shared by the dependency walk and the edge graph
+  const parsed = makeParseMemo()
+  const { sources } = collectModules(source, options.resolve, parsed)
+  const edges = fileEdges(sources, options.resolve, parsed)
   const order = units(
     sources.map(s => s.file),
     edges,

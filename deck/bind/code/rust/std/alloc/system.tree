@@ -1,0 +1,258 @@
+
+form system, name <std::alloc::System>
+  task allocate, name <allocate>
+    note <Attempts to allocate a block of memory.>
+
+    take self
+      cite free
+    take layout
+      like layout
+        cite free
+      cite free
+
+    free seed
+      like result
+        like non-null
+          list u8
+          cite free
+        like alloc-error
+          cite free
+        cite free
+
+  task allocate-zeroed, name <allocate_zeroed>
+    note <Behaves like allocate, but also ensures that the returned memory is zero-initialized.>
+
+    take self
+      cite free
+    take layout
+      like layout
+        cite free
+      cite free
+
+    free seed
+      like result
+        like non-null
+          list u8
+          cite free
+        like alloc-error
+          cite free
+        cite free
+
+  task deallocate, name <deallocate>
+    note <Deallocates the memory referenced by ptr.>
+
+    take self
+      cite free
+    take ptr
+      like non-null
+        like u8
+          cite free
+        cite free
+      cite free
+    take layout
+      like layout
+        cite free
+      cite free
+
+  task grow, name <grow>
+    note <Attempts to extend the memory block.>
+
+    take self
+      cite free
+    take ptr
+      like non-null
+        like u8
+          cite free
+        cite free
+      cite free
+    take old-layout
+      like layout
+        cite free
+      cite free
+    take new-layout
+      like layout
+        cite free
+      cite free
+
+    free seed
+      like result
+        like non-null
+          list u8
+          cite free
+        like alloc-error
+          cite free
+        cite free
+
+  task grow-zeroed, name <grow_zeroed>
+    note <Behaves like grow, but also ensures that the new contents are set to zero before being returned.>
+
+    take self
+      cite free
+    take ptr
+      like non-null
+        like u8
+          cite free
+        cite free
+      cite free
+    take old-layout
+      like layout
+        cite free
+      cite free
+    take new-layout
+      like layout
+        cite free
+      cite free
+
+    free seed
+      like result
+        like non-null
+          list u8
+          cite free
+        like alloc-error
+          cite free
+        cite free
+
+  task shrink, name <shrink>
+    note <Attempts to shrink the memory block.>
+
+    take self
+      cite free
+    take ptr
+      like non-null
+        like u8
+          cite free
+        cite free
+      cite free
+    take old-layout
+      like layout
+        cite free
+      cite free
+    take new-layout
+      like layout
+        cite free
+      cite free
+
+    free seed
+      like result
+        like non-null
+          list u8
+          cite free
+        like alloc-error
+          cite free
+        cite free
+
+  task by-ref, name <by_ref>
+    note <Creates a “by reference” adapter for this instance of Allocator.>
+
+    take self
+      cite free
+
+    free seed
+      like self
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like system
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like system
+        cite free
+
+  task alloc, name <alloc>
+    note <Allocate memory as described by the given layout.>
+
+    take self
+      cite free
+    take layout
+      like layout
+        cite free
+      cite free
+
+    free seed
+      like u8
+        cite free
+
+  task alloc-zeroed, name <alloc_zeroed>
+    note <Behaves like alloc, but also ensures that the contents are set to zero before being returned.>
+
+    take self
+      cite free
+    take layout
+      like layout
+        cite free
+      cite free
+
+    free seed
+      like u8
+        cite free
+
+  task dealloc, name <dealloc>
+    note <Deallocate the block of memory at the given ptr pointer with the given layout.>
+
+    take self
+      cite free
+    take ptr
+      like u8
+        cite free
+      cite free
+      lock free
+      dive take
+    take layout
+      like layout
+        cite free
+      cite free
+
+  task realloc, name <realloc>
+    note <Shrink or grow a block of memory to the given new_size. The block is described by the given ptr pointer and layout.>
+
+    take self
+      cite free
+    take ptr
+      like u8
+        cite free
+      cite free
+      lock free
+      dive take
+    take layout
+      like layout
+        cite free
+      cite free
+    take new-size
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like u8
+        cite free

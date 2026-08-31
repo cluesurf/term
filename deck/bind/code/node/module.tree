@@ -1,0 +1,22 @@
+
+bear @term/bind/code/javascript/node/module/source-map-payload
+bear @term/bind/code/javascript/node/module/source-mapping
+bear @term/bind/code/javascript/node/module/source-map
+bear @term/bind/code/javascript/node/module/module
+bear @term/bind/code/javascript/node/module/import-meta
+
+load @term/bind/code/javascript
+  find error
+  find native-string
+  find native-void
+  find source-map
+
+task sync-builtin-esm-exports, name <syncBuiltinESMExports>
+  like native-void
+
+task find-source-map, name <findSourceMap>
+  like source-map
+
+  take path, like native-string
+  take error, like error
+    void true

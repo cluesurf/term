@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/mime-type-array
+  find mime-type-array
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form mime-type-array, name <MimeTypeArray>
+  task {symbol/iterator}
+    like iterable-iterator
+      like native-any

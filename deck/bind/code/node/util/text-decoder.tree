@@ -1,0 +1,53 @@
+
+load @term/bind
+  find form
+  find or
+
+load @term/bind/code/javascript
+  find array-buffer
+  find native-boolean
+  find native-null
+  find native-string
+  find native-undefined
+  find node-js-array-buffer-view
+
+form text-decoder, name <TextDecoder>
+  link encoding, name <encoding>, like native-string
+  link fatal, name <fatal>, like native-boolean
+  link ignore-bom, name <ignoreBOM>, like native-boolean
+
+  task decode, name <decode>
+    like native-string
+
+    take input
+      like or
+        like node-js-array-buffer-view
+        like array-buffer
+        like native-null
+      void true
+    take options
+      like form
+        link stream, name <stream>
+          like or
+            like native-boolean
+            like native-undefined
+          flex true
+      void true
+
+form text-decoder-constructor
+  hook make
+    take encoding, like native-string
+      void true
+    take options
+      like form
+        link fatal, name <fatal>
+          like or
+            like native-boolean
+            like native-undefined
+          flex true
+        link ignore-bom, name <ignoreBOM>
+          like or
+            like native-boolean
+            like native-undefined
+          flex true
+      void true

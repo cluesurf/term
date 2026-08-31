@@ -1,0 +1,17 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-number
+  find runtime-call-frame
+
+form sampling-heap-profile-node, name <SamplingHeapProfileNode>
+  link call-frame, name <callFrame>
+    like runtime-call-frame
+    flex true
+  link self-size, name <selfSize>
+    like native-number
+    flex true
+  link children, name <children>
+    like array
+      like sampling-heap-profile-node
+    flex true

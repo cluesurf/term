@@ -1,0 +1,12 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find node-js-array-buffer-view
+
+form binary-like, name <BinaryLike>
+  like or
+    like native-string
+    like node-js-array-buffer-view

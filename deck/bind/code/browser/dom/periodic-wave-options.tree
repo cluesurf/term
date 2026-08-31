@@ -1,0 +1,28 @@
+
+load @term/bind/code/browser/dom/periodic-wave-constraints
+  find periodic-wave-constraints
+
+load @term/bind/code/javascript/es5/float32-array
+  find float32-array
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form periodic-wave-options, name <PeriodicWaveOptions>
+  base periodic-wave-constraints
+
+  link imag, name <imag>
+    like or
+      like native-array
+        like native-number
+      like float32-array
+    lock false
+  link real, name <real>
+    like or
+      like native-array
+        like native-number
+      like float32-array
+    lock false

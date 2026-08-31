@@ -1,0 +1,6 @@
+
+load @term/bind/code/browser/dom/window
+  find window
+
+form window-proxy, name <WindowProxy>
+  like window

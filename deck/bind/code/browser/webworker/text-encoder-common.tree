@@ -1,0 +1,10 @@
+
+load @term/bind/code/browser/dom/text-encoder-common
+  find text-encoder-common
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form text-encoder-common, name <TextEncoderCommon>
+  link encoding, name <encoding>
+    like native-string

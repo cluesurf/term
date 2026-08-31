@@ -1,0 +1,33 @@
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form mutation-observer-init, name <MutationObserverInit>
+  link attribute-filter, name <attributeFilter>
+    like native-array
+      like native-string
+    lock false
+  link attribute-old-value, name <attributeOldValue>
+    like native-boolean
+    lock false
+  link attributes, name <attributes>
+    like native-boolean
+    lock false
+  link character-data, name <characterData>
+    like native-boolean
+    lock false
+  link character-data-old-value, name <characterDataOldValue>
+    like native-boolean
+    lock false
+  link child-list, name <childList>
+    like native-boolean
+    lock false
+  link subtree, name <subtree>
+    like native-boolean
+    lock false

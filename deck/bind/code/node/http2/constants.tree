@@ -1,0 +1,630 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+
+host nghttp2-session-server, name <NGHTTP2_SESSION_SERVER>
+  like native-number
+
+host nghttp2-session-client, name <NGHTTP2_SESSION_CLIENT>
+  like native-number
+
+host nghttp2-stream-state-idle, name <NGHTTP2_STREAM_STATE_IDLE>
+  like native-number
+
+host nghttp2-stream-state-open, name <NGHTTP2_STREAM_STATE_OPEN>
+  like native-number
+
+host nghttp2-stream-state-reserved-local, name <NGHTTP2_STREAM_STATE_RESERVED_LOCAL>
+  like native-number
+
+host nghttp2-stream-state-reserved-remote, name <NGHTTP2_STREAM_STATE_RESERVED_REMOTE>
+  like native-number
+
+host nghttp2-stream-state-half-closed-local, name <NGHTTP2_STREAM_STATE_HALF_CLOSED_LOCAL>
+  like native-number
+
+host nghttp2-stream-state-half-closed-remote, name <NGHTTP2_STREAM_STATE_HALF_CLOSED_REMOTE>
+  like native-number
+
+host nghttp2-stream-state-closed, name <NGHTTP2_STREAM_STATE_CLOSED>
+  like native-number
+
+host nghttp2-no-error, name <NGHTTP2_NO_ERROR>
+  like native-number
+
+host nghttp2-protocol-error, name <NGHTTP2_PROTOCOL_ERROR>
+  like native-number
+
+host nghttp2-internal-error, name <NGHTTP2_INTERNAL_ERROR>
+  like native-number
+
+host nghttp2-flow-control-error, name <NGHTTP2_FLOW_CONTROL_ERROR>
+  like native-number
+
+host nghttp2-settings-timeout, name <NGHTTP2_SETTINGS_TIMEOUT>
+  like native-number
+
+host nghttp2-stream-closed, name <NGHTTP2_STREAM_CLOSED>
+  like native-number
+
+host nghttp2-frame-size-error, name <NGHTTP2_FRAME_SIZE_ERROR>
+  like native-number
+
+host nghttp2-refused-stream, name <NGHTTP2_REFUSED_STREAM>
+  like native-number
+
+host nghttp2-cancel, name <NGHTTP2_CANCEL>
+  like native-number
+
+host nghttp2-compression-error, name <NGHTTP2_COMPRESSION_ERROR>
+  like native-number
+
+host nghttp2-connect-error, name <NGHTTP2_CONNECT_ERROR>
+  like native-number
+
+host nghttp2-enhance-your-calm, name <NGHTTP2_ENHANCE_YOUR_CALM>
+  like native-number
+
+host nghttp2-inadequate-security, name <NGHTTP2_INADEQUATE_SECURITY>
+  like native-number
+
+host nghttp2-http-1-1-required, name <NGHTTP2_HTTP_1_1_REQUIRED>
+  like native-number
+
+host nghttp2-err-frame-size-error, name <NGHTTP2_ERR_FRAME_SIZE_ERROR>
+  like native-number
+
+host nghttp2-flag-none, name <NGHTTP2_FLAG_NONE>
+  like native-number
+
+host nghttp2-flag-end-stream, name <NGHTTP2_FLAG_END_STREAM>
+  like native-number
+
+host nghttp2-flag-end-headers, name <NGHTTP2_FLAG_END_HEADERS>
+  like native-number
+
+host nghttp2-flag-ack, name <NGHTTP2_FLAG_ACK>
+  like native-number
+
+host nghttp2-flag-padded, name <NGHTTP2_FLAG_PADDED>
+  like native-number
+
+host nghttp2-flag-priority, name <NGHTTP2_FLAG_PRIORITY>
+  like native-number
+
+host default-settings-header-table-size, name <DEFAULT_SETTINGS_HEADER_TABLE_SIZE>
+  like native-number
+
+host default-settings-enable-push, name <DEFAULT_SETTINGS_ENABLE_PUSH>
+  like native-number
+
+host default-settings-initial-window-size, name <DEFAULT_SETTINGS_INITIAL_WINDOW_SIZE>
+  like native-number
+
+host default-settings-max-frame-size, name <DEFAULT_SETTINGS_MAX_FRAME_SIZE>
+  like native-number
+
+host max-max-frame-size, name <MAX_MAX_FRAME_SIZE>
+  like native-number
+
+host min-max-frame-size, name <MIN_MAX_FRAME_SIZE>
+  like native-number
+
+host max-initial-window-size, name <MAX_INITIAL_WINDOW_SIZE>
+  like native-number
+
+host nghttp2-default-weight, name <NGHTTP2_DEFAULT_WEIGHT>
+  like native-number
+
+host nghttp2-settings-header-table-size, name <NGHTTP2_SETTINGS_HEADER_TABLE_SIZE>
+  like native-number
+
+host nghttp2-settings-enable-push, name <NGHTTP2_SETTINGS_ENABLE_PUSH>
+  like native-number
+
+host nghttp2-settings-max-concurrent-streams, name <NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS>
+  like native-number
+
+host nghttp2-settings-initial-window-size, name <NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE>
+  like native-number
+
+host nghttp2-settings-max-frame-size, name <NGHTTP2_SETTINGS_MAX_FRAME_SIZE>
+  like native-number
+
+host nghttp2-settings-max-header-list-size, name <NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE>
+  like native-number
+
+host padding-strategy-none, name <PADDING_STRATEGY_NONE>
+  like native-number
+
+host padding-strategy-max, name <PADDING_STRATEGY_MAX>
+  like native-number
+
+host padding-strategy-callback, name <PADDING_STRATEGY_CALLBACK>
+  like native-number
+
+host http2-header-status, name <HTTP2_HEADER_STATUS>
+  like native-string
+
+host http2-header-method, name <HTTP2_HEADER_METHOD>
+  like native-string
+
+host http2-header-authority, name <HTTP2_HEADER_AUTHORITY>
+  like native-string
+
+host http2-header-scheme, name <HTTP2_HEADER_SCHEME>
+  like native-string
+
+host http2-header-path, name <HTTP2_HEADER_PATH>
+  like native-string
+
+host http2-header-accept-charset, name <HTTP2_HEADER_ACCEPT_CHARSET>
+  like native-string
+
+host http2-header-accept-encoding, name <HTTP2_HEADER_ACCEPT_ENCODING>
+  like native-string
+
+host http2-header-accept-language, name <HTTP2_HEADER_ACCEPT_LANGUAGE>
+  like native-string
+
+host http2-header-accept-ranges, name <HTTP2_HEADER_ACCEPT_RANGES>
+  like native-string
+
+host http2-header-accept, name <HTTP2_HEADER_ACCEPT>
+  like native-string
+
+host http2-header-access-control-allow-origin, name <HTTP2_HEADER_ACCESS_CONTROL_ALLOW_ORIGIN>
+  like native-string
+
+host http2-header-age, name <HTTP2_HEADER_AGE>
+  like native-string
+
+host http2-header-allow, name <HTTP2_HEADER_ALLOW>
+  like native-string
+
+host http2-header-authorization, name <HTTP2_HEADER_AUTHORIZATION>
+  like native-string
+
+host http2-header-cache-control, name <HTTP2_HEADER_CACHE_CONTROL>
+  like native-string
+
+host http2-header-connection, name <HTTP2_HEADER_CONNECTION>
+  like native-string
+
+host http2-header-content-disposition, name <HTTP2_HEADER_CONTENT_DISPOSITION>
+  like native-string
+
+host http2-header-content-encoding, name <HTTP2_HEADER_CONTENT_ENCODING>
+  like native-string
+
+host http2-header-content-language, name <HTTP2_HEADER_CONTENT_LANGUAGE>
+  like native-string
+
+host http2-header-content-length, name <HTTP2_HEADER_CONTENT_LENGTH>
+  like native-string
+
+host http2-header-content-location, name <HTTP2_HEADER_CONTENT_LOCATION>
+  like native-string
+
+host http2-header-content-md5, name <HTTP2_HEADER_CONTENT_MD5>
+  like native-string
+
+host http2-header-content-range, name <HTTP2_HEADER_CONTENT_RANGE>
+  like native-string
+
+host http2-header-content-type, name <HTTP2_HEADER_CONTENT_TYPE>
+  like native-string
+
+host http2-header-cookie, name <HTTP2_HEADER_COOKIE>
+  like native-string
+
+host http2-header-date, name <HTTP2_HEADER_DATE>
+  like native-string
+
+host http2-header-etag, name <HTTP2_HEADER_ETAG>
+  like native-string
+
+host http2-header-expect, name <HTTP2_HEADER_EXPECT>
+  like native-string
+
+host http2-header-expires, name <HTTP2_HEADER_EXPIRES>
+  like native-string
+
+host http2-header-from, name <HTTP2_HEADER_FROM>
+  like native-string
+
+host http2-header-host, name <HTTP2_HEADER_HOST>
+  like native-string
+
+host http2-header-if-match, name <HTTP2_HEADER_IF_MATCH>
+  like native-string
+
+host http2-header-if-modified-since, name <HTTP2_HEADER_IF_MODIFIED_SINCE>
+  like native-string
+
+host http2-header-if-none-match, name <HTTP2_HEADER_IF_NONE_MATCH>
+  like native-string
+
+host http2-header-if-range, name <HTTP2_HEADER_IF_RANGE>
+  like native-string
+
+host http2-header-if-unmodified-since, name <HTTP2_HEADER_IF_UNMODIFIED_SINCE>
+  like native-string
+
+host http2-header-last-modified, name <HTTP2_HEADER_LAST_MODIFIED>
+  like native-string
+
+host http2-header-link, name <HTTP2_HEADER_LINK>
+  like native-string
+
+host http2-header-location, name <HTTP2_HEADER_LOCATION>
+  like native-string
+
+host http2-header-max-forwards, name <HTTP2_HEADER_MAX_FORWARDS>
+  like native-string
+
+host http2-header-prefer, name <HTTP2_HEADER_PREFER>
+  like native-string
+
+host http2-header-proxy-authenticate, name <HTTP2_HEADER_PROXY_AUTHENTICATE>
+  like native-string
+
+host http2-header-proxy-authorization, name <HTTP2_HEADER_PROXY_AUTHORIZATION>
+  like native-string
+
+host http2-header-range, name <HTTP2_HEADER_RANGE>
+  like native-string
+
+host http2-header-referer, name <HTTP2_HEADER_REFERER>
+  like native-string
+
+host http2-header-refresh, name <HTTP2_HEADER_REFRESH>
+  like native-string
+
+host http2-header-retry-after, name <HTTP2_HEADER_RETRY_AFTER>
+  like native-string
+
+host http2-header-server, name <HTTP2_HEADER_SERVER>
+  like native-string
+
+host http2-header-set-cookie, name <HTTP2_HEADER_SET_COOKIE>
+  like native-string
+
+host http2-header-strict-transport-security, name <HTTP2_HEADER_STRICT_TRANSPORT_SECURITY>
+  like native-string
+
+host http2-header-transfer-encoding, name <HTTP2_HEADER_TRANSFER_ENCODING>
+  like native-string
+
+host http2-header-te, name <HTTP2_HEADER_TE>
+  like native-string
+
+host http2-header-upgrade, name <HTTP2_HEADER_UPGRADE>
+  like native-string
+
+host http2-header-user-agent, name <HTTP2_HEADER_USER_AGENT>
+  like native-string
+
+host http2-header-vary, name <HTTP2_HEADER_VARY>
+  like native-string
+
+host http2-header-via, name <HTTP2_HEADER_VIA>
+  like native-string
+
+host http2-header-www-authenticate, name <HTTP2_HEADER_WWW_AUTHENTICATE>
+  like native-string
+
+host http2-header-http2-settings, name <HTTP2_HEADER_HTTP2_SETTINGS>
+  like native-string
+
+host http2-header-keep-alive, name <HTTP2_HEADER_KEEP_ALIVE>
+  like native-string
+
+host http2-header-proxy-connection, name <HTTP2_HEADER_PROXY_CONNECTION>
+  like native-string
+
+host http2-method-acl, name <HTTP2_METHOD_ACL>
+  like native-string
+
+host http2-method-baseline-control, name <HTTP2_METHOD_BASELINE_CONTROL>
+  like native-string
+
+host http2-method-bind, name <HTTP2_METHOD_BIND>
+  like native-string
+
+host http2-method-checkin, name <HTTP2_METHOD_CHECKIN>
+  like native-string
+
+host http2-method-checkout, name <HTTP2_METHOD_CHECKOUT>
+  like native-string
+
+host http2-method-connect, name <HTTP2_METHOD_CONNECT>
+  like native-string
+
+host http2-method-copy, name <HTTP2_METHOD_COPY>
+  like native-string
+
+host http2-method-delete, name <HTTP2_METHOD_DELETE>
+  like native-string
+
+host http2-method-get, name <HTTP2_METHOD_GET>
+  like native-string
+
+host http2-method-head, name <HTTP2_METHOD_HEAD>
+  like native-string
+
+host http2-method-label, name <HTTP2_METHOD_LABEL>
+  like native-string
+
+host http2-method-link, name <HTTP2_METHOD_LINK>
+  like native-string
+
+host http2-method-lock, name <HTTP2_METHOD_LOCK>
+  like native-string
+
+host http2-method-merge, name <HTTP2_METHOD_MERGE>
+  like native-string
+
+host http2-method-mkactivity, name <HTTP2_METHOD_MKACTIVITY>
+  like native-string
+
+host http2-method-mkcalendar, name <HTTP2_METHOD_MKCALENDAR>
+  like native-string
+
+host http2-method-mkcol, name <HTTP2_METHOD_MKCOL>
+  like native-string
+
+host http2-method-mkredirectref, name <HTTP2_METHOD_MKREDIRECTREF>
+  like native-string
+
+host http2-method-mkworkspace, name <HTTP2_METHOD_MKWORKSPACE>
+  like native-string
+
+host http2-method-move, name <HTTP2_METHOD_MOVE>
+  like native-string
+
+host http2-method-options, name <HTTP2_METHOD_OPTIONS>
+  like native-string
+
+host http2-method-orderpatch, name <HTTP2_METHOD_ORDERPATCH>
+  like native-string
+
+host http2-method-patch, name <HTTP2_METHOD_PATCH>
+  like native-string
+
+host http2-method-post, name <HTTP2_METHOD_POST>
+  like native-string
+
+host http2-method-pri, name <HTTP2_METHOD_PRI>
+  like native-string
+
+host http2-method-propfind, name <HTTP2_METHOD_PROPFIND>
+  like native-string
+
+host http2-method-proppatch, name <HTTP2_METHOD_PROPPATCH>
+  like native-string
+
+host http2-method-put, name <HTTP2_METHOD_PUT>
+  like native-string
+
+host http2-method-rebind, name <HTTP2_METHOD_REBIND>
+  like native-string
+
+host http2-method-report, name <HTTP2_METHOD_REPORT>
+  like native-string
+
+host http2-method-search, name <HTTP2_METHOD_SEARCH>
+  like native-string
+
+host http2-method-trace, name <HTTP2_METHOD_TRACE>
+  like native-string
+
+host http2-method-unbind, name <HTTP2_METHOD_UNBIND>
+  like native-string
+
+host http2-method-uncheckout, name <HTTP2_METHOD_UNCHECKOUT>
+  like native-string
+
+host http2-method-unlink, name <HTTP2_METHOD_UNLINK>
+  like native-string
+
+host http2-method-unlock, name <HTTP2_METHOD_UNLOCK>
+  like native-string
+
+host http2-method-update, name <HTTP2_METHOD_UPDATE>
+  like native-string
+
+host http2-method-updateredirectref, name <HTTP2_METHOD_UPDATEREDIRECTREF>
+  like native-string
+
+host http2-method-version-control, name <HTTP2_METHOD_VERSION_CONTROL>
+  like native-string
+
+host http-status-continue, name <HTTP_STATUS_CONTINUE>
+  like native-number
+
+host http-status-switching-protocols, name <HTTP_STATUS_SWITCHING_PROTOCOLS>
+  like native-number
+
+host http-status-processing, name <HTTP_STATUS_PROCESSING>
+  like native-number
+
+host http-status-ok, name <HTTP_STATUS_OK>
+  like native-number
+
+host http-status-created, name <HTTP_STATUS_CREATED>
+  like native-number
+
+host http-status-accepted, name <HTTP_STATUS_ACCEPTED>
+  like native-number
+
+host http-status-non-authoritative-information, name <HTTP_STATUS_NON_AUTHORITATIVE_INFORMATION>
+  like native-number
+
+host http-status-no-content, name <HTTP_STATUS_NO_CONTENT>
+  like native-number
+
+host http-status-reset-content, name <HTTP_STATUS_RESET_CONTENT>
+  like native-number
+
+host http-status-partial-content, name <HTTP_STATUS_PARTIAL_CONTENT>
+  like native-number
+
+host http-status-multi-status, name <HTTP_STATUS_MULTI_STATUS>
+  like native-number
+
+host http-status-already-reported, name <HTTP_STATUS_ALREADY_REPORTED>
+  like native-number
+
+host http-status-im-used, name <HTTP_STATUS_IM_USED>
+  like native-number
+
+host http-status-multiple-choices, name <HTTP_STATUS_MULTIPLE_CHOICES>
+  like native-number
+
+host http-status-moved-permanently, name <HTTP_STATUS_MOVED_PERMANENTLY>
+  like native-number
+
+host http-status-found, name <HTTP_STATUS_FOUND>
+  like native-number
+
+host http-status-see-other, name <HTTP_STATUS_SEE_OTHER>
+  like native-number
+
+host http-status-not-modified, name <HTTP_STATUS_NOT_MODIFIED>
+  like native-number
+
+host http-status-use-proxy, name <HTTP_STATUS_USE_PROXY>
+  like native-number
+
+host http-status-temporary-redirect, name <HTTP_STATUS_TEMPORARY_REDIRECT>
+  like native-number
+
+host http-status-permanent-redirect, name <HTTP_STATUS_PERMANENT_REDIRECT>
+  like native-number
+
+host http-status-bad-request, name <HTTP_STATUS_BAD_REQUEST>
+  like native-number
+
+host http-status-unauthorized, name <HTTP_STATUS_UNAUTHORIZED>
+  like native-number
+
+host http-status-payment-required, name <HTTP_STATUS_PAYMENT_REQUIRED>
+  like native-number
+
+host http-status-forbidden, name <HTTP_STATUS_FORBIDDEN>
+  like native-number
+
+host http-status-not-found, name <HTTP_STATUS_NOT_FOUND>
+  like native-number
+
+host http-status-method-not-allowed, name <HTTP_STATUS_METHOD_NOT_ALLOWED>
+  like native-number
+
+host http-status-not-acceptable, name <HTTP_STATUS_NOT_ACCEPTABLE>
+  like native-number
+
+host http-status-proxy-authentication-required, name <HTTP_STATUS_PROXY_AUTHENTICATION_REQUIRED>
+  like native-number
+
+host http-status-request-timeout, name <HTTP_STATUS_REQUEST_TIMEOUT>
+  like native-number
+
+host http-status-conflict, name <HTTP_STATUS_CONFLICT>
+  like native-number
+
+host http-status-gone, name <HTTP_STATUS_GONE>
+  like native-number
+
+host http-status-length-required, name <HTTP_STATUS_LENGTH_REQUIRED>
+  like native-number
+
+host http-status-precondition-failed, name <HTTP_STATUS_PRECONDITION_FAILED>
+  like native-number
+
+host http-status-payload-too-large, name <HTTP_STATUS_PAYLOAD_TOO_LARGE>
+  like native-number
+
+host http-status-uri-too-long, name <HTTP_STATUS_URI_TOO_LONG>
+  like native-number
+
+host http-status-unsupported-media-type, name <HTTP_STATUS_UNSUPPORTED_MEDIA_TYPE>
+  like native-number
+
+host http-status-range-not-satisfiable, name <HTTP_STATUS_RANGE_NOT_SATISFIABLE>
+  like native-number
+
+host http-status-expectation-failed, name <HTTP_STATUS_EXPECTATION_FAILED>
+  like native-number
+
+host http-status-teapot, name <HTTP_STATUS_TEAPOT>
+  like native-number
+
+host http-status-misdirected-request, name <HTTP_STATUS_MISDIRECTED_REQUEST>
+  like native-number
+
+host http-status-unprocessable-entity, name <HTTP_STATUS_UNPROCESSABLE_ENTITY>
+  like native-number
+
+host http-status-locked, name <HTTP_STATUS_LOCKED>
+  like native-number
+
+host http-status-failed-dependency, name <HTTP_STATUS_FAILED_DEPENDENCY>
+  like native-number
+
+host http-status-unordered-collection, name <HTTP_STATUS_UNORDERED_COLLECTION>
+  like native-number
+
+host http-status-upgrade-required, name <HTTP_STATUS_UPGRADE_REQUIRED>
+  like native-number
+
+host http-status-precondition-required, name <HTTP_STATUS_PRECONDITION_REQUIRED>
+  like native-number
+
+host http-status-too-many-requests, name <HTTP_STATUS_TOO_MANY_REQUESTS>
+  like native-number
+
+host http-status-request-header-fields-too-large
+  name <HTTP_STATUS_REQUEST_HEADER_FIELDS_TOO_LARGE>
+  like native-number
+
+host http-status-unavailable-for-legal-reasons, name <HTTP_STATUS_UNAVAILABLE_FOR_LEGAL_REASONS>
+  like native-number
+
+host http-status-internal-server-error, name <HTTP_STATUS_INTERNAL_SERVER_ERROR>
+  like native-number
+
+host http-status-not-implemented, name <HTTP_STATUS_NOT_IMPLEMENTED>
+  like native-number
+
+host http-status-bad-gateway, name <HTTP_STATUS_BAD_GATEWAY>
+  like native-number
+
+host http-status-service-unavailable, name <HTTP_STATUS_SERVICE_UNAVAILABLE>
+  like native-number
+
+host http-status-gateway-timeout, name <HTTP_STATUS_GATEWAY_TIMEOUT>
+  like native-number
+
+host http-status-http-version-not-supported, name <HTTP_STATUS_HTTP_VERSION_NOT_SUPPORTED>
+  like native-number
+
+host http-status-variant-also-negotiates, name <HTTP_STATUS_VARIANT_ALSO_NEGOTIATES>
+  like native-number
+
+host http-status-insufficient-storage, name <HTTP_STATUS_INSUFFICIENT_STORAGE>
+  like native-number
+
+host http-status-loop-detected, name <HTTP_STATUS_LOOP_DETECTED>
+  like native-number
+
+host http-status-bandwidth-limit-exceeded, name <HTTP_STATUS_BANDWIDTH_LIMIT_EXCEEDED>
+  like native-number
+
+host http-status-not-extended, name <HTTP_STATUS_NOT_EXTENDED>
+  like native-number
+
+host http-status-network-authentication-required
+  name <HTTP_STATUS_NETWORK_AUTHENTICATION_REQUIRED>
+  like native-number

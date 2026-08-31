@@ -1,0 +1,21 @@
+
+load @term/bind/code/browser/dom/queuing-strategy
+  find queuing-strategy
+
+load @term/bind/code/browser/dom/queuing-strategy-size
+  find queuing-strategy-size
+
+load @term/bind/code/javascript/es5/array-buffer-view
+  find array-buffer-view
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form byte-length-queuing-strategy, name <ByteLengthQueuingStrategy>
+  base queuing-strategy
+
+  link high-water-mark, name <highWaterMark>
+    like native-number
+  link size, name <size>
+    like queuing-strategy-size
+      like array-buffer-view

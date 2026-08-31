@@ -1,0 +1,6 @@
+
+form animation-replace-state, name <AnimationReplaceState>
+  like or
+    text <active>
+    text <persisted>
+    text <removed>

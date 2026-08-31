@@ -1,0 +1,10 @@
+
+form canvas-font-variant-caps, name <CanvasFontVariantCaps>
+  like or
+    text <all-petite-caps>
+    text <all-small-caps>
+    text <normal>
+    text <petite-caps>
+    text <small-caps>
+    text <titling-caps>
+    text <unicase>

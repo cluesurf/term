@@ -1,0 +1,2172 @@
+
+form os-string, name <std::ffi::OsString>
+  task new, name <new>
+    note <Constructs a new empty OsString.>
+
+    free seed
+      like os-string
+        cite free
+
+  task as-os-str, name <as_os_str>
+    note <Converts to an OsStr slice.>
+
+    take self
+      cite free
+
+    free seed
+      like os-str
+
+  task into-string, name <into_string>
+    note <Converts the OsString into a String if it contains valid Unicode data.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like string
+          cite free
+        like os-string
+          cite free
+        cite free
+
+  task push, name <push>
+    note <Extends the string with the given &OsStr slice.>
+
+    head t
+
+    take self
+      cite free
+    take s
+      like t
+        cite free
+      cite free
+
+  task with-capacity, name <with_capacity>
+    note <Creates a new OsString with the given capacity.>
+
+    take capacity
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like os-string
+        cite free
+
+  task clear, name <clear>
+    note <Truncates the OsString to zero length.>
+
+    take self
+      cite free
+
+  task capacity, name <capacity>
+    note <Returns the capacity this OsString can hold without reallocating.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task reserve, name <reserve>
+    note <Reserves capacity for at least additional more capacity to be inserted in the given OsString.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task try-reserve, name <try_reserve>
+    note <Tries to reserve capacity for at least additional more length units in the given OsString. The string may reserve more space to avoid frequent reallocations. After calling try_reserve, capacity will be greater than or equal to self.len() + additional. Does nothing if capacity is already sufficient.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        like try-reserve-error
+          cite free
+        cite free
+
+  task reserve-exact, name <reserve_exact>
+    note <Reserves the minimum capacity for exactly additional more capacity to be inserted in the given OsString. Does nothing if the capacity is already sufficient.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task try-reserve-exact, name <try_reserve_exact>
+    note <Tries to reserve the minimum capacity for exactly additional more length units in the given OsString. After calling try_reserve_exact, capacity will be greater than or equal to self.len() + additional if it returns Ok(()). Does nothing if the capacity is already sufficient.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        like try-reserve-error
+          cite free
+        cite free
+
+  task shrink-to-fit, name <shrink_to_fit>
+    note <Shrinks the capacity of the OsString to match its length.>
+
+    take self
+      cite free
+
+  task shrink-to, name <shrink_to>
+    note <Shrinks the capacity of the OsString with a lower bound.>
+
+    take self
+      cite free
+    take min-capacity
+      like usize
+        cite free
+      cite free
+
+  task into-boxed-os-str, name <into_boxed_os_str>
+    note <Converts this OsString into a boxed OsStr.>
+
+    take self
+      cite free
+
+    free seed
+      like box
+        like os-str
+          cite free
+        cite free
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      like os-str
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      like path
+
+  task borrow, name <borrow>
+    note <Immutably borrows from an owned value.>
+
+    take self
+      cite free
+
+    free seed
+      like os-str
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take formatter
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task default, name <default>
+    note <Constructs an empty OsString.>
+
+    free seed
+      like os-string
+        cite free
+
+  task deref, name <deref>
+    note <Dereferences the value.>
+
+    take self
+      cite free
+
+    free seed
+      like os-str
+
+  task deref-mut, name <deref_mut>
+    note <Mutably dereferences the value.>
+
+    take self
+      cite free
+
+    free seed
+      like os-str
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    head t
+
+    take self
+      cite free
+    take iter
+      like t
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take item
+      like a
+        cite free
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    head t
+
+    take self
+      cite free
+    take iter
+      like t
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take item
+      like a
+        cite free
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    head t
+
+    take self
+      cite free
+    take iter
+      like t
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take item
+      like a
+        cite free
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take s
+      like t
+
+    free seed
+      like os-string
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take s
+      like os-string
+        time a
+
+    free seed
+      like cow
+        time a
+        like os-str
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a Box&lt;OsStr&gt; into an OsString without copying or allocating.>
+
+    take boxed
+      like box
+        like os-str
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like os-string
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take s
+      like cow
+        time a
+        like os-str
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task from, name <from>
+    note <Converts an OsString into a Box&lt;OsStr&gt; without copying or allocating.>
+
+    take s
+      like os-string
+        cite free
+      cite free
+
+    free seed
+      like box
+        like os-str
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts an OsString into an Arc&lt;OsStr&gt; without copying or allocating.>
+
+    take s
+      like os-string
+        cite free
+      cite free
+
+    free seed
+      like arc
+        like os-str
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts an OsString into an Rc&lt;OsStr&gt; without copying or allocating.>
+
+    take s
+      like os-string
+        cite free
+      cite free
+
+    free seed
+      like rc
+        like os-str
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take s
+      like os-string
+        cite free
+      cite free
+
+    free seed
+      like cow
+        time a
+        like os-str
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts an OsString into a PathBuf>
+
+    take s
+      like os-string
+        cite free
+      cite free
+
+    free seed
+      like path-buf
+        cite free
+
+  task from, name <from>
+    note <Converts a PathBuf into an OsString>
+
+    take path-buf
+      like path-buf
+        cite free
+      cite free
+
+    free seed
+      like os-string
+        cite free
+
+  task from, name <from>
+    note <Converts a String into an OsString.>
+
+    take s
+      like string
+        cite free
+      cite free
+
+    free seed
+      like os-string
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task from-str, name <from_str>
+    note <Parses a string s to return a value of this type.>
+
+    take s
+      like str
+
+    free seed
+      like result
+        like self
+          cite free
+        like self/err
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task index, name <index>
+    note <Performs the indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range-full
+        cite free
+      cite free
+
+    free seed
+      like os-str
+
+  task index-mut, name <index_mut>
+    note <Performs the mutable indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range-full
+        cite free
+      cite free
+
+    free seed
+      like os-str
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task from-vec, name <from_vec>
+    note <Creates an OsString from a byte vector.>
+
+    take vec
+      like vec
+        like u8
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like os-string
+        cite free
+
+  task into-vec, name <into_vec>
+    note <Yields the underlying byte vector of this OsString.>
+
+    take self
+      cite free
+
+    free seed
+      like vec
+        like u8
+          cite free
+        cite free
+
+  task from-wide, name <from_wide>
+    note <Creates an OsString from a potentially ill-formed UTF-16 slice of 16-bit code units.>
+
+    take wide
+      list u16
+      cite free
+
+    free seed
+      like os-string
+        cite free
+
+  task from-vec, name <from_vec>
+    note <Creates an OsString from a byte vector.>
+
+    take vec
+      like vec
+        like u8
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like os-string
+        cite free
+
+  task into-vec, name <into_vec>
+    note <Yields the underlying byte vector of this OsString.>
+
+    take self
+      cite free
+
+    free seed
+      like vec
+        like u8
+          cite free
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like os-str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like path
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like cow
+        time a
+        like os-str
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like cow
+        time a
+        like path
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like os-str
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like path
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like path-buf
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like os-str
+        time a
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like path
+        time a
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like cow
+        time a
+        like os-str
+          cite free
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like cow
+        time a
+        like path
+          cite free
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like os-str
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like path
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like path-buf
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free

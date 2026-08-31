@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript
+  find native-number
+
+form cipher-ccm-options, name <CipherCCMOptions>
+  base stream-transform-options
+
+  link auth-tag-length, name <authTagLength>
+    like native-number
+    flex true

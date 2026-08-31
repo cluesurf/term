@@ -1,10 +1,23 @@
 
-# Component in the zone DSL. A counter: shows a count from the store and a button to increment it.
+# Component in the zone DSL. A counter: shows a count and a button to increment it.
 # This is the public surface a developer writes; the zone mill lowers it to the zone AST, which the framework
-# renders per environment.
+# renders per environment. counter-render.tree is the SAME component written by hand as the render-runtime calls
+# the mill produces from this, so the two are meant to be read side by side.
+#
+# A reactive read is a bare `read` with the getter nested beneath it: the mill turns that into a `dynamic` text node
+# whose effect re-runs the read, so the node updates when the signal is written and nothing else re-renders.
+
+load @term/site/code/view/reactive
+  find make-signal
+  find read-signal
+  find write-signal
 
 view counter
   take label, like text
+
+  save count
+    call make-signal
+      bind value, code 0
 
   view div
     seed class, text <counter>
@@ -14,16 +27,26 @@ view counter
 
     view span
       seed class, text <count>
-      read app/count
+      read
+        call read-signal
+          bind self, read count
 
     view button
-      seed click, call app/add
+      seed click
+        call write-signal
+          bind self, read count
+          bind value
+            call add
+              call read-signal
+                bind self, read count
+              code 1
       text <increment>
 
     fork test
       hook test
         call is-above
-          read app/count
+          call read-signal
+            bind self, read count
           code 10
       hook hold
         view span

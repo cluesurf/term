@@ -1,0 +1,47 @@
+
+load @term/bind/code/browser/dom/html-collection-of
+  find html-collection-of
+
+load @term/bind/code/browser/dom/html-element
+  find html-element
+
+load @term/bind/code/browser/dom/html-opt-group-element
+  find html-opt-group-element
+
+load @term/bind/code/browser/dom/html-option-element
+  find html-option-element
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form html-options-collection, name <HTMLOptionsCollection>
+  base html-collection-of
+
+  link length, name <length>
+    like native-number
+    lock false
+  link selected-index, name <selectedIndex>
+    like native-number
+    lock false
+
+  task add, name <add>
+    take element
+      like or
+        like html-option-element
+        like html-opt-group-element
+    take before, like maybe
+      like or
+        like html-element
+        like native-number
+        like native-null
+    like native-void
+
+  task remove, name <remove>
+    take index, like native-number
+    like native-void

@@ -1,0 +1,17 @@
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-void
+
+form pipe, name <Pipe>
+  task close, name <close>
+    like native-void
+
+  task has-ref, name <hasRef>
+    like native-boolean
+
+  task ref, name <ref>
+    like native-void
+
+  task unref, name <unref>
+    like native-void

@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/rsa-hashed-import-params
+  find rsa-hashed-import-params
+
+load @term/bind/code/browser/webworker/algorithm
+  find algorithm
+
+load @term/bind/code/browser/webworker/hash-algorithm-identifier
+  find hash-algorithm-identifier
+
+form rsa-hashed-import-params, name <RsaHashedImportParams>
+  base algorithm
+
+  link hash, name <hash>
+    like hash-algorithm-identifier
+    lock false

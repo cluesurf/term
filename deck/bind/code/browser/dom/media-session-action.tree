@@ -1,0 +1,15 @@
+
+form media-session-action, name <MediaSessionAction>
+  like or
+    text <hangup>
+    text <nexttrack>
+    text <pause>
+    text <play>
+    text <previoustrack>
+    text <seekbackward>
+    text <seekforward>
+    text <seekto>
+    text <skipad>
+    text <stop>
+    text <togglecamera>
+    text <togglemicrophone>

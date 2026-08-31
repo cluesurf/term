@@ -1,0 +1,8 @@
+
+load @term/bind/code/node/inspector/heap-profiler
+  find heap-snapshot-object-id
+
+form get-heap-object-id-return-type, name <GetHeapObjectIdReturnType>
+  link heap-snapshot-object-id, name <heapSnapshotObjectId>
+    like heap-snapshot-object-id
+    flex true

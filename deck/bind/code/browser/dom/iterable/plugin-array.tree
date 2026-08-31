@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/plugin-array
+  find plugin-array
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form plugin-array, name <PluginArray>
+  task {symbol/iterator}
+    like iterable-iterator
+      like native-any

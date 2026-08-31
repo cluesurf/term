@@ -1,0 +1,17 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form position-options, name <PositionOptions>
+  link enable-high-accuracy, name <enableHighAccuracy>
+    like native-boolean
+    lock false
+  link maximum-age, name <maximumAge>
+    like native-number
+    lock false
+  link timeout, name <timeout>
+    like native-number
+    lock false

@@ -1,0 +1,17 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form svg-bounding-box-options, name <SVGBoundingBoxOptions>
+  link clipped, name <clipped>
+    like native-boolean
+    lock false
+  link fill, name <fill>
+    like native-boolean
+    lock false
+  link markers, name <markers>
+    like native-boolean
+    lock false
+  link stroke, name <stroke>
+    like native-boolean
+    lock false

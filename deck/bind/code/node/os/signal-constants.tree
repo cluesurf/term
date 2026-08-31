@@ -1,0 +1,7 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find node-js-signals
+
+form signal-constants, name <SignalConstants>
+  like any

@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/readable-stream-default-read-value-result
+  find readable-stream-default-read-value-result
+
+form readable-stream-default-read-value-result, name <ReadableStreamDefaultReadValueResult>
+  head t
+
+  link done, name <done>
+    text <false>
+    lock false
+  link value, name <value>
+    like t
+    lock false

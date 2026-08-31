@@ -1,0 +1,11 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form payment-currency-amount, name <PaymentCurrencyAmount>
+  link currency, name <currency>
+    like native-string
+    lock false
+  link value, name <value>
+    like native-string
+    lock false

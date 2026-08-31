@@ -1,0 +1,18 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-undefined
+  find runtime-exception-details
+  find runtime-remote-object
+
+form evaluate-on-call-frame-return-type, name <EvaluateOnCallFrameReturnType>
+  link result, name <result>
+    like runtime-remote-object
+    flex true
+  link exception-details, name <exceptionDetails>
+    like or
+      like runtime-exception-details
+      like native-undefined
+    flex true

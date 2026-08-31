@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/dom/canvas-rendering-context2-d
+  find canvas-rendering-context2-d
+
+load @term/bind/code/browser/dom/image-bitmap-rendering-context
+  find image-bitmap-rendering-context
+
+load @term/bind/code/browser/dom/web-gl-rendering-context
+  find web-gl-rendering-context
+
+load @term/bind/code/browser/dom/web-gl2-rendering-context
+  find web-gl2-rendering-context
+
+form rendering-context, name <RenderingContext>
+  like or
+    like canvas-rendering-context2-d
+    like image-bitmap-rendering-context
+    like web-gl-rendering-context
+    like web-gl2-rendering-context

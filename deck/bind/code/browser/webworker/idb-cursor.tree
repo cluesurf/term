@@ -1,0 +1,65 @@
+
+load @term/bind/code/browser/dom/idb-cursor
+  find idb-cursor
+
+load @term/bind/code/browser/webworker/idb-cursor-direction
+  find idb-cursor-direction
+
+load @term/bind/code/browser/webworker/idb-index
+  find idb-index
+
+load @term/bind/code/browser/webworker/idb-object-store
+  find idb-object-store
+
+load @term/bind/code/browser/webworker/idb-request
+  find idb-request
+
+load @term/bind/code/browser/webworker/idb-valid-key
+  find idb-valid-key
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form idb-cursor, name <IDBCursor>
+  link direction, name <direction>
+    like idb-cursor-direction
+  link key, name <key>
+    like idb-valid-key
+  link primary-key, name <primaryKey>
+    like idb-valid-key
+  link source, name <source>
+    like or
+      like idb-object-store
+      like idb-index
+
+  task advance, name <advance>
+    take count, like native-number
+    like native-void
+
+  task continue, name <continue>
+    take key, like maybe
+      like idb-valid-key
+    like native-void
+
+  task continue-primary-key, name <continuePrimaryKey>
+    take key, like idb-valid-key
+    take primary-key, like idb-valid-key
+    like native-void
+
+  task delete, name <delete>
+    like idb-request
+      like native-undefined
+
+  task update, name <update>
+    take value, like native-any
+    like idb-request
+      like idb-valid-key

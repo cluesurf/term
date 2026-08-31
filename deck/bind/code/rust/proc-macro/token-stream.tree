@@ -1,0 +1,223 @@
+
+form token-stream, name <proc_macro::TokenStream>
+  task new, name <new>
+    note <Returns an empty TokenStream containing no token trees.>
+
+    free seed
+      like token-stream
+        cite free
+
+  task is-empty, name <is_empty>
+    note <Checks if this TokenStream is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task expand-expr, name <expand_expr>
+    note <Parses this TokenStream as an expression and attempts to expand any macros within it. Returns the expanded TokenStream.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like token-stream
+          cite free
+        like expand-error
+          cite free
+        cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like token-stream
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like self
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    head i
+
+    take self
+      cite free
+    take streams
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take item
+      like a
+        cite free
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    head i
+
+    take self
+      cite free
+    take trees
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take item
+      like a
+        cite free
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take tree
+      like token-tree
+        cite free
+      cite free
+
+    free seed
+      like token-stream
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    head i
+
+    take streams
+      like i
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    head i
+
+    take trees
+      like i
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task from-str, name <from_str>
+    note <Parses a string s to return a value of this type.>
+
+    take src
+      like str
+
+    free seed
+      like result
+        like token-stream
+          cite free
+        like lex-error
+          cite free
+        cite free
+
+  task into-iter, name <into_iter>
+    note <Creates an iterator from a value.>
+
+    take self
+      cite free
+
+    free seed
+      like into-iter
+        cite free
+
+  task to-string, name <to_string>
+    note <Converts the given value to a String.>
+
+    take self
+      cite free
+
+    free seed
+      like string
+        cite free

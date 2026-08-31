@@ -1,0 +1,85 @@
+
+load @term/bind/code/browser/dom/g-lenum
+  find g-lenum
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form webgl-draw-buffers, name <WEBGL_draw_buffers>
+  link color-attachment0-webgl, name <COLOR_ATTACHMENT0_WEBGL>
+    like g-lenum
+  link color-attachment10-webgl, name <COLOR_ATTACHMENT10_WEBGL>
+    like g-lenum
+  link color-attachment11-webgl, name <COLOR_ATTACHMENT11_WEBGL>
+    like g-lenum
+  link color-attachment12-webgl, name <COLOR_ATTACHMENT12_WEBGL>
+    like g-lenum
+  link color-attachment13-webgl, name <COLOR_ATTACHMENT13_WEBGL>
+    like g-lenum
+  link color-attachment14-webgl, name <COLOR_ATTACHMENT14_WEBGL>
+    like g-lenum
+  link color-attachment15-webgl, name <COLOR_ATTACHMENT15_WEBGL>
+    like g-lenum
+  link color-attachment1-webgl, name <COLOR_ATTACHMENT1_WEBGL>
+    like g-lenum
+  link color-attachment2-webgl, name <COLOR_ATTACHMENT2_WEBGL>
+    like g-lenum
+  link color-attachment3-webgl, name <COLOR_ATTACHMENT3_WEBGL>
+    like g-lenum
+  link color-attachment4-webgl, name <COLOR_ATTACHMENT4_WEBGL>
+    like g-lenum
+  link color-attachment5-webgl, name <COLOR_ATTACHMENT5_WEBGL>
+    like g-lenum
+  link color-attachment6-webgl, name <COLOR_ATTACHMENT6_WEBGL>
+    like g-lenum
+  link color-attachment7-webgl, name <COLOR_ATTACHMENT7_WEBGL>
+    like g-lenum
+  link color-attachment8-webgl, name <COLOR_ATTACHMENT8_WEBGL>
+    like g-lenum
+  link color-attachment9-webgl, name <COLOR_ATTACHMENT9_WEBGL>
+    like g-lenum
+  link draw-buffer0-webgl, name <DRAW_BUFFER0_WEBGL>
+    like g-lenum
+  link draw-buffer10-webgl, name <DRAW_BUFFER10_WEBGL>
+    like g-lenum
+  link draw-buffer11-webgl, name <DRAW_BUFFER11_WEBGL>
+    like g-lenum
+  link draw-buffer12-webgl, name <DRAW_BUFFER12_WEBGL>
+    like g-lenum
+  link draw-buffer13-webgl, name <DRAW_BUFFER13_WEBGL>
+    like g-lenum
+  link draw-buffer14-webgl, name <DRAW_BUFFER14_WEBGL>
+    like g-lenum
+  link draw-buffer15-webgl, name <DRAW_BUFFER15_WEBGL>
+    like g-lenum
+  link draw-buffer1-webgl, name <DRAW_BUFFER1_WEBGL>
+    like g-lenum
+  link draw-buffer2-webgl, name <DRAW_BUFFER2_WEBGL>
+    like g-lenum
+  link draw-buffer3-webgl, name <DRAW_BUFFER3_WEBGL>
+    like g-lenum
+  link draw-buffer4-webgl, name <DRAW_BUFFER4_WEBGL>
+    like g-lenum
+  link draw-buffer5-webgl, name <DRAW_BUFFER5_WEBGL>
+    like g-lenum
+  link draw-buffer6-webgl, name <DRAW_BUFFER6_WEBGL>
+    like g-lenum
+  link draw-buffer7-webgl, name <DRAW_BUFFER7_WEBGL>
+    like g-lenum
+  link draw-buffer8-webgl, name <DRAW_BUFFER8_WEBGL>
+    like g-lenum
+  link draw-buffer9-webgl, name <DRAW_BUFFER9_WEBGL>
+    like g-lenum
+  link max-color-attachments-webgl, name <MAX_COLOR_ATTACHMENTS_WEBGL>
+    like g-lenum
+  link max-draw-buffers-webgl, name <MAX_DRAW_BUFFERS_WEBGL>
+    like g-lenum
+
+  task draw-buffers-webgl, name <drawBuffersWEBGL>
+    take buffers
+      like native-array
+        like g-lenum
+    like native-void

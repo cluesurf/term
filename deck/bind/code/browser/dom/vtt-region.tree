@@ -1,0 +1,35 @@
+
+load @term/bind/code/browser/dom/scroll-setting
+  find scroll-setting
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form vtt-region, name <VTTRegion>
+  link id, name <id>
+    like native-string
+    lock false
+  link lines, name <lines>
+    like native-number
+    lock false
+  link region-anchor-x, name <regionAnchorX>
+    like native-number
+    lock false
+  link region-anchor-y, name <regionAnchorY>
+    like native-number
+    lock false
+  link scroll, name <scroll>
+    like scroll-setting
+    lock false
+  link viewport-anchor-x, name <viewportAnchorX>
+    like native-number
+    lock false
+  link viewport-anchor-y, name <viewportAnchorY>
+    like native-number
+    lock false
+  link width, name <width>
+    like native-number
+    lock false

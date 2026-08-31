@@ -1,0 +1,152 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/browser/dom/progress-event
+  find progress-event
+
+load @term/bind/code/browser/dom/xml-http-request
+  find xml-http-request
+
+load @term/bind/code/browser/dom/xml-http-request-event-target-event-map
+  find xml-http-request-event-target-event-map
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form xml-http-request-event-target, name <XMLHttpRequestEventTarget>
+  base event-target
+
+  link onabort, name <onabort>
+    like or
+      like task
+        take this, like xml-http-request
+        take ev, like progress-event
+        like native-any
+      like native-null
+    lock false
+  link onerror, name <onerror>
+    like or
+      like task
+        take this, like xml-http-request
+        take ev, like progress-event
+        like native-any
+      like native-null
+    lock false
+  link onload, name <onload>
+    like or
+      like task
+        take this, like xml-http-request
+        take ev, like progress-event
+        like native-any
+      like native-null
+    lock false
+  link onloadend, name <onloadend>
+    like or
+      like task
+        take this, like xml-http-request
+        take ev, like progress-event
+        like native-any
+      like native-null
+    lock false
+  link onloadstart, name <onloadstart>
+    like or
+      like task
+        take this, like xml-http-request
+        take ev, like progress-event
+        like native-any
+      like native-null
+    lock false
+  link onprogress, name <onprogress>
+    like or
+      like task
+        take this, like xml-http-request
+        take ev, like progress-event
+        like native-any
+      like native-null
+    lock false
+  link ontimeout, name <ontimeout>
+    like or
+      like task
+        take this, like xml-http-request
+        take ev, like progress-event
+        like native-any
+      like native-null
+    lock false
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like xml-http-request-event-target-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like xml-http-request-event-target
+        take ev
+          like index
+            like xml-http-request-event-target-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like xml-http-request-event-target-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like xml-http-request-event-target
+        take ev
+          like index
+            like xml-http-request-event-target-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

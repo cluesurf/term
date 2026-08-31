@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/readable-stream
+  find readable-stream
+
+load @term/bind/code/browser/dom/xml-http-request-body-init
+  find xml-http-request-body-init
+
+form body-init, name <BodyInit>
+  like or
+    like readable-stream
+    like xml-http-request-body-init

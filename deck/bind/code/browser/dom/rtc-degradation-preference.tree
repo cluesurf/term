@@ -1,0 +1,6 @@
+
+form rtc-degradation-preference, name <RTCDegradationPreference>
+  like or
+    text <balanced>
+    text <maintain-framerate>
+    text <maintain-resolution>

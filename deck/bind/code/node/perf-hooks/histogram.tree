@@ -1,0 +1,29 @@
+
+load @term/bind/code/javascript
+  find map
+  find native-number
+  find native-void
+
+form histogram, name <Histogram>
+  link percentiles, name <percentiles>
+    like map
+      like native-number
+      like native-number
+  link exceeds, name <exceeds>
+    like native-number
+  link min, name <min>
+    like native-number
+  link max, name <max>
+    like native-number
+  link mean, name <mean>
+    like native-number
+  link stddev, name <stddev>
+    like native-number
+
+  task reset, name <reset>
+    like native-void
+
+  task percentile, name <percentile>
+    like native-number
+
+    take percentile, like native-number

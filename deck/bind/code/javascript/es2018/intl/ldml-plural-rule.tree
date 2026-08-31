@@ -1,0 +1,9 @@
+
+form ldml-plural-rule, name <LDMLPluralRule>
+  like or
+    text <zero>
+    text <one>
+    text <two>
+    text <few>
+    text <many>
+    text <other>

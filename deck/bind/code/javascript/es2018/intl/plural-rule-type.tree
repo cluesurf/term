@@ -1,0 +1,5 @@
+
+form plural-rule-type, name <PluralRuleType>
+  like or
+    text <cardinal>
+    text <ordinal>

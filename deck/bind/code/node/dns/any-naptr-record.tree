@@ -1,0 +1,10 @@
+
+load @term/bind/code/node/dns
+  find naptr-record
+
+form any-naptr-record, name <AnyNaptrRecord>
+  base naptr-record
+
+  link type, name <type>
+    text <NAPTR>
+    flex true

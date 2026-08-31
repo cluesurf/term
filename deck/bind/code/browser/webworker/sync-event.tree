@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/webworker/extendable-event
+  find extendable-event
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form sync-event, name <SyncEvent>
+  base extendable-event
+
+  link last-chance, name <lastChance>
+    like native-boolean
+  link tag, name <tag>
+    like native-string

@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/dom-time-stamp
+  find dom-time-stamp
+
+load @term/bind/code/browser/dom/rtc-dtls-fingerprint
+  find rtc-dtls-fingerprint
+
+load @term/bind/code/javascript/native
+  find native-array
+
+form rtc-certificate, name <RTCCertificate>
+  link expires, name <expires>
+    like dom-time-stamp
+
+  task get-fingerprints, name <getFingerprints>
+    like native-array
+      like rtc-dtls-fingerprint

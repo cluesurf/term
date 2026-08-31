@@ -1,0 +1,33 @@
+
+load @term/bind/code/browser/dom/character-data
+  find character-data
+
+load @term/bind/code/browser/dom/html-slot-element
+  find html-slot-element
+
+load @term/bind/code/browser/dom/slottable
+  find slottable
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form text, name <Text>
+  base character-data
+  base slottable
+
+  link assigned-slot, name <assignedSlot>
+    like or
+      like html-slot-element
+      like native-null
+  link whole-text, name <wholeText>
+    like native-string
+
+  task split-text, name <splitText>
+    take offset, like native-number
+    like text

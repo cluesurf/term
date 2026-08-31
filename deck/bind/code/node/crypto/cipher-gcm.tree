@@ -1,0 +1,29 @@
+
+load @term/bind
+  find form
+
+load @term/bind/code/javascript
+  find cipher
+  find native-number
+  find native-this
+  find node-js-array-buffer-view
+
+load @term/bind/code/node/buffer
+  find buffer
+
+form cipher-gcm, name <CipherGCM>
+  base cipher
+
+  task set-aad, name <setAAD>
+    like native-this
+
+    take buffer, like node-js-array-buffer-view
+    take options
+      like form
+        link plaintext-length, name <plaintextLength>
+          like native-number
+          flex true
+      void true
+
+  task get-auth-tag, name <getAuthTag>
+    like buffer

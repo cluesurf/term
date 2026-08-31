@@ -1,0 +1,3 @@
+
+form require-resolve, name <RequireResolve>
+  base node-js-require-resolve

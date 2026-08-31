@@ -1,0 +1,77 @@
+
+load @term/bind/code/browser/dom/before-unload-event
+  find before-unload-event
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/message-event
+  find message-event
+
+load @term/bind/code/browser/dom/page-transition-event
+  find page-transition-event
+
+load @term/bind/code/browser/dom/pop-state-event
+  find pop-state-event
+
+load @term/bind/code/browser/dom/promise-rejection-event
+  find promise-rejection-event
+
+load @term/bind/code/browser/dom/storage-event
+  find storage-event
+
+form window-event-handlers-event-map, name <WindowEventHandlersEventMap>
+  link afterprint, name <afterprint>
+    like event
+    lock false
+  link beforeprint, name <beforeprint>
+    like event
+    lock false
+  link beforeunload, name <beforeunload>
+    like before-unload-event
+    lock false
+  link gamepadconnected, name <gamepadconnected>
+    like event
+    lock false
+  link gamepaddisconnected, name <gamepaddisconnected>
+    like event
+    lock false
+  link hashchange, name <hashchange>
+    like event
+    lock false
+  link languagechange, name <languagechange>
+    like event
+    lock false
+  link message, name <message>
+    like message-event
+    lock false
+  link messageerror, name <messageerror>
+    like message-event
+    lock false
+  link offline, name <offline>
+    like event
+    lock false
+  link online, name <online>
+    like event
+    lock false
+  link pagehide, name <pagehide>
+    like page-transition-event
+    lock false
+  link pageshow, name <pageshow>
+    like page-transition-event
+    lock false
+  link popstate, name <popstate>
+    like pop-state-event
+    lock false
+  link rejectionhandled, name <rejectionhandled>
+    like promise-rejection-event
+    lock false
+  link storage, name <storage>
+    like storage-event
+    lock false
+  link unhandledrejection, name <unhandledrejection>
+    like promise-rejection-event
+    lock false
+  link unload, name <unload>
+    like event
+    lock false

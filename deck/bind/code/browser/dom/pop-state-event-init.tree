@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form pop-state-event-init, name <PopStateEventInit>
+  base event-init
+
+  link state, name <state>
+    like native-any
+    lock false

@@ -1,0 +1,22 @@
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find error
+  find native-null
+  find native-void
+
+load @term/bind/code/node/buffer
+  find buffer
+
+form compress-callback, name <CompressCallback>
+  like task
+    like native-void
+
+    take error
+      like or
+        like error
+        like native-null
+    take result, like buffer

@@ -1,0 +1,13 @@
+
+load @term/bind/code/javascript
+  find native-string
+  find promise
+
+load @term/bind/code/node/dns
+  find soa-record
+
+task promisify, name <__promisify__>
+  like promise
+    like soa-record
+
+  take hostname, like native-string

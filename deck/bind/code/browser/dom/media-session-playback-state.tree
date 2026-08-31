@@ -1,0 +1,6 @@
+
+form media-session-playback-state, name <MediaSessionPlaybackState>
+  like or
+    text <none>
+    text <paused>
+    text <playing>

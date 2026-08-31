@@ -1,0 +1,42 @@
+
+load @term/bind/code/browser/scripthost/text-stream-base
+  find text-stream-base
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form text-stream-reader, name <TextStreamReader>
+  base text-stream-base
+
+  link at-end-of-line, name <AtEndOfLine>
+    like native-boolean
+    lock false
+  link at-end-of-stream, name <AtEndOfStream>
+    like native-boolean
+    lock false
+
+  task read, name <Read>
+    take characters, like native-number
+    like native-string
+
+  task read-all, name <ReadAll>
+    like native-string
+
+  task read-line, name <ReadLine>
+    like native-string
+
+  task skip, name <Skip>
+    take characters, like native-number
+    like native-void
+
+  task skip-line, name <SkipLine>
+    like native-void

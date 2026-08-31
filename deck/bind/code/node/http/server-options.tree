@@ -1,0 +1,30 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-undefined
+
+form server-options, name <ServerOptions>
+  link incoming-message, name <IncomingMessage>
+    like or
+      like incoming-message
+      like native-undefined
+    flex true
+  link server-response, name <ServerResponse>
+    like or
+      like server-response
+      like native-undefined
+    flex true
+  link max-header-size, name <maxHeaderSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link insecure-http-parser, name <insecureHTTPParser>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

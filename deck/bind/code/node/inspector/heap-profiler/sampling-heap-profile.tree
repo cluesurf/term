@@ -1,0 +1,8 @@
+
+load @term/bind/code/node/inspector/heap-profiler
+  find sampling-heap-profile-node
+
+form sampling-heap-profile, name <SamplingHeapProfile>
+  link head, name <head>
+    like sampling-heap-profile-node
+    flex true

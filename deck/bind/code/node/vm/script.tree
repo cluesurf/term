@@ -1,0 +1,61 @@
+
+load @term/bind
+  find any
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/vm
+  find context
+  find running-script-options
+  find script-options
+
+form script, name <Script>
+  link cached-data-produced, name <cachedDataProduced>
+    like or
+      like native-boolean
+      like native-undefined
+  link cached-data-rejected, name <cachedDataRejected>
+    like or
+      like native-boolean
+      like native-undefined
+  link cached-data, name <cachedData>
+    like or
+      like buffer
+      like native-undefined
+
+  task run-in-context, name <runInContext>
+    like any
+
+    take contextified-object, like context
+    take options, like running-script-options
+      void true
+
+  task run-in-new-context, name <runInNewContext>
+    like any
+
+    take context-object, like context
+      void true
+    take options, like running-script-options
+      void true
+
+  task run-in-this-context, name <runInThisContext>
+    like any
+
+    take options, like running-script-options
+      void true
+
+  task create-cached-data, name <createCachedData>
+    like buffer
+
+form script-constructor
+  hook make
+    take code, like native-string
+    take options, like script-options
+      void true

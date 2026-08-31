@@ -1,0 +1,72 @@
+
+load @term/bind/code/browser/dom/canvas-compositing
+  find canvas-compositing
+
+load @term/bind/code/browser/dom/canvas-draw-image
+  find canvas-draw-image
+
+load @term/bind/code/browser/dom/canvas-draw-path
+  find canvas-draw-path
+
+load @term/bind/code/browser/dom/canvas-fill-stroke-styles
+  find canvas-fill-stroke-styles
+
+load @term/bind/code/browser/dom/canvas-filters
+  find canvas-filters
+
+load @term/bind/code/browser/dom/canvas-image-data
+  find canvas-image-data
+
+load @term/bind/code/browser/dom/canvas-image-smoothing
+  find canvas-image-smoothing
+
+load @term/bind/code/browser/dom/canvas-path
+  find canvas-path
+
+load @term/bind/code/browser/dom/canvas-path-drawing-styles
+  find canvas-path-drawing-styles
+
+load @term/bind/code/browser/dom/canvas-rect
+  find canvas-rect
+
+load @term/bind/code/browser/dom/canvas-shadow-styles
+  find canvas-shadow-styles
+
+load @term/bind/code/browser/dom/canvas-state
+  find canvas-state
+
+load @term/bind/code/browser/dom/canvas-text
+  find canvas-text
+
+load @term/bind/code/browser/dom/canvas-text-drawing-styles
+  find canvas-text-drawing-styles
+
+load @term/bind/code/browser/dom/canvas-transform
+  find canvas-transform
+
+load @term/bind/code/browser/dom/canvas-user-interface
+  find canvas-user-interface
+
+load @term/bind/code/browser/dom/html-canvas-element
+  find html-canvas-element
+
+form canvas-rendering-context2-d, name <CanvasRenderingContext2D>
+  base canvas-compositing
+  base canvas-draw-image
+  base canvas-draw-path
+  base canvas-fill-stroke-styles
+  base canvas-filters
+  base canvas-image-data
+  base canvas-image-smoothing
+  base canvas-path
+  base canvas-path-drawing-styles
+  base canvas-rect
+  base canvas-shadow-styles
+  base canvas-state
+  base canvas-text
+  base canvas-text-drawing-styles
+  base canvas-transform
+  base canvas-user-interface
+
+  link canvas, name <canvas>
+    like html-canvas-element

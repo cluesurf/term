@@ -1,0 +1,20 @@
+
+load @term/bind/code/browser/dom/service-worker-container-event-map
+  find service-worker-container-event-map
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+load @term/bind/code/browser/webworker/message-event
+  find message-event
+
+form service-worker-container-event-map, name <ServiceWorkerContainerEventMap>
+  link controllerchange, name <controllerchange>
+    like event
+    lock false
+  link message, name <message>
+    like message-event
+    lock false
+  link messageerror, name <messageerror>
+    like message-event
+    lock false

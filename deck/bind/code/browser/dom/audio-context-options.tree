@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/audio-context-latency-category
+  find audio-context-latency-category
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form audio-context-options, name <AudioContextOptions>
+  link latency-hint, name <latencyHint>
+    like or
+      like audio-context-latency-category
+      like native-number
+    lock false
+  link sample-rate, name <sampleRate>
+    like native-number
+    lock false

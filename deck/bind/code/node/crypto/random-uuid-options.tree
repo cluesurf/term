@@ -1,0 +1,14 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-undefined
+
+form random-uuid-options, name <RandomUUIDOptions>
+  link disable-entropy-cache, name <disableEntropyCache>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

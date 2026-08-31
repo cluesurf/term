@@ -1,0 +1,5 @@
+
+load @term/bind/code/browser/dom/web-gl-texture
+  find web-gl-texture
+
+form web-gl-texture, name <WebGLTexture>

@@ -1,0 +1,8 @@
+
+load @term/bind/code/node/inspector/profiler
+  find profile
+
+form stop-return-type, name <StopReturnType>
+  link profile, name <profile>
+    like profile
+    flex true

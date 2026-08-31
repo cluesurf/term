@@ -1,0 +1,244 @@
+
+load @term/bind/code/javascript
+  find array
+
+load @term/bind/code/javascript/native
+  find native-void
+  find u
+
+load @term/bind/code/javascript/es5
+  find promise-like
+
+load @term/bind/code/javascript/es2015/iterable/promise
+  find promise
+
+form promise
+  hook self
+    link prototype, name <prototype>
+      like promise
+        like any
+
+    task all, name <all>
+      like promise
+        like tuple
+          like t1
+          like t2
+          like t3
+          like t4
+          like t5
+          like t6
+          like t7
+          like t8
+          like t9
+          like t10
+
+      head t1
+      head t2
+      head t3
+      head t4
+      head t5
+      head t6
+      head t7
+      head t8
+      head t9
+      head t10
+
+      take values
+
+    task all, name <all>
+      like promise
+        like tuple
+          like t1
+          like t2
+          like t3
+          like t4
+          like t5
+          like t6
+          like t7
+          like t8
+          like t9
+
+      head t1
+      head t2
+      head t3
+      head t4
+      head t5
+      head t6
+      head t7
+      head t8
+      head t9
+
+      take values
+
+    task all, name <all>
+      like promise
+        like tuple
+          like t1
+          like t2
+          like t3
+          like t4
+          like t5
+          like t6
+          like t7
+          like t8
+
+      head t1
+      head t2
+      head t3
+      head t4
+      head t5
+      head t6
+      head t7
+      head t8
+
+      take values
+
+    task all, name <all>
+      like promise
+        like tuple
+          like t1
+          like t2
+          like t3
+          like t4
+          like t5
+          like t6
+          like t7
+
+      head t1
+      head t2
+      head t3
+      head t4
+      head t5
+      head t6
+      head t7
+
+      take values
+
+    task all, name <all>
+      like promise
+        like tuple
+          like t1
+          like t2
+          like t3
+          like t4
+          like t5
+          like t6
+
+      head t1
+      head t2
+      head t3
+      head t4
+      head t5
+      head t6
+
+      take values
+
+    task all, name <all>
+      like promise
+        like tuple
+          like t1
+          like t2
+          like t3
+          like t4
+          like t5
+
+      head t1
+      head t2
+      head t3
+      head t4
+      head t5
+
+      take values
+
+    task all, name <all>
+      like promise
+        like tuple
+          like t1
+          like t2
+          like t3
+          like t4
+
+      head t1
+      head t2
+      head t3
+      head t4
+
+      take values
+
+    task all, name <all>
+      like promise
+        like tuple
+          like t1
+          like t2
+          like t3
+
+      head t1
+      head t2
+      head t3
+
+      take values
+
+    task all, name <all>
+      like promise
+        like tuple
+          like t1
+          like t2
+
+      head t1
+      head t2
+
+      take values
+
+    task all, name <all>
+      like promise
+        like array
+          like t
+
+      head t
+
+      take values
+
+    task race, name <race>
+      like promise
+        like test
+          fork roll
+            like t
+            like promise-like
+              name u
+            hook true
+              like u
+            hook false
+              like t
+
+      head t
+
+      take values
+
+    task reject, name <reject>
+      like promise
+        like t
+
+      head t
+        fall never
+
+      take reason, like maybe, like any
+
+    task resolve, name <resolve>
+      like promise
+        like native-void
+
+    task resolve, name <resolve>
+      like promise
+        like t
+
+      head t
+
+      take value
+
+  hook make
+    like promise
+      like t
+
+    head t
+
+    take executor

@@ -1,0 +1,35 @@
+
+load @term/bind/code/javascript/es2015/proxy/proxy-handler
+  find proxy-handler
+
+load @term/bind/code/javascript/native
+  find native-object
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form proxy-constructor, name <ProxyConstructor>
+  task revocable, name <revocable>
+    head t
+      base native-object
+    take target, like t
+    take handler
+      like proxy-handler
+        like t
+    like form
+      link proxy, name <proxy>
+        like t
+        lock false
+      link revoke, name <revoke>
+        like task
+          like native-void
+        lock false
+
+  hook make
+    head t
+      base native-object
+    take target, like t
+    take handler
+      like proxy-handler
+        like t
+    like t

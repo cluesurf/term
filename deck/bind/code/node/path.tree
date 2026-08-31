@@ -1,0 +1,12 @@
+
+bear @term/bind/code/javascript/node/path/path-posix
+bear @term/bind/code/javascript/node/path/path-win32
+bear @term/bind/code/javascript/node/path/parsed-path
+bear @term/bind/code/javascript/node/path/format-input-path-object
+bear @term/bind/code/javascript/node/path/platform-path
+
+load @term/bind/code/javascript
+  find path-platform-path
+
+host path, name <path>
+  like path-platform-path

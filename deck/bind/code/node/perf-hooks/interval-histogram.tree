@@ -1,0 +1,15 @@
+
+load @term/bind/code/javascript
+  find native-boolean
+
+load @term/bind/code/node/perf-hooks
+  find histogram
+
+form interval-histogram, name <IntervalHistogram>
+  base histogram
+
+  task enable, name <enable>
+    like native-boolean
+
+  task disable, name <disable>
+    like native-boolean

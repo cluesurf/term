@@ -1,0 +1,1727 @@
+
+form array, name <array>
+  task map, name <map>
+    note <Returns an array of the same size as self, with function f applied to each element in order.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like u
+            cite free
+
+    head f
+    head u
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    like list
+      like u
+      name n
+
+  task try-map, name <try_map>
+    note <A fallible function f applied to each element on array self in order to return an array the same size as self or the first error encountered.>
+
+    cast c-1
+      like r
+      like try
+    cast c-3
+      like r
+      like try
+    cast c-2
+      like c-3/residual
+      like residual
+        name n
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like r
+            cite free
+    lead r
+      like try
+        cite free
+    lead c-1/residual
+      like residual
+        name n
+        cite free
+
+    head f
+    head r
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like c-2/try-type
+
+  task zip, name <zip>
+    note <'Zips up' two arrays into a single array of pairs.>
+
+    head u
+
+    take self
+      cite free
+    take rhs
+      like list
+        like u
+        name n
+      cite free
+
+    free seed
+      like list
+        like form
+          like form
+            take t-1, like t
+            take t-2, like u
+        name n
+
+  task as-slice, name <as_slice>
+    note <Returns a slice containing the entire array. Equivalent to &s[..].>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task as-mut-slice, name <as_mut_slice>
+    note <Returns a mutable slice containing the entire array. Equivalent to &mut s[..].>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task each-ref, name <each_ref>
+    note <Borrows each element and returns an array of references with the same size as self.>
+
+    take self
+      cite free
+
+    free seed
+      like list
+        like t
+        name n
+
+  task each-mut, name <each_mut>
+    note <Borrows each element mutably and returns an array of mutable references with the same size as self.>
+
+    take self
+      cite free
+
+    free seed
+      like list
+        like t
+        name n
+
+  task split-array-ref, name <split_array_ref>
+    note <Divides one array reference into two at an index.>
+
+    head m
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1
+          like list
+            like t
+            name m
+        take t-2
+          list t
+
+  task split-array-mut, name <split_array_mut>
+    note <Divides one mutable array reference into two at an index.>
+
+    head m
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1
+          like list
+            like t
+            name m
+        take t-2
+          list t
+
+  task rsplit-array-ref, name <rsplit_array_ref>
+    note <Divides one array reference into two at an index from the end.>
+
+    head m
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2
+          like list
+            like t
+            name m
+
+  task rsplit-array-mut, name <rsplit_array_mut>
+    note <Divides one mutable array reference into two at an index from the end.>
+
+    head m
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2
+          like list
+            like t
+            name m
+
+  task as-mut, name <as_mut>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      like list
+        like t
+        name lanes
+
+  task as-mut, name <as_mut>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      like list
+        like t
+        name lanes
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task borrow, name <borrow>
+    note <Immutably borrows from an owned value.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task borrow-mut, name <borrow_mut>
+    note <Mutably borrows from an owned value.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like list
+        like t
+        name n
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take other
+      like list
+        like t
+        name n
+      cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 29
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 0
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 5
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 15
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 25
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 31
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 6
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 12
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 17
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 3
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 30
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 32
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 2
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 13
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 23
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 14
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 21
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 16
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 11
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 22
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 26
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 4
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 1
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 19
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 9
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 28
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 18
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 10
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 20
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 7
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 24
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 8
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like list
+        like t
+        name 27
+
+  task from, name <from>
+    take arr
+      like list
+        like form
+          like form
+            take t-1, like k
+            take t-2, like v
+        name n
+      cite free
+
+    free seed
+      like b-tree-map
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task from, name <from>
+    take arr
+      like list
+        like form
+          like form
+            take t-1, like k
+            take t-2, like v
+        name n
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take array
+      like list
+        like t
+        name lanes
+      cite free
+
+    free seed
+      like simd
+        like t
+          cite free
+        like lanes
+          cite free
+        cite free
+
+  task from, name <from>
+    take arr
+      like list
+        like t
+        name n
+      cite free
+
+    free seed
+      like linked-list
+        like t
+          cite free
+        cite free
+
+  task from, name <from>
+    take arr
+      like list
+        like t
+        name n
+      cite free
+
+    free seed
+      like b-tree-set
+        like t
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take s
+      like list
+        like t
+        name n
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task from, name <from>
+    take arr
+      like list
+        like t
+        name n
+      cite free
+
+    free seed
+      like binary-heap
+        like t
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a [T; N] into a Box&lt;[T]&gt;>
+
+    take array
+      like list
+        like t
+        name n
+      cite free
+
+    free seed
+      like box
+        list t
+        like global
+          cite free
+        cite free
+
+  task from, name <from>
+    take arr
+      like list
+        like t
+        name n
+      cite free
+
+    free seed
+      like vec-deque
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task from, name <from>
+    take arr
+      like list
+        like t
+        name n
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take array
+      like list
+        like bool
+        name lanes
+      cite free
+
+    free seed
+      like mask
+        like t
+          cite free
+        like lanes
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Creates an Ipv6Addr from an eight element 16-bit array.>
+
+    take segments
+      like list
+        like u16
+        name 8
+      cite free
+
+    free seed
+      like ipv6-addr
+        cite free
+
+  task from, name <from>
+    note <Creates an IpAddr::V6 from an eight element 16-bit array.>
+
+    take segments
+      like list
+        like u16
+        name 8
+      cite free
+
+    free seed
+      like ip-addr
+        cite free
+
+  task from, name <from>
+    note <Creates an Ipv6Addr from a sixteen element byte array.>
+
+    take octets
+      like list
+        like u8
+        name 16
+      cite free
+
+    free seed
+      like ipv6-addr
+        cite free
+
+  task from, name <from>
+    note <Creates an IpAddr::V6 from a sixteen element byte array.>
+
+    take octets
+      like list
+        like u8
+        name 16
+      cite free
+
+    free seed
+      like ip-addr
+        cite free
+
+  task from, name <from>
+    note <Creates an Ipv4Addr from a four element byte array.>
+
+    take octets
+      like list
+        like u8
+        name 4
+      cite free
+
+    free seed
+      like ipv4-addr
+        cite free
+
+  task from, name <from>
+    note <Creates an IpAddr::V4 from a four element byte array.>
+
+    take octets
+      like list
+        like u8
+        name 4
+      cite free
+
+    free seed
+      like ip-addr
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take vector
+      like mask
+        like t
+          cite free
+        like lanes
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like list
+        like bool
+        name lanes
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take vector
+      like simd
+        like t
+          cite free
+        like lanes
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like list
+        like t
+        name lanes
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task index, name <index>
+    note <Performs the indexing (container[index]) operation.>
+
+    cast c-1
+      like list
+        like t
+        name n
+      like index
+        like i
+          cite free
+
+    take self
+      cite free
+    take index
+      like i
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task index-mut, name <index_mut>
+    note <Performs the mutable indexing (container[index]) operation.>
+
+    cast c-1
+      like list
+        like t
+        name n
+      like index
+        like i
+          cite free
+
+    take self
+      cite free
+    take index
+      like i
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task into-iter, name <into_iter>
+    note <Creates an iterator from a value.>
+
+    take self
+      cite free
+
+    free seed
+      like iter-mut
+        time a
+        like t
+          cite free
+        cite free
+
+  task into-iter, name <into_iter>
+    note <Creates a consuming iterator, that is, one that moves each value out of the array (from start to end). The array cannot be used after calling this unless T implements Copy, so the whole array is copied.>
+
+    cast c-1
+      like list
+        like t
+        name n
+      like into-iterator
+
+    take self
+      cite free
+
+    free seed
+      like c-1/into-iter
+
+  task into-iter, name <into_iter>
+    note <Creates an iterator from a value.>
+
+    take self
+      cite free
+
+    free seed
+      like iter
+        time a
+        like t
+          cite free
+        cite free
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like list
+        like t
+        name n
+      cite free
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      list b
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      list b
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like list
+        like u
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like list
+        like u
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like list
+        like u
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      list b
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      list b
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like list
+        like u
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like list
+        like a
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like list
+        like a
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like list
+        like a
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like list
+        like a
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like list
+        like a
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like list
+        like a
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like list
+        like b
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like list
+        like b
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      list b
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      list b
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like list
+        like u
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like list
+        like u
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like list
+        like u
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like list
+        like t
+        name n
+      cite free
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like list
+        like t
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like list
+        like t
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like list
+        like t
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like list
+        like t
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task into-searcher, name <into_searcher>
+    note <Constructs the associated searcher from self and the haystack to search in.>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like char-array-ref-searcher
+        time a
+        time b
+        like n
+          cite free
+        cite free
+
+  task is-contained-in, name <is_contained_in>
+    note <Checks whether the pattern matches anywhere in the haystack>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task is-prefix-of, name <is_prefix_of>
+    note <Checks whether the pattern matches at the front of the haystack>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task strip-prefix-of, name <strip_prefix_of>
+    note <Removes the pattern from the front of haystack, if it matches.>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like option
+        like str
+          time a
+        cite free
+
+  task is-suffix-of, name <is_suffix_of>
+    note <Checks whether the pattern matches at the back of the haystack>
+
+    lead char-array-ref-searcher
+      like reverse-searcher
+        time a
+        cite free
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task strip-suffix-of, name <strip_suffix_of>
+    note <Removes the pattern from the back of haystack, if it matches.>
+
+    lead char-array-ref-searcher
+      like reverse-searcher
+        time a
+        cite free
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like option
+        like str
+          time a
+        cite free
+
+  task into-searcher, name <into_searcher>
+    note <Constructs the associated searcher from self and the haystack to search in.>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like char-array-searcher
+        time a
+        like n
+          cite free
+        cite free
+
+  task is-contained-in, name <is_contained_in>
+    note <Checks whether the pattern matches anywhere in the haystack>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task is-prefix-of, name <is_prefix_of>
+    note <Checks whether the pattern matches at the front of the haystack>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task strip-prefix-of, name <strip_prefix_of>
+    note <Removes the pattern from the front of haystack, if it matches.>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like option
+        like str
+          time a
+        cite free
+
+  task is-suffix-of, name <is_suffix_of>
+    note <Checks whether the pattern matches at the back of the haystack>
+
+    lead char-array-searcher
+      like reverse-searcher
+        time a
+        cite free
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task strip-suffix-of, name <strip_suffix_of>
+    note <Removes the pattern from the back of haystack, if it matches.>
+
+    lead char-array-searcher
+      like reverse-searcher
+        time a
+        cite free
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like option
+        like str
+          time a
+        cite free
+
+  task as-slice, name <as_slice>
+    note <Currently, the consumers of SlicePattern need a slice.>
+
+    cast c-1
+      like list
+        like t
+        name n
+      like slice-pattern
+
+    take self
+      cite free
+
+    free seed
+      like list
+        like c-1/item
+
+  task try-from, name <try_from>
+    note <Performs the conversion.>
+
+    take slice
+      list t
+      cite free
+
+    free seed
+      like result
+        like list
+          like t
+          name n
+        like try-from-slice-error
+          cite free
+        cite free
+
+  task try-from, name <try_from>
+    note <Performs the conversion.>
+
+    take slice
+      list t
+      cite free
+
+    free seed
+      like result
+        like list
+          like t
+          name n
+        like try-from-slice-error
+          cite free
+        cite free
+
+  task try-from, name <try_from>
+    note <Performs the conversion.>
+
+    take slice
+      list t
+      cite free
+
+    free seed
+      like result
+        like list
+          like t
+          name n
+        like try-from-slice-error
+          cite free
+        cite free
+
+  task try-from, name <try_from>
+    note <Performs the conversion.>
+
+    take slice
+      list t
+      cite free
+
+    free seed
+      like result
+        like list
+          like t
+          name n
+        like try-from-slice-error
+          cite free
+        cite free
+
+  task try-from, name <try_from>
+    note <Gets the entire contents of the Vec&lt;T&gt; as an array, if its size exactly matches that of the requested array.>
+
+    take vec
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like result
+        like list
+          like t
+          name n
+        like vec
+          like t
+            cite free
+          like a
+            cite free
+          cite free
+        cite free

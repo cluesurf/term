@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/authenticator-response
+  find authenticator-response
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+form authenticator-attestation-response, name <AuthenticatorAttestationResponse>
+  base authenticator-response
+
+  link attestation-object, name <attestationObject>
+    like array-buffer

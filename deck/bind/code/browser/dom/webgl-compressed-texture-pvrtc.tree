@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/g-lenum
+  find g-lenum
+
+form webgl-compressed-texture-pvrtc, name <WEBGL_compressed_texture_pvrtc>
+  link compressed-rgba-pvrtc-2-bppv1-img, name <COMPRESSED_RGBA_PVRTC_2BPPV1_IMG>
+    like g-lenum
+  link compressed-rgba-pvrtc-4-bppv1-img, name <COMPRESSED_RGBA_PVRTC_4BPPV1_IMG>
+    like g-lenum
+  link compressed-rgb-pvrtc-2-bppv1-img, name <COMPRESSED_RGB_PVRTC_2BPPV1_IMG>
+    like g-lenum
+  link compressed-rgb-pvrtc-4-bppv1-img, name <COMPRESSED_RGB_PVRTC_4BPPV1_IMG>
+    like g-lenum

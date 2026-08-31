@@ -1,0 +1,24 @@
+
+load @term/bind/code/javascript/native
+  find native-object
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form finalization-registry, name <FinalizationRegistry>
+  head t
+
+  link {symbol/to-string-tag}
+    text <FinalizationRegistry>
+    read true
+
+  task register, name <register>
+    take target, like native-object
+    take held-value, like t
+    take unregister-token, like maybe
+      like native-object
+    like native-void
+
+  task unregister, name <unregister>
+    take unregister-token, like native-object
+    like native-void

@@ -1,0 +1,32 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-number
+  find native-string
+
+load @term/bind/code/node/http
+  find incoming-http-headers
+
+form information-event, name <InformationEvent>
+  link status-code, name <statusCode>
+    like native-number
+    flex true
+  link status-message, name <statusMessage>
+    like native-string
+    flex true
+  link http-version, name <httpVersion>
+    like native-string
+    flex true
+  link http-version-major, name <httpVersionMajor>
+    like native-number
+    flex true
+  link http-version-minor, name <httpVersionMinor>
+    like native-number
+    flex true
+  link headers, name <headers>
+    like incoming-http-headers
+    flex true
+  link raw-headers, name <rawHeaders>
+    like array
+      like native-string
+    flex true

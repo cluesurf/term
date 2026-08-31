@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/media-key-message-type
+  find media-key-message-type
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+form media-key-message-event, name <MediaKeyMessageEvent>
+  base event
+
+  link message, name <message>
+    like array-buffer
+  link message-type, name <messageType>
+    like media-key-message-type

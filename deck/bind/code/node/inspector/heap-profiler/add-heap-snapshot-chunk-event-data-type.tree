@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript
+  find native-string
+
+form add-heap-snapshot-chunk-event-data-type, name <AddHeapSnapshotChunkEventDataType>
+  link chunk, name <chunk>
+    like native-string
+    flex true

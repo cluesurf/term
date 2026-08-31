@@ -1,0 +1,5 @@
+
+load @term/bind/code/browser/dom/web-gl-vertex-array-object
+  find web-gl-vertex-array-object
+
+form web-gl-vertex-array-object, name <WebGLVertexArrayObject>

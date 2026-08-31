@@ -1,0 +1,5 @@
+
+form authenticator-attachment, name <AuthenticatorAttachment>
+  like or
+    text <cross-platform>
+    text <platform>

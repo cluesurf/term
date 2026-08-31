@@ -1,0 +1,11 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form text-decoder-options, name <TextDecoderOptions>
+  link fatal, name <fatal>
+    like native-boolean
+    lock false
+  link ignore-bom, name <ignoreBOM>
+    like native-boolean
+    lock false

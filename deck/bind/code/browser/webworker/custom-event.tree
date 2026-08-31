@@ -1,0 +1,34 @@
+
+load @term/bind/code/browser/dom/custom-event
+  find custom-event
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form custom-event, name <CustomEvent>
+  base event
+
+  head t
+    back native-any
+
+  link detail, name <detail>
+    like t
+
+  task init-custom-event, name <initCustomEvent>
+    take type-arg, like native-string
+    take can-bubble-arg, like native-boolean
+    take cancelable-arg, like native-boolean
+    take detail-arg, like t
+    like native-void

@@ -1,0 +1,9 @@
+
+load @term/bind/code/javascript
+  find native-boolean
+
+form set-custom-object-formatter-enabled-parameter-type
+  name <SetCustomObjectFormatterEnabledParameterType>
+  link enabled, name <enabled>
+    like native-boolean
+    flex true

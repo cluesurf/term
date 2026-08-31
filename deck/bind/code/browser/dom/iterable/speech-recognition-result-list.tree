@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/iterable/speech-recognition-result
+  find speech-recognition-result
+
+load @term/bind/code/browser/dom/speech-recognition-result-list
+  find speech-recognition-result-list
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+form speech-recognition-result-list, name <SpeechRecognitionResultList>
+  task {symbol/iterator}
+    like iterable-iterator
+      like speech-recognition-result

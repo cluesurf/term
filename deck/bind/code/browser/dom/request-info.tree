@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/request
+  find request
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form request-info, name <RequestInfo>
+  like or
+    like request
+    like native-string

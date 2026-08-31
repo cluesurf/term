@@ -1,0 +1,41 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-boolean
+  find native-undefined
+  find object
+
+load @term/bind
+  find or
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/vm
+  find base-options
+  find context
+
+form compile-function-options, name <CompileFunctionOptions>
+  base base-options
+
+  link cached-data, name <cachedData>
+    like or
+      like buffer
+      like native-undefined
+    flex true
+  link produce-cached-data, name <produceCachedData>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link parsing-context, name <parsingContext>
+    like or
+      like context
+      like native-undefined
+    flex true
+  link context-extensions, name <contextExtensions>
+    like or
+      like array
+        like object
+      like native-undefined
+    flex true

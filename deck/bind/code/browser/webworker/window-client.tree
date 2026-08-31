@@ -1,0 +1,37 @@
+
+load @term/bind/code/browser/webworker/client
+  find client
+
+load @term/bind/code/browser/webworker/visibility-state
+  find visibility-state
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form window-client, name <WindowClient>
+  base client
+
+  link focused, name <focused>
+    like native-boolean
+  link visibility-state, name <visibilityState>
+    like visibility-state
+
+  task focus, name <focus>
+    like promise
+      like window-client
+
+  task navigate, name <navigate>
+    take url, like native-string
+    like promise
+      like or
+        like window-client
+        like native-null

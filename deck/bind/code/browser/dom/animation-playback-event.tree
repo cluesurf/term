@@ -1,0 +1,21 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form animation-playback-event, name <AnimationPlaybackEvent>
+  base event
+
+  link current-time, name <currentTime>
+    like or
+      like native-number
+      like native-null
+  link timeline-time, name <timelineTime>
+    like or
+      like native-number
+      like native-null

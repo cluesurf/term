@@ -1,0 +1,36 @@
+
+load @term/bind/code/browser/dom/progress-event
+  find progress-event
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+load @term/bind/code/browser/webworker/event-target
+  find event-target
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form progress-event, name <ProgressEvent>
+  base event
+
+  head t
+    base event-target
+    back event-target
+
+  link length-computable, name <lengthComputable>
+    like native-boolean
+  link loaded, name <loaded>
+    like native-number
+  link target, name <target>
+    like or
+      like t
+      like native-null
+  link total, name <total>
+    like native-number

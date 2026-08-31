@@ -1,0 +1,18 @@
+
+load @term/bind/code/javascript/es2015/iterable/weak-map
+  find weak-map
+
+load @term/bind/code/javascript/native
+  find native-object
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form weak-map, name <WeakMap>
+  head k
+    base native-object
+  head v
+
+  link {symbol/to-string-tag}
+    like native-string
+    read true

@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/media-capabilities-info
+  find media-capabilities-info
+
+load @term/bind/code/browser/dom/media-decoding-configuration
+  find media-decoding-configuration
+
+form media-capabilities-decoding-info, name <MediaCapabilitiesDecodingInfo>
+  base media-capabilities-info
+
+  link configuration, name <configuration>
+    like media-decoding-configuration
+    lock false

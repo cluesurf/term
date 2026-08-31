@@ -1,0 +1,20 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-null
+  find native-undefined
+
+load @term/bind/code/node/buffer
+  find buffer-encoding
+
+load @term/bind/code/node/fs
+  find object-encoding-options
+
+form encoding-option, name <EncodingOption>
+  like or
+    like object-encoding-options
+    like buffer-encoding
+    like native-undefined
+    like native-null

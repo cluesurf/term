@@ -1,0 +1,139 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/svg-angle
+  find svg-angle
+
+load @term/bind/code/browser/dom/svg-animated-angle
+  find svg-animated-angle
+
+load @term/bind/code/browser/dom/svg-animated-enumeration
+  find svg-animated-enumeration
+
+load @term/bind/code/browser/dom/svg-animated-length
+  find svg-animated-length
+
+load @term/bind/code/browser/dom/svg-element
+  find svg-element
+
+load @term/bind/code/browser/dom/svg-element-event-map
+  find svg-element-event-map
+
+load @term/bind/code/browser/dom/svg-fit-to-view-box
+  find svg-fit-to-view-box
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form svg-marker-element, name <SVGMarkerElement>
+  base svg-element
+  base svg-fit-to-view-box
+
+  link marker-height, name <markerHeight>
+    like svg-animated-length
+  link marker-units, name <markerUnits>
+    like svg-animated-enumeration
+  link marker-width, name <markerWidth>
+    like svg-animated-length
+  link orient-angle, name <orientAngle>
+    like svg-animated-angle
+  link orient-type, name <orientType>
+    like svg-animated-enumeration
+  link ref-x, name <refX>
+    like svg-animated-length
+  link ref-y, name <refY>
+    like svg-animated-length
+  link svg-markerunits-strokewidth, name <SVG_MARKERUNITS_STROKEWIDTH>
+    like native-number
+  link svg-markerunits-unknown, name <SVG_MARKERUNITS_UNKNOWN>
+    like native-number
+  link svg-markerunits-userspaceonuse, name <SVG_MARKERUNITS_USERSPACEONUSE>
+    like native-number
+  link svg-marker-orient-angle, name <SVG_MARKER_ORIENT_ANGLE>
+    like native-number
+  link svg-marker-orient-auto, name <SVG_MARKER_ORIENT_AUTO>
+    like native-number
+  link svg-marker-orient-unknown, name <SVG_MARKER_ORIENT_UNKNOWN>
+    like native-number
+
+  task set-orient-to-angle, name <setOrientToAngle>
+    take angle, like svg-angle
+    like native-void
+
+  task set-orient-to-auto, name <setOrientToAuto>
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like svg-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like svg-marker-element
+        take ev
+          like index
+            like svg-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like svg-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like svg-marker-element
+        take ev
+          like index
+            like svg-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

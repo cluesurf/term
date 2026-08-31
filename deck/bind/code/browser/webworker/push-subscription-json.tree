@@ -1,0 +1,30 @@
+
+load @term/bind/code/browser/dom/push-subscription-json
+  find push-subscription-json
+
+load @term/bind/code/javascript/es5/record
+  find record
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form push-subscription-json, name <PushSubscriptionJSON>
+  link endpoint, name <endpoint>
+    like native-string
+    lock false
+  link expiration-time, name <expirationTime>
+    like or
+      like native-number
+      like native-null
+    lock false
+  link keys, name <keys>
+    like record
+      like native-string
+      like native-string
+    lock false

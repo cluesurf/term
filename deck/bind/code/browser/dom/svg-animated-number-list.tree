@@ -1,0 +1,9 @@
+
+load @term/bind/code/browser/dom/svg-number-list
+  find svg-number-list
+
+form svg-animated-number-list, name <SVGAnimatedNumberList>
+  link anim-val, name <animVal>
+    like svg-number-list
+  link base-val, name <baseVal>
+    like svg-number-list

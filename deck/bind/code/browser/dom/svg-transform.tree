@@ -1,0 +1,63 @@
+
+load @term/bind/code/browser/dom/dom-matrix
+  find dom-matrix
+
+load @term/bind/code/browser/dom/dom-matrix2-d-init
+  find dom-matrix2-d-init
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form svg-transform, name <SVGTransform>
+  link angle, name <angle>
+    like native-number
+  link matrix, name <matrix>
+    like dom-matrix
+  link type, name <type>
+    like native-number
+  link svg-transform-matrix, name <SVG_TRANSFORM_MATRIX>
+    like native-number
+  link svg-transform-rotate, name <SVG_TRANSFORM_ROTATE>
+    like native-number
+  link svg-transform-scale, name <SVG_TRANSFORM_SCALE>
+    like native-number
+  link svg-transform-skewx, name <SVG_TRANSFORM_SKEWX>
+    like native-number
+  link svg-transform-skewy, name <SVG_TRANSFORM_SKEWY>
+    like native-number
+  link svg-transform-translate, name <SVG_TRANSFORM_TRANSLATE>
+    like native-number
+  link svg-transform-unknown, name <SVG_TRANSFORM_UNKNOWN>
+    like native-number
+
+  task set-matrix, name <setMatrix>
+    take matrix, like maybe
+      like dom-matrix2-d-init
+    like native-void
+
+  task set-rotate, name <setRotate>
+    take angle, like native-number
+    take cx, like native-number
+    take cy, like native-number
+    like native-void
+
+  task set-scale, name <setScale>
+    take sx, like native-number
+    take sy, like native-number
+    like native-void
+
+  task set-skew-x, name <setSkewX>
+    take angle, like native-number
+    like native-void
+
+  task set-skew-y, name <setSkewY>
+    take angle, like native-number
+    like native-void
+
+  task set-translate, name <setTranslate>
+    take tx, like native-number
+    take ty, like native-number
+    like native-void

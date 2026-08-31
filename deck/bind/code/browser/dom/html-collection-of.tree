@@ -1,0 +1,36 @@
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/browser/dom/html-collection-base
+  find html-collection-base
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form html-collection-of, name <HTMLCollectionOf>
+  base html-collection-base
+
+  head t
+    base element
+
+  task item, name <item>
+    take index, like native-number
+    like or
+      like t
+      like native-null
+
+  task named-item, name <namedItem>
+    take name, like native-string
+    like or
+      like t
+      like native-null
+
+  mesh index, like native-number
+    like t

@@ -1,0 +1,14 @@
+
+load @term/bind
+  find or
+
+form key-type, name <KeyType>
+  like or
+    text <rsa>
+    text <rsa-pss>
+    text <dsa>
+    text <ec>
+    text <ed25519>
+    text <ed448>
+    text <x25519>
+    text <x448>

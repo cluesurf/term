@@ -1,0 +1,11 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form promise-rejected-result, name <PromiseRejectedResult>
+  link status, name <status>
+    text <rejected>
+    lock false
+  link reason, name <reason>
+    like native-any
+    lock false

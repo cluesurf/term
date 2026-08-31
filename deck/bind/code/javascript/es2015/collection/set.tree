@@ -1,0 +1,49 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-this
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form set, name <Set>
+  head t
+
+  link size, name <size>
+    like native-number
+
+  task add, name <add>
+    take value, like t
+    like native-this
+
+  task clear, name <clear>
+    like native-void
+
+  task delete, name <delete>
+    take value, like t
+    like native-boolean
+
+  task for-each, name <forEach>
+    take callbackfn
+      like task
+        take value, like t
+        take value2, like t
+        take set
+          like set
+            like t
+        like native-void
+    take this-arg, like maybe
+      like native-any
+    like native-void
+
+  task has, name <has>
+    take value, like t
+    like native-boolean

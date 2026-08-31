@@ -1,0 +1,27 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form validity-state, name <ValidityState>
+  link bad-input, name <badInput>
+    like native-boolean
+  link custom-error, name <customError>
+    like native-boolean
+  link pattern-mismatch, name <patternMismatch>
+    like native-boolean
+  link range-overflow, name <rangeOverflow>
+    like native-boolean
+  link range-underflow, name <rangeUnderflow>
+    like native-boolean
+  link step-mismatch, name <stepMismatch>
+    like native-boolean
+  link too-long, name <tooLong>
+    like native-boolean
+  link too-short, name <tooShort>
+    like native-boolean
+  link type-mismatch, name <typeMismatch>
+    like native-boolean
+  link valid, name <valid>
+    like native-boolean
+  link value-missing, name <valueMissing>
+    like native-boolean

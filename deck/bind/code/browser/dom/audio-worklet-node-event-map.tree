@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form audio-worklet-node-event-map, name <AudioWorkletNodeEventMap>
+  link processorerror, name <processorerror>
+    like event
+    lock false

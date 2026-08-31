@@ -1,0 +1,17 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+
+form resolver-options, name <ResolverOptions>
+  link timeout, name <timeout>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link tries, name <tries>
+    like native-number
+    flex true

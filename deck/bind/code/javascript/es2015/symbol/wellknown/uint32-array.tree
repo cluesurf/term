@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/es2015/iterable/uint32-array
+  find uint32-array
+
+form uint32-array, name <Uint32Array>
+  link {symbol/to-string-tag}
+    text <Uint32Array>
+    read true

@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/browser/dom/html-select-element
+  find html-select-element
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+form html-select-element, name <HTMLSelectElement>
+  task {symbol/iterator}
+    like iterable-iterator
+      like element

@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript
+  find native-string
+
+form release-object-group-parameter-type, name <ReleaseObjectGroupParameterType>
+  link object-group, name <objectGroup>
+    like native-string
+    flex true

@@ -1,0 +1,8 @@
+
+form oscillator-type, name <OscillatorType>
+  like or
+    text <custom>
+    text <sawtooth>
+    text <sine>
+    text <square>
+    text <triangle>

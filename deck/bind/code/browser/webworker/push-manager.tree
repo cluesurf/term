@@ -1,0 +1,37 @@
+
+load @term/bind/code/browser/dom/push-manager
+  find push-manager
+
+load @term/bind/code/browser/webworker/push-permission-state
+  find push-permission-state
+
+load @term/bind/code/browser/webworker/push-subscription
+  find push-subscription
+
+load @term/bind/code/browser/webworker/push-subscription-options-init
+  find push-subscription-options-init
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-null
+
+form push-manager, name <PushManager>
+  task get-subscription, name <getSubscription>
+    like promise
+      like or
+        like push-subscription
+        like native-null
+
+  task permission-state, name <permissionState>
+    take options, like maybe
+      like push-subscription-options-init
+    like promise
+      like push-permission-state
+
+  task subscribe, name <subscribe>
+    take options, like maybe
+      like push-subscription-options-init
+    like promise
+      like push-subscription

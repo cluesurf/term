@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/dom/rtc-offer-answer-options
+  find rtc-offer-answer-options
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form rtc-offer-options, name <RTCOfferOptions>
+  base rtc-offer-answer-options
+
+  link ice-restart, name <iceRestart>
+    like native-boolean
+    lock false
+  link offer-to-receive-audio, name <offerToReceiveAudio>
+    like native-boolean
+    lock false
+  link offer-to-receive-video, name <offerToReceiveVideo>
+    like native-boolean
+    lock false

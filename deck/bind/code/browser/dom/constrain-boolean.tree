@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/constrain-boolean-parameters
+  find constrain-boolean-parameters
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form constrain-boolean, name <ConstrainBoolean>
+  like or
+    like native-boolean
+    like constrain-boolean-parameters

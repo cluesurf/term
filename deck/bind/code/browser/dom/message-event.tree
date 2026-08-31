@@ -1,0 +1,71 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/message-event-source
+  find message-event-source
+
+load @term/bind/code/browser/dom/message-port
+  find message-port
+
+load @term/bind/code/javascript/es5/readonly-array
+  find readonly-array
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form message-event, name <MessageEvent>
+  base event
+
+  head t
+    back native-any
+
+  link data, name <data>
+    like t
+  link last-event-id, name <lastEventId>
+    like native-string
+  link origin, name <origin>
+    like native-string
+  link ports, name <ports>
+    like readonly-array
+      like message-port
+  link source, name <source>
+    like or
+      like message-event-source
+      like native-null
+
+  task init-message-event, name <initMessageEvent>
+    take type, like native-string
+    take bubbles, like maybe
+      like native-boolean
+    take cancelable, like maybe
+      like native-boolean
+    take data, like maybe
+      like native-any
+    take origin, like maybe
+      like native-string
+    take last-event-id, like maybe
+      like native-string
+    take source, like maybe
+      like or
+        like message-event-source
+        like native-null
+    take ports, like maybe
+      like native-array
+        like message-port
+    like native-void

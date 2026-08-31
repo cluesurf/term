@@ -1,0 +1,35 @@
+
+load @term/bind/code/javascript/es5/readonly-array
+  find readonly-array
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form payment-address, name <PaymentAddress>
+  link address-line, name <addressLine>
+    like readonly-array
+      like native-string
+  link city, name <city>
+    like native-string
+  link country, name <country>
+    like native-string
+  link dependent-locality, name <dependentLocality>
+    like native-string
+  link organization, name <organization>
+    like native-string
+  link phone, name <phone>
+    like native-string
+  link postal-code, name <postalCode>
+    like native-string
+  link recipient, name <recipient>
+    like native-string
+  link region, name <region>
+    like native-string
+  link sorting-code, name <sortingCode>
+    like native-string
+
+  task to-json, name <toJSON>
+    like native-any

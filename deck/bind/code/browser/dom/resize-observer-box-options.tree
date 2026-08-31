@@ -1,0 +1,6 @@
+
+form resize-observer-box-options, name <ResizeObserverBoxOptions>
+  like or
+    text <border-box>
+    text <content-box>
+    text <device-pixel-content-box>

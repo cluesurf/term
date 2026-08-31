@@ -1,0 +1,142 @@
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find agent
+  find error
+  find lookup-function
+  find native-boolean
+  find native-null
+  find native-number
+  find native-string
+  find native-undefined
+  find native-void
+  find socket
+
+load @term/bind/code/node/globals
+  find abort-signal
+
+load @term/bind/code/node/http
+  find outgoing-http-headers
+
+form client-request-args, name <ClientRequestArgs>
+  link signal, name <signal>
+    like or
+      like abort-signal
+      like native-undefined
+    flex true
+  link protocol, name <protocol>
+    like or
+      like native-string
+      like native-null
+      like native-undefined
+    flex true
+  link host, name <host>
+    like or
+      like native-string
+      like native-null
+      like native-undefined
+    flex true
+  link hostname, name <hostname>
+    like or
+      like native-string
+      like native-null
+      like native-undefined
+    flex true
+  link family, name <family>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link port, name <port>
+    like or
+      like native-number
+      like native-string
+      like native-null
+      like native-undefined
+    flex true
+  link default-port, name <defaultPort>
+    like or
+      like native-number
+      like native-string
+      like native-undefined
+    flex true
+  link local-address, name <localAddress>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link socket-path, name <socketPath>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link max-header-size, name <maxHeaderSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link method, name <method>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link path, name <path>
+    like or
+      like native-string
+      like native-null
+      like native-undefined
+    flex true
+  link headers, name <headers>
+    like or
+      like outgoing-http-headers
+      like native-undefined
+    flex true
+  link auth, name <auth>
+    like or
+      like native-string
+      like native-null
+      like native-undefined
+    flex true
+  link agent, name <agent>
+    like or
+      like agent
+      like native-boolean
+      like native-undefined
+    flex true
+  link default-agent, name <_defaultAgent>
+    like or
+      like agent
+      like native-undefined
+    flex true
+  link timeout, name <timeout>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link set-host, name <setHost>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link create-connection, name <createConnection>
+    like or
+      like task
+        like socket
+
+        take options, like client-request-args
+        take oncreate
+          like task
+            like native-void
+
+            take err, like error
+            take socket, like socket
+      like native-undefined
+    flex true
+  link lookup, name <lookup>
+    like or
+      like lookup-function
+      like native-undefined
+    flex true

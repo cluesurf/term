@@ -1,0 +1,130 @@
+
+load @term/bind
+  find any
+  find form
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find error
+  find native-null
+  find native-number
+  find native-void
+  find transform
+
+load @term/bind/code/node/buffer
+  find buffer-encoding
+
+load @term/bind/code/node/globals
+  find array
+
+load @term/bind/code/node/stream/internal
+  find duplex-options
+  find transform-callback
+
+form transform-options, name <TransformOptions>
+  base duplex-options
+
+  task construct, name <construct>
+    like native-void
+
+    take this, like transform
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+          void true
+
+  task read, name <read>
+    like native-void
+
+    take this, like transform
+    take size, like native-number
+
+  task write, name <write>
+    like native-void
+
+    take this, like transform
+    take chunk, like any
+    take encoding, like buffer-encoding
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+          void true
+
+  task writev, name <writev>
+    like native-void
+
+    take this, like transform
+    take chunks
+      like array
+        like form
+          link chunk, name <chunk>
+            like any
+            flex true
+          link encoding, name <encoding>
+            like buffer-encoding
+            flex true
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+          void true
+
+  task final, name <final>
+    like native-void
+
+    take this, like transform
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+          void true
+
+  task destroy, name <destroy>
+    like native-void
+
+    take this, like transform
+    take error
+      like or
+        like error
+        like native-null
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+
+  task transform, name <transform>
+    like native-void
+
+    take this, like transform
+    take chunk, like any
+    take encoding, like buffer-encoding
+    take callback, like transform-callback
+
+  task flush, name <flush>
+    like native-void
+
+    take this, like transform
+    take callback, like transform-callback

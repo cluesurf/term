@@ -1,0 +1,29 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+
+form resource-limits, name <ResourceLimits>
+  link max-young-generation-size-mb, name <maxYoungGenerationSizeMb>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link max-old-generation-size-mb, name <maxOldGenerationSizeMb>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link code-range-size-mb, name <codeRangeSizeMb>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link stack-size-mb, name <stackSizeMb>
+    like or
+      like native-number
+      like native-undefined
+    flex true

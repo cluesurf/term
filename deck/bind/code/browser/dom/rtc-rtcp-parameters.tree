@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form rtc-rtcp-parameters, name <RTCRtcpParameters>
+  link cname, name <cname>
+    like native-string
+    lock false
+  link reduced-size, name <reducedSize>
+    like native-boolean
+    lock false

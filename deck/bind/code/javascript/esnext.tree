@@ -1,0 +1,7 @@
+
+bear @term/bind/code/javascript/es2021
+bear @term/bind/code/javascript/esnext/intl
+bear @term/bind/code/javascript/esnext/promise
+bear @term/bind/code/javascript/esnext/string
+bear @term/bind/code/javascript/esnext/weakref
+bear @term/bind/code/javascript/esnext/full

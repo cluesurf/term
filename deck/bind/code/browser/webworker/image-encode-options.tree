@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form image-encode-options, name <ImageEncodeOptions>
+  link quality, name <quality>
+    like native-number
+    lock false
+  link type, name <type>
+    like native-string
+    lock false

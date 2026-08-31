@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form svg-animated-boolean, name <SVGAnimatedBoolean>
+  link anim-val, name <animVal>
+    like native-boolean
+  link base-val, name <baseVal>
+    like native-boolean
+    lock false

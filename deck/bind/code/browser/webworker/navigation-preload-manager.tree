@@ -1,0 +1,30 @@
+
+load @term/bind/code/browser/webworker/navigation-preload-state
+  find navigation-preload-state
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form navigation-preload-manager, name <NavigationPreloadManager>
+  task disable, name <disable>
+    like promise
+      like native-void
+
+  task enable, name <enable>
+    like promise
+      like native-void
+
+  task get-state, name <getState>
+    like promise
+      like navigation-preload-state
+
+  task set-header-value, name <setHeaderValue>
+    take value, like native-string
+    like promise
+      like native-void

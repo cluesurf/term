@@ -1,0 +1,27 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-boolean
+  find native-string
+  find native-undefined
+
+load @term/bind
+  find or
+
+load @term/bind/code/node/http2
+  find secure-server-session-options
+
+form secure-server-options, name <SecureServerOptions>
+  base secure-server-session-options
+
+  link allow-http1, name <allowHTTP1>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link origins, name <origins>
+    like or
+      like array
+        like native-string
+      like native-undefined
+    flex true

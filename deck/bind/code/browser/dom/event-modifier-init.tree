@@ -1,0 +1,52 @@
+
+load @term/bind/code/browser/dom/ui-event-init
+  find ui-event-init
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form event-modifier-init, name <EventModifierInit>
+  base ui-event-init
+
+  link alt-key, name <altKey>
+    like native-boolean
+    lock false
+  link ctrl-key, name <ctrlKey>
+    like native-boolean
+    lock false
+  link meta-key, name <metaKey>
+    like native-boolean
+    lock false
+  link modifier-alt-graph, name <modifierAltGraph>
+    like native-boolean
+    lock false
+  link modifier-caps-lock, name <modifierCapsLock>
+    like native-boolean
+    lock false
+  link modifier-fn, name <modifierFn>
+    like native-boolean
+    lock false
+  link modifier-fn-lock, name <modifierFnLock>
+    like native-boolean
+    lock false
+  link modifier-hyper, name <modifierHyper>
+    like native-boolean
+    lock false
+  link modifier-num-lock, name <modifierNumLock>
+    like native-boolean
+    lock false
+  link modifier-scroll-lock, name <modifierScrollLock>
+    like native-boolean
+    lock false
+  link modifier-super, name <modifierSuper>
+    like native-boolean
+    lock false
+  link modifier-symbol, name <modifierSymbol>
+    like native-boolean
+    lock false
+  link modifier-symbol-lock, name <modifierSymbolLock>
+    like native-boolean
+    lock false
+  link shift-key, name <shiftKey>
+    like native-boolean
+    lock false

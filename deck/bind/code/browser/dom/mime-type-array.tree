@@ -1,0 +1,24 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form mime-type-array, name <MimeTypeArray>
+  link length, name <length>
+    like native-number
+
+  task item, name <item>
+    take index, like native-number
+    like native-any
+
+  task named-item, name <namedItem>
+    take name, like native-string
+    like native-any
+
+  mesh index, like native-number
+    like native-any

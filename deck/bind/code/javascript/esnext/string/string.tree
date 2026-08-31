@@ -1,0 +1,39 @@
+
+load @term/bind/code/javascript/es2020/symbol/wellknown/reg-exp
+  find reg-exp
+
+load @term/bind/code/javascript/es2021/string/string
+  find string
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form string, name <String>
+  task replace-all, name <replaceAll>
+    take search-value
+      like or
+        like native-string
+        like reg-exp
+    take replace-value, like native-string
+    like native-string
+
+  task replace-all, name <replaceAll>
+    take search-value
+      like or
+        like native-string
+        like reg-exp
+    take replacer
+      like task
+        take substring, like native-string
+        take args
+          like native-array
+            like native-any
+          rest true
+        like native-string
+    like native-string

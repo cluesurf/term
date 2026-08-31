@@ -1,0 +1,18 @@
+
+load @term/bind/code/browser/dom/svg-animated-length
+  find svg-animated-length
+
+load @term/bind/code/browser/dom/svg-animated-string
+  find svg-animated-string
+
+form svg-filter-primitive-standard-attributes, name <SVGFilterPrimitiveStandardAttributes>
+  link height, name <height>
+    like svg-animated-length
+  link result, name <result>
+    like svg-animated-string
+  link width, name <width>
+    like svg-animated-length
+  link x, name <x>
+    like svg-animated-length
+  link y, name <y>
+    like svg-animated-length

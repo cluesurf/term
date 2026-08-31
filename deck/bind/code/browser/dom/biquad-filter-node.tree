@@ -1,0 +1,36 @@
+
+load @term/bind/code/browser/dom/audio-node
+  find audio-node
+
+load @term/bind/code/browser/dom/audio-param
+  find audio-param
+
+load @term/bind/code/browser/dom/biquad-filter-type
+  find biquad-filter-type
+
+load @term/bind/code/javascript/es5/float32-array
+  find float32-array
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form biquad-filter-node, name <BiquadFilterNode>
+  base audio-node
+
+  link q, name <Q>
+    like audio-param
+  link detune, name <detune>
+    like audio-param
+  link frequency, name <frequency>
+    like audio-param
+  link gain, name <gain>
+    like audio-param
+  link type, name <type>
+    like biquad-filter-type
+    lock false
+
+  task get-frequency-response, name <getFrequencyResponse>
+    take frequency-hz, like float32-array
+    take mag-response, like float32-array
+    take phase-response, like float32-array
+    like native-void

@@ -1,0 +1,16 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find key-object
+  find native-string
+
+load @term/bind/code/node/buffer
+  find buffer
+
+form key-like, name <KeyLike>
+  like or
+    like native-string
+    like buffer
+    like key-object

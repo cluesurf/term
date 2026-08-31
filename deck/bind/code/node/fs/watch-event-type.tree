@@ -1,0 +1,8 @@
+
+load @term/bind
+  find or
+
+form watch-event-type, name <WatchEventType>
+  like or
+    text <rename>
+    text <change>

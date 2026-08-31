@@ -1,0 +1,36 @@
+
+load @term/bind/code/browser/dom/writable-stream-default-writer
+  find writable-stream-default-writer
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form writable-stream, name <WritableStream>
+  head w
+    back native-any
+
+  link locked, name <locked>
+    like native-boolean
+
+  task abort, name <abort>
+    take reason, like maybe
+      like native-any
+    like promise
+      like native-void
+
+  task close, name <close>
+    like promise
+      like native-void
+
+  task get-writer, name <getWriter>
+    like writable-stream-default-writer
+      like w

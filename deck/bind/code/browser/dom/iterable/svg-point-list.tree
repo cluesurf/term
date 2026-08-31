@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/dom-point
+  find dom-point
+
+load @term/bind/code/browser/dom/svg-point-list
+  find svg-point-list
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+form svg-point-list, name <SVGPointList>
+  task {symbol/iterator}
+    like iterable-iterator
+      like dom-point

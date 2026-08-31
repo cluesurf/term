@@ -1,0 +1,6 @@
+
+form can-play-type-result, name <CanPlayTypeResult>
+  like or
+    text <>
+    text <maybe>
+    text <probably>

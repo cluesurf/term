@@ -1,0 +1,37 @@
+
+load @term/bind/code/browser/dom/error-callback
+  find error-callback
+
+load @term/bind/code/browser/dom/file-system
+  find file-system
+
+load @term/bind/code/browser/dom/file-system-entry-callback
+  find file-system-entry-callback
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form file-system-entry, name <FileSystemEntry>
+  link filesystem, name <filesystem>
+    like file-system
+  link full-path, name <fullPath>
+    like native-string
+  link is-directory, name <isDirectory>
+    like native-boolean
+  link is-file, name <isFile>
+    like native-boolean
+  link name, name <name>
+    like native-string
+
+  task get-parent, name <getParent>
+    take success-callback, like maybe
+      like file-system-entry-callback
+    take error-callback, like maybe
+      like error-callback
+    like native-void

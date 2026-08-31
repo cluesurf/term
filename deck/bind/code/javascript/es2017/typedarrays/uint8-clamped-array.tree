@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/es2016/array/include/uint8-clamped-array
+  find uint8-clamped-array
+
+form uint8-clamped-array
+  hook self
+  hook make
+    like uint8-clamped-array

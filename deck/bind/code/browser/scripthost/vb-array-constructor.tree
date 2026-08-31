@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/scripthost/vb-array
+  find vb-array
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/safe-array
+  find safe-array
+
+form vb-array-constructor, name <VBArrayConstructor>
+  hook make
+    head t
+      back native-any
+    take safe-array
+      like safe-array
+        like t
+    like vb-array
+      like t

@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/es2016/array/include/int32-array
+  find int32-array
+
+form int32-array
+  hook self
+  hook make
+    like int32-array

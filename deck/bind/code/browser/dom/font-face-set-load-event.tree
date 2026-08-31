@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/font-face
+  find font-face
+
+load @term/bind/code/javascript/es5/readonly-array
+  find readonly-array
+
+form font-face-set-load-event, name <FontFaceSetLoadEvent>
+  base event
+
+  link fontfaces, name <fontfaces>
+    like readonly-array
+      like font-face

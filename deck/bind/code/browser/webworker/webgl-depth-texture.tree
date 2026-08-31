@@ -1,0 +1,10 @@
+
+load @term/bind/code/browser/dom/webgl-depth-texture
+  find webgl-depth-texture
+
+load @term/bind/code/browser/webworker/g-lenum
+  find g-lenum
+
+form webgl-depth-texture, name <WEBGL_depth_texture>
+  link unsigned-int-24-8-webgl, name <UNSIGNED_INT_24_8_WEBGL>
+    like g-lenum

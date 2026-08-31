@@ -1,0 +1,57 @@
+
+form pending, name <std::future::Pending>
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like pending
+        like t
+          cite free
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task poll, name <poll>
+    note <Attempt to resolve the future to a final value, registering the current task for wakeup if the value is not yet available.>
+
+    take self
+      like pin
+        like pending
+          like t
+            cite free
+        cite free
+      cite free
+    take context
+      cite free
+
+    free seed
+      like poll
+        like t
+          cite free
+        cite free

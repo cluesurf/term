@@ -1,0 +1,174 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/html-element
+  find html-element
+
+load @term/bind/code/browser/dom/html-element-event-map
+  find html-element-event-map
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form html-image-element, name <HTMLImageElement>
+  base html-element
+
+  link align, name <align>
+    like native-string
+    lock false
+  link alt, name <alt>
+    like native-string
+    lock false
+  link border, name <border>
+    like native-string
+    lock false
+  link complete, name <complete>
+    like native-boolean
+  link cross-origin, name <crossOrigin>
+    like or
+      like native-string
+      like native-null
+    lock false
+  link current-src, name <currentSrc>
+    like native-string
+  link decoding, name <decoding>
+    like or
+      text <async>
+      text <sync>
+      text <auto>
+    lock false
+  link height, name <height>
+    like native-number
+    lock false
+  link hspace, name <hspace>
+    like native-number
+    lock false
+  link is-map, name <isMap>
+    like native-boolean
+    lock false
+  link loading, name <loading>
+    like native-string
+    lock false
+  link long-desc, name <longDesc>
+    like native-string
+    lock false
+  link lowsrc, name <lowsrc>
+    like native-string
+    lock false
+  link name, name <name>
+    like native-string
+    lock false
+  link natural-height, name <naturalHeight>
+    like native-number
+  link natural-width, name <naturalWidth>
+    like native-number
+  link referrer-policy, name <referrerPolicy>
+    like native-string
+    lock false
+  link sizes, name <sizes>
+    like native-string
+    lock false
+  link src, name <src>
+    like native-string
+    lock false
+  link srcset, name <srcset>
+    like native-string
+    lock false
+  link use-map, name <useMap>
+    like native-string
+    lock false
+  link vspace, name <vspace>
+    like native-number
+    lock false
+  link width, name <width>
+    like native-number
+    lock false
+  link x, name <x>
+    like native-number
+  link y, name <y>
+    like native-number
+
+  task decode, name <decode>
+    like promise
+      like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like html-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like html-image-element
+        take ev
+          like index
+            like html-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like html-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like html-image-element
+        take ev
+          like index
+            like html-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

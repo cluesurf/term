@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/scroll-logical-position
+  find scroll-logical-position
+
+load @term/bind/code/browser/dom/scroll-options
+  find scroll-options
+
+form scroll-into-view-options, name <ScrollIntoViewOptions>
+  base scroll-options
+
+  link block, name <block>
+    like scroll-logical-position
+    lock false
+  link inline, name <inline>
+    like scroll-logical-position
+    lock false

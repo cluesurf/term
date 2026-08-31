@@ -1,0 +1,34 @@
+
+load @term/bind/code/browser/dom/readable-stream
+  find readable-stream
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form readable-stream, name <ReadableStream>
+  head r
+    back native-any
+
+  task {symbol/iterator}
+    like iterable-iterator
+      like native-any
+
+  task entries, name <entries>
+    like iterable-iterator
+      like band
+        like native-number
+        like native-any
+
+  task keys, name <keys>
+    like iterable-iterator
+      like native-number
+
+  task values, name <values>
+    like iterable-iterator
+      like native-any

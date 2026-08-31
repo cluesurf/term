@@ -1,0 +1,25 @@
+
+load @term/bind/code/javascript/es2021/weakref/weak-ref-constructor
+  find weak-ref-constructor
+
+load @term/bind/code/javascript/esnext/weakref/weak-ref
+  find weak-ref
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-object
+
+form weak-ref-constructor, name <WeakRefConstructor>
+  link prototype, name <prototype>
+    like weak-ref
+      like native-any
+
+  hook make
+    head t
+      base native-object
+    take target, like maybe
+      like t
+    like weak-ref
+      like t

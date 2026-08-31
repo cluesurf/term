@@ -1,0 +1,6 @@
+
+load @term/bind/code/browser/dom/dom-point-read-only
+  find dom-point-read-only
+
+form dom-point, name <DOMPoint>
+  base dom-point-read-only

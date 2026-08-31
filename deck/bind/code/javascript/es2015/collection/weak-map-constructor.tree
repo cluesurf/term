@@ -1,0 +1,38 @@
+
+load @term/bind/code/javascript/es2015/collection/weak-map
+  find weak-map
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-object
+
+form weak-map-constructor, name <WeakMapConstructor>
+  link prototype, name <prototype>
+    like weak-map
+      like native-object
+      like native-any
+
+  hook make
+    head k
+      base native-object
+      back native-object
+    head v
+      back native-any
+    take entries, like maybe
+      like or
+        like native-array
+          like band
+            like k
+            like v
+        like native-null
+    like weak-map
+      like k
+      like v

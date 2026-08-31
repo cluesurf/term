@@ -1,0 +1,7 @@
+
+form canvas-text-rendering, name <CanvasTextRendering>
+  like or
+    text <auto>
+    text <geometricPrecision>
+    text <optimizeLegibility>
+    text <optimizeSpeed>

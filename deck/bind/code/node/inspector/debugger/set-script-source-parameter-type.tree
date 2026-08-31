@@ -1,0 +1,22 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-string
+  find native-undefined
+  find runtime-script-id
+
+form set-script-source-parameter-type, name <SetScriptSourceParameterType>
+  link script-id, name <scriptId>
+    like runtime-script-id
+    flex true
+  link script-source, name <scriptSource>
+    like native-string
+    flex true
+  link dry-run, name <dryRun>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

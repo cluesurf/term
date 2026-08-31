@@ -1,0 +1,23 @@
+
+load @term/bind/code/javascript/es2015/collection/set-constructor
+  find set-constructor
+
+load @term/bind/code/javascript/es2015/iterable/iterable
+  find iterable
+
+load @term/bind/code/javascript/es2015/iterable/set
+  find set
+
+load @term/bind/code/javascript/native
+  find native-null
+
+form set-constructor, name <SetConstructor>
+  hook make
+    head t
+    take iterable, like maybe
+      like or
+        like iterable
+          like t
+        like native-null
+    like set
+      like t

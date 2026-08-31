@@ -1,0 +1,40 @@
+
+load @term/bind/code/javascript
+  find native-string
+  find native-void
+
+load @term/bind/code/node/dns
+  find resolver-options
+
+form resolver, name <Resolver>
+  link get-servers, name <getServers>, like get-servers
+  link resolve, name <resolve>, like resolve
+  link resolve4, name <resolve4>, like resolve4
+  link resolve6, name <resolve6>, like resolve6
+  link resolve-any, name <resolveAny>, like resolve-any
+  link resolve-cname, name <resolveCname>, like resolve-cname
+  link resolve-mx, name <resolveMx>, like resolve-mx
+  link resolve-naptr, name <resolveNaptr>, like resolve-naptr
+  link resolve-ns, name <resolveNs>, like resolve-ns
+  link resolve-ptr, name <resolvePtr>, like resolve-ptr
+  link resolve-soa, name <resolveSoa>, like resolve-soa
+  link resolve-srv, name <resolveSrv>, like resolve-srv
+  link resolve-txt, name <resolveTxt>, like resolve-txt
+  link reverse, name <reverse>, like reverse
+  link set-servers, name <setServers>, like set-servers
+
+  task cancel, name <cancel>
+    like native-void
+
+  task set-local-address, name <setLocalAddress>
+    like native-void
+
+    take ipv4, like native-string
+      void true
+    take ipv6, like native-string
+      void true
+
+form resolver-constructor
+  hook make
+    take options, like resolver-options
+      void true

@@ -1,0 +1,25 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/r
+  find r
+
+form return-type, name <ReturnType>
+  head t
+    base task
+      take args, like native-any
+        rest true
+      like native-any
+
+  like test
+    stem roll
+      like t
+      like task
+        take args, like native-any
+          rest true
+        name r
+      hook true
+        like r
+      hook false
+        like native-any

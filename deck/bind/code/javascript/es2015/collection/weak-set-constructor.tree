@@ -1,0 +1,29 @@
+
+load @term/bind/code/javascript/es2015/collection/weak-set
+  find weak-set
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-object
+
+form weak-set-constructor, name <WeakSetConstructor>
+  link prototype, name <prototype>
+    like weak-set
+      like native-object
+
+  hook make
+    head t
+      base native-object
+      back native-object
+    take values, like maybe
+      like or
+        like native-array
+          like t
+        like native-null
+    like weak-set
+      like t

@@ -1,0 +1,30 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-undefined
+
+form lookup-options, name <LookupOptions>
+  link family, name <family>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link hints, name <hints>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link all, name <all>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link verbatim, name <verbatim>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

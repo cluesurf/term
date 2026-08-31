@@ -1,0 +1,364 @@
+
+bear @term/bind/code/javascript/node/zlib/zlib-options
+bear @term/bind/code/javascript/node/zlib/brotli-options
+bear @term/bind/code/javascript/node/zlib/zlib
+bear @term/bind/code/javascript/node/zlib/zlib-params
+bear @term/bind/code/javascript/node/zlib/zlib-reset
+bear @term/bind/code/javascript/node/zlib/brotli-compress
+bear @term/bind/code/javascript/node/zlib/brotli-decompress
+bear @term/bind/code/javascript/node/zlib/gzip
+bear @term/bind/code/javascript/node/zlib/gunzip
+bear @term/bind/code/javascript/node/zlib/deflate
+bear @term/bind/code/javascript/node/zlib/inflate
+bear @term/bind/code/javascript/node/zlib/deflate-raw
+bear @term/bind/code/javascript/node/zlib/inflate-raw
+bear @term/bind/code/javascript/node/zlib/unzip
+bear @term/bind/code/javascript/node/zlib/input-type
+bear @term/bind/code/javascript/node/zlib/compress-callback
+bear @term/bind/code/javascript/node/zlib/constants
+
+load @term/bind/code/javascript
+  find native-number
+  find native-void
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/zlib
+  find brotli-compress
+  find brotli-decompress
+  find brotli-options
+  find compress-callback
+  find deflate
+  find deflate-raw
+  find gunzip
+  find gzip
+  find inflate
+  find inflate-raw
+  find input-type
+  find unzip
+  find zlib-options
+
+host z-no-flush, name <Z_NO_FLUSH>
+  like native-number
+
+host z-partial-flush, name <Z_PARTIAL_FLUSH>
+  like native-number
+
+host z-sync-flush, name <Z_SYNC_FLUSH>
+  like native-number
+
+host z-full-flush, name <Z_FULL_FLUSH>
+  like native-number
+
+host z-finish, name <Z_FINISH>
+  like native-number
+
+host z-block, name <Z_BLOCK>
+  like native-number
+
+host z-trees, name <Z_TREES>
+  like native-number
+
+host z-ok, name <Z_OK>
+  like native-number
+
+host z-stream-end, name <Z_STREAM_END>
+  like native-number
+
+host z-need-dict, name <Z_NEED_DICT>
+  like native-number
+
+host z-errno, name <Z_ERRNO>
+  like native-number
+
+host z-stream-error, name <Z_STREAM_ERROR>
+  like native-number
+
+host z-data-error, name <Z_DATA_ERROR>
+  like native-number
+
+host z-mem-error, name <Z_MEM_ERROR>
+  like native-number
+
+host z-buf-error, name <Z_BUF_ERROR>
+  like native-number
+
+host z-version-error, name <Z_VERSION_ERROR>
+  like native-number
+
+host z-no-compression, name <Z_NO_COMPRESSION>
+  like native-number
+
+host z-best-speed, name <Z_BEST_SPEED>
+  like native-number
+
+host z-best-compression, name <Z_BEST_COMPRESSION>
+  like native-number
+
+host z-default-compression, name <Z_DEFAULT_COMPRESSION>
+  like native-number
+
+host z-filtered, name <Z_FILTERED>
+  like native-number
+
+host z-huffman-only, name <Z_HUFFMAN_ONLY>
+  like native-number
+
+host z-rle, name <Z_RLE>
+  like native-number
+
+host z-fixed, name <Z_FIXED>
+  like native-number
+
+host z-default-strategy, name <Z_DEFAULT_STRATEGY>
+  like native-number
+
+host z-binary, name <Z_BINARY>
+  like native-number
+
+host z-text, name <Z_TEXT>
+  like native-number
+
+host z-ascii, name <Z_ASCII>
+  like native-number
+
+host z-unknown, name <Z_UNKNOWN>
+  like native-number
+
+host z-deflated, name <Z_DEFLATED>
+  like native-number
+
+task create-brotli-compress, name <createBrotliCompress>
+  like brotli-compress
+
+  take options, like brotli-options
+    void true
+
+task create-brotli-decompress, name <createBrotliDecompress>
+  like brotli-decompress
+
+  take options, like brotli-options
+    void true
+
+task create-gzip, name <createGzip>
+  like gzip
+
+  take options, like zlib-options
+    void true
+
+task create-gunzip, name <createGunzip>
+  like gunzip
+
+  take options, like zlib-options
+    void true
+
+task create-deflate, name <createDeflate>
+  like deflate
+
+  take options, like zlib-options
+    void true
+
+task create-inflate, name <createInflate>
+  like inflate
+
+  take options, like zlib-options
+    void true
+
+task create-deflate-raw, name <createDeflateRaw>
+  like deflate-raw
+
+  take options, like zlib-options
+    void true
+
+task create-inflate-raw, name <createInflateRaw>
+  like inflate-raw
+
+  take options, like zlib-options
+    void true
+
+task create-unzip, name <createUnzip>
+  like unzip
+
+  take options, like zlib-options
+    void true
+
+task brotli-compress, name <brotliCompress>
+  like native-void
+
+  take buf, like input-type
+  take options, like brotli-options
+  take callback, like compress-callback
+
+task brotli-compress, name <brotliCompress>
+  like native-void
+
+  take buf, like input-type
+  take callback, like compress-callback
+
+task brotli-compress-sync, name <brotliCompressSync>
+  like buffer
+
+  take buf, like input-type
+  take options, like brotli-options
+    void true
+
+task brotli-decompress, name <brotliDecompress>
+  like native-void
+
+  take buf, like input-type
+  take options, like brotli-options
+  take callback, like compress-callback
+
+task brotli-decompress, name <brotliDecompress>
+  like native-void
+
+  take buf, like input-type
+  take callback, like compress-callback
+
+task brotli-decompress-sync, name <brotliDecompressSync>
+  like buffer
+
+  take buf, like input-type
+  take options, like brotli-options
+    void true
+
+task deflate, name <deflate>
+  like native-void
+
+  take buf, like input-type
+  take callback, like compress-callback
+
+task deflate, name <deflate>
+  like native-void
+
+  take buf, like input-type
+  take options, like zlib-options
+  take callback, like compress-callback
+
+task deflate-sync, name <deflateSync>
+  like buffer
+
+  take buf, like input-type
+  take options, like zlib-options
+    void true
+
+task deflate-raw, name <deflateRaw>
+  like native-void
+
+  take buf, like input-type
+  take callback, like compress-callback
+
+task deflate-raw, name <deflateRaw>
+  like native-void
+
+  take buf, like input-type
+  take options, like zlib-options
+  take callback, like compress-callback
+
+task deflate-raw-sync, name <deflateRawSync>
+  like buffer
+
+  take buf, like input-type
+  take options, like zlib-options
+    void true
+
+task gzip, name <gzip>
+  like native-void
+
+  take buf, like input-type
+  take callback, like compress-callback
+
+task gzip, name <gzip>
+  like native-void
+
+  take buf, like input-type
+  take options, like zlib-options
+  take callback, like compress-callback
+
+task gzip-sync, name <gzipSync>
+  like buffer
+
+  take buf, like input-type
+  take options, like zlib-options
+    void true
+
+task gunzip, name <gunzip>
+  like native-void
+
+  take buf, like input-type
+  take callback, like compress-callback
+
+task gunzip, name <gunzip>
+  like native-void
+
+  take buf, like input-type
+  take options, like zlib-options
+  take callback, like compress-callback
+
+task gunzip-sync, name <gunzipSync>
+  like buffer
+
+  take buf, like input-type
+  take options, like zlib-options
+    void true
+
+task inflate, name <inflate>
+  like native-void
+
+  take buf, like input-type
+  take callback, like compress-callback
+
+task inflate, name <inflate>
+  like native-void
+
+  take buf, like input-type
+  take options, like zlib-options
+  take callback, like compress-callback
+
+task inflate-sync, name <inflateSync>
+  like buffer
+
+  take buf, like input-type
+  take options, like zlib-options
+    void true
+
+task inflate-raw, name <inflateRaw>
+  like native-void
+
+  take buf, like input-type
+  take callback, like compress-callback
+
+task inflate-raw, name <inflateRaw>
+  like native-void
+
+  take buf, like input-type
+  take options, like zlib-options
+  take callback, like compress-callback
+
+task inflate-raw-sync, name <inflateRawSync>
+  like buffer
+
+  take buf, like input-type
+  take options, like zlib-options
+    void true
+
+task unzip, name <unzip>
+  like native-void
+
+  take buf, like input-type
+  take callback, like compress-callback
+
+task unzip, name <unzip>
+  like native-void
+
+  take buf, like input-type
+  take options, like zlib-options
+  take callback, like compress-callback
+
+task unzip-sync, name <unzipSync>
+  like buffer
+
+  take buf, like input-type
+  take options, like zlib-options
+    void true

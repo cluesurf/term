@@ -1,0 +1,9 @@
+
+load @term/bind/code/browser/dom/svg-point-list
+  find svg-point-list
+
+form svg-animated-points, name <SVGAnimatedPoints>
+  link animated-points, name <animatedPoints>
+    like svg-point-list
+  link points, name <points>
+    like svg-point-list

@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-number
+  find node-js-array-buffer-view
+
+form read-v-result, name <ReadVResult>
+  link bytes-read, name <bytesRead>
+    like native-number
+    flex true
+  link buffers, name <buffers>
+    like array
+      like node-js-array-buffer-view
+    flex true

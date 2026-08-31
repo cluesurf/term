@@ -1,0 +1,9 @@
+
+load @term/bind/code/browser/dom/g-lenum
+  find g-lenum
+
+form ext-blend-minmax, name <EXT_blend_minmax>
+  link max-ext, name <MAX_EXT>
+    like g-lenum
+  link min-ext, name <MIN_EXT>
+    like g-lenum

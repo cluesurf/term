@@ -1,0 +1,111 @@
+
+form join-handle, name <std::thread::JoinHandle>
+  task thread, name <thread>
+    note <Extracts a handle to the underlying thread.>
+
+    take self
+      cite free
+
+    free seed
+      like thread
+
+  task join, name <join>
+    note <Waits for the associated thread to finish.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like t
+          cite free
+        cite free
+
+  task is-running, name <is_running>
+    note <Checks if the the associated thread is still running its main function.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task as-handle, name <as_handle>
+    note <Borrows the handle.>
+
+    take self
+      cite free
+
+    free seed
+      like borrowed-handle
+        time mask
+        cite free
+
+  task as-raw-handle, name <as_raw_handle>
+    note <Extracts the raw handle, without taking any ownership.>
+
+    take self
+      cite free
+
+    free seed
+      like raw-handle
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take join-handle
+      like join-handle
+        like t
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like owned-handle
+        cite free
+
+  task into-raw-handle, name <into_raw_handle>
+    note <Consumes this object, returning the raw underlying handle.>
+
+    take self
+      cite free
+
+    free seed
+      like raw-handle
+        cite free
+
+  task as-pthread-t, name <as_pthread_t>
+    note <Extracts the raw pthread_t without taking ownership>
+
+    take self
+      cite free
+
+    free seed
+      like raw-pthread
+        cite free
+
+  task into-pthread-t, name <into_pthread_t>
+    note <Consumes the thread, returning the raw pthread_t>
+
+    take self
+      cite free
+
+    free seed
+      like raw-pthread
+        cite free

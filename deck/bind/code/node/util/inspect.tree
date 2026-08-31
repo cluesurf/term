@@ -1,0 +1,31 @@
+
+load @term/bind
+  find tuple
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find native-symbol
+  find node-js-dict
+
+load @term/bind/code/node/util
+  find inspect-options
+  find style
+
+host colors, name <colors>
+  like node-js-dict
+    like tuple
+      like native-number
+      like native-number
+
+host styles, name <styles>
+  like any
+host default-options, name <defaultOptions>
+  like inspect-options
+
+host repl-defaults, name <replDefaults>
+  like inspect-options
+
+host custom, name <custom>
+  like native-symbol
+    cool true

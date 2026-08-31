@@ -1,0 +1,28 @@
+
+load @term/bind/code/browser/webworker/navigator-concurrent-hardware
+  find navigator-concurrent-hardware
+
+load @term/bind/code/browser/webworker/navigator-id
+  find navigator-id
+
+load @term/bind/code/browser/webworker/navigator-language
+  find navigator-language
+
+load @term/bind/code/browser/webworker/navigator-on-line
+  find navigator-on-line
+
+load @term/bind/code/browser/webworker/navigator-storage
+  find navigator-storage
+
+load @term/bind/code/browser/webworker/permissions
+  find permissions
+
+form worker-navigator, name <WorkerNavigator>
+  base navigator-concurrent-hardware
+  base navigator-id
+  base navigator-language
+  base navigator-on-line
+  base navigator-storage
+
+  link permissions, name <permissions>
+    like permissions

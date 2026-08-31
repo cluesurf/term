@@ -13,6 +13,8 @@ import {
 import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Resolver, Source } from '@term/make/code/compile/load'
+import { parse, renderHead } from '@term/make/code/parser/tree'
+import { spanOfNode } from '@term/make/code/compile/mill-run'
 
 // resolve `@cluesurf/seed/...` imports to the stdlib that ships with this package, if it can be found on disk. The
 // stdlib is `deck/base` under the seed package root. We walk up from this module's directory looking for it, rather
@@ -226,26 +228,56 @@ export type ModuleExport = {
   column: number
 }
 
-// the top-level definitions declared in a source, by a line scan (top-level definitions sit at column 0). Shared by
-// export completion, cross-file go-to-definition, and the document's own definition lookup. `column` is the 0-based
-// start of the name (past `task ` / `form ` / ...).
+// the top-level definitions a source declares. Shared by export completion, cross-file go-to-definition, and the
+// document's own definition lookup, so `line` and `column` are the 0-based position of the NAME.
+//
+// Read with the parser, not a per-line regex anchored on the four definition keywords. There is ONE parser for
+// `.tree` (note/term/one-parser.md): the line scan found a definition written inside a `text <...>` literal whose
+// content happened to start with `task `, and missed one whose name carried an interpolation. A file mid-edit does
+// not parse, and then there are no definitions to offer, which is what the editor wants anyway.
+const DEFINITION_KINDS = new Set(['task', 'form', 'mask', 'bind'])
+
 export function scanDefs(text: string): ModuleExport[] {
   const defs: ModuleExport[] = []
+  const parsed = parse({ file: '<scan>', text })
 
-  text.split('\n').forEach((line, index) => {
-    const match = /^(task|form|mask|bind) ([a-z][A-Za-z0-9-]*)/.exec(
-      line,
-    )
+  if (!parsed.ok) {
+    return defs
+  }
 
-    if (match) {
-      defs.push({
-        name: match[2]!,
-        kind: match[1] as ModuleExport['kind'],
-        line: index,
-        column: match[1]!.length + 1,
-      })
+  for (const group of parsed.tree.nodes) {
+    const head = group.nodes[0]
+    const kind = head?.kind === 'name' ? renderHead(head) : undefined
+
+    if (kind === undefined || !DEFINITION_KINDS.has(kind)) {
+      continue
     }
-  })
+
+    const nameNode = group.nodes[1]
+
+    if (nameNode?.kind !== 'group') {
+      continue
+    }
+
+    const name = nameNode.nodes[0]
+
+    if (name?.kind !== 'name') {
+      continue
+    }
+
+    const span = spanOfNode(name)
+
+    if (!span) {
+      continue
+    }
+
+    defs.push({
+      name: renderHead(name),
+      kind: kind as ModuleExport['kind'],
+      line: span.start.line,
+      column: span.start.column,
+    })
+  }
 
   return defs
 }

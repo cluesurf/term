@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/es2017/sharedmemory/shared-array-buffer
+  find shared-array-buffer
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form shared-array-buffer-constructor, name <SharedArrayBufferConstructor>
+  link prototype, name <prototype>
+    like shared-array-buffer
+
+  hook make
+    take byte-length, like native-number
+    like shared-array-buffer

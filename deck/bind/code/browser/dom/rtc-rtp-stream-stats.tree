@@ -1,0 +1,25 @@
+
+load @term/bind/code/browser/dom/rtc-stats
+  find rtc-stats
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form rtc-rtp-stream-stats, name <RTCRtpStreamStats>
+  base rtc-stats
+
+  link codec-id, name <codecId>
+    like native-string
+    lock false
+  link kind, name <kind>
+    like native-string
+    lock false
+  link ssrc, name <ssrc>
+    like native-number
+    lock false
+  link transport-id, name <transportId>
+    like native-string
+    lock false

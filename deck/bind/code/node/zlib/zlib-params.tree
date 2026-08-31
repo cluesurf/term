@@ -1,0 +1,17 @@
+
+load @term/bind
+  find task
+
+load @term/bind/code/javascript
+  find native-number
+  find native-void
+
+form zlib-params, name <ZlibParams>
+  task params, name <params>
+    like native-void
+
+    take level, like native-number
+    take strategy, like native-number
+    take callback
+      like task
+        like native-void

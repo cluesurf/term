@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/speech-recognition-alternative
+  find speech-recognition-alternative
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form speech-recognition-result, name <SpeechRecognitionResult>
+  link is-final, name <isFinal>
+    like native-boolean
+  link length, name <length>
+    like native-number
+
+  task item, name <item>
+    take index, like native-number
+    like speech-recognition-alternative
+
+  mesh index, like native-number
+    like speech-recognition-alternative

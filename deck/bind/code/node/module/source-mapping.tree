@@ -1,0 +1,21 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+
+form source-mapping, name <SourceMapping>
+  link generated-line, name <generatedLine>
+    like native-number
+    flex true
+  link generated-column, name <generatedColumn>
+    like native-number
+    flex true
+  link original-source, name <originalSource>
+    like native-string
+    flex true
+  link original-line, name <originalLine>
+    like native-number
+    flex true
+  link original-column, name <originalColumn>
+    like native-number
+    flex true

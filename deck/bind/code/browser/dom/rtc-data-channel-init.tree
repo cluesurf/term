@@ -1,0 +1,29 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form rtc-data-channel-init, name <RTCDataChannelInit>
+  link id, name <id>
+    like native-number
+    lock false
+  link max-packet-life-time, name <maxPacketLifeTime>
+    like native-number
+    lock false
+  link max-retransmits, name <maxRetransmits>
+    like native-number
+    lock false
+  link negotiated, name <negotiated>
+    like native-boolean
+    lock false
+  link ordered, name <ordered>
+    like native-boolean
+    lock false
+  link protocol, name <protocol>
+    like native-string
+    lock false

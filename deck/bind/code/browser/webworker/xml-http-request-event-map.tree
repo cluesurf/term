@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/xml-http-request-event-map
+  find xml-http-request-event-map
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+load @term/bind/code/browser/webworker/xml-http-request-event-target-event-map
+  find xml-http-request-event-target-event-map
+
+form xml-http-request-event-map, name <XMLHttpRequestEventMap>
+  base xml-http-request-event-target-event-map
+
+  link readystatechange, name <readystatechange>
+    like event
+    lock false

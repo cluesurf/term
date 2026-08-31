@@ -1,0 +1,20 @@
+
+load @term/bind/code/javascript/es5/function
+  find function
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form i-arguments, name <IArguments>
+  link length, name <length>
+    like native-number
+    lock false
+  link callee, name <callee>
+    like function
+    lock false
+
+  mesh index, like native-number
+    like native-any

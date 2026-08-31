@@ -1,0 +1,519 @@
+
+load @term/bind/code/javascript
+  find array
+  find child-child-process
+  find child-message-options
+  find child-send-handle
+  find child-serializable
+  find error
+  find native-boolean
+  find native-null
+  find native-number
+  find native-string
+  find native-symbol
+  find native-this
+  find native-void
+  find net-server
+  find net-socket
+
+load @term/bind
+  find any
+  find or
+  find task
+
+load @term/bind/code/node/cluster
+  find address
+
+form worker, name <Worker>
+  base event-emitter
+  link id, name <id>, like native-number
+  link process, name <process>, like child-child-process
+  link exited-after-disconnect, name <exitedAfterDisconnect>, like native-boolean
+
+  task send, name <send>
+    like native-boolean
+
+    take message, like child-serializable
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+      void true
+
+  task send, name <send>
+    like native-boolean
+
+    take message, like child-serializable
+    take send-handle, like child-send-handle
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+      void true
+
+  task send, name <send>
+    like native-boolean
+
+    take message, like child-serializable
+    take send-handle, like child-send-handle
+    take options, like child-message-options
+      void true
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+      void true
+
+  task kill, name <kill>
+    like native-void
+
+    take signal, like native-string
+      void true
+
+  task destroy, name <destroy>
+    like native-void
+
+    take signal, like native-string
+      void true
+
+  task disconnect, name <disconnect>
+    like native-void
+
+  task is-connected, name <isConnected>
+    like native-boolean
+
+  task is-dead, name <isDead>
+    like native-boolean
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <disconnect>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take error, like error
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <exit>
+    take listener
+      like task
+        like native-void
+
+        take code, like native-number
+        take signal, like native-string
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+        take address, like address
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take message, like any
+        take handle
+          like or
+            like net-socket
+            like net-server
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <online>
+    take listener
+      like task
+        like native-void
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take args
+      like array
+        like any
+      rest true
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <disconnect>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <error>
+    take error, like error
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <exit>
+    take code, like native-number
+    take signal, like native-string
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <listening>
+    take address, like address
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <message>
+    take message, like any
+    take handle
+      like or
+        like net-socket
+        like net-server
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <online>
+
+  task on, name <on>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task on, name <on>
+    like native-this
+
+    take event, text <disconnect>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take error, like error
+
+  task on, name <on>
+    like native-this
+
+    take event, text <exit>
+    take listener
+      like task
+        like native-void
+
+        take code, like native-number
+        take signal, like native-string
+
+  task on, name <on>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+        take address, like address
+
+  task on, name <on>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take message, like any
+        take handle
+          like or
+            like net-socket
+            like net-server
+
+  task on, name <on>
+    like native-this
+
+    take event, text <online>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task once, name <once>
+    like native-this
+
+    take event, text <disconnect>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take error, like error
+
+  task once, name <once>
+    like native-this
+
+    take event, text <exit>
+    take listener
+      like task
+        like native-void
+
+        take code, like native-number
+        take signal, like native-string
+
+  task once, name <once>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+        take address, like address
+
+  task once, name <once>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take message, like any
+        take handle
+          like or
+            like net-socket
+            like net-server
+
+  task once, name <once>
+    like native-this
+
+    take event, text <online>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <disconnect>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take error, like error
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <exit>
+    take listener
+      like task
+        like native-void
+
+        take code, like native-number
+        take signal, like native-string
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+        take address, like address
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take message, like any
+        take handle
+          like or
+            like net-socket
+            like net-server
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <online>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <disconnect>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take error, like error
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <exit>
+    take listener
+      like task
+        like native-void
+
+        take code, like native-number
+        take signal, like native-string
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+        take address, like address
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take message, like any
+        take handle
+          like or
+            like net-socket
+            like net-server
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <online>
+    take listener
+      like task
+        like native-void

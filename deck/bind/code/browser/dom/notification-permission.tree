@@ -1,0 +1,6 @@
+
+form notification-permission, name <NotificationPermission>
+  like or
+    text <default>
+    text <denied>
+    text <granted>

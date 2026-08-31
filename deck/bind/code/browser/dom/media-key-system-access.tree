@@ -1,0 +1,23 @@
+
+load @term/bind/code/browser/dom/media-key-system-configuration
+  find media-key-system-configuration
+
+load @term/bind/code/browser/dom/media-keys
+  find media-keys
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form media-key-system-access, name <MediaKeySystemAccess>
+  link key-system, name <keySystem>
+    like native-string
+
+  task create-media-keys, name <createMediaKeys>
+    like promise
+      like media-keys
+
+  task get-configuration, name <getConfiguration>
+    like media-key-system-configuration

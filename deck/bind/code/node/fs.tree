@@ -1,0 +1,2271 @@
+
+dock load
+  load <node:fs/promises>, name fs-promise
+  load <node:fs>, name fs
+
+bear @term/bind/code/javascript/node/fs/path-like
+bear @term/bind/code/javascript/node/fs/path-or-file-descriptor
+bear @term/bind/code/javascript/node/fs/time-like
+bear @term/bind/code/javascript/node/fs/no-param-callback
+bear @term/bind/code/javascript/node/fs/buffer-encoding-option
+bear @term/bind/code/javascript/node/fs/object-encoding-options
+bear @term/bind/code/javascript/node/fs/encoding-option
+bear @term/bind/code/javascript/node/fs/open-mode
+bear @term/bind/code/javascript/node/fs/mode
+bear @term/bind/code/javascript/node/fs/stats-base
+bear @term/bind/code/javascript/node/fs/stats
+bear @term/bind/code/javascript/node/fs/dirent
+bear @term/bind/code/javascript/node/fs/dir
+bear @term/bind/code/javascript/node/fs/stat-watcher
+bear @term/bind/code/javascript/node/fs/fs-watcher
+bear @term/bind/code/javascript/node/fs/read-stream
+bear @term/bind/code/javascript/node/fs/write-stream
+bear @term/bind/code/javascript/node/fs/rename
+bear @term/bind/code/javascript/node/fs/truncate
+bear @term/bind/code/javascript/node/fs/ftruncate
+bear @term/bind/code/javascript/node/fs/chown
+bear @term/bind/code/javascript/node/fs/fchown
+bear @term/bind/code/javascript/node/fs/lchown
+bear @term/bind/code/javascript/node/fs/lutimes
+bear @term/bind/code/javascript/node/fs/chmod
+bear @term/bind/code/javascript/node/fs/fchmod
+bear @term/bind/code/javascript/node/fs/lchmod
+bear @term/bind/code/javascript/node/fs/stat
+bear @term/bind/code/javascript/node/fs/stat-sync-fn
+bear @term/bind/code/javascript/node/fs/fstat
+bear @term/bind/code/javascript/node/fs/lstat
+bear @term/bind/code/javascript/node/fs/link
+bear @term/bind/code/javascript/node/fs/symlink
+bear @term/bind/code/javascript/node/fs/readlink
+bear @term/bind/code/javascript/node/fs/realpath
+bear @term/bind/code/javascript/node/fs/realpath-sync
+bear @term/bind/code/javascript/node/fs/unlink
+bear @term/bind/code/javascript/node/fs/rm-dir-options
+bear @term/bind/code/javascript/node/fs/rmdir
+bear @term/bind/code/javascript/node/fs/rm-options
+bear @term/bind/code/javascript/node/fs/rm
+bear @term/bind/code/javascript/node/fs/make-directory-options
+bear @term/bind/code/javascript/node/fs/mkdir
+bear @term/bind/code/javascript/node/fs/mkdtemp
+bear @term/bind/code/javascript/node/fs/readdir
+bear @term/bind/code/javascript/node/fs/close
+bear @term/bind/code/javascript/node/fs/open
+bear @term/bind/code/javascript/node/fs/utimes
+bear @term/bind/code/javascript/node/fs/futimes
+bear @term/bind/code/javascript/node/fs/fsync
+bear @term/bind/code/javascript/node/fs/write
+bear @term/bind/code/javascript/node/fs/read-position
+bear @term/bind/code/javascript/node/fs/read-sync-options
+bear @term/bind/code/javascript/node/fs/read-async-options
+bear @term/bind/code/javascript/node/fs/read
+bear @term/bind/code/javascript/node/fs/read-file
+bear @term/bind/code/javascript/node/fs/write-file-options
+bear @term/bind/code/javascript/node/fs/write-file
+bear @term/bind/code/javascript/node/fs/append-file
+bear @term/bind/code/javascript/node/fs/watch-file-options
+bear @term/bind/code/javascript/node/fs/watch-options
+bear @term/bind/code/javascript/node/fs/watch-event-type
+bear @term/bind/code/javascript/node/fs/watch-listener
+bear @term/bind/code/javascript/node/fs/exists
+bear @term/bind/code/javascript/node/fs/constants
+bear @term/bind/code/javascript/node/fs/access
+bear @term/bind/code/javascript/node/fs/stream-options
+bear @term/bind/code/javascript/node/fs/read-stream-options
+bear @term/bind/code/javascript/node/fs/fdatasync
+bear @term/bind/code/javascript/node/fs/copy-file
+bear @term/bind/code/javascript/node/fs/write-v-result
+bear @term/bind/code/javascript/node/fs/writev
+bear @term/bind/code/javascript/node/fs/read-v-result
+bear @term/bind/code/javascript/node/fs/readv
+bear @term/bind/code/javascript/node/fs/open-dir-options
+bear @term/bind/code/javascript/node/fs/opendir
+bear @term/bind/code/javascript/node/fs/big-int-stats
+bear @term/bind/code/javascript/node/fs/big-int-options
+bear @term/bind/code/javascript/node/fs/stat-options
+bear @term/bind/code/javascript/node/fs/stat-sync-options
+bear @term/bind/code/javascript/node/fs/copy-options
+
+load @term/bind/code/javascript
+  find array
+  find dir
+  find dirent
+  find native-boolean
+  find native-null
+  find native-number
+  find native-string
+  find native-undefined
+  find native-void
+  find node-js-array-buffer-view
+  find node-js-errno-exception
+  find read-stream
+  find readonly-array
+  find symlink-type
+  find uint8-array
+  find write-stream
+
+load @term/bind
+  find and
+  find form
+  find like
+  find or
+  find task
+
+load @term/bind/code/node/buffer
+  find buffer
+  find buffer-encoding
+
+load @term/bind/code/node/events/event-emitter
+  find abortable
+
+load @term/bind/code/node/fs
+  find big-int-stats
+  find buffer-encoding-option
+  find copy-options
+  find encoding-option
+  find fs-watcher
+  find make-directory-options
+  find mode
+  find no-param-callback
+  find object-encoding-options
+  find open-dir-options
+  find open-mode
+  find path-like
+  find path-or-file-descriptor
+  find read-async-options
+  find read-position
+  find read-stream-options
+  find read-sync-options
+  find rm-dir-options
+  find rm-options
+  find stat-options
+  find stat-sync-fn
+  find stat-watcher
+  find stats
+  find stream-options
+  find time-like
+  find watch-file-options
+  find watch-listener
+  find watch-options
+  find write-file-options
+
+host stat-sync, name <statSync>
+  like stat-sync-fn
+
+host lstat-sync, name <lstatSync>
+  like stat-sync-fn
+
+task rename, name <rename>
+  like native-void
+
+  take old-path, like path-like
+  take new-path, like path-like
+  take callback, like no-param-callback
+
+task rename-sync, name <renameSync>
+  like native-void
+
+  take old-path, like path-like
+  take new-path, like path-like
+
+task truncate, name <truncate>
+  like native-void
+
+  take path, like path-like
+  take len
+    like or
+      like native-number
+      like native-undefined
+      like native-null
+  take callback, like no-param-callback
+
+task truncate, name <truncate>
+  like native-void
+
+  take path, like path-like
+  take callback, like no-param-callback
+
+task truncate-sync, name <truncateSync>
+  like native-void
+
+  take path, like path-like
+  take len
+    like or
+      like native-number
+      like native-null
+    void true
+
+task ftruncate, name <ftruncate>
+  like native-void
+
+  take fd, like native-number
+  take len
+    like or
+      like native-number
+      like native-undefined
+      like native-null
+  take callback, like no-param-callback
+
+task ftruncate, name <ftruncate>
+  like native-void
+
+  take fd, like native-number
+  take callback, like no-param-callback
+
+task ftruncate-sync, name <ftruncateSync>
+  like native-void
+
+  take fd, like native-number
+  take len
+    like or
+      like native-number
+      like native-null
+    void true
+
+task chown, name <chown>
+  like native-void
+
+  take path, like path-like
+  take uid, like native-number
+  take gid, like native-number
+  take callback, like no-param-callback
+
+task chown-sync, name <chownSync>
+  like native-void
+
+  take path, like path-like
+  take uid, like native-number
+  take gid, like native-number
+
+task fchown, name <fchown>
+  like native-void
+
+  take fd, like native-number
+  take uid, like native-number
+  take gid, like native-number
+  take callback, like no-param-callback
+
+task fchown-sync, name <fchownSync>
+  like native-void
+
+  take fd, like native-number
+  take uid, like native-number
+  take gid, like native-number
+
+task lchown, name <lchown>
+  like native-void
+
+  take path, like path-like
+  take uid, like native-number
+  take gid, like native-number
+  take callback, like no-param-callback
+
+task lchown-sync, name <lchownSync>
+  like native-void
+
+  take path, like path-like
+  take uid, like native-number
+  take gid, like native-number
+
+task lutimes, name <lutimes>
+  like native-void
+
+  take path, like path-like
+  take atime, like time-like
+  take mtime, like time-like
+  take callback, like no-param-callback
+
+task lutimes-sync, name <lutimesSync>
+  like native-void
+
+  take path, like path-like
+  take atime, like time-like
+  take mtime, like time-like
+
+task chmod, name <chmod>
+  like native-void
+
+  take path, like path-like
+  take mode, like mode
+  take callback, like no-param-callback
+
+task chmod-sync, name <chmodSync>
+  like native-void
+
+  take path, like path-like
+  take mode, like mode
+
+task fchmod, name <fchmod>
+  like native-void
+
+  take fd, like native-number
+  take mode, like mode
+  take callback, like no-param-callback
+
+task fchmod-sync, name <fchmodSync>
+  like native-void
+
+  take fd, like native-number
+  take mode, like mode
+
+task lchmod, name <lchmod>
+  like native-void
+
+  take path, like path-like
+  take mode, like mode
+  take callback, like no-param-callback
+
+task lchmod-sync, name <lchmodSync>
+  like native-void
+
+  take path, like path-like
+  take mode, like mode
+
+task stat, name <stat>
+  like native-void
+
+  take path, like path-like
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take stats, like stats
+
+task stat, name <stat>
+  like native-void
+
+  take path, like path-like
+  take options
+    like or
+      like and
+        like stat-options
+        like form
+          link bigint, name <bigint>
+            like or
+              text <false>
+              like native-undefined
+            flex true
+      like native-undefined
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take stats, like stats
+
+task stat, name <stat>
+  like native-void
+
+  take path, like path-like
+  take options
+    like and
+      like stat-options
+      like form
+        link bigint, name <bigint>
+          text <true>
+          flex true
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take stats, like big-int-stats
+
+task stat, name <stat>
+  like native-void
+
+  take path, like path-like
+  take options
+    like or
+      like stat-options
+      like native-undefined
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take stats
+        like or
+          like stats
+          like big-int-stats
+
+task fstat, name <fstat>
+  like native-void
+
+  take fd, like native-number
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take stats, like stats
+
+task fstat, name <fstat>
+  like native-void
+
+  take fd, like native-number
+  take options
+    like or
+      like and
+        like stat-options
+        like form
+          link bigint, name <bigint>
+            like or
+              text <false>
+              like native-undefined
+            flex true
+      like native-undefined
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take stats, like stats
+
+task fstat, name <fstat>
+  like native-void
+
+  take fd, like native-number
+  take options
+    like and
+      like stat-options
+      like form
+        link bigint, name <bigint>
+          text <true>
+          flex true
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take stats, like big-int-stats
+
+task fstat, name <fstat>
+  like native-void
+
+  take fd, like native-number
+  take options
+    like or
+      like stat-options
+      like native-undefined
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take stats
+        like or
+          like stats
+          like big-int-stats
+
+task fstat-sync, name <fstatSync>
+  like stats
+
+  take fd, like native-number
+  take options
+    like and
+      like stat-options
+      like form
+        link bigint, name <bigint>
+          like or
+            text <false>
+            like native-undefined
+          flex true
+    void true
+
+task fstat-sync, name <fstatSync>
+  like big-int-stats
+
+  take fd, like native-number
+  take options
+    like and
+      like stat-options
+      like form
+        link bigint, name <bigint>
+          text <true>
+          flex true
+
+task fstat-sync, name <fstatSync>
+  like or
+    like stats
+    like big-int-stats
+
+  take fd, like native-number
+  take options, like stat-options
+    void true
+
+task lstat, name <lstat>
+  like native-void
+
+  take path, like path-like
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take stats, like stats
+
+task lstat, name <lstat>
+  like native-void
+
+  take path, like path-like
+  take options
+    like or
+      like and
+        like stat-options
+        like form
+          link bigint, name <bigint>
+            like or
+              text <false>
+              like native-undefined
+            flex true
+      like native-undefined
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take stats, like stats
+
+task lstat, name <lstat>
+  like native-void
+
+  take path, like path-like
+  take options
+    like and
+      like stat-options
+      like form
+        link bigint, name <bigint>
+          text <true>
+          flex true
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take stats, like big-int-stats
+
+task lstat, name <lstat>
+  like native-void
+
+  take path, like path-like
+  take options
+    like or
+      like stat-options
+      like native-undefined
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take stats
+        like or
+          like stats
+          like big-int-stats
+
+task link, name <link>
+  like native-void
+
+  take existing-path, like path-like
+  take new-path, like path-like
+  take callback, like no-param-callback
+
+task link-sync, name <linkSync>
+  like native-void
+
+  take existing-path, like path-like
+  take new-path, like path-like
+
+task symlink, name <symlink>
+  like native-void
+
+  take target, like path-like
+  take path, like path-like
+  take type
+    like or
+      like symlink-type
+      like native-undefined
+      like native-null
+  take callback, like no-param-callback
+
+task symlink, name <symlink>
+  like native-void
+
+  take target, like path-like
+  take path, like path-like
+  take callback, like no-param-callback
+
+task symlink-sync, name <symlinkSync>
+  like native-void
+
+  take target, like path-like
+  take path, like path-like
+  take type
+    like or
+      like symlink-type
+      like native-null
+    void true
+
+task readlink, name <readlink>
+  like native-void
+
+  take path, like path-like
+  take options, like encoding-option
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take link-string, like native-string
+
+task readlink, name <readlink>
+  like native-void
+
+  take path, like path-like
+  take options, like buffer-encoding-option
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take link-string, like buffer
+
+task readlink, name <readlink>
+  like native-void
+
+  take path, like path-like
+  take options, like encoding-option
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take link-string
+        like or
+          like native-string
+          like buffer
+
+task readlink, name <readlink>
+  like native-void
+
+  take path, like path-like
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take link-string, like native-string
+
+task readlink-sync, name <readlinkSync>
+  like native-string
+
+  take path, like path-like
+  take options, like encoding-option
+    void true
+
+task readlink-sync, name <readlinkSync>
+  like buffer
+
+  take path, like path-like
+  take options, like buffer-encoding-option
+
+task readlink-sync, name <readlinkSync>
+  like or
+    like native-string
+    like buffer
+
+  take path, like path-like
+  take options, like encoding-option
+    void true
+
+task realpath, name <realpath>
+  like native-void
+
+  take path, like path-like
+  take options, like encoding-option
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take resolved-path, like native-string
+
+task realpath, name <realpath>
+  like native-void
+
+  take path, like path-like
+  take options, like buffer-encoding-option
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take resolved-path, like buffer
+
+task realpath, name <realpath>
+  like native-void
+
+  take path, like path-like
+  take options, like encoding-option
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take resolved-path
+        like or
+          like native-string
+          like buffer
+
+task realpath, name <realpath>
+  like native-void
+
+  take path, like path-like
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take resolved-path, like native-string
+
+task realpath-sync, name <realpathSync>
+  like native-string
+
+  take path, like path-like
+  take options, like encoding-option
+    void true
+
+task realpath-sync, name <realpathSync>
+  like buffer
+
+  take path, like path-like
+  take options, like buffer-encoding-option
+
+task realpath-sync, name <realpathSync>
+  like or
+    like native-string
+    like buffer
+
+  take path, like path-like
+  take options, like encoding-option
+    void true
+
+task unlink, name <unlink>
+  like native-void
+
+  take path, like path-like
+  take callback, like no-param-callback
+
+task unlink-sync, name <unlinkSync>
+  like native-void
+
+  take path, like path-like
+
+task rmdir, name <rmdir>
+  like native-void
+
+  take path, like path-like
+  take callback, like no-param-callback
+
+task rmdir, name <rmdir>
+  like native-void
+
+  take path, like path-like
+  take options, like rm-dir-options
+  take callback, like no-param-callback
+
+task rmdir-sync, name <rmdirSync>
+  like native-void
+
+  take path, like path-like
+  take options, like rm-dir-options
+    void true
+
+task rm, name <rm>
+  like native-void
+
+  take path, like path-like
+  take callback, like no-param-callback
+
+task rm, name <rm>
+  like native-void
+
+  take path, like path-like
+  take options, like rm-options
+  take callback, like no-param-callback
+
+task rm-sync, name <rmSync>
+  like native-void
+
+  take path, like path-like
+  take options, like rm-options
+    void true
+
+task mkdir, name <mkdir>
+  like native-void
+
+  take path, like path-like
+  take options
+    like and
+      like make-directory-options
+      like form
+        link recursive, name <recursive>
+          text <true>
+          flex true
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take path, like native-string
+        void true
+
+task mkdir, name <mkdir>
+  like native-void
+
+  take path, like path-like
+  take options
+    like or
+      like mode
+      like and
+        like make-directory-options
+        like form
+          link recursive, name <recursive>
+            like or
+              text <false>
+              like native-undefined
+            flex true
+      like native-null
+      like native-undefined
+  take callback, like no-param-callback
+
+task mkdir, name <mkdir>
+  like native-void
+
+  take path, like path-like
+  take options
+    like or
+      like mode
+      like make-directory-options
+      like native-null
+      like native-undefined
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take path, like native-string
+        void true
+
+task mkdir, name <mkdir>
+  like native-void
+
+  take path, like path-like
+  take callback, like no-param-callback
+
+task mkdir-sync, name <mkdirSync>
+  like or
+    like native-string
+    like native-undefined
+
+  take path, like path-like
+  take options
+    like and
+      like make-directory-options
+      like form
+        link recursive, name <recursive>
+          text <true>
+          flex true
+
+task mkdir-sync, name <mkdirSync>
+  like native-void
+
+  take path, like path-like
+  take options
+    like or
+      like mode
+      like and
+        like make-directory-options
+        like form
+          link recursive, name <recursive>
+            like or
+              text <false>
+              like native-undefined
+            flex true
+      like native-null
+    void true
+
+task mkdir-sync, name <mkdirSync>
+  like or
+    like native-string
+    like native-undefined
+
+  take path, like path-like
+  take options
+    like or
+      like mode
+      like make-directory-options
+      like native-null
+    void true
+
+task mkdtemp, name <mkdtemp>
+  like native-void
+
+  take prefix, like native-string
+  take options, like encoding-option
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take folder, like native-string
+
+task mkdtemp, name <mkdtemp>
+  like native-void
+
+  take prefix, like native-string
+  take options
+    like or
+      text <buffer>
+      like form
+        link encoding, name <encoding>
+          text <buffer>
+          flex true
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take folder, like buffer
+
+task mkdtemp, name <mkdtemp>
+  like native-void
+
+  take prefix, like native-string
+  take options, like encoding-option
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take folder
+        like or
+          like native-string
+          like buffer
+
+task mkdtemp, name <mkdtemp>
+  like native-void
+
+  take prefix, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take folder, like native-string
+
+task mkdtemp-sync, name <mkdtempSync>
+  like native-string
+
+  take prefix, like native-string
+  take options, like encoding-option
+    void true
+
+task mkdtemp-sync, name <mkdtempSync>
+  like buffer
+
+  take prefix, like native-string
+  take options, like buffer-encoding-option
+
+task mkdtemp-sync, name <mkdtempSync>
+  like or
+    like native-string
+    like buffer
+
+  take prefix, like native-string
+  take options, like encoding-option
+    void true
+
+task readdir, name <readdir>
+  like native-void
+
+  take path, like path-like
+  take options
+    like or
+      like form
+        link encoding, name <encoding>
+          like or
+            like buffer-encoding
+            like native-null
+          flex true
+        link with-file-types, name <withFileTypes>
+          like or
+            text <false>
+            like native-undefined
+          flex true
+      like buffer-encoding
+      like native-undefined
+      like native-null
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take files
+        like array
+          like native-string
+
+task readdir, name <readdir>
+  like native-void
+
+  take path, like path-like
+  take options
+    like or
+      like form
+        link encoding, name <encoding>
+          text <buffer>
+          flex true
+        link with-file-types, name <withFileTypes>
+          like or
+            text <false>
+            like native-undefined
+          flex true
+      text <buffer>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take files
+        like array
+          like buffer
+
+task readdir, name <readdir>
+  like native-void
+
+  take path, like path-like
+  take options
+    like or
+      like and
+        like object-encoding-options
+        like form
+          link with-file-types, name <withFileTypes>
+            like or
+              text <false>
+              like native-undefined
+            flex true
+      like buffer-encoding
+      like native-undefined
+      like native-null
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take files
+        like or
+          like array
+            like native-string
+          like array
+            like buffer
+
+task readdir, name <readdir>
+  like native-void
+
+  take path, like path-like
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take files
+        like array
+          like native-string
+
+task readdir, name <readdir>
+  like native-void
+
+  take path, like path-like
+  take options
+    like and
+      like object-encoding-options
+      like form
+        link with-file-types, name <withFileTypes>
+          text <true>
+          flex true
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take files
+        like array
+          like dirent
+
+task readdir-sync, name <readdirSync>
+  like array
+    like native-string
+
+  take path, like path-like
+  take options
+    like or
+      like form
+        link encoding, name <encoding>
+          like or
+            like buffer-encoding
+            like native-null
+          flex true
+        link with-file-types, name <withFileTypes>
+          like or
+            text <false>
+            like native-undefined
+          flex true
+      like buffer-encoding
+      like native-null
+    void true
+
+task readdir-sync, name <readdirSync>
+  like array
+    like buffer
+
+  take path, like path-like
+  take options
+    like or
+      like form
+        link encoding, name <encoding>
+          text <buffer>
+          flex true
+        link with-file-types, name <withFileTypes>
+          like or
+            text <false>
+            like native-undefined
+          flex true
+      text <buffer>
+
+task readdir-sync, name <readdirSync>
+  like or
+    like array
+      like native-string
+    like array
+      like buffer
+
+  take path, like path-like
+  take options
+    like or
+      like and
+        like object-encoding-options
+        like form
+          link with-file-types, name <withFileTypes>
+            like or
+              text <false>
+              like native-undefined
+            flex true
+      like buffer-encoding
+      like native-null
+    void true
+
+task readdir-sync, name <readdirSync>
+  like array
+    like dirent
+
+  take path, like path-like
+  take options
+    like and
+      like object-encoding-options
+      like form
+        link with-file-types, name <withFileTypes>
+          text <true>
+          flex true
+
+task close, name <close>
+  like native-void
+
+  take fd, like native-number
+  take callback, like no-param-callback
+    void true
+
+task close-sync, name <closeSync>
+  like native-void
+
+  take fd, like native-number
+
+task open, name <open>
+  like native-void
+
+  take path, like path-like
+  take flags, like open-mode
+  take mode
+    like or
+      like mode
+      like native-undefined
+      like native-null
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take fd, like native-number
+
+task open, name <open>
+  like native-void
+
+  take path, like path-like
+  take flags, like open-mode
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take fd, like native-number
+
+task open-sync, name <openSync>
+  like native-number
+
+  take path, like path-like
+  take flags, like open-mode
+  take mode
+    like or
+      like mode
+      like native-null
+    void true
+
+task utimes, name <utimes>
+  like native-void
+
+  take path, like path-like
+  take atime, like time-like
+  take mtime, like time-like
+  take callback, like no-param-callback
+
+task utimes-sync, name <utimesSync>
+  like native-void
+
+  take path, like path-like
+  take atime, like time-like
+  take mtime, like time-like
+
+task futimes, name <futimes>
+  like native-void
+
+  take fd, like native-number
+  take atime, like time-like
+  take mtime, like time-like
+  take callback, like no-param-callback
+
+task futimes-sync, name <futimesSync>
+  like native-void
+
+  take fd, like native-number
+  take atime, like time-like
+  take mtime, like time-like
+
+task fsync, name <fsync>
+  like native-void
+
+  take fd, like native-number
+  take callback, like no-param-callback
+
+task fsync-sync, name <fsyncSync>
+  like native-void
+
+  take fd, like native-number
+
+task write, name <write>
+  like native-void
+
+  head t-buffer
+    base node-js-array-buffer-view
+
+  take fd, like native-number
+  take buffer, like t-buffer
+  take offset
+    like or
+      like native-number
+      like native-undefined
+      like native-null
+  take length
+    like or
+      like native-number
+      like native-undefined
+      like native-null
+  take position
+    like or
+      like native-number
+      like native-undefined
+      like native-null
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take written, like native-number
+      take buffer, like t-buffer
+
+task write, name <write>
+  like native-void
+
+  head t-buffer
+    base node-js-array-buffer-view
+
+  take fd, like native-number
+  take buffer, like t-buffer
+  take offset
+    like or
+      like native-number
+      like native-undefined
+      like native-null
+  take length
+    like or
+      like native-number
+      like native-undefined
+      like native-null
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take written, like native-number
+      take buffer, like t-buffer
+
+task write, name <write>
+  like native-void
+
+  head t-buffer
+    base node-js-array-buffer-view
+
+  take fd, like native-number
+  take buffer, like t-buffer
+  take offset
+    like or
+      like native-number
+      like native-undefined
+      like native-null
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take written, like native-number
+      take buffer, like t-buffer
+
+task write, name <write>
+  like native-void
+
+  head t-buffer
+    base node-js-array-buffer-view
+
+  take fd, like native-number
+  take buffer, like t-buffer
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take written, like native-number
+      take buffer, like t-buffer
+
+task write, name <write>
+  like native-void
+
+  take fd, like native-number
+  take string, like native-string
+  take position
+    like or
+      like native-number
+      like native-undefined
+      like native-null
+  take encoding
+    like or
+      like buffer-encoding
+      like native-undefined
+      like native-null
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take written, like native-number
+      take str, like native-string
+
+task write, name <write>
+  like native-void
+
+  take fd, like native-number
+  take string, like native-string
+  take position
+    like or
+      like native-number
+      like native-undefined
+      like native-null
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take written, like native-number
+      take str, like native-string
+
+task write, name <write>
+  like native-void
+
+  take fd, like native-number
+  take string, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take written, like native-number
+      take str, like native-string
+
+task write-sync, name <writeSync>
+  like native-number
+
+  take fd, like native-number
+  take buffer, like node-js-array-buffer-view
+  take offset
+    like or
+      like native-number
+      like native-null
+    void true
+  take length
+    like or
+      like native-number
+      like native-null
+    void true
+  take position
+    like or
+      like native-number
+      like native-null
+    void true
+
+task write-sync, name <writeSync>
+  like native-number
+
+  take fd, like native-number
+  take string, like native-string
+  take position
+    like or
+      like native-number
+      like native-null
+    void true
+  take encoding
+    like or
+      like buffer-encoding
+      like native-null
+    void true
+
+task read, name <read>
+  like native-void
+
+  head t-buffer
+    base node-js-array-buffer-view
+
+  take fd, like native-number
+  take buffer, like t-buffer
+  take offset, like native-number
+  take length, like native-number
+  take position
+    like or
+      like read-position
+      like native-null
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take bytes-read, like native-number
+      take buffer, like t-buffer
+
+task read, name <read>
+  like native-void
+
+  head t-buffer
+    base node-js-array-buffer-view
+
+  take fd, like native-number
+  take options
+    like read-async-options
+      like t-buffer
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take bytes-read, like native-number
+      take buffer, like t-buffer
+
+task read, name <read>
+  like native-void
+
+  take fd, like native-number
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take bytes-read, like native-number
+      take buffer, like node-js-array-buffer-view
+
+task read-sync, name <readSync>
+  like native-number
+
+  take fd, like native-number
+  take buffer, like node-js-array-buffer-view
+  take offset, like native-number
+  take length, like native-number
+  take position
+    like or
+      like read-position
+      like native-null
+
+task read-sync, name <readSync>
+  like native-number
+
+  take fd, like native-number
+  take buffer, like node-js-array-buffer-view
+  take opts, like read-sync-options
+    void true
+
+task read-file, name <readFile>
+  like native-void
+
+  take path, like path-or-file-descriptor
+  take options
+    like or
+      like and
+        like form
+          link encoding, name <encoding>
+            like or
+              like native-null
+              like native-undefined
+            flex true
+          link flag, name <flag>
+            like or
+              like native-string
+              like native-undefined
+            flex true
+        like abortable
+      like native-undefined
+      like native-null
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take data, like buffer
+
+task read-file, name <readFile>
+  like native-void
+
+  take path, like path-or-file-descriptor
+  take options
+    like or
+      like and
+        like form
+          link encoding, name <encoding>
+            like buffer-encoding
+            flex true
+          link flag, name <flag>
+            like or
+              like native-string
+              like native-undefined
+            flex true
+        like abortable
+      like buffer-encoding
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take data, like native-string
+
+task read-file, name <readFile>
+  like native-void
+
+  take path, like path-or-file-descriptor
+  take options
+    like or
+      like and
+        like object-encoding-options
+        like form
+          link flag, name <flag>
+            like or
+              like native-string
+              like native-undefined
+            flex true
+        like abortable
+      like buffer-encoding
+      like native-undefined
+      like native-null
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take data
+        like or
+          like native-string
+          like buffer
+
+task read-file, name <readFile>
+  like native-void
+
+  take path, like path-or-file-descriptor
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take data, like buffer
+
+task read-file-sync, name <readFileSync>
+  like buffer
+
+  take path, like path-or-file-descriptor
+  take options
+    like or
+      like form
+        link encoding, name <encoding>
+          like or
+            like native-null
+            like native-undefined
+          flex true
+        link flag, name <flag>
+          like or
+            like native-string
+            like native-undefined
+          flex true
+      like native-null
+    void true
+
+task read-file-sync, name <readFileSync>
+  like native-string
+
+  take path, like path-or-file-descriptor
+  take options
+    like or
+      like form
+        link encoding, name <encoding>
+          like buffer-encoding
+          flex true
+        link flag, name <flag>
+          like or
+            like native-string
+            like native-undefined
+          flex true
+      like buffer-encoding
+
+task read-file-sync, name <readFileSync>
+  like or
+    like native-string
+    like buffer
+
+  take path, like path-or-file-descriptor
+  take options
+    like or
+      like and
+        like object-encoding-options
+        like form
+          link flag, name <flag>
+            like or
+              like native-string
+              like native-undefined
+            flex true
+      like buffer-encoding
+      like native-null
+    void true
+
+task write-file, name <writeFile>
+  like native-void
+
+  take file, like path-or-file-descriptor
+  take data
+    like or
+      like native-string
+      like node-js-array-buffer-view
+  take options, like write-file-options
+  take callback, like no-param-callback
+
+task write-file, name <writeFile>
+  like native-void
+
+  take path, like path-or-file-descriptor
+  take data
+    like or
+      like native-string
+      like node-js-array-buffer-view
+  take callback, like no-param-callback
+
+task write-file-sync, name <writeFileSync>
+  like native-void
+
+  take file, like path-or-file-descriptor
+  take data
+    like or
+      like native-string
+      like node-js-array-buffer-view
+  take options, like write-file-options
+    void true
+
+task append-file, name <appendFile>
+  like native-void
+
+  take path, like path-or-file-descriptor
+  take data
+    like or
+      like native-string
+      like uint8-array
+  take options, like write-file-options
+  take callback, like no-param-callback
+
+task append-file, name <appendFile>
+  like native-void
+
+  take file, like path-or-file-descriptor
+  take data
+    like or
+      like native-string
+      like uint8-array
+  take callback, like no-param-callback
+
+task append-file-sync, name <appendFileSync>
+  like native-void
+
+  take path, like path-or-file-descriptor
+  take data
+    like or
+      like native-string
+      like uint8-array
+  take options, like write-file-options
+    void true
+
+task watch-file, name <watchFile>
+  like stat-watcher
+
+  take filename, like path-like
+  take options
+    like or
+      like and
+        like watch-file-options
+        like form
+          link bigint, name <bigint>
+            like or
+              text <false>
+              like native-undefined
+            flex true
+      like native-undefined
+  take listener
+    like task
+      like native-void
+
+      take curr, like stats
+      take prev, like stats
+
+task watch-file, name <watchFile>
+  like stat-watcher
+
+  take filename, like path-like
+  take options
+    like or
+      like and
+        like watch-file-options
+        like form
+          link bigint, name <bigint>
+            text <true>
+            flex true
+      like native-undefined
+  take listener
+    like task
+      like native-void
+
+      take curr, like big-int-stats
+      take prev, like big-int-stats
+
+task watch-file, name <watchFile>
+  like stat-watcher
+
+  take filename, like path-like
+  take listener
+    like task
+      like native-void
+
+      take curr, like stats
+      take prev, like stats
+
+task unwatch-file, name <unwatchFile>
+  like native-void
+
+  take filename, like path-like
+  take listener
+    like task
+      like native-void
+
+      take curr, like stats
+      take prev, like stats
+    void true
+
+task watch, name <watch>
+  like fs-watcher
+
+  take filename, like path-like
+  take options
+    like or
+      like and
+        like watch-options
+        like form
+          link encoding, name <encoding>
+            text <buffer>
+            flex true
+      text <buffer>
+  take listener
+    like watch-listener
+      like buffer
+    void true
+
+task watch, name <watch>
+  like fs-watcher
+
+  take filename, like path-like
+  take options
+    like or
+      like watch-options
+      like buffer-encoding
+      like native-null
+    void true
+  take listener
+    like watch-listener
+      like native-string
+    void true
+
+task watch, name <watch>
+  like fs-watcher
+
+  take filename, like path-like
+  take options
+    like or
+      like watch-options
+      like native-string
+  take listener
+    like watch-listener
+      like or
+        like native-string
+        like buffer
+    void true
+
+task watch, name <watch>
+  like fs-watcher
+
+  take filename, like path-like
+  take listener
+    like watch-listener
+      like native-string
+    void true
+
+task exists, name <exists>
+  like native-void
+
+  take path, like path-like
+  take callback
+    like task
+      like native-void
+
+      take exists, like native-boolean
+
+task exists-sync, name <existsSync>
+  like native-boolean
+
+  take path, like path-like
+
+task access, name <access>
+  like native-void
+
+  take path, like path-like
+  take mode
+    like or
+      like native-number
+      like native-undefined
+  take callback, like no-param-callback
+
+task access, name <access>
+  like native-void
+
+  take path, like path-like
+  take callback, like no-param-callback
+
+task access-sync, name <accessSync>
+  like native-void
+
+  take path, like path-like
+  take mode, like native-number
+    void true
+
+task create-read-stream, name <createReadStream>
+  like read-stream
+
+  take path, like path-like
+  take options
+    like or
+      like buffer-encoding
+      like read-stream-options
+    void true
+
+task create-write-stream, name <createWriteStream>
+  like write-stream
+
+  take path, like path-like
+  take options
+    like or
+      like buffer-encoding
+      like stream-options
+    void true
+
+task fdatasync, name <fdatasync>
+  like native-void
+
+  take fd, like native-number
+  take callback, like no-param-callback
+
+task fdatasync-sync, name <fdatasyncSync>
+  like native-void
+
+  take fd, like native-number
+
+task copy-file, name <copyFile>
+  like native-void
+
+  take src, like path-like
+  take dest, like path-like
+  take callback, like no-param-callback
+
+task copy-file, name <copyFile>
+  like native-void
+
+  take src, like path-like
+  take dest, like path-like
+  take mode, like native-number
+  take callback, like no-param-callback
+
+task copy-file-sync, name <copyFileSync>
+  like native-void
+
+  take src, like path-like
+  take dest, like path-like
+  take mode, like native-number
+    void true
+
+task writev, name <writev>
+  like native-void
+
+  take fd, like native-number
+  take buffers
+    like readonly-array
+      like node-js-array-buffer-view
+  take cb
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take bytes-written, like native-number
+      take buffers
+        like array
+          like node-js-array-buffer-view
+
+task writev, name <writev>
+  like native-void
+
+  take fd, like native-number
+  take buffers
+    like readonly-array
+      like node-js-array-buffer-view
+  take position, like native-number
+  take cb
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take bytes-written, like native-number
+      take buffers
+        like array
+          like node-js-array-buffer-view
+
+task writev-sync, name <writevSync>
+  like native-number
+
+  take fd, like native-number
+  take buffers
+    like readonly-array
+      like node-js-array-buffer-view
+  take position, like native-number
+    void true
+
+task readv, name <readv>
+  like native-void
+
+  take fd, like native-number
+  take buffers
+    like readonly-array
+      like node-js-array-buffer-view
+  take cb
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take bytes-read, like native-number
+      take buffers
+        like array
+          like node-js-array-buffer-view
+
+task readv, name <readv>
+  like native-void
+
+  take fd, like native-number
+  take buffers
+    like readonly-array
+      like node-js-array-buffer-view
+  take position, like native-number
+  take cb
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take bytes-read, like native-number
+      take buffers
+        like array
+          like node-js-array-buffer-view
+
+task readv-sync, name <readvSync>
+  like native-number
+
+  take fd, like native-number
+  take buffers
+    like readonly-array
+      like node-js-array-buffer-view
+  take position, like native-number
+    void true
+
+task opendir-sync, name <opendirSync>
+  like dir
+
+  take path, like path-like
+  take options, like open-dir-options
+    void true
+
+task opendir, name <opendir>
+  like native-void
+
+  take path, like path-like
+  take cb
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take dir, like dir
+
+task opendir, name <opendir>
+  like native-void
+
+  take path, like path-like
+  take options, like open-dir-options
+  take cb
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take dir, like dir
+
+task cp, name <cp>
+  like native-void
+
+  take source, like native-string
+  take destination, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+
+task cp, name <cp>
+  like native-void
+
+  take source, like native-string
+  take destination, like native-string
+  take opts, like copy-options
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+
+task cp-sync, name <cpSync>
+  like native-void
+
+  take source, like native-string
+  take destination, like native-string
+  take opts, like copy-options
+    void true

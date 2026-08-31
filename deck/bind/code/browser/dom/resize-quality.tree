@@ -1,0 +1,7 @@
+
+form resize-quality, name <ResizeQuality>
+  like or
+    text <high>
+    text <low>
+    text <medium>
+    text <pixelated>

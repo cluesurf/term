@@ -1,0 +1,6 @@
+
+load @term/bind/code/browser/dom/dom-point
+  find dom-point
+
+form svg-point, name <SVGPoint>
+  like dom-point

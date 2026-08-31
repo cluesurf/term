@@ -1,0 +1,8 @@
+
+load @term/bind/code/node/inspector/runtime
+  find remote-object-id
+
+form release-object-parameter-type, name <ReleaseObjectParameterType>
+  link object-id, name <objectId>
+    like remote-object-id
+    flex true

@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form extendable-event, name <ExtendableEvent>
+  base event
+
+  task wait-until, name <waitUntil>
+    take f, like native-any
+    like native-void

@@ -1,0 +1,26 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form audio-configuration, name <AudioConfiguration>
+  link bitrate, name <bitrate>
+    like native-number
+    lock false
+  link channels, name <channels>
+    like native-string
+    lock false
+  link content-type, name <contentType>
+    like native-string
+    lock false
+  link samplerate, name <samplerate>
+    like native-number
+    lock false
+  link spatial-rendering, name <spatialRendering>
+    like native-boolean
+    lock false

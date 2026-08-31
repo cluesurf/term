@@ -1,0 +1,31 @@
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+load @term/bind/code/browser/dom/speech-synthesis-utterance
+  find speech-synthesis-utterance
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form speech-synthesis-event-init, name <SpeechSynthesisEventInit>
+  base event-init
+
+  link char-index, name <charIndex>
+    like native-number
+    lock false
+  link char-length, name <charLength>
+    like native-number
+    lock false
+  link elapsed-time, name <elapsedTime>
+    like native-number
+    lock false
+  link name, name <name>
+    like native-string
+    lock false
+  link utterance, name <utterance>
+    like speech-synthesis-utterance
+    lock false

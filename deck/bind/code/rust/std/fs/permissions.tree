@@ -1,0 +1,109 @@
+
+form permissions, name <std::fs::Permissions>
+  task readonly, name <readonly>
+    note <Returns true if these permissions describe a readonly (unwritable) file.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task set-readonly, name <set_readonly>
+    note <Modifies the readonly flag for this set of permissions. If the readonly argument is true, using the resulting Permission will update file permissions to forbid writing. Conversely, if it's false, using the resulting Permission will update file permissions to allow writing.>
+
+    take self
+      cite free
+    take readonly
+      like bool
+        cite free
+      cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like permissions
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like permissions
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like permissions
+
+    free seed
+      like bool
+        cite free
+
+  task mode, name <mode>
+    note <Returns the underlying raw st_mode bits that contain the standard Unix permissions for this file.>
+
+    take self
+      cite free
+
+    free seed
+      like u32
+        cite free
+
+  task set-mode, name <set_mode>
+    note <Sets the underlying raw bits for this set of permissions.>
+
+    take self
+      cite free
+    take mode
+      like u32
+        cite free
+      cite free
+
+  task from-mode, name <from_mode>
+    note <Creates a new instance of Permissions from the given set of Unix permission bits.>
+
+    take mode
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like permissions
+        cite free

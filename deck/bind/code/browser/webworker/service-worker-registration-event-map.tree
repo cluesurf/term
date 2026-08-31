@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/service-worker-registration-event-map
+  find service-worker-registration-event-map
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+form service-worker-registration-event-map, name <ServiceWorkerRegistrationEventMap>
+  link updatefound, name <updatefound>
+    like event
+    lock false

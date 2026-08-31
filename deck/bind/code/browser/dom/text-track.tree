@@ -1,0 +1,142 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/browser/dom/text-track-cue
+  find text-track-cue
+
+load @term/bind/code/browser/dom/text-track-cue-list
+  find text-track-cue-list
+
+load @term/bind/code/browser/dom/text-track-event-map
+  find text-track-event-map
+
+load @term/bind/code/browser/dom/text-track-kind
+  find text-track-kind
+
+load @term/bind/code/browser/dom/text-track-mode
+  find text-track-mode
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form text-track, name <TextTrack>
+  base event-target
+
+  link active-cues, name <activeCues>
+    like or
+      like text-track-cue-list
+      like native-null
+  link cues, name <cues>
+    like or
+      like text-track-cue-list
+      like native-null
+  link id, name <id>
+    like native-string
+  link in-band-metadata-track-dispatch-type, name <inBandMetadataTrackDispatchType>
+    like native-string
+  link kind, name <kind>
+    like text-track-kind
+  link label, name <label>
+    like native-string
+  link language, name <language>
+    like native-string
+  link mode, name <mode>
+    like text-track-mode
+    lock false
+  link oncuechange, name <oncuechange>
+    like or
+      like task
+        take this, like text-track
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+
+  task add-cue, name <addCue>
+    take cue, like text-track-cue
+    like native-void
+
+  task remove-cue, name <removeCue>
+    take cue, like text-track-cue
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like text-track-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like text-track
+        take ev
+          like index
+            like text-track-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like text-track-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like text-track
+        take ev
+          like index
+            like text-track-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

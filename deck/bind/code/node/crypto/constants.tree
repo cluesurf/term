@@ -1,0 +1,200 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+
+host openssl-version-number, name <OPENSSL_VERSION_NUMBER>
+  like native-number
+
+host ssl-op-all, name <SSL_OP_ALL>
+  like native-number
+
+host ssl-op-allow-unsafe-legacy-renegotiation, name <SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION>
+  like native-number
+
+host ssl-op-cipher-server-preference, name <SSL_OP_CIPHER_SERVER_PREFERENCE>
+  like native-number
+
+host ssl-op-cisco-anyconnect, name <SSL_OP_CISCO_ANYCONNECT>
+  like native-number
+
+host ssl-op-cookie-exchange, name <SSL_OP_COOKIE_EXCHANGE>
+  like native-number
+
+host ssl-op-cryptopro-tlsext-bug, name <SSL_OP_CRYPTOPRO_TLSEXT_BUG>
+  like native-number
+
+host ssl-op-dont-insert-empty-fragments, name <SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS>
+  like native-number
+
+host ssl-op-ephemeral-rsa, name <SSL_OP_EPHEMERAL_RSA>
+  like native-number
+
+host ssl-op-legacy-server-connect, name <SSL_OP_LEGACY_SERVER_CONNECT>
+  like native-number
+
+host ssl-op-microsoft-big-sslv3-buffer, name <SSL_OP_MICROSOFT_BIG_SSLV3_BUFFER>
+  like native-number
+
+host ssl-op-microsoft-sess-id-bug, name <SSL_OP_MICROSOFT_SESS_ID_BUG>
+  like native-number
+
+host ssl-op-msie-sslv2-rsa-padding, name <SSL_OP_MSIE_SSLV2_RSA_PADDING>
+  like native-number
+
+host ssl-op-netscape-ca-dn-bug, name <SSL_OP_NETSCAPE_CA_DN_BUG>
+  like native-number
+
+host ssl-op-netscape-challenge-bug, name <SSL_OP_NETSCAPE_CHALLENGE_BUG>
+  like native-number
+
+host ssl-op-netscape-demo-cipher-change-bug, name <SSL_OP_NETSCAPE_DEMO_CIPHER_CHANGE_BUG>
+  like native-number
+
+host ssl-op-netscape-reuse-cipher-change-bug, name <SSL_OP_NETSCAPE_REUSE_CIPHER_CHANGE_BUG>
+  like native-number
+
+host ssl-op-no-compression, name <SSL_OP_NO_COMPRESSION>
+  like native-number
+
+host ssl-op-no-query-mtu, name <SSL_OP_NO_QUERY_MTU>
+  like native-number
+
+host ssl-op-no-session-resumption-on-renegotiation
+  name <SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION>
+  like native-number
+
+host ssl-op-no-ss-lv2, name <SSL_OP_NO_SSLv2>
+  like native-number
+
+host ssl-op-no-ss-lv3, name <SSL_OP_NO_SSLv3>
+  like native-number
+
+host ssl-op-no-ticket, name <SSL_OP_NO_TICKET>
+  like native-number
+
+host ssl-op-no-tl-sv1, name <SSL_OP_NO_TLSv1>
+  like native-number
+
+host ssl-op-no-tl-sv1-1, name <SSL_OP_NO_TLSv1_1>
+  like native-number
+
+host ssl-op-no-tl-sv1-2, name <SSL_OP_NO_TLSv1_2>
+  like native-number
+
+host ssl-op-pkcs1-check-1, name <SSL_OP_PKCS1_CHECK_1>
+  like native-number
+
+host ssl-op-pkcs1-check-2, name <SSL_OP_PKCS1_CHECK_2>
+  like native-number
+
+host ssl-op-single-dh-use, name <SSL_OP_SINGLE_DH_USE>
+  like native-number
+
+host ssl-op-single-ecdh-use, name <SSL_OP_SINGLE_ECDH_USE>
+  like native-number
+
+host ssl-op-ssleay-080-client-dh-bug, name <SSL_OP_SSLEAY_080_CLIENT_DH_BUG>
+  like native-number
+
+host ssl-op-sslref2-reuse-cert-type-bug, name <SSL_OP_SSLREF2_REUSE_CERT_TYPE_BUG>
+  like native-number
+
+host ssl-op-tls-block-padding-bug, name <SSL_OP_TLS_BLOCK_PADDING_BUG>
+  like native-number
+
+host ssl-op-tls-d5-bug, name <SSL_OP_TLS_D5_BUG>
+  like native-number
+
+host ssl-op-tls-rollback-bug, name <SSL_OP_TLS_ROLLBACK_BUG>
+  like native-number
+
+host engine-method-rsa, name <ENGINE_METHOD_RSA>
+  like native-number
+
+host engine-method-dsa, name <ENGINE_METHOD_DSA>
+  like native-number
+
+host engine-method-dh, name <ENGINE_METHOD_DH>
+  like native-number
+
+host engine-method-rand, name <ENGINE_METHOD_RAND>
+  like native-number
+
+host engine-method-ec, name <ENGINE_METHOD_EC>
+  like native-number
+
+host engine-method-ciphers, name <ENGINE_METHOD_CIPHERS>
+  like native-number
+
+host engine-method-digests, name <ENGINE_METHOD_DIGESTS>
+  like native-number
+
+host engine-method-pkey-meths, name <ENGINE_METHOD_PKEY_METHS>
+  like native-number
+
+host engine-method-pkey-asn1-meths, name <ENGINE_METHOD_PKEY_ASN1_METHS>
+  like native-number
+
+host engine-method-all, name <ENGINE_METHOD_ALL>
+  like native-number
+
+host engine-method-none, name <ENGINE_METHOD_NONE>
+  like native-number
+
+host dh-check-p-not-safe-prime, name <DH_CHECK_P_NOT_SAFE_PRIME>
+  like native-number
+
+host dh-check-p-not-prime, name <DH_CHECK_P_NOT_PRIME>
+  like native-number
+
+host dh-unable-to-check-generator, name <DH_UNABLE_TO_CHECK_GENERATOR>
+  like native-number
+
+host dh-not-suitable-generator, name <DH_NOT_SUITABLE_GENERATOR>
+  like native-number
+
+host alpn-enabled, name <ALPN_ENABLED>
+  like native-number
+
+host rsa-pkcs1-padding, name <RSA_PKCS1_PADDING>
+  like native-number
+
+host rsa-sslv23-padding, name <RSA_SSLV23_PADDING>
+  like native-number
+
+host rsa-no-padding, name <RSA_NO_PADDING>
+  like native-number
+
+host rsa-pkcs1-oaep-padding, name <RSA_PKCS1_OAEP_PADDING>
+  like native-number
+
+host rsa-x931-padding, name <RSA_X931_PADDING>
+  like native-number
+
+host rsa-pkcs1-pss-padding, name <RSA_PKCS1_PSS_PADDING>
+  like native-number
+
+host rsa-pss-saltlen-digest, name <RSA_PSS_SALTLEN_DIGEST>
+  like native-number
+
+host rsa-pss-saltlen-max-sign, name <RSA_PSS_SALTLEN_MAX_SIGN>
+  like native-number
+
+host rsa-pss-saltlen-auto, name <RSA_PSS_SALTLEN_AUTO>
+  like native-number
+
+host point-conversion-compressed, name <POINT_CONVERSION_COMPRESSED>
+  like native-number
+
+host point-conversion-uncompressed, name <POINT_CONVERSION_UNCOMPRESSED>
+  like native-number
+
+host point-conversion-hybrid, name <POINT_CONVERSION_HYBRID>
+  like native-number
+
+host default-core-cipher-list, name <defaultCoreCipherList>
+  like native-string
+
+host default-cipher-list, name <defaultCipherList>
+  like native-string

@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/es2015/promise/promise-constructor
+  find promise-constructor
+
+form promise-constructor, name <PromiseConstructor>
+  link {symbol/species}
+    like promise-constructor
+    read true

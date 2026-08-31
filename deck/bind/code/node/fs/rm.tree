@@ -1,0 +1,16 @@
+
+load @term/bind/code/javascript
+  find native-void
+  find promise
+
+load @term/bind/code/node/fs
+  find path-like
+  find rm-options
+
+task promisify, name <__promisify__>
+  like promise
+    like native-void
+
+  take path, like path-like
+  take options, like rm-options
+    void true

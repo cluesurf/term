@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/dom-high-res-time-stamp
+  find dom-high-res-time-stamp
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form audio-timestamp, name <AudioTimestamp>
+  link context-time, name <contextTime>
+    like native-number
+    lock false
+  link performance-time, name <performanceTime>
+    like dom-high-res-time-stamp
+    lock false

@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+form array-buffer-types, name <ArrayBufferTypes>
+  link array-buffer, name <ArrayBuffer>
+    like array-buffer
+    lock false

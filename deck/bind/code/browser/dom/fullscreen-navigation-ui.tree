@@ -1,0 +1,6 @@
+
+form fullscreen-navigation-ui, name <FullscreenNavigationUI>
+  like or
+    text <auto>
+    text <hide>
+    text <show>

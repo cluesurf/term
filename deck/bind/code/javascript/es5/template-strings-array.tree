@@ -1,0 +1,16 @@
+
+load @term/bind/code/javascript/es5/readonly-array
+  find readonly-array
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form template-strings-array, name <TemplateStringsArray>
+  base readonly-array
+
+  link raw, name <raw>
+    like native-array
+      like native-string

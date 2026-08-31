@@ -1,0 +1,524 @@
+
+form non-null, name <std::ptr::NonNull>
+  task dangling, name <dangling>
+    note <Creates a new NonNull that is dangling, but well-aligned.>
+
+    free seed
+      like non-null
+        like t
+          cite free
+        cite free
+
+  task as-uninit-ref, name <as_uninit_ref>
+    note <Returns a shared references to the value. In contrast to as_ref, this does not require that the value has to be initialized.>
+
+    time a
+
+    take self
+      cite free
+
+    free seed
+      like maybe-uninit
+        like t
+          cite free
+        time a
+
+  task as-uninit-mut, name <as_uninit_mut>
+    note <Returns a unique references to the value. In contrast to as_mut, this does not require that the value has to be initialized.>
+
+    time a
+
+    take self
+      cite free
+
+    free seed
+      like maybe-uninit
+        like t
+          cite free
+        time a
+
+  task new-unchecked, name <new_unchecked>
+    note <Creates a new NonNull.>
+
+    take ptr
+      like t
+        cite free
+      cite free
+      lock free
+      dive take
+
+    free seed
+      like non-null
+        like t
+          cite free
+        cite free
+
+  task new, name <new>
+    note <Creates a new NonNull if ptr is non-null.>
+
+    take ptr
+      like t
+        cite free
+      cite free
+      lock free
+      dive take
+
+    free seed
+      like option
+        like non-null
+          like t
+            cite free
+          cite free
+        cite free
+
+  task from-raw-parts, name <from_raw_parts>
+    note <Performs the same functionality as std::ptr::from_raw_parts, except that a NonNull pointer is returned, as opposed to a raw *const pointer.>
+
+    cast c-1
+      like t
+      like pointee
+
+    take data-address
+      like non-null
+        like form
+        cite free
+      cite free
+    take metadata
+      like c-1/metadata
+      cite free
+
+    free seed
+      like non-null
+        like t
+          cite free
+        cite free
+
+  task to-raw-parts, name <to_raw_parts>
+    note <Decompose a (possibly wide) pointer into its address and metadata components.>
+
+    cast c-1
+      like t
+      like pointee
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1, like non-null
+        take t-2
+          like c-1/metadata
+
+  task as-ptr, name <as_ptr>
+    note <Acquires the underlying *mut pointer.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task as-ref, name <as_ref>
+    note <Returns a shared reference to the value. If the value may be uninitialized, as_uninit_ref must be used instead.>
+
+    time a
+
+    take self
+      cite free
+
+    free seed
+      like t
+        time a
+
+  task as-mut, name <as_mut>
+    note <Returns a unique reference to the value. If the value may be uninitialized, as_uninit_mut must be used instead.>
+
+    time a
+
+    take self
+      cite free
+
+    free seed
+      like t
+        time a
+
+  task cast, name <cast>
+    note <Casts to a pointer of another type.>
+
+    head u
+
+    take self
+      cite free
+
+    free seed
+      like non-null
+        like u
+          cite free
+        cite free
+
+  task slice-from-raw-parts, name <slice_from_raw_parts>
+    note <Creates a non-null raw slice from a thin pointer and a length.>
+
+    take data
+      like non-null
+        like t
+          cite free
+        cite free
+      cite free
+    take len
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like non-null
+        list t
+        cite free
+
+  task len, name <len>
+    note <Returns the length of a non-null raw slice.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task as-non-null-ptr, name <as_non_null_ptr>
+    note <Returns a non-null pointer to the slice's buffer.>
+
+    take self
+      cite free
+
+    free seed
+      like non-null
+        like t
+          cite free
+        cite free
+
+  task as-mut-ptr, name <as_mut_ptr>
+    note <Returns a raw pointer to the slice's buffer.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task as-uninit-slice, name <as_uninit_slice>
+    note <Returns a shared reference to a slice of possibly uninitialized values. In contrast to as_ref, this does not require that the value has to be initialized.>
+
+    time a
+
+    take self
+      cite free
+
+    free seed
+      like list
+        like maybe-uninit
+          like t
+            cite free
+
+  task as-uninit-slice-mut, name <as_uninit_slice_mut>
+    note <Returns a unique reference to a slice of possibly uninitialized values. In contrast to as_mut, this does not require that the value has to be initialized.>
+
+    time a
+
+    take self
+      cite free
+
+    free seed
+      like list
+        like maybe-uninit
+          like t
+            cite free
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a raw pointer to an element or subslice, without doing bounds checking.>
+
+    cast c-1
+      like i
+      like slice-index
+        list t
+
+    lead i
+      like slice-index
+        list t
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take index
+      like i
+        cite free
+      cite free
+
+    free seed
+      like non-null
+        like c-1/output
+        cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like non-null
+        like t
+          cite free
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take reference
+      like t
+
+    free seed
+      like non-null
+        like t
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take reference
+      like t
+      lock free
+
+    free seed
+      like non-null
+        like t
+          cite free
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like non-null
+        like t
+          cite free
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like non-null
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like non-null
+        like t
+          cite free
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free

@@ -1,0 +1,56 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-string
+  find native-undefined
+  find promises-file-handle
+
+load @term/bind/code/node/buffer
+  find buffer-encoding
+
+form stream-options, name <StreamOptions>
+  link flags, name <flags>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link encoding, name <encoding>
+    like or
+      like buffer-encoding
+      like native-undefined
+    flex true
+  link fd, name <fd>
+    like or
+      like native-number
+      like promises-file-handle
+      like native-undefined
+    flex true
+  link mode, name <mode>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link auto-close, name <autoClose>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link emit-close, name <emitClose>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link start, name <start>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link high-water-mark, name <highWaterMark>
+    like or
+      like native-number
+      like native-undefined
+    flex true

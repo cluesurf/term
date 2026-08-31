@@ -1,0 +1,32 @@
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form touch, name <Touch>
+  link client-x, name <clientX>
+    like native-number
+  link client-y, name <clientY>
+    like native-number
+  link force, name <force>
+    like native-number
+  link identifier, name <identifier>
+    like native-number
+  link page-x, name <pageX>
+    like native-number
+  link page-y, name <pageY>
+    like native-number
+  link radius-x, name <radiusX>
+    like native-number
+  link radius-y, name <radiusY>
+    like native-number
+  link rotation-angle, name <rotationAngle>
+    like native-number
+  link screen-x, name <screenX>
+    like native-number
+  link screen-y, name <screenY>
+    like native-number
+  link target, name <target>
+    like event-target

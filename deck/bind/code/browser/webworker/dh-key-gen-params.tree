@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/webworker/algorithm
+  find algorithm
+
+load @term/bind/code/javascript/es5/uint8-array
+  find uint8-array
+
+form dh-key-gen-params, name <DhKeyGenParams>
+  base algorithm
+
+  link generator, name <generator>
+    like uint8-array
+    lock false
+  link prime, name <prime>
+    like uint8-array
+    lock false

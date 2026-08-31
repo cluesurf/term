@@ -1,0 +1,23 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-undefined
+
+load @term/bind
+  find or
+
+load @term/bind/code/node/child-process
+  find spawn-options
+  find stdio-pipe
+  find stdio-pipe-named
+
+form spawn-options-without-stdio, name <SpawnOptionsWithoutStdio>
+  base spawn-options
+
+  link stdio, name <stdio>
+    like or
+      like stdio-pipe-named
+      like array
+        like stdio-pipe
+      like native-undefined
+    flex true

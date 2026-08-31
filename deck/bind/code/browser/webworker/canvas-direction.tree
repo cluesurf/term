@@ -1,0 +1,6 @@
+
+form canvas-direction, name <CanvasDirection>
+  like or
+    text <inherit>
+    text <ltr>
+    text <rtl>

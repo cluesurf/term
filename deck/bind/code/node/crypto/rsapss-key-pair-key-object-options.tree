@@ -1,0 +1,27 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find native-undefined
+
+form rsapss-key-pair-key-object-options, name <RSAPSSKeyPairKeyObjectOptions>
+  link modulus-length, name <modulusLength>
+    like native-number
+    flex true
+  link public-exponent, name <publicExponent>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link hash-algorithm, name <hashAlgorithm>
+    like native-string
+    flex true
+  link mgf1-hash-algorithm, name <mgf1HashAlgorithm>
+    like native-string
+    flex true
+  link salt-length, name <saltLength>
+    like native-string
+    flex true

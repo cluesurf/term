@@ -1,0 +1,128 @@
+
+form mutex, name <std::sync::Mutex>
+  task new, name <new>
+    note <Creates a new mutex in an unlocked state ready for use.>
+
+    take t
+      like t
+        cite free
+      cite free
+
+    free seed
+      like mutex
+        like t
+          cite free
+        cite free
+
+  task lock, name <lock>
+    note <Acquires a mutex, blocking the current thread until it is able to do so.>
+
+    take self
+      cite free
+
+    free seed
+      like lock-result
+        like mutex-guard
+          time mask
+          like t
+            cite free
+          cite free
+        cite free
+
+  task try-lock, name <try_lock>
+    note <Attempts to acquire this lock.>
+
+    take self
+      cite free
+
+    free seed
+      like try-lock-result
+        like mutex-guard
+          time mask
+          like t
+            cite free
+          cite free
+        cite free
+
+  task unlock, name <unlock>
+    note <Immediately drops the guard, and consequently unlocks the mutex.>
+
+    take guard
+      like mutex-guard
+        time mask
+        like t
+          cite free
+        cite free
+      cite free
+
+  task is-poisoned, name <is_poisoned>
+    note <Determines whether the mutex is poisoned.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task into-inner, name <into_inner>
+    note <Consumes this mutex, returning the underlying data.>
+
+    lead t
+      like sized
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like lock-result
+        like t
+          cite free
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the underlying data.>
+
+    take self
+      cite free
+
+    free seed
+      like lock-result
+        like t
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task default, name <default>
+    note <Creates a Mutex&lt;T&gt;, with the Default value for T.>
+
+    free seed
+      like mutex
+        like t
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Creates a new mutex in an unlocked state ready for use. This is equivalent to Mutex::new.>
+
+    take t
+      like t
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free

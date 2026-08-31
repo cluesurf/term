@@ -1,0 +1,28 @@
+
+load @term/bind/code/javascript/es2021/weakref/finalization-registry
+  find finalization-registry
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-object
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form finalization-registry, name <FinalizationRegistry>
+  link {symbol/to-string-tag}
+    text <FinalizationRegistry>
+    read true
+
+  task register, name <register>
+    take target, like native-object
+    take held-value, like native-any
+    take unregister-token, like maybe
+      like native-object
+    like native-void
+
+  task unregister, name <unregister>
+    take unregister-token, like native-object
+    like native-void

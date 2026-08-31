@@ -1,0 +1,39 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form svg-preserve-aspect-ratio, name <SVGPreserveAspectRatio>
+  link align, name <align>
+    like native-number
+    lock false
+  link meet-or-slice, name <meetOrSlice>
+    like native-number
+    lock false
+  link svg-meetorslice-meet, name <SVG_MEETORSLICE_MEET>
+    like native-number
+  link svg-meetorslice-slice, name <SVG_MEETORSLICE_SLICE>
+    like native-number
+  link svg-meetorslice-unknown, name <SVG_MEETORSLICE_UNKNOWN>
+    like native-number
+  link svg-preserveaspectratio-none, name <SVG_PRESERVEASPECTRATIO_NONE>
+    like native-number
+  link svg-preserveaspectratio-unknown, name <SVG_PRESERVEASPECTRATIO_UNKNOWN>
+    like native-number
+  link svg-preserveaspectratio-xmaxymax, name <SVG_PRESERVEASPECTRATIO_XMAXYMAX>
+    like native-number
+  link svg-preserveaspectratio-xmaxymid, name <SVG_PRESERVEASPECTRATIO_XMAXYMID>
+    like native-number
+  link svg-preserveaspectratio-xmaxymin, name <SVG_PRESERVEASPECTRATIO_XMAXYMIN>
+    like native-number
+  link svg-preserveaspectratio-xmidymax, name <SVG_PRESERVEASPECTRATIO_XMIDYMAX>
+    like native-number
+  link svg-preserveaspectratio-xmidymid, name <SVG_PRESERVEASPECTRATIO_XMIDYMID>
+    like native-number
+  link svg-preserveaspectratio-xmidymin, name <SVG_PRESERVEASPECTRATIO_XMIDYMIN>
+    like native-number
+  link svg-preserveaspectratio-xminymax, name <SVG_PRESERVEASPECTRATIO_XMINYMAX>
+    like native-number
+  link svg-preserveaspectratio-xminymid, name <SVG_PRESERVEASPECTRATIO_XMINYMID>
+    like native-number
+  link svg-preserveaspectratio-xminymin, name <SVG_PRESERVEASPECTRATIO_XMINYMIN>
+    like native-number

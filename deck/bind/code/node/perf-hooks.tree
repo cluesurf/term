@@ -1,0 +1,42 @@
+
+bear @term/bind/code/javascript/node/perf-hooks/entry-type
+bear @term/bind/code/javascript/node/perf-hooks/node-gc-performance-detail
+bear @term/bind/code/javascript/node/perf-hooks/performance-entry
+bear @term/bind/code/javascript/node/perf-hooks/performance-node-timing
+bear @term/bind/code/javascript/node/perf-hooks/event-loop-utilization
+bear @term/bind/code/javascript/node/perf-hooks/event-loop-utility-function
+bear @term/bind/code/javascript/node/perf-hooks/mark-options
+bear @term/bind/code/javascript/node/perf-hooks/measure-options
+bear @term/bind/code/javascript/node/perf-hooks/timerify-options
+bear @term/bind/code/javascript/node/perf-hooks/performance
+bear @term/bind/code/javascript/node/perf-hooks/performance-observer-entry-list
+bear @term/bind/code/javascript/node/perf-hooks/performance-observer-callback
+bear @term/bind/code/javascript/node/perf-hooks/performance-observer
+bear @term/bind/code/javascript/node/perf-hooks/constants
+bear @term/bind/code/javascript/node/perf-hooks/event-loop-monitor-options
+bear @term/bind/code/javascript/node/perf-hooks/histogram
+bear @term/bind/code/javascript/node/perf-hooks/interval-histogram
+bear @term/bind/code/javascript/node/perf-hooks/recordable-histogram
+bear @term/bind/code/javascript/node/perf-hooks/create-histogram-options
+
+load @term/bind/code/node/perf-hooks
+  find create-histogram-options
+  find event-loop-monitor-options
+  find interval-histogram
+  find performance
+  find recordable-histogram
+
+host performance, name <performance>
+  like performance
+
+task monitor-event-loop-delay, name <monitorEventLoopDelay>
+  like interval-histogram
+
+  take options, like event-loop-monitor-options
+    void true
+
+task create-histogram, name <createHistogram>
+  like recordable-histogram
+
+  take options, like create-histogram-options
+    void true

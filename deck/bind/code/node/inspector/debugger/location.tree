@@ -1,0 +1,21 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+  find runtime-script-id
+
+form location, name <Location>
+  link script-id, name <scriptId>
+    like runtime-script-id
+    flex true
+  link line-number, name <lineNumber>
+    like native-number
+    flex true
+  link column-number, name <columnNumber>
+    like or
+      like native-number
+      like native-undefined
+    flex true

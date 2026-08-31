@@ -1,0 +1,32 @@
+
+load @term/bind
+  find any
+
+load @term/bind/code/javascript
+  find native-void
+
+load @term/bind/code/node/buffer
+  find buffer-encoding
+
+load @term/bind/code/node/stream/internal
+  find transform-callback
+  find transform-options
+
+form transform, name <Transform>
+  base duplex
+  task transform, name <_transform>
+    like native-void
+
+    take chunk, like any
+    take encoding, like buffer-encoding
+    take callback, like transform-callback
+
+  task flush, name <_flush>
+    like native-void
+
+    take callback, like transform-callback
+
+form transform-constructor
+  hook make
+    take opts, like transform-options
+      void true

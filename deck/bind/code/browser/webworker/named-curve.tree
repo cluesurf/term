@@ -1,0 +1,6 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form named-curve, name <NamedCurve>
+  like native-string

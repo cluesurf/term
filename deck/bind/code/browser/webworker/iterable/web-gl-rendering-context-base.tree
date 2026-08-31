@@ -1,0 +1,44 @@
+
+load @term/bind/code/browser/webworker/g-lfloat
+  find g-lfloat
+
+load @term/bind/code/browser/webworker/g-luint
+  find g-luint
+
+load @term/bind/code/browser/webworker/web-gl-rendering-context-base
+  find web-gl-rendering-context-base
+
+load @term/bind/code/javascript/iterable
+  find iterable
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form web-gl-rendering-context-base, name <WebGLRenderingContextBase>
+  task vertex-attrib1fv, name <vertexAttrib1fv>
+    take index, like g-luint
+    take values
+      like iterable
+        like g-lfloat
+    like native-void
+
+  task vertex-attrib2fv, name <vertexAttrib2fv>
+    take index, like g-luint
+    take values
+      like iterable
+        like g-lfloat
+    like native-void
+
+  task vertex-attrib3fv, name <vertexAttrib3fv>
+    take index, like g-luint
+    take values
+      like iterable
+        like g-lfloat
+    like native-void
+
+  task vertex-attrib4fv, name <vertexAttrib4fv>
+    take index, like g-luint
+    take values
+      like iterable
+        like g-lfloat
+    like native-void

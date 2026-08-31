@@ -1,0 +1,43 @@
+
+load @term/bind/code/browser/dom/css-rule
+  find css-rule
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form css-counter-style-rule, name <CSSCounterStyleRule>
+  base css-rule
+
+  link additive-symbols, name <additiveSymbols>
+    like native-string
+    lock false
+  link fallback, name <fallback>
+    like native-string
+    lock false
+  link name, name <name>
+    like native-string
+    lock false
+  link negative, name <negative>
+    like native-string
+    lock false
+  link pad, name <pad>
+    like native-string
+    lock false
+  link prefix, name <prefix>
+    like native-string
+    lock false
+  link range, name <range>
+    like native-string
+    lock false
+  link speak-as, name <speakAs>
+    like native-string
+    lock false
+  link suffix, name <suffix>
+    like native-string
+    lock false
+  link symbols, name <symbols>
+    like native-string
+    lock false
+  link system, name <system>
+    like native-string
+    lock false

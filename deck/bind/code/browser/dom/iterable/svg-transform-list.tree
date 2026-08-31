@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/svg-transform
+  find svg-transform
+
+load @term/bind/code/browser/dom/svg-transform-list
+  find svg-transform-list
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+form svg-transform-list, name <SVGTransformList>
+  task {symbol/iterator}
+    like iterable-iterator
+      like svg-transform

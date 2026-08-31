@@ -1,0 +1,9 @@
+
+load @term/bind/code/browser/dom/audio-param-map
+  find audio-param-map
+
+load @term/bind/code/javascript/readonly-map
+  find readonly-map
+
+form audio-param-map, name <AudioParamMap>
+  base readonly-map

@@ -1,0 +1,13 @@
+
+bear @term/bind/code/javascript/node/tty/read-stream
+bear @term/bind/code/javascript/node/tty/direction
+bear @term/bind/code/javascript/node/tty/write-stream
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+
+task isatty, name <isatty>
+  like native-boolean
+
+  take fd, like native-number

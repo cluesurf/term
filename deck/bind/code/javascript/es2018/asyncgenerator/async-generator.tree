@@ -1,0 +1,64 @@
+
+load @term/bind/code/javascript/async-iterator
+  find async-iterator
+
+load @term/bind/code/javascript/es2015/iterable/iterator-result
+  find iterator-result
+
+load @term/bind/code/javascript/es2015/symbol/wellknown/promise
+  find promise
+
+load @term/bind/code/javascript/es5/promise-like
+  find promise-like
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-unknown
+
+form async-generator, name <AsyncGenerator>
+  base async-iterator
+
+  head t
+    back native-unknown
+  head t-return
+    back native-any
+  head t-next
+    back native-unknown
+
+  task next, name <next>
+    take args
+      like or
+        like band
+        like band
+          like t-next
+      rest true
+    like promise
+      like iterator-result
+        like t
+        like t-return
+
+  task return, name <return>
+    take value
+      like or
+        like t-return
+        like promise-like
+          like t-return
+    like promise
+      like iterator-result
+        like t
+        like t-return
+
+  task throw, name <throw>
+    take e, like native-any
+    like promise
+      like iterator-result
+        like t
+        like t-return
+
+  task {symbol/async-iterator}
+    like async-generator
+      like t
+      like t-return
+      like t-next

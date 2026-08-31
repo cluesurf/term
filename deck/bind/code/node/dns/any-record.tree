@@ -1,0 +1,28 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/node/dns
+  find any-a-record
+  find any-aaaa-record
+  find any-cname-record
+  find any-mx-record
+  find any-naptr-record
+  find any-ns-record
+  find any-ptr-record
+  find any-soa-record
+  find any-srv-record
+  find any-txt-record
+
+form any-record, name <AnyRecord>
+  like or
+    like any-a-record
+    like any-aaaa-record
+    like any-cname-record
+    like any-mx-record
+    like any-naptr-record
+    like any-ns-record
+    like any-ptr-record
+    like any-soa-record
+    like any-srv-record
+    like any-txt-record

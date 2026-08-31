@@ -1,0 +1,13 @@
+
+load @term/bind/code/javascript/es5/reg-exp-exec-array
+  find reg-exp-exec-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form reg-exp-exec-array, name <RegExpExecArray>
+  link groups, name <groups>
+    like form
+      mesh key, like native-string
+        like native-string
+    lock false

@@ -1,0 +1,346 @@
+
+bear @term/bind/code/javascript/node/stream/internal/stream
+bear @term/bind/code/javascript/node/stream/internal/stream-options
+bear @term/bind/code/javascript/node/stream/internal/readable-options
+bear @term/bind/code/javascript/node/stream/internal/readable
+bear @term/bind/code/javascript/node/stream/internal/writable-options
+bear @term/bind/code/javascript/node/stream/internal/writable
+bear @term/bind/code/javascript/node/stream/internal/duplex-options
+bear @term/bind/code/javascript/node/stream/internal/duplex
+bear @term/bind/code/javascript/node/stream/internal/transform-callback
+bear @term/bind/code/javascript/node/stream/internal/transform-options
+bear @term/bind/code/javascript/node/stream/internal/transform
+bear @term/bind/code/javascript/node/stream/internal/pass-through
+bear @term/bind/code/javascript/node/stream/internal/finished-options
+bear @term/bind/code/javascript/node/stream/internal/finished
+bear @term/bind/code/javascript/node/stream/internal/pipeline-source-function
+bear @term/bind/code/javascript/node/stream/internal/pipeline-source
+bear @term/bind/code/javascript/node/stream/internal/pipeline-transform
+bear @term/bind/code/javascript/node/stream/internal/pipeline-transform-source
+bear @term/bind/code/javascript/node/stream/internal/pipeline-destination-iterable-function
+bear @term/bind/code/javascript/node/stream/internal/pipeline-destination-promise-function
+bear @term/bind/code/javascript/node/stream/internal/pipeline-destination
+bear @term/bind/code/javascript/node/stream/internal/pipeline-callback
+bear @term/bind/code/javascript/node/stream/internal/pipeline-promise
+bear @term/bind/code/javascript/node/stream/internal/pipeline-options
+bear @term/bind/code/javascript/node/stream/internal/pipeline
+bear @term/bind/code/javascript/node/stream/internal/pipe
+
+load @term/bind
+  find any
+  find form
+  find like
+  find or
+  find task
+  find test
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-null
+  find native-undefined
+  find native-void
+  find node-js-errno-exception
+  find node-js-read-write-stream
+  find node-js-readable-stream
+  find node-js-writable-stream
+  find readonly-array
+  find stream
+
+load @term/bind/code/node/globals
+  find abort-signal
+  find array
+
+load @term/bind/code/node/stream/internal
+  find finished-options
+  find pipeline-callback
+  find pipeline-destination
+  find pipeline-source
+  find pipeline-transform
+
+form internal, name <internal>
+  base event-emitter
+  task pipe, name <pipe>
+    like t
+
+    head t
+      base node-js-writable-stream
+
+    take destination, like t
+    take options
+      like form
+        link end, name <end>
+          like or
+            like native-boolean
+            like native-undefined
+          flex true
+      void true
+
+host promises, name <promises>
+  like stream-promises
+
+host consumers, name <consumers>
+  like stream-consumers
+
+task add-abort-signal, name <addAbortSignal>
+  like t
+
+  head t
+    base stream
+
+  take signal, like abort-signal
+  take stream, like t
+
+task finished, name <finished>
+  like task
+    like native-void
+
+  take stream
+    like or
+      like node-js-readable-stream
+      like node-js-writable-stream
+      like node-js-read-write-stream
+  take options, like finished-options
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+        void true
+
+task finished, name <finished>
+  like task
+    like native-void
+
+  take stream
+    like or
+      like node-js-readable-stream
+      like node-js-writable-stream
+      like node-js-read-write-stream
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+        void true
+
+task pipeline, name <pipeline>
+  like test
+    stem roll
+      like b
+      like node-js-writable-stream
+      hook true
+        like b
+      hook false
+        like node-js-writable-stream
+
+  head a
+    base pipeline-source
+      like any
+  head b
+    base pipeline-destination
+      like a
+      like any
+
+  take source, like a
+  take destination, like b
+  take callback
+    like pipeline-callback
+      like b
+    void true
+
+task pipeline, name <pipeline>
+  like test
+    stem roll
+      like b
+      like node-js-writable-stream
+      hook true
+        like b
+      hook false
+        like node-js-writable-stream
+
+  head a
+    base pipeline-source
+      like any
+  head t1
+    base pipeline-transform
+      like a
+      like any
+  head b
+    base pipeline-destination
+      like t1
+      like any
+
+  take source, like a
+  take transform1, like t1
+  take destination, like b
+  take callback
+    like pipeline-callback
+      like b
+    void true
+
+task pipeline, name <pipeline>
+  like test
+    stem roll
+      like b
+      like node-js-writable-stream
+      hook true
+        like b
+      hook false
+        like node-js-writable-stream
+
+  head a
+    base pipeline-source
+      like any
+  head t1
+    base pipeline-transform
+      like a
+      like any
+  head t2
+    base pipeline-transform
+      like t1
+      like any
+  head b
+    base pipeline-destination
+      like t2
+      like any
+
+  take source, like a
+  take transform1, like t1
+  take transform2, like t2
+  take destination, like b
+  take callback
+    like pipeline-callback
+      like b
+    void true
+
+task pipeline, name <pipeline>
+  like test
+    stem roll
+      like b
+      like node-js-writable-stream
+      hook true
+        like b
+      hook false
+        like node-js-writable-stream
+
+  head a
+    base pipeline-source
+      like any
+  head t1
+    base pipeline-transform
+      like a
+      like any
+  head t2
+    base pipeline-transform
+      like t1
+      like any
+  head t3
+    base pipeline-transform
+      like t2
+      like any
+  head b
+    base pipeline-destination
+      like t3
+      like any
+
+  take source, like a
+  take transform1, like t1
+  take transform2, like t2
+  take transform3, like t3
+  take destination, like b
+  take callback
+    like pipeline-callback
+      like b
+    void true
+
+task pipeline, name <pipeline>
+  like test
+    stem roll
+      like b
+      like node-js-writable-stream
+      hook true
+        like b
+      hook false
+        like node-js-writable-stream
+
+  head a
+    base pipeline-source
+      like any
+  head t1
+    base pipeline-transform
+      like a
+      like any
+  head t2
+    base pipeline-transform
+      like t1
+      like any
+  head t3
+    base pipeline-transform
+      like t2
+      like any
+  head t4
+    base pipeline-transform
+      like t3
+      like any
+  head b
+    base pipeline-destination
+      like t4
+      like any
+
+  take source, like a
+  take transform1, like t1
+  take transform2, like t2
+  take transform3, like t3
+  take transform4, like t4
+  take destination, like b
+  take callback
+    like pipeline-callback
+      like b
+    void true
+
+task pipeline, name <pipeline>
+  like node-js-writable-stream
+
+  take streams
+    like readonly-array
+      like or
+        like node-js-readable-stream
+        like node-js-writable-stream
+        like node-js-read-write-stream
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+    void true
+
+task pipeline, name <pipeline>
+  like node-js-writable-stream
+
+  take stream1, like node-js-readable-stream
+  take stream2
+    like or
+      like node-js-read-write-stream
+      like node-js-writable-stream
+  take streams
+    like array
+      like or
+        like node-js-read-write-stream
+        like node-js-writable-stream
+        like task
+          like native-void
+
+          take err
+            like or
+              like node-js-errno-exception
+              like native-null
+    rest true

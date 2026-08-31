@@ -1,0 +1,26 @@
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form x-path-ns-resolver, name <XPathNSResolver>
+  like or
+    like task
+      take prefix
+        like or
+          like native-string
+          like native-null
+      like or
+        like native-string
+        like native-null
+    like form
+      task lookup-namespace-uri, name <lookupNamespaceURI>
+        take prefix
+          like or
+            like native-string
+            like native-null
+        like or
+          like native-string
+          like native-null

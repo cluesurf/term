@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/rtc-rtp-stream-stats
+  find rtc-rtp-stream-stats
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form rtc-received-rtp-stream-stats, name <RTCReceivedRtpStreamStats>
+  base rtc-rtp-stream-stats
+
+  link jitter, name <jitter>
+    like native-number
+    lock false
+  link packets-discarded, name <packetsDiscarded>
+    like native-number
+    lock false
+  link packets-lost, name <packetsLost>
+    like native-number
+    lock false
+  link packets-received, name <packetsReceived>
+    like native-number
+    lock false

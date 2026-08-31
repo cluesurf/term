@@ -1,0 +1,120 @@
+
+load @term/bind/code/javascript/es2015/core/function
+  find function
+
+load @term/bind/code/javascript/es5/array-like
+  find array-like
+
+load @term/bind/code/javascript/es5/property-descriptor
+  find property-descriptor
+
+load @term/bind/code/javascript/es5/property-key
+  find property-key
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-object
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-symbol
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+task apply, name <apply>
+  take target, like function
+  take this-argument, like native-any
+  take arguments-list
+    like array-like
+      like native-any
+  like native-any
+
+task construct, name <construct>
+  take target, like function
+  take arguments-list
+    like array-like
+      like native-any
+  take new-target, like maybe
+    like function
+  like native-any
+
+task define-property, name <defineProperty>
+  take target, like native-object
+  take property-key, like property-key
+  take attributes, like property-descriptor
+  like native-boolean
+
+task delete-property, name <deleteProperty>
+  take target, like native-object
+  take property-key, like property-key
+  like native-boolean
+
+task get, name <get>
+  take target, like native-object
+  take property-key, like property-key
+  take receiver, like maybe
+    like native-any
+  like native-any
+
+task get-own-property-descriptor, name <getOwnPropertyDescriptor>
+  take target, like native-object
+  take property-key, like property-key
+  like or
+    like property-descriptor
+    like native-undefined
+
+task get-prototype-of, name <getPrototypeOf>
+  take target, like native-object
+  like or
+    like native-object
+    like native-null
+
+task has, name <has>
+  take target, like native-object
+  take property-key, like property-key
+  like native-boolean
+
+task is-extensible, name <isExtensible>
+  take target, like native-object
+  like native-boolean
+
+task own-keys, name <ownKeys>
+  take target, like native-object
+  like native-array
+    like or
+      like native-string
+      like native-symbol
+
+task prevent-extensions, name <preventExtensions>
+  take target, like native-object
+  like native-boolean
+
+task set, name <set>
+  take target, like native-object
+  take property-key, like property-key
+  take value, like native-any
+  take receiver, like maybe
+    like native-any
+  like native-boolean
+
+task set-prototype-of, name <setPrototypeOf>
+  take target, like native-object
+  take proto
+    like or
+      like native-object
+      like native-null
+  like native-boolean

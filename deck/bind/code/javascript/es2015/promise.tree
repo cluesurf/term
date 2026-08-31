@@ -1,0 +1,8 @@
+
+bear @term/bind/code/javascript/es2015/promise/promise-constructor
+
+load @term/bind/code/javascript/es2015/promise/promise-constructor
+  find promise-constructor
+
+host promise, name <Promise>
+  like promise-constructor

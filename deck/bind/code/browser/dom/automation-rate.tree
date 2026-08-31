@@ -1,0 +1,5 @@
+
+form automation-rate, name <AutomationRate>
+  like or
+    text <a-rate>
+    text <k-rate>

@@ -1,0 +1,69 @@
+
+load @term/bind/code/browser/dom/data-transfer-item-list
+  find data-transfer-item-list
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/browser/dom/file-list
+  find file-list
+
+load @term/bind/code/javascript/es5/readonly-array
+  find readonly-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form data-transfer, name <DataTransfer>
+  link drop-effect, name <dropEffect>
+    like or
+      text <none>
+      text <copy>
+      text <link>
+      text <move>
+    lock false
+  link effect-allowed, name <effectAllowed>
+    like or
+      text <none>
+      text <copy>
+      text <copyLink>
+      text <copyMove>
+      text <link>
+      text <linkMove>
+      text <move>
+      text <all>
+      text <uninitialized>
+    lock false
+  link files, name <files>
+    like file-list
+  link items, name <items>
+    like data-transfer-item-list
+  link types, name <types>
+    like readonly-array
+      like native-string
+
+  task clear-data, name <clearData>
+    take format, like maybe
+      like native-string
+    like native-void
+
+  task get-data, name <getData>
+    take format, like native-string
+    like native-string
+
+  task set-data, name <setData>
+    take format, like native-string
+    take data, like native-string
+    like native-void
+
+  task set-drag-image, name <setDragImage>
+    take image, like element
+    take x, like native-number
+    take y, like native-number
+    like native-void

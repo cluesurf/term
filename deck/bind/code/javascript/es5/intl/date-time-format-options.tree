@@ -1,0 +1,74 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form date-time-format-options, name <DateTimeFormatOptions>
+  link locale-matcher, name <localeMatcher>
+    like or
+      text <best fit>
+      text <lookup>
+    lock false
+  link weekday, name <weekday>
+    like or
+      text <long>
+      text <short>
+      text <narrow>
+    lock false
+  link era, name <era>
+    like or
+      text <long>
+      text <short>
+      text <narrow>
+    lock false
+  link year, name <year>
+    like or
+      text <numeric>
+      text <2-digit>
+    lock false
+  link month, name <month>
+    like or
+      text <numeric>
+      text <2-digit>
+      text <long>
+      text <short>
+      text <narrow>
+    lock false
+  link day, name <day>
+    like or
+      text <numeric>
+      text <2-digit>
+    lock false
+  link hour, name <hour>
+    like or
+      text <numeric>
+      text <2-digit>
+    lock false
+  link minute, name <minute>
+    like or
+      text <numeric>
+      text <2-digit>
+    lock false
+  link second, name <second>
+    like or
+      text <numeric>
+      text <2-digit>
+    lock false
+  link time-zone-name, name <timeZoneName>
+    like or
+      text <long>
+      text <short>
+    lock false
+  link format-matcher, name <formatMatcher>
+    like or
+      text <best fit>
+      text <basic>
+    lock false
+  link hour12, name <hour12>
+    like native-boolean
+    lock false
+  link time-zone, name <timeZone>
+    like native-string
+    lock false

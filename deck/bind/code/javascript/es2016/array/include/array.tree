@@ -1,0 +1,18 @@
+
+load @term/bind/code/javascript/es2015/symbol/wellknown/array
+  find array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form array, name <Array>
+  head t
+
+  task includes, name <includes>
+    take search-element, like t
+    take from-index, like maybe
+      like native-number
+    like native-boolean

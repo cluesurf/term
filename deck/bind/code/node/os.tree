@@ -1,0 +1,125 @@
+
+bear @term/bind/code/javascript/node/os/cpu-info
+bear @term/bind/code/javascript/node/os/network-interface-base
+bear @term/bind/code/javascript/node/os/network-interface-info-i-pv4
+bear @term/bind/code/javascript/node/os/network-interface-info-i-pv6
+bear @term/bind/code/javascript/node/os/user-info
+bear @term/bind/code/javascript/node/os/network-interface-info
+bear @term/bind/code/javascript/node/os/signal-constants
+bear @term/bind/code/javascript/node/os/constants
+
+load @term/bind/code/javascript
+  find array
+  find native-number
+  find native-string
+  find native-void
+  find node-js-dict
+  find node-js-platform
+
+load @term/bind
+  find form
+  find or
+
+load @term/bind/code/node/buffer
+  find buffer
+  find buffer-encoding
+
+load @term/bind/code/node/os
+  find cpu-info
+  find network-interface-info
+  find user-info
+
+host dev-null, name <devNull>
+  like native-string
+
+host eol, name <EOL>
+  like native-string
+
+task hostname, name <hostname>
+  like native-string
+
+task loadavg, name <loadavg>
+  like array
+    like native-number
+
+task uptime, name <uptime>
+  like native-number
+
+task freemem, name <freemem>
+  like native-number
+
+task totalmem, name <totalmem>
+  like native-number
+
+task cpus, name <cpus>
+  like array
+    like cpu-info
+
+task type, name <type>
+  like native-string
+
+task release, name <release>
+  like native-string
+
+task network-interfaces, name <networkInterfaces>
+  like node-js-dict
+    like array
+      like network-interface-info
+
+task homedir, name <homedir>
+  like native-string
+
+task user-info, name <userInfo>
+  like user-info
+    like buffer
+
+  take options
+    like form
+      link encoding, name <encoding>
+        text <buffer>
+        flex true
+
+task user-info, name <userInfo>
+  like user-info
+    like native-string
+
+  take options
+    like form
+      link encoding, name <encoding>
+        like buffer-encoding
+        flex true
+    void true
+
+task arch, name <arch>
+  like native-string
+
+task version, name <version>
+  like native-string
+
+task platform, name <platform>
+  like node-js-platform
+
+task tmpdir, name <tmpdir>
+  like native-string
+
+task endianness, name <endianness>
+  like or
+    text <BE>
+    text <LE>
+
+task get-priority, name <getPriority>
+  like native-number
+
+  take pid, like native-number
+    void true
+
+task set-priority, name <setPriority>
+  like native-void
+
+  take priority, like native-number
+
+task set-priority, name <setPriority>
+  like native-void
+
+  take pid, like native-number
+  take priority, like native-number

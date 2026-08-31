@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/idb-index-parameters
+  find idb-index-parameters
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form idb-index-parameters, name <IDBIndexParameters>
+  link multi-entry, name <multiEntry>
+    like native-boolean
+    lock false
+  link unique, name <unique>
+    like native-boolean
+    lock false

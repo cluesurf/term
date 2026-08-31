@@ -1,0 +1,6 @@
+
+form ready-state, name <ReadyState>
+  like or
+    text <closed>
+    text <ended>
+    text <open>

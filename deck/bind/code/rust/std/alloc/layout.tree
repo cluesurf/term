@@ -1,0 +1,305 @@
+
+form layout, name <std::alloc::Layout>
+  task from-size-align, name <from_size_align>
+    note <Constructs a Layout from a given size and align, or returns LayoutError if any of the following conditions are not met:>
+
+    take size
+      like usize
+        cite free
+      cite free
+    take align
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like result
+        like layout
+          cite free
+        like layout-error
+          cite free
+        cite free
+
+  task from-size-align-unchecked, name <from_size_align_unchecked>
+    note <Creates a layout, bypassing all checks.>
+
+    take size
+      like usize
+        cite free
+      cite free
+    take align
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like layout
+        cite free
+
+  task size, name <size>
+    note <The minimum size in bytes for a memory block of this layout.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task align, name <align>
+    note <The minimum byte alignment for a memory block of this layout.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task new, name <new>
+    note <Constructs a Layout suitable for holding a value of type T.>
+
+    head t
+
+    free seed
+      like layout
+        cite free
+
+  task for-value, name <for_value>
+    note <Produces layout describing a record that could be used to allocate backing structure for T (which could be a trait or other unsized type like a slice).>
+
+    lead t
+      like dynamically-sized
+
+    head t
+
+    take t
+      like t
+
+    free seed
+      like layout
+        cite free
+
+  task for-value-raw, name <for_value_raw>
+    note <Produces layout describing a record that could be used to allocate backing structure for T (which could be a trait or other unsized type like a slice).>
+
+    lead t
+      like dynamically-sized
+
+    head t
+
+    take t
+      like t
+        cite free
+      calm take
+      cite free
+      dive take
+
+    free seed
+      like layout
+        cite free
+
+  task dangling, name <dangling>
+    note <Creates a NonNull that is dangling, but well-aligned for this Layout.>
+
+    take self
+      cite free
+
+    free seed
+      like non-null
+        like u8
+          cite free
+        cite free
+
+  task align-to, name <align_to>
+    note <Creates a layout describing the record that can hold a value of the same layout as self, but that also is aligned to alignment align (measured in bytes).>
+
+    take self
+      cite free
+    take align
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like result
+        like layout
+          cite free
+        like layout-error
+          cite free
+        cite free
+
+  task padding-needed-for, name <padding_needed_for>
+    note <Returns the amount of padding we must insert after self to ensure that the following address will satisfy align (measured in bytes).>
+
+    take self
+      cite free
+    take align
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task pad-to-align, name <pad_to_align>
+    note <Creates a layout by rounding the size of this layout up to a multiple of the layout's alignment.>
+
+    take self
+      cite free
+
+    free seed
+      like layout
+        cite free
+
+  task repeat, name <repeat>
+    note <Creates a layout describing the record for n instances of self, with a suitable amount of padding between each to ensure that each instance is given its requested size and alignment. On success, returns (k, offs) where k is the layout of the array and offs is the distance between the start of each element in the array.>
+
+    take self
+      cite free
+    take n
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+          take t-1, like layout
+          take t-2, like usize
+        like layout-error
+          cite free
+        cite free
+
+  task extend, name <extend>
+    note <Creates a layout describing the record for self followed by next, including any necessary padding to ensure that next will be properly aligned, but no trailing padding.>
+
+    take self
+      cite free
+    take next
+      like layout
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+          take t-1, like layout
+          take t-2, like usize
+        like layout-error
+          cite free
+        cite free
+
+  task repeat-packed, name <repeat_packed>
+    note <Creates a layout describing the record for n instances of self, with no padding between each instance.>
+
+    take self
+      cite free
+    take n
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like result
+        like layout
+          cite free
+        like layout-error
+          cite free
+        cite free
+
+  task extend-packed, name <extend_packed>
+    note <Creates a layout describing the record for self followed by next with no additional padding between the two. Since no padding is inserted, the alignment of next is irrelevant, and is not incorporated at all into the resulting layout.>
+
+    take self
+      cite free
+    take next
+      like layout
+        cite free
+      cite free
+
+    free seed
+      like result
+        like layout
+          cite free
+        like layout-error
+          cite free
+        cite free
+
+  task array, name <array>
+    note <Creates a layout describing the record for a [T; n].>
+
+    head t
+
+    take n
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like result
+        like layout
+          cite free
+        like layout-error
+          cite free
+        cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like layout
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like layout
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like layout
+
+    free seed
+      like bool
+        cite free

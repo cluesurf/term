@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form visual-viewport-event-map, name <VisualViewportEventMap>
+  link resize, name <resize>
+    like event
+    lock false
+  link scroll, name <scroll>
+    like event
+    lock false

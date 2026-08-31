@@ -1,0 +1,196 @@
+
+load @term/bind/code/javascript/es5/function
+  find function
+
+load @term/bind/code/javascript/es5/omit-this-parameter
+  find omit-this-parameter
+
+load @term/bind/code/javascript/es5/this-parameter-type
+  find this-parameter-type
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+form callable-function, name <CallableFunction>
+  base function
+
+  task apply, name <apply>
+    head t
+    head r
+    take this
+      like task
+        take this, like t
+        like r
+    take this-arg, like t
+    like r
+
+  task apply, name <apply>
+    head t
+    head a
+      base native-array
+        like native-any
+    head r
+    take this
+      like task
+        take this, like t
+        take args, like a
+          rest true
+        like r
+    take this-arg, like t
+    take args, like a
+    like r
+
+  task call, name <call>
+    head t
+    head a
+      base native-array
+        like native-any
+    head r
+    take this
+      like task
+        take this, like t
+        take args, like a
+          rest true
+        like r
+    take this-arg, like t
+    take args, like a
+      rest true
+    like r
+
+  task bind, name <bind>
+    head t
+    take this, like t
+    take this-arg
+      like this-parameter-type
+        like t
+    like omit-this-parameter
+      like t
+
+  task bind, name <bind>
+    head t
+    head a0
+    head a
+      base native-array
+        like native-any
+    head r
+    take this
+      like task
+        take this, like t
+        take arg0, like a0
+        take args, like a
+          rest true
+        like r
+    take this-arg, like t
+    take arg0, like a0
+    like task
+      take args, like a
+        rest true
+      like r
+
+  task bind, name <bind>
+    head t
+    head a0
+    head a1
+    head a
+      base native-array
+        like native-any
+    head r
+    take this
+      like task
+        take this, like t
+        take arg0, like a0
+        take arg1, like a1
+        take args, like a
+          rest true
+        like r
+    take this-arg, like t
+    take arg0, like a0
+    take arg1, like a1
+    like task
+      take args, like a
+        rest true
+      like r
+
+  task bind, name <bind>
+    head t
+    head a0
+    head a1
+    head a2
+    head a
+      base native-array
+        like native-any
+    head r
+    take this
+      like task
+        take this, like t
+        take arg0, like a0
+        take arg1, like a1
+        take arg2, like a2
+        take args, like a
+          rest true
+        like r
+    take this-arg, like t
+    take arg0, like a0
+    take arg1, like a1
+    take arg2, like a2
+    like task
+      take args, like a
+        rest true
+      like r
+
+  task bind, name <bind>
+    head t
+    head a0
+    head a1
+    head a2
+    head a3
+    head a
+      base native-array
+        like native-any
+    head r
+    take this
+      like task
+        take this, like t
+        take arg0, like a0
+        take arg1, like a1
+        take arg2, like a2
+        take arg3, like a3
+        take args, like a
+          rest true
+        like r
+    take this-arg, like t
+    take arg0, like a0
+    take arg1, like a1
+    take arg2, like a2
+    take arg3, like a3
+    like task
+      take args, like a
+        rest true
+      like r
+
+  task bind, name <bind>
+    head t
+    head ax
+    head r
+    take this
+      like task
+        take this, like t
+        take args
+          like native-array
+            like ax
+          rest true
+        like r
+    take this-arg, like t
+    take args
+      like native-array
+        like ax
+      rest true
+    like task
+      take args
+        like native-array
+          like ax
+        rest true
+      like r

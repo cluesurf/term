@@ -1,0 +1,6 @@
+
+load @term/bind/code/javascript
+  find interface
+
+form read-line, name <ReadLine>
+  like interface

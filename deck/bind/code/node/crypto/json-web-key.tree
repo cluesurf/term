@@ -1,0 +1,78 @@
+
+load @term/bind
+  find or
+  find unknown
+
+load @term/bind/code/javascript
+  find native-string
+  find native-undefined
+
+form json-web-key, name <JsonWebKey>
+  link crv, name <crv>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link d, name <d>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link dp, name <dp>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link dq, name <dq>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link e, name <e>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link k, name <k>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link kty, name <kty>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link n, name <n>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link p, name <p>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link q, name <q>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link qi, name <qi>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link x, name <x>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link y, name <y>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+
+  mesh key, like native-string
+    like unknown

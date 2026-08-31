@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form non-element-parent-node, name <NonElementParentNode>
+  task get-element-by-id, name <getElementById>
+    take element-id, like native-string
+    like or
+      like element
+      like native-null

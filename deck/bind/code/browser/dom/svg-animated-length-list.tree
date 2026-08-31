@@ -1,0 +1,9 @@
+
+load @term/bind/code/browser/dom/svg-length-list
+  find svg-length-list
+
+form svg-animated-length-list, name <SVGAnimatedLengthList>
+  link anim-val, name <animVal>
+    like svg-length-list
+  link base-val, name <baseVal>
+    like svg-length-list

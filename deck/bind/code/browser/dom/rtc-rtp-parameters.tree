@@ -1,0 +1,25 @@
+
+load @term/bind/code/browser/dom/rtc-rtcp-parameters
+  find rtc-rtcp-parameters
+
+load @term/bind/code/browser/dom/rtc-rtp-codec-parameters
+  find rtc-rtp-codec-parameters
+
+load @term/bind/code/browser/dom/rtc-rtp-header-extension-parameters
+  find rtc-rtp-header-extension-parameters
+
+load @term/bind/code/javascript/native
+  find native-array
+
+form rtc-rtp-parameters, name <RTCRtpParameters>
+  link codecs, name <codecs>
+    like native-array
+      like rtc-rtp-codec-parameters
+    lock false
+  link header-extensions, name <headerExtensions>
+    like native-array
+      like rtc-rtp-header-extension-parameters
+    lock false
+  link rtcp, name <rtcp>
+    like rtc-rtcp-parameters
+    lock false

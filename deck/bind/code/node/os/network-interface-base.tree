@@ -1,0 +1,27 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-null
+  find native-string
+
+form network-interface-base, name <NetworkInterfaceBase>
+  link address, name <address>
+    like native-string
+    flex true
+  link netmask, name <netmask>
+    like native-string
+    flex true
+  link mac, name <mac>
+    like native-string
+    flex true
+  link internal, name <internal>
+    like native-boolean
+    flex true
+  link cidr, name <cidr>
+    like or
+      like native-string
+      like native-null
+    flex true

@@ -1,0 +1,45 @@
+
+load @term/bind/code/browser/dom/angle-instanced-arrays
+  find angle-instanced-arrays
+
+load @term/bind/code/browser/webworker/g-lenum
+  find g-lenum
+
+load @term/bind/code/browser/webworker/g-lint
+  find g-lint
+
+load @term/bind/code/browser/webworker/g-lintptr
+  find g-lintptr
+
+load @term/bind/code/browser/webworker/g-lsizei
+  find g-lsizei
+
+load @term/bind/code/browser/webworker/g-luint
+  find g-luint
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form angle-instanced-arrays, name <ANGLE_instanced_arrays>
+  link vertex-attrib-array-divisor-angle, name <VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE>
+    like g-lenum
+
+  task draw-arrays-instanced-angle, name <drawArraysInstancedANGLE>
+    take mode, like g-lenum
+    take first, like g-lint
+    take count, like g-lsizei
+    take primcount, like g-lsizei
+    like native-void
+
+  task draw-elements-instanced-angle, name <drawElementsInstancedANGLE>
+    take mode, like g-lenum
+    take count, like g-lsizei
+    take type, like g-lenum
+    take offset, like g-lintptr
+    take primcount, like g-lsizei
+    like native-void
+
+  task vertex-attrib-divisor-angle, name <vertexAttribDivisorANGLE>
+    take index, like g-luint
+    take divisor, like g-luint
+    like native-void

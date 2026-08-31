@@ -1,0 +1,5 @@
+
+form touch-type, name <TouchType>
+  like or
+    text <direct>
+    text <stylus>

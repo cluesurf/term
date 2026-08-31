@@ -1,0 +1,22 @@
+
+load @term/bind/code/javascript/es2015/collection/map-constructor
+  find map-constructor
+
+load @term/bind/code/javascript/es2015/iterable/iterable
+  find iterable
+
+load @term/bind/code/javascript/es2015/iterable/map
+  find map
+
+form map-constructor, name <MapConstructor>
+  hook make
+    head k
+    head v
+    take iterable
+      like iterable
+        like band
+          like k
+          like v
+    like map
+      like k
+      like v

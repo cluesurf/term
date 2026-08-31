@@ -1,0 +1,15 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-number
+  find native-string
+
+load @term/bind
+  find or
+
+form outgoing-http-header, name <OutgoingHttpHeader>
+  like or
+    like native-number
+    like native-string
+    like array
+      like native-string

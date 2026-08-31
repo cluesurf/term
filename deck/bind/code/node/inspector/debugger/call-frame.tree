@@ -1,0 +1,48 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-string
+  find native-undefined
+  find runtime-remote-object
+
+load @term/bind
+  find or
+
+load @term/bind/code/node/inspector/debugger
+  find call-frame-id
+  find location
+  find scope
+
+load @term/bind/code/node/inspector/debugger/call-frame
+  find call-frame
+
+form call-frame, name <CallFrame>
+  link call-frame-id, name <callFrameId>
+    like call-frame-id
+    flex true
+  link function-name, name <functionName>
+    like native-string
+    flex true
+  link function-location, name <functionLocation>
+    like or
+      like location
+      like native-undefined
+    flex true
+  link location, name <location>
+    like location
+    flex true
+  link url, name <url>
+    like native-string
+    flex true
+  link scope-chain, name <scopeChain>
+    like array
+      like scope
+    flex true
+  link this, name <this>
+    like runtime-remote-object
+    flex true
+  link return-value, name <returnValue>
+    like or
+      like runtime-remote-object
+      like native-undefined
+    flex true

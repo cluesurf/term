@@ -1,0 +1,24 @@
+
+load @term/bind/code/browser/dom/audio-buffer
+  find audio-buffer
+
+load @term/bind/code/browser/dom/audio-node-options
+  find audio-node-options
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+form convolver-options, name <ConvolverOptions>
+  base audio-node-options
+
+  link buffer, name <buffer>
+    like or
+      like audio-buffer
+      like native-null
+    lock false
+  link disable-normalization, name <disableNormalization>
+    like native-boolean
+    lock false

@@ -1,0 +1,6 @@
+
+form notification-direction, name <NotificationDirection>
+  like or
+    text <auto>
+    text <ltr>
+    text <rtl>

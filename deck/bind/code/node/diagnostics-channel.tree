@@ -1,0 +1,18 @@
+
+bear @term/bind/code/javascript/node/diagnostics-channel/channel-listener
+bear @term/bind/code/javascript/node/diagnostics-channel/channel
+
+load @term/bind/code/javascript
+  find channel
+  find native-boolean
+  find native-string
+
+task has-subscribers, name <hasSubscribers>
+  like native-boolean
+
+  take name, like native-string
+
+task channel, name <channel>
+  like channel
+
+  take name, like native-string

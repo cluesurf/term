@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/performance-entry
+  find performance-entry
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form performance-mark, name <PerformanceMark>
+  base performance-entry
+
+  link detail, name <detail>
+    like native-any

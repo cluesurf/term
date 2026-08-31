@@ -1,0 +1,8 @@
+
+load @term/bind/code/node/inspector/runtime
+  find remote-object
+
+form query-objects-return-type, name <QueryObjectsReturnType>
+  link objects, name <objects>
+    like remote-object
+    flex true

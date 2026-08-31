@@ -1,0 +1,106 @@
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find native-null
+  find native-string
+  find native-void
+  find node-js-errno-exception
+  find promise
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/fs
+  find buffer-encoding-option
+  find encoding-option
+  find path-like
+
+task promisify, name <__promisify__>
+  like promise
+    like native-string
+
+  take path, like path-like
+  take options, like encoding-option
+    void true
+
+task promisify, name <__promisify__>
+  like promise
+    like buffer
+
+  take path, like path-like
+  take options, like buffer-encoding-option
+
+task promisify, name <__promisify__>
+  like promise
+    like or
+      like native-string
+      like buffer
+
+  take path, like path-like
+  take options, like encoding-option
+    void true
+
+task native, name <native>
+  like native-void
+
+  take path, like path-like
+  take options, like encoding-option
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take resolved-path, like native-string
+
+task native, name <native>
+  like native-void
+
+  take path, like path-like
+  take options, like buffer-encoding-option
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take resolved-path, like buffer
+
+task native, name <native>
+  like native-void
+
+  take path, like path-like
+  take options, like encoding-option
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take resolved-path
+        like or
+          like native-string
+          like buffer
+
+task native, name <native>
+  like native-void
+
+  take path, like path-like
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take resolved-path, like native-string

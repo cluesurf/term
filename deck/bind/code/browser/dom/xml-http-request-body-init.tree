@@ -1,0 +1,23 @@
+
+load @term/bind/code/browser/dom/blob
+  find blob
+
+load @term/bind/code/browser/dom/buffer-source
+  find buffer-source
+
+load @term/bind/code/browser/dom/form-data
+  find form-data
+
+load @term/bind/code/browser/dom/url-search-params
+  find url-search-params
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form xml-http-request-body-init, name <XMLHttpRequestBodyInit>
+  like or
+    like blob
+    like buffer-source
+    like form-data
+    like url-search-params
+    like native-string

@@ -1,0 +1,11 @@
+
+form biquad-filter-type, name <BiquadFilterType>
+  like or
+    text <allpass>
+    text <bandpass>
+    text <highpass>
+    text <highshelf>
+    text <lowpass>
+    text <lowshelf>
+    text <notch>
+    text <peaking>

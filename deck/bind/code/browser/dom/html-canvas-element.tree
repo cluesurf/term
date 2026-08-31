@@ -1,0 +1,189 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/blob-callback
+  find blob-callback
+
+load @term/bind/code/browser/dom/canvas-rendering-context2-d
+  find canvas-rendering-context2-d
+
+load @term/bind/code/browser/dom/canvas-rendering-context2-d-settings
+  find canvas-rendering-context2-d-settings
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/html-element
+  find html-element
+
+load @term/bind/code/browser/dom/html-element-event-map
+  find html-element-event-map
+
+load @term/bind/code/browser/dom/image-bitmap-rendering-context
+  find image-bitmap-rendering-context
+
+load @term/bind/code/browser/dom/image-bitmap-rendering-context-settings
+  find image-bitmap-rendering-context-settings
+
+load @term/bind/code/browser/dom/media-stream
+  find media-stream
+
+load @term/bind/code/browser/dom/rendering-context
+  find rendering-context
+
+load @term/bind/code/browser/dom/web-gl-context-attributes
+  find web-gl-context-attributes
+
+load @term/bind/code/browser/dom/web-gl-rendering-context
+  find web-gl-rendering-context
+
+load @term/bind/code/browser/dom/web-gl2-rendering-context
+  find web-gl2-rendering-context
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form html-canvas-element, name <HTMLCanvasElement>
+  base html-element
+
+  link height, name <height>
+    like native-number
+    lock false
+  link width, name <width>
+    like native-number
+    lock false
+
+  task capture-stream, name <captureStream>
+    take frame-request-rate, like maybe
+      like native-number
+    like media-stream
+
+  task get-context, name <getContext>
+    take context-id, text <2d>
+    take options, like maybe
+      like canvas-rendering-context2-d-settings
+    like or
+      like canvas-rendering-context2-d
+      like native-null
+
+  task get-context, name <getContext>
+    take context-id, text <bitmaprenderer>
+    take options, like maybe
+      like image-bitmap-rendering-context-settings
+    like or
+      like image-bitmap-rendering-context
+      like native-null
+
+  task get-context, name <getContext>
+    take context-id, text <webgl>
+    take options, like maybe
+      like web-gl-context-attributes
+    like or
+      like web-gl-rendering-context
+      like native-null
+
+  task get-context, name <getContext>
+    take context-id, text <webgl2>
+    take options, like maybe
+      like web-gl-context-attributes
+    like or
+      like web-gl2-rendering-context
+      like native-null
+
+  task get-context, name <getContext>
+    take context-id, like native-string
+    take options, like maybe
+      like native-any
+    like or
+      like rendering-context
+      like native-null
+
+  task to-blob, name <toBlob>
+    take callback, like blob-callback
+    take type, like maybe
+      like native-string
+    take quality, like maybe
+      like native-any
+    like native-void
+
+  task to-data-url, name <toDataURL>
+    take type, like maybe
+      like native-string
+    take quality, like maybe
+      like native-any
+    like native-string
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like html-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like html-canvas-element
+        take ev
+          like index
+            like html-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like html-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like html-canvas-element
+        take ev
+          like index
+            like html-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

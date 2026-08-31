@@ -1,0 +1,335 @@
+
+load @term/bind/code/browser/dom/animation-event
+  find animation-event
+
+load @term/bind/code/browser/dom/composition-event
+  find composition-event
+
+load @term/bind/code/browser/dom/drag-event
+  find drag-event
+
+load @term/bind/code/browser/dom/error-event
+  find error-event
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/focus-event
+  find focus-event
+
+load @term/bind/code/browser/dom/form-data-event
+  find form-data-event
+
+load @term/bind/code/browser/dom/input-event
+  find input-event
+
+load @term/bind/code/browser/dom/keyboard-event
+  find keyboard-event
+
+load @term/bind/code/browser/dom/mouse-event
+  find mouse-event
+
+load @term/bind/code/browser/dom/pointer-event
+  find pointer-event
+
+load @term/bind/code/browser/dom/progress-event
+  find progress-event
+
+load @term/bind/code/browser/dom/security-policy-violation-event
+  find security-policy-violation-event
+
+load @term/bind/code/browser/dom/touch-event
+  find touch-event
+
+load @term/bind/code/browser/dom/transition-event
+  find transition-event
+
+load @term/bind/code/browser/dom/ui-event
+  find ui-event
+
+load @term/bind/code/browser/dom/wheel-event
+  find wheel-event
+
+form global-event-handlers-event-map, name <GlobalEventHandlersEventMap>
+  link abort, name <abort>
+    like ui-event
+    lock false
+  link animationcancel, name <animationcancel>
+    like animation-event
+    lock false
+  link animationend, name <animationend>
+    like animation-event
+    lock false
+  link animationiteration, name <animationiteration>
+    like animation-event
+    lock false
+  link animationstart, name <animationstart>
+    like animation-event
+    lock false
+  link auxclick, name <auxclick>
+    like mouse-event
+    lock false
+  link beforeinput, name <beforeinput>
+    like input-event
+    lock false
+  link blur, name <blur>
+    like focus-event
+    lock false
+  link canplay, name <canplay>
+    like event
+    lock false
+  link canplaythrough, name <canplaythrough>
+    like event
+    lock false
+  link change, name <change>
+    like event
+    lock false
+  link click, name <click>
+    like mouse-event
+    lock false
+  link close, name <close>
+    like event
+    lock false
+  link compositionend, name <compositionend>
+    like composition-event
+    lock false
+  link compositionstart, name <compositionstart>
+    like composition-event
+    lock false
+  link compositionupdate, name <compositionupdate>
+    like composition-event
+    lock false
+  link contextmenu, name <contextmenu>
+    like mouse-event
+    lock false
+  link cuechange, name <cuechange>
+    like event
+    lock false
+  link dblclick, name <dblclick>
+    like mouse-event
+    lock false
+  link drag, name <drag>
+    like drag-event
+    lock false
+  link dragend, name <dragend>
+    like drag-event
+    lock false
+  link dragenter, name <dragenter>
+    like drag-event
+    lock false
+  link dragleave, name <dragleave>
+    like drag-event
+    lock false
+  link dragover, name <dragover>
+    like drag-event
+    lock false
+  link dragstart, name <dragstart>
+    like drag-event
+    lock false
+  link drop, name <drop>
+    like drag-event
+    lock false
+  link durationchange, name <durationchange>
+    like event
+    lock false
+  link emptied, name <emptied>
+    like event
+    lock false
+  link ended, name <ended>
+    like event
+    lock false
+  link error, name <error>
+    like error-event
+    lock false
+  link focus, name <focus>
+    like focus-event
+    lock false
+  link focusin, name <focusin>
+    like focus-event
+    lock false
+  link focusout, name <focusout>
+    like focus-event
+    lock false
+  link formdata, name <formdata>
+    like form-data-event
+    lock false
+  link gotpointercapture, name <gotpointercapture>
+    like pointer-event
+    lock false
+  link input, name <input>
+    like event
+    lock false
+  link invalid, name <invalid>
+    like event
+    lock false
+  link keydown, name <keydown>
+    like keyboard-event
+    lock false
+  link keypress, name <keypress>
+    like keyboard-event
+    lock false
+  link keyup, name <keyup>
+    like keyboard-event
+    lock false
+  link load, name <load>
+    like event
+    lock false
+  link loadeddata, name <loadeddata>
+    like event
+    lock false
+  link loadedmetadata, name <loadedmetadata>
+    like event
+    lock false
+  link loadstart, name <loadstart>
+    like event
+    lock false
+  link lostpointercapture, name <lostpointercapture>
+    like pointer-event
+    lock false
+  link mousedown, name <mousedown>
+    like mouse-event
+    lock false
+  link mouseenter, name <mouseenter>
+    like mouse-event
+    lock false
+  link mouseleave, name <mouseleave>
+    like mouse-event
+    lock false
+  link mousemove, name <mousemove>
+    like mouse-event
+    lock false
+  link mouseout, name <mouseout>
+    like mouse-event
+    lock false
+  link mouseover, name <mouseover>
+    like mouse-event
+    lock false
+  link mouseup, name <mouseup>
+    like mouse-event
+    lock false
+  link pause, name <pause>
+    like event
+    lock false
+  link play, name <play>
+    like event
+    lock false
+  link playing, name <playing>
+    like event
+    lock false
+  link pointercancel, name <pointercancel>
+    like pointer-event
+    lock false
+  link pointerdown, name <pointerdown>
+    like pointer-event
+    lock false
+  link pointerenter, name <pointerenter>
+    like pointer-event
+    lock false
+  link pointerleave, name <pointerleave>
+    like pointer-event
+    lock false
+  link pointermove, name <pointermove>
+    like pointer-event
+    lock false
+  link pointerout, name <pointerout>
+    like pointer-event
+    lock false
+  link pointerover, name <pointerover>
+    like pointer-event
+    lock false
+  link pointerup, name <pointerup>
+    like pointer-event
+    lock false
+  link progress, name <progress>
+    like progress-event
+    lock false
+  link ratechange, name <ratechange>
+    like event
+    lock false
+  link reset, name <reset>
+    like event
+    lock false
+  link resize, name <resize>
+    like ui-event
+    lock false
+  link scroll, name <scroll>
+    like event
+    lock false
+  link securitypolicyviolation, name <securitypolicyviolation>
+    like security-policy-violation-event
+    lock false
+  link seeked, name <seeked>
+    like event
+    lock false
+  link seeking, name <seeking>
+    like event
+    lock false
+  link select, name <select>
+    like event
+    lock false
+  link selectionchange, name <selectionchange>
+    like event
+    lock false
+  link selectstart, name <selectstart>
+    like event
+    lock false
+  link stalled, name <stalled>
+    like event
+    lock false
+  link submit, name <submit>
+    like event
+    lock false
+  link suspend, name <suspend>
+    like event
+    lock false
+  link timeupdate, name <timeupdate>
+    like event
+    lock false
+  link toggle, name <toggle>
+    like event
+    lock false
+  link touchcancel, name <touchcancel>
+    like touch-event
+    lock false
+  link touchend, name <touchend>
+    like touch-event
+    lock false
+  link touchmove, name <touchmove>
+    like touch-event
+    lock false
+  link touchstart, name <touchstart>
+    like touch-event
+    lock false
+  link transitioncancel, name <transitioncancel>
+    like transition-event
+    lock false
+  link transitionend, name <transitionend>
+    like transition-event
+    lock false
+  link transitionrun, name <transitionrun>
+    like transition-event
+    lock false
+  link transitionstart, name <transitionstart>
+    like transition-event
+    lock false
+  link volumechange, name <volumechange>
+    like event
+    lock false
+  link waiting, name <waiting>
+    like event
+    lock false
+  link webkitanimationend, name <webkitanimationend>
+    like event
+    lock false
+  link webkitanimationiteration, name <webkitanimationiteration>
+    like event
+    lock false
+  link webkitanimationstart, name <webkitanimationstart>
+    like event
+    lock false
+  link webkittransitionend, name <webkittransitionend>
+    like event
+    lock false
+  link wheel, name <wheel>
+    like wheel-event
+    lock false

@@ -1,0 +1,17 @@
+
+load @term/bind/code/javascript
+  find native-number
+
+form secure-heap-usage, name <SecureHeapUsage>
+  link total, name <total>
+    like native-number
+    flex true
+  link min, name <min>
+    like native-number
+    flex true
+  link used, name <used>
+    like native-number
+    flex true
+  link utilization, name <utilization>
+    like native-number
+    flex true

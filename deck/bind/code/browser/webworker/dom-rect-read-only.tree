@@ -1,0 +1,30 @@
+
+load @term/bind/code/browser/dom/dom-rect-read-only
+  find dom-rect-read-only
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form dom-rect-read-only, name <DOMRectReadOnly>
+  link bottom, name <bottom>
+    like native-number
+  link height, name <height>
+    like native-number
+  link left, name <left>
+    like native-number
+  link right, name <right>
+    like native-number
+  link top, name <top>
+    like native-number
+  link width, name <width>
+    like native-number
+  link x, name <x>
+    like native-number
+  link y, name <y>
+    like native-number
+
+  task to-json, name <toJSON>
+    like native-any

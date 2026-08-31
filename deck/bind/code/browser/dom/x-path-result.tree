@@ -1,0 +1,64 @@
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form x-path-result, name <XPathResult>
+  link boolean-value, name <booleanValue>
+    like native-boolean
+  link invalid-iterator-state, name <invalidIteratorState>
+    like native-boolean
+  link number-value, name <numberValue>
+    like native-number
+  link result-type, name <resultType>
+    like native-number
+  link single-node-value, name <singleNodeValue>
+    like or
+      like node
+      like native-null
+  link snapshot-length, name <snapshotLength>
+    like native-number
+  link string-value, name <stringValue>
+    like native-string
+  link any-type, name <ANY_TYPE>
+    like native-number
+  link any-unordered-node-type, name <ANY_UNORDERED_NODE_TYPE>
+    like native-number
+  link boolean-type, name <BOOLEAN_TYPE>
+    like native-number
+  link first-ordered-node-type, name <FIRST_ORDERED_NODE_TYPE>
+    like native-number
+  link number-type, name <NUMBER_TYPE>
+    like native-number
+  link ordered-node-iterator-type, name <ORDERED_NODE_ITERATOR_TYPE>
+    like native-number
+  link ordered-node-snapshot-type, name <ORDERED_NODE_SNAPSHOT_TYPE>
+    like native-number
+  link string-type, name <STRING_TYPE>
+    like native-number
+  link unordered-node-iterator-type, name <UNORDERED_NODE_ITERATOR_TYPE>
+    like native-number
+  link unordered-node-snapshot-type, name <UNORDERED_NODE_SNAPSHOT_TYPE>
+    like native-number
+
+  task iterate-next, name <iterateNext>
+    like or
+      like node
+      like native-null
+
+  task snapshot-item, name <snapshotItem>
+    take index, like native-number
+    like or
+      like node
+      like native-null

@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/css-rule
+  find css-rule
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form css-namespace-rule, name <CSSNamespaceRule>
+  base css-rule
+
+  link namespace-uri, name <namespaceURI>
+    like native-string
+  link prefix, name <prefix>
+    like native-string

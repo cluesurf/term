@@ -1,0 +1,29 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form table, name <Table>
+  link length, name <length>
+    like native-number
+
+  task get, name <get>
+    take index, like native-number
+    like native-any
+
+  task grow, name <grow>
+    take delta, like native-number
+    take value, like maybe
+      like native-any
+    like native-number
+
+  task set, name <set>
+    take index, like native-number
+    take value, like maybe
+      like native-any
+    like native-void

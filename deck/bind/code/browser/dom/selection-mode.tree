@@ -1,0 +1,7 @@
+
+form selection-mode, name <SelectionMode>
+  like or
+    text <end>
+    text <preserve>
+    text <select>
+    text <start>

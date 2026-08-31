@@ -1,0 +1,40 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-undefined
+  find net-server
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/tls
+  find common-connection-options
+  find secure-context-options
+
+form tls-socket-options, name <TLSSocketOptions>
+  base secure-context-options
+  base common-connection-options
+
+  link is-server, name <isServer>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link server, name <server>
+    like or
+      like net-server
+      like native-undefined
+    flex true
+  link session, name <session>
+    like or
+      like buffer
+      like native-undefined
+    flex true
+  link request-ocsp, name <requestOCSP>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

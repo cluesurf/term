@@ -1,0 +1,115 @@
+
+load @term/bind/code/javascript/es2017/sharedmemory/atomics
+  find atomics
+
+load @term/bind/code/javascript/es2020/bigint/big-int64-array
+  find big-int64-array
+
+load @term/bind/code/javascript/es2020/bigint/big-uint64-array
+  find big-uint64-array
+
+load @term/bind/code/javascript/native
+  find native-bigint
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form atomics, name <Atomics>
+  task add, name <add>
+    take typed-array
+      like or
+        like big-int64-array
+        like big-uint64-array
+    take index, like native-number
+    take value, like native-bigint
+    like native-bigint
+
+  task and, name <and>
+    take typed-array
+      like or
+        like big-int64-array
+        like big-uint64-array
+    take index, like native-number
+    take value, like native-bigint
+    like native-bigint
+
+  task compare-exchange, name <compareExchange>
+    take typed-array
+      like or
+        like big-int64-array
+        like big-uint64-array
+    take index, like native-number
+    take expected-value, like native-bigint
+    take replacement-value, like native-bigint
+    like native-bigint
+
+  task exchange, name <exchange>
+    take typed-array
+      like or
+        like big-int64-array
+        like big-uint64-array
+    take index, like native-number
+    take value, like native-bigint
+    like native-bigint
+
+  task load, name <load>
+    take typed-array
+      like or
+        like big-int64-array
+        like big-uint64-array
+    take index, like native-number
+    like native-bigint
+
+  task or, name <or>
+    take typed-array
+      like or
+        like big-int64-array
+        like big-uint64-array
+    take index, like native-number
+    take value, like native-bigint
+    like native-bigint
+
+  task store, name <store>
+    take typed-array
+      like or
+        like big-int64-array
+        like big-uint64-array
+    take index, like native-number
+    take value, like native-bigint
+    like native-bigint
+
+  task sub, name <sub>
+    take typed-array
+      like or
+        like big-int64-array
+        like big-uint64-array
+    take index, like native-number
+    take value, like native-bigint
+    like native-bigint
+
+  task wait, name <wait>
+    take typed-array, like big-int64-array
+    take index, like native-number
+    take value, like native-bigint
+    take timeout, like maybe
+      like native-number
+    like or
+      text <ok>
+      text <not-equal>
+      text <timed-out>
+
+  task notify, name <notify>
+    take typed-array, like big-int64-array
+    take index, like native-number
+    take count, like maybe
+      like native-number
+    like native-number
+
+  task xor, name <xor>
+    take typed-array
+      like or
+        like big-int64-array
+        like big-uint64-array
+    take index, like native-number
+    take value, like native-bigint
+    like native-bigint

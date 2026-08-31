@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/rtc-rtp-stream-stats
+  find rtc-rtp-stream-stats
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form rtc-sent-rtp-stream-stats, name <RTCSentRtpStreamStats>
+  base rtc-rtp-stream-stats
+
+  link bytes-sent, name <bytesSent>
+    like native-number
+    lock false
+  link packets-sent, name <packetsSent>
+    like native-number
+    lock false

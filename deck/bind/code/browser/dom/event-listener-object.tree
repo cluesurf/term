@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form event-listener-object, name <EventListenerObject>
+  task handle-event, name <handleEvent>
+    take object, like event
+    like native-void

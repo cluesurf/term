@@ -1,0 +1,73 @@
+
+load @term/bind/code/browser/dom/json-web-key
+  find json-web-key
+
+load @term/bind/code/browser/webworker/rsa-other-primes-info
+  find rsa-other-primes-info
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form json-web-key, name <JsonWebKey>
+  link alg, name <alg>
+    like native-string
+    lock false
+  link crv, name <crv>
+    like native-string
+    lock false
+  link d, name <d>
+    like native-string
+    lock false
+  link dp, name <dp>
+    like native-string
+    lock false
+  link dq, name <dq>
+    like native-string
+    lock false
+  link e, name <e>
+    like native-string
+    lock false
+  link ext, name <ext>
+    like native-boolean
+    lock false
+  link k, name <k>
+    like native-string
+    lock false
+  link key-ops, name <key_ops>
+    like native-array
+      like native-string
+    lock false
+  link kty, name <kty>
+    like native-string
+    lock false
+  link n, name <n>
+    like native-string
+    lock false
+  link oth, name <oth>
+    like native-array
+      like rsa-other-primes-info
+    lock false
+  link p, name <p>
+    like native-string
+    lock false
+  link q, name <q>
+    like native-string
+    lock false
+  link qi, name <qi>
+    like native-string
+    lock false
+  link use, name <use>
+    like native-string
+    lock false
+  link x, name <x>
+    like native-string
+    lock false
+  link y, name <y>
+    like native-string
+    lock false

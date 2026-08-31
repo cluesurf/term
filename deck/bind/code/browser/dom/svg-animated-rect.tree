@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/dom-rect
+  find dom-rect
+
+load @term/bind/code/browser/dom/dom-rect-read-only
+  find dom-rect-read-only
+
+form svg-animated-rect, name <SVGAnimatedRect>
+  link anim-val, name <animVal>
+    like dom-rect-read-only
+  link base-val, name <baseVal>
+    like dom-rect

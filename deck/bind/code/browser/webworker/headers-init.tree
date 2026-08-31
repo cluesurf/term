@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/webworker/headers
+  find headers
+
+load @term/bind/code/javascript/es5/record
+  find record
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form headers-init, name <HeadersInit>
+  like or
+    like headers
+    like native-array
+      like native-array
+        like native-string
+    like record
+      like native-string
+      like native-string

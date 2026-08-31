@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/service-worker-event-map
+  find service-worker-event-map
+
+load @term/bind/code/browser/webworker/abstract-worker-event-map
+  find abstract-worker-event-map
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+form service-worker-event-map, name <ServiceWorkerEventMap>
+  base abstract-worker-event-map
+
+  link statechange, name <statechange>
+    like event
+    lock false

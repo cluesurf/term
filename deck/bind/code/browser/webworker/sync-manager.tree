@@ -1,0 +1,23 @@
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form sync-manager, name <SyncManager>
+  task get-tags, name <getTags>
+    like promise
+      like native-array
+        like native-string
+
+  task register, name <register>
+    take tag, like native-string
+    like promise
+      like native-void

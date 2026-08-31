@@ -1,0 +1,21 @@
+
+load @term/bind/code/browser/dom/audio-node-options
+  find audio-node-options
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form iir-filter-options, name <IIRFilterOptions>
+  base audio-node-options
+
+  link feedback, name <feedback>
+    like native-array
+      like native-number
+    lock false
+  link feedforward, name <feedforward>
+    like native-array
+      like native-number
+    lock false

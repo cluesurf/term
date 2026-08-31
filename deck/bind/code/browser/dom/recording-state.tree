@@ -1,0 +1,6 @@
+
+form recording-state, name <RecordingState>
+  like or
+    text <inactive>
+    text <paused>
+    text <recording>

@@ -1,0 +1,21 @@
+
+load @term/bind/code/browser/dom/subtle-crypto
+  find subtle-crypto
+
+load @term/bind/code/javascript/es5/array-buffer-view
+  find array-buffer-view
+
+load @term/bind/code/javascript/native
+  find native-null
+
+form crypto, name <Crypto>
+  link subtle, name <subtle>
+    like subtle-crypto
+
+  task get-random-values, name <getRandomValues>
+    head t
+      base or
+        like array-buffer-view
+        like native-null
+    take array, like t
+    like t

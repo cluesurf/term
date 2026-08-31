@@ -1,0 +1,25 @@
+
+load @term/bind/code/browser/dom/dom-point
+  find dom-point
+
+load @term/bind/code/browser/webworker/dom-point-read-only
+  find dom-point-read-only
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form dom-point, name <DOMPoint>
+  base dom-point-read-only
+
+  link w, name <w>
+    like native-number
+    lock false
+  link x, name <x>
+    like native-number
+    lock false
+  link y, name <y>
+    like native-number
+    lock false
+  link z, name <z>
+    like native-number
+    lock false

@@ -1,0 +1,22 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-object
+  find native-string
+
+form call-tracker-report-information, name <CallTrackerReportInformation>
+  link message, name <message>
+    like native-string
+    flex true
+  link actual, name <actual>
+    like native-number
+    flex true
+  link expected, name <expected>
+    like native-number
+    flex true
+  link operator, name <operator>
+    like native-string
+    flex true
+  link stack, name <stack>
+    like native-object
+    flex true

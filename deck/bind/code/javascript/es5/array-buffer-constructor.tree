@@ -1,0 +1,28 @@
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+load @term/bind/code/javascript/es5/array-buffer-view
+  find array-buffer-view
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form array-buffer-constructor, name <ArrayBufferConstructor>
+  link prototype, name <prototype>
+    like array-buffer
+
+  task is-view, name <isView>
+    take arg, like native-any
+    like native-boolean
+    rank arg, like array-buffer-view
+
+  hook make
+    take byte-length, like native-number
+    like array-buffer

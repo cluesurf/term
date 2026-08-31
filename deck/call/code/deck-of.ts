@@ -6,6 +6,7 @@
 import { existsSync, readFileSync } from 'fs'
 import path from 'path'
 import type { DeckOf } from '@term/make/code/compile/roll'
+import { manifestNameOf } from '@term/call/code/manifest-name'
 
 export function projectDeckOf(): DeckOf {
   const byDir = new Map<string, { name: string; root: string } | undefined>()
@@ -26,16 +27,11 @@ export function projectDeckOf(): DeckOf {
       const manifestPath = path.join(at, 'deck.tree')
 
       if (existsSync(manifestPath)) {
-        try {
-          const manifest = readFileSync(manifestPath, 'utf8')
-          const match = /^\s*deck\s+(@[^\s]+)/m.exec(manifest)
+        const name = manifestNameOf(manifestPath)
 
-          if (match && match[1]) {
-            found = { name: match[1], root: at }
-            break
-          }
-        } catch {
-          // unreadable: keep walking
+        if (name) {
+          found = { name, root: at }
+          break
         }
       }
 

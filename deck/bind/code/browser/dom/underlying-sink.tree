@@ -1,0 +1,39 @@
+
+load @term/bind/code/browser/dom/underlying-sink-abort-callback
+  find underlying-sink-abort-callback
+
+load @term/bind/code/browser/dom/underlying-sink-close-callback
+  find underlying-sink-close-callback
+
+load @term/bind/code/browser/dom/underlying-sink-start-callback
+  find underlying-sink-start-callback
+
+load @term/bind/code/browser/dom/underlying-sink-write-callback
+  find underlying-sink-write-callback
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+form underlying-sink, name <UnderlyingSink>
+  head w
+    back native-any
+
+  link abort, name <abort>
+    like underlying-sink-abort-callback
+    lock false
+  link close, name <close>
+    like underlying-sink-close-callback
+    lock false
+  link start, name <start>
+    like underlying-sink-start-callback
+    lock false
+  link type, name <type>
+    like native-undefined
+    lock false
+  link write, name <write>
+    like underlying-sink-write-callback
+      like w
+    lock false

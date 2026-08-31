@@ -1,0 +1,15 @@
+
+load @term/bind
+  find task
+
+load @term/bind/code/javascript
+  find native-string
+  find native-void
+  find repl-server
+
+form repl-command-action, name <REPLCommandAction>
+  like task
+    like native-void
+
+    take this, like repl-server
+    take text, like native-string

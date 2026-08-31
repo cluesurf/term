@@ -1,0 +1,380 @@
+
+load @term/bind/code/browser/dom/svg-animate-element
+  find svg-animate-element
+
+load @term/bind/code/browser/dom/svg-animate-motion-element
+  find svg-animate-motion-element
+
+load @term/bind/code/browser/dom/svg-animate-transform-element
+  find svg-animate-transform-element
+
+load @term/bind/code/browser/dom/svg-circle-element
+  find svg-circle-element
+
+load @term/bind/code/browser/dom/svg-clip-path-element
+  find svg-clip-path-element
+
+load @term/bind/code/browser/dom/svg-defs-element
+  find svg-defs-element
+
+load @term/bind/code/browser/dom/svg-desc-element
+  find svg-desc-element
+
+load @term/bind/code/browser/dom/svg-ellipse-element
+  find svg-ellipse-element
+
+load @term/bind/code/browser/dom/svg-filter-element
+  find svg-filter-element
+
+load @term/bind/code/browser/dom/svg-foreign-object-element
+  find svg-foreign-object-element
+
+load @term/bind/code/browser/dom/svg-image-element
+  find svg-image-element
+
+load @term/bind/code/browser/dom/svg-line-element
+  find svg-line-element
+
+load @term/bind/code/browser/dom/svg-linear-gradient-element
+  find svg-linear-gradient-element
+
+load @term/bind/code/browser/dom/svg-marker-element
+  find svg-marker-element
+
+load @term/bind/code/browser/dom/svg-mask-element
+  find svg-mask-element
+
+load @term/bind/code/browser/dom/svg-metadata-element
+  find svg-metadata-element
+
+load @term/bind/code/browser/dom/svg-path-element
+  find svg-path-element
+
+load @term/bind/code/browser/dom/svg-pattern-element
+  find svg-pattern-element
+
+load @term/bind/code/browser/dom/svg-polygon-element
+  find svg-polygon-element
+
+load @term/bind/code/browser/dom/svg-polyline-element
+  find svg-polyline-element
+
+load @term/bind/code/browser/dom/svg-radial-gradient-element
+  find svg-radial-gradient-element
+
+load @term/bind/code/browser/dom/svg-rect-element
+  find svg-rect-element
+
+load @term/bind/code/browser/dom/svg-script-element
+  find svg-script-element
+
+load @term/bind/code/browser/dom/svg-set-element
+  find svg-set-element
+
+load @term/bind/code/browser/dom/svg-stop-element
+  find svg-stop-element
+
+load @term/bind/code/browser/dom/svg-style-element
+  find svg-style-element
+
+load @term/bind/code/browser/dom/svg-switch-element
+  find svg-switch-element
+
+load @term/bind/code/browser/dom/svg-symbol-element
+  find svg-symbol-element
+
+load @term/bind/code/browser/dom/svg-text-element
+  find svg-text-element
+
+load @term/bind/code/browser/dom/svg-text-path-element
+  find svg-text-path-element
+
+load @term/bind/code/browser/dom/svg-title-element
+  find svg-title-element
+
+load @term/bind/code/browser/dom/svg-use-element
+  find svg-use-element
+
+load @term/bind/code/browser/dom/svg-view-element
+  find svg-view-element
+
+load @term/bind/code/browser/dom/svga-element
+  find svga-element
+
+load @term/bind/code/browser/dom/svgfe-blend-element
+  find svgfe-blend-element
+
+load @term/bind/code/browser/dom/svgfe-color-matrix-element
+  find svgfe-color-matrix-element
+
+load @term/bind/code/browser/dom/svgfe-component-transfer-element
+  find svgfe-component-transfer-element
+
+load @term/bind/code/browser/dom/svgfe-composite-element
+  find svgfe-composite-element
+
+load @term/bind/code/browser/dom/svgfe-convolve-matrix-element
+  find svgfe-convolve-matrix-element
+
+load @term/bind/code/browser/dom/svgfe-diffuse-lighting-element
+  find svgfe-diffuse-lighting-element
+
+load @term/bind/code/browser/dom/svgfe-displacement-map-element
+  find svgfe-displacement-map-element
+
+load @term/bind/code/browser/dom/svgfe-distant-light-element
+  find svgfe-distant-light-element
+
+load @term/bind/code/browser/dom/svgfe-drop-shadow-element
+  find svgfe-drop-shadow-element
+
+load @term/bind/code/browser/dom/svgfe-flood-element
+  find svgfe-flood-element
+
+load @term/bind/code/browser/dom/svgfe-func-a-element
+  find svgfe-func-a-element
+
+load @term/bind/code/browser/dom/svgfe-func-b-element
+  find svgfe-func-b-element
+
+load @term/bind/code/browser/dom/svgfe-func-g-element
+  find svgfe-func-g-element
+
+load @term/bind/code/browser/dom/svgfe-func-r-element
+  find svgfe-func-r-element
+
+load @term/bind/code/browser/dom/svgfe-gaussian-blur-element
+  find svgfe-gaussian-blur-element
+
+load @term/bind/code/browser/dom/svgfe-image-element
+  find svgfe-image-element
+
+load @term/bind/code/browser/dom/svgfe-merge-element
+  find svgfe-merge-element
+
+load @term/bind/code/browser/dom/svgfe-merge-node-element
+  find svgfe-merge-node-element
+
+load @term/bind/code/browser/dom/svgfe-morphology-element
+  find svgfe-morphology-element
+
+load @term/bind/code/browser/dom/svgfe-offset-element
+  find svgfe-offset-element
+
+load @term/bind/code/browser/dom/svgfe-point-light-element
+  find svgfe-point-light-element
+
+load @term/bind/code/browser/dom/svgfe-specular-lighting-element
+  find svgfe-specular-lighting-element
+
+load @term/bind/code/browser/dom/svgfe-spot-light-element
+  find svgfe-spot-light-element
+
+load @term/bind/code/browser/dom/svgfe-tile-element
+  find svgfe-tile-element
+
+load @term/bind/code/browser/dom/svgfe-turbulence-element
+  find svgfe-turbulence-element
+
+load @term/bind/code/browser/dom/svgg-element
+  find svgg-element
+
+load @term/bind/code/browser/dom/svgm-path-element
+  find svgm-path-element
+
+load @term/bind/code/browser/dom/svgsvg-element
+  find svgsvg-element
+
+load @term/bind/code/browser/dom/svgt-span-element
+  find svgt-span-element
+
+form svg-element-tag-name-map, name <SVGElementTagNameMap>
+  link a, name <a>
+    like svga-element
+    lock false
+  link animate, name <animate>
+    like svg-animate-element
+    lock false
+  link animate-motion, name <animateMotion>
+    like svg-animate-motion-element
+    lock false
+  link animate-transform, name <animateTransform>
+    like svg-animate-transform-element
+    lock false
+  link circle, name <circle>
+    like svg-circle-element
+    lock false
+  link clip-path, name <clipPath>
+    like svg-clip-path-element
+    lock false
+  link defs, name <defs>
+    like svg-defs-element
+    lock false
+  link desc, name <desc>
+    like svg-desc-element
+    lock false
+  link ellipse, name <ellipse>
+    like svg-ellipse-element
+    lock false
+  link fe-blend, name <feBlend>
+    like svgfe-blend-element
+    lock false
+  link fe-color-matrix, name <feColorMatrix>
+    like svgfe-color-matrix-element
+    lock false
+  link fe-component-transfer, name <feComponentTransfer>
+    like svgfe-component-transfer-element
+    lock false
+  link fe-composite, name <feComposite>
+    like svgfe-composite-element
+    lock false
+  link fe-convolve-matrix, name <feConvolveMatrix>
+    like svgfe-convolve-matrix-element
+    lock false
+  link fe-diffuse-lighting, name <feDiffuseLighting>
+    like svgfe-diffuse-lighting-element
+    lock false
+  link fe-displacement-map, name <feDisplacementMap>
+    like svgfe-displacement-map-element
+    lock false
+  link fe-distant-light, name <feDistantLight>
+    like svgfe-distant-light-element
+    lock false
+  link fe-drop-shadow, name <feDropShadow>
+    like svgfe-drop-shadow-element
+    lock false
+  link fe-flood, name <feFlood>
+    like svgfe-flood-element
+    lock false
+  link fe-func-a, name <feFuncA>
+    like svgfe-func-a-element
+    lock false
+  link fe-func-b, name <feFuncB>
+    like svgfe-func-b-element
+    lock false
+  link fe-func-g, name <feFuncG>
+    like svgfe-func-g-element
+    lock false
+  link fe-func-r, name <feFuncR>
+    like svgfe-func-r-element
+    lock false
+  link fe-gaussian-blur, name <feGaussianBlur>
+    like svgfe-gaussian-blur-element
+    lock false
+  link fe-image, name <feImage>
+    like svgfe-image-element
+    lock false
+  link fe-merge, name <feMerge>
+    like svgfe-merge-element
+    lock false
+  link fe-merge-node, name <feMergeNode>
+    like svgfe-merge-node-element
+    lock false
+  link fe-morphology, name <feMorphology>
+    like svgfe-morphology-element
+    lock false
+  link fe-offset, name <feOffset>
+    like svgfe-offset-element
+    lock false
+  link fe-point-light, name <fePointLight>
+    like svgfe-point-light-element
+    lock false
+  link fe-specular-lighting, name <feSpecularLighting>
+    like svgfe-specular-lighting-element
+    lock false
+  link fe-spot-light, name <feSpotLight>
+    like svgfe-spot-light-element
+    lock false
+  link fe-tile, name <feTile>
+    like svgfe-tile-element
+    lock false
+  link fe-turbulence, name <feTurbulence>
+    like svgfe-turbulence-element
+    lock false
+  link filter, name <filter>
+    like svg-filter-element
+    lock false
+  link foreign-object, name <foreignObject>
+    like svg-foreign-object-element
+    lock false
+  link g, name <g>
+    like svgg-element
+    lock false
+  link image, name <image>
+    like svg-image-element
+    lock false
+  link line, name <line>
+    like svg-line-element
+    lock false
+  link linear-gradient, name <linearGradient>
+    like svg-linear-gradient-element
+    lock false
+  link marker, name <marker>
+    like svg-marker-element
+    lock false
+  link mask, name <mask>
+    like svg-mask-element
+    lock false
+  link metadata, name <metadata>
+    like svg-metadata-element
+    lock false
+  link mpath, name <mpath>
+    like svgm-path-element
+    lock false
+  link path, name <path>
+    like svg-path-element
+    lock false
+  link pattern, name <pattern>
+    like svg-pattern-element
+    lock false
+  link polygon, name <polygon>
+    like svg-polygon-element
+    lock false
+  link polyline, name <polyline>
+    like svg-polyline-element
+    lock false
+  link radial-gradient, name <radialGradient>
+    like svg-radial-gradient-element
+    lock false
+  link rect, name <rect>
+    like svg-rect-element
+    lock false
+  link script, name <script>
+    like svg-script-element
+    lock false
+  link set, name <set>
+    like svg-set-element
+    lock false
+  link stop, name <stop>
+    like svg-stop-element
+    lock false
+  link style, name <style>
+    like svg-style-element
+    lock false
+  link svg, name <svg>
+    like svgsvg-element
+    lock false
+  link switch, name <switch>
+    like svg-switch-element
+    lock false
+  link symbol, name <symbol>
+    like svg-symbol-element
+    lock false
+  link text, name <text>
+    like svg-text-element
+    lock false
+  link text-path, name <textPath>
+    like svg-text-path-element
+    lock false
+  link title, name <title>
+    like svg-title-element
+    lock false
+  link tspan, name <tspan>
+    like svgt-span-element
+    lock false
+  link use, name <use>
+    like svg-use-element
+    lock false
+  link view, name <view>
+    like svg-view-element
+    lock false

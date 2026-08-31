@@ -1,0 +1,56 @@
+
+load @term/bind/code/javascript/es2015/core/reg-exp
+  find reg-exp
+
+load @term/bind/code/javascript/es5/reg-exp-match-array
+  find reg-exp-match-array
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form reg-exp, name <RegExp>
+  task {symbol/match}
+    take string, like native-string
+    like or
+      like reg-exp-match-array
+      like native-null
+
+  task {symbol/replace}
+    take string, like native-string
+    take replace-value, like native-string
+    like native-string
+
+  task {symbol/replace}
+    take string, like native-string
+    take replacer
+      like task
+        take substring, like native-string
+        take args
+          like native-array
+            like native-any
+          rest true
+        like native-string
+    like native-string
+
+  task {symbol/search}
+    take string, like native-string
+    like native-number
+
+  task {symbol/split}
+    take string, like native-string
+    take limit, like maybe
+      like native-number
+    like native-array
+      like native-string

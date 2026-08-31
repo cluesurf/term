@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/queuing-strategy-init
+  find queuing-strategy-init
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form queuing-strategy-init, name <QueuingStrategyInit>
+  link high-water-mark, name <highWaterMark>
+    like native-number
+    lock false

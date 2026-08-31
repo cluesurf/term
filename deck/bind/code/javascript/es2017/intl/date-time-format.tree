@@ -1,0 +1,24 @@
+
+load @term/bind/code/javascript/es2015/symbol/wellknown/date
+  find date
+
+load @term/bind/code/javascript/es2017/intl/date-time-format-part
+  find date-time-format-part
+
+load @term/bind/code/javascript/es5/date-time-format
+  find date-time-format
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form date-time-format, name <DateTimeFormat>
+  task format-to-parts, name <formatToParts>
+    take date, like maybe
+      like or
+        like date
+        like native-number
+    like native-array
+      like date-time-format-part

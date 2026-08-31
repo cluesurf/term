@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form animation-event, name <AnimationEvent>
+  base event
+
+  link animation-name, name <animationName>
+    like native-string
+  link elapsed-time, name <elapsedTime>
+    like native-number
+  link pseudo-element, name <pseudoElement>
+    like native-string

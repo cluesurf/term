@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/base-audio-context-event-map
+  find base-audio-context-event-map
+
+load @term/bind/code/browser/dom/offline-audio-completion-event
+  find offline-audio-completion-event
+
+form offline-audio-context-event-map, name <OfflineAudioContextEventMap>
+  base base-audio-context-event-map
+
+  link complete, name <complete>
+    like offline-audio-completion-event
+    lock false

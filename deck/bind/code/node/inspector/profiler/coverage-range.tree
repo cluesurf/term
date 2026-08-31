@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript
+  find native-number
+
+form coverage-range, name <CoverageRange>
+  link start-offset, name <startOffset>
+    like native-number
+    flex true
+  link end-offset, name <endOffset>
+    like native-number
+    flex true
+  link count, name <count>
+    like native-number
+    flex true

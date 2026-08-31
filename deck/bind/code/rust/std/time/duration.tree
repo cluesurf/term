@@ -1,0 +1,880 @@
+
+form duration, name <std::time::Duration>
+  task new, name <new>
+    note <Creates a new Duration from the specified number of whole seconds and additional nanoseconds.>
+
+    take secs
+      like u64
+        cite free
+      cite free
+    take nanos
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task from-secs, name <from_secs>
+    note <Creates a new Duration from the specified number of whole seconds.>
+
+    take secs
+      like u64
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task from-millis, name <from_millis>
+    note <Creates a new Duration from the specified number of milliseconds.>
+
+    take millis
+      like u64
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task from-micros, name <from_micros>
+    note <Creates a new Duration from the specified number of microseconds.>
+
+    take micros
+      like u64
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task from-nanos, name <from_nanos>
+    note <Creates a new Duration from the specified number of nanoseconds.>
+
+    take nanos
+      like u64
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task is-zero, name <is_zero>
+    note <Returns true if this Duration spans no time.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task as-secs, name <as_secs>
+    note <Returns the number of whole seconds contained by this Duration.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task subsec-millis, name <subsec_millis>
+    note <Returns the fractional part of this Duration, in whole milliseconds.>
+
+    take self
+      cite free
+
+    free seed
+      like u32
+        cite free
+
+  task subsec-micros, name <subsec_micros>
+    note <Returns the fractional part of this Duration, in whole microseconds.>
+
+    take self
+      cite free
+
+    free seed
+      like u32
+        cite free
+
+  task subsec-nanos, name <subsec_nanos>
+    note <Returns the fractional part of this Duration, in nanoseconds.>
+
+    take self
+      cite free
+
+    free seed
+      like u32
+        cite free
+
+  task as-millis, name <as_millis>
+    note <Returns the total number of whole milliseconds contained by this Duration.>
+
+    take self
+      cite free
+
+    free seed
+      like u128
+        cite free
+
+  task as-micros, name <as_micros>
+    note <Returns the total number of whole microseconds contained by this Duration.>
+
+    take self
+      cite free
+
+    free seed
+      like u128
+        cite free
+
+  task as-nanos, name <as_nanos>
+    note <Returns the total number of nanoseconds contained by this Duration.>
+
+    take self
+      cite free
+
+    free seed
+      like u128
+        cite free
+
+  task checked-add, name <checked_add>
+    note <Checked Duration addition. Computes self + other, returning None if overflow occurred.>
+
+    take self
+      cite free
+    take rhs
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like option
+        like duration
+          cite free
+        cite free
+
+  task saturating-add, name <saturating_add>
+    note <Saturating Duration addition. Computes self + other, returning Duration::MAX if overflow occurred.>
+
+    take self
+      cite free
+    take rhs
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task checked-sub, name <checked_sub>
+    note <Checked Duration subtraction. Computes self - other, returning None if the result would be negative or if overflow occurred.>
+
+    take self
+      cite free
+    take rhs
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like option
+        like duration
+          cite free
+        cite free
+
+  task saturating-sub, name <saturating_sub>
+    note <Saturating Duration subtraction. Computes self - other, returning Duration::ZERO if the result would be negative or if overflow occurred.>
+
+    take self
+      cite free
+    take rhs
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task checked-mul, name <checked_mul>
+    note <Checked Duration multiplication. Computes self * other, returning None if overflow occurred.>
+
+    take self
+      cite free
+    take rhs
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like option
+        like duration
+          cite free
+        cite free
+
+  task saturating-mul, name <saturating_mul>
+    note <Saturating Duration multiplication. Computes self * other, returning Duration::MAX if overflow occurred.>
+
+    take self
+      cite free
+    take rhs
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task checked-div, name <checked_div>
+    note <Checked Duration division. Computes self / other, returning None if other == 0.>
+
+    take self
+      cite free
+    take rhs
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like option
+        like duration
+          cite free
+        cite free
+
+  task as-secs-f64, name <as_secs_f64>
+    note <Returns the number of seconds contained by this Duration as f64.>
+
+    take self
+      cite free
+
+    free seed
+      like f64
+        cite free
+
+  task as-secs-f32, name <as_secs_f32>
+    note <Returns the number of seconds contained by this Duration as f32.>
+
+    take self
+      cite free
+
+    free seed
+      like f32
+        cite free
+
+  task from-secs-f64, name <from_secs_f64>
+    note <Creates a new Duration from the specified number of seconds represented as f64.>
+
+    take secs
+      like f64
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task try-from-secs-f64, name <try_from_secs_f64>
+    note <The checked version of from_secs_f64.>
+
+    take secs
+      like f64
+        cite free
+      cite free
+
+    free seed
+      like result
+        like duration
+          cite free
+        like from-secs-error
+          cite free
+        cite free
+
+  task from-secs-f32, name <from_secs_f32>
+    note <Creates a new Duration from the specified number of seconds represented as f32.>
+
+    take secs
+      like f32
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task try-from-secs-f32, name <try_from_secs_f32>
+    note <The checked version of from_secs_f32.>
+
+    take secs
+      like f32
+        cite free
+      cite free
+
+    free seed
+      like result
+        like duration
+          cite free
+        like from-secs-error
+          cite free
+        cite free
+
+  task mul-f64, name <mul_f64>
+    note <Multiplies Duration by f64.>
+
+    take self
+      cite free
+    take rhs
+      like f64
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task mul-f32, name <mul_f32>
+    note <Multiplies Duration by f32.>
+
+    take self
+      cite free
+    take rhs
+      like f32
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task div-f64, name <div_f64>
+    note <Divide Duration by f64.>
+
+    take self
+      cite free
+    take rhs
+      like f64
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task div-f32, name <div_f32>
+    note <Divide Duration by f32.>
+
+    take self
+      cite free
+    take rhs
+      like f32
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task div-duration-f64, name <div_duration_f64>
+    note <Divide Duration by Duration and return f64.>
+
+    take self
+      cite free
+    take rhs
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like f64
+        cite free
+
+  task div-duration-f32, name <div_duration_f32>
+    note <Divide Duration by Duration and return f32.>
+
+    take self
+      cite free
+    take rhs
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like f32
+        cite free
+
+  task add, name <add>
+    note <Performs the + operation.>
+
+    take self
+      cite free
+    take rhs
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task add, name <add>
+    note <This function may panic if the resulting point in time cannot be represented by the underlying data structure. See Instant::checked_add for a version without panic.>
+
+    take self
+      cite free
+    take other
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like instant
+        cite free
+
+  task add, name <add>
+    note <This function may panic if the resulting point in time cannot be represented by the underlying data structure. See SystemTime::checked_add for a version without panic.>
+
+    take self
+      cite free
+    take dur
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like system-time
+        cite free
+
+  task add-assign, name <add_assign>
+    note <Performs the += operation.>
+
+    take self
+      cite free
+    take rhs
+      like duration
+        cite free
+      cite free
+
+  task add-assign, name <add_assign>
+    note <Performs the += operation.>
+
+    take self
+      cite free
+    take other
+      like duration
+        cite free
+      cite free
+
+  task add-assign, name <add_assign>
+    note <Performs the += operation.>
+
+    take self
+      cite free
+    take other
+      like duration
+        cite free
+      cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like duration
+        cite free
+
+  task div, name <div>
+    note <Performs the / operation.>
+
+    take self
+      cite free
+    take rhs
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task div-assign, name <div_assign>
+    note <Performs the /= operation.>
+
+    take self
+      cite free
+    take rhs
+      like u32
+        cite free
+      cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task mul, name <mul>
+    note <Performs the * operation.>
+
+    take self
+      cite free
+    take rhs
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task mul, name <mul>
+    note <Performs the * operation.>
+
+    take self
+      cite free
+    take rhs
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task mul-assign, name <mul_assign>
+    note <Performs the *= operation.>
+
+    take self
+      cite free
+    take rhs
+      like u32
+        cite free
+      cite free
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like duration
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like duration
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like duration
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like duration
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task sub, name <sub>
+    note <Performs the - operation.>
+
+    take self
+      cite free
+    take rhs
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task sub, name <sub>
+    note <Performs the - operation.>
+
+    take self
+      cite free
+    take other
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like instant
+        cite free
+
+  task sub, name <sub>
+    note <Performs the - operation.>
+
+    take self
+      cite free
+    take dur
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like system-time
+        cite free
+
+  task sub-assign, name <sub_assign>
+    note <Performs the -= operation.>
+
+    take self
+      cite free
+    take rhs
+      like duration
+        cite free
+      cite free
+
+  task sub-assign, name <sub_assign>
+    note <Performs the -= operation.>
+
+    take self
+      cite free
+    take other
+      like duration
+        cite free
+      cite free
+
+  task sub-assign, name <sub_assign>
+    note <Performs the -= operation.>
+
+    take self
+      cite free
+    take other
+      like duration
+        cite free
+      cite free
+
+  task sum, name <sum>
+    note <Method which takes an iterator and generates Self from the elements by “summing up” the items.>
+
+    lead i
+      like iterator
+        like item
+          cite free
+          fall back
+            like duration
+              time a
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task sum, name <sum>
+    note <Method which takes an iterator and generates Self from the elements by “summing up” the items.>
+
+    lead i
+      like iterator
+        like item
+          cite free
+          fall back
+            like duration
+              cite free
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free

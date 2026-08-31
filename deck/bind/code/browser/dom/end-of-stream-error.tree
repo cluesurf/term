@@ -1,0 +1,5 @@
+
+form end-of-stream-error, name <EndOfStreamError>
+  like or
+    text <decode>
+    text <network>

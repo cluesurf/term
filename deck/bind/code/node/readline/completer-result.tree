@@ -1,0 +1,13 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-string
+
+load @term/bind
+  find tuple
+
+form completer-result, name <CompleterResult>
+  like tuple
+    like array
+      like native-string
+    like native-string

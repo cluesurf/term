@@ -1,0 +1,19 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-undefined
+
+form server-opts, name <ServerOpts>
+  link allow-half-open, name <allowHalfOpen>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link pause-on-connect, name <pauseOnConnect>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

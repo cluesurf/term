@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form node-filter, name <NodeFilter>
+  like or
+    like task
+      take node, like node
+      like native-number
+    like form
+      task accept-node, name <acceptNode>
+        take node, like node
+        like native-number

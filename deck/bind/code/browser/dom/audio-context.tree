@@ -1,0 +1,139 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/audio-timestamp
+  find audio-timestamp
+
+load @term/bind/code/browser/dom/base-audio-context
+  find base-audio-context
+
+load @term/bind/code/browser/dom/base-audio-context-event-map
+  find base-audio-context-event-map
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/html-media-element
+  find html-media-element
+
+load @term/bind/code/browser/dom/media-element-audio-source-node
+  find media-element-audio-source-node
+
+load @term/bind/code/browser/dom/media-stream
+  find media-stream
+
+load @term/bind/code/browser/dom/media-stream-audio-destination-node
+  find media-stream-audio-destination-node
+
+load @term/bind/code/browser/dom/media-stream-audio-source-node
+  find media-stream-audio-source-node
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form audio-context, name <AudioContext>
+  base base-audio-context
+
+  link base-latency, name <baseLatency>
+    like native-number
+
+  task close, name <close>
+    like promise
+      like native-void
+
+  task create-media-element-source, name <createMediaElementSource>
+    take media-element, like html-media-element
+    like media-element-audio-source-node
+
+  task create-media-stream-destination, name <createMediaStreamDestination>
+    like media-stream-audio-destination-node
+
+  task create-media-stream-source, name <createMediaStreamSource>
+    take media-stream, like media-stream
+    like media-stream-audio-source-node
+
+  task get-output-timestamp, name <getOutputTimestamp>
+    like audio-timestamp
+
+  task resume, name <resume>
+    like promise
+      like native-void
+
+  task suspend, name <suspend>
+    like promise
+      like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like base-audio-context-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like audio-context
+        take ev
+          like index
+            like base-audio-context-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like base-audio-context-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like audio-context
+        take ev
+          like index
+            like base-audio-context-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

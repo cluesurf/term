@@ -1,0 +1,42 @@
+
+load @term/bind/code/browser/dom/g-lenum
+  find g-lenum
+
+load @term/bind/code/browser/dom/g-lint
+  find g-lint
+
+load @term/bind/code/browser/dom/g-lsizei
+  find g-lsizei
+
+load @term/bind/code/browser/dom/web-gl-texture
+  find web-gl-texture
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form ovr-multiview2, name <OVR_multiview2>
+  link framebuffer-attachment-texture-base-view-index-ovr
+    name <FRAMEBUFFER_ATTACHMENT_TEXTURE_BASE_VIEW_INDEX_OVR>
+    like g-lenum
+  link framebuffer-attachment-texture-num-views-ovr
+    name <FRAMEBUFFER_ATTACHMENT_TEXTURE_NUM_VIEWS_OVR>
+    like g-lenum
+  link framebuffer-incomplete-view-targets-ovr, name <FRAMEBUFFER_INCOMPLETE_VIEW_TARGETS_OVR>
+    like g-lenum
+  link max-views-ovr, name <MAX_VIEWS_OVR>
+    like g-lenum
+
+  task framebuffer-texture-multiview-ovr, name <framebufferTextureMultiviewOVR>
+    take target, like g-lenum
+    take attachment, like g-lenum
+    take texture
+      like or
+        like web-gl-texture
+        like native-null
+    take level, like g-lint
+    take base-view-index, like g-lint
+    take num-views, like g-lsizei
+    like native-void

@@ -1,0 +1,6 @@
+
+load @term/bind/code/browser/dom/worklet
+  find worklet
+
+form audio-worklet, name <AudioWorklet>
+  base worklet

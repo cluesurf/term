@@ -1,0 +1,45 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-never
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+form promise-like, name <PromiseLike>
+  head t
+
+  task then, name <then>
+    head t-result1
+      back t
+    head t-result2
+      back native-never
+    take onfulfilled, like maybe
+      like or
+        like task
+          take value, like t
+          like or
+            like t-result1
+            like promise-like
+              like t-result1
+        like native-undefined
+        like native-null
+    take onrejected, like maybe
+      like or
+        like task
+          take reason, like native-any
+          like or
+            like t-result2
+            like promise-like
+              like t-result2
+        like native-undefined
+        like native-null
+    like promise-like
+      like or
+        like t-result1
+        like t-result2

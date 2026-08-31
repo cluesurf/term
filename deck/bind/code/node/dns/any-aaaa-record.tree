@@ -1,0 +1,10 @@
+
+load @term/bind/code/node/dns
+  find record-with-ttl
+
+form any-aaaa-record, name <AnyAaaaRecord>
+  base record-with-ttl
+
+  link type, name <type>
+    text <AAAA>
+    flex true

@@ -1,0 +1,33 @@
+
+load @term/bind/code/javascript/es2015/iterable/array
+  find array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form array, name <Array>
+  head t
+
+  task {symbol/unscopables}
+    like form
+      link copy-within, name <copyWithin>
+        like native-boolean
+        lock false
+      link entries, name <entries>
+        like native-boolean
+        lock false
+      link fill, name <fill>
+        like native-boolean
+        lock false
+      link find, name <find>
+        like native-boolean
+        lock false
+      link find-index, name <findIndex>
+        like native-boolean
+        lock false
+      link keys, name <keys>
+        like native-boolean
+        lock false
+      link values, name <values>
+        like native-boolean
+        lock false

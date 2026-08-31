@@ -1,0 +1,20 @@
+
+load @term/bind/code/browser/dom/service-worker-update-via-cache
+  find service-worker-update-via-cache
+
+load @term/bind/code/browser/dom/worker-type
+  find worker-type
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form registration-options, name <RegistrationOptions>
+  link scope, name <scope>
+    like native-string
+    lock false
+  link type, name <type>
+    like worker-type
+    lock false
+  link update-via-cache, name <updateViaCache>
+    like service-worker-update-via-cache
+    lock false

@@ -1,0 +1,5 @@
+
+form table-kind, name <TableKind>
+  like or
+    text <anyfunc>
+    text <externref>

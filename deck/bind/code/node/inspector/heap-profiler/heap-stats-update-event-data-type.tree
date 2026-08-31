@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-number
+
+form heap-stats-update-event-data-type, name <HeapStatsUpdateEventDataType>
+  link stats-update, name <statsUpdate>
+    like array
+      like native-number
+    flex true

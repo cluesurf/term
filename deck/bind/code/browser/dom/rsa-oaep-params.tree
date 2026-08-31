@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/algorithm
+  find algorithm
+
+load @term/bind/code/browser/dom/buffer-source
+  find buffer-source
+
+form rsa-oaep-params, name <RsaOaepParams>
+  base algorithm
+
+  link label, name <label>
+    like buffer-source
+    lock false

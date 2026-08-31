@@ -1,0 +1,41 @@
+
+load @term/bind/code/browser/dom/readable-stream
+  find readable-stream
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form blob, name <Blob>
+  link size, name <size>
+    like native-number
+  link type, name <type>
+    like native-string
+
+  task array-buffer, name <arrayBuffer>
+    like promise
+      like array-buffer
+
+  task slice, name <slice>
+    take start, like maybe
+      like native-number
+    take end, like maybe
+      like native-number
+    take content-type, like maybe
+      like native-string
+    like blob
+
+  task stream, name <stream>
+    like readable-stream
+
+  task text, name <text>
+    like promise
+      like native-string

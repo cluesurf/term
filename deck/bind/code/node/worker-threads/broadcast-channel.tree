@@ -1,0 +1,36 @@
+
+load @term/bind
+  find task
+  find unknown
+
+load @term/bind/code/javascript
+  find native-string
+  find native-void
+
+form broadcast-channel, name <BroadcastChannel>
+  base node-js-ref-counted
+
+form broadcast-channel, name <BroadcastChannel>
+  link name, name <name>, like native-string
+  link onmessage, name <onmessage>
+    like task
+      like native-void
+
+      take message, like unknown
+  link onmessageerror, name <onmessageerror>
+    like task
+      like native-void
+
+      take message, like unknown
+
+  task close, name <close>
+    like native-void
+
+  task post-message, name <postMessage>
+    like native-void
+
+    take message, like unknown
+
+form broadcast-channel-constructor
+  hook make
+    take name, like native-string

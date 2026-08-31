@@ -1,0 +1,38 @@
+
+load @term/bind/code/javascript
+  find array
+  find error
+  find function
+  find native-number
+  find native-object
+  find native-undefined
+  find native-void
+  find node-js-call-site
+
+load @term/bind
+  find any
+  find or
+  find task
+
+form error-constructor, name <ErrorConstructor>
+  link prepare-stack-trace, name <prepareStackTrace>
+    like or
+      like task
+        like any
+
+        take err, like error
+        take stack-traces
+          like array
+            like node-js-call-site
+      like native-undefined
+    flex true
+  link stack-trace-limit, name <stackTraceLimit>
+    like native-number
+    flex true
+
+  task capture-stack-trace, name <captureStackTrace>
+    like native-void
+
+    take target-object, like native-object
+    take constructor-opt, like function
+      void true

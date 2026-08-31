@@ -1,0 +1,6 @@
+
+load @term/bind/code/browser/dom/url
+  find url
+
+form webkit-url, name <webkitURL>
+  like url

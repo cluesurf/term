@@ -1,0 +1,205 @@
+
+load @term/bind/code/browser/webworker/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/webworker/clients
+  find clients
+
+load @term/bind/code/browser/webworker/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/webworker/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/webworker/extendable-event
+  find extendable-event
+
+load @term/bind/code/browser/webworker/extendable-message-event
+  find extendable-message-event
+
+load @term/bind/code/browser/webworker/fetch-event
+  find fetch-event
+
+load @term/bind/code/browser/webworker/message-event
+  find message-event
+
+load @term/bind/code/browser/webworker/notification-event
+  find notification-event
+
+load @term/bind/code/browser/webworker/push-event
+  find push-event
+
+load @term/bind/code/browser/webworker/service-worker
+  find service-worker
+
+load @term/bind/code/browser/webworker/service-worker-global-scope-event-map
+  find service-worker-global-scope-event-map
+
+load @term/bind/code/browser/webworker/service-worker-registration
+  find service-worker-registration
+
+load @term/bind/code/browser/webworker/sync-event
+  find sync-event
+
+load @term/bind/code/browser/webworker/worker-global-scope
+  find worker-global-scope
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form service-worker-global-scope, name <ServiceWorkerGlobalScope>
+  base worker-global-scope
+
+  link clients, name <clients>
+    like clients
+  link onactivate, name <onactivate>
+    like or
+      like task
+        take this, like service-worker-global-scope
+        take ev, like extendable-event
+        like native-any
+      like native-null
+    lock false
+  link onfetch, name <onfetch>
+    like or
+      like task
+        take this, like service-worker-global-scope
+        take ev, like fetch-event
+        like native-any
+      like native-null
+    lock false
+  link oninstall, name <oninstall>
+    like or
+      like task
+        take this, like service-worker-global-scope
+        take ev, like extendable-event
+        like native-any
+      like native-null
+    lock false
+  link onmessage, name <onmessage>
+    like or
+      like task
+        take this, like service-worker-global-scope
+        take ev, like extendable-message-event
+        like native-any
+      like native-null
+    lock false
+  link onmessageerror, name <onmessageerror>
+    like or
+      like task
+        take this, like service-worker-global-scope
+        take ev, like message-event
+        like native-any
+      like native-null
+    lock false
+  link onnotificationclick, name <onnotificationclick>
+    like or
+      like task
+        take this, like service-worker-global-scope
+        take ev, like notification-event
+        like native-any
+      like native-null
+    lock false
+  link onnotificationclose, name <onnotificationclose>
+    like or
+      like task
+        take this, like service-worker-global-scope
+        take ev, like notification-event
+        like native-any
+      like native-null
+    lock false
+  link onpush, name <onpush>
+    like or
+      like task
+        take this, like service-worker-global-scope
+        take ev, like push-event
+        like native-any
+      like native-null
+    lock false
+  link onsync, name <onsync>
+    like or
+      like task
+        take this, like service-worker-global-scope
+        take ev, like sync-event
+        like native-any
+      like native-null
+    lock false
+  link registration, name <registration>
+    like service-worker-registration
+  link service-worker, name <serviceWorker>
+    like service-worker
+
+  task skip-waiting, name <skipWaiting>
+    like promise
+      like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like service-worker-global-scope-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like service-worker-global-scope
+        take ev
+          like index
+            like service-worker-global-scope-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like service-worker-global-scope-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like service-worker-global-scope
+        take ev
+          like index
+            like service-worker-global-scope-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

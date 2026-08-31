@@ -1,0 +1,24 @@
+
+load @term/bind/code/javascript
+  find native-string
+
+load @term/bind/code/node/buffer
+  find buffer
+  find buffer-encoding
+
+form string-decoder, name <StringDecoder>
+  task write, name <write>
+    like native-string
+
+    take buffer, like buffer
+
+  task end, name <end>
+    like native-string
+
+    take buffer, like buffer
+      void true
+
+form string-decoder-constructor
+  hook make
+    take encoding, like buffer-encoding
+      void true

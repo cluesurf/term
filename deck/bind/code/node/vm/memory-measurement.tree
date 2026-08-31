@@ -1,0 +1,20 @@
+
+load @term/bind
+  find form
+  find tuple
+
+load @term/bind/code/javascript
+  find native-number
+
+form memory-measurement, name <MemoryMeasurement>
+  link total, name <total>
+    like form
+      link js-memory-estimate, name <jsMemoryEstimate>
+        like native-number
+        flex true
+      link js-memory-range, name <jsMemoryRange>
+        like tuple
+          like native-number
+          like native-number
+        flex true
+    flex true

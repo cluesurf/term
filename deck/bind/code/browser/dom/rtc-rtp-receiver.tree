@@ -1,0 +1,50 @@
+
+load @term/bind/code/browser/dom/media-stream-track
+  find media-stream-track
+
+load @term/bind/code/browser/dom/rtc-dtls-transport
+  find rtc-dtls-transport
+
+load @term/bind/code/browser/dom/rtc-rtp-contributing-source
+  find rtc-rtp-contributing-source
+
+load @term/bind/code/browser/dom/rtc-rtp-receive-parameters
+  find rtc-rtp-receive-parameters
+
+load @term/bind/code/browser/dom/rtc-rtp-synchronization-source
+  find rtc-rtp-synchronization-source
+
+load @term/bind/code/browser/dom/rtc-stats-report
+  find rtc-stats-report
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+form rtc-rtp-receiver, name <RTCRtpReceiver>
+  link track, name <track>
+    like media-stream-track
+  link transport, name <transport>
+    like or
+      like rtc-dtls-transport
+      like native-null
+
+  task get-contributing-sources, name <getContributingSources>
+    like native-array
+      like rtc-rtp-contributing-source
+
+  task get-parameters, name <getParameters>
+    like rtc-rtp-receive-parameters
+
+  task get-stats, name <getStats>
+    like promise
+      like rtc-stats-report
+
+  task get-synchronization-sources, name <getSynchronizationSources>
+    like native-array
+      like rtc-rtp-synchronization-source

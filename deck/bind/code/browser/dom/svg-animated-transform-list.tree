@@ -1,0 +1,9 @@
+
+load @term/bind/code/browser/dom/svg-transform-list
+  find svg-transform-list
+
+form svg-animated-transform-list, name <SVGAnimatedTransformList>
+  link anim-val, name <animVal>
+    like svg-transform-list
+  link base-val, name <baseVal>
+    like svg-transform-list

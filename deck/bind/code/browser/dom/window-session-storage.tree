@@ -1,0 +1,7 @@
+
+load @term/bind/code/browser/dom/storage
+  find storage
+
+form window-session-storage, name <WindowSessionStorage>
+  link session-storage, name <sessionStorage>
+    like storage

@@ -1,0 +1,5 @@
+
+load @term/bind/code/browser/dom/void-function
+  find void-function
+
+form void-function, name <VoidFunction>

@@ -1,0 +1,26 @@
+
+load @term/bind/code/javascript/es5/number-format
+  find number-format
+
+load @term/bind/code/javascript/es5/resolved-number-format-options
+  find resolved-number-format-options
+
+load @term/bind/code/javascript/native
+  find native-bigint
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form number-format, name <NumberFormat>
+  task format, name <format>
+    take value
+      like or
+        like native-number
+        like native-bigint
+    like native-string
+
+  task resolved-options, name <resolvedOptions>
+    like resolved-number-format-options

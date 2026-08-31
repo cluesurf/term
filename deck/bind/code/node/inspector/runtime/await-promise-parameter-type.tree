@@ -1,0 +1,25 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-undefined
+
+load @term/bind/code/node/inspector/runtime
+  find remote-object-id
+
+form await-promise-parameter-type, name <AwaitPromiseParameterType>
+  link promise-object-id, name <promiseObjectId>
+    like remote-object-id
+    flex true
+  link return-by-value, name <returnByValue>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link generate-preview, name <generatePreview>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

@@ -1,0 +1,55 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-string
+  find node-js-dict
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/tls
+  find certificate
+
+form peer-certificate, name <PeerCertificate>
+  link subject, name <subject>
+    like certificate
+    flex true
+  link issuer, name <issuer>
+    like certificate
+    flex true
+  link subjectaltname, name <subjectaltname>
+    like native-string
+    flex true
+  link info-access, name <infoAccess>
+    like node-js-dict
+      like array
+        like native-string
+    flex true
+  link modulus, name <modulus>
+    like native-string
+    flex true
+  link exponent, name <exponent>
+    like native-string
+    flex true
+  link valid-from, name <valid_from>
+    like native-string
+    flex true
+  link valid-to, name <valid_to>
+    like native-string
+    flex true
+  link fingerprint, name <fingerprint>
+    like native-string
+    flex true
+  link fingerprint256, name <fingerprint256>
+    like native-string
+    flex true
+  link ext-key-usage, name <ext_key_usage>
+    like array
+      like native-string
+    flex true
+  link serial-number, name <serialNumber>
+    like native-string
+    flex true
+  link raw, name <raw>
+    like buffer
+    flex true

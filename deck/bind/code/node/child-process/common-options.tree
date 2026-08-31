@@ -1,0 +1,25 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-undefined
+
+load @term/bind/code/node/child-process
+  find process-env-options
+
+form common-options, name <CommonOptions>
+  base process-env-options
+
+  link windows-hide, name <windowsHide>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link timeout, name <timeout>
+    like or
+      like native-number
+      like native-undefined
+    flex true

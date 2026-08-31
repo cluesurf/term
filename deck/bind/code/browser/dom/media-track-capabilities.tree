@@ -1,0 +1,77 @@
+
+load @term/bind/code/browser/dom/double-range
+  find double-range
+
+load @term/bind/code/browser/dom/u-long-range
+  find u-long-range
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form media-track-capabilities, name <MediaTrackCapabilities>
+  link aspect-ratio, name <aspectRatio>
+    like double-range
+    lock false
+  link auto-gain-control, name <autoGainControl>
+    like native-array
+      like native-boolean
+    lock false
+  link channel-count, name <channelCount>
+    like u-long-range
+    lock false
+  link cursor, name <cursor>
+    like native-array
+      like native-string
+    lock false
+  link device-id, name <deviceId>
+    like native-string
+    lock false
+  link display-surface, name <displaySurface>
+    like native-string
+    lock false
+  link echo-cancellation, name <echoCancellation>
+    like native-array
+      like native-boolean
+    lock false
+  link facing-mode, name <facingMode>
+    like native-array
+      like native-string
+    lock false
+  link frame-rate, name <frameRate>
+    like double-range
+    lock false
+  link group-id, name <groupId>
+    like native-string
+    lock false
+  link height, name <height>
+    like u-long-range
+    lock false
+  link latency, name <latency>
+    like double-range
+    lock false
+  link logical-surface, name <logicalSurface>
+    like native-boolean
+    lock false
+  link noise-suppression, name <noiseSuppression>
+    like native-array
+      like native-boolean
+    lock false
+  link resize-mode, name <resizeMode>
+    like native-array
+      like native-string
+    lock false
+  link sample-rate, name <sampleRate>
+    like u-long-range
+    lock false
+  link sample-size, name <sampleSize>
+    like u-long-range
+    lock false
+  link width, name <width>
+    like u-long-range
+    lock false

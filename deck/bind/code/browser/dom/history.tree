@@ -1,0 +1,61 @@
+
+load @term/bind/code/browser/dom/scroll-restoration
+  find scroll-restoration
+
+load @term/bind/code/browser/dom/url
+  find url
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form history, name <History>
+  link length, name <length>
+    like native-number
+  link scroll-restoration, name <scrollRestoration>
+    like scroll-restoration
+    lock false
+  link state, name <state>
+    like native-any
+
+  task back, name <back>
+    like native-void
+
+  task forward, name <forward>
+    like native-void
+
+  task go, name <go>
+    take delta, like maybe
+      like native-number
+    like native-void
+
+  task push-state, name <pushState>
+    take data, like native-any
+    take unused, like native-string
+    take url, like maybe
+      like or
+        like native-string
+        like url
+        like native-null
+    like native-void
+
+  task replace-state, name <replaceState>
+    take data, like native-any
+    take unused, like native-string
+    take url, like maybe
+      like or
+        like native-string
+        like url
+        like native-null
+    like native-void

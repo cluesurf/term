@@ -1,0 +1,15 @@
+
+load @term/bind/code/browser/dom/web-gl-context-event
+  find web-gl-context-event
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form web-gl-context-event, name <WebGLContextEvent>
+  base event
+
+  link status-message, name <statusMessage>
+    like native-string

@@ -1,0 +1,36 @@
+
+load @term/bind/code/browser/dom/clipboard-items
+  find clipboard-items
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form clipboard, name <Clipboard>
+  base event-target
+
+  task read, name <read>
+    like promise
+      like clipboard-items
+
+  task read-text, name <readText>
+    like promise
+      like native-string
+
+  task write, name <write>
+    take data, like clipboard-items
+    like promise
+      like native-void
+
+  task write-text, name <writeText>
+    take data, like native-string
+    like promise
+      like native-void

@@ -1,0 +1,63 @@
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find async-iterable-iterator
+  find dirent
+  find native-null
+  find native-string
+  find native-void
+  find node-js-errno-exception
+  find promise
+
+load @term/bind/code/node/fs
+  find no-param-callback
+
+form dir, name <Dir>
+  link path, name <path>, like native-string
+
+  task {symbol/async-iterator}
+    name <Symbol.asyncIterator>
+    like async-iterable-iterator
+      like dirent
+
+  task close, name <close>
+    like promise
+      like native-void
+
+  task close, name <close>
+    like native-void
+
+    take cb, like no-param-callback
+
+  task close-sync, name <closeSync>
+    like native-void
+
+  task read, name <read>
+    like promise
+      like or
+        like dirent
+        like native-null
+
+  task read, name <read>
+    like native-void
+
+    take cb
+      like task
+        like native-void
+
+        take err
+          like or
+            like node-js-errno-exception
+            like native-null
+        take dir-ent
+          like or
+            like dirent
+            like native-null
+
+  task read-sync, name <readSync>
+    like or
+      like dirent
+      like native-null

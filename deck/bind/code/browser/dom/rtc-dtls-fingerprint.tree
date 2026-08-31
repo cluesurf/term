@@ -1,0 +1,11 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form rtc-dtls-fingerprint, name <RTCDtlsFingerprint>
+  link algorithm, name <algorithm>
+    like native-string
+    lock false
+  link value, name <value>
+    like native-string
+    lock false

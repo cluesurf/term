@@ -1,0 +1,103 @@
+
+bear @term/bind/code/javascript/es5/intl/collator-options
+bear @term/bind/code/javascript/es5/intl/resolved-collator-options
+bear @term/bind/code/javascript/es5/intl/collator
+bear @term/bind/code/javascript/es5/intl/number-format-options
+bear @term/bind/code/javascript/es5/intl/resolved-number-format-options
+bear @term/bind/code/javascript/es5/intl/number-format
+bear @term/bind/code/javascript/es5/intl/date-time-format-options
+bear @term/bind/code/javascript/es5/intl/resolved-date-time-format-options
+bear @term/bind/code/javascript/es5/intl/date-time-format
+
+load @term/bind/code/javascript/es5/collator
+  find collator
+
+load @term/bind/code/javascript/es5/collator-options
+  find collator-options
+
+load @term/bind/code/javascript/es5/date-time-format
+  find date-time-format
+
+load @term/bind/code/javascript/es5/date-time-format-options
+  find date-time-format-options
+
+load @term/bind/code/javascript/es5/number-format
+  find number-format
+
+load @term/bind/code/javascript/es5/number-format-options
+  find number-format-options
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+host collator, name <Collator>
+  like form
+    hook make
+      take locales, like maybe
+        like or
+          like native-string
+          like native-array
+            like native-string
+      take options, like maybe
+        like collator-options
+      like collator
+
+    task supported-locales-of, name <supportedLocalesOf>
+      take locales
+        like or
+          like native-string
+          like native-array
+            like native-string
+      take options, like maybe
+        like collator-options
+      like native-array
+        like native-string
+
+host number-format, name <NumberFormat>
+  like form
+    hook make
+      take locales, like maybe
+        like or
+          like native-string
+          like native-array
+            like native-string
+      take options, like maybe
+        like number-format-options
+      like number-format
+
+    task supported-locales-of, name <supportedLocalesOf>
+      take locales
+        like or
+          like native-string
+          like native-array
+            like native-string
+      take options, like maybe
+        like number-format-options
+      like native-array
+        like native-string
+
+host date-time-format, name <DateTimeFormat>
+  like form
+    hook make
+      take locales, like maybe
+        like or
+          like native-string
+          like native-array
+            like native-string
+      take options, like maybe
+        like date-time-format-options
+      like date-time-format
+
+    task supported-locales-of, name <supportedLocalesOf>
+      take locales
+        like or
+          like native-string
+          like native-array
+            like native-string
+      take options, like maybe
+        like date-time-format-options
+      like native-array
+        like native-string

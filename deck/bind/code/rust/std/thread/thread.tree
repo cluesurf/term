@@ -1,0 +1,60 @@
+
+form thread, name <std::thread::Thread>
+  task unpark, name <unpark>
+    note <Atomically makes the handle's token available if it is not already.>
+
+    take self
+      cite free
+
+  task id, name <id>
+    note <Gets the thread's unique identifier.>
+
+    take self
+      cite free
+
+    free seed
+      like thread-id
+        cite free
+
+  task name, name <name>
+    note <Gets the thread's name.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like str
+        cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like thread
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free

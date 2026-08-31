@@ -1,0 +1,38 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form vb-array, name <VBArray>
+  head t
+    back native-any
+
+  task dimensions, name <dimensions>
+    like native-number
+
+  task get-item, name <getItem>
+    take dimension1-index, like native-number
+    take dimension-n-indexes
+      like native-array
+        like native-number
+      rest true
+    like t
+
+  task lbound, name <lbound>
+    take dimension, like maybe
+      like native-number
+    like native-number
+
+  task ubound, name <ubound>
+    take dimension, like maybe
+      like native-number
+    like native-number
+
+  task to-array, name <toArray>
+    like native-array
+      like t

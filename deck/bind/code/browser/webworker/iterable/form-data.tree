@@ -1,0 +1,33 @@
+
+load @term/bind/code/browser/webworker/form-data
+  find form-data
+
+load @term/bind/code/browser/webworker/form-data-entry-value
+  find form-data-entry-value
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form form-data, name <FormData>
+  task {symbol/iterator}
+    like iterable-iterator
+      like band
+        like native-string
+        like form-data-entry-value
+
+  task entries, name <entries>
+    like iterable-iterator
+      like band
+        like native-string
+        like form-data-entry-value
+
+  task keys, name <keys>
+    like iterable-iterator
+      like native-string
+
+  task values, name <values>
+    like iterable-iterator
+      like form-data-entry-value

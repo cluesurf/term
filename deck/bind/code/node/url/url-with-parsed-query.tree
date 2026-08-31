@@ -1,0 +1,13 @@
+
+load @term/bind/code/node/querystring
+  find parsed-url-query
+
+load @term/bind/code/node/url
+  find url
+
+form url-with-parsed-query, name <UrlWithParsedQuery>
+  base url
+
+  link query, name <query>
+    like parsed-url-query
+    flex true

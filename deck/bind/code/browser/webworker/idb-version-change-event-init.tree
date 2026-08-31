@@ -1,0 +1,24 @@
+
+load @term/bind/code/browser/dom/idb-version-change-event-init
+  find idb-version-change-event-init
+
+load @term/bind/code/browser/webworker/event-init
+  find event-init
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form idb-version-change-event-init, name <IDBVersionChangeEventInit>
+  base event-init
+
+  link new-version, name <newVersion>
+    like or
+      like native-number
+      like native-null
+    lock false
+  link old-version, name <oldVersion>
+    like native-number
+    lock false

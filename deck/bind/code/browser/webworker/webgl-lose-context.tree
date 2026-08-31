@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/webgl-lose-context
+  find webgl-lose-context
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form webgl-lose-context, name <WEBGL_lose_context>
+  task lose-context, name <loseContext>
+    like native-void
+
+  task restore-context, name <restoreContext>
+    like native-void

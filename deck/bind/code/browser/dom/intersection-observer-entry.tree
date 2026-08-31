@@ -1,0 +1,36 @@
+
+load @term/bind/code/browser/dom/dom-high-res-time-stamp
+  find dom-high-res-time-stamp
+
+load @term/bind/code/browser/dom/dom-rect-read-only
+  find dom-rect-read-only
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form intersection-observer-entry, name <IntersectionObserverEntry>
+  link bounding-client-rect, name <boundingClientRect>
+    like dom-rect-read-only
+  link intersection-ratio, name <intersectionRatio>
+    like native-number
+  link intersection-rect, name <intersectionRect>
+    like dom-rect-read-only
+  link is-intersecting, name <isIntersecting>
+    like native-boolean
+  link root-bounds, name <rootBounds>
+    like or
+      like dom-rect-read-only
+      like native-null
+  link target, name <target>
+    like element
+  link time, name <time>
+    like dom-high-res-time-stamp

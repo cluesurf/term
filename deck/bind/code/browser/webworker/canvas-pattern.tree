@@ -1,0 +1,15 @@
+
+load @term/bind/code/browser/dom/canvas-pattern
+  find canvas-pattern
+
+load @term/bind/code/browser/webworker/dom-matrix2-d-init
+  find dom-matrix2-d-init
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form canvas-pattern, name <CanvasPattern>
+  task set-transform, name <setTransform>
+    take transform, like maybe
+      like dom-matrix2-d-init
+    like native-void

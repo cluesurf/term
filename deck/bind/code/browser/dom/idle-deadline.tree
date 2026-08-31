@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/dom-high-res-time-stamp
+  find dom-high-res-time-stamp
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form idle-deadline, name <IdleDeadline>
+  link did-timeout, name <didTimeout>
+    like native-boolean
+
+  task time-remaining, name <timeRemaining>
+    like dom-high-res-time-stamp

@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form screen-orientation-event-map, name <ScreenOrientationEventMap>
+  link change, name <change>
+    like event
+    lock false

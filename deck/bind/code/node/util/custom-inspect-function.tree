@@ -1,0 +1,17 @@
+
+load @term/bind
+  find task
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+
+load @term/bind/code/node/util
+  find inspect-options-stylized
+
+form custom-inspect-function, name <CustomInspectFunction>
+  like task
+    like native-string
+
+    take depth, like native-number
+    take options, like inspect-options-stylized

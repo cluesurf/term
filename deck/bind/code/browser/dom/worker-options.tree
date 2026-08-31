@@ -1,0 +1,20 @@
+
+load @term/bind/code/browser/dom/request-credentials
+  find request-credentials
+
+load @term/bind/code/browser/dom/worker-type
+  find worker-type
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form worker-options, name <WorkerOptions>
+  link credentials, name <credentials>
+    like request-credentials
+    lock false
+  link name, name <name>
+    like native-string
+    lock false
+  link type, name <type>
+    like worker-type
+    lock false

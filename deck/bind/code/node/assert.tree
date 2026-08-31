@@ -1,0 +1,371 @@
+
+bear @term/bind/code/javascript/node/assert/assertion-error
+bear @term/bind/code/javascript/node/assert/call-tracker
+bear @term/bind/code/javascript/node/assert/call-tracker-report-information
+bear @term/bind/code/javascript/node/assert/assert-predicate
+
+load @term/bind
+  find and
+  find form
+  find like
+  find never
+  find or
+  find task
+  find unknown
+
+load @term/bind/code/javascript
+  find error
+  find function
+  find native-boolean
+  find native-null
+  find native-string
+  find native-undefined
+  find native-void
+  find omit
+  find promise
+  find reg-exp
+
+load @term/bind/code/node/assert
+  find assert-predicate
+
+host strict, name <strict>
+  like and
+    like omit
+      like assert
+      like or
+        text <equal>
+        text <notEqual>
+        text <deepEqual>
+        text <notDeepEqual>
+        text <ok>
+        text <strictEqual>
+        text <deepStrictEqual>
+        text <ifError>
+        text <strict>
+    like form
+      link equal, name <equal>
+        like strict-equal
+        flex true
+      link not-equal, name <notEqual>
+        like not-strict-equal
+        flex true
+      link deep-equal, name <deepEqual>
+        like deep-strict-equal
+        flex true
+      link not-deep-equal, name <notDeepEqual>
+        like not-deep-strict-equal
+        flex true
+      link ok, name <ok>
+        like ok
+        flex true
+      link strict-equal, name <strictEqual>
+        like strict-equal
+        flex true
+      link deep-strict-equal, name <deepStrictEqual>
+        like deep-strict-equal
+        flex true
+      link if-error, name <ifError>
+        like if-error
+        flex true
+      link strict, name <strict>
+        like strict
+        flex true
+
+task fail, name <fail>
+  like never
+
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task fail, name <fail>
+  like never
+
+  take actual, like unknown
+  take expected, like unknown
+  take message
+    like or
+      like native-string
+      like error
+    void true
+  take operator, like native-string
+    void true
+  take stack-start-fn, like function
+    void true
+
+task ok, name <ok>
+  like native-boolean
+  rank value
+
+  take value, like unknown
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task equal, name <equal>
+  like native-void
+
+  take actual, like unknown
+  take expected, like unknown
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task not-equal, name <notEqual>
+  like native-void
+
+  take actual, like unknown
+  take expected, like unknown
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task deep-equal, name <deepEqual>
+  like native-void
+
+  take actual, like unknown
+  take expected, like unknown
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task not-deep-equal, name <notDeepEqual>
+  like native-void
+
+  take actual, like unknown
+  take expected, like unknown
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task strict-equal, name <strictEqual>
+  like native-boolean
+  rank actual, like t
+
+  head t
+
+  take actual, like unknown
+  take expected, like t
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task not-strict-equal, name <notStrictEqual>
+  like native-void
+
+  take actual, like unknown
+  take expected, like unknown
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task deep-strict-equal, name <deepStrictEqual>
+  like native-boolean
+  rank actual, like t
+
+  head t
+
+  take actual, like unknown
+  take expected, like t
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task not-deep-strict-equal, name <notDeepStrictEqual>
+  like native-void
+
+  take actual, like unknown
+  take expected, like unknown
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task throws, name <throws>
+  like native-void
+
+  take block
+    like task
+      like unknown
+
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task throws, name <throws>
+  like native-void
+
+  take block
+    like task
+      like unknown
+
+  take error, like assert-predicate
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task does-not-throw, name <doesNotThrow>
+  like native-void
+
+  take block
+    like task
+      like unknown
+
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task does-not-throw, name <doesNotThrow>
+  like native-void
+
+  take block
+    like task
+      like unknown
+
+  take error, like assert-predicate
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task if-error, name <ifError>
+  like native-boolean
+  rank value
+    like or
+      like native-null
+      like native-undefined
+
+  take value, like unknown
+
+task rejects, name <rejects>
+  like promise
+    like native-void
+
+  take block
+    like or
+      like task
+        like promise
+          like unknown
+
+      like promise
+        like unknown
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task rejects, name <rejects>
+  like promise
+    like native-void
+
+  take block
+    like or
+      like task
+        like promise
+          like unknown
+
+      like promise
+        like unknown
+  take error, like assert-predicate
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task does-not-reject, name <doesNotReject>
+  like promise
+    like native-void
+
+  take block
+    like or
+      like task
+        like promise
+          like unknown
+
+      like promise
+        like unknown
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task does-not-reject, name <doesNotReject>
+  like promise
+    like native-void
+
+  take block
+    like or
+      like task
+        like promise
+          like unknown
+
+      like promise
+        like unknown
+  take error, like assert-predicate
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task match, name <match>
+  like native-void
+
+  take value, like native-string
+  take reg-exp, like reg-exp
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task does-not-match, name <doesNotMatch>
+  like native-void
+
+  take value, like native-string
+  take reg-exp, like reg-exp
+  take message
+    like or
+      like native-string
+      like error
+    void true
+
+task assert, name <assert>
+  like native-boolean
+  rank value
+
+  take value, like unknown
+  take message
+    like or
+      like native-string
+      like error
+    void true

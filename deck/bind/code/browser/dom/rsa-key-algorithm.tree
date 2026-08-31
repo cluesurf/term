@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/dom/big-integer
+  find big-integer
+
+load @term/bind/code/browser/dom/key-algorithm
+  find key-algorithm
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form rsa-key-algorithm, name <RsaKeyAlgorithm>
+  base key-algorithm
+
+  link modulus-length, name <modulusLength>
+    like native-number
+    lock false
+  link public-exponent, name <publicExponent>
+    like big-integer
+    lock false

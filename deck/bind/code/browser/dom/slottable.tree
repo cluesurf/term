@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/html-slot-element
+  find html-slot-element
+
+load @term/bind/code/javascript/native
+  find native-null
+
+form slottable, name <Slottable>
+  link assigned-slot, name <assignedSlot>
+    like or
+      like html-slot-element
+      like native-null

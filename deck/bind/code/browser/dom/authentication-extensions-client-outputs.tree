@@ -1,0 +1,20 @@
+
+load @term/bind/code/browser/dom/credential-properties-output
+  find credential-properties-output
+
+load @term/bind/code/browser/dom/uvm-entries
+  find uvm-entries
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form authentication-extensions-client-outputs, name <AuthenticationExtensionsClientOutputs>
+  link appid, name <appid>
+    like native-boolean
+    lock false
+  link cred-props, name <credProps>
+    like credential-properties-output
+    lock false
+  link uvm, name <uvm>
+    like uvm-entries
+    lock false

@@ -1,0 +1,7 @@
+
+form client-types, name <ClientTypes>
+  like or
+    text <all>
+    text <sharedworker>
+    text <window>
+    text <worker>

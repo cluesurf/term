@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript/es5/function
+  find function
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form function, name <Function>
+  link name, name <name>
+    like native-string

@@ -1,0 +1,22 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+  find native-symbol
+  find native-undefined
+
+form symbol
+  hook self
+    link prototype, name <prototype>
+      like symbol
+
+    task for, name <for>
+      like native-symbol
+
+      take key
+
+    task key-for, name <keyFor>
+      like or
+        like native-string
+        like native-undefined
+
+      take sym

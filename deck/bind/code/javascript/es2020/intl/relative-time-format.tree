@@ -1,0 +1,33 @@
+
+load @term/bind/code/javascript/es2020/intl/relative-time-format-part
+  find relative-time-format-part
+
+load @term/bind/code/javascript/es2020/intl/relative-time-format-unit
+  find relative-time-format-unit
+
+load @term/bind/code/javascript/es2020/intl/resolved-relative-time-format-options
+  find resolved-relative-time-format-options
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form relative-time-format, name <RelativeTimeFormat>
+  task format, name <format>
+    take value, like native-number
+    take unit, like relative-time-format-unit
+    like native-string
+
+  task format-to-parts, name <formatToParts>
+    take value, like native-number
+    take unit, like relative-time-format-unit
+    like native-array
+      like relative-time-format-part
+
+  task resolved-options, name <resolvedOptions>
+    like resolved-relative-time-format-options

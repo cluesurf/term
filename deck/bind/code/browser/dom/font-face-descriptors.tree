@@ -1,0 +1,26 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form font-face-descriptors, name <FontFaceDescriptors>
+  link display, name <display>
+    like native-string
+    lock false
+  link feature-settings, name <featureSettings>
+    like native-string
+    lock false
+  link stretch, name <stretch>
+    like native-string
+    lock false
+  link style, name <style>
+    like native-string
+    lock false
+  link unicode-range, name <unicodeRange>
+    like native-string
+    lock false
+  link variant, name <variant>
+    like native-string
+    lock false
+  link weight, name <weight>
+    like native-string
+    lock false

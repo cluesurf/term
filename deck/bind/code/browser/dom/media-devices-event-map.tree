@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form media-devices-event-map, name <MediaDevicesEventMap>
+  link devicechange, name <devicechange>
+    like event
+    lock false

@@ -1,0 +1,63 @@
+
+form once, name <std::sync::Once>
+  task new, name <new>
+    note <Creates a new Once value.>
+
+    free seed
+      like once
+        cite free
+
+  task call-once, name <call_once>
+    note <Performs an initialization routine once and only once. The given closure will be executed if this is the first time call_once has been called, and otherwise the routine will not be invoked.>
+
+    lead f
+      like fn-once
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+  task call-once-force, name <call_once_force>
+    note <Performs the same function as call_once() except ignores poisoning.>
+
+    lead f
+      like fn-once
+        take f-1, like once-state
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+  task is-completed, name <is_completed>
+    note <Returns true if some call_once() call has completed successfully. Specifically, is_completed will return false in the following situations:>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free

@@ -1,0 +1,183 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/html-collection-of
+  find html-collection-of
+
+load @term/bind/code/browser/dom/html-element
+  find html-element
+
+load @term/bind/code/browser/dom/html-element-event-map
+  find html-element-event-map
+
+load @term/bind/code/browser/dom/html-table-caption-element
+  find html-table-caption-element
+
+load @term/bind/code/browser/dom/html-table-row-element
+  find html-table-row-element
+
+load @term/bind/code/browser/dom/html-table-section-element
+  find html-table-section-element
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form html-table-element, name <HTMLTableElement>
+  base html-element
+
+  link align, name <align>
+    like native-string
+    lock false
+  link bg-color, name <bgColor>
+    like native-string
+    lock false
+  link border, name <border>
+    like native-string
+    lock false
+  link caption, name <caption>
+    like or
+      like html-table-caption-element
+      like native-null
+    lock false
+  link cell-padding, name <cellPadding>
+    like native-string
+    lock false
+  link cell-spacing, name <cellSpacing>
+    like native-string
+    lock false
+  link frame, name <frame>
+    like native-string
+    lock false
+  link rows, name <rows>
+    like html-collection-of
+      like html-table-row-element
+  link rules, name <rules>
+    like native-string
+    lock false
+  link summary, name <summary>
+    like native-string
+    lock false
+  link t-bodies, name <tBodies>
+    like html-collection-of
+      like html-table-section-element
+  link t-foot, name <tFoot>
+    like or
+      like html-table-section-element
+      like native-null
+    lock false
+  link t-head, name <tHead>
+    like or
+      like html-table-section-element
+      like native-null
+    lock false
+  link width, name <width>
+    like native-string
+    lock false
+
+  task create-caption, name <createCaption>
+    like html-table-caption-element
+
+  task create-t-body, name <createTBody>
+    like html-table-section-element
+
+  task create-t-foot, name <createTFoot>
+    like html-table-section-element
+
+  task create-t-head, name <createTHead>
+    like html-table-section-element
+
+  task delete-caption, name <deleteCaption>
+    like native-void
+
+  task delete-row, name <deleteRow>
+    take index, like native-number
+    like native-void
+
+  task delete-t-foot, name <deleteTFoot>
+    like native-void
+
+  task delete-t-head, name <deleteTHead>
+    like native-void
+
+  task insert-row, name <insertRow>
+    take index, like maybe
+      like native-number
+    like html-table-row-element
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like html-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like html-table-element
+        take ev
+          like index
+            like html-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like html-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like html-table-element
+        take ev
+          like index
+            like html-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form constant-source-options, name <ConstantSourceOptions>
+  link offset, name <offset>
+    like native-number
+    lock false

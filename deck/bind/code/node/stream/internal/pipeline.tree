@@ -1,0 +1,188 @@
+
+load @term/bind
+  find any
+  find like
+  find or
+
+load @term/bind/code/javascript
+  find native-void
+  find node-js-read-write-stream
+  find node-js-readable-stream
+  find node-js-writable-stream
+  find promise
+  find readonly-array
+
+load @term/bind/code/node/globals
+  find array
+
+load @term/bind/code/node/stream/internal
+  find pipeline-destination
+  find pipeline-options
+  find pipeline-promise
+  find pipeline-source
+  find pipeline-transform
+
+task promisify, name <__promisify__>
+  like pipeline-promise
+    like b
+
+  head a
+    base pipeline-source
+      like any
+  head b
+    base pipeline-destination
+      like a
+      like any
+
+  take source, like a
+  take destination, like b
+  take options, like pipeline-options
+    void true
+
+task promisify, name <__promisify__>
+  like pipeline-promise
+    like b
+
+  head a
+    base pipeline-source
+      like any
+  head t1
+    base pipeline-transform
+      like a
+      like any
+  head b
+    base pipeline-destination
+      like t1
+      like any
+
+  take source, like a
+  take transform1, like t1
+  take destination, like b
+  take options, like pipeline-options
+    void true
+
+task promisify, name <__promisify__>
+  like pipeline-promise
+    like b
+
+  head a
+    base pipeline-source
+      like any
+  head t1
+    base pipeline-transform
+      like a
+      like any
+  head t2
+    base pipeline-transform
+      like t1
+      like any
+  head b
+    base pipeline-destination
+      like t2
+      like any
+
+  take source, like a
+  take transform1, like t1
+  take transform2, like t2
+  take destination, like b
+  take options, like pipeline-options
+    void true
+
+task promisify, name <__promisify__>
+  like pipeline-promise
+    like b
+
+  head a
+    base pipeline-source
+      like any
+  head t1
+    base pipeline-transform
+      like a
+      like any
+  head t2
+    base pipeline-transform
+      like t1
+      like any
+  head t3
+    base pipeline-transform
+      like t2
+      like any
+  head b
+    base pipeline-destination
+      like t3
+      like any
+
+  take source, like a
+  take transform1, like t1
+  take transform2, like t2
+  take transform3, like t3
+  take destination, like b
+  take options, like pipeline-options
+    void true
+
+task promisify, name <__promisify__>
+  like pipeline-promise
+    like b
+
+  head a
+    base pipeline-source
+      like any
+  head t1
+    base pipeline-transform
+      like a
+      like any
+  head t2
+    base pipeline-transform
+      like t1
+      like any
+  head t3
+    base pipeline-transform
+      like t2
+      like any
+  head t4
+    base pipeline-transform
+      like t3
+      like any
+  head b
+    base pipeline-destination
+      like t4
+      like any
+
+  take source, like a
+  take transform1, like t1
+  take transform2, like t2
+  take transform3, like t3
+  take transform4, like t4
+  take destination, like b
+  take options, like pipeline-options
+    void true
+
+task promisify, name <__promisify__>
+  like promise
+    like native-void
+
+  take streams
+    like readonly-array
+      like or
+        like node-js-readable-stream
+        like node-js-writable-stream
+        like node-js-read-write-stream
+  take options, like pipeline-options
+    void true
+
+task promisify, name <__promisify__>
+  like promise
+    like native-void
+
+  take stream1, like node-js-readable-stream
+  take stream2
+    like or
+      like node-js-read-write-stream
+      like node-js-writable-stream
+  take streams
+    like array
+      like or
+        like node-js-read-write-stream
+        like node-js-writable-stream
+        like pipeline-options
+    rest true

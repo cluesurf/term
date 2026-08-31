@@ -1,0 +1,46 @@
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/browser/dom/payment-complete
+  find payment-complete
+
+load @term/bind/code/browser/dom/payment-validation-errors
+  find payment-validation-errors
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form payment-response, name <PaymentResponse>
+  base event-target
+
+  link details, name <details>
+    like native-any
+  link method-name, name <methodName>
+    like native-string
+  link request-id, name <requestId>
+    like native-string
+
+  task complete, name <complete>
+    take result, like maybe
+      like payment-complete
+    like promise
+      like native-void
+
+  task retry, name <retry>
+    take error-fields, like maybe
+      like payment-validation-errors
+    like promise
+      like native-void
+
+  task to-json, name <toJSON>
+    like native-any

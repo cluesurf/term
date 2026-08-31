@@ -1,0 +1,10 @@
+
+load @term/bind
+  find or
+
+form secure-version, name <SecureVersion>
+  like or
+    text <TLSv1.3>
+    text <TLSv1.2>
+    text <TLSv1.1>
+    text <TLSv1>

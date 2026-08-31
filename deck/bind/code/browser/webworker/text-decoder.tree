@@ -1,0 +1,25 @@
+
+load @term/bind/code/browser/dom/text-decoder
+  find text-decoder
+
+load @term/bind/code/browser/webworker/buffer-source
+  find buffer-source
+
+load @term/bind/code/browser/webworker/text-decode-options
+  find text-decode-options
+
+load @term/bind/code/browser/webworker/text-decoder-common
+  find text-decoder-common
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form text-decoder, name <TextDecoder>
+  base text-decoder-common
+
+  task decode, name <decode>
+    take input, like maybe
+      like buffer-source
+    take options, like maybe
+      like text-decode-options
+    like native-string

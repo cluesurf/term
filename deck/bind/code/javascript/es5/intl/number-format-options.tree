@@ -1,0 +1,44 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form number-format-options, name <NumberFormatOptions>
+  link locale-matcher, name <localeMatcher>
+    like native-string
+    lock false
+  link style, name <style>
+    like native-string
+    lock false
+  link currency, name <currency>
+    like native-string
+    lock false
+  link currency-display, name <currencyDisplay>
+    like native-string
+    lock false
+  link currency-sign, name <currencySign>
+    like native-string
+    lock false
+  link use-grouping, name <useGrouping>
+    like native-boolean
+    lock false
+  link minimum-integer-digits, name <minimumIntegerDigits>
+    like native-number
+    lock false
+  link minimum-fraction-digits, name <minimumFractionDigits>
+    like native-number
+    lock false
+  link maximum-fraction-digits, name <maximumFractionDigits>
+    like native-number
+    lock false
+  link minimum-significant-digits, name <minimumSignificantDigits>
+    like native-number
+    lock false
+  link maximum-significant-digits, name <maximumSignificantDigits>
+    like native-number
+    lock false

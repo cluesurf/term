@@ -1,0 +1,12 @@
+
+load @term/bind
+  find form
+  find or
+
+form buffer-encoding-option, name <BufferEncodingOption>
+  like or
+    text <buffer>
+    like form
+      link encoding, name <encoding>
+        text <buffer>
+        flex true

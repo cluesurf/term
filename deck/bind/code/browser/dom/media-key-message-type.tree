@@ -1,0 +1,7 @@
+
+form media-key-message-type, name <MediaKeyMessageType>
+  like or
+    text <individualization-request>
+    text <license-release>
+    text <license-renewal>
+    text <license-request>

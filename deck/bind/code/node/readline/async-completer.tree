@@ -1,0 +1,30 @@
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find error
+  find native-null
+  find native-string
+  find native-void
+
+load @term/bind/code/node/readline
+  find completer-result
+
+form async-completer, name <AsyncCompleter>
+  like task
+    like native-void
+
+    take line, like native-string
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like native-null
+            like error
+          void true
+        take result, like completer-result
+          void true

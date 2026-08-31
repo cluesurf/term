@@ -1,0 +1,34 @@
+
+load @term/bind
+  find and
+  find form
+  find like
+
+load @term/bind/code/node/crypto
+  find base-private-key-encoding-options
+  find key-format
+
+form x448-key-pair-options, name <X448KeyPairOptions>
+  head pub-f
+    base key-format
+  head priv-f
+    base key-format
+
+  link public-key-encoding, name <publicKeyEncoding>
+    like form
+      link type, name <type>
+        text <spki>
+        flex true
+      link format, name <format>
+        like pub-f
+        flex true
+    flex true
+  link private-key-encoding, name <privateKeyEncoding>
+    like and
+      like base-private-key-encoding-options
+        like priv-f
+      like form
+        link type, name <type>
+          text <pkcs8>
+          flex true
+    flex true

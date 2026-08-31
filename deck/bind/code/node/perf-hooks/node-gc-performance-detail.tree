@@ -1,0 +1,17 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+
+form node-gc-performance-detail, name <NodeGCPerformanceDetail>
+  link kind, name <kind>
+    like or
+      like native-number
+      like native-undefined
+  link flags, name <flags>
+    like or
+      like native-number
+      like native-undefined

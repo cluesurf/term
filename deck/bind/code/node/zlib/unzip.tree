@@ -1,0 +1,23 @@
+
+load @term/bind/code/node/zlib
+  find input-type
+  find zlib
+  find zlib-options
+
+load @term/bind/code/javascript
+  find promise
+
+load @term/bind/code/node/buffer
+  find buffer
+
+form unzip, name <Unzip>
+  base stream-transform
+  base zlib
+
+task promisify, name <__promisify__>
+  like promise
+    like buffer
+
+  take buffer, like input-type
+  take options, like zlib-options
+    void true

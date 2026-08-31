@@ -1,0 +1,25 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find native-void
+  find promise
+  find uint8-array
+
+load @term/bind/code/node/fs
+  find path-or-file-descriptor
+  find write-file-options
+
+task promisify, name <__promisify__>
+  like promise
+    like native-void
+
+  take file, like path-or-file-descriptor
+  take data
+    like or
+      like native-string
+      like uint8-array
+  take options, like write-file-options
+    void true

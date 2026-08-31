@@ -1,0 +1,53 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/inspector/runtime
+  find execution-context-id
+  find remote-object
+  find script-id
+  find stack-trace
+
+form exception-details, name <ExceptionDetails>
+  link exception-id, name <exceptionId>
+    like native-number
+    flex true
+  link text, name <text>
+    like native-string
+    flex true
+  link line-number, name <lineNumber>
+    like native-number
+    flex true
+  link column-number, name <columnNumber>
+    like native-number
+    flex true
+  link script-id, name <scriptId>
+    like or
+      like script-id
+      like native-undefined
+    flex true
+  link url, name <url>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link stack-trace, name <stackTrace>
+    like or
+      like stack-trace
+      like native-undefined
+    flex true
+  link exception, name <exception>
+    like or
+      like remote-object
+      like native-undefined
+    flex true
+  link execution-context-id, name <executionContextId>
+    like or
+      like execution-context-id
+      like native-undefined
+    flex true

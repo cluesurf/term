@@ -1,0 +1,40 @@
+
+form context, name <std::task::Context>
+  task from-waker, name <from_waker>
+    note <Create a new Context from a &Waker.>
+
+    take waker
+      like waker
+        time a
+
+    free seed
+      like context
+        time a
+        cite free
+
+  task waker, name <waker>
+    note <Returns a reference to the Waker for the current task.>
+
+    take self
+      cite free
+
+    free seed
+      like waker
+        time a
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free

@@ -1,0 +1,668 @@
+
+load @term/bind/code/javascript
+  find array
+  find async-iterable
+  find async-iterable-iterator
+  find error
+  find iterable
+  find native-boolean
+  find native-null
+  find native-number
+  find native-string
+  find native-symbol
+  find native-this
+  find native-void
+  find node-js-readable-stream
+  find node-js-writable-stream
+  find readable
+
+load @term/bind
+  find any
+  find or
+  find task
+
+load @term/bind/code/node/buffer
+  find buffer-encoding
+
+load @term/bind/code/node/stream/internal
+  find readable-options
+
+form readable, name <Readable>
+  base stream
+  link readable-aborted, name <readableAborted>, like native-boolean
+  link readable, name <readable>, like native-boolean
+  link readable-did-read, name <readableDidRead>, like native-boolean
+  link readable-encoding, name <readableEncoding>
+    like or
+      like buffer-encoding
+      like native-null
+  link readable-ended, name <readableEnded>, like native-boolean
+  link readable-flowing, name <readableFlowing>
+    like or
+      like native-boolean
+      like native-null
+  link readable-high-water-mark, name <readableHighWaterMark>, like native-number
+  link readable-length, name <readableLength>, like native-number
+  link readable-object-mode, name <readableObjectMode>, like native-boolean
+  link destroyed, name <destroyed>, like native-boolean
+
+  task construct, name <_construct>
+    like native-void
+
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+          void true
+
+  task read, name <_read>
+    like native-void
+
+    take size, like native-number
+
+  task read, name <read>
+    like any
+
+    take size, like native-number
+      void true
+
+  task set-encoding, name <setEncoding>
+    like native-this
+
+    take encoding, like buffer-encoding
+
+  task pause, name <pause>
+    like native-this
+
+  task resume, name <resume>
+    like native-this
+
+  task is-paused, name <isPaused>
+    like native-boolean
+
+  task unpipe, name <unpipe>
+    like native-this
+
+    take destination, like node-js-writable-stream
+      void true
+
+  task unshift, name <unshift>
+    like native-void
+
+    take chunk, like any
+    take encoding, like buffer-encoding
+      void true
+
+  task wrap, name <wrap>
+    like native-this
+
+    take stream, like node-js-readable-stream
+
+  task push, name <push>
+    like native-boolean
+
+    take chunk, like any
+    take encoding, like buffer-encoding
+      void true
+
+  task destroy, name <_destroy>
+    like native-void
+
+    take error
+      like or
+        like error
+        like native-null
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+          void true
+
+  task destroy, name <destroy>
+    like native-this
+
+    take error, like error
+      void true
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <data>
+    take listener
+      like task
+        like native-void
+
+        take chunk, like any
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <end>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <pause>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <readable>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <resume>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <close>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <data>
+    take chunk, like any
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <end>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <error>
+    take err, like error
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <pause>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <readable>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <resume>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take args
+      like array
+        like any
+      rest true
+
+  task on, name <on>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <data>
+    take listener
+      like task
+        like native-void
+
+        take chunk, like any
+
+  task on, name <on>
+    like native-this
+
+    take event, text <end>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task on, name <on>
+    like native-this
+
+    take event, text <pause>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <readable>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <resume>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task once, name <once>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <data>
+    take listener
+      like task
+        like native-void
+
+        take chunk, like any
+
+  task once, name <once>
+    like native-this
+
+    take event, text <end>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task once, name <once>
+    like native-this
+
+    take event, text <pause>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <readable>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <resume>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <data>
+    take listener
+      like task
+        like native-void
+
+        take chunk, like any
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <end>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <pause>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <readable>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <resume>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <data>
+    take listener
+      like task
+        like native-void
+
+        take chunk, like any
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <end>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <pause>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <readable>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <resume>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task remove-listener, name <removeListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task remove-listener, name <removeListener>
+    like native-this
+
+    take event, text <data>
+    take listener
+      like task
+        like native-void
+
+        take chunk, like any
+
+  task remove-listener, name <removeListener>
+    like native-this
+
+    take event, text <end>
+    take listener
+      like task
+        like native-void
+
+  task remove-listener, name <removeListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task remove-listener, name <removeListener>
+    like native-this
+
+    take event, text <pause>
+    take listener
+      like task
+        like native-void
+
+  task remove-listener, name <removeListener>
+    like native-this
+
+    take event, text <readable>
+    take listener
+      like task
+        like native-void
+
+  task remove-listener, name <removeListener>
+    like native-this
+
+    take event, text <resume>
+    take listener
+      like task
+        like native-void
+
+  task remove-listener, name <removeListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task {symbol/async-iterator}
+    name <Symbol.asyncIterator>
+    like async-iterable-iterator
+      like any
+
+form readable-constructor
+  task from, name <from>
+    like readable
+
+    take iterable
+      like or
+        like iterable
+          like any
+        like async-iterable
+          like any
+    take options, like readable-options
+      void true
+
+  task is-disturbed, name <isDisturbed>
+    like native-boolean
+
+    take stream
+      like or
+        like readable
+        like node-js-readable-stream
+
+  hook make
+    take opts, like readable-options
+      void true

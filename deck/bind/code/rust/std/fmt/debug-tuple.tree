@@ -1,0 +1,28 @@
+
+form debug-tuple, name <std::fmt::DebugTuple>
+  task field, name <field>
+    note <Adds a new field to the generated tuple struct output.>
+
+    take self
+      cite free
+    take value
+      like debug
+      dash take
+
+    free seed
+      like debug-tuple
+        time a
+        time b
+
+  task finish, name <finish>
+    note <Finishes output and returns any error encountered.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free

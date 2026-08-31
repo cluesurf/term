@@ -1,0 +1,57 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/inspector/runtime
+  find remote-object
+
+form property-descriptor, name <PropertyDescriptor>
+  link name, name <name>
+    like native-string
+    flex true
+  link value, name <value>
+    like or
+      like remote-object
+      like native-undefined
+    flex true
+  link writable, name <writable>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link get, name <get>
+    like or
+      like remote-object
+      like native-undefined
+    flex true
+  link set, name <set>
+    like or
+      like remote-object
+      like native-undefined
+    flex true
+  link configurable, name <configurable>
+    like native-boolean
+    flex true
+  link enumerable, name <enumerable>
+    like native-boolean
+    flex true
+  link was-thrown, name <wasThrown>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link is-own, name <isOwn>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link symbol, name <symbol>
+    like or
+      like remote-object
+      like native-undefined
+    flex true

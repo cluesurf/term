@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/web-gl-context-event-init
+  find web-gl-context-event-init
+
+load @term/bind/code/browser/webworker/event-init
+  find event-init
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form web-gl-context-event-init, name <WebGLContextEventInit>
+  base event-init
+
+  link status-message, name <statusMessage>
+    like native-string
+    lock false

@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form rtc-rtp-header-extension-capability, name <RTCRtpHeaderExtensionCapability>
+  link uri, name <uri>
+    like native-string
+    lock false

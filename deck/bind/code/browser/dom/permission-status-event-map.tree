@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form permission-status-event-map, name <PermissionStatusEventMap>
+  link change, name <change>
+    like event
+    lock false

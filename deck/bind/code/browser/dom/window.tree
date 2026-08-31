@@ -1,0 +1,474 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/animation-frame-provider
+  find animation-frame-provider
+
+load @term/bind/code/browser/dom/bar-prop
+  find bar-prop
+
+load @term/bind/code/browser/dom/css-style-declaration
+  find css-style-declaration
+
+load @term/bind/code/browser/dom/custom-element-registry
+  find custom-element-registry
+
+load @term/bind/code/browser/dom/device-motion-event
+  find device-motion-event
+
+load @term/bind/code/browser/dom/device-orientation-event
+  find device-orientation-event
+
+load @term/bind/code/browser/dom/document
+  find document
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/browser/dom/external
+  find external
+
+load @term/bind/code/browser/dom/global-event-handlers
+  find global-event-handlers
+
+load @term/bind/code/browser/dom/history
+  find history
+
+load @term/bind/code/browser/dom/idle-request-callback
+  find idle-request-callback
+
+load @term/bind/code/browser/dom/idle-request-options
+  find idle-request-options
+
+load @term/bind/code/browser/dom/location
+  find location
+
+load @term/bind/code/browser/dom/media-query-list
+  find media-query-list
+
+load @term/bind/code/browser/dom/navigator
+  find navigator
+
+load @term/bind/code/browser/dom/screen
+  find screen
+
+load @term/bind/code/browser/dom/scroll-to-options
+  find scroll-to-options
+
+load @term/bind/code/browser/dom/selection
+  find selection
+
+load @term/bind/code/browser/dom/speech-synthesis
+  find speech-synthesis
+
+load @term/bind/code/browser/dom/transferable
+  find transferable
+
+load @term/bind/code/browser/dom/url
+  find url
+
+load @term/bind/code/browser/dom/visual-viewport
+  find visual-viewport
+
+load @term/bind/code/browser/dom/window-event-handlers
+  find window-event-handlers
+
+load @term/bind/code/browser/dom/window-event-map
+  find window-event-map
+
+load @term/bind/code/browser/dom/window-local-storage
+  find window-local-storage
+
+load @term/bind/code/browser/dom/window-or-worker-global-scope
+  find window-or-worker-global-scope
+
+load @term/bind/code/browser/dom/window-post-message-options
+  find window-post-message-options
+
+load @term/bind/code/browser/dom/window-proxy
+  find window-proxy
+
+load @term/bind/code/browser/dom/window-session-storage
+  find window-session-storage
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form window, name <Window>
+  base event-target
+  base animation-frame-provider
+  base global-event-handlers
+  base window-event-handlers
+  base window-local-storage
+  base window-or-worker-global-scope
+  base window-session-storage
+
+  link html-document, name <HTMLDocument>
+    like document
+    lock false
+  link closed, name <closed>
+    like native-boolean
+  link custom-elements, name <customElements>
+    like custom-element-registry
+  link device-pixel-ratio, name <devicePixelRatio>
+    like native-number
+  link document, name <document>
+    like document
+  link event, name <event>
+    like or
+      like event
+      like native-undefined
+  link external, name <external>
+    like external
+  link frame-element, name <frameElement>
+    like or
+      like element
+      like native-null
+  link frames, name <frames>
+    like window-proxy
+  link history, name <history>
+    like history
+  link inner-height, name <innerHeight>
+    like native-number
+  link inner-width, name <innerWidth>
+    like native-number
+  link length, name <length>
+    like native-number
+  link locationbar, name <locationbar>
+    like bar-prop
+  link menubar, name <menubar>
+    like bar-prop
+  link name, name <name>
+    like native-string
+    lock false
+  link navigator, name <navigator>
+    like navigator
+  link ondevicemotion, name <ondevicemotion>
+    like or
+      like task
+        take this, like window
+        take ev, like device-motion-event
+        like native-any
+      like native-null
+    lock false
+  link ondeviceorientation, name <ondeviceorientation>
+    like or
+      like task
+        take this, like window
+        take ev, like device-orientation-event
+        like native-any
+      like native-null
+    lock false
+  link onorientationchange, name <onorientationchange>
+    like or
+      like task
+        take this, like window
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link opener, name <opener>
+    like native-any
+    lock false
+  link orientation, name <orientation>
+    like native-number
+  link outer-height, name <outerHeight>
+    like native-number
+  link outer-width, name <outerWidth>
+    like native-number
+  link page-x-offset, name <pageXOffset>
+    like native-number
+  link page-y-offset, name <pageYOffset>
+    like native-number
+  link parent, name <parent>
+    like or
+      like window-proxy
+      like native-null
+  link personalbar, name <personalbar>
+    like bar-prop
+  link screen, name <screen>
+    like screen
+  link screen-left, name <screenLeft>
+    like native-number
+  link screen-top, name <screenTop>
+    like native-number
+  link screen-x, name <screenX>
+    like native-number
+  link screen-y, name <screenY>
+    like native-number
+  link scroll-x, name <scrollX>
+    like native-number
+  link scroll-y, name <scrollY>
+    like native-number
+  link scrollbars, name <scrollbars>
+    like bar-prop
+  link self, name <self>
+    like and
+      like window
+      like global-this
+  link speech-synthesis, name <speechSynthesis>
+    like speech-synthesis
+  link status, name <status>
+    like native-string
+    lock false
+  link statusbar, name <statusbar>
+    like bar-prop
+  link toolbar, name <toolbar>
+    like bar-prop
+  link top, name <top>
+    like or
+      like window-proxy
+      like native-null
+  link visual-viewport, name <visualViewport>
+    like visual-viewport
+  link window, name <window>
+    like and
+      like window
+      like global-this
+
+  task location, name <location>
+    like location
+
+  task location, name <location>
+    take href
+      like or
+        like native-string
+        like location
+    like native-void
+
+  task alert, name <alert>
+    take message, like maybe
+      like native-any
+    like native-void
+
+  task blur, name <blur>
+    like native-void
+
+  task cancel-idle-callback, name <cancelIdleCallback>
+    take handle, like native-number
+    like native-void
+
+  task capture-events, name <captureEvents>
+    like native-void
+
+  task close, name <close>
+    like native-void
+
+  task confirm, name <confirm>
+    take message, like maybe
+      like native-string
+    like native-boolean
+
+  task focus, name <focus>
+    like native-void
+
+  task get-computed-style, name <getComputedStyle>
+    take elt, like element
+    take pseudo-elt, like maybe
+      like or
+        like native-string
+        like native-null
+    like css-style-declaration
+
+  task get-selection, name <getSelection>
+    like or
+      like selection
+      like native-null
+
+  task match-media, name <matchMedia>
+    take query, like native-string
+    like media-query-list
+
+  task move-by, name <moveBy>
+    take x, like native-number
+    take y, like native-number
+    like native-void
+
+  task move-to, name <moveTo>
+    take x, like native-number
+    take y, like native-number
+    like native-void
+
+  task open, name <open>
+    take url, like maybe
+      like or
+        like native-string
+        like url
+    take target, like maybe
+      like native-string
+    take features, like maybe
+      like native-string
+    like or
+      like window-proxy
+      like native-null
+
+  task post-message, name <postMessage>
+    take message, like native-any
+    take target-origin, like native-string
+    take transfer, like maybe
+      like native-array
+        like transferable
+    like native-void
+
+  task post-message, name <postMessage>
+    take message, like native-any
+    take options, like maybe
+      like window-post-message-options
+    like native-void
+
+  task print, name <print>
+    like native-void
+
+  task prompt, name <prompt>
+    take message, like maybe
+      like native-string
+    take default, like maybe
+      like native-string
+    like or
+      like native-string
+      like native-null
+
+  task release-events, name <releaseEvents>
+    like native-void
+
+  task request-idle-callback, name <requestIdleCallback>
+    take callback, like idle-request-callback
+    take options, like maybe
+      like idle-request-options
+    like native-number
+
+  task resize-by, name <resizeBy>
+    take x, like native-number
+    take y, like native-number
+    like native-void
+
+  task resize-to, name <resizeTo>
+    take width, like native-number
+    take height, like native-number
+    like native-void
+
+  task scroll, name <scroll>
+    take options, like maybe
+      like scroll-to-options
+    like native-void
+
+  task scroll, name <scroll>
+    take x, like native-number
+    take y, like native-number
+    like native-void
+
+  task scroll-by, name <scrollBy>
+    take options, like maybe
+      like scroll-to-options
+    like native-void
+
+  task scroll-by, name <scrollBy>
+    take x, like native-number
+    take y, like native-number
+    like native-void
+
+  task scroll-to, name <scrollTo>
+    take options, like maybe
+      like scroll-to-options
+    like native-void
+
+  task scroll-to, name <scrollTo>
+    take x, like native-number
+    take y, like native-number
+    like native-void
+
+  task stop, name <stop>
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like window-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like window
+        take ev
+          like index
+            like window-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like window-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like window
+        take ev
+          like index
+            like window-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  mesh index, like native-number
+    like window

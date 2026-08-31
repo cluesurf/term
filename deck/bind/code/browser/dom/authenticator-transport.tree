@@ -1,0 +1,7 @@
+
+form authenticator-transport, name <AuthenticatorTransport>
+  like or
+    text <ble>
+    text <internal>
+    text <nfc>
+    text <usb>

@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+load @term/bind/code/browser/dom/gamepad
+  find gamepad
+
+form gamepad-event-init, name <GamepadEventInit>
+  base event-init
+
+  link gamepad, name <gamepad>
+    like gamepad
+    lock false

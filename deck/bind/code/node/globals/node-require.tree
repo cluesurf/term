@@ -1,0 +1,3 @@
+
+form node-require, name <NodeRequire>
+  base node-js-require

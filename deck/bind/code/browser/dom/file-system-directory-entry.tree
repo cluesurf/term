@@ -1,0 +1,56 @@
+
+load @term/bind/code/browser/dom/error-callback
+  find error-callback
+
+load @term/bind/code/browser/dom/file-system-directory-reader
+  find file-system-directory-reader
+
+load @term/bind/code/browser/dom/file-system-entry
+  find file-system-entry
+
+load @term/bind/code/browser/dom/file-system-entry-callback
+  find file-system-entry-callback
+
+load @term/bind/code/browser/dom/file-system-flags
+  find file-system-flags
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form file-system-directory-entry, name <FileSystemDirectoryEntry>
+  base file-system-entry
+
+  task create-reader, name <createReader>
+    like file-system-directory-reader
+
+  task get-directory, name <getDirectory>
+    take path, like maybe
+      like or
+        like native-string
+        like native-null
+    take options, like maybe
+      like file-system-flags
+    take success-callback, like maybe
+      like file-system-entry-callback
+    take error-callback, like maybe
+      like error-callback
+    like native-void
+
+  task get-file, name <getFile>
+    take path, like maybe
+      like or
+        like native-string
+        like native-null
+    take options, like maybe
+      like file-system-flags
+    take success-callback, like maybe
+      like file-system-entry-callback
+    take error-callback, like maybe
+      like error-callback
+    like native-void

@@ -1,0 +1,6 @@
+
+load @term/bind/code/browser/dom/dom-rect-read-only
+  find dom-rect-read-only
+
+form dom-rect, name <DOMRect>
+  base dom-rect-read-only

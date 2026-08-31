@@ -1,0 +1,16 @@
+
+load @term/bind/code/javascript
+  find native-number
+
+load @term/bind/code/node/os
+  find network-interface-base
+
+form network-interface-info-i-pv6, name <NetworkInterfaceInfoIPv6>
+  base network-interface-base
+
+  link family, name <family>
+    text <IPv6>
+    flex true
+  link scopeid, name <scopeid>
+    like native-number
+    flex true

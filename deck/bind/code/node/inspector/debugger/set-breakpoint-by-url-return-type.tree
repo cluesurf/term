@@ -1,0 +1,16 @@
+
+load @term/bind/code/javascript
+  find array
+
+load @term/bind/code/node/inspector/debugger
+  find breakpoint-id
+  find location
+
+form set-breakpoint-by-url-return-type, name <SetBreakpointByUrlReturnType>
+  link breakpoint-id, name <breakpointId>
+    like breakpoint-id
+    flex true
+  link locations, name <locations>
+    like array
+      like location
+    flex true

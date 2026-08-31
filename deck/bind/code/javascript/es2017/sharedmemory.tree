@@ -1,0 +1,19 @@
+
+bear @term/bind/code/javascript/es2015/symbol
+bear @term/bind/code/javascript/es2015/symbol/wellknown
+bear @term/bind/code/javascript/es2017/sharedmemory/shared-array-buffer
+bear @term/bind/code/javascript/es2017/sharedmemory/shared-array-buffer-constructor
+bear @term/bind/code/javascript/es2017/sharedmemory/array-buffer-types
+bear @term/bind/code/javascript/es2017/sharedmemory/atomics
+
+load @term/bind/code/javascript/es2017/sharedmemory/atomics
+  find atomics
+
+load @term/bind/code/javascript/es2017/sharedmemory/shared-array-buffer-constructor
+  find shared-array-buffer-constructor
+
+host shared-array-buffer, name <SharedArrayBuffer>
+  like shared-array-buffer-constructor
+
+host atomics, name <Atomics>
+  like atomics

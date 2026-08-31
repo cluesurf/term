@@ -1,0 +1,23 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form rtc-rtp-codec-parameters, name <RTCRtpCodecParameters>
+  link channels, name <channels>
+    like native-number
+    lock false
+  link clock-rate, name <clockRate>
+    like native-number
+    lock false
+  link mime-type, name <mimeType>
+    like native-string
+    lock false
+  link payload-type, name <payloadType>
+    like native-number
+    lock false
+  link sdp-fmtp-line, name <sdpFmtpLine>
+    like native-string
+    lock false

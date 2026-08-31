@@ -1,0 +1,36 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-undefined
+
+load @term/bind/code/node/globals
+  find abort-signal
+
+form socket-constructor-opts, name <SocketConstructorOpts>
+  link fd, name <fd>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link allow-half-open, name <allowHalfOpen>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link readable, name <readable>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link writable, name <writable>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link signal, name <signal>
+    like abort-signal
+    flex true

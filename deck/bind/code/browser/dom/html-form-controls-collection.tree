@@ -1,0 +1,25 @@
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/browser/dom/html-collection-base
+  find html-collection-base
+
+load @term/bind/code/browser/dom/radio-node-list
+  find radio-node-list
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form html-form-controls-collection, name <HTMLFormControlsCollection>
+  base html-collection-base
+
+  task named-item, name <namedItem>
+    take name, like native-string
+    like or
+      like radio-node-list
+      like element
+      like native-null

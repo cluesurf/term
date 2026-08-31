@@ -1,0 +1,7 @@
+
+form idb-cursor-direction, name <IDBCursorDirection>
+  like or
+    text <next>
+    text <nextunique>
+    text <prev>
+    text <prevunique>

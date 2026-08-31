@@ -1,0 +1,6 @@
+
+load @term/bind/code/browser/dom/audio-node
+  find audio-node
+
+form channel-merger-node, name <ChannelMergerNode>
+  base audio-node

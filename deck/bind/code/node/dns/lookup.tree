@@ -1,0 +1,44 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-number
+  find native-string
+  find promise
+
+load @term/bind
+  find or
+
+load @term/bind/code/node/dns
+  find lookup-address
+  find lookup-all-options
+  find lookup-one-options
+  find lookup-options
+
+task promisify, name <__promisify__>
+  like promise
+    like array
+      like lookup-address
+
+  take hostname, like native-string
+  take options, like lookup-all-options
+
+task promisify, name <__promisify__>
+  like promise
+    like lookup-address
+
+  take hostname, like native-string
+  take options
+    like or
+      like lookup-one-options
+      like native-number
+    void true
+
+task promisify, name <__promisify__>
+  like promise
+    like or
+      like lookup-address
+      like array
+        like lookup-address
+
+  take hostname, like native-string
+  take options, like lookup-options

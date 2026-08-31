@@ -1,0 +1,32 @@
+
+load @term/bind/code/browser/dom/media-session-action
+  find media-session-action
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form media-session-action-details, name <MediaSessionActionDetails>
+  link action, name <action>
+    like media-session-action
+    lock false
+  link fast-seek, name <fastSeek>
+    like or
+      like native-boolean
+      like native-null
+    lock false
+  link seek-offset, name <seekOffset>
+    like or
+      like native-number
+      like native-null
+    lock false
+  link seek-time, name <seekTime>
+    like or
+      like native-number
+      like native-null
+    lock false

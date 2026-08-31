@@ -1,0 +1,6 @@
+
+form color-gamut, name <ColorGamut>
+  like or
+    text <p3>
+    text <rec2020>
+    text <srgb>

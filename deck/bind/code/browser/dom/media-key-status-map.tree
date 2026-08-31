@@ -1,0 +1,46 @@
+
+load @term/bind/code/browser/dom/buffer-source
+  find buffer-source
+
+load @term/bind/code/browser/dom/media-key-status
+  find media-key-status
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form media-key-status-map, name <MediaKeyStatusMap>
+  link size, name <size>
+    like native-number
+
+  task get, name <get>
+    take key-id, like buffer-source
+    like or
+      like media-key-status
+      like native-undefined
+
+  task has, name <has>
+    take key-id, like buffer-source
+    like native-boolean
+
+  task for-each, name <forEach>
+    take callbackfn
+      like task
+        take value, like media-key-status
+        take key, like buffer-source
+        take parent, like media-key-status-map
+        like native-void
+    take this-arg, like maybe
+      like native-any
+    like native-void

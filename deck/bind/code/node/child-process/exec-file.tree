@@ -1,0 +1,240 @@
+
+load @term/bind
+  find and
+  find form
+  find or
+
+load @term/bind/code/javascript
+  find native-null
+  find native-string
+  find native-undefined
+  find object-encoding-options
+  find readonly-array
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/child-process
+  find exec-file-options
+  find exec-file-options-with-buffer-encoding
+  find exec-file-options-with-other-encoding
+  find exec-file-options-with-string-encoding
+  find promise-with-child
+
+task promisify, name <__promisify__>
+  like promise-with-child
+    like form
+      link stdout, name <stdout>
+        like native-string
+        flex true
+      link stderr, name <stderr>
+        like native-string
+        flex true
+
+  take file, like native-string
+
+task promisify, name <__promisify__>
+  like promise-with-child
+    like form
+      link stdout, name <stdout>
+        like native-string
+        flex true
+      link stderr, name <stderr>
+        like native-string
+        flex true
+
+  take file, like native-string
+  take args
+    like or
+      like readonly-array
+        like native-string
+      like native-undefined
+      like native-null
+
+task promisify, name <__promisify__>
+  like promise-with-child
+    like form
+      link stdout, name <stdout>
+        like buffer
+        flex true
+      link stderr, name <stderr>
+        like buffer
+        flex true
+
+  take file, like native-string
+  take options, like exec-file-options-with-buffer-encoding
+
+task promisify, name <__promisify__>
+  like promise-with-child
+    like form
+      link stdout, name <stdout>
+        like buffer
+        flex true
+      link stderr, name <stderr>
+        like buffer
+        flex true
+
+  take file, like native-string
+  take args
+    like or
+      like readonly-array
+        like native-string
+      like native-undefined
+      like native-null
+  take options, like exec-file-options-with-buffer-encoding
+
+task promisify, name <__promisify__>
+  like promise-with-child
+    like form
+      link stdout, name <stdout>
+        like native-string
+        flex true
+      link stderr, name <stderr>
+        like native-string
+        flex true
+
+  take file, like native-string
+  take options, like exec-file-options-with-string-encoding
+
+task promisify, name <__promisify__>
+  like promise-with-child
+    like form
+      link stdout, name <stdout>
+        like native-string
+        flex true
+      link stderr, name <stderr>
+        like native-string
+        flex true
+
+  take file, like native-string
+  take args
+    like or
+      like readonly-array
+        like native-string
+      like native-undefined
+      like native-null
+  take options, like exec-file-options-with-string-encoding
+
+task promisify, name <__promisify__>
+  like promise-with-child
+    like form
+      link stdout, name <stdout>
+        like or
+          like native-string
+          like buffer
+        flex true
+      link stderr, name <stderr>
+        like or
+          like native-string
+          like buffer
+        flex true
+
+  take file, like native-string
+  take options, like exec-file-options-with-other-encoding
+
+task promisify, name <__promisify__>
+  like promise-with-child
+    like form
+      link stdout, name <stdout>
+        like or
+          like native-string
+          like buffer
+        flex true
+      link stderr, name <stderr>
+        like or
+          like native-string
+          like buffer
+        flex true
+
+  take file, like native-string
+  take args
+    like or
+      like readonly-array
+        like native-string
+      like native-undefined
+      like native-null
+  take options, like exec-file-options-with-other-encoding
+
+task promisify, name <__promisify__>
+  like promise-with-child
+    like form
+      link stdout, name <stdout>
+        like native-string
+        flex true
+      link stderr, name <stderr>
+        like native-string
+        flex true
+
+  take file, like native-string
+  take options, like exec-file-options
+
+task promisify, name <__promisify__>
+  like promise-with-child
+    like form
+      link stdout, name <stdout>
+        like native-string
+        flex true
+      link stderr, name <stderr>
+        like native-string
+        flex true
+
+  take file, like native-string
+  take args
+    like or
+      like readonly-array
+        like native-string
+      like native-undefined
+      like native-null
+  take options, like exec-file-options
+
+task promisify, name <__promisify__>
+  like promise-with-child
+    like form
+      link stdout, name <stdout>
+        like or
+          like native-string
+          like buffer
+        flex true
+      link stderr, name <stderr>
+        like or
+          like native-string
+          like buffer
+        flex true
+
+  take file, like native-string
+  take options
+    like or
+      like and
+        like object-encoding-options
+        like exec-file-options
+      like native-undefined
+      like native-null
+
+task promisify, name <__promisify__>
+  like promise-with-child
+    like form
+      link stdout, name <stdout>
+        like or
+          like native-string
+          like buffer
+        flex true
+      link stderr, name <stderr>
+        like or
+          like native-string
+          like buffer
+        flex true
+
+  take file, like native-string
+  take args
+    like or
+      like readonly-array
+        like native-string
+      like native-undefined
+      like native-null
+  take options
+    like or
+      like and
+        like object-encoding-options
+        like exec-file-options
+      like native-undefined
+      like native-null

@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form before-unload-event, name <BeforeUnloadEvent>
+  base event
+
+  link return-value, name <returnValue>
+    like native-any
+    lock false

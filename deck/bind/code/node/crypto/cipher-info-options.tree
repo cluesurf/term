@@ -1,0 +1,19 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+
+form cipher-info-options, name <CipherInfoOptions>
+  link key-length, name <keyLength>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link iv-length, name <ivLength>
+    like or
+      like native-number
+      like native-undefined
+    flex true

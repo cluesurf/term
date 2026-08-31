@@ -1,0 +1,28 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-never
+
+load @term/bind/code/javascript/p
+  find p
+
+form parameters, name <Parameters>
+  head t
+    base task
+      take args, like native-any
+        rest true
+      like native-any
+
+  like test
+    stem roll
+      like t
+      like task
+        take args, name p
+          rest true
+        like native-any
+      hook true
+        like p
+      hook false
+        like native-never

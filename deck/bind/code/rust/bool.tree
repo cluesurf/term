@@ -1,0 +1,886 @@
+
+form bool, name <bool>
+  task then-some, name <then_some>
+    note <Returns Some(t) if the bool is true, or None otherwise.>
+
+    head t
+
+    take self
+      cite free
+    take t
+      like t
+        cite free
+      cite free
+
+    free seed
+      like option
+        like t
+          cite free
+        cite free
+
+  task then, name <then>
+    note <Returns Some(f()) if the bool is true, or None otherwise.>
+
+    lead f
+      like fn-once
+        free seed
+          like t
+            cite free
+
+    head t
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like option
+        like t
+          cite free
+        cite free
+
+  task bitand, name <bitand>
+    note <Performs the & operation.>
+
+    cast c-1
+      like bool
+      like bit-and
+        like bool
+          cite free
+
+    take self
+      cite free
+    take other
+      like bool
+
+    free seed
+      like c-1/output
+
+  task bitand, name <bitand>
+    note <Performs the & operation.>
+
+    cast c-1
+      like bool
+      like bit-and
+        like bool
+          cite free
+
+    take self
+      cite free
+    take other
+      like bool
+
+    free seed
+      like c-1/output
+
+  task bitand, name <bitand>
+    note <Performs the & operation.>
+
+    take self
+      cite free
+    take rhs
+      like mask
+        like t
+          cite free
+        like lanes
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like mask
+        like t
+          cite free
+        like lanes
+          cite free
+        cite free
+
+  task bitand, name <bitand>
+    note <Performs the & operation.>
+
+    take self
+      cite free
+    take rhs
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task bitand, name <bitand>
+    note <Performs the & operation.>
+
+    cast c-1
+      like bool
+      like bit-and
+        like bool
+          cite free
+
+    take self
+      cite free
+    take other
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task bitand, name <bitand>
+    note <Performs the & operation.>
+
+    take self
+      cite free
+    take rhs
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like mask
+        like t
+          cite free
+        like lanes
+          cite free
+        cite free
+
+  task bitand-assign, name <bitand_assign>
+    note <Performs the &= operation.>
+
+    take self
+      cite free
+    take other
+      like bool
+
+  task bitand-assign, name <bitand_assign>
+    note <Performs the &= operation.>
+
+    take self
+      cite free
+    take other
+      like bool
+        cite free
+      cite free
+
+  task bitand-assign, name <bitand_assign>
+    note <Performs the &= operation.>
+
+    take self
+      cite free
+    take rhs
+      like bool
+        cite free
+      cite free
+
+  task bitor, name <bitor>
+    note <Performs the | operation.>
+
+    cast c-1
+      like bool
+      like bit-or
+        like bool
+          cite free
+
+    take self
+      cite free
+    take other
+      like bool
+
+    free seed
+      like c-1/output
+
+  task bitor, name <bitor>
+    note <Performs the | operation.>
+
+    cast c-1
+      like bool
+      like bit-or
+        like bool
+          cite free
+
+    take self
+      cite free
+    take other
+      like bool
+
+    free seed
+      like c-1/output
+
+  task bitor, name <bitor>
+    note <Performs the | operation.>
+
+    take self
+      cite free
+    take rhs
+      like mask
+        like t
+          cite free
+        like lanes
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like mask
+        like t
+          cite free
+        like lanes
+          cite free
+        cite free
+
+  task bitor, name <bitor>
+    note <Performs the | operation.>
+
+    take self
+      cite free
+    take rhs
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task bitor, name <bitor>
+    note <Performs the | operation.>
+
+    take self
+      cite free
+    take rhs
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like mask
+        like t
+          cite free
+        like lanes
+          cite free
+        cite free
+
+  task bitor, name <bitor>
+    note <Performs the | operation.>
+
+    cast c-1
+      like bool
+      like bit-or
+        like bool
+          cite free
+
+    take self
+      cite free
+    take other
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task bitor-assign, name <bitor_assign>
+    note <Performs the |= operation.>
+
+    take self
+      cite free
+    take other
+      like bool
+
+  task bitor-assign, name <bitor_assign>
+    note <Performs the |= operation.>
+
+    take self
+      cite free
+    take rhs
+      like bool
+        cite free
+      cite free
+
+  task bitor-assign, name <bitor_assign>
+    note <Performs the |= operation.>
+
+    take self
+      cite free
+    take other
+      like bool
+        cite free
+      cite free
+
+  task bitxor, name <bitxor>
+    note <Performs the ^ operation.>
+
+    cast c-1
+      like bool
+      like bit-xor
+        like bool
+          cite free
+
+    take self
+      cite free
+    take other
+      like bool
+
+    free seed
+      like c-1/output
+
+  task bitxor, name <bitxor>
+    note <Performs the ^ operation.>
+
+    cast c-1
+      like bool
+      like bit-xor
+        like bool
+          cite free
+
+    take self
+      cite free
+    take other
+      like bool
+
+    free seed
+      like c-1/output
+
+  task bitxor, name <bitxor>
+    note <Performs the ^ operation.>
+
+    cast c-1
+      like bool
+      like bit-xor
+        like mask
+          like t
+            cite free
+          like lanes
+            cite free
+          cite free
+
+    take self
+      cite free
+    take rhs
+      like mask
+        like t
+          cite free
+        like lanes
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task bitxor, name <bitxor>
+    note <Performs the ^ operation.>
+
+    cast c-1
+      like mask
+        like t
+          cite free
+        like lanes
+          cite free
+      like bit-xor
+        like bool
+          cite free
+
+    take self
+      cite free
+    take rhs
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task bitxor, name <bitxor>
+    note <Performs the ^ operation.>
+
+    take self
+      cite free
+    take other
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task bitxor, name <bitxor>
+    note <Performs the ^ operation.>
+
+    cast c-1
+      like bool
+      like bit-xor
+        like bool
+          cite free
+
+    take self
+      cite free
+    take other
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task bitxor-assign, name <bitxor_assign>
+    note <Performs the ^= operation.>
+
+    take self
+      cite free
+    take other
+      like bool
+
+  task bitxor-assign, name <bitxor_assign>
+    note <Performs the ^= operation.>
+
+    take self
+      cite free
+    take other
+      like bool
+        cite free
+      cite free
+
+  task bitxor-assign, name <bitxor_assign>
+    note <Performs the ^= operation.>
+
+    take self
+      cite free
+    take rhs
+      like bool
+        cite free
+      cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Returns the default value of false>
+
+    free seed
+      like bool
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a bool to a u64. The resulting value is 0 for false and 1 for true values.>
+
+    take small
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task from, name <from>
+    note <Converts a bool to a i128. The resulting value is 0 for false and 1 for true values.>
+
+    take small
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like i128
+        cite free
+
+  task from, name <from>
+    note <Converts a bool to a u32. The resulting value is 0 for false and 1 for true values.>
+
+    take small
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like u32
+        cite free
+
+  task from, name <from>
+    note <Converts a bool to a i16. The resulting value is 0 for false and 1 for true values.>
+
+    take small
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like i16
+        cite free
+
+  task from, name <from>
+    note <Converts a bool into an AtomicBool.>
+
+    take b
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like atomic-bool
+        cite free
+
+  task from, name <from>
+    note <Converts a bool to a i8. The resulting value is 0 for false and 1 for true values.>
+
+    take small
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like i8
+        cite free
+
+  task from, name <from>
+    note <Converts a bool to a u128. The resulting value is 0 for false and 1 for true values.>
+
+    take small
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like u128
+        cite free
+
+  task from, name <from>
+    note <Converts a bool to a usize. The resulting value is 0 for false and 1 for true values.>
+
+    take small
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task from, name <from>
+    note <Converts a bool to a u8. The resulting value is 0 for false and 1 for true values.>
+
+    take small
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like u8
+        cite free
+
+  task from, name <from>
+    note <Converts a bool to a isize. The resulting value is 0 for false and 1 for true values.>
+
+    take small
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like isize
+        cite free
+
+  task from, name <from>
+    note <Converts a bool to a i32. The resulting value is 0 for false and 1 for true values.>
+
+    take small
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like i32
+        cite free
+
+  task from, name <from>
+    note <Converts a bool to a u16. The resulting value is 0 for false and 1 for true values.>
+
+    take small
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like u16
+        cite free
+
+  task from, name <from>
+    note <Converts a bool to a i64. The resulting value is 0 for false and 1 for true values.>
+
+    take small
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like i64
+        cite free
+
+  task from-str, name <from_str>
+    note <Parse a bool from a string.>
+
+    take s
+      like str
+
+    free seed
+      like result
+        like bool
+          cite free
+        like parse-bool-error
+          cite free
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task not, name <not>
+    note <Performs the unary ! operation.>
+
+    cast c-1
+      like bool
+      like not
+
+    take self
+      cite free
+
+    free seed
+      like c-1/output
+
+  task not, name <not>
+    note <Performs the unary ! operation.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like bool
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like bool
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like bool
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like bool
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free

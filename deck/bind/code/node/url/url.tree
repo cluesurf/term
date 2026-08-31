@@ -1,0 +1,121 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find blob
+  find native-boolean
+  find native-null
+  find native-string
+  find native-void
+
+load @term/bind/code/node/querystring
+  find parsed-url-query
+
+load @term/bind/code/node/url
+  find url
+  find url-search-params
+
+form url, name <Url>
+  link auth, name <auth>
+    like or
+      like native-string
+      like native-null
+    flex true
+  link hash, name <hash>
+    like or
+      like native-string
+      like native-null
+    flex true
+  link host, name <host>
+    like or
+      like native-string
+      like native-null
+    flex true
+  link hostname, name <hostname>
+    like or
+      like native-string
+      like native-null
+    flex true
+  link href, name <href>
+    like native-string
+    flex true
+  link path, name <path>
+    like or
+      like native-string
+      like native-null
+    flex true
+  link pathname, name <pathname>
+    like or
+      like native-string
+      like native-null
+    flex true
+  link protocol, name <protocol>
+    like or
+      like native-string
+      like native-null
+    flex true
+  link search, name <search>
+    like or
+      like native-string
+      like native-null
+    flex true
+  link slashes, name <slashes>
+    like or
+      like native-boolean
+      like native-null
+    flex true
+  link port, name <port>
+    like or
+      like native-string
+      like native-null
+    flex true
+  link query, name <query>
+    like or
+      like native-string
+      like native-null
+      like parsed-url-query
+    flex true
+
+form url, name <URL>
+  link hash, name <hash>, like native-string
+  link host, name <host>, like native-string
+  link hostname, name <hostname>, like native-string
+  link href, name <href>, like native-string
+  link origin, name <origin>, like native-string
+  link password, name <password>, like native-string
+  link pathname, name <pathname>, like native-string
+  link port, name <port>, like native-string
+  link protocol, name <protocol>, like native-string
+  link search, name <search>, like native-string
+  link search-params, name <searchParams>, like url-search-params
+  link username, name <username>, like native-string
+
+  task to-string, name <toString>
+    like native-string
+
+  task to-json, name <toJSON>
+    like native-string
+
+form url-constructor
+  task create-object-url, name <createObjectURL>
+    like native-string
+
+    take blob, like blob
+
+  task revoke-object-url, name <revokeObjectURL>
+    like native-void
+
+    take object-url, like native-string
+
+  hook make
+    take input, like native-string
+    take base
+      like or
+        like native-string
+        like url
+      void true
+
+form url, name <URL>
+  home true
+  base url

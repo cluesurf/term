@@ -1,0 +1,20 @@
+
+load @term/bind/code/javascript/es2015/iterable/iterator-return-result
+  find iterator-return-result
+
+load @term/bind/code/javascript/es2015/iterable/iterator-yield-result
+  find iterator-yield-result
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form iterator-result, name <IteratorResult>
+  head t
+  head t-return
+    back native-any
+
+  like or
+    like iterator-yield-result
+      like t
+    like iterator-return-result
+      like t-return

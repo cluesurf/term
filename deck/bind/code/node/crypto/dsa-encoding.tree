@@ -1,0 +1,8 @@
+
+load @term/bind
+  find or
+
+form dsa-encoding, name <DSAEncoding>
+  like or
+    text <der>
+    text <ieee-p1363>

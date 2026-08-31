@@ -1,0 +1,16 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-void
+  find promise
+
+load @term/bind/code/node/fs
+  find time-like
+
+task promisify, name <__promisify__>
+  like promise
+    like native-void
+
+  take fd, like native-number
+  take atime, like time-like
+  take mtime, like time-like

@@ -1,0 +1,1071 @@
+
+form b-tree-map, name <std::collections::BTreeMap>
+  task new, name <new>
+    note <Makes a new, empty BTreeMap.>
+
+    free seed
+      like b-tree-map
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task clear, name <clear>
+    note <Clears the map, removing all elements.>
+
+    take self
+      cite free
+
+  task get, name <get>
+    note <Returns a reference to the value corresponding to the key.>
+
+    lead k
+      like borrow
+        like q
+          cite free
+        cite free
+    lead q
+      like ord
+        cite free
+
+    head q
+
+    take self
+      cite free
+    take key
+      like q
+
+    free seed
+      like option
+        like v
+        cite free
+
+  task get-key-value, name <get_key_value>
+    note <Returns the key-value pair corresponding to the supplied key.>
+
+    lead k
+      like borrow
+        like q
+          cite free
+        cite free
+    lead q
+      like ord
+        cite free
+
+    head q
+
+    take self
+      cite free
+    take k
+      like q
+
+    free seed
+      like option
+        like form
+          take t-1, like k
+          take t-2, like v
+        cite free
+
+  task first-key-value, name <first_key_value>
+    note <Returns the first key-value pair in the map. The key in this pair is the minimum key in the map.>
+
+    lead k
+      like ord
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like form
+          take t-1, like k
+          take t-2, like v
+        cite free
+
+  task first-entry, name <first_entry>
+    note <Returns the first entry in the map for in-place manipulation. The key of this entry is the minimum key in the map.>
+
+    lead k
+      like ord
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like occupied-entry
+          time mask
+          like k
+            cite free
+          like v
+            cite free
+          cite free
+        cite free
+
+  task pop-first, name <pop_first>
+    note <Removes and returns the first element in the map. The key of this element is the minimum key that was in the map.>
+
+    lead k
+      like ord
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like form
+          take t-1, like k
+          take t-2, like v
+        cite free
+
+  task last-key-value, name <last_key_value>
+    note <Returns the last key-value pair in the map. The key in this pair is the maximum key in the map.>
+
+    lead k
+      like ord
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like form
+          take t-1, like k
+          take t-2, like v
+        cite free
+
+  task last-entry, name <last_entry>
+    note <Returns the last entry in the map for in-place manipulation. The key of this entry is the maximum key in the map.>
+
+    lead k
+      like ord
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like occupied-entry
+          time mask
+          like k
+            cite free
+          like v
+            cite free
+          cite free
+        cite free
+
+  task pop-last, name <pop_last>
+    note <Removes and returns the last element in the map. The key of this element is the maximum key that was in the map.>
+
+    lead k
+      like ord
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like form
+          take t-1, like k
+          take t-2, like v
+        cite free
+
+  task contains-key, name <contains_key>
+    note <Returns true if the map contains a value for the specified key.>
+
+    lead k
+      like borrow
+        like q
+          cite free
+        cite free
+    lead q
+      like ord
+        cite free
+
+    head q
+
+    take self
+      cite free
+    take key
+      like q
+
+    free seed
+      like bool
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the value corresponding to the key.>
+
+    lead k
+      like borrow
+        like q
+          cite free
+        cite free
+    lead q
+      like ord
+        cite free
+
+    head q
+
+    take self
+      cite free
+    take key
+      like q
+
+    free seed
+      like option
+        like v
+        cite free
+
+  task insert, name <insert>
+    note <Inserts a key-value pair into the map.>
+
+    lead k
+      like ord
+        cite free
+
+    take self
+      cite free
+    take key
+      like k
+        cite free
+      cite free
+    take value
+      like v
+        cite free
+      cite free
+
+    free seed
+      like option
+        like v
+          cite free
+        cite free
+
+  task try-insert, name <try_insert>
+    note <Tries to insert a key-value pair into the map, and returns a mutable reference to the value in the entry.>
+
+    lead k
+      like ord
+        cite free
+
+    take self
+      cite free
+    take key
+      like k
+        cite free
+      cite free
+    take value
+      like v
+        cite free
+      cite free
+
+    free seed
+      like result
+        like v
+        like occupied-error
+          time mask
+          like k
+            cite free
+          like v
+            cite free
+          cite free
+        cite free
+
+  task remove, name <remove>
+    note <Removes a key from the map, returning the value at the key if the key was previously in the map.>
+
+    lead k
+      like borrow
+        like q
+          cite free
+        cite free
+    lead q
+      like ord
+        cite free
+
+    head q
+
+    take self
+      cite free
+    take key
+      like q
+
+    free seed
+      like option
+        like v
+          cite free
+        cite free
+
+  task remove-entry, name <remove_entry>
+    note <Removes a key from the map, returning the stored key and value if the key was previously in the map.>
+
+    lead k
+      like borrow
+        like q
+          cite free
+        cite free
+    lead q
+      like ord
+        cite free
+
+    head q
+
+    take self
+      cite free
+    take key
+      like q
+
+    free seed
+      like option
+        like form
+          take t-1, like k
+          take t-2, like v
+        cite free
+
+  task retain, name <retain>
+    note <Retains only the elements specified by the predicate.>
+
+    lead k
+      like ord
+        cite free
+    lead f
+      like fn-mut
+        take f-1, like k
+        take f-2, like v
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+  task append, name <append>
+    note <Moves all elements from other into Self, leaving other empty.>
+
+    lead k
+      like ord
+        cite free
+
+    take self
+      cite free
+    take other
+      like b-tree-map
+        like k
+          cite free
+        like v
+          cite free
+      lock free
+
+  task range, name <range>
+    note <Constructs a double-ended iterator over a sub-range of elements in the map. The simplest way is to use the range syntax min..max, thus range(min..max) will yield elements from min (inclusive) to max (exclusive). The range may also be entered as (Bound&lt;T&gt;, Bound&lt;T&gt;), so for example range((Excluded(4), Included(10))) will yield a left-exclusive, right-inclusive range from 4 to 10.>
+
+    lead t
+      like ord
+        cite free
+    lead k
+      like borrow
+        like t
+          cite free
+        cite free
+    lead r
+      like range-bounds
+        like t
+          cite free
+        cite free
+
+    head t
+    head r
+
+    take self
+      cite free
+    take range
+      like r
+        cite free
+      cite free
+
+    free seed
+      like range
+        time mask
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task range-mut, name <range_mut>
+    note <Constructs a mutable double-ended iterator over a sub-range of elements in the map. The simplest way is to use the range syntax min..max, thus range(min..max) will yield elements from min (inclusive) to max (exclusive). The range may also be entered as (Bound&lt;T&gt;, Bound&lt;T&gt;), so for example range((Excluded(4), Included(10))) will yield a left-exclusive, right-inclusive range from 4 to 10.>
+
+    lead t
+      like ord
+        cite free
+    lead k
+      like borrow
+        like t
+          cite free
+        cite free
+    lead r
+      like range-bounds
+        like t
+          cite free
+        cite free
+
+    head t
+    head r
+
+    take self
+      cite free
+    take range
+      like r
+        cite free
+      cite free
+
+    free seed
+      like range-mut
+        time mask
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task entry, name <entry>
+    note <Gets the given key's corresponding entry in the map for in-place manipulation.>
+
+    lead k
+      like ord
+        cite free
+
+    take self
+      cite free
+    take key
+      like k
+        cite free
+      cite free
+
+    free seed
+      like entry
+        time mask
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task split-off, name <split_off>
+    note <Splits the collection into two at the given key. Returns everything after the given key, including the key.>
+
+    lead q
+      like ord
+        cite free
+    lead k
+      like borrow
+        like q
+          cite free
+        cite free
+
+    head q
+
+    take self
+      cite free
+    take key
+      like q
+
+    free seed
+      like b-tree-map
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task drain-filter, name <drain_filter>
+    note <Creates an iterator that visits all elements (key-value pairs) in ascending key order and uses a closure to determine if an element should be removed. If the closure returns true, the element is removed from the map and yielded. If the closure returns false, or panics, the element remains in the map and will not be yielded.>
+
+    lead k
+      like ord
+        cite free
+    lead f
+      like fn-mut
+        take f-1, like k
+        take f-2, like v
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take pred
+      like f
+        cite free
+      cite free
+
+    free seed
+      like drain-filter
+        time mask
+        like k
+          cite free
+        like v
+          cite free
+        like f
+          cite free
+        cite free
+
+  task into-keys, name <into_keys>
+    note <Creates a consuming iterator visiting all the keys, in sorted order. The map cannot be used after calling this. The iterator element type is K.>
+
+    take self
+      cite free
+
+    free seed
+      like into-keys
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task into-values, name <into_values>
+    note <Creates a consuming iterator visiting all the values, in order by key. The map cannot be used after calling this. The iterator element type is V.>
+
+    take self
+      cite free
+
+    free seed
+      like into-values
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task iter, name <iter>
+    note <Gets an iterator over the entries of the map, sorted by key.>
+
+    take self
+      cite free
+
+    free seed
+      like iter
+        time mask
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task iter-mut, name <iter_mut>
+    note <Gets a mutable iterator over the entries of the map, sorted by key.>
+
+    take self
+      cite free
+
+    free seed
+      like iter-mut
+        time mask
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task keys, name <keys>
+    note <Gets an iterator over the keys of the map, in sorted order.>
+
+    take self
+      cite free
+
+    free seed
+      like keys
+        time mask
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task values, name <values>
+    note <Gets an iterator over the values of the map, in order by key.>
+
+    take self
+      cite free
+
+    free seed
+      like values
+        time mask
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task values-mut, name <values_mut>
+    note <Gets a mutable iterator over the values of the map, in order by key.>
+
+    take self
+      cite free
+
+    free seed
+      like values-mut
+        time mask
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task len, name <len>
+    note <Returns the number of elements in the map.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task is-empty, name <is_empty>
+    note <Returns true if the map contains no elements.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like b-tree-map
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Creates an empty BTreeMap.>
+
+    free seed
+      like b-tree-map
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task drop, name <drop>
+    note <Executes the destructor for this type.>
+
+    take self
+      cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like form
+              take t-1, like k
+              take t-2, like v
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead t
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like form
+              take t-1, like k
+              take t-2, like v
+        cite free
+
+    head t
+
+    take self
+      cite free
+    take iter
+      like t
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task from, name <from>
+    take arr
+      like list
+        like form
+          like form
+            take t-1, like k
+            take t-2, like v
+        name n
+      cite free
+
+    free seed
+      like b-tree-map
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    lead t
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like form
+              take t-1, like k
+              take t-2, like v
+        cite free
+
+    head t
+
+    take iter
+      like t
+        cite free
+      cite free
+
+    free seed
+      like b-tree-map
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task index, name <index>
+    note <Returns a reference to the value corresponding to the supplied key.>
+
+    take self
+      cite free
+    take key
+      like q
+
+    free seed
+      like v
+
+  task into-iter, name <into_iter>
+    note <Creates an iterator from a value.>
+
+    take self
+      cite free
+
+    free seed
+      like iter-mut
+        time a
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task into-iter, name <into_iter>
+    note <Creates an iterator from a value.>
+
+    take self
+      cite free
+
+    free seed
+      like into-iter
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task into-iter, name <into_iter>
+    note <Creates an iterator from a value.>
+
+    take self
+      cite free
+
+    free seed
+      like iter
+        time a
+        like k
+          cite free
+        like v
+          cite free
+        cite free
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like b-tree-map
+        like k
+          cite free
+        like v
+          cite free
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like b-tree-map
+        like k
+          cite free
+        like v
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like b-tree-map
+        like k
+          cite free
+        like v
+          cite free
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free

@@ -1,0 +1,264 @@
+
+load @term/bind/code/javascript/es5/array-buffer-like
+  find array-buffer-like
+
+load @term/bind/code/javascript/es5/array-like
+  find array-like
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-this
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+load @term/bind/code/javascript/native
+  find native-unknown
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form int32-array, name <Int32Array>
+  link bytes-per-element, name <BYTES_PER_ELEMENT>
+    like native-number
+  link buffer, name <buffer>
+    like array-buffer-like
+  link byte-length, name <byteLength>
+    like native-number
+  link byte-offset, name <byteOffset>
+    like native-number
+  link length, name <length>
+    like native-number
+
+  task copy-within, name <copyWithin>
+    take target, like native-number
+    take start, like native-number
+    take end, like maybe
+      like native-number
+    like native-this
+
+  task every, name <every>
+    take predicate
+      like task
+        take value, like native-number
+        take index, like native-number
+        take array, like int32-array
+        like native-unknown
+    take this-arg, like maybe
+      like native-any
+    like native-boolean
+
+  task fill, name <fill>
+    take value, like native-number
+    take start, like maybe
+      like native-number
+    take end, like maybe
+      like native-number
+    like native-this
+
+  task filter, name <filter>
+    take predicate
+      like task
+        take value, like native-number
+        take index, like native-number
+        take array, like int32-array
+        like native-any
+    take this-arg, like maybe
+      like native-any
+    like int32-array
+
+  task find, name <find>
+    take predicate
+      like task
+        take value, like native-number
+        take index, like native-number
+        take obj, like int32-array
+        like native-boolean
+    take this-arg, like maybe
+      like native-any
+    like or
+      like native-number
+      like native-undefined
+
+  task find-index, name <findIndex>
+    take predicate
+      like task
+        take value, like native-number
+        take index, like native-number
+        take obj, like int32-array
+        like native-boolean
+    take this-arg, like maybe
+      like native-any
+    like native-number
+
+  task for-each, name <forEach>
+    take callbackfn
+      like task
+        take value, like native-number
+        take index, like native-number
+        take array, like int32-array
+        like native-void
+    take this-arg, like maybe
+      like native-any
+    like native-void
+
+  task index-of, name <indexOf>
+    take search-element, like native-number
+    take from-index, like maybe
+      like native-number
+    like native-number
+
+  task join, name <join>
+    take separator, like maybe
+      like native-string
+    like native-string
+
+  task last-index-of, name <lastIndexOf>
+    take search-element, like native-number
+    take from-index, like maybe
+      like native-number
+    like native-number
+
+  task map, name <map>
+    take callbackfn
+      like task
+        take value, like native-number
+        take index, like native-number
+        take array, like int32-array
+        like native-number
+    take this-arg, like maybe
+      like native-any
+    like int32-array
+
+  task reduce, name <reduce>
+    take callbackfn
+      like task
+        take previous-value, like native-number
+        take current-value, like native-number
+        take current-index, like native-number
+        take array, like int32-array
+        like native-number
+    like native-number
+
+  task reduce, name <reduce>
+    take callbackfn
+      like task
+        take previous-value, like native-number
+        take current-value, like native-number
+        take current-index, like native-number
+        take array, like int32-array
+        like native-number
+    take initial-value, like native-number
+    like native-number
+
+  task reduce, name <reduce>
+    head u
+    take callbackfn
+      like task
+        take previous-value, like u
+        take current-value, like native-number
+        take current-index, like native-number
+        take array, like int32-array
+        like u
+    take initial-value, like u
+    like u
+
+  task reduce-right, name <reduceRight>
+    take callbackfn
+      like task
+        take previous-value, like native-number
+        take current-value, like native-number
+        take current-index, like native-number
+        take array, like int32-array
+        like native-number
+    like native-number
+
+  task reduce-right, name <reduceRight>
+    take callbackfn
+      like task
+        take previous-value, like native-number
+        take current-value, like native-number
+        take current-index, like native-number
+        take array, like int32-array
+        like native-number
+    take initial-value, like native-number
+    like native-number
+
+  task reduce-right, name <reduceRight>
+    head u
+    take callbackfn
+      like task
+        take previous-value, like u
+        take current-value, like native-number
+        take current-index, like native-number
+        take array, like int32-array
+        like u
+    take initial-value, like u
+    like u
+
+  task reverse, name <reverse>
+    like int32-array
+
+  task set, name <set>
+    take array
+      like array-like
+        like native-number
+    take offset, like maybe
+      like native-number
+    like native-void
+
+  task slice, name <slice>
+    take start, like maybe
+      like native-number
+    take end, like maybe
+      like native-number
+    like int32-array
+
+  task some, name <some>
+    take predicate
+      like task
+        take value, like native-number
+        take index, like native-number
+        take array, like int32-array
+        like native-unknown
+    take this-arg, like maybe
+      like native-any
+    like native-boolean
+
+  task sort, name <sort>
+    take compare-fn, like maybe
+      like task
+        take a, like native-number
+        take b, like native-number
+        like native-number
+    like native-this
+
+  task subarray, name <subarray>
+    take begin, like maybe
+      like native-number
+    take end, like maybe
+      like native-number
+    like int32-array
+
+  task to-locale-string, name <toLocaleString>
+    like native-string
+
+  task to-string, name <toString>
+    like native-string
+
+  task value-of, name <valueOf>
+    like int32-array
+
+  mesh index, like native-number
+    like native-number

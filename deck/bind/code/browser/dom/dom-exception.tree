@@ -1,0 +1,64 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form dom-exception, name <DOMException>
+  link code, name <code>
+    like native-number
+  link message, name <message>
+    like native-string
+  link name, name <name>
+    like native-string
+  link abort-err, name <ABORT_ERR>
+    like native-number
+  link data-clone-err, name <DATA_CLONE_ERR>
+    like native-number
+  link domstring-size-err, name <DOMSTRING_SIZE_ERR>
+    like native-number
+  link hierarchy-request-err, name <HIERARCHY_REQUEST_ERR>
+    like native-number
+  link index-size-err, name <INDEX_SIZE_ERR>
+    like native-number
+  link inuse-attribute-err, name <INUSE_ATTRIBUTE_ERR>
+    like native-number
+  link invalid-access-err, name <INVALID_ACCESS_ERR>
+    like native-number
+  link invalid-character-err, name <INVALID_CHARACTER_ERR>
+    like native-number
+  link invalid-modification-err, name <INVALID_MODIFICATION_ERR>
+    like native-number
+  link invalid-node-type-err, name <INVALID_NODE_TYPE_ERR>
+    like native-number
+  link invalid-state-err, name <INVALID_STATE_ERR>
+    like native-number
+  link namespace-err, name <NAMESPACE_ERR>
+    like native-number
+  link network-err, name <NETWORK_ERR>
+    like native-number
+  link not-found-err, name <NOT_FOUND_ERR>
+    like native-number
+  link not-supported-err, name <NOT_SUPPORTED_ERR>
+    like native-number
+  link no-data-allowed-err, name <NO_DATA_ALLOWED_ERR>
+    like native-number
+  link no-modification-allowed-err, name <NO_MODIFICATION_ALLOWED_ERR>
+    like native-number
+  link quota-exceeded-err, name <QUOTA_EXCEEDED_ERR>
+    like native-number
+  link security-err, name <SECURITY_ERR>
+    like native-number
+  link syntax-err, name <SYNTAX_ERR>
+    like native-number
+  link timeout-err, name <TIMEOUT_ERR>
+    like native-number
+  link type-mismatch-err, name <TYPE_MISMATCH_ERR>
+    like native-number
+  link url-mismatch-err, name <URL_MISMATCH_ERR>
+    like native-number
+  link validation-err, name <VALIDATION_ERR>
+    like native-number
+  link wrong-document-err, name <WRONG_DOCUMENT_ERR>
+    like native-number

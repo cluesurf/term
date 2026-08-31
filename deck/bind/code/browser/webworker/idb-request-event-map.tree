@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/idb-request-event-map
+  find idb-request-event-map
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+form idb-request-event-map, name <IDBRequestEventMap>
+  link error, name <error>
+    like event
+    lock false
+  link success, name <success>
+    like event
+    lock false

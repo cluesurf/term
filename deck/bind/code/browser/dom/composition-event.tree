@@ -1,0 +1,38 @@
+
+load @term/bind/code/browser/dom/ui-event
+  find ui-event
+
+load @term/bind/code/browser/dom/window-proxy
+  find window-proxy
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form composition-event, name <CompositionEvent>
+  base ui-event
+
+  link data, name <data>
+    like native-string
+
+  task init-composition-event, name <initCompositionEvent>
+    take type-arg, like native-string
+    take bubbles-arg, like maybe
+      like native-boolean
+    take cancelable-arg, like maybe
+      like native-boolean
+    take view-arg, like maybe
+      like or
+        like window-proxy
+        like native-null
+    take data-arg, like maybe
+      like native-string
+    like native-void

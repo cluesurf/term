@@ -1,0 +1,48 @@
+
+load @term/bind/code/browser/webworker/client
+  find client
+
+load @term/bind/code/browser/webworker/extendable-event-init
+  find extendable-event-init
+
+load @term/bind/code/browser/webworker/message-port
+  find message-port
+
+load @term/bind/code/browser/webworker/service-worker
+  find service-worker
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form extendable-message-event-init, name <ExtendableMessageEventInit>
+  base extendable-event-init
+
+  link data, name <data>
+    like native-any
+    lock false
+  link last-event-id, name <lastEventId>
+    like native-string
+    lock false
+  link origin, name <origin>
+    like native-string
+    lock false
+  link ports, name <ports>
+    like native-array
+      like message-port
+    lock false
+  link source, name <source>
+    like or
+      like client
+      like service-worker
+      like message-port
+      like native-null
+    lock false

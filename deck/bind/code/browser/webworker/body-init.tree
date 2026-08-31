@@ -1,0 +1,31 @@
+
+load @term/bind/code/browser/webworker/blob
+  find blob
+
+load @term/bind/code/browser/webworker/buffer-source
+  find buffer-source
+
+load @term/bind/code/browser/webworker/form-data
+  find form-data
+
+load @term/bind/code/browser/webworker/readable-stream
+  find readable-stream
+
+load @term/bind/code/browser/webworker/url-search-params
+  find url-search-params
+
+load @term/bind/code/javascript/es5/uint8-array
+  find uint8-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form body-init, name <BodyInit>
+  like or
+    like blob
+    like buffer-source
+    like form-data
+    like url-search-params
+    like readable-stream
+      like uint8-array
+    like native-string

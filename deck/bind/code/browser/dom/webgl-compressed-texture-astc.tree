@@ -1,0 +1,71 @@
+
+load @term/bind/code/browser/dom/g-lenum
+  find g-lenum
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form webgl-compressed-texture-astc, name <WEBGL_compressed_texture_astc>
+  link compressed-rgba-astc-10x10-khr, name <COMPRESSED_RGBA_ASTC_10x10_KHR>
+    like g-lenum
+  link compressed-rgba-astc-10x5-khr, name <COMPRESSED_RGBA_ASTC_10x5_KHR>
+    like g-lenum
+  link compressed-rgba-astc-10x6-khr, name <COMPRESSED_RGBA_ASTC_10x6_KHR>
+    like g-lenum
+  link compressed-rgba-astc-10x8-khr, name <COMPRESSED_RGBA_ASTC_10x8_KHR>
+    like g-lenum
+  link compressed-rgba-astc-12x10-khr, name <COMPRESSED_RGBA_ASTC_12x10_KHR>
+    like g-lenum
+  link compressed-rgba-astc-12x12-khr, name <COMPRESSED_RGBA_ASTC_12x12_KHR>
+    like g-lenum
+  link compressed-rgba-astc-4x4-khr, name <COMPRESSED_RGBA_ASTC_4x4_KHR>
+    like g-lenum
+  link compressed-rgba-astc-5x4-khr, name <COMPRESSED_RGBA_ASTC_5x4_KHR>
+    like g-lenum
+  link compressed-rgba-astc-5x5-khr, name <COMPRESSED_RGBA_ASTC_5x5_KHR>
+    like g-lenum
+  link compressed-rgba-astc-6x5-khr, name <COMPRESSED_RGBA_ASTC_6x5_KHR>
+    like g-lenum
+  link compressed-rgba-astc-6x6-khr, name <COMPRESSED_RGBA_ASTC_6x6_KHR>
+    like g-lenum
+  link compressed-rgba-astc-8x5-khr, name <COMPRESSED_RGBA_ASTC_8x5_KHR>
+    like g-lenum
+  link compressed-rgba-astc-8x6-khr, name <COMPRESSED_RGBA_ASTC_8x6_KHR>
+    like g-lenum
+  link compressed-rgba-astc-8x8-khr, name <COMPRESSED_RGBA_ASTC_8x8_KHR>
+    like g-lenum
+  link compressed-srgb8-alpha8-astc-10x10-khr, name <COMPRESSED_SRGB8_ALPHA8_ASTC_10x10_KHR>
+    like g-lenum
+  link compressed-srgb8-alpha8-astc-10x5-khr, name <COMPRESSED_SRGB8_ALPHA8_ASTC_10x5_KHR>
+    like g-lenum
+  link compressed-srgb8-alpha8-astc-10x6-khr, name <COMPRESSED_SRGB8_ALPHA8_ASTC_10x6_KHR>
+    like g-lenum
+  link compressed-srgb8-alpha8-astc-10x8-khr, name <COMPRESSED_SRGB8_ALPHA8_ASTC_10x8_KHR>
+    like g-lenum
+  link compressed-srgb8-alpha8-astc-12x10-khr, name <COMPRESSED_SRGB8_ALPHA8_ASTC_12x10_KHR>
+    like g-lenum
+  link compressed-srgb8-alpha8-astc-12x12-khr, name <COMPRESSED_SRGB8_ALPHA8_ASTC_12x12_KHR>
+    like g-lenum
+  link compressed-srgb8-alpha8-astc-4x4-khr, name <COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR>
+    like g-lenum
+  link compressed-srgb8-alpha8-astc-5x4-khr, name <COMPRESSED_SRGB8_ALPHA8_ASTC_5x4_KHR>
+    like g-lenum
+  link compressed-srgb8-alpha8-astc-5x5-khr, name <COMPRESSED_SRGB8_ALPHA8_ASTC_5x5_KHR>
+    like g-lenum
+  link compressed-srgb8-alpha8-astc-6x5-khr, name <COMPRESSED_SRGB8_ALPHA8_ASTC_6x5_KHR>
+    like g-lenum
+  link compressed-srgb8-alpha8-astc-6x6-khr, name <COMPRESSED_SRGB8_ALPHA8_ASTC_6x6_KHR>
+    like g-lenum
+  link compressed-srgb8-alpha8-astc-8x5-khr, name <COMPRESSED_SRGB8_ALPHA8_ASTC_8x5_KHR>
+    like g-lenum
+  link compressed-srgb8-alpha8-astc-8x6-khr, name <COMPRESSED_SRGB8_ALPHA8_ASTC_8x6_KHR>
+    like g-lenum
+  link compressed-srgb8-alpha8-astc-8x8-khr, name <COMPRESSED_SRGB8_ALPHA8_ASTC_8x8_KHR>
+    like g-lenum
+
+  task get-supported-profiles, name <getSupportedProfiles>
+    like native-array
+      like native-string

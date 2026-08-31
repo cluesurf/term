@@ -1,0 +1,5 @@
+
+load @term/bind/code/browser/dom/web-gl-uniform-location
+  find web-gl-uniform-location
+
+form web-gl-uniform-location, name <WebGLUniformLocation>

@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/storage-estimate
+  find storage-estimate
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form storage-manager, name <StorageManager>
+  task estimate, name <estimate>
+    like promise
+      like storage-estimate
+
+  task persist, name <persist>
+    like promise
+      like native-boolean
+
+  task persisted, name <persisted>
+    like promise
+      like native-boolean

@@ -1,0 +1,21 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form rtc-stats-report, name <RTCStatsReport>
+  task for-each, name <forEach>
+    take callbackfn
+      like task
+        take value, like native-any
+        take key, like native-string
+        take parent, like rtc-stats-report
+        like native-void
+    take this-arg, like maybe
+      like native-any
+    like native-void

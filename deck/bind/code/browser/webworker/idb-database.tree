@@ -1,0 +1,181 @@
+
+load @term/bind/code/browser/dom/iterable/idb-database
+  find idb-database
+
+load @term/bind/code/browser/webworker/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/webworker/dom-string-list
+  find dom-string-list
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+load @term/bind/code/browser/webworker/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/webworker/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/webworker/event-target
+  find event-target
+
+load @term/bind/code/browser/webworker/idb-database-event-map
+  find idb-database-event-map
+
+load @term/bind/code/browser/webworker/idb-object-store
+  find idb-object-store
+
+load @term/bind/code/browser/webworker/idb-object-store-parameters
+  find idb-object-store-parameters
+
+load @term/bind/code/browser/webworker/idb-transaction
+  find idb-transaction
+
+load @term/bind/code/browser/webworker/idb-transaction-mode
+  find idb-transaction-mode
+
+load @term/bind/code/browser/webworker/idb-version-change-event
+  find idb-version-change-event
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form idb-database, name <IDBDatabase>
+  base event-target
+
+  link name, name <name>
+    like native-string
+  link object-store-names, name <objectStoreNames>
+    like dom-string-list
+  link onabort, name <onabort>
+    like or
+      like task
+        take this, like idb-database
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onclose, name <onclose>
+    like or
+      like task
+        take this, like idb-database
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onerror, name <onerror>
+    like or
+      like task
+        take this, like idb-database
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onversionchange, name <onversionchange>
+    like or
+      like task
+        take this, like idb-database
+        take ev, like idb-version-change-event
+        like native-any
+      like native-null
+    lock false
+  link version, name <version>
+    like native-number
+
+  task close, name <close>
+    like native-void
+
+  task create-object-store, name <createObjectStore>
+    take name, like native-string
+    take options, like maybe
+      like idb-object-store-parameters
+    like idb-object-store
+
+  task delete-object-store, name <deleteObjectStore>
+    take name, like native-string
+    like native-void
+
+  task transaction, name <transaction>
+    take store-names
+      like or
+        like native-string
+        like native-array
+          like native-string
+    take mode, like maybe
+      like idb-transaction-mode
+    like idb-transaction
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like idb-database-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like idb-database
+        take ev
+          like index
+            like idb-database-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like idb-database-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like idb-database
+        take ev
+          like index
+            like idb-database-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

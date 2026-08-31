@@ -1,0 +1,21 @@
+
+load @term/bind/code/browser/dom/animation-frame-provider
+  find animation-frame-provider
+
+load @term/bind/code/browser/webworker/frame-request-callback
+  find frame-request-callback
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form animation-frame-provider, name <AnimationFrameProvider>
+  task cancel-animation-frame, name <cancelAnimationFrame>
+    take handle, like native-number
+    like native-void
+
+  task request-animation-frame, name <requestAnimationFrame>
+    take callback, like frame-request-callback
+    like native-number

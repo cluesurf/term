@@ -1,0 +1,64 @@
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find abortable
+  find dns-lookup-one-options
+  find native-boolean
+  find native-null
+  find native-number
+  find native-string
+  find native-undefined
+  find native-void
+  find node-js-errno-exception
+
+load @term/bind/code/node/dgram
+  find socket-type
+
+form socket-options, name <SocketOptions>
+  base abortable
+
+  link type, name <type>
+    like socket-type
+    flex true
+  link reuse-addr, name <reuseAddr>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link ipv6-only, name <ipv6Only>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link recv-buffer-size, name <recvBufferSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link send-buffer-size, name <sendBufferSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link lookup, name <lookup>
+    like or
+      like task
+        like native-void
+
+        take hostname, like native-string
+        take options, like dns-lookup-one-options
+        take callback
+          like task
+            like native-void
+
+            take err
+              like or
+                like node-js-errno-exception
+                like native-null
+            take address, like native-string
+            take family, like native-number
+      like native-undefined
+    flex true

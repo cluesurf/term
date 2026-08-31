@@ -1,0 +1,20 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-null
+  find native-undefined
+
+load @term/bind/code/node/child-process
+  find exec-sync-options
+
+form exec-sync-options-with-buffer-encoding, name <ExecSyncOptionsWithBufferEncoding>
+  base exec-sync-options
+
+  link encoding, name <encoding>
+    like or
+      text <buffer>
+      like native-null
+      like native-undefined
+    flex true

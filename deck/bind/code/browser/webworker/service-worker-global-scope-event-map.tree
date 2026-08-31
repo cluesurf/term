@@ -1,0 +1,55 @@
+
+load @term/bind/code/browser/webworker/extendable-event
+  find extendable-event
+
+load @term/bind/code/browser/webworker/extendable-message-event
+  find extendable-message-event
+
+load @term/bind/code/browser/webworker/fetch-event
+  find fetch-event
+
+load @term/bind/code/browser/webworker/message-event
+  find message-event
+
+load @term/bind/code/browser/webworker/notification-event
+  find notification-event
+
+load @term/bind/code/browser/webworker/push-event
+  find push-event
+
+load @term/bind/code/browser/webworker/sync-event
+  find sync-event
+
+load @term/bind/code/browser/webworker/worker-global-scope-event-map
+  find worker-global-scope-event-map
+
+form service-worker-global-scope-event-map, name <ServiceWorkerGlobalScopeEventMap>
+  base worker-global-scope-event-map
+
+  link activate, name <activate>
+    like extendable-event
+    lock false
+  link fetch, name <fetch>
+    like fetch-event
+    lock false
+  link install, name <install>
+    like extendable-event
+    lock false
+  link message, name <message>
+    like extendable-message-event
+    lock false
+  link messageerror, name <messageerror>
+    like message-event
+    lock false
+  link notificationclick, name <notificationclick>
+    like notification-event
+    lock false
+  link notificationclose, name <notificationclose>
+    like notification-event
+    lock false
+  link push, name <push>
+    like push-event
+    lock false
+  link sync, name <sync>
+    like sync-event
+    lock false

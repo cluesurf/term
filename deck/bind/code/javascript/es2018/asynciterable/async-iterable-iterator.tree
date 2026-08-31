@@ -1,0 +1,12 @@
+
+load @term/bind/code/javascript/es2018/asynciterable/async-iterator
+  find async-iterator
+
+form async-iterable-iterator, name <AsyncIterableIterator>
+  base async-iterator
+
+  head t
+
+  task {symbol/async-iterator}
+    like async-iterable-iterator
+      like t

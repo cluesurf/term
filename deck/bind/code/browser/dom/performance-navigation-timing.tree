@@ -1,0 +1,42 @@
+
+load @term/bind/code/browser/dom/dom-high-res-time-stamp
+  find dom-high-res-time-stamp
+
+load @term/bind/code/browser/dom/navigation-type
+  find navigation-type
+
+load @term/bind/code/browser/dom/performance-resource-timing
+  find performance-resource-timing
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form performance-navigation-timing, name <PerformanceNavigationTiming>
+  base performance-resource-timing
+
+  link dom-complete, name <domComplete>
+    like dom-high-res-time-stamp
+  link dom-content-loaded-event-end, name <domContentLoadedEventEnd>
+    like dom-high-res-time-stamp
+  link dom-content-loaded-event-start, name <domContentLoadedEventStart>
+    like dom-high-res-time-stamp
+  link dom-interactive, name <domInteractive>
+    like dom-high-res-time-stamp
+  link load-event-end, name <loadEventEnd>
+    like dom-high-res-time-stamp
+  link load-event-start, name <loadEventStart>
+    like dom-high-res-time-stamp
+  link redirect-count, name <redirectCount>
+    like native-number
+  link type, name <type>
+    like navigation-type
+  link unload-event-end, name <unloadEventEnd>
+    like dom-high-res-time-stamp
+  link unload-event-start, name <unloadEventStart>
+    like dom-high-res-time-stamp
+
+  task to-json, name <toJSON>
+    like native-any

@@ -1,0 +1,13 @@
+
+load @term/bind/code/javascript
+  find key-object
+
+load @term/bind/code/node/crypto
+  find signing-options
+
+form sign-key-object-input, name <SignKeyObjectInput>
+  base signing-options
+
+  link key, name <key>
+    like key-object
+    flex true

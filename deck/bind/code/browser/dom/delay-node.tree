@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/audio-node
+  find audio-node
+
+load @term/bind/code/browser/dom/audio-param
+  find audio-param
+
+form delay-node, name <DelayNode>
+  base audio-node
+
+  link delay-time, name <delayTime>
+    like audio-param

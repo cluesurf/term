@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/memory
+  find memory
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form memory, name <Memory>
+  link buffer, name <buffer>
+    like array-buffer
+
+  task grow, name <grow>
+    take delta, like native-number
+    like native-number

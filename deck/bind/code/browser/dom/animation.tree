@@ -1,0 +1,201 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/animation-effect
+  find animation-effect
+
+load @term/bind/code/browser/dom/animation-event-map
+  find animation-event-map
+
+load @term/bind/code/browser/dom/animation-play-state
+  find animation-play-state
+
+load @term/bind/code/browser/dom/animation-playback-event
+  find animation-playback-event
+
+load @term/bind/code/browser/dom/animation-replace-state
+  find animation-replace-state
+
+load @term/bind/code/browser/dom/animation-timeline
+  find animation-timeline
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form animation, name <Animation>
+  base event-target
+
+  link current-time, name <currentTime>
+    like or
+      like native-number
+      like native-null
+    lock false
+  link effect, name <effect>
+    like or
+      like animation-effect
+      like native-null
+    lock false
+  link finished, name <finished>
+    like promise
+      like animation
+  link id, name <id>
+    like native-string
+    lock false
+  link oncancel, name <oncancel>
+    like or
+      like task
+        take this, like animation
+        take ev, like animation-playback-event
+        like native-any
+      like native-null
+    lock false
+  link onfinish, name <onfinish>
+    like or
+      like task
+        take this, like animation
+        take ev, like animation-playback-event
+        like native-any
+      like native-null
+    lock false
+  link onremove, name <onremove>
+    like or
+      like task
+        take this, like animation
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link pending, name <pending>
+    like native-boolean
+  link play-state, name <playState>
+    like animation-play-state
+  link playback-rate, name <playbackRate>
+    like native-number
+    lock false
+  link ready, name <ready>
+    like promise
+      like animation
+  link replace-state, name <replaceState>
+    like animation-replace-state
+  link start-time, name <startTime>
+    like or
+      like native-number
+      like native-null
+    lock false
+  link timeline, name <timeline>
+    like or
+      like animation-timeline
+      like native-null
+    lock false
+
+  task cancel, name <cancel>
+    like native-void
+
+  task commit-styles, name <commitStyles>
+    like native-void
+
+  task finish, name <finish>
+    like native-void
+
+  task pause, name <pause>
+    like native-void
+
+  task persist, name <persist>
+    like native-void
+
+  task play, name <play>
+    like native-void
+
+  task reverse, name <reverse>
+    like native-void
+
+  task update-playback-rate, name <updatePlaybackRate>
+    take playback-rate, like native-number
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like animation-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like animation
+        take ev
+          like index
+            like animation-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like animation-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like animation
+        take ev
+          like index
+            like animation-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

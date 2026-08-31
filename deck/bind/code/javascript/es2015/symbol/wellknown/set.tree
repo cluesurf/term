@@ -1,0 +1,13 @@
+
+load @term/bind/code/javascript/es2015/iterable/set
+  find set
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form set, name <Set>
+  head t
+
+  link {symbol/to-string-tag}
+    like native-string
+    read true

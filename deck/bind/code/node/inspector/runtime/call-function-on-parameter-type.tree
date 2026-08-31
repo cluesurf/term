@@ -1,0 +1,65 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-boolean
+  find native-string
+  find native-undefined
+
+load @term/bind
+  find or
+
+load @term/bind/code/node/inspector/runtime
+  find call-argument
+  find execution-context-id
+  find remote-object-id
+
+form call-function-on-parameter-type, name <CallFunctionOnParameterType>
+  link function-declaration, name <functionDeclaration>
+    like native-string
+    flex true
+  link object-id, name <objectId>
+    like or
+      like remote-object-id
+      like native-undefined
+    flex true
+  link arguments, name <arguments>
+    like or
+      like array
+        like call-argument
+      like native-undefined
+    flex true
+  link silent, name <silent>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link return-by-value, name <returnByValue>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link generate-preview, name <generatePreview>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link user-gesture, name <userGesture>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link await-promise, name <awaitPromise>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link execution-context-id, name <executionContextId>
+    like or
+      like execution-context-id
+      like native-undefined
+    flex true
+  link object-group, name <objectGroup>
+    like or
+      like native-string
+      like native-undefined
+    flex true

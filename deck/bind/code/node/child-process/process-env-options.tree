@@ -1,0 +1,33 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find native-undefined
+  find node-js-process-env
+  find url
+
+form process-env-options, name <ProcessEnvOptions>
+  link uid, name <uid>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link gid, name <gid>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link cwd, name <cwd>
+    like or
+      like native-string
+      like url
+      like native-undefined
+    flex true
+  link env, name <env>
+    like or
+      like node-js-process-env
+      like native-undefined
+    flex true

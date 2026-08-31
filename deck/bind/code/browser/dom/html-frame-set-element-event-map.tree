@@ -1,0 +1,10 @@
+
+load @term/bind/code/browser/dom/html-element-event-map
+  find html-element-event-map
+
+load @term/bind/code/browser/dom/window-event-handlers-event-map
+  find window-event-handlers-event-map
+
+form html-frame-set-element-event-map, name <HTMLFrameSetElementEventMap>
+  base html-element-event-map
+  base window-event-handlers-event-map

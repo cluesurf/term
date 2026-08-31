@@ -1,0 +1,24 @@
+
+load @term/bind/code/browser/dom/media-track-constraints
+  find media-track-constraints
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form media-stream-constraints, name <MediaStreamConstraints>
+  link audio, name <audio>
+    like or
+      like native-boolean
+      like media-track-constraints
+    lock false
+  link peer-identity, name <peerIdentity>
+    like native-string
+    lock false
+  link video, name <video>
+    like or
+      like native-boolean
+      like media-track-constraints
+    lock false

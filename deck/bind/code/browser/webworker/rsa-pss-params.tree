@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/rsa-pss-params
+  find rsa-pss-params
+
+load @term/bind/code/browser/webworker/algorithm
+  find algorithm
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form rsa-pss-params, name <RsaPssParams>
+  base algorithm
+
+  link salt-length, name <saltLength>
+    like native-number
+    lock false

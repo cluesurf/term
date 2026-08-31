@@ -1,0 +1,6 @@
+
+load @term/bind/code/javascript
+  find native-string
+
+form remote-object-id, name <RemoteObjectId>
+  like native-string

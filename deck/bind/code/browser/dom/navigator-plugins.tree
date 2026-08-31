@@ -1,0 +1,18 @@
+
+load @term/bind/code/browser/dom/mime-type-array
+  find mime-type-array
+
+load @term/bind/code/browser/dom/plugin-array
+  find plugin-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form navigator-plugins, name <NavigatorPlugins>
+  link mime-types, name <mimeTypes>
+    like mime-type-array
+  link plugins, name <plugins>
+    like plugin-array
+
+  task java-enabled, name <javaEnabled>
+    like native-boolean

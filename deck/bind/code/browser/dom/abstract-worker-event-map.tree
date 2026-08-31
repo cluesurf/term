@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/error-event
+  find error-event
+
+form abstract-worker-event-map, name <AbstractWorkerEventMap>
+  link error, name <error>
+    like error-event
+    lock false

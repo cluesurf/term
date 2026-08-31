@@ -1,0 +1,21 @@
+
+load @term/bind
+  find form
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find promise
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link hostname, name <hostname>
+        like native-string
+        flex true
+      link service, name <service>
+        like native-string
+        flex true
+
+  take address, like native-string
+  take port, like native-number

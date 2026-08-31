@@ -1,0 +1,23 @@
+
+load @term/bind/code/browser/webworker/cache
+  find cache
+
+load @term/bind/code/browser/webworker/request-info
+  find request-info
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/iterable
+  find iterable
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form cache, name <Cache>
+  task add-all, name <addAll>
+    take requests
+      like iterable
+        like request-info
+    like promise
+      like native-void

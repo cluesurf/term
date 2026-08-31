@@ -1,0 +1,18 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-null
+
+load @term/bind/code/node/child-process
+  find exec-file-options
+
+form exec-file-options-with-buffer-encoding, name <ExecFileOptionsWithBufferEncoding>
+  base exec-file-options
+
+  link encoding, name <encoding>
+    like or
+      text <buffer>
+      like native-null
+    flex true

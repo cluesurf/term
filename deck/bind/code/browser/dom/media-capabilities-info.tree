@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form media-capabilities-info, name <MediaCapabilitiesInfo>
+  link power-efficient, name <powerEfficient>
+    like native-boolean
+    lock false
+  link smooth, name <smooth>
+    like native-boolean
+    lock false
+  link supported, name <supported>
+    like native-boolean
+    lock false

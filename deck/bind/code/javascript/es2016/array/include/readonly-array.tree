@@ -1,0 +1,18 @@
+
+load @term/bind/code/javascript/es2015/iterable/readonly-array
+  find readonly-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form readonly-array, name <ReadonlyArray>
+  head t
+
+  task includes, name <includes>
+    take search-element, like t
+    take from-index, like maybe
+      like native-number
+    like native-boolean

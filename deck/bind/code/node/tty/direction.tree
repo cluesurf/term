@@ -1,0 +1,9 @@
+
+load @term/bind
+  find or
+
+form direction, name <Direction>
+  like or
+    text <undefined>
+    text <0>
+    text <1>

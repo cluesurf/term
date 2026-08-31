@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form base-audio-context-event-map, name <BaseAudioContextEventMap>
+  link statechange, name <statechange>
+    like event
+    lock false

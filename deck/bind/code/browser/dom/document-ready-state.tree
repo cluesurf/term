@@ -1,0 +1,6 @@
+
+form document-ready-state, name <DocumentReadyState>
+  like or
+    text <complete>
+    text <interactive>
+    text <loading>

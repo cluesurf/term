@@ -1,0 +1,72 @@
+
+load @term/bind/code/browser/dom/notification-options
+  find notification-options
+
+load @term/bind/code/browser/webworker/notification-action
+  find notification-action
+
+load @term/bind/code/browser/webworker/notification-direction
+  find notification-direction
+
+load @term/bind/code/browser/webworker/vibrate-pattern
+  find vibrate-pattern
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form notification-options, name <NotificationOptions>
+  link actions, name <actions>
+    like native-array
+      like notification-action
+    lock false
+  link badge, name <badge>
+    like native-string
+    lock false
+  link body, name <body>
+    like native-string
+    lock false
+  link data, name <data>
+    like native-any
+    lock false
+  link dir, name <dir>
+    like notification-direction
+    lock false
+  link icon, name <icon>
+    like native-string
+    lock false
+  link image, name <image>
+    like native-string
+    lock false
+  link lang, name <lang>
+    like native-string
+    lock false
+  link renotify, name <renotify>
+    like native-boolean
+    lock false
+  link require-interaction, name <requireInteraction>
+    like native-boolean
+    lock false
+  link silent, name <silent>
+    like native-boolean
+    lock false
+  link tag, name <tag>
+    like native-string
+    lock false
+  link timestamp, name <timestamp>
+    like native-number
+    lock false
+  link vibrate, name <vibrate>
+    like vibrate-pattern
+    lock false

@@ -1,0 +1,14 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-undefined
+
+form start-tracking-heap-objects-parameter-type, name <StartTrackingHeapObjectsParameterType>
+  link track-allocations, name <trackAllocations>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

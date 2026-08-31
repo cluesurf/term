@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/esnext/intl/number-format-part-types
+  find number-format-part-types
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form number-format-part, name <NumberFormatPart>
+  link type, name <type>
+    like number-format-part-types
+    lock false
+  link value, name <value>
+    like native-string
+    lock false

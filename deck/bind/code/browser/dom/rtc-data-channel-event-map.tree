@@ -1,0 +1,23 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/message-event
+  find message-event
+
+form rtc-data-channel-event-map, name <RTCDataChannelEventMap>
+  link bufferedamountlow, name <bufferedamountlow>
+    like event
+    lock false
+  link close, name <close>
+    like event
+    lock false
+  link error, name <error>
+    like event
+    lock false
+  link message, name <message>
+    like message-event
+    lock false
+  link open, name <open>
+    like event
+    lock false

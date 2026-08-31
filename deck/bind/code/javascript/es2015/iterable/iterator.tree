@@ -1,0 +1,41 @@
+
+load @term/bind/code/javascript/es2015/iterable/iterator-result
+  find iterator-result
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+form iterator, name <Iterator>
+  head t
+  head t-return
+    back native-any
+  head t-next
+    back native-undefined
+
+  task next, name <next>
+    take args
+      like or
+        like band
+        like band
+          like t-next
+      rest true
+    like iterator-result
+      like t
+      like t-return
+
+  task return, name <return>
+    take value, like maybe
+      like t-return
+    like iterator-result
+      like t
+      like t-return
+
+  task throw, name <throw>
+    take e, like maybe
+      like native-any
+    like iterator-result
+      like t
+      like t-return

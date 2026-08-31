@@ -1,0 +1,21 @@
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form abstract-range, name <AbstractRange>
+  link collapsed, name <collapsed>
+    like native-boolean
+  link end-container, name <endContainer>
+    like node
+  link end-offset, name <endOffset>
+    like native-number
+  link start-container, name <startContainer>
+    like node
+  link start-offset, name <startOffset>
+    like native-number

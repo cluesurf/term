@@ -1,0 +1,35 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find http1-incoming-http-headers
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/http/incoming-http-headers
+  find incoming-http-headers
+
+form incoming-http-headers, name <IncomingHttpHeaders>
+  base http1-incoming-http-headers
+
+  link path, name <:path>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link method, name <:method>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link authority, name <:authority>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link scheme, name <:scheme>
+    like or
+      like native-string
+      like native-undefined
+    flex true

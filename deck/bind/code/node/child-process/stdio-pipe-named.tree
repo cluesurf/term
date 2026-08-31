@@ -1,0 +1,8 @@
+
+load @term/bind
+  find or
+
+form stdio-pipe-named, name <StdioPipeNamed>
+  like or
+    text <pipe>
+    text <overlapped>

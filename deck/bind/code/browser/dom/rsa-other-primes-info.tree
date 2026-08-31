@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form rsa-other-primes-info, name <RsaOtherPrimesInfo>
+  link d, name <d>
+    like native-string
+    lock false
+  link r, name <r>
+    like native-string
+    lock false
+  link t, name <t>
+    like native-string
+    lock false

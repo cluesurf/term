@@ -1,0 +1,138 @@
+
+load @term/bind/code/browser/webworker/g-lboolean
+  find g-lboolean
+
+load @term/bind/code/browser/webworker/g-lfloat
+  find g-lfloat
+
+load @term/bind/code/browser/webworker/g-lint
+  find g-lint
+
+load @term/bind/code/browser/webworker/web-gl-rendering-context-overloads
+  find web-gl-rendering-context-overloads
+
+load @term/bind/code/browser/webworker/web-gl-uniform-location
+  find web-gl-uniform-location
+
+load @term/bind/code/javascript/iterable
+  find iterable
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form web-gl-rendering-context-overloads, name <WebGLRenderingContextOverloads>
+  task uniform1fv, name <uniform1fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v
+      like iterable
+        like g-lfloat
+    like native-void
+
+  task uniform1iv, name <uniform1iv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v
+      like iterable
+        like g-lint
+    like native-void
+
+  task uniform2fv, name <uniform2fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v
+      like iterable
+        like g-lfloat
+    like native-void
+
+  task uniform2iv, name <uniform2iv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v
+      like iterable
+        like g-lint
+    like native-void
+
+  task uniform3fv, name <uniform3fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v
+      like iterable
+        like g-lfloat
+    like native-void
+
+  task uniform3iv, name <uniform3iv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v
+      like iterable
+        like g-lint
+    like native-void
+
+  task uniform4fv, name <uniform4fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v
+      like iterable
+        like g-lfloat
+    like native-void
+
+  task uniform4iv, name <uniform4iv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v
+      like iterable
+        like g-lint
+    like native-void
+
+  task uniform-matrix2fv, name <uniformMatrix2fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take transpose, like g-lboolean
+    take value
+      like iterable
+        like g-lfloat
+    like native-void
+
+  task uniform-matrix3fv, name <uniformMatrix3fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take transpose, like g-lboolean
+    take value
+      like iterable
+        like g-lfloat
+    like native-void
+
+  task uniform-matrix4fv, name <uniformMatrix4fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take transpose, like g-lboolean
+    take value
+      like iterable
+        like g-lfloat
+    like native-void

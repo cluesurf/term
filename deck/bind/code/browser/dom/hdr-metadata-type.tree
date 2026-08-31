@@ -1,0 +1,6 @@
+
+form hdr-metadata-type, name <HdrMetadataType>
+  like or
+    text <smpteSt2086>
+    text <smpteSt2094-10>
+    text <smpteSt2094-40>

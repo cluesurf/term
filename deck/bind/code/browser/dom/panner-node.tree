@@ -1,0 +1,70 @@
+
+load @term/bind/code/browser/dom/audio-node
+  find audio-node
+
+load @term/bind/code/browser/dom/audio-param
+  find audio-param
+
+load @term/bind/code/browser/dom/distance-model-type
+  find distance-model-type
+
+load @term/bind/code/browser/dom/panning-model-type
+  find panning-model-type
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form panner-node, name <PannerNode>
+  base audio-node
+
+  link cone-inner-angle, name <coneInnerAngle>
+    like native-number
+    lock false
+  link cone-outer-angle, name <coneOuterAngle>
+    like native-number
+    lock false
+  link cone-outer-gain, name <coneOuterGain>
+    like native-number
+    lock false
+  link distance-model, name <distanceModel>
+    like distance-model-type
+    lock false
+  link max-distance, name <maxDistance>
+    like native-number
+    lock false
+  link orientation-x, name <orientationX>
+    like audio-param
+  link orientation-y, name <orientationY>
+    like audio-param
+  link orientation-z, name <orientationZ>
+    like audio-param
+  link panning-model, name <panningModel>
+    like panning-model-type
+    lock false
+  link position-x, name <positionX>
+    like audio-param
+  link position-y, name <positionY>
+    like audio-param
+  link position-z, name <positionZ>
+    like audio-param
+  link ref-distance, name <refDistance>
+    like native-number
+    lock false
+  link rolloff-factor, name <rolloffFactor>
+    like native-number
+    lock false
+
+  task set-orientation, name <setOrientation>
+    take x, like native-number
+    take y, like native-number
+    take z, like native-number
+    like native-void
+
+  task set-position, name <setPosition>
+    take x, like native-number
+    take y, like native-number
+    take z, like native-number
+    like native-void

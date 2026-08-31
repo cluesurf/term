@@ -1,0 +1,26 @@
+
+load @term/bind/code/browser/dom/blob-event
+  find blob-event
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form media-recorder-event-map, name <MediaRecorderEventMap>
+  link dataavailable, name <dataavailable>
+    like blob-event
+    lock false
+  link error, name <error>
+    like event
+    lock false
+  link pause, name <pause>
+    like event
+    lock false
+  link resume, name <resume>
+    like event
+    lock false
+  link start, name <start>
+    like event
+    lock false
+  link stop, name <stop>
+    like event
+    lock false

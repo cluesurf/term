@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/es2015/iterable/uint8-clamped-array
+  find uint8-clamped-array
+
+form uint8-clamped-array, name <Uint8ClampedArray>
+  link {symbol/to-string-tag}
+    text <Uint8ClampedArray>
+    read true

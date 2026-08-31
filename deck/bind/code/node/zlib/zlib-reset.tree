@@ -1,0 +1,7 @@
+
+load @term/bind/code/javascript
+  find native-void
+
+form zlib-reset, name <ZlibReset>
+  task reset, name <reset>
+    like native-void

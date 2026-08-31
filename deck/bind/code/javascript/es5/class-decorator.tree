@@ -1,0 +1,15 @@
+
+load @term/bind/code/javascript/es5/function
+  find function
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form class-decorator, name <ClassDecorator>
+  like task
+    head t-function
+      base function
+    take target, like t-function
+    like or
+      like t-function
+      like native-void

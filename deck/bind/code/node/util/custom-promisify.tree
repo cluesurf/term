@@ -1,0 +1,21 @@
+
+load @term/bind
+  find like
+  find or
+
+load @term/bind/code/javascript
+  find function
+
+load @term/bind/code/node/util
+  find custom-promisify-legacy
+  find custom-promisify-symbol
+
+form custom-promisify, name <CustomPromisify>
+  head t-custom
+    base function
+
+  like or
+    like custom-promisify-symbol
+      like t-custom
+    like custom-promisify-legacy
+      like t-custom

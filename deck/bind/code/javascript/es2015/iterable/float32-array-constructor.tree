@@ -1,0 +1,35 @@
+
+load @term/bind/code/javascript/es2015/iterable/float32-array
+  find float32-array
+
+load @term/bind/code/javascript/es2015/iterable/iterable
+  find iterable
+
+load @term/bind/code/javascript/es5/float32-array-constructor
+  find float32-array-constructor
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form float32-array-constructor, name <Float32ArrayConstructor>
+  task from, name <from>
+    take array-like
+      like iterable
+        like native-number
+    take mapfn, like maybe
+      like task
+        take v, like native-number
+        take k, like native-number
+        like native-number
+    take this-arg, like maybe
+      like native-any
+    like float32-array
+
+  hook make
+    take elements
+      like iterable
+        like native-number
+    like float32-array

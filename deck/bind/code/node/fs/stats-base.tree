@@ -1,0 +1,86 @@
+
+load @term/bind
+  find like
+
+load @term/bind/code/javascript
+  find date
+  find native-boolean
+
+form stats-base, name <StatsBase>
+  head t
+
+  link dev, name <dev>
+    like t
+    flex true
+  link ino, name <ino>
+    like t
+    flex true
+  link mode, name <mode>
+    like t
+    flex true
+  link nlink, name <nlink>
+    like t
+    flex true
+  link uid, name <uid>
+    like t
+    flex true
+  link gid, name <gid>
+    like t
+    flex true
+  link rdev, name <rdev>
+    like t
+    flex true
+  link size, name <size>
+    like t
+    flex true
+  link blksize, name <blksize>
+    like t
+    flex true
+  link blocks, name <blocks>
+    like t
+    flex true
+  link atime-ms, name <atimeMs>
+    like t
+    flex true
+  link mtime-ms, name <mtimeMs>
+    like t
+    flex true
+  link ctime-ms, name <ctimeMs>
+    like t
+    flex true
+  link birthtime-ms, name <birthtimeMs>
+    like t
+    flex true
+  link atime, name <atime>
+    like date
+    flex true
+  link mtime, name <mtime>
+    like date
+    flex true
+  link ctime, name <ctime>
+    like date
+    flex true
+  link birthtime, name <birthtime>
+    like date
+    flex true
+
+  task is-file, name <isFile>
+    like native-boolean
+
+  task is-directory, name <isDirectory>
+    like native-boolean
+
+  task is-block-device, name <isBlockDevice>
+    like native-boolean
+
+  task is-character-device, name <isCharacterDevice>
+    like native-boolean
+
+  task is-symbolic-link, name <isSymbolicLink>
+    like native-boolean
+
+  task is-fifo, name <isFIFO>
+    like native-boolean
+
+  task is-socket, name <isSocket>
+    like native-boolean

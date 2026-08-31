@@ -1,0 +1,57 @@
+
+form peek-mut, name <std::collections::binary_heap::PeekMut>
+  task pop, name <pop>
+    note <Removes the peeked value from the heap and returns it.>
+
+    take this
+      like peek-mut
+        time a
+        like t
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task deref, name <deref>
+    note <Dereferences the value.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+
+  task deref-mut, name <deref_mut>
+    note <Mutably dereferences the value.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+
+  task drop, name <drop>
+    note <Executes the destructor for this type.>
+
+    take self
+      cite free

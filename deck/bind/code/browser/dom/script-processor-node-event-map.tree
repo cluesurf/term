@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/audio-processing-event
+  find audio-processing-event
+
+form script-processor-node-event-map, name <ScriptProcessorNodeEventMap>
+  link audioprocess, name <audioprocess>
+    like audio-processing-event
+    lock false

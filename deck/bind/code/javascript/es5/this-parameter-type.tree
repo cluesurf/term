@@ -1,0 +1,30 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-unknown
+
+load @term/bind/code/javascript/u
+  find u
+
+form this-parameter-type, name <ThisParameterType>
+  head t
+
+  like test
+    stem roll
+      like t
+      like task
+        take this, name u
+        take args
+          like native-array
+            like native-any
+          rest true
+        like native-any
+      hook true
+        like u
+      hook false
+        like native-unknown

@@ -1,0 +1,1387 @@
+
+load @term/bind/code/browser/dom/css-rule
+  find css-rule
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form css-style-declaration, name <CSSStyleDeclaration>
+  link align-content, name <alignContent>
+    like native-string
+    lock false
+  link align-items, name <alignItems>
+    like native-string
+    lock false
+  link align-self, name <alignSelf>
+    like native-string
+    lock false
+  link alignment-baseline, name <alignmentBaseline>
+    like native-string
+    lock false
+  link all, name <all>
+    like native-string
+    lock false
+  link animation, name <animation>
+    like native-string
+    lock false
+  link animation-delay, name <animationDelay>
+    like native-string
+    lock false
+  link animation-direction, name <animationDirection>
+    like native-string
+    lock false
+  link animation-duration, name <animationDuration>
+    like native-string
+    lock false
+  link animation-fill-mode, name <animationFillMode>
+    like native-string
+    lock false
+  link animation-iteration-count, name <animationIterationCount>
+    like native-string
+    lock false
+  link animation-name, name <animationName>
+    like native-string
+    lock false
+  link animation-play-state, name <animationPlayState>
+    like native-string
+    lock false
+  link animation-timing-function, name <animationTimingFunction>
+    like native-string
+    lock false
+  link appearance, name <appearance>
+    like native-string
+    lock false
+  link aspect-ratio, name <aspectRatio>
+    like native-string
+    lock false
+  link backface-visibility, name <backfaceVisibility>
+    like native-string
+    lock false
+  link background, name <background>
+    like native-string
+    lock false
+  link background-attachment, name <backgroundAttachment>
+    like native-string
+    lock false
+  link background-blend-mode, name <backgroundBlendMode>
+    like native-string
+    lock false
+  link background-clip, name <backgroundClip>
+    like native-string
+    lock false
+  link background-color, name <backgroundColor>
+    like native-string
+    lock false
+  link background-image, name <backgroundImage>
+    like native-string
+    lock false
+  link background-origin, name <backgroundOrigin>
+    like native-string
+    lock false
+  link background-position, name <backgroundPosition>
+    like native-string
+    lock false
+  link background-position-x, name <backgroundPositionX>
+    like native-string
+    lock false
+  link background-position-y, name <backgroundPositionY>
+    like native-string
+    lock false
+  link background-repeat, name <backgroundRepeat>
+    like native-string
+    lock false
+  link background-size, name <backgroundSize>
+    like native-string
+    lock false
+  link baseline-shift, name <baselineShift>
+    like native-string
+    lock false
+  link block-size, name <blockSize>
+    like native-string
+    lock false
+  link border, name <border>
+    like native-string
+    lock false
+  link border-block, name <borderBlock>
+    like native-string
+    lock false
+  link border-block-color, name <borderBlockColor>
+    like native-string
+    lock false
+  link border-block-end, name <borderBlockEnd>
+    like native-string
+    lock false
+  link border-block-end-color, name <borderBlockEndColor>
+    like native-string
+    lock false
+  link border-block-end-style, name <borderBlockEndStyle>
+    like native-string
+    lock false
+  link border-block-end-width, name <borderBlockEndWidth>
+    like native-string
+    lock false
+  link border-block-start, name <borderBlockStart>
+    like native-string
+    lock false
+  link border-block-start-color, name <borderBlockStartColor>
+    like native-string
+    lock false
+  link border-block-start-style, name <borderBlockStartStyle>
+    like native-string
+    lock false
+  link border-block-start-width, name <borderBlockStartWidth>
+    like native-string
+    lock false
+  link border-block-style, name <borderBlockStyle>
+    like native-string
+    lock false
+  link border-block-width, name <borderBlockWidth>
+    like native-string
+    lock false
+  link border-bottom, name <borderBottom>
+    like native-string
+    lock false
+  link border-bottom-color, name <borderBottomColor>
+    like native-string
+    lock false
+  link border-bottom-left-radius, name <borderBottomLeftRadius>
+    like native-string
+    lock false
+  link border-bottom-right-radius, name <borderBottomRightRadius>
+    like native-string
+    lock false
+  link border-bottom-style, name <borderBottomStyle>
+    like native-string
+    lock false
+  link border-bottom-width, name <borderBottomWidth>
+    like native-string
+    lock false
+  link border-collapse, name <borderCollapse>
+    like native-string
+    lock false
+  link border-color, name <borderColor>
+    like native-string
+    lock false
+  link border-end-end-radius, name <borderEndEndRadius>
+    like native-string
+    lock false
+  link border-end-start-radius, name <borderEndStartRadius>
+    like native-string
+    lock false
+  link border-image, name <borderImage>
+    like native-string
+    lock false
+  link border-image-outset, name <borderImageOutset>
+    like native-string
+    lock false
+  link border-image-repeat, name <borderImageRepeat>
+    like native-string
+    lock false
+  link border-image-slice, name <borderImageSlice>
+    like native-string
+    lock false
+  link border-image-source, name <borderImageSource>
+    like native-string
+    lock false
+  link border-image-width, name <borderImageWidth>
+    like native-string
+    lock false
+  link border-inline, name <borderInline>
+    like native-string
+    lock false
+  link border-inline-color, name <borderInlineColor>
+    like native-string
+    lock false
+  link border-inline-end, name <borderInlineEnd>
+    like native-string
+    lock false
+  link border-inline-end-color, name <borderInlineEndColor>
+    like native-string
+    lock false
+  link border-inline-end-style, name <borderInlineEndStyle>
+    like native-string
+    lock false
+  link border-inline-end-width, name <borderInlineEndWidth>
+    like native-string
+    lock false
+  link border-inline-start, name <borderInlineStart>
+    like native-string
+    lock false
+  link border-inline-start-color, name <borderInlineStartColor>
+    like native-string
+    lock false
+  link border-inline-start-style, name <borderInlineStartStyle>
+    like native-string
+    lock false
+  link border-inline-start-width, name <borderInlineStartWidth>
+    like native-string
+    lock false
+  link border-inline-style, name <borderInlineStyle>
+    like native-string
+    lock false
+  link border-inline-width, name <borderInlineWidth>
+    like native-string
+    lock false
+  link border-left, name <borderLeft>
+    like native-string
+    lock false
+  link border-left-color, name <borderLeftColor>
+    like native-string
+    lock false
+  link border-left-style, name <borderLeftStyle>
+    like native-string
+    lock false
+  link border-left-width, name <borderLeftWidth>
+    like native-string
+    lock false
+  link border-radius, name <borderRadius>
+    like native-string
+    lock false
+  link border-right, name <borderRight>
+    like native-string
+    lock false
+  link border-right-color, name <borderRightColor>
+    like native-string
+    lock false
+  link border-right-style, name <borderRightStyle>
+    like native-string
+    lock false
+  link border-right-width, name <borderRightWidth>
+    like native-string
+    lock false
+  link border-spacing, name <borderSpacing>
+    like native-string
+    lock false
+  link border-start-end-radius, name <borderStartEndRadius>
+    like native-string
+    lock false
+  link border-start-start-radius, name <borderStartStartRadius>
+    like native-string
+    lock false
+  link border-style, name <borderStyle>
+    like native-string
+    lock false
+  link border-top, name <borderTop>
+    like native-string
+    lock false
+  link border-top-color, name <borderTopColor>
+    like native-string
+    lock false
+  link border-top-left-radius, name <borderTopLeftRadius>
+    like native-string
+    lock false
+  link border-top-right-radius, name <borderTopRightRadius>
+    like native-string
+    lock false
+  link border-top-style, name <borderTopStyle>
+    like native-string
+    lock false
+  link border-top-width, name <borderTopWidth>
+    like native-string
+    lock false
+  link border-width, name <borderWidth>
+    like native-string
+    lock false
+  link bottom, name <bottom>
+    like native-string
+    lock false
+  link box-shadow, name <boxShadow>
+    like native-string
+    lock false
+  link box-sizing, name <boxSizing>
+    like native-string
+    lock false
+  link break-after, name <breakAfter>
+    like native-string
+    lock false
+  link break-before, name <breakBefore>
+    like native-string
+    lock false
+  link break-inside, name <breakInside>
+    like native-string
+    lock false
+  link caption-side, name <captionSide>
+    like native-string
+    lock false
+  link caret-color, name <caretColor>
+    like native-string
+    lock false
+  link clear, name <clear>
+    like native-string
+    lock false
+  link clip, name <clip>
+    like native-string
+    lock false
+  link clip-path, name <clipPath>
+    like native-string
+    lock false
+  link clip-rule, name <clipRule>
+    like native-string
+    lock false
+  link color, name <color>
+    like native-string
+    lock false
+  link color-interpolation, name <colorInterpolation>
+    like native-string
+    lock false
+  link color-interpolation-filters, name <colorInterpolationFilters>
+    like native-string
+    lock false
+  link color-scheme, name <colorScheme>
+    like native-string
+    lock false
+  link column-count, name <columnCount>
+    like native-string
+    lock false
+  link column-fill, name <columnFill>
+    like native-string
+    lock false
+  link column-gap, name <columnGap>
+    like native-string
+    lock false
+  link column-rule, name <columnRule>
+    like native-string
+    lock false
+  link column-rule-color, name <columnRuleColor>
+    like native-string
+    lock false
+  link column-rule-style, name <columnRuleStyle>
+    like native-string
+    lock false
+  link column-rule-width, name <columnRuleWidth>
+    like native-string
+    lock false
+  link column-span, name <columnSpan>
+    like native-string
+    lock false
+  link column-width, name <columnWidth>
+    like native-string
+    lock false
+  link columns, name <columns>
+    like native-string
+    lock false
+  link contain, name <contain>
+    like native-string
+    lock false
+  link content, name <content>
+    like native-string
+    lock false
+  link counter-increment, name <counterIncrement>
+    like native-string
+    lock false
+  link counter-reset, name <counterReset>
+    like native-string
+    lock false
+  link counter-set, name <counterSet>
+    like native-string
+    lock false
+  link css-float, name <cssFloat>
+    like native-string
+    lock false
+  link css-text, name <cssText>
+    like native-string
+    lock false
+  link cursor, name <cursor>
+    like native-string
+    lock false
+  link direction, name <direction>
+    like native-string
+    lock false
+  link display, name <display>
+    like native-string
+    lock false
+  link dominant-baseline, name <dominantBaseline>
+    like native-string
+    lock false
+  link empty-cells, name <emptyCells>
+    like native-string
+    lock false
+  link fill, name <fill>
+    like native-string
+    lock false
+  link fill-opacity, name <fillOpacity>
+    like native-string
+    lock false
+  link fill-rule, name <fillRule>
+    like native-string
+    lock false
+  link filter, name <filter>
+    like native-string
+    lock false
+  link flex, name <flex>
+    like native-string
+    lock false
+  link flex-basis, name <flexBasis>
+    like native-string
+    lock false
+  link flex-direction, name <flexDirection>
+    like native-string
+    lock false
+  link flex-flow, name <flexFlow>
+    like native-string
+    lock false
+  link flex-grow, name <flexGrow>
+    like native-string
+    lock false
+  link flex-shrink, name <flexShrink>
+    like native-string
+    lock false
+  link flex-wrap, name <flexWrap>
+    like native-string
+    lock false
+  link float, name <float>
+    like native-string
+    lock false
+  link flood-color, name <floodColor>
+    like native-string
+    lock false
+  link flood-opacity, name <floodOpacity>
+    like native-string
+    lock false
+  link font, name <font>
+    like native-string
+    lock false
+  link font-family, name <fontFamily>
+    like native-string
+    lock false
+  link font-feature-settings, name <fontFeatureSettings>
+    like native-string
+    lock false
+  link font-kerning, name <fontKerning>
+    like native-string
+    lock false
+  link font-optical-sizing, name <fontOpticalSizing>
+    like native-string
+    lock false
+  link font-size, name <fontSize>
+    like native-string
+    lock false
+  link font-size-adjust, name <fontSizeAdjust>
+    like native-string
+    lock false
+  link font-stretch, name <fontStretch>
+    like native-string
+    lock false
+  link font-style, name <fontStyle>
+    like native-string
+    lock false
+  link font-synthesis, name <fontSynthesis>
+    like native-string
+    lock false
+  link font-variant, name <fontVariant>
+    like native-string
+    lock false
+  link font-variant-alternates, name <fontVariantAlternates>
+    like native-string
+    lock false
+  link font-variant-caps, name <fontVariantCaps>
+    like native-string
+    lock false
+  link font-variant-east-asian, name <fontVariantEastAsian>
+    like native-string
+    lock false
+  link font-variant-ligatures, name <fontVariantLigatures>
+    like native-string
+    lock false
+  link font-variant-numeric, name <fontVariantNumeric>
+    like native-string
+    lock false
+  link font-variant-position, name <fontVariantPosition>
+    like native-string
+    lock false
+  link font-variation-settings, name <fontVariationSettings>
+    like native-string
+    lock false
+  link font-weight, name <fontWeight>
+    like native-string
+    lock false
+  link gap, name <gap>
+    like native-string
+    lock false
+  link grid, name <grid>
+    like native-string
+    lock false
+  link grid-area, name <gridArea>
+    like native-string
+    lock false
+  link grid-auto-columns, name <gridAutoColumns>
+    like native-string
+    lock false
+  link grid-auto-flow, name <gridAutoFlow>
+    like native-string
+    lock false
+  link grid-auto-rows, name <gridAutoRows>
+    like native-string
+    lock false
+  link grid-column, name <gridColumn>
+    like native-string
+    lock false
+  link grid-column-end, name <gridColumnEnd>
+    like native-string
+    lock false
+  link grid-column-gap, name <gridColumnGap>
+    like native-string
+    lock false
+  link grid-column-start, name <gridColumnStart>
+    like native-string
+    lock false
+  link grid-gap, name <gridGap>
+    like native-string
+    lock false
+  link grid-row, name <gridRow>
+    like native-string
+    lock false
+  link grid-row-end, name <gridRowEnd>
+    like native-string
+    lock false
+  link grid-row-gap, name <gridRowGap>
+    like native-string
+    lock false
+  link grid-row-start, name <gridRowStart>
+    like native-string
+    lock false
+  link grid-template, name <gridTemplate>
+    like native-string
+    lock false
+  link grid-template-areas, name <gridTemplateAreas>
+    like native-string
+    lock false
+  link grid-template-columns, name <gridTemplateColumns>
+    like native-string
+    lock false
+  link grid-template-rows, name <gridTemplateRows>
+    like native-string
+    lock false
+  link height, name <height>
+    like native-string
+    lock false
+  link hyphens, name <hyphens>
+    like native-string
+    lock false
+  link image-orientation, name <imageOrientation>
+    like native-string
+    lock false
+  link image-rendering, name <imageRendering>
+    like native-string
+    lock false
+  link inline-size, name <inlineSize>
+    like native-string
+    lock false
+  link inset, name <inset>
+    like native-string
+    lock false
+  link inset-block, name <insetBlock>
+    like native-string
+    lock false
+  link inset-block-end, name <insetBlockEnd>
+    like native-string
+    lock false
+  link inset-block-start, name <insetBlockStart>
+    like native-string
+    lock false
+  link inset-inline, name <insetInline>
+    like native-string
+    lock false
+  link inset-inline-end, name <insetInlineEnd>
+    like native-string
+    lock false
+  link inset-inline-start, name <insetInlineStart>
+    like native-string
+    lock false
+  link isolation, name <isolation>
+    like native-string
+    lock false
+  link justify-content, name <justifyContent>
+    like native-string
+    lock false
+  link justify-items, name <justifyItems>
+    like native-string
+    lock false
+  link justify-self, name <justifySelf>
+    like native-string
+    lock false
+  link left, name <left>
+    like native-string
+    lock false
+  link length, name <length>
+    like native-number
+  link letter-spacing, name <letterSpacing>
+    like native-string
+    lock false
+  link lighting-color, name <lightingColor>
+    like native-string
+    lock false
+  link line-break, name <lineBreak>
+    like native-string
+    lock false
+  link line-height, name <lineHeight>
+    like native-string
+    lock false
+  link list-style, name <listStyle>
+    like native-string
+    lock false
+  link list-style-image, name <listStyleImage>
+    like native-string
+    lock false
+  link list-style-position, name <listStylePosition>
+    like native-string
+    lock false
+  link list-style-type, name <listStyleType>
+    like native-string
+    lock false
+  link margin, name <margin>
+    like native-string
+    lock false
+  link margin-block, name <marginBlock>
+    like native-string
+    lock false
+  link margin-block-end, name <marginBlockEnd>
+    like native-string
+    lock false
+  link margin-block-start, name <marginBlockStart>
+    like native-string
+    lock false
+  link margin-bottom, name <marginBottom>
+    like native-string
+    lock false
+  link margin-inline, name <marginInline>
+    like native-string
+    lock false
+  link margin-inline-end, name <marginInlineEnd>
+    like native-string
+    lock false
+  link margin-inline-start, name <marginInlineStart>
+    like native-string
+    lock false
+  link margin-left, name <marginLeft>
+    like native-string
+    lock false
+  link margin-right, name <marginRight>
+    like native-string
+    lock false
+  link margin-top, name <marginTop>
+    like native-string
+    lock false
+  link marker, name <marker>
+    like native-string
+    lock false
+  link marker-end, name <markerEnd>
+    like native-string
+    lock false
+  link marker-mid, name <markerMid>
+    like native-string
+    lock false
+  link marker-start, name <markerStart>
+    like native-string
+    lock false
+  link mask, name <mask>
+    like native-string
+    lock false
+  link mask-type, name <maskType>
+    like native-string
+    lock false
+  link max-block-size, name <maxBlockSize>
+    like native-string
+    lock false
+  link max-height, name <maxHeight>
+    like native-string
+    lock false
+  link max-inline-size, name <maxInlineSize>
+    like native-string
+    lock false
+  link max-width, name <maxWidth>
+    like native-string
+    lock false
+  link min-block-size, name <minBlockSize>
+    like native-string
+    lock false
+  link min-height, name <minHeight>
+    like native-string
+    lock false
+  link min-inline-size, name <minInlineSize>
+    like native-string
+    lock false
+  link min-width, name <minWidth>
+    like native-string
+    lock false
+  link mix-blend-mode, name <mixBlendMode>
+    like native-string
+    lock false
+  link object-fit, name <objectFit>
+    like native-string
+    lock false
+  link object-position, name <objectPosition>
+    like native-string
+    lock false
+  link offset, name <offset>
+    like native-string
+    lock false
+  link offset-anchor, name <offsetAnchor>
+    like native-string
+    lock false
+  link offset-distance, name <offsetDistance>
+    like native-string
+    lock false
+  link offset-path, name <offsetPath>
+    like native-string
+    lock false
+  link offset-rotate, name <offsetRotate>
+    like native-string
+    lock false
+  link opacity, name <opacity>
+    like native-string
+    lock false
+  link order, name <order>
+    like native-string
+    lock false
+  link orphans, name <orphans>
+    like native-string
+    lock false
+  link outline, name <outline>
+    like native-string
+    lock false
+  link outline-color, name <outlineColor>
+    like native-string
+    lock false
+  link outline-offset, name <outlineOffset>
+    like native-string
+    lock false
+  link outline-style, name <outlineStyle>
+    like native-string
+    lock false
+  link outline-width, name <outlineWidth>
+    like native-string
+    lock false
+  link overflow, name <overflow>
+    like native-string
+    lock false
+  link overflow-anchor, name <overflowAnchor>
+    like native-string
+    lock false
+  link overflow-wrap, name <overflowWrap>
+    like native-string
+    lock false
+  link overflow-x, name <overflowX>
+    like native-string
+    lock false
+  link overflow-y, name <overflowY>
+    like native-string
+    lock false
+  link overscroll-behavior, name <overscrollBehavior>
+    like native-string
+    lock false
+  link overscroll-behavior-block, name <overscrollBehaviorBlock>
+    like native-string
+    lock false
+  link overscroll-behavior-inline, name <overscrollBehaviorInline>
+    like native-string
+    lock false
+  link overscroll-behavior-x, name <overscrollBehaviorX>
+    like native-string
+    lock false
+  link overscroll-behavior-y, name <overscrollBehaviorY>
+    like native-string
+    lock false
+  link padding, name <padding>
+    like native-string
+    lock false
+  link padding-block, name <paddingBlock>
+    like native-string
+    lock false
+  link padding-block-end, name <paddingBlockEnd>
+    like native-string
+    lock false
+  link padding-block-start, name <paddingBlockStart>
+    like native-string
+    lock false
+  link padding-bottom, name <paddingBottom>
+    like native-string
+    lock false
+  link padding-inline, name <paddingInline>
+    like native-string
+    lock false
+  link padding-inline-end, name <paddingInlineEnd>
+    like native-string
+    lock false
+  link padding-inline-start, name <paddingInlineStart>
+    like native-string
+    lock false
+  link padding-left, name <paddingLeft>
+    like native-string
+    lock false
+  link padding-right, name <paddingRight>
+    like native-string
+    lock false
+  link padding-top, name <paddingTop>
+    like native-string
+    lock false
+  link page-break-after, name <pageBreakAfter>
+    like native-string
+    lock false
+  link page-break-before, name <pageBreakBefore>
+    like native-string
+    lock false
+  link page-break-inside, name <pageBreakInside>
+    like native-string
+    lock false
+  link paint-order, name <paintOrder>
+    like native-string
+    lock false
+  link parent-rule, name <parentRule>
+    like or
+      like css-rule
+      like native-null
+  link perspective, name <perspective>
+    like native-string
+    lock false
+  link perspective-origin, name <perspectiveOrigin>
+    like native-string
+    lock false
+  link place-content, name <placeContent>
+    like native-string
+    lock false
+  link place-items, name <placeItems>
+    like native-string
+    lock false
+  link place-self, name <placeSelf>
+    like native-string
+    lock false
+  link pointer-events, name <pointerEvents>
+    like native-string
+    lock false
+  link position, name <position>
+    like native-string
+    lock false
+  link quotes, name <quotes>
+    like native-string
+    lock false
+  link resize, name <resize>
+    like native-string
+    lock false
+  link right, name <right>
+    like native-string
+    lock false
+  link rotate, name <rotate>
+    like native-string
+    lock false
+  link row-gap, name <rowGap>
+    like native-string
+    lock false
+  link ruby-position, name <rubyPosition>
+    like native-string
+    lock false
+  link scale, name <scale>
+    like native-string
+    lock false
+  link scroll-behavior, name <scrollBehavior>
+    like native-string
+    lock false
+  link scroll-margin, name <scrollMargin>
+    like native-string
+    lock false
+  link scroll-margin-block, name <scrollMarginBlock>
+    like native-string
+    lock false
+  link scroll-margin-block-end, name <scrollMarginBlockEnd>
+    like native-string
+    lock false
+  link scroll-margin-block-start, name <scrollMarginBlockStart>
+    like native-string
+    lock false
+  link scroll-margin-bottom, name <scrollMarginBottom>
+    like native-string
+    lock false
+  link scroll-margin-inline, name <scrollMarginInline>
+    like native-string
+    lock false
+  link scroll-margin-inline-end, name <scrollMarginInlineEnd>
+    like native-string
+    lock false
+  link scroll-margin-inline-start, name <scrollMarginInlineStart>
+    like native-string
+    lock false
+  link scroll-margin-left, name <scrollMarginLeft>
+    like native-string
+    lock false
+  link scroll-margin-right, name <scrollMarginRight>
+    like native-string
+    lock false
+  link scroll-margin-top, name <scrollMarginTop>
+    like native-string
+    lock false
+  link scroll-padding, name <scrollPadding>
+    like native-string
+    lock false
+  link scroll-padding-block, name <scrollPaddingBlock>
+    like native-string
+    lock false
+  link scroll-padding-block-end, name <scrollPaddingBlockEnd>
+    like native-string
+    lock false
+  link scroll-padding-block-start, name <scrollPaddingBlockStart>
+    like native-string
+    lock false
+  link scroll-padding-bottom, name <scrollPaddingBottom>
+    like native-string
+    lock false
+  link scroll-padding-inline, name <scrollPaddingInline>
+    like native-string
+    lock false
+  link scroll-padding-inline-end, name <scrollPaddingInlineEnd>
+    like native-string
+    lock false
+  link scroll-padding-inline-start, name <scrollPaddingInlineStart>
+    like native-string
+    lock false
+  link scroll-padding-left, name <scrollPaddingLeft>
+    like native-string
+    lock false
+  link scroll-padding-right, name <scrollPaddingRight>
+    like native-string
+    lock false
+  link scroll-padding-top, name <scrollPaddingTop>
+    like native-string
+    lock false
+  link scroll-snap-align, name <scrollSnapAlign>
+    like native-string
+    lock false
+  link scroll-snap-type, name <scrollSnapType>
+    like native-string
+    lock false
+  link shape-image-threshold, name <shapeImageThreshold>
+    like native-string
+    lock false
+  link shape-margin, name <shapeMargin>
+    like native-string
+    lock false
+  link shape-outside, name <shapeOutside>
+    like native-string
+    lock false
+  link shape-rendering, name <shapeRendering>
+    like native-string
+    lock false
+  link stop-color, name <stopColor>
+    like native-string
+    lock false
+  link stop-opacity, name <stopOpacity>
+    like native-string
+    lock false
+  link stroke, name <stroke>
+    like native-string
+    lock false
+  link stroke-dasharray, name <strokeDasharray>
+    like native-string
+    lock false
+  link stroke-dashoffset, name <strokeDashoffset>
+    like native-string
+    lock false
+  link stroke-linecap, name <strokeLinecap>
+    like native-string
+    lock false
+  link stroke-linejoin, name <strokeLinejoin>
+    like native-string
+    lock false
+  link stroke-miterlimit, name <strokeMiterlimit>
+    like native-string
+    lock false
+  link stroke-opacity, name <strokeOpacity>
+    like native-string
+    lock false
+  link stroke-width, name <strokeWidth>
+    like native-string
+    lock false
+  link tab-size, name <tabSize>
+    like native-string
+    lock false
+  link table-layout, name <tableLayout>
+    like native-string
+    lock false
+  link text-align, name <textAlign>
+    like native-string
+    lock false
+  link text-align-last, name <textAlignLast>
+    like native-string
+    lock false
+  link text-anchor, name <textAnchor>
+    like native-string
+    lock false
+  link text-combine-upright, name <textCombineUpright>
+    like native-string
+    lock false
+  link text-decoration, name <textDecoration>
+    like native-string
+    lock false
+  link text-decoration-color, name <textDecorationColor>
+    like native-string
+    lock false
+  link text-decoration-line, name <textDecorationLine>
+    like native-string
+    lock false
+  link text-decoration-skip-ink, name <textDecorationSkipInk>
+    like native-string
+    lock false
+  link text-decoration-style, name <textDecorationStyle>
+    like native-string
+    lock false
+  link text-decoration-thickness, name <textDecorationThickness>
+    like native-string
+    lock false
+  link text-emphasis, name <textEmphasis>
+    like native-string
+    lock false
+  link text-emphasis-color, name <textEmphasisColor>
+    like native-string
+    lock false
+  link text-emphasis-position, name <textEmphasisPosition>
+    like native-string
+    lock false
+  link text-emphasis-style, name <textEmphasisStyle>
+    like native-string
+    lock false
+  link text-indent, name <textIndent>
+    like native-string
+    lock false
+  link text-orientation, name <textOrientation>
+    like native-string
+    lock false
+  link text-overflow, name <textOverflow>
+    like native-string
+    lock false
+  link text-rendering, name <textRendering>
+    like native-string
+    lock false
+  link text-shadow, name <textShadow>
+    like native-string
+    lock false
+  link text-transform, name <textTransform>
+    like native-string
+    lock false
+  link text-underline-offset, name <textUnderlineOffset>
+    like native-string
+    lock false
+  link text-underline-position, name <textUnderlinePosition>
+    like native-string
+    lock false
+  link top, name <top>
+    like native-string
+    lock false
+  link touch-action, name <touchAction>
+    like native-string
+    lock false
+  link transform, name <transform>
+    like native-string
+    lock false
+  link transform-box, name <transformBox>
+    like native-string
+    lock false
+  link transform-origin, name <transformOrigin>
+    like native-string
+    lock false
+  link transform-style, name <transformStyle>
+    like native-string
+    lock false
+  link transition, name <transition>
+    like native-string
+    lock false
+  link transition-delay, name <transitionDelay>
+    like native-string
+    lock false
+  link transition-duration, name <transitionDuration>
+    like native-string
+    lock false
+  link transition-property, name <transitionProperty>
+    like native-string
+    lock false
+  link transition-timing-function, name <transitionTimingFunction>
+    like native-string
+    lock false
+  link translate, name <translate>
+    like native-string
+    lock false
+  link unicode-bidi, name <unicodeBidi>
+    like native-string
+    lock false
+  link user-select, name <userSelect>
+    like native-string
+    lock false
+  link vertical-align, name <verticalAlign>
+    like native-string
+    lock false
+  link visibility, name <visibility>
+    like native-string
+    lock false
+  link webkit-align-content, name <webkitAlignContent>
+    like native-string
+    lock false
+  link webkit-align-items, name <webkitAlignItems>
+    like native-string
+    lock false
+  link webkit-align-self, name <webkitAlignSelf>
+    like native-string
+    lock false
+  link webkit-animation, name <webkitAnimation>
+    like native-string
+    lock false
+  link webkit-animation-delay, name <webkitAnimationDelay>
+    like native-string
+    lock false
+  link webkit-animation-direction, name <webkitAnimationDirection>
+    like native-string
+    lock false
+  link webkit-animation-duration, name <webkitAnimationDuration>
+    like native-string
+    lock false
+  link webkit-animation-fill-mode, name <webkitAnimationFillMode>
+    like native-string
+    lock false
+  link webkit-animation-iteration-count, name <webkitAnimationIterationCount>
+    like native-string
+    lock false
+  link webkit-animation-name, name <webkitAnimationName>
+    like native-string
+    lock false
+  link webkit-animation-play-state, name <webkitAnimationPlayState>
+    like native-string
+    lock false
+  link webkit-animation-timing-function, name <webkitAnimationTimingFunction>
+    like native-string
+    lock false
+  link webkit-appearance, name <webkitAppearance>
+    like native-string
+    lock false
+  link webkit-backface-visibility, name <webkitBackfaceVisibility>
+    like native-string
+    lock false
+  link webkit-background-clip, name <webkitBackgroundClip>
+    like native-string
+    lock false
+  link webkit-background-origin, name <webkitBackgroundOrigin>
+    like native-string
+    lock false
+  link webkit-background-size, name <webkitBackgroundSize>
+    like native-string
+    lock false
+  link webkit-border-bottom-left-radius, name <webkitBorderBottomLeftRadius>
+    like native-string
+    lock false
+  link webkit-border-bottom-right-radius, name <webkitBorderBottomRightRadius>
+    like native-string
+    lock false
+  link webkit-border-radius, name <webkitBorderRadius>
+    like native-string
+    lock false
+  link webkit-border-top-left-radius, name <webkitBorderTopLeftRadius>
+    like native-string
+    lock false
+  link webkit-border-top-right-radius, name <webkitBorderTopRightRadius>
+    like native-string
+    lock false
+  link webkit-box-align, name <webkitBoxAlign>
+    like native-string
+    lock false
+  link webkit-box-flex, name <webkitBoxFlex>
+    like native-string
+    lock false
+  link webkit-box-ordinal-group, name <webkitBoxOrdinalGroup>
+    like native-string
+    lock false
+  link webkit-box-orient, name <webkitBoxOrient>
+    like native-string
+    lock false
+  link webkit-box-pack, name <webkitBoxPack>
+    like native-string
+    lock false
+  link webkit-box-shadow, name <webkitBoxShadow>
+    like native-string
+    lock false
+  link webkit-box-sizing, name <webkitBoxSizing>
+    like native-string
+    lock false
+  link webkit-filter, name <webkitFilter>
+    like native-string
+    lock false
+  link webkit-flex, name <webkitFlex>
+    like native-string
+    lock false
+  link webkit-flex-basis, name <webkitFlexBasis>
+    like native-string
+    lock false
+  link webkit-flex-direction, name <webkitFlexDirection>
+    like native-string
+    lock false
+  link webkit-flex-flow, name <webkitFlexFlow>
+    like native-string
+    lock false
+  link webkit-flex-grow, name <webkitFlexGrow>
+    like native-string
+    lock false
+  link webkit-flex-shrink, name <webkitFlexShrink>
+    like native-string
+    lock false
+  link webkit-flex-wrap, name <webkitFlexWrap>
+    like native-string
+    lock false
+  link webkit-justify-content, name <webkitJustifyContent>
+    like native-string
+    lock false
+  link webkit-line-clamp, name <webkitLineClamp>
+    like native-string
+    lock false
+  link webkit-mask, name <webkitMask>
+    like native-string
+    lock false
+  link webkit-mask-box-image, name <webkitMaskBoxImage>
+    like native-string
+    lock false
+  link webkit-mask-box-image-outset, name <webkitMaskBoxImageOutset>
+    like native-string
+    lock false
+  link webkit-mask-box-image-repeat, name <webkitMaskBoxImageRepeat>
+    like native-string
+    lock false
+  link webkit-mask-box-image-slice, name <webkitMaskBoxImageSlice>
+    like native-string
+    lock false
+  link webkit-mask-box-image-source, name <webkitMaskBoxImageSource>
+    like native-string
+    lock false
+  link webkit-mask-box-image-width, name <webkitMaskBoxImageWidth>
+    like native-string
+    lock false
+  link webkit-mask-clip, name <webkitMaskClip>
+    like native-string
+    lock false
+  link webkit-mask-composite, name <webkitMaskComposite>
+    like native-string
+    lock false
+  link webkit-mask-image, name <webkitMaskImage>
+    like native-string
+    lock false
+  link webkit-mask-origin, name <webkitMaskOrigin>
+    like native-string
+    lock false
+  link webkit-mask-position, name <webkitMaskPosition>
+    like native-string
+    lock false
+  link webkit-mask-repeat, name <webkitMaskRepeat>
+    like native-string
+    lock false
+  link webkit-mask-size, name <webkitMaskSize>
+    like native-string
+    lock false
+  link webkit-order, name <webkitOrder>
+    like native-string
+    lock false
+  link webkit-perspective, name <webkitPerspective>
+    like native-string
+    lock false
+  link webkit-perspective-origin, name <webkitPerspectiveOrigin>
+    like native-string
+    lock false
+  link webkit-text-fill-color, name <webkitTextFillColor>
+    like native-string
+    lock false
+  link webkit-text-size-adjust, name <webkitTextSizeAdjust>
+    like native-string
+    lock false
+  link webkit-text-stroke, name <webkitTextStroke>
+    like native-string
+    lock false
+  link webkit-text-stroke-color, name <webkitTextStrokeColor>
+    like native-string
+    lock false
+  link webkit-text-stroke-width, name <webkitTextStrokeWidth>
+    like native-string
+    lock false
+  link webkit-transform, name <webkitTransform>
+    like native-string
+    lock false
+  link webkit-transform-origin, name <webkitTransformOrigin>
+    like native-string
+    lock false
+  link webkit-transform-style, name <webkitTransformStyle>
+    like native-string
+    lock false
+  link webkit-transition, name <webkitTransition>
+    like native-string
+    lock false
+  link webkit-transition-delay, name <webkitTransitionDelay>
+    like native-string
+    lock false
+  link webkit-transition-duration, name <webkitTransitionDuration>
+    like native-string
+    lock false
+  link webkit-transition-property, name <webkitTransitionProperty>
+    like native-string
+    lock false
+  link webkit-transition-timing-function, name <webkitTransitionTimingFunction>
+    like native-string
+    lock false
+  link webkit-user-select, name <webkitUserSelect>
+    like native-string
+    lock false
+  link white-space, name <whiteSpace>
+    like native-string
+    lock false
+  link widows, name <widows>
+    like native-string
+    lock false
+  link width, name <width>
+    like native-string
+    lock false
+  link will-change, name <willChange>
+    like native-string
+    lock false
+  link word-break, name <wordBreak>
+    like native-string
+    lock false
+  link word-spacing, name <wordSpacing>
+    like native-string
+    lock false
+  link word-wrap, name <wordWrap>
+    like native-string
+    lock false
+  link writing-mode, name <writingMode>
+    like native-string
+    lock false
+  link z-index, name <zIndex>
+    like native-string
+    lock false
+
+  task get-property-priority, name <getPropertyPriority>
+    take property, like native-string
+    like native-string
+
+  task get-property-value, name <getPropertyValue>
+    take property, like native-string
+    like native-string
+
+  task item, name <item>
+    take index, like native-number
+    like native-string
+
+  task remove-property, name <removeProperty>
+    take property, like native-string
+    like native-string
+
+  task set-property, name <setProperty>
+    take property, like native-string
+    take value
+      like or
+        like native-string
+        like native-null
+    take priority, like maybe
+      like native-string
+    like native-void
+
+  mesh index, like native-number
+    like native-string

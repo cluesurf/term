@@ -1,0 +1,33 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-undefined
+
+load @term/bind/code/node/http2
+  find session-options
+
+form server-session-options, name <ServerSessionOptions>
+  base session-options
+
+  link http1-incoming-message, name <Http1IncomingMessage>
+    like or
+      like incoming-message
+      like native-undefined
+    flex true
+  link http1-server-response, name <Http1ServerResponse>
+    like or
+      like server-response
+      like native-undefined
+    flex true
+  link http2-server-request, name <Http2ServerRequest>
+    like or
+      like http2-server-request
+      like native-undefined
+    flex true
+  link http2-server-response, name <Http2ServerResponse>
+    like or
+      like http2-server-response
+      like native-undefined
+    flex true

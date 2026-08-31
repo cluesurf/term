@@ -1,0 +1,105 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find native-void
+  find node-js-array-buffer-view
+
+load @term/bind/code/node/buffer
+  find buffer
+  find buffer-encoding
+
+load @term/bind/code/node/crypto
+  find binary-to-text-encoding
+
+form diffie-hellman, name <DiffieHellman>
+  link verify-error, name <verifyError>, like native-number
+
+  task generate-keys, name <generateKeys>
+    like buffer
+
+  task generate-keys, name <generateKeys>
+    like native-string
+
+    take encoding, like binary-to-text-encoding
+
+  task compute-secret, name <computeSecret>
+    like buffer
+
+    take other-public-key, like node-js-array-buffer-view
+
+  task compute-secret, name <computeSecret>
+    like buffer
+
+    take other-public-key, like native-string
+    take input-encoding, like binary-to-text-encoding
+
+  task compute-secret, name <computeSecret>
+    like native-string
+
+    take other-public-key, like node-js-array-buffer-view
+    take output-encoding, like binary-to-text-encoding
+
+  task compute-secret, name <computeSecret>
+    like native-string
+
+    take other-public-key, like native-string
+    take input-encoding, like binary-to-text-encoding
+    take output-encoding, like binary-to-text-encoding
+
+  task get-prime, name <getPrime>
+    like buffer
+
+  task get-prime, name <getPrime>
+    like native-string
+
+    take encoding, like binary-to-text-encoding
+
+  task get-generator, name <getGenerator>
+    like buffer
+
+  task get-generator, name <getGenerator>
+    like native-string
+
+    take encoding, like binary-to-text-encoding
+
+  task get-public-key, name <getPublicKey>
+    like buffer
+
+  task get-public-key, name <getPublicKey>
+    like native-string
+
+    take encoding, like binary-to-text-encoding
+
+  task get-private-key, name <getPrivateKey>
+    like buffer
+
+  task get-private-key, name <getPrivateKey>
+    like native-string
+
+    take encoding, like binary-to-text-encoding
+
+  task set-public-key, name <setPublicKey>
+    like native-void
+
+    take public-key, like node-js-array-buffer-view
+
+  task set-public-key, name <setPublicKey>
+    like native-void
+
+    take public-key, like native-string
+    take encoding, like buffer-encoding
+
+  task set-private-key, name <setPrivateKey>
+    like native-void
+
+    take private-key, like node-js-array-buffer-view
+
+  task set-private-key, name <setPrivateKey>
+    like native-void
+
+    take private-key, like native-string
+    take encoding, like buffer-encoding
+
+form diffie-hellman-constructor
+  hook make

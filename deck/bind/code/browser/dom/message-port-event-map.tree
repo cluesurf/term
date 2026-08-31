@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/message-event
+  find message-event
+
+form message-port-event-map, name <MessagePortEventMap>
+  link message, name <message>
+    like message-event
+    lock false
+  link messageerror, name <messageerror>
+    like message-event
+    lock false

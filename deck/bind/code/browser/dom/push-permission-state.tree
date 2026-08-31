@@ -1,0 +1,6 @@
+
+form push-permission-state, name <PushPermissionState>
+  like or
+    text <denied>
+    text <granted>
+    text <prompt>

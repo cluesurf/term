@@ -1,0 +1,40 @@
+
+bear @term/bind/code/javascript/node/inspector/inspector-notification
+bear @term/bind/code/javascript/node/inspector/schema
+bear @term/bind/code/javascript/node/inspector/runtime
+bear @term/bind/code/javascript/node/inspector/debugger
+bear @term/bind/code/javascript/node/inspector/console
+bear @term/bind/code/javascript/node/inspector/profiler
+bear @term/bind/code/javascript/node/inspector/heap-profiler
+bear @term/bind/code/javascript/node/inspector/session
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-string
+  find native-undefined
+  find native-void
+
+task open, name <open>
+  like native-void
+
+  take port, like native-number
+    void true
+  take host, like native-string
+    void true
+  take wait, like native-boolean
+    void true
+
+task close, name <close>
+  like native-void
+
+task url, name <url>
+  like or
+    like native-string
+    like native-undefined
+
+task wait-for-debugger, name <waitForDebugger>
+  like native-void

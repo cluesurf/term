@@ -1,0 +1,11 @@
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+load @term/bind/code/javascript/es5/array-buffer-view
+  find array-buffer-view
+
+form buffer-source, name <BufferSource>
+  like or
+    like array-buffer-view
+    like array-buffer

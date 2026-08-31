@@ -1,0 +1,58 @@
+
+form debug-set, name <std::fmt::DebugSet>
+  task entry, name <entry>
+    note <Adds a new entry to the set output.>
+
+    take self
+      cite free
+    take entry
+      like debug
+      dash take
+
+    free seed
+      like debug-set
+        time a
+        time b
+
+  task entries, name <entries>
+    note <Adds the contents of an iterator of entries to the set output.>
+
+    lead d
+      like debug
+        cite free
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like d
+              cite free
+        cite free
+
+    head d
+    head i
+
+    take self
+      cite free
+    take entries
+      like i
+        cite free
+      cite free
+
+    free seed
+      like debug-set
+        time a
+        time b
+
+  task finish, name <finish>
+    note <Finishes output and returns any error encountered.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free

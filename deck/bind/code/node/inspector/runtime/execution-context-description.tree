@@ -1,0 +1,27 @@
+
+load @term/bind
+  find form
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/inspector/runtime
+  find execution-context-id
+
+form execution-context-description, name <ExecutionContextDescription>
+  link id, name <id>
+    like execution-context-id
+    flex true
+  link origin, name <origin>
+    like native-string
+    flex true
+  link name, name <name>
+    like native-string
+    flex true
+  link aux-data, name <auxData>
+    like or
+      like form
+      like native-undefined
+    flex true

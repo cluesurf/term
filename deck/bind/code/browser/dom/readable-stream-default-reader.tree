@@ -1,0 +1,29 @@
+
+load @term/bind/code/browser/dom/readable-stream-default-read-result
+  find readable-stream-default-read-result
+
+load @term/bind/code/browser/dom/readable-stream-generic-reader
+  find readable-stream-generic-reader
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form readable-stream-default-reader, name <ReadableStreamDefaultReader>
+  base readable-stream-generic-reader
+
+  head r
+    back native-any
+
+  task read, name <read>
+    like promise
+      like readable-stream-default-read-result
+        like r
+
+  task release-lock, name <releaseLock>
+    like native-void

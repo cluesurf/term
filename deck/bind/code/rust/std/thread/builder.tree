@@ -1,0 +1,118 @@
+
+form builder, name <std::thread::Builder>
+  task new, name <new>
+    note <Generates the base configuration for spawning a thread, from which configuration methods can be chained.>
+
+    free seed
+      like builder
+        cite free
+
+  task name, name <name>
+    note <Names the thread-to-be. Currently the name is used for identification only in panic messages.>
+
+    take self
+      cite free
+    take name
+      like string
+        cite free
+      cite free
+
+    free seed
+      like builder
+        cite free
+
+  task stack-size, name <stack_size>
+    note <Sets the size of the stack (in bytes) for the new thread.>
+
+    take self
+      cite free
+    take size
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like builder
+        cite free
+
+  task spawn, name <spawn>
+    note <Spawns a new thread by taking ownership of the Builder, and returns an io::Result to its JoinHandle.>
+
+    lead f
+      like fn-once
+        free seed
+          like t
+            cite free
+    lead f
+      like send
+        cite free
+    lead t
+      like send
+        cite free
+
+    head f
+    head t
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like result
+        like join-handle
+          like t
+            cite free
+          cite free
+        cite free
+
+  task spawn-unchecked, name <spawn_unchecked>
+    note <Spawns a new thread without any lifetime restrictions by taking ownership of the Builder, and returns an io::Result to its JoinHandle.>
+
+    lead f
+      like fn-once
+        free seed
+          like t
+            cite free
+    lead f
+      like send
+        cite free
+    lead t
+      like send
+        cite free
+
+    time a
+
+    head f
+    head t
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like result
+        like join-handle
+          like t
+            cite free
+          cite free
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free

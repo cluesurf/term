@@ -1,0 +1,402 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/browser/dom/media-stream
+  find media-stream
+
+load @term/bind/code/browser/dom/media-stream-track
+  find media-stream-track
+
+load @term/bind/code/browser/dom/rtc-answer-options
+  find rtc-answer-options
+
+load @term/bind/code/browser/dom/rtc-configuration
+  find rtc-configuration
+
+load @term/bind/code/browser/dom/rtc-data-channel
+  find rtc-data-channel
+
+load @term/bind/code/browser/dom/rtc-data-channel-event
+  find rtc-data-channel-event
+
+load @term/bind/code/browser/dom/rtc-data-channel-init
+  find rtc-data-channel-init
+
+load @term/bind/code/browser/dom/rtc-ice-candidate-init
+  find rtc-ice-candidate-init
+
+load @term/bind/code/browser/dom/rtc-ice-connection-state
+  find rtc-ice-connection-state
+
+load @term/bind/code/browser/dom/rtc-ice-gathering-state
+  find rtc-ice-gathering-state
+
+load @term/bind/code/browser/dom/rtc-local-session-description-init
+  find rtc-local-session-description-init
+
+load @term/bind/code/browser/dom/rtc-offer-options
+  find rtc-offer-options
+
+load @term/bind/code/browser/dom/rtc-peer-connection-error-callback
+  find rtc-peer-connection-error-callback
+
+load @term/bind/code/browser/dom/rtc-peer-connection-event-map
+  find rtc-peer-connection-event-map
+
+load @term/bind/code/browser/dom/rtc-peer-connection-ice-event
+  find rtc-peer-connection-ice-event
+
+load @term/bind/code/browser/dom/rtc-peer-connection-state
+  find rtc-peer-connection-state
+
+load @term/bind/code/browser/dom/rtc-rtp-receiver
+  find rtc-rtp-receiver
+
+load @term/bind/code/browser/dom/rtc-rtp-sender
+  find rtc-rtp-sender
+
+load @term/bind/code/browser/dom/rtc-rtp-transceiver
+  find rtc-rtp-transceiver
+
+load @term/bind/code/browser/dom/rtc-rtp-transceiver-init
+  find rtc-rtp-transceiver-init
+
+load @term/bind/code/browser/dom/rtc-session-description
+  find rtc-session-description
+
+load @term/bind/code/browser/dom/rtc-session-description-callback
+  find rtc-session-description-callback
+
+load @term/bind/code/browser/dom/rtc-session-description-init
+  find rtc-session-description-init
+
+load @term/bind/code/browser/dom/rtc-signaling-state
+  find rtc-signaling-state
+
+load @term/bind/code/browser/dom/rtc-stats-report
+  find rtc-stats-report
+
+load @term/bind/code/browser/dom/rtc-track-event
+  find rtc-track-event
+
+load @term/bind/code/browser/dom/void-function
+  find void-function
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form rtc-peer-connection, name <RTCPeerConnection>
+  base event-target
+
+  link can-trickle-ice-candidates, name <canTrickleIceCandidates>
+    like or
+      like native-boolean
+      like native-null
+  link connection-state, name <connectionState>
+    like rtc-peer-connection-state
+  link current-local-description, name <currentLocalDescription>
+    like or
+      like rtc-session-description
+      like native-null
+  link current-remote-description, name <currentRemoteDescription>
+    like or
+      like rtc-session-description
+      like native-null
+  link ice-connection-state, name <iceConnectionState>
+    like rtc-ice-connection-state
+  link ice-gathering-state, name <iceGatheringState>
+    like rtc-ice-gathering-state
+  link local-description, name <localDescription>
+    like or
+      like rtc-session-description
+      like native-null
+  link onconnectionstatechange, name <onconnectionstatechange>
+    like or
+      like task
+        take this, like rtc-peer-connection
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link ondatachannel, name <ondatachannel>
+    like or
+      like task
+        take this, like rtc-peer-connection
+        take ev, like rtc-data-channel-event
+        like native-any
+      like native-null
+    lock false
+  link onicecandidate, name <onicecandidate>
+    like or
+      like task
+        take this, like rtc-peer-connection
+        take ev, like rtc-peer-connection-ice-event
+        like native-any
+      like native-null
+    lock false
+  link oniceconnectionstatechange, name <oniceconnectionstatechange>
+    like or
+      like task
+        take this, like rtc-peer-connection
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onicegatheringstatechange, name <onicegatheringstatechange>
+    like or
+      like task
+        take this, like rtc-peer-connection
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onnegotiationneeded, name <onnegotiationneeded>
+    like or
+      like task
+        take this, like rtc-peer-connection
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onsignalingstatechange, name <onsignalingstatechange>
+    like or
+      like task
+        take this, like rtc-peer-connection
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link ontrack, name <ontrack>
+    like or
+      like task
+        take this, like rtc-peer-connection
+        take ev, like rtc-track-event
+        like native-any
+      like native-null
+    lock false
+  link pending-local-description, name <pendingLocalDescription>
+    like or
+      like rtc-session-description
+      like native-null
+  link pending-remote-description, name <pendingRemoteDescription>
+    like or
+      like rtc-session-description
+      like native-null
+  link remote-description, name <remoteDescription>
+    like or
+      like rtc-session-description
+      like native-null
+  link signaling-state, name <signalingState>
+    like rtc-signaling-state
+
+  task add-ice-candidate, name <addIceCandidate>
+    take candidate, like maybe
+      like rtc-ice-candidate-init
+    like promise
+      like native-void
+
+  task add-ice-candidate, name <addIceCandidate>
+    take candidate, like rtc-ice-candidate-init
+    take success-callback, like void-function
+    take failure-callback, like rtc-peer-connection-error-callback
+    like promise
+      like native-void
+
+  task add-track, name <addTrack>
+    take track, like media-stream-track
+    take streams
+      like native-array
+        like media-stream
+      rest true
+    like rtc-rtp-sender
+
+  task add-transceiver, name <addTransceiver>
+    take track-or-kind
+      like or
+        like media-stream-track
+        like native-string
+    take init, like maybe
+      like rtc-rtp-transceiver-init
+    like rtc-rtp-transceiver
+
+  task close, name <close>
+    like native-void
+
+  task create-answer, name <createAnswer>
+    take options, like maybe
+      like rtc-answer-options
+    like promise
+      like rtc-session-description-init
+
+  task create-answer, name <createAnswer>
+    take success-callback, like rtc-session-description-callback
+    take failure-callback, like rtc-peer-connection-error-callback
+    like promise
+      like native-void
+
+  task create-data-channel, name <createDataChannel>
+    take label, like native-string
+    take data-channel-dict, like maybe
+      like rtc-data-channel-init
+    like rtc-data-channel
+
+  task create-offer, name <createOffer>
+    take options, like maybe
+      like rtc-offer-options
+    like promise
+      like rtc-session-description-init
+
+  task create-offer, name <createOffer>
+    take success-callback, like rtc-session-description-callback
+    take failure-callback, like rtc-peer-connection-error-callback
+    take options, like maybe
+      like rtc-offer-options
+    like promise
+      like native-void
+
+  task get-configuration, name <getConfiguration>
+    like rtc-configuration
+
+  task get-receivers, name <getReceivers>
+    like native-array
+      like rtc-rtp-receiver
+
+  task get-senders, name <getSenders>
+    like native-array
+      like rtc-rtp-sender
+
+  task get-stats, name <getStats>
+    take selector, like maybe
+      like or
+        like media-stream-track
+        like native-null
+    like promise
+      like rtc-stats-report
+
+  task get-transceivers, name <getTransceivers>
+    like native-array
+      like rtc-rtp-transceiver
+
+  task remove-track, name <removeTrack>
+    take sender, like rtc-rtp-sender
+    like native-void
+
+  task restart-ice, name <restartIce>
+    like native-void
+
+  task set-configuration, name <setConfiguration>
+    take configuration, like maybe
+      like rtc-configuration
+    like native-void
+
+  task set-local-description, name <setLocalDescription>
+    take description, like maybe
+      like rtc-local-session-description-init
+    like promise
+      like native-void
+
+  task set-local-description, name <setLocalDescription>
+    take description, like rtc-local-session-description-init
+    take success-callback, like void-function
+    take failure-callback, like rtc-peer-connection-error-callback
+    like promise
+      like native-void
+
+  task set-remote-description, name <setRemoteDescription>
+    take description, like rtc-session-description-init
+    like promise
+      like native-void
+
+  task set-remote-description, name <setRemoteDescription>
+    take description, like rtc-session-description-init
+    take success-callback, like void-function
+    take failure-callback, like rtc-peer-connection-error-callback
+    like promise
+      like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like rtc-peer-connection-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like rtc-peer-connection
+        take ev
+          like index
+            like rtc-peer-connection-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like rtc-peer-connection-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like rtc-peer-connection
+        take ev
+          like index
+            like rtc-peer-connection-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

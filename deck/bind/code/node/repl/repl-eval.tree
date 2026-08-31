@@ -1,0 +1,31 @@
+
+load @term/bind
+  find any
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find context
+  find error
+  find native-null
+  find native-string
+  find native-void
+  find repl-server
+
+form repl-eval, name <REPLEval>
+  like task
+    like native-void
+
+    take this, like repl-server
+    take eval-cmd, like native-string
+    take context, like context
+    take file, like native-string
+    take cb
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take result, like any

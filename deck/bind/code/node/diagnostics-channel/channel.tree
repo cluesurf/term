@@ -1,0 +1,26 @@
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-string
+  find native-void
+
+load @term/bind/code/node/diagnostics-channel
+  find channel-listener
+
+form channel, name <Channel>
+  link name, name <name>, like native-string
+  link has-subscribers, name <hasSubscribers>, like native-boolean
+
+  task subscribe, name <subscribe>
+    like native-void
+
+    take on-message, like channel-listener
+
+  task unsubscribe, name <unsubscribe>
+    like native-void
+
+    take on-message, like channel-listener
+
+form channel-constructor
+  hook make
+    take name, like native-string

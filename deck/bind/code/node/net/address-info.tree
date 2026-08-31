@@ -1,0 +1,15 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+
+form address-info, name <AddressInfo>
+  link address, name <address>
+    like native-string
+    flex true
+  link family, name <family>
+    like native-string
+    flex true
+  link port, name <port>
+    like native-number
+    flex true

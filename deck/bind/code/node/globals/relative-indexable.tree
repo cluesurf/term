@@ -1,0 +1,18 @@
+
+load @term/bind
+  find like
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+
+form relative-indexable, name <RelativeIndexable>
+  head t
+
+  task at, name <at>
+    like or
+      like t
+      like native-undefined
+
+    take index, like native-number

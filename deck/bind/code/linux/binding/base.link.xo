@@ -1,0 +1,2350 @@
+force sys_read, trace 0
+  mount fd, field int
+    stand white
+  mount buf, field char
+    trace white
+  mount count, field size_t
+
+force sys_write, trace 1
+  mount fd, field int
+    stand white
+  mount buf, field char
+    trace white
+    bound white
+  mount count, field size_t
+
+force sys_open, trace 2
+  mount filename, field char
+    trace white
+    bound white
+  mount flags, field int
+  mount mode, field umode_t
+
+force sys_close, trace 3
+  mount fd, field int
+    stand white
+
+force sys_newstat, trace 4
+  mount filename, field char
+    trace white
+    bound white
+  mount statbuf, field stat
+    block white
+    trace white
+
+force sys_newfstat, trace 5
+  mount fd, field int
+    stand white
+  mount statbuf, field stat
+    block white
+    trace white
+
+force sys_newlstat, trace 6
+  mount filename, field char
+    trace white
+    bound white
+  mount statbuf, field stat
+    block white
+    trace white
+
+force sys_poll, trace 7
+  mount ufds, field pollfd
+    block white
+    trace white
+  mount nfds, field int
+    stand white
+  mount timeout_msecs, field int
+
+force sys_lseek, trace 8
+  mount fd, field int
+    stand white
+  mount offset, field off_t
+  mount whence, field int
+    stand white
+
+force sys_mmap, trace 9
+  mount addr, field long
+    stand white
+  mount len, field long
+    stand white
+  mount prot, field long
+    stand white
+  mount flags, field long
+    stand white
+  mount fd, field long
+    stand white
+  mount off, field long
+    stand white
+
+force sys_mprotect, trace 10
+  mount start, field long
+    stand white
+  mount len, field size_t
+  mount prot, field long
+    stand white
+
+force sys_munmap, trace 11
+  mount addr, field long
+    stand white
+  mount len, field size_t
+
+force sys_brk, trace 12
+  mount brk, field long
+    stand white
+
+force sys_rt_sigaction, trace 13
+  mount sig, field int
+  mount act, field sigaction
+    block white
+    trace white
+    bound white
+  mount oact, field sigaction
+    block white
+    trace white
+  mount sigsetsize, field size_t
+
+force sys_rt_sigprocmask, trace 14
+  mount how, field int
+  mount nset, field sigset_t
+    trace white
+  mount oset, field sigset_t
+    trace white
+  mount sigsetsize, field size_t
+
+force sys_rt_sigreturn, trace 15
+
+force sys_ioctl, trace 16
+  mount fd, field int
+    stand white
+  mount cmd, field int
+    stand white
+  mount arg, field long
+    stand white
+
+force sys_pread64, trace 17
+  mount fd, field int
+    stand white
+  mount buf, field char
+    trace white
+  mount count, field size_t
+  mount pos, field loff_t
+
+force sys_pwrite64, trace 18
+  mount fd, field int
+    stand white
+  mount buf, field char
+    trace white
+    bound white
+  mount count, field size_t
+  mount pos, field loff_t
+
+force sys_readv, trace 19
+  mount fd, field long
+    stand white
+  mount vec, field iovec
+    block white
+    trace white
+    bound white
+  mount vlen, field long
+    stand white
+
+force sys_writev, trace 20
+  mount fd, field long
+    stand white
+  mount vec, field iovec
+    block white
+    trace white
+    bound white
+  mount vlen, field long
+    stand white
+
+force sys_access, trace 21
+  mount filename, field char
+    trace white
+    bound white
+  mount mode, field int
+
+force sys_pipe, trace 22
+  mount fildes, field int
+    trace white
+
+force sys_select, trace 23
+  mount n, field int
+  mount inp, field fd_set
+    trace white
+  mount outp, field fd_set
+    trace white
+  mount exp, field fd_set
+    trace white
+  mount tvp, field timeval
+    block white
+    trace white
+
+force sys_sched_yield, trace 24
+
+force sys_mremap, trace 25
+  mount addr, field long
+    stand white
+  mount old_len, field long
+    stand white
+  mount new_len, field long
+    stand white
+  mount flags, field long
+    stand white
+  mount new_addr, field long
+    stand white
+
+force sys_msync, trace 26
+  mount start, field long
+    stand white
+  mount len, field size_t
+  mount flags, field int
+
+force sys_mincore, trace 27
+  mount start, field long
+    stand white
+  mount len, field size_t
+  mount vec, field char
+    trace white
+    stand white
+
+force sys_madvise, trace 28
+  mount start, field long
+    stand white
+  mount len_in, field size_t
+  mount behavior, field int
+
+force sys_shmget, trace 29
+  mount key, field key_t
+  mount size, field size_t
+  mount shmflg, field int
+
+force sys_shmat, trace 30
+  mount shmid, field int
+  mount shmaddr, field char
+    trace white
+  mount shmflg, field int
+
+force sys_shmctl, trace 31
+  mount shmid, field int
+  mount cmd, field int
+  mount buf, field shmid_ds
+    block white
+    trace white
+
+force sys_dup, trace 32
+  mount fildes, field int
+    stand white
+
+force sys_dup2, trace 33
+  mount oldfd, field int
+    stand white
+  mount newfd, field int
+    stand white
+
+force sys_pause, trace 34
+
+force sys_nanosleep, trace 35
+  mount rqtp, field __kernel_timespec
+    block white
+    trace white
+  mount rmtp, field __kernel_timespec
+    block white
+    trace white
+
+force sys_getitimer, trace 36
+  mount which, field int
+  mount value, field itimerval
+    block white
+    trace white
+
+force sys_alarm, trace 37
+  mount seconds, field int
+    stand white
+
+force sys_setitimer, trace 38
+  mount which, field int
+  mount value, field itimerval
+    block white
+    trace white
+  mount ovalue, field itimerval
+    block white
+    trace white
+
+force sys_getpid, trace 39
+
+force sys_sendfile64, trace 40
+  mount out_fd, field int
+  mount in_fd, field int
+  mount offset, field loff_t
+    trace white
+  mount count, field size_t
+
+force sys_socket, trace 41
+  mount family, field int
+  mount type, field int
+  mount protocol, field int
+
+force sys_connect, trace 42
+  mount fd, field int
+  mount uservaddr, field sockaddr
+    block white
+    trace white
+  mount addrlen, field int
+
+force sys_accept, trace 43
+  mount fd, field int
+  mount upeer_sockaddr, field sockaddr
+    block white
+    trace white
+  mount upeer_addrlen, field int
+    trace white
+
+force sys_sendto, trace 44
+  mount fd, field int
+  mount buff, field void
+    trace white
+  mount len, field size_t
+  mount flags, field int
+    stand white
+  mount addr, field sockaddr
+    block white
+    trace white
+  mount addr_len, field int
+
+force sys_recvfrom, trace 45
+  mount fd, field int
+  mount ubuf, field void
+    trace white
+  mount size, field size_t
+  mount flags, field int
+    stand white
+  mount addr, field sockaddr
+    block white
+    trace white
+  mount addr_len, field int
+    trace white
+
+force sys_sendmsg, trace 46
+  mount fd, field int
+  mount msg, field user_msghdr
+    block white
+    trace white
+  mount flags, field int
+    stand white
+
+force sys_recvmsg, trace 47
+  mount fd, field int
+  mount msg, field user_msghdr
+    block white
+    trace white
+  mount flags, field int
+    stand white
+
+force sys_shutdown, trace 48
+  mount fd, field int
+  mount how, field int
+
+force sys_bind, trace 49
+  mount fd, field int
+  mount umyaddr, field sockaddr
+    block white
+    trace white
+  mount addrlen, field int
+
+force sys_listen, trace 50
+  mount fd, field int
+  mount backlog, field int
+
+force sys_getsockname, trace 51
+  mount fd, field int
+  mount usockaddr, field sockaddr
+    block white
+    trace white
+  mount usockaddr_len, field int
+    trace white
+
+force sys_getpeername, trace 52
+  mount fd, field int
+  mount usockaddr, field sockaddr
+    block white
+    trace white
+  mount usockaddr_len, field int
+    trace white
+
+force sys_socketpair, trace 53
+  mount family, field int
+  mount type, field int
+  mount protocol, field int
+  mount usockvec, field int
+    trace white
+
+force sys_setsockopt, trace 54
+  mount fd, field int
+  mount level, field int
+  mount optname, field int
+  mount optval, field char
+    trace white
+  mount optlen, field int
+
+force sys_getsockopt, trace 55
+  mount fd, field int
+  mount level, field int
+  mount optname, field int
+  mount optval, field char
+    trace white
+  mount optlen, field int
+    trace white
+
+force sys_clone, trace 56
+  mount clone_flags, field long
+    stand white
+  mount newsp, field long
+    stand white
+  mount parent_tidptr, field int
+    trace white
+  mount child_tidptr, field int
+    trace white
+  mount tls, field long
+    stand white
+
+force sys_fork, trace 57
+
+force sys_vfork, trace 58
+
+force sys_execve, trace 59
+  mount filename, field char
+    trace white
+    bound white
+  mount argv, field char
+    trace white
+    bound white
+  mount envp, field char
+    trace white
+    bound white
+
+force sys_exit, trace 60
+  mount error_code, field int
+
+force sys_wait4, trace 61
+  mount upid, field pid_t
+  mount stat_addr, field int
+    trace white
+  mount options, field int
+  mount ru, field rusage
+    block white
+    trace white
+
+force sys_kill, trace 62
+  mount pid, field pid_t
+  mount sig, field int
+
+force sys_newuname, trace 63
+  mount name, field new_utsname
+    block white
+    trace white
+
+force sys_semget, trace 64
+  mount key, field key_t
+  mount nsems, field int
+  mount semflg, field int
+
+force sys_semop, trace 65
+  mount semid, field int
+  mount tsops, field sembuf
+    block white
+    trace white
+  mount nsops, field undefined
+    stand white
+
+force sys_semctl, trace 66
+  mount semid, field int
+  mount semnum, field int
+  mount cmd, field int
+  mount arg, field long
+    stand white
+
+force sys_shmdt, trace 67
+  mount shmaddr, field char
+    trace white
+
+force sys_msgget, trace 68
+  mount key, field key_t
+  mount msgflg, field int
+
+force sys_msgsnd, trace 69
+  mount msqid, field int
+  mount msgp, field msgbuf
+    block white
+    trace white
+  mount msgsz, field size_t
+  mount msgflg, field int
+
+force sys_msgrcv, trace 70
+  mount msqid, field int
+  mount msgp, field msgbuf
+    block white
+    trace white
+  mount msgsz, field size_t
+  mount msgtyp, field long
+  mount msgflg, field int
+
+force sys_msgctl, trace 71
+  mount msqid, field int
+  mount cmd, field int
+  mount buf, field msqid_ds
+    block white
+    trace white
+
+force sys_fcntl, trace 72
+  mount fd, field int
+    stand white
+  mount cmd, field int
+    stand white
+  mount arg, field long
+    stand white
+
+force sys_flock, trace 73
+  mount fd, field int
+    stand white
+  mount cmd, field int
+    stand white
+
+force sys_fsync, trace 74
+  mount fd, field int
+    stand white
+
+force sys_fdatasync, trace 75
+  mount fd, field int
+    stand white
+
+force sys_truncate, trace 76
+  mount path, field char
+    trace white
+    bound white
+  mount length, field long
+
+force sys_ftruncate, trace 77
+  mount fd, field int
+    stand white
+  mount length, field long
+    stand white
+
+force sys_getdents, trace 78
+  mount fd, field int
+    stand white
+  mount dirent, field linux_dirent
+    block white
+    trace white
+  mount count, field int
+    stand white
+
+force sys_getcwd, trace 79
+  mount buf, field char
+    trace white
+  mount size, field long
+    stand white
+
+force sys_chdir, trace 80
+  mount filename, field char
+    trace white
+    bound white
+
+force sys_fchdir, trace 81
+  mount fd, field int
+    stand white
+
+force sys_rename, trace 82
+  mount oldname, field char
+    trace white
+    bound white
+  mount newname, field char
+    trace white
+    bound white
+
+force sys_mkdir, trace 83
+  mount pathname, field char
+    trace white
+    bound white
+  mount mode, field umode_t
+
+force sys_rmdir, trace 84
+  mount pathname, field char
+    trace white
+    bound white
+
+force sys_creat, trace 85
+  mount pathname, field char
+    trace white
+    bound white
+  mount mode, field umode_t
+
+force sys_link, trace 86
+  mount oldname, field char
+    trace white
+    bound white
+  mount newname, field char
+    trace white
+    bound white
+
+force sys_unlink, trace 87
+  mount pathname, field char
+    trace white
+    bound white
+
+force sys_symlink, trace 88
+  mount oldname, field char
+    trace white
+    bound white
+  mount newname, field char
+    trace white
+    bound white
+
+force sys_readlink, trace 89
+  mount path, field char
+    trace white
+    bound white
+  mount buf, field char
+    trace white
+  mount bufsiz, field int
+
+force sys_chmod, trace 90
+  mount filename, field char
+    trace white
+    bound white
+  mount mode, field umode_t
+
+force sys_fchmod, trace 91
+  mount fd, field int
+    stand white
+  mount mode, field umode_t
+
+force sys_chown, trace 92
+  mount filename, field char
+    trace white
+    bound white
+  mount user, field uid_t
+  mount group, field gid_t
+
+force sys_fchown, trace 93
+  mount fd, field int
+    stand white
+  mount user, field uid_t
+  mount group, field gid_t
+
+force sys_lchown, trace 94
+  mount filename, field char
+    trace white
+    bound white
+  mount user, field uid_t
+  mount group, field gid_t
+
+force sys_umask, trace 95
+  mount mask, field int
+
+force sys_gettimeofday, trace 96
+  mount tv, field timeval
+    block white
+    trace white
+  mount tz, field timezone
+    block white
+    trace white
+
+force sys_getrlimit, trace 97
+  mount resource, field int
+    stand white
+  mount rlim, field rlimit
+    block white
+    trace white
+
+force sys_getrusage, trace 98
+  mount who, field int
+  mount ru, field rusage
+    block white
+    trace white
+
+force sys_sysinfo, trace 99
+  mount info, field sysinfo
+    block white
+    trace white
+
+force sys_times, trace 100
+  mount tbuf, field tms
+    block white
+    trace white
+
+force sys_ptrace, trace 101
+  mount request, field long
+  mount pid, field long
+  mount addr, field long
+    stand white
+  mount data, field long
+    stand white
+
+force sys_getuid, trace 102
+
+force sys_syslog, trace 103
+  mount type, field int
+  mount buf, field char
+    trace white
+  mount len, field int
+
+force sys_getgid, trace 104
+
+force sys_setuid, trace 105
+  mount uid, field uid_t
+
+force sys_setgid, trace 106
+  mount gid, field gid_t
+
+force sys_geteuid, trace 107
+
+force sys_getegid, trace 108
+
+force sys_setpgid, trace 109
+  mount pid, field pid_t
+  mount pgid, field pid_t
+
+force sys_getppid, trace 110
+
+force sys_getpgrp, trace 111
+
+force sys_setsid, trace 112
+
+force sys_setreuid, trace 113
+  mount ruid, field uid_t
+  mount euid, field uid_t
+
+force sys_setregid, trace 114
+  mount rgid, field gid_t
+  mount egid, field gid_t
+
+force sys_getgroups, trace 115
+  mount gidsetsize, field int
+  mount grouplist, field gid_t
+    trace white
+
+force sys_setgroups, trace 116
+  mount gidsetsize, field int
+  mount grouplist, field gid_t
+    trace white
+
+force sys_setresuid, trace 117
+  mount ruid, field uid_t
+  mount euid, field uid_t
+  mount suid, field uid_t
+
+force sys_getresuid, trace 118
+  mount ruidp, field uid_t
+    trace white
+  mount euidp, field uid_t
+    trace white
+  mount suidp, field uid_t
+    trace white
+
+force sys_setresgid, trace 119
+  mount rgid, field gid_t
+  mount egid, field gid_t
+  mount sgid, field gid_t
+
+force sys_getresgid, trace 120
+  mount rgidp, field gid_t
+    trace white
+  mount egidp, field gid_t
+    trace white
+  mount sgidp, field gid_t
+    trace white
+
+force sys_getpgid, trace 121
+  mount pid, field pid_t
+
+force sys_setfsuid, trace 122
+  mount uid, field uid_t
+
+force sys_setfsgid, trace 123
+  mount gid, field gid_t
+
+force sys_getsid, trace 124
+  mount pid, field pid_t
+
+force sys_capget, trace 125
+  mount header, field cap_user_header_t
+  mount dataptr, field cap_user_data_t
+
+force sys_capset, trace 126
+  mount header, field cap_user_header_t
+  mount data, field cap_user_data_t
+    bound white
+
+force sys_rt_sigpending, trace 127
+  mount uset, field sigset_t
+    trace white
+  mount sigsetsize, field size_t
+
+force sys_rt_sigtimedwait, trace 128
+  mount uthese, field sigset_t
+    trace white
+    bound white
+  mount uinfo, field siginfo_t
+    trace white
+  mount uts, field __kernel_timespec
+    block white
+    trace white
+    bound white
+  mount sigsetsize, field size_t
+
+force sys_rt_sigqueueinfo, trace 129
+  mount pid, field pid_t
+  mount sig, field int
+  mount uinfo, field siginfo_t
+    trace white
+
+force sys_rt_sigsuspend, trace 130
+  mount unewset, field sigset_t
+    trace white
+  mount sigsetsize, field size_t
+
+force sys_sigaltstack, trace 131
+  mount uss, field stack_t
+    trace white
+    bound white
+  mount uoss, field stack_t
+    trace white
+
+force sys_utime, trace 132
+  mount filename, field char
+    trace white
+  mount times, field utimbuf
+    block white
+    trace white
+
+force sys_mknod, trace 133
+  mount filename, field char
+    trace white
+    bound white
+  mount mode, field umode_t
+  mount dev, field undefined
+    stand white
+
+force sys_personality, trace 135
+  mount personality, field int
+    stand white
+
+force sys_ustat, trace 136
+  mount dev, field undefined
+    stand white
+  mount ubuf, field ustat
+    block white
+    trace white
+
+force sys_statfs, trace 137
+  mount pathname, field char
+    trace white
+    bound white
+  mount buf, field statfs
+    block white
+    trace white
+
+force sys_fstatfs, trace 138
+  mount fd, field int
+    stand white
+  mount buf, field statfs
+    block white
+    trace white
+
+force sys_getpriority, trace 140
+  mount which, field int
+  mount who, field int
+
+force sys_setpriority, trace 141
+  mount which, field int
+  mount who, field int
+  mount niceval, field int
+
+force sys_sched_setparam, trace 142
+  mount pid, field pid_t
+  mount param, field sched_param
+    block white
+    trace white
+
+force sys_sched_getparam, trace 143
+  mount pid, field pid_t
+  mount param, field sched_param
+    block white
+    trace white
+
+force sys_sched_setscheduler, trace 144
+  mount pid, field pid_t
+  mount policy, field int
+  mount param, field sched_param
+    block white
+    trace white
+
+force sys_sched_getscheduler, trace 145
+  mount pid, field pid_t
+
+force sys_sched_get_priority_max, trace 146
+  mount policy, field int
+
+force sys_sched_get_priority_min, trace 147
+  mount policy, field int
+
+force sys_sched_rr_get_interval, trace 148
+  mount pid, field pid_t
+  mount interval, field __kernel_timespec
+    block white
+    trace white
+
+force sys_mlock, trace 149
+  mount start, field long
+    stand white
+  mount len, field size_t
+
+force sys_munlock, trace 150
+  mount start, field long
+    stand white
+  mount len, field size_t
+
+force sys_mlockall, trace 151
+  mount flags, field int
+
+force sys_munlockall, trace 152
+
+force sys_vhangup, trace 153
+
+force sys_modify_ldt, trace 154
+  mount func, field int
+  mount ptr, field void
+    trace white
+  mount bytecount, field long
+    stand white
+
+force sys_pivot_root, trace 155
+  mount new_root, field char
+    trace white
+    bound white
+  mount put_old, field char
+    trace white
+    bound white
+
+force sys_sysctl, trace 156
+  mount args, field __sysctl_args
+    block white
+    trace white
+
+force sys_prctl, trace 157
+  mount option, field int
+  mount arg2, field long
+    stand white
+  mount arg3, field long
+    stand white
+  mount arg4, field long
+    stand white
+  mount arg5, field long
+    stand white
+
+force sys_arch_prctl, trace 158
+  mount option, field int
+  mount arg2, field long
+    stand white
+
+force sys_adjtimex, trace 159
+  mount txc_p, field __kernel_timex
+    block white
+    trace white
+
+force sys_setrlimit, trace 160
+  mount resource, field int
+    stand white
+  mount rlim, field rlimit
+    block white
+    trace white
+
+force sys_chroot, trace 161
+  mount filename, field char
+    trace white
+    bound white
+
+force sys_sync, trace 162
+
+force sys_settimeofday, trace 164
+  mount tv, field timeval
+    block white
+    trace white
+  mount tz, field timezone
+    block white
+    trace white
+
+force sys_mount, trace 165
+  mount dev_name, field char
+    trace white
+  mount dir_name, field char
+    trace white
+  mount type, field char
+    trace white
+  mount flags, field long
+    stand white
+  mount data, field void
+    trace white
+
+force sys_umount, trace 166
+  mount name, field char
+    trace white
+  mount flags, field int
+
+force sys_swapon, trace 167
+  mount specialfile, field char
+    trace white
+    bound white
+  mount swap_flags, field int
+
+force sys_swapoff, trace 168
+  mount specialfile, field char
+    trace white
+    bound white
+
+force sys_reboot, trace 169
+  mount magic1, field int
+  mount magic2, field int
+  mount cmd, field int
+    stand white
+  mount arg, field void
+    trace white
+
+force sys_sethostname, trace 170
+  mount name, field char
+    trace white
+  mount len, field int
+
+force sys_setdomainname, trace 171
+  mount name, field char
+    trace white
+  mount len, field int
+
+force sys_iopl, trace 172
+  mount level, field int
+    stand white
+
+force sys_ioperm, trace 173
+  mount from, field long
+    stand white
+  mount num, field long
+    stand white
+  mount turn_on, field int
+
+force sys_init_module, trace 175
+  mount umod, field void
+    trace white
+  mount len, field long
+    stand white
+  mount uargs, field char
+    trace white
+    bound white
+
+force sys_delete_module, trace 176
+  mount name_user, field char
+    trace white
+    bound white
+  mount flags, field int
+    stand white
+
+force sys_quotactl, trace 179
+  mount cmd, field int
+    stand white
+  mount special, field char
+    trace white
+    bound white
+  mount id, field qid_t
+  mount addr, field void
+    trace white
+
+force sys_gettid, trace 186
+
+force sys_readahead, trace 187
+  mount fd, field int
+  mount offset, field loff_t
+  mount count, field size_t
+
+force sys_setxattr, trace 188
+  mount pathname, field char
+    trace white
+    bound white
+  mount name, field char
+    trace white
+    bound white
+  mount value, field void
+    trace white
+    bound white
+  mount size, field size_t
+  mount flags, field int
+
+force sys_lsetxattr, trace 189
+  mount pathname, field char
+    trace white
+    bound white
+  mount name, field char
+    trace white
+    bound white
+  mount value, field void
+    trace white
+    bound white
+  mount size, field size_t
+  mount flags, field int
+
+force sys_fsetxattr, trace 190
+  mount fd, field int
+  mount name, field char
+    trace white
+    bound white
+  mount value, field void
+    trace white
+    bound white
+  mount size, field size_t
+  mount flags, field int
+
+force sys_getxattr, trace 191
+  mount pathname, field char
+    trace white
+    bound white
+  mount name, field char
+    trace white
+    bound white
+  mount value, field void
+    trace white
+  mount size, field size_t
+
+force sys_lgetxattr, trace 192
+  mount pathname, field char
+    trace white
+    bound white
+  mount name, field char
+    trace white
+    bound white
+  mount value, field void
+    trace white
+  mount size, field size_t
+
+force sys_fgetxattr, trace 193
+  mount fd, field int
+  mount name, field char
+    trace white
+    bound white
+  mount value, field void
+    trace white
+  mount size, field size_t
+
+force sys_listxattr, trace 194
+  mount pathname, field char
+    trace white
+    bound white
+  mount list, field char
+    trace white
+  mount size, field size_t
+
+force sys_llistxattr, trace 195
+  mount pathname, field char
+    trace white
+    bound white
+  mount list, field char
+    trace white
+  mount size, field size_t
+
+force sys_flistxattr, trace 196
+  mount fd, field int
+  mount list, field char
+    trace white
+  mount size, field size_t
+
+force sys_removexattr, trace 197
+  mount pathname, field char
+    trace white
+    bound white
+  mount name, field char
+    trace white
+    bound white
+
+force sys_lremovexattr, trace 198
+  mount pathname, field char
+    trace white
+    bound white
+  mount name, field char
+    trace white
+    bound white
+
+force sys_fremovexattr, trace 199
+  mount fd, field int
+  mount name, field char
+    trace white
+    bound white
+
+force sys_tkill, trace 200
+  mount pid, field pid_t
+  mount sig, field int
+
+force sys_time, trace 201
+  mount tloc, field time_t
+    trace white
+
+force sys_futex, trace 202
+  mount uaddr, field u32
+    trace white
+  mount op, field int
+  mount val, field u32
+  mount utime, field __kernel_timespec
+    block white
+    trace white
+  mount uaddr2, field u32
+    trace white
+  mount val3, field u32
+
+force sys_sched_setaffinity, trace 203
+  mount pid, field pid_t
+  mount len, field int
+    stand white
+  mount user_mask_ptr, field long
+    trace white
+    stand white
+
+force sys_sched_getaffinity, trace 204
+  mount pid, field pid_t
+  mount len, field int
+    stand white
+  mount user_mask_ptr, field long
+    trace white
+    stand white
+
+force sys_io_setup, trace 206
+  mount nr_events, field undefined
+    stand white
+  mount ctxp, field aio_context_t
+    trace white
+
+force sys_io_destroy, trace 207
+  mount ctx, field aio_context_t
+
+force sys_io_getevents, trace 208
+  mount ctx_id, field aio_context_t
+  mount min_nr, field long
+  mount nr, field long
+  mount events, field io_event
+    block white
+    trace white
+  mount timeout, field __kernel_timespec
+    block white
+    trace white
+
+force sys_io_submit, trace 209
+  mount ctx_id, field aio_context_t
+  mount nr, field long
+  mount iocbpp, field iocb
+    block white
+    trace white
+
+force sys_io_cancel, trace 210
+  mount ctx_id, field aio_context_t
+  mount iocb, field iocb
+    block white
+    trace white
+  mount result, field io_event
+    block white
+    trace white
+
+force sys_epoll_create, trace 213
+  mount size, field int
+
+force sys_remap_file_pages, trace 216
+  mount start, field long
+    stand white
+  mount size, field long
+    stand white
+  mount prot, field long
+    stand white
+  mount pgoff, field long
+    stand white
+  mount flags, field long
+    stand white
+
+force sys_getdents64, trace 217
+  mount fd, field int
+    stand white
+  mount dirent, field linux_dirent64
+    block white
+    trace white
+  mount count, field int
+    stand white
+
+force sys_set_tid_address, trace 218
+  mount tidptr, field int
+    trace white
+
+force sys_restart_syscall, trace 219
+
+force sys_semtimedop, trace 220
+  mount semid, field int
+  mount tsops, field sembuf
+    block white
+    trace white
+  mount nsops, field int
+    stand white
+  mount timeout, field __kernel_timespec
+    block white
+    trace white
+    bound white
+
+force sys_fadvise64, trace 221
+  mount fd, field int
+  mount offset, field loff_t
+  mount len, field size_t
+  mount advice, field int
+
+force sys_timer_create, trace 222
+  mount which_clock, field clockid_t
+    bound white
+  mount timer_event_spec, field sigevent
+    block white
+    trace white
+  mount created_timer_id, field timer_t
+    trace white
+
+force sys_timer_settime, trace 223
+  mount timer_id, field timer_t
+  mount flags, field int
+  mount new_setting, field __kernel_itimerspec
+    block white
+    trace white
+    bound white
+  mount old_setting, field __kernel_itimerspec
+    block white
+    trace white
+
+force sys_timer_gettime, trace 224
+  mount timer_id, field timer_t
+  mount setting, field __kernel_itimerspec
+    block white
+    trace white
+
+force sys_timer_getoverrun, trace 225
+  mount timer_id, field timer_t
+
+force sys_timer_delete, trace 226
+  mount timer_id, field timer_t
+
+force sys_clock_settime, trace 227
+  mount which_clock, field clockid_t
+    bound white
+  mount tp, field __kernel_timespec
+    block white
+    trace white
+    bound white
+
+force sys_clock_gettime, trace 228
+  mount which_clock, field clockid_t
+    bound white
+  mount tp, field __kernel_timespec
+    block white
+    trace white
+
+force sys_clock_getres, trace 229
+  mount which_clock, field clockid_t
+    bound white
+  mount tp, field __kernel_timespec
+    block white
+    trace white
+
+force sys_clock_nanosleep, trace 230
+  mount which_clock, field clockid_t
+    bound white
+  mount flags, field int
+  mount rqtp, field __kernel_timespec
+    block white
+    trace white
+    bound white
+  mount rmtp, field __kernel_timespec
+    block white
+    trace white
+
+force sys_exit_group, trace 231
+  mount error_code, field int
+
+force sys_epoll_wait, trace 232
+  mount epfd, field int
+  mount events, field epoll_event
+    block white
+    trace white
+  mount maxevents, field int
+  mount timeout, field int
+
+force sys_epoll_ctl, trace 233
+  mount epfd, field int
+  mount op, field int
+  mount fd, field int
+  mount event, field epoll_event
+    block white
+    trace white
+
+force sys_tgkill, trace 234
+  mount tgid, field pid_t
+  mount pid, field pid_t
+  mount sig, field int
+
+force sys_utimes, trace 235
+  mount filename, field char
+    trace white
+  mount utimes, field timeval
+    block white
+    trace white
+
+force sys_mbind, trace 237
+  mount start, field long
+    stand white
+  mount len, field long
+    stand white
+  mount mode, field long
+    stand white
+  mount nmask, field long
+    trace white
+    stand white
+    bound white
+  mount maxnode, field long
+    stand white
+  mount flags, field int
+    stand white
+
+force sys_set_mempolicy, trace 238
+  mount mode, field int
+  mount nmask, field long
+    trace white
+    stand white
+    bound white
+  mount maxnode, field long
+    stand white
+
+force sys_get_mempolicy, trace 239
+  mount policy, field int
+    trace white
+  mount nmask, field long
+    trace white
+    stand white
+  mount maxnode, field long
+    stand white
+  mount addr, field long
+    stand white
+  mount flags, field long
+    stand white
+
+force sys_mq_open, trace 240
+  mount u_name, field char
+    trace white
+    bound white
+  mount oflag, field int
+  mount mode, field umode_t
+  mount u_attr, field mq_attr
+    block white
+    trace white
+
+force sys_mq_unlink, trace 241
+  mount u_name, field char
+    trace white
+    bound white
+
+force sys_mq_timedsend, trace 242
+  mount mqdes, field mqd_t
+  mount u_msg_ptr, field char
+    trace white
+    bound white
+  mount msg_len, field size_t
+  mount msg_prio, field int
+    stand white
+  mount u_abs_timeout, field __kernel_timespec
+    block white
+    trace white
+    bound white
+
+force sys_mq_timedreceive, trace 243
+  mount mqdes, field mqd_t
+  mount u_msg_ptr, field char
+    trace white
+  mount msg_len, field size_t
+  mount u_msg_prio, field int
+    trace white
+    stand white
+  mount u_abs_timeout, field __kernel_timespec
+    block white
+    trace white
+    bound white
+
+force sys_mq_notify, trace 244
+  mount mqdes, field mqd_t
+  mount u_notification, field sigevent
+    block white
+    trace white
+    bound white
+
+force sys_mq_getsetattr, trace 245
+  mount mqdes, field mqd_t
+  mount u_mqstat, field mq_attr
+    block white
+    trace white
+    bound white
+  mount u_omqstat, field mq_attr
+    block white
+    trace white
+
+force sys_kexec_load, trace 246
+  mount entry, field long
+    stand white
+  mount nr_segments, field long
+    stand white
+  mount segments, field kexec_segment
+    block white
+    trace white
+  mount flags, field long
+    stand white
+
+force sys_waitid, trace 247
+  mount which, field int
+  mount upid, field pid_t
+  mount infop, field siginfo
+    block white
+    trace white
+  mount options, field int
+  mount ru, field rusage
+    block white
+    trace white
+
+force key trace 248
+  mount _type, field char
+    trace white
+    bound value
+  mount _description, field char
+    trace white
+    bound white
+  mount _payload, field void
+    trace white
+    bound white
+  mount plen, field size_t
+  mount ringid, field key_serial_t
+
+force key trace 249
+  mount _type, field char
+    trace white
+    bound value
+  mount _description, field char
+    trace white
+    bound white
+  mount _callout_info, field char
+    trace white
+    bound white
+  mount destringid, field key_serial_t
+
+force key, trace 250
+  mount option, field int
+  mount arg2, field long
+    stand value
+  mount arg3, field long
+    stand white
+  mount arg4, field long
+    stand white
+  mount arg5, field long
+    stand white
+
+force sys_ioprio_set, trace 251
+  mount which, field int
+  mount who, field int
+  mount ioprio, field int
+
+force sys_ioprio_get, trace 252
+  mount which, field int
+  mount who, field int
+
+force sys_inotify_init, trace 253
+
+force sys_inotify_add_watch, trace 254
+  mount fd, field int
+  mount pathname, field char
+    trace white
+    bound white
+  mount mask, field u32
+
+force sys_inotify_rm_watch, trace 255
+  mount fd, field int
+  mount wd, field __s32
+
+force sys_migrate_pages, trace 256
+  mount pid, field pid_t
+  mount maxnode, field long
+    stand white
+  mount old_nodes, field long
+    trace white
+    stand white
+    bound white
+  mount new_nodes, field long
+    trace white
+    stand white
+    bound white
+
+force sys_openat, trace 257
+  mount dfd, field int
+  mount filename, field char
+    trace white
+    bound white
+  mount flags, field int
+  mount mode, field umode_t
+
+force sys_mkdirat, trace 258
+  mount dfd, field int
+  mount pathname, field char
+    trace white
+    bound white
+  mount mode, field umode_t
+
+force sys_mknodat, trace 259
+  mount dfd, field int
+  mount filename, field char
+    trace white
+    bound white
+  mount mode, field umode_t
+  mount dev, field int
+    stand white
+
+force sys_fchownat, trace 260
+  mount dfd, field int
+  mount filename, field char
+    trace white
+    bound white
+  mount user, field uid_t
+  mount group, field gid_t
+  mount flag, field int
+
+force sys_futimesat, trace 261
+  mount dfd, field int
+  mount filename, field char
+    trace white
+    bound white
+  mount utimes, field timeval
+    block white
+    trace white
+
+force sys_newfstatat, trace 262
+  mount dfd, field int
+  mount filename, field char
+    trace white
+    bound white
+  mount statbuf, field stat
+    block white
+    trace white
+  mount flag, field int
+
+force sys_unlinkat, trace 263
+  mount dfd, field int
+  mount pathname, field char
+    trace white
+    bound white
+  mount flag, field int
+
+force sys_renameat, trace 264
+  mount olddfd, field int
+  mount oldname, field char
+    trace white
+    bound white
+  mount newdfd, field int
+  mount newname, field char
+    trace white
+    bound white
+
+force sys_linkat, trace 265
+  mount olddfd, field int
+  mount oldname, field char
+    trace white
+    bound white
+  mount newdfd, field int
+  mount newname, field char
+    trace white
+    bound white
+  mount flags, field int
+
+force sys_symlinkat, trace 266
+  mount oldname, field char
+    trace white
+    bound white
+  mount newdfd, field int
+  mount newname, field char
+    trace white
+    bound white
+
+force sys_readlinkat, trace 267
+  mount dfd, field int
+  mount pathname, field char
+    trace white
+    bound white
+  mount buf, field char
+    trace white
+  mount bufsiz, field int
+
+force sys_fchmodat, trace 268
+  mount dfd, field int
+  mount filename, field char
+    trace white
+    bound white
+  mount mode, field umode_t
+
+force sys_faccessat, trace 269
+  mount dfd, field int
+  mount filename, field char
+    trace white
+    bound white
+  mount mode, field int
+
+force sys_pselect6, trace 270
+  mount n, field int
+  mount inp, field fd_set
+    trace white
+  mount outp, field fd_set
+    trace white
+  mount exp, field fd_set
+    trace white
+  mount tsp, field __kernel_timespec
+    block white
+    trace white
+  mount sig, field void
+    trace white
+
+force sys_ppoll, trace 271
+  mount ufds, field pollfd
+    block white
+    trace white
+  mount nfds, field int
+    stand white
+  mount tsp, field __kernel_timespec
+    block white
+    trace white
+  mount sigmask, field sigset_t
+    trace white
+    bound white
+  mount sigsetsize, field size_t
+
+force sys_unshare, trace 272
+  mount unshare_flags, field long
+    stand white
+
+force sys_set_robust_list, trace 273
+  mount head, field robust_list_head
+    block white
+    trace white
+  mount len, field size_t
+
+force sys_get_robust_list, trace 274
+  mount pid, field int
+  mount head_ptr, field robust_list_head
+    block white
+    trace white
+  mount len_ptr, field size_t
+    trace white
+
+force sys_splice, trace 275
+  mount fd_in, field int
+  mount off_in, field loff_t
+    trace white
+  mount fd_out, field int
+  mount off_out, field loff_t
+    trace white
+  mount len, field size_t
+  mount flags, field int
+    stand white
+
+force sys_tee, trace 276
+  mount fdin, field int
+  mount fdout, field int
+  mount len, field size_t
+  mount flags, field int
+    stand white
+
+force sys_sync_file_range, trace 277
+  mount fd, field int
+  mount offset, field loff_t
+  mount nbytes, field loff_t
+  mount flags, field int
+    stand white
+
+force sys_vmsplice, trace 278
+  mount fd, field int
+  mount uiov, field iovec
+    block white
+    trace white
+    bound white
+  mount nr_segs, field long
+    stand white
+  mount flags, field int
+    stand white
+
+force sys_move_pages, trace 279
+  mount pid, field pid_t
+  mount nr_pages, field long
+    stand white
+  mount pages, field void
+    trace white
+    bound white
+  mount nodes, field int
+    trace white
+    bound white
+  mount status, field int
+    trace white
+  mount flags, field int
+
+force sys_utimensat, trace 280
+  mount dfd, field int
+  mount filename, field char
+    trace white
+    bound white
+  mount utimes, field __kernel_timespec
+    block white
+    trace white
+  mount flags, field int
+
+force sys_epoll_pwait, trace 281
+  mount epfd, field int
+  mount events, field epoll_event
+    block white
+    trace white
+  mount maxevents, field int
+  mount timeout, field int
+  mount sigmask, field sigset_t
+    trace white
+    bound white
+  mount sigsetsize, field size_t
+
+force sys_signalfd, trace 282
+  mount ufd, field int
+  mount user_mask, field sigset_t
+    trace white
+  mount sizemask, field size_t
+
+force sys_timerfd_create, trace 283
+  mount clockid, field int
+  mount flags, field int
+
+force sys_eventfd, trace 284
+  mount count, field int
+    stand white
+
+force sys_fallocate, trace 285
+  mount fd, field int
+  mount mode, field int
+  mount offset, field loff_t
+  mount len, field loff_t
+
+force sys_timerfd_settime, trace 286
+  mount ufd, field int
+  mount flags, field int
+  mount utmr, field __kernel_itimerspec
+    block white
+    trace white
+    bound white
+  mount otmr, field __kernel_itimerspec
+    block white
+    trace white
+
+force sys_timerfd_gettime, trace 287
+  mount ufd, field int
+  mount otmr, field __kernel_itimerspec
+    block white
+    trace white
+
+force sys_accept4, trace 288
+  mount fd, field int
+  mount upeer_sockaddr, field sockaddr
+    block white
+    trace white
+  mount upeer_addrlen, field int
+    trace white
+  mount flags, field int
+
+force sys_signalfd4, trace 289
+  mount ufd, field int
+  mount user_mask, field sigset_t
+    trace white
+  mount sizemask, field size_t
+  mount flags, field int
+
+force sys_eventfd2, trace 290
+  mount count, field int
+    stand white
+  mount flags, field int
+
+force sys_epoll_create1, trace 291
+  mount flags, field int
+
+force sys_dup3, trace 292
+  mount oldfd, field int
+    stand white
+  mount newfd, field int
+    stand white
+  mount flags, field int
+
+force sys_pipe2, trace 293
+  mount fildes, field int
+    trace white
+  mount flags, field int
+
+force sys_inotify_init1, trace 294
+  mount flags, field int
+
+force sys_preadv, trace 295
+  mount fd, field long
+    stand white
+  mount vec, field iovec
+    block white
+    trace white
+    bound white
+  mount vlen, field long
+    stand white
+  mount pos_l, field long
+    stand white
+  mount pos_h, field long
+    stand white
+
+force sys_pwritev, trace 296
+  mount fd, field long
+    stand white
+  mount vec, field iovec
+    block white
+    trace white
+    bound white
+  mount vlen, field long
+    stand white
+  mount pos_l, field long
+    stand white
+  mount pos_h, field long
+    stand white
+
+force sys_rt_tgsigqueueinfo, trace 297
+  mount tgid, field pid_t
+  mount pid, field pid_t
+  mount sig, field int
+  mount uinfo, field siginfo_t
+    trace white
+
+force sys_perf_event_open, trace 298
+  mount attr_uptr, field perf_event_attr
+    block white
+    trace white
+  mount pid, field pid_t
+  mount cpu, field int
+  mount group_fd, field int
+  mount flags, field long
+    stand white
+
+force sys_recvmmsg, trace 299
+  mount fd, field int
+  mount mmsg, field mmsghdr
+    block white
+    trace white
+  mount vlen, field int
+    stand white
+  mount flags, field int
+    stand white
+  mount timeout, field __kernel_timespec
+    block white
+    trace white
+
+force sys_fanotify_init, trace 300
+  mount flags, field int
+    stand white
+  mount event_f_flags, field int
+    stand white
+
+force sys_fanotify_mark, trace 301
+  mount fanotify_fd, field int
+  mount flags, field int
+    stand white
+  mount mask, field __u64
+  mount dfd, field int
+  mount pathname, field char
+    trace white
+    bound white
+
+force sys_prlimit64, trace 302
+  mount pid, field pid_t
+  mount resource, field int
+    stand white
+  mount new_rlim, field rlimit64
+    block white
+    trace white
+    bound white
+  mount old_rlim, field rlimit64
+    block white
+    trace white
+
+force sys_name_to_handle_at, trace 303
+  mount dfd, field int
+  mount name, field char
+    trace white
+    bound white
+  mount handle, field file_handle
+    block white
+    trace white
+  mount mnt_id, field int
+    trace white
+  mount flag, field int
+
+force sys_open_by_handle_at, trace 304
+  mount mountdirfd, field int
+  mount handle, field file_handle
+    block white
+    trace white
+  mount flags, field int
+
+force sys_clock_adjtime, trace 305
+  mount which_clock, field clockid_t
+    bound white
+  mount utx, field __kernel_timex
+    block white
+    trace white
+
+force sys_syncfs, trace 306
+  mount fd, field int
+
+force sys_sendmmsg, trace 307
+  mount fd, field int
+  mount mmsg, field mmsghdr
+    block white
+    trace white
+  mount vlen, field int
+    stand white
+  mount flags, field int
+    stand white
+
+force sys_setns, trace 308
+  mount fd, field int
+  mount nstype, field int
+
+force sys_getcpu, trace 309
+  mount cpup, field undefined
+    trace white
+    stand white
+  mount nodep, field undefined
+    trace white
+    stand white
+  mount unused, field getcpu_cache
+    block white
+    trace white
+
+force sys_process_vm_readv, trace 310
+  mount pid, field pid_t
+  mount lvec, field iovec
+    block white
+    trace white
+    bound white
+  mount liovcnt, field long
+    stand white
+  mount rvec, field iovec
+    block white
+    trace white
+    bound white
+  mount riovcnt, field long
+    stand white
+  mount flags, field long
+    stand white
+
+force sys_process_vm_writev, trace 311
+  mount pid, field pid_t
+  mount lvec, field iovec
+    block white
+    trace white
+    bound white
+  mount liovcnt, field long
+    stand white
+  mount rvec, field iovec
+    block white
+    trace white
+    bound white
+  mount riovcnt, field long
+    stand white
+  mount flags, field long
+    stand white
+
+force sys_finit_module, trace 313
+  mount fd, field int
+  mount uargs, field char
+    trace white
+    bound white
+  mount flags, field int
+
+force sys_sched_setattr, trace 314
+  mount pid, field pid_t
+  mount uattr, field sched_attr
+    block white
+    trace white
+  mount flags, field int
+    stand white
+
+force sys_sched_getattr, trace 315
+  mount pid, field pid_t
+  mount uattr, field sched_attr
+    block white
+    trace white
+  mount size, field int
+    stand white
+  mount flags, field int
+    stand white
+
+force sys_renameat2, trace 316
+  mount olddfd, field int
+  mount oldname, field char
+    trace white
+    bound white
+  mount newdfd, field int
+  mount newname, field char
+    trace white
+    bound white
+  mount flags, field int
+    stand white
+
+force sys_seccomp, trace 317
+  mount op, field int
+    stand white
+  mount flags, field int
+    stand white
+  mount uargs, field void
+    trace white
+
+force sys_getrandom, trace 318
+  mount buf, field char
+    trace white
+  mount count, field size_t
+  mount flags, field int
+    stand white
+
+force sys_memfd_create, trace 319
+  mount uname, field char
+    trace white
+    bound white
+  mount flags, field int
+    stand white
+
+force sys_kexec_file_load, trace 320
+  mount kernel_fd, field int
+  mount initrd_fd, field int
+  mount cmdline_len, field long
+    stand white
+  mount cmdline_ptr, field char
+    trace white
+    bound white
+  mount flags, field long
+    stand white
+
+force sys_bpf, trace 321
+  mount cmd, field int
+  mount uattr, field union
+    trace white
+  mount size, field int
+    stand white
+
+force sys_execveat, trace 322
+  mount fd, field int
+  mount filename, field char
+    trace white
+    bound white
+  mount argv, field char
+    trace white
+    bound white
+  mount envp, field char
+    trace white
+    bound white
+  mount flags, field int
+
+force sys_userfaultfd, trace 323
+  mount flags, field int
+
+force sys_membarrier, trace 324
+  mount cmd, field int
+  mount flags, field int
+
+force sys_mlock2, trace 325
+  mount start, field long
+    stand white
+  mount len, field size_t
+  mount flags, field int
+
+force sys_copy_file_range, trace 326
+  mount fd_in, field int
+  mount off_in, field loff_t
+    trace white
+  mount fd_out, field int
+  mount off_out, field loff_t
+    trace white
+  mount len, field size_t
+  mount flags, field int
+    stand white
+
+force sys_preadv2, trace 327
+  mount fd, field long
+    stand white
+  mount vec, field iovec
+    block white
+    trace white
+    bound white
+  mount vlen, field long
+    stand white
+  mount pos_l, field long
+    stand white
+  mount pos_h, field long
+    stand white
+  mount flags, field rwf_t
+
+force sys_pwritev2, trace 328
+  mount fd, field long
+    stand white
+  mount vec, field iovec
+    block white
+    trace white
+    bound white
+  mount vlen, field long
+    stand white
+  mount pos_l, field long
+    stand white
+  mount pos_h, field long
+    stand white
+  mount flags, field rwf_t
+
+force sys_pkey_mprotect, trace 329
+  mount start, field long
+    stand white
+  mount len, field size_t
+  mount prot, field long
+    stand white
+  mount pkey, field int
+
+force sys_pkey_alloc, trace 330
+  mount flags, field long
+    stand white
+  mount init_val, field long
+    stand white
+
+force sys_pkey_free, trace 331
+  mount pkey, field int
+
+force sys_statx, trace 332
+  mount dfd, field int
+  mount filename, field char
+    trace white
+    bound white
+  mount flags, field undefined
+    stand white
+  mount mask, field int
+    stand white
+  mount buffer, field statx
+    block white
+    trace white
+
+force sys_io_pgetevents, trace 333
+  mount ctx_id, field aio_context_t
+  mount min_nr, field long
+  mount nr, field long
+  mount events, field io_event
+    block white
+    trace white
+  mount timeout, field __kernel_timespec
+    block white
+    trace white
+  mount usig, field __aio_sigset
+    block white
+    trace white
+    bound white
+
+force sys_rseq, trace 334
+  mount rseq, field rseq
+    block white
+    trace white
+  mount rseq_len, field u32
+  mount flags, field int
+  mount sig, field u32
+
+force sys_pidfd_send_signal, trace 424
+  mount pidfd, field int
+  mount sig, field int
+  mount info, field siginfo_t
+    trace white
+  mount flags, field int
+    stand white
+
+force sys_io_uring_setup, trace 425
+  mount entries, field u32
+  mount params, field io_uring_params
+    block white
+    trace white
+
+force sys_io_uring_enter, trace 426
+  mount fd, field int
+    stand white
+  mount to_submit, field u32
+  mount min_complete, field u32
+  mount flags, field u32
+  mount sig, field sigset_t
+    trace white
+    bound white
+  mount sigsz, field size_t
+
+force sys_io_uring_register, trace 427
+  mount fd, field int
+    stand white
+  mount opcode, field int
+    stand white
+  mount arg, field void
+    trace white
+  mount nr_args, field int
+    stand white
+
+force sys_open_tree, trace 428
+  mount dfd, field int
+  mount filename, field char
+    trace white
+    bound white
+  mount flags, field undefined
+    stand white
+
+force sys_move_mount, trace 429
+  mount from_dfd, field int
+  mount from_pathname, field char
+    trace white
+    bound white
+  mount to_dfd, field int
+  mount to_pathname, field char
+    trace white
+    bound white
+  mount flags, field int
+    stand white
+
+force sys_fsopen, trace 430
+  mount name, field char
+    trace white
+    bound white
+  mount flags, field int
+    stand white
+
+force sys_fsconfig, trace 431
+  mount fd, field int
+  mount cmd, field int
+    stand white
+  mount key, field char
+    trace white
+    bound white
+  mount value, field void
+    trace white
+    bound white
+  mount aux, field int
+
+force sys_fsmount, trace 432
+  mount fs_fd, field int
+  mount flags, field int
+    stand white
+  mount attr_flags, field int
+    stand white
+
+force sys_fspick, trace 433
+  mount dfd, field int
+  mount path, field char
+    trace white
+    bound white
+  mount flags, field int
+    stand white

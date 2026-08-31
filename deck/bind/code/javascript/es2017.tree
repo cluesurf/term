@@ -1,0 +1,8 @@
+
+bear @term/bind/code/javascript/es2016
+bear @term/bind/code/javascript/es2017/object
+bear @term/bind/code/javascript/es2017/sharedmemory
+bear @term/bind/code/javascript/es2017/string
+bear @term/bind/code/javascript/es2017/intl
+bear @term/bind/code/javascript/es2017/typedarrays
+bear @term/bind/code/javascript/es2017/full

@@ -1,0 +1,56 @@
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/browser/webworker/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+load @term/bind/code/browser/webworker/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/webworker/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form event-target, name <EventTarget>
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener
+      like or
+        like event-listener-or-event-listener-object
+        like native-null
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task dispatch-event, name <dispatchEvent>
+    take event, like event
+    like native-boolean
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take callback
+      like or
+        like event-listener-or-event-listener-object
+        like native-null
+    take options, like maybe
+      like or
+        like event-listener-options
+        like native-boolean
+    like native-void

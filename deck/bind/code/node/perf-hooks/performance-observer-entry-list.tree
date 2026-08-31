@@ -1,0 +1,27 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-string
+  find performance-entry
+
+load @term/bind/code/node/perf-hooks
+  find entry-type
+
+form performance-observer-entry-list, name <PerformanceObserverEntryList>
+  task get-entries, name <getEntries>
+    like array
+      like performance-entry
+
+  task get-entries-by-name, name <getEntriesByName>
+    like array
+      like performance-entry
+
+    take name, like native-string
+    take type, like entry-type
+      void true
+
+  task get-entries-by-type, name <getEntriesByType>
+    like array
+      like performance-entry
+
+    take type, like entry-type

@@ -1,0 +1,889 @@
+
+form rc, name <std::rc::Rc>
+  task new, name <new>
+    note <Constructs a new Rc&lt;T&gt;.>
+
+    take value
+      like t
+        cite free
+      cite free
+
+    free seed
+      like rc
+        like t
+          cite free
+        cite free
+
+  task new-uninit, name <new_uninit>
+    note <Constructs a new Rc with uninitialized contents.>
+
+    free seed
+      like rc
+        like maybe-uninit
+          like t
+            cite free
+          cite free
+        cite free
+
+  task new-zeroed, name <new_zeroed>
+    note <Constructs a new Rc with uninitialized contents, with the memory being filled with 0 bytes.>
+
+    free seed
+      like rc
+        like maybe-uninit
+          like t
+            cite free
+          cite free
+        cite free
+
+  task try-new, name <try_new>
+    note <Constructs a new Rc&lt;T&gt;, returning an error if the allocation fails>
+
+    take value
+      like t
+        cite free
+      cite free
+
+    free seed
+      like result
+        like rc
+          like t
+            cite free
+          cite free
+        like alloc-error
+          cite free
+        cite free
+
+  task try-new-uninit, name <try_new_uninit>
+    note <Constructs a new Rc with uninitialized contents, returning an error if the allocation fails>
+
+    free seed
+      like result
+        like rc
+          like maybe-uninit
+            like t
+              cite free
+            cite free
+          cite free
+        like alloc-error
+          cite free
+        cite free
+
+  task try-new-zeroed, name <try_new_zeroed>
+    note <Constructs a new Rc with uninitialized contents, with the memory being filled with 0 bytes, returning an error if the allocation fails>
+
+    free seed
+      like result
+        like rc
+          like maybe-uninit
+            like t
+              cite free
+            cite free
+          cite free
+        like alloc-error
+          cite free
+        cite free
+
+  task pin, name <pin>
+    note <Constructs a new Pin&lt;Rc&lt;T&gt;&gt;. If T does not implement Unpin, then value will be pinned in memory and unable to be moved.>
+
+    take value
+      like t
+        cite free
+      cite free
+
+    free seed
+      like pin
+        like rc
+          like t
+            cite free
+          cite free
+        cite free
+
+  task try-unwrap, name <try_unwrap>
+    note <Returns the inner value, if the Rc has exactly one strong reference.>
+
+    take this
+      like rc
+        like t
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like result
+        like t
+          cite free
+        like rc
+          like t
+            cite free
+          cite free
+        cite free
+
+  task new-uninit-slice, name <new_uninit_slice>
+    note <Constructs a new reference-counted slice with uninitialized contents.>
+
+    take len
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like rc
+        list maybe-uninit
+        cite free
+
+  task new-zeroed-slice, name <new_zeroed_slice>
+    note <Constructs a new reference-counted slice with uninitialized contents, with the memory being filled with 0 bytes.>
+
+    take len
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like rc
+        list maybe-uninit
+        cite free
+
+  task assume-init, name <assume_init>
+    note <Converts to Rc&lt;T&gt;.>
+
+    take self
+      cite free
+
+    free seed
+      like rc
+        like t
+          cite free
+        cite free
+
+  task assume-init, name <assume_init>
+    note <Converts to Rc&lt;[T]&gt;.>
+
+    take self
+      cite free
+
+    free seed
+      like rc
+        list t
+        cite free
+
+  task into-raw, name <into_raw>
+    note <Consumes the Rc, returning the wrapped pointer.>
+
+    take this
+      like rc
+        like t
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like t
+        cite free
+      calm take
+
+  task as-ptr, name <as_ptr>
+    note <Provides a raw pointer to the data.>
+
+    take this
+      like rc
+        like t
+          cite free
+
+    free seed
+      like t
+        cite free
+      calm take
+
+  task from-raw, name <from_raw>
+    note <Constructs an Rc&lt;T&gt; from a raw pointer.>
+
+    take ptr
+      like t
+        cite free
+      calm take
+      cite free
+      dive take
+
+    free seed
+      like rc
+        like t
+          cite free
+        cite free
+
+  task downgrade, name <downgrade>
+    note <Creates a new Weak pointer to this allocation.>
+
+    take this
+      like rc
+        like t
+          cite free
+
+    free seed
+      like weak
+        like t
+          cite free
+        cite free
+
+  task weak-count, name <weak_count>
+    note <Gets the number of Weak pointers to this allocation.>
+
+    take this
+      like rc
+        like t
+          cite free
+
+    free seed
+      like usize
+        cite free
+
+  task strong-count, name <strong_count>
+    note <Gets the number of strong (Rc) pointers to this allocation.>
+
+    take this
+      like rc
+        like t
+          cite free
+
+    free seed
+      like usize
+        cite free
+
+  task increment-strong-count, name <increment_strong_count>
+    note <Increments the strong reference count on the Rc&lt;T&gt; associated with the provided pointer by one.>
+
+    take ptr
+      like t
+        cite free
+      calm take
+      cite free
+      dive take
+
+  task decrement-strong-count, name <decrement_strong_count>
+    note <Decrements the strong reference count on the Rc&lt;T&gt; associated with the provided pointer by one.>
+
+    take ptr
+      like t
+        cite free
+      calm take
+      cite free
+      dive take
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference into the given Rc, if there are no other Rc or Weak pointers to the same allocation.>
+
+    take this
+      like rc
+        like t
+          cite free
+      lock free
+
+    free seed
+      like option
+        like t
+        cite free
+
+  task get-mut-unchecked, name <get_mut_unchecked>
+    note <Returns a mutable reference into the given Rc, without any check.>
+
+    take this
+      like rc
+        like t
+          cite free
+      lock free
+
+    free seed
+      like t
+
+  task ptr-eq, name <ptr_eq>
+    note <Returns true if the two Rcs point to the same allocation (in a vein similar to ptr::eq).>
+
+    take this
+      like rc
+        like t
+          cite free
+    take other
+      like rc
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task make-mut, name <make_mut>
+    note <Makes a mutable reference into the given Rc.>
+
+    take this
+      like rc
+        like t
+          cite free
+      lock free
+
+    free seed
+      like t
+
+  task downcast, name <downcast>
+    note <Attempt to downcast the Rc&lt;dyn Any&gt; to a concrete type.>
+
+    lead t
+      like any
+        cite free
+
+    head t
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like rc
+          like t
+            cite free
+          cite free
+        like rc
+          like any
+            cite free
+          cite free
+        cite free
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+
+  task borrow, name <borrow>
+    note <Immutably borrows from an owned value.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+
+  task clone, name <clone>
+    note <Makes a clone of the Rc pointer.>
+
+    take self
+      cite free
+
+    free seed
+      like rc
+        like t
+          cite free
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Creates a new Rc&lt;T&gt;, with the Default value for T.>
+
+    free seed
+      like rc
+        like t
+          cite free
+        cite free
+
+  task deref, name <deref>
+    note <Dereferences the value.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task drop, name <drop>
+    note <Drops the Rc.>
+
+    take self
+      cite free
+
+  task from, name <from>
+    note <Allocate a reference-counted slice and fill it by cloning v's items.>
+
+    take v
+      list t
+      cite free
+
+    free seed
+      like rc
+        list t
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take s
+      like c-str
+
+    free seed
+      like rc
+        like c-str
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take s
+      like os-str
+
+    free seed
+      like rc
+        like os-str
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a Path into an Rc by copying the Path data into a new Rc buffer.>
+
+    take s
+      like path
+
+    free seed
+      like rc
+        like path
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Allocate a reference-counted string slice and copy v into it.>
+
+    take v
+      like str
+
+    free seed
+      like rc
+        like str
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Move a boxed object to a new, reference counted, allocation.>
+
+    take v
+      like box
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like rc
+        like t
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a CString into an Rc&lt;CStr&gt; without copying or allocating.>
+
+    take s
+      like c-string
+        cite free
+      cite free
+
+    free seed
+      like rc
+        like c-str
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Create a reference-counted pointer from a clone-on-write pointer by copying its content.>
+
+    take cow
+      like cow
+        time a
+        like b
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like rc
+        like b
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts an OsString into an Rc&lt;OsStr&gt; without copying or allocating.>
+
+    take s
+      like os-string
+        cite free
+      cite free
+
+    free seed
+      like rc
+        like os-str
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a PathBuf into an Rc by moving the PathBuf data into a new Rc buffer.>
+
+    take s
+      like path-buf
+        cite free
+      cite free
+
+    free seed
+      like rc
+        like path
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Allocate a reference-counted string slice and copy v into it.>
+
+    take v
+      like string
+        cite free
+      cite free
+
+    free seed
+      like rc
+        like str
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a generic type T into an Rc&lt;T&gt;>
+
+    take t
+      like t
+        cite free
+      cite free
+
+    free seed
+      like rc
+        like t
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Allocate a reference-counted slice and move v's items into it.>
+
+    take v
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like rc
+        list t
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Takes each element in the Iterator and collects it into an Rc&lt;[T]&gt;.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like t
+              cite free
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like rc
+        list t
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task cmp, name <cmp>
+    note <Comparison for two Rcs.>
+
+    take self
+      cite free
+    take other
+      like rc
+        like t
+          cite free
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <Equality for two Rcs.>
+
+    take self
+      cite free
+    take other
+      like rc
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <Inequality for two Rcs.>
+
+    take self
+      cite free
+    take other
+      like rc
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <Partial comparison for two Rcs.>
+
+    take self
+      cite free
+    take other
+      like rc
+        like t
+          cite free
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <Less-than comparison for two Rcs.>
+
+    take self
+      cite free
+    take other
+      like rc
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <'Less than or equal to' comparison for two Rcs.>
+
+    take self
+      cite free
+    take other
+      like rc
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <Greater-than comparison for two Rcs.>
+
+    take self
+      cite free
+    take other
+      like rc
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <'Greater than or equal to' comparison for two Rcs.>
+
+    take self
+      cite free
+    take other
+      like rc
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task try-from, name <try_from>
+    note <Performs the conversion.>
+
+    cast c-1
+      like rc
+        like list
+          like t
+          name n
+      like try-from
+        like rc
+          list t
+          cite free
+
+    take boxed-slice
+      like rc
+        list t
+        cite free
+      cite free
+
+    free seed
+      like result
+        like rc
+          like list
+            like t
+            name n
+          cite free
+        like c-1/error
+        cite free

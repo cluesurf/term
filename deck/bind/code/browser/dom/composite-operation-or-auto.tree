@@ -1,0 +1,7 @@
+
+form composite-operation-or-auto, name <CompositeOperationOrAuto>
+  like or
+    text <accumulate>
+    text <add>
+    text <auto>
+    text <replace>

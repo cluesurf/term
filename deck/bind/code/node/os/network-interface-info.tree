@@ -1,0 +1,12 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/node/os
+  find network-interface-info-i-pv4
+  find network-interface-info-i-pv6
+
+form network-interface-info, name <NetworkInterfaceInfo>
+  like or
+    like network-interface-info-i-pv4
+    like network-interface-info-i-pv6

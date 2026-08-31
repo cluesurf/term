@@ -1,0 +1,100 @@
+
+bear @term/bind/code/javascript/node/https/server-options
+bear @term/bind/code/javascript/node/https/request-options
+bear @term/bind/code/javascript/node/https/agent-options
+bear @term/bind/code/javascript/node/https/agent
+bear @term/bind/code/javascript/node/https/server
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find agent
+  find http-client-request
+  find http-incoming-message
+  find http-request-listener
+  find native-string
+  find native-void
+  find url
+
+load @term/bind/code/node/https
+  find request-options
+  find server
+  find server-options
+
+host global-agent, name <globalAgent>
+  like agent
+
+task create-server, name <createServer>
+  like server
+
+  take request-listener, like http-request-listener
+    void true
+
+task create-server, name <createServer>
+  like server
+
+  take options, like server-options
+  take request-listener, like http-request-listener
+    void true
+
+task request, name <request>
+  like http-client-request
+
+  take options
+    like or
+      like request-options
+      like native-string
+      like url
+  take callback
+    like task
+      like native-void
+
+      take res, like http-incoming-message
+    void true
+
+task request, name <request>
+  like http-client-request
+
+  take url
+    like or
+      like native-string
+      like url
+  take options, like request-options
+  take callback
+    like task
+      like native-void
+
+      take res, like http-incoming-message
+    void true
+
+task get, name <get>
+  like http-client-request
+
+  take options
+    like or
+      like request-options
+      like native-string
+      like url
+  take callback
+    like task
+      like native-void
+
+      take res, like http-incoming-message
+    void true
+
+task get, name <get>
+  like http-client-request
+
+  take url
+    like or
+      like native-string
+      like url
+  take options, like request-options
+  take callback
+    like task
+      like native-void
+
+      take res, like http-incoming-message
+    void true

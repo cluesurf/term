@@ -1,0 +1,376 @@
+
+form cell, name <std::cell::Cell>
+  task new, name <new>
+    note <Creates a new Cell containing the given value.>
+
+    take value
+      like t
+        cite free
+      cite free
+
+    free seed
+      like cell
+        like t
+          cite free
+        cite free
+
+  task set, name <set>
+    note <Sets the contained value.>
+
+    take self
+      cite free
+    take val
+      like t
+        cite free
+      cite free
+
+  task swap, name <swap>
+    note <Swaps the values of two Cells. Difference with std::mem::swap is that this function doesn't require &mut reference.>
+
+    take self
+      cite free
+    take other
+      like cell
+        like t
+          cite free
+
+  task replace, name <replace>
+    note <Replaces the contained value with val, and returns the old contained value.>
+
+    take self
+      cite free
+    take val
+      like t
+        cite free
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task into-inner, name <into_inner>
+    note <Unwraps the value.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task get, name <get>
+    note <Returns a copy of the contained value.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task update, name <update>
+    note <Updates the contained value using a function and returns the new value.>
+
+    lead f
+      like fn-once
+        take f-1, like t
+        free seed
+          like t
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task as-ptr, name <as_ptr>
+    note <Returns a raw pointer to the underlying data in this cell.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the underlying data.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+
+  task from-mut, name <from_mut>
+    note <Returns a &Cell&lt;T&gt; from a &mut T>
+
+    take t
+      like t
+      lock free
+
+    free seed
+      like cell
+        like t
+          cite free
+
+  task take, name <take>
+    note <Takes the value of the cell, leaving Default::default() in its place.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task as-slice-of-cells, name <as_slice_of_cells>
+    note <Returns a &[Cell&lt;T&gt;] from a &Cell&lt;[T]&gt;>
+
+    take self
+      cite free
+
+    free seed
+      like list
+        like cell
+          like t
+            cite free
+
+  task as-array-of-cells, name <as_array_of_cells>
+    note <Returns a &[Cell&lt;T&gt;; N] from a &Cell&lt;[T; N]&gt;>
+
+    take self
+      cite free
+
+    free seed
+      like list
+        like cell
+          like t
+            cite free
+        name n
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like cell
+        like t
+          cite free
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Creates a Cell&lt;T&gt;, with the Default value for T.>
+
+    free seed
+      like cell
+        like t
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take t
+      like t
+        cite free
+      cite free
+
+    free seed
+      like cell
+        like t
+          cite free
+        cite free
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like cell
+        like t
+          cite free
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like cell
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like cell
+        like t
+          cite free
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like cell
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like cell
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like cell
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like cell
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free

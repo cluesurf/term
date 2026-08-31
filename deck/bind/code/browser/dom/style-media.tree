@@ -1,0 +1,15 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form style-media, name <StyleMedia>
+  link type, name <type>
+    like native-string
+    lock false
+
+  task match-medium, name <matchMedium>
+    take mediaquery, like native-string
+    like native-boolean

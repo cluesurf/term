@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form idb-database-info, name <IDBDatabaseInfo>
+  link name, name <name>
+    like native-string
+    lock false
+  link version, name <version>
+    like native-number
+    lock false

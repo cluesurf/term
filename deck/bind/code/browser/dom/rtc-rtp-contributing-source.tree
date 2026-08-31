@@ -1,0 +1,20 @@
+
+load @term/bind/code/browser/dom/dom-high-res-time-stamp
+  find dom-high-res-time-stamp
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form rtc-rtp-contributing-source, name <RTCRtpContributingSource>
+  link audio-level, name <audioLevel>
+    like native-number
+    lock false
+  link rtp-timestamp, name <rtpTimestamp>
+    like native-number
+    lock false
+  link source, name <source>
+    like native-number
+    lock false
+  link timestamp, name <timestamp>
+    like dom-high-res-time-stamp
+    lock false

@@ -1,0 +1,20 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+
+load @term/bind/code/node/crypto
+  find key-like
+
+form rsa-public-key, name <RsaPublicKey>
+  link key, name <key>
+    like key-like
+    flex true
+  link padding, name <padding>
+    like or
+      like native-number
+      like native-undefined
+    flex true

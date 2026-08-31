@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/algorithm
+  find algorithm
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form algorithm-identifier, name <AlgorithmIdentifier>
+  like or
+    like algorithm
+    like native-string

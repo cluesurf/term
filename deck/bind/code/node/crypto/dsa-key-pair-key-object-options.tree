@@ -1,0 +1,11 @@
+
+load @term/bind/code/javascript
+  find native-number
+
+form dsa-key-pair-key-object-options, name <DSAKeyPairKeyObjectOptions>
+  link modulus-length, name <modulusLength>
+    like native-number
+    flex true
+  link divisor-length, name <divisorLength>
+    like native-number
+    flex true

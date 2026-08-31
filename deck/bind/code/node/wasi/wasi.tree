@@ -1,0 +1,31 @@
+
+load @term/bind
+  find any
+
+load @term/bind/code/javascript
+  find native-object
+  find native-void
+  find node-js-dict
+
+load @term/bind/code/node/wasi
+  find wasi-options
+
+form wasi, name <WASI>
+  link wasi-import, name <wasiImport>
+    like node-js-dict
+      like any
+
+  task start, name <start>
+    like native-void
+
+    take instance, like native-object
+
+  task initialize, name <initialize>
+    like native-void
+
+    take instance, like native-object
+
+form wasi-constructor
+  hook make
+    take options, like wasi-options
+      void true

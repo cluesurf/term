@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript
+  find native-boolean
+
+form set-skip-all-pauses-parameter-type, name <SetSkipAllPausesParameterType>
+  link skip, name <skip>
+    like native-boolean
+    flex true

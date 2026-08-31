@@ -1,0 +1,22 @@
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-this
+  find net-socket-constructor-opts
+
+form read-stream, name <ReadStream>
+  base net-socket
+  link is-raw, name <isRaw>, like native-boolean
+  link is-tty, name <isTTY>, like native-boolean
+
+  task set-raw-mode, name <setRawMode>
+    like native-this
+
+    take mode, like native-boolean
+
+form read-stream-constructor
+  hook make
+    take fd, like native-number
+    take options, like net-socket-constructor-opts
+      void true

@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/webgl-debug-renderer-info
+  find webgl-debug-renderer-info
+
+load @term/bind/code/browser/webworker/g-lenum
+  find g-lenum
+
+form webgl-debug-renderer-info, name <WEBGL_debug_renderer_info>
+  link unmasked-renderer-webgl, name <UNMASKED_RENDERER_WEBGL>
+    like g-lenum
+  link unmasked-vendor-webgl, name <UNMASKED_VENDOR_WEBGL>
+    like g-lenum

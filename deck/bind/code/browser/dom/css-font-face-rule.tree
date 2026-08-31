@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/css-rule
+  find css-rule
+
+load @term/bind/code/browser/dom/css-style-declaration
+  find css-style-declaration
+
+form css-font-face-rule, name <CSSFontFaceRule>
+  base css-rule
+
+  link style, name <style>
+    like css-style-declaration

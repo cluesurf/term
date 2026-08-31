@@ -1,0 +1,168 @@
+
+load @term/bind/code/browser/dom/body-init
+  find body-init
+
+load @term/bind/code/browser/dom/clipboard
+  find clipboard
+
+load @term/bind/code/browser/dom/credentials-container
+  find credentials-container
+
+load @term/bind/code/browser/dom/gamepad
+  find gamepad
+
+load @term/bind/code/browser/dom/geolocation
+  find geolocation
+
+load @term/bind/code/browser/dom/media-capabilities
+  find media-capabilities
+
+load @term/bind/code/browser/dom/media-devices
+  find media-devices
+
+load @term/bind/code/browser/dom/media-key-system-access
+  find media-key-system-access
+
+load @term/bind/code/browser/dom/media-key-system-configuration
+  find media-key-system-configuration
+
+load @term/bind/code/browser/dom/media-session
+  find media-session
+
+load @term/bind/code/browser/dom/navigator-automation-information
+  find navigator-automation-information
+
+load @term/bind/code/browser/dom/navigator-concurrent-hardware
+  find navigator-concurrent-hardware
+
+load @term/bind/code/browser/dom/navigator-content-utils
+  find navigator-content-utils
+
+load @term/bind/code/browser/dom/navigator-cookies
+  find navigator-cookies
+
+load @term/bind/code/browser/dom/navigator-id
+  find navigator-id
+
+load @term/bind/code/browser/dom/navigator-language
+  find navigator-language
+
+load @term/bind/code/browser/dom/navigator-network-information
+  find navigator-network-information
+
+load @term/bind/code/browser/dom/navigator-on-line
+  find navigator-on-line
+
+load @term/bind/code/browser/dom/navigator-plugins
+  find navigator-plugins
+
+load @term/bind/code/browser/dom/navigator-storage
+  find navigator-storage
+
+load @term/bind/code/browser/dom/permissions
+  find permissions
+
+load @term/bind/code/browser/dom/service-worker-container
+  find service-worker-container
+
+load @term/bind/code/browser/dom/share-data
+  find share-data
+
+load @term/bind/code/browser/dom/url
+  find url
+
+load @term/bind/code/browser/dom/vibrate-pattern
+  find vibrate-pattern
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form navigator, name <Navigator>
+  base navigator-automation-information
+  base navigator-concurrent-hardware
+  base navigator-content-utils
+  base navigator-cookies
+  base navigator-id
+  base navigator-language
+  base navigator-network-information
+  base navigator-on-line
+  base navigator-plugins
+  base navigator-storage
+
+  link clipboard, name <clipboard>
+    like clipboard
+  link credentials, name <credentials>
+    like credentials-container
+  link do-not-track, name <doNotTrack>
+    like or
+      like native-string
+      like native-null
+  link geolocation, name <geolocation>
+    like geolocation
+  link max-touch-points, name <maxTouchPoints>
+    like native-number
+  link media-capabilities, name <mediaCapabilities>
+    like media-capabilities
+  link media-devices, name <mediaDevices>
+    like media-devices
+  link media-session, name <mediaSession>
+    like media-session
+  link permissions, name <permissions>
+    like permissions
+  link pointer-enabled, name <pointerEnabled>
+    like native-boolean
+  link service-worker, name <serviceWorker>
+    like service-worker-container
+
+  task get-gamepads, name <getGamepads>
+    like native-array
+      like or
+        like gamepad
+        like native-null
+
+  task request-media-key-system-access, name <requestMediaKeySystemAccess>
+    take key-system, like native-string
+    take supported-configurations
+      like native-array
+        like media-key-system-configuration
+    like promise
+      like media-key-system-access
+
+  task send-beacon, name <sendBeacon>
+    take url
+      like or
+        like native-string
+        like url
+    take data, like maybe
+      like or
+        like body-init
+        like native-null
+    like native-boolean
+
+  task share, name <share>
+    take data, like maybe
+      like share-data
+    like promise
+      like native-void
+
+  task vibrate, name <vibrate>
+    take pattern, like vibrate-pattern
+    like native-boolean

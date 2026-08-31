@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript
+  find native-string
+
+form ec-key-pair-key-object-options, name <ECKeyPairKeyObjectOptions>
+  link named-curve, name <namedCurve>
+    like native-string
+    flex true

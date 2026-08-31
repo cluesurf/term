@@ -1,0 +1,160 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/buffer-source
+  find buffer-source
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/browser/dom/media-key-message-event
+  find media-key-message-event
+
+load @term/bind/code/browser/dom/media-key-session-event-map
+  find media-key-session-event-map
+
+load @term/bind/code/browser/dom/media-key-status-map
+  find media-key-status-map
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form media-key-session, name <MediaKeySession>
+  base event-target
+
+  link closed, name <closed>
+    like promise
+      like native-undefined
+  link expiration, name <expiration>
+    like native-number
+  link key-statuses, name <keyStatuses>
+    like media-key-status-map
+  link onkeystatuseschange, name <onkeystatuseschange>
+    like or
+      like task
+        take this, like media-key-session
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onmessage, name <onmessage>
+    like or
+      like task
+        take this, like media-key-session
+        take ev, like media-key-message-event
+        like native-any
+      like native-null
+    lock false
+  link session-id, name <sessionId>
+    like native-string
+
+  task close, name <close>
+    like promise
+      like native-void
+
+  task generate-request, name <generateRequest>
+    take init-data-type, like native-string
+    take init-data, like buffer-source
+    like promise
+      like native-void
+
+  task load, name <load>
+    take session-id, like native-string
+    like promise
+      like native-boolean
+
+  task remove, name <remove>
+    like promise
+      like native-void
+
+  task update, name <update>
+    take response, like buffer-source
+    like promise
+      like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like media-key-session-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like media-key-session
+        take ev
+          like index
+            like media-key-session-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like media-key-session-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like media-key-session
+        take ev
+          like index
+            like media-key-session-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

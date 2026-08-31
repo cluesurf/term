@@ -1,0 +1,19 @@
+
+load @term/bind
+  find like
+  find task
+
+load @term/bind/code/javascript
+  find native-void
+
+load @term/bind/code/node/fs
+  find watch-event-type
+
+form watch-listener, name <WatchListener>
+  head t
+
+  like task
+    like native-void
+
+    take event, like watch-event-type
+    take filename, like t

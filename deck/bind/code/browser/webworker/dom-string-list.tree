@@ -1,0 +1,32 @@
+
+load @term/bind/code/browser/dom/iterable/dom-string-list
+  find dom-string-list
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form dom-string-list, name <DOMStringList>
+  link length, name <length>
+    like native-number
+
+  task contains, name <contains>
+    take string, like native-string
+    like native-boolean
+
+  task item, name <item>
+    take index, like native-number
+    like or
+      like native-string
+      like native-null
+
+  mesh index, like native-number
+    like native-string

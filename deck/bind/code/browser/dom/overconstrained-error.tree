@@ -1,0 +1,12 @@
+
+load @term/bind/code/javascript/es5/error
+  find error
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form overconstrained-error, name <OverconstrainedError>
+  base error
+
+  link constraint, name <constraint>
+    like native-string

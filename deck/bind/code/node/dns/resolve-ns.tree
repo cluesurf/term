@@ -1,0 +1,12 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-string
+  find promise
+
+task promisify, name <__promisify__>
+  like promise
+    like array
+      like native-string
+
+  take hostname, like native-string

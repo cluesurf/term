@@ -1,0 +1,168 @@
+
+load @term/bind/code/javascript/es2016/array/include/int16-array
+  find int16-array
+
+load @term/bind/code/javascript/es2016/array/include/int32-array
+  find int32-array
+
+load @term/bind/code/javascript/es2016/array/include/int8-array
+  find int8-array
+
+load @term/bind/code/javascript/es2016/array/include/uint16-array
+  find uint16-array
+
+load @term/bind/code/javascript/es2016/array/include/uint32-array
+  find uint32-array
+
+load @term/bind/code/javascript/es2016/array/include/uint8-array
+  find uint8-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form atomics, name <Atomics>
+  link {symbol/to-string-tag}
+    text <Atomics>
+    read true
+
+  task add, name <add>
+    take typed-array
+      like or
+        like int8-array
+        like uint8-array
+        like int16-array
+        like uint16-array
+        like int32-array
+        like uint32-array
+    take index, like native-number
+    take value, like native-number
+    like native-number
+
+  task and, name <and>
+    take typed-array
+      like or
+        like int8-array
+        like uint8-array
+        like int16-array
+        like uint16-array
+        like int32-array
+        like uint32-array
+    take index, like native-number
+    take value, like native-number
+    like native-number
+
+  task compare-exchange, name <compareExchange>
+    take typed-array
+      like or
+        like int8-array
+        like uint8-array
+        like int16-array
+        like uint16-array
+        like int32-array
+        like uint32-array
+    take index, like native-number
+    take expected-value, like native-number
+    take replacement-value, like native-number
+    like native-number
+
+  task exchange, name <exchange>
+    take typed-array
+      like or
+        like int8-array
+        like uint8-array
+        like int16-array
+        like uint16-array
+        like int32-array
+        like uint32-array
+    take index, like native-number
+    take value, like native-number
+    like native-number
+
+  task is-lock-free, name <isLockFree>
+    take size, like native-number
+    like native-boolean
+
+  task load, name <load>
+    take typed-array
+      like or
+        like int8-array
+        like uint8-array
+        like int16-array
+        like uint16-array
+        like int32-array
+        like uint32-array
+    take index, like native-number
+    like native-number
+
+  task or, name <or>
+    take typed-array
+      like or
+        like int8-array
+        like uint8-array
+        like int16-array
+        like uint16-array
+        like int32-array
+        like uint32-array
+    take index, like native-number
+    take value, like native-number
+    like native-number
+
+  task store, name <store>
+    take typed-array
+      like or
+        like int8-array
+        like uint8-array
+        like int16-array
+        like uint16-array
+        like int32-array
+        like uint32-array
+    take index, like native-number
+    take value, like native-number
+    like native-number
+
+  task sub, name <sub>
+    take typed-array
+      like or
+        like int8-array
+        like uint8-array
+        like int16-array
+        like uint16-array
+        like int32-array
+        like uint32-array
+    take index, like native-number
+    take value, like native-number
+    like native-number
+
+  task wait, name <wait>
+    take typed-array, like int32-array
+    take index, like native-number
+    take value, like native-number
+    take timeout, like maybe
+      like native-number
+    like or
+      text <ok>
+      text <not-equal>
+      text <timed-out>
+
+  task notify, name <notify>
+    take typed-array, like int32-array
+    take index, like native-number
+    take count, like maybe
+      like native-number
+    like native-number
+
+  task xor, name <xor>
+    take typed-array
+      like or
+        like int8-array
+        like uint8-array
+        like int16-array
+        like uint16-array
+        like int32-array
+        like uint32-array
+    take index, like native-number
+    take value, like native-number
+    like native-number

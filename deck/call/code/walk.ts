@@ -22,10 +22,38 @@ export {
   stdlibResolver,
   linkResolver,
 } from '@term/make/code/resolve'
+import { parse, renderHead } from '@term/make/code/parser/tree'
 
 // the keywords that begin a top-level definition; anything else typed at the prompt is an expression to evaluate
-const DEFINITION =
-  /^(task|form|load|mask|dock|suit|bear|deck|note|hold)\b/
+const DEFINITION_HEADS = new Set([
+  'task', 'form', 'load', 'mask', 'dock', 'suit', 'bear', 'deck', 'note', 'hold',
+])
+
+// Does this line open a definition? Asked of the REPL's input, which is a fragment a person is still typing, so a
+// line that does not parse is simply not a definition rather than an error.
+//
+// Read with the parser rather than matched with a keyword-anchored regex. There is ONE parser for `.tree`
+// (note/term/one-parser.md): a regex says yes to `taskbar` only by luck of a word boundary, and yes to a `form` written
+// inside a text literal, and it would drift the moment the head set grew a two-word form.
+function isDefinition(line: string): boolean {
+  const parsed = parse({ file: '<repl>', text: line })
+
+  if (!parsed.ok) {
+    return false
+  }
+
+  const first = parsed.tree.nodes[0]
+
+  if (!first) {
+    return false
+  }
+
+  const head = first.nodes[0]
+
+  return (
+    head?.kind === 'name' && DEFINITION_HEADS.has(renderHead(head))
+  )
+}
 
 export type FeedResult =
   | { kind: 'definition'; text: string }
@@ -48,7 +76,7 @@ export class Repl {
       return { kind: 'empty' }
     }
 
-    if (DEFINITION.test(trimmed.trimStart())) {
+    if (isDefinition(trimmed.trimStart())) {
       // a definition: accept it only if the program still compiles with it added
       const trial = [...this.definitions, trimmed].join('\n\n')
       const result = compile(
@@ -192,7 +220,7 @@ export async function callWalk(_input: {
     buffer.push(line)
 
     // a single-line expression evaluates immediately; an indented block waits for a blank line
-    if (buffer.length === 1 && !DEFINITION.test(line.trimStart())) {
+    if (buffer.length === 1 && !isDefinition(line.trimStart())) {
       await flush()
     }
 

@@ -1,0 +1,27 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/inspector/runtime
+  find execution-context-id
+
+form compile-script-parameter-type, name <CompileScriptParameterType>
+  link expression, name <expression>
+    like native-string
+    flex true
+  link source-url, name <sourceURL>
+    like native-string
+    flex true
+  link persist-script, name <persistScript>
+    like native-boolean
+    flex true
+  link execution-context-id, name <executionContextId>
+    like or
+      like execution-context-id
+      like native-undefined
+    flex true

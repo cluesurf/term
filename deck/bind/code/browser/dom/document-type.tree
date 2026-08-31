@@ -1,0 +1,25 @@
+
+load @term/bind/code/browser/dom/child-node
+  find child-node
+
+load @term/bind/code/browser/dom/document
+  find document
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form document-type, name <DocumentType>
+  base node
+  base child-node
+
+  link name, name <name>
+    like native-string
+  link owner-document, name <ownerDocument>
+    like document
+  link public-id, name <publicId>
+    like native-string
+  link system-id, name <systemId>
+    like native-string

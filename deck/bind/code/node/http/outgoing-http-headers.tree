@@ -1,0 +1,3 @@
+
+form outgoing-http-headers, name <OutgoingHttpHeaders>
+  base node-js-dict

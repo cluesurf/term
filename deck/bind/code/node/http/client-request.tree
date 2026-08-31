@@ -1,0 +1,826 @@
+
+load @term/bind/code/javascript
+  find array
+  find error
+  find incoming-message
+  find native-boolean
+  find native-number
+  find native-string
+  find native-symbol
+  find native-this
+  find native-void
+  find socket
+  find stream-readable
+  find url
+
+load @term/bind
+  find any
+  find or
+  find task
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/http
+  find client-request-args
+  find information-event
+
+form client-request, name <ClientRequest>
+  base outgoing-message
+  link aborted, name <aborted>, like native-boolean
+  link host, name <host>, like native-string
+  link protocol, name <protocol>, like native-string
+  link reused-socket, name <reusedSocket>, like native-boolean
+  link max-headers-count, name <maxHeadersCount>, like native-number
+  link method, name <method>, like native-string
+  link path, name <path>, like native-string
+
+  task abort, name <abort>
+    like native-void
+
+  task on-socket, name <onSocket>
+    like native-void
+
+    take socket, like socket
+
+  task set-timeout, name <setTimeout>
+    like native-this
+
+    take timeout, like native-number
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task set-no-delay, name <setNoDelay>
+    like native-void
+
+    take no-delay, like native-boolean
+      void true
+
+  task set-socket-keep-alive, name <setSocketKeepAlive>
+    like native-void
+
+    take enable, like native-boolean
+      void true
+    take initial-delay, like native-number
+      void true
+
+  task get-raw-header-names, name <getRawHeaderNames>
+    like array
+      like native-string
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <abort>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+        take response, like incoming-message
+        take socket, like socket
+        take head, like buffer
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <continue>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <information>
+    take listener
+      like task
+        like native-void
+
+        take info, like information-event
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <response>
+    take listener
+      like task
+        like native-void
+
+        take response, like incoming-message
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <socket>
+    take listener
+      like task
+        like native-void
+
+        take socket, like socket
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <timeout>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <upgrade>
+    take listener
+      like task
+        like native-void
+
+        take response, like incoming-message
+        take socket, like socket
+        take head, like buffer
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <drain>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <finish>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <pipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <unpipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task on, name <on>
+    like native-this
+
+    take event, text <abort>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+        take response, like incoming-message
+        take socket, like socket
+        take head, like buffer
+
+  task on, name <on>
+    like native-this
+
+    take event, text <continue>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <information>
+    take listener
+      like task
+        like native-void
+
+        take info, like information-event
+
+  task on, name <on>
+    like native-this
+
+    take event, text <response>
+    take listener
+      like task
+        like native-void
+
+        take response, like incoming-message
+
+  task on, name <on>
+    like native-this
+
+    take event, text <socket>
+    take listener
+      like task
+        like native-void
+
+        take socket, like socket
+
+  task on, name <on>
+    like native-this
+
+    take event, text <timeout>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <upgrade>
+    take listener
+      like task
+        like native-void
+
+        take response, like incoming-message
+        take socket, like socket
+        take head, like buffer
+
+  task on, name <on>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <drain>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task on, name <on>
+    like native-this
+
+    take event, text <finish>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <pipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task on, name <on>
+    like native-this
+
+    take event, text <unpipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task on, name <on>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task once, name <once>
+    like native-this
+
+    take event, text <abort>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+        take response, like incoming-message
+        take socket, like socket
+        take head, like buffer
+
+  task once, name <once>
+    like native-this
+
+    take event, text <continue>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <information>
+    take listener
+      like task
+        like native-void
+
+        take info, like information-event
+
+  task once, name <once>
+    like native-this
+
+    take event, text <response>
+    take listener
+      like task
+        like native-void
+
+        take response, like incoming-message
+
+  task once, name <once>
+    like native-this
+
+    take event, text <socket>
+    take listener
+      like task
+        like native-void
+
+        take socket, like socket
+
+  task once, name <once>
+    like native-this
+
+    take event, text <timeout>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <upgrade>
+    take listener
+      like task
+        like native-void
+
+        take response, like incoming-message
+        take socket, like socket
+        take head, like buffer
+
+  task once, name <once>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <drain>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task once, name <once>
+    like native-this
+
+    take event, text <finish>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <pipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task once, name <once>
+    like native-this
+
+    take event, text <unpipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task once, name <once>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <abort>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+        take response, like incoming-message
+        take socket, like socket
+        take head, like buffer
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <continue>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <information>
+    take listener
+      like task
+        like native-void
+
+        take info, like information-event
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <response>
+    take listener
+      like task
+        like native-void
+
+        take response, like incoming-message
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <socket>
+    take listener
+      like task
+        like native-void
+
+        take socket, like socket
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <timeout>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <upgrade>
+    take listener
+      like task
+        like native-void
+
+        take response, like incoming-message
+        take socket, like socket
+        take head, like buffer
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <drain>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <finish>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <pipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <unpipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <abort>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+        take response, like incoming-message
+        take socket, like socket
+        take head, like buffer
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <continue>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <information>
+    take listener
+      like task
+        like native-void
+
+        take info, like information-event
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <response>
+    take listener
+      like task
+        like native-void
+
+        take response, like incoming-message
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <socket>
+    take listener
+      like task
+        like native-void
+
+        take socket, like socket
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <timeout>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <upgrade>
+    take listener
+      like task
+        like native-void
+
+        take response, like incoming-message
+        take socket, like socket
+        take head, like buffer
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <drain>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <finish>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <pipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <unpipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+form client-request-constructor
+  hook make
+    take url
+      like or
+        like native-string
+        like url
+        like client-request-args
+    take cb
+      like task
+        like native-void
+
+        take res, like incoming-message
+      void true

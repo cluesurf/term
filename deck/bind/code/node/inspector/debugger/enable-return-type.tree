@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript
+  find runtime-unique-debugger-id
+
+form enable-return-type, name <EnableReturnType>
+  link debugger-id, name <debuggerId>
+    like runtime-unique-debugger-id
+    flex true

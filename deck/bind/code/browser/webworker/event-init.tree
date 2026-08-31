@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form event-init, name <EventInit>
+  link bubbles, name <bubbles>
+    like native-boolean
+    lock false
+  link cancelable, name <cancelable>
+    like native-boolean
+    lock false
+  link composed, name <composed>
+    like native-boolean
+    lock false

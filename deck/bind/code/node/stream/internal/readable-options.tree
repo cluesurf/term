@@ -1,0 +1,30 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+  find native-void
+  find readable
+
+load @term/bind/code/node/buffer
+  find buffer-encoding
+
+load @term/bind/code/node/stream/internal
+  find stream-options
+
+form readable-options, name <ReadableOptions>
+  base stream-options
+
+  link encoding, name <encoding>
+    like or
+      like buffer-encoding
+      like native-undefined
+    flex true
+
+  task read, name <read>
+    like native-void
+
+    take this, like readable
+    take size, like native-number

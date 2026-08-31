@@ -1,0 +1,26 @@
+
+load @term/bind/code/browser/dom/image-bitmap-rendering-context
+  find image-bitmap-rendering-context
+
+load @term/bind/code/browser/webworker/image-bitmap
+  find image-bitmap
+
+load @term/bind/code/browser/webworker/offscreen-canvas
+  find offscreen-canvas
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form image-bitmap-rendering-context, name <ImageBitmapRenderingContext>
+  link canvas, name <canvas>
+    like offscreen-canvas
+
+  task transfer-from-image-bitmap, name <transferFromImageBitmap>
+    take bitmap
+      like or
+        like image-bitmap
+        like native-null
+    like native-void

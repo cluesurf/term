@@ -1,0 +1,5 @@
+
+form scroll-setting, name <ScrollSetting>
+  like or
+    text <>
+    text <up>

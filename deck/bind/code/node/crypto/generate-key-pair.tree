@@ -1,0 +1,601 @@
+
+load @term/bind
+  find form
+
+load @term/bind/code/javascript
+  find native-string
+  find promise
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/crypto
+  find dsa-key-pair-key-object-options
+  find dsa-key-pair-options
+  find ec-key-pair-key-object-options
+  find ec-key-pair-options
+  find ed25519-key-pair-key-object-options
+  find ed25519-key-pair-options
+  find ed448-key-pair-key-object-options
+  find ed448-key-pair-options
+  find key-pair-key-object-result
+  find rsa-key-pair-key-object-options
+  find rsa-key-pair-options
+  find rsapss-key-pair-key-object-options
+  find rsapss-key-pair-options
+  find x25519-key-pair-key-object-options
+  find x25519-key-pair-options
+  find x448-key-pair-key-object-options
+  find x448-key-pair-options
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like native-string
+        flex true
+      link private-key, name <privateKey>
+        like native-string
+        flex true
+
+  take type, text <rsa>
+  take options
+    like rsa-key-pair-options
+      text <pem>
+      text <pem>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like native-string
+        flex true
+      link private-key, name <privateKey>
+        like buffer
+        flex true
+
+  take type, text <rsa>
+  take options
+    like rsa-key-pair-options
+      text <pem>
+      text <der>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like buffer
+        flex true
+      link private-key, name <privateKey>
+        like native-string
+        flex true
+
+  take type, text <rsa>
+  take options
+    like rsa-key-pair-options
+      text <der>
+      text <pem>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like buffer
+        flex true
+      link private-key, name <privateKey>
+        like buffer
+        flex true
+
+  take type, text <rsa>
+  take options
+    like rsa-key-pair-options
+      text <der>
+      text <der>
+
+task promisify, name <__promisify__>
+  like promise
+    like key-pair-key-object-result
+
+  take type, text <rsa>
+  take options, like rsa-key-pair-key-object-options
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like native-string
+        flex true
+      link private-key, name <privateKey>
+        like native-string
+        flex true
+
+  take type, text <rsa-pss>
+  take options
+    like rsapss-key-pair-options
+      text <pem>
+      text <pem>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like native-string
+        flex true
+      link private-key, name <privateKey>
+        like buffer
+        flex true
+
+  take type, text <rsa-pss>
+  take options
+    like rsapss-key-pair-options
+      text <pem>
+      text <der>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like buffer
+        flex true
+      link private-key, name <privateKey>
+        like native-string
+        flex true
+
+  take type, text <rsa-pss>
+  take options
+    like rsapss-key-pair-options
+      text <der>
+      text <pem>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like buffer
+        flex true
+      link private-key, name <privateKey>
+        like buffer
+        flex true
+
+  take type, text <rsa-pss>
+  take options
+    like rsapss-key-pair-options
+      text <der>
+      text <der>
+
+task promisify, name <__promisify__>
+  like promise
+    like key-pair-key-object-result
+
+  take type, text <rsa-pss>
+  take options, like rsapss-key-pair-key-object-options
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like native-string
+        flex true
+      link private-key, name <privateKey>
+        like native-string
+        flex true
+
+  take type, text <dsa>
+  take options
+    like dsa-key-pair-options
+      text <pem>
+      text <pem>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like native-string
+        flex true
+      link private-key, name <privateKey>
+        like buffer
+        flex true
+
+  take type, text <dsa>
+  take options
+    like dsa-key-pair-options
+      text <pem>
+      text <der>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like buffer
+        flex true
+      link private-key, name <privateKey>
+        like native-string
+        flex true
+
+  take type, text <dsa>
+  take options
+    like dsa-key-pair-options
+      text <der>
+      text <pem>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like buffer
+        flex true
+      link private-key, name <privateKey>
+        like buffer
+        flex true
+
+  take type, text <dsa>
+  take options
+    like dsa-key-pair-options
+      text <der>
+      text <der>
+
+task promisify, name <__promisify__>
+  like promise
+    like key-pair-key-object-result
+
+  take type, text <dsa>
+  take options, like dsa-key-pair-key-object-options
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like native-string
+        flex true
+      link private-key, name <privateKey>
+        like native-string
+        flex true
+
+  take type, text <ec>
+  take options
+    like ec-key-pair-options
+      text <pem>
+      text <pem>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like native-string
+        flex true
+      link private-key, name <privateKey>
+        like buffer
+        flex true
+
+  take type, text <ec>
+  take options
+    like ec-key-pair-options
+      text <pem>
+      text <der>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like buffer
+        flex true
+      link private-key, name <privateKey>
+        like native-string
+        flex true
+
+  take type, text <ec>
+  take options
+    like ec-key-pair-options
+      text <der>
+      text <pem>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like buffer
+        flex true
+      link private-key, name <privateKey>
+        like buffer
+        flex true
+
+  take type, text <ec>
+  take options
+    like ec-key-pair-options
+      text <der>
+      text <der>
+
+task promisify, name <__promisify__>
+  like promise
+    like key-pair-key-object-result
+
+  take type, text <ec>
+  take options, like ec-key-pair-key-object-options
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like native-string
+        flex true
+      link private-key, name <privateKey>
+        like native-string
+        flex true
+
+  take type, text <ed25519>
+  take options
+    like ed25519-key-pair-options
+      text <pem>
+      text <pem>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like native-string
+        flex true
+      link private-key, name <privateKey>
+        like buffer
+        flex true
+
+  take type, text <ed25519>
+  take options
+    like ed25519-key-pair-options
+      text <pem>
+      text <der>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like buffer
+        flex true
+      link private-key, name <privateKey>
+        like native-string
+        flex true
+
+  take type, text <ed25519>
+  take options
+    like ed25519-key-pair-options
+      text <der>
+      text <pem>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like buffer
+        flex true
+      link private-key, name <privateKey>
+        like buffer
+        flex true
+
+  take type, text <ed25519>
+  take options
+    like ed25519-key-pair-options
+      text <der>
+      text <der>
+
+task promisify, name <__promisify__>
+  like promise
+    like key-pair-key-object-result
+
+  take type, text <ed25519>
+  take options, like ed25519-key-pair-key-object-options
+    void true
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like native-string
+        flex true
+      link private-key, name <privateKey>
+        like native-string
+        flex true
+
+  take type, text <ed448>
+  take options
+    like ed448-key-pair-options
+      text <pem>
+      text <pem>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like native-string
+        flex true
+      link private-key, name <privateKey>
+        like buffer
+        flex true
+
+  take type, text <ed448>
+  take options
+    like ed448-key-pair-options
+      text <pem>
+      text <der>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like buffer
+        flex true
+      link private-key, name <privateKey>
+        like native-string
+        flex true
+
+  take type, text <ed448>
+  take options
+    like ed448-key-pair-options
+      text <der>
+      text <pem>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like buffer
+        flex true
+      link private-key, name <privateKey>
+        like buffer
+        flex true
+
+  take type, text <ed448>
+  take options
+    like ed448-key-pair-options
+      text <der>
+      text <der>
+
+task promisify, name <__promisify__>
+  like promise
+    like key-pair-key-object-result
+
+  take type, text <ed448>
+  take options, like ed448-key-pair-key-object-options
+    void true
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like native-string
+        flex true
+      link private-key, name <privateKey>
+        like native-string
+        flex true
+
+  take type, text <x25519>
+  take options
+    like x25519-key-pair-options
+      text <pem>
+      text <pem>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like native-string
+        flex true
+      link private-key, name <privateKey>
+        like buffer
+        flex true
+
+  take type, text <x25519>
+  take options
+    like x25519-key-pair-options
+      text <pem>
+      text <der>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like buffer
+        flex true
+      link private-key, name <privateKey>
+        like native-string
+        flex true
+
+  take type, text <x25519>
+  take options
+    like x25519-key-pair-options
+      text <der>
+      text <pem>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like buffer
+        flex true
+      link private-key, name <privateKey>
+        like buffer
+        flex true
+
+  take type, text <x25519>
+  take options
+    like x25519-key-pair-options
+      text <der>
+      text <der>
+
+task promisify, name <__promisify__>
+  like promise
+    like key-pair-key-object-result
+
+  take type, text <x25519>
+  take options, like x25519-key-pair-key-object-options
+    void true
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like native-string
+        flex true
+      link private-key, name <privateKey>
+        like native-string
+        flex true
+
+  take type, text <x448>
+  take options
+    like x448-key-pair-options
+      text <pem>
+      text <pem>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like native-string
+        flex true
+      link private-key, name <privateKey>
+        like buffer
+        flex true
+
+  take type, text <x448>
+  take options
+    like x448-key-pair-options
+      text <pem>
+      text <der>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like buffer
+        flex true
+      link private-key, name <privateKey>
+        like native-string
+        flex true
+
+  take type, text <x448>
+  take options
+    like x448-key-pair-options
+      text <der>
+      text <pem>
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link public-key, name <publicKey>
+        like buffer
+        flex true
+      link private-key, name <privateKey>
+        like buffer
+        flex true
+
+  take type, text <x448>
+  take options
+    like x448-key-pair-options
+      text <der>
+      text <der>
+
+task promisify, name <__promisify__>
+  like promise
+    like key-pair-key-object-result
+
+  take type, text <x448>
+  take options, like x448-key-pair-key-object-options
+    void true

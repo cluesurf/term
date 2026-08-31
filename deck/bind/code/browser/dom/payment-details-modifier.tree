@@ -1,0 +1,27 @@
+
+load @term/bind/code/browser/dom/payment-item
+  find payment-item
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form payment-details-modifier, name <PaymentDetailsModifier>
+  link additional-display-items, name <additionalDisplayItems>
+    like native-array
+      like payment-item
+    lock false
+  link data, name <data>
+    like native-any
+    lock false
+  link supported-methods, name <supportedMethods>
+    like native-string
+    lock false
+  link total, name <total>
+    like payment-item
+    lock false

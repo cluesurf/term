@@ -1,0 +1,21 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/child-process
+  find common-exec-options
+
+form exec-file-sync-options, name <ExecFileSyncOptions>
+  base common-exec-options
+
+  link shell, name <shell>
+    like or
+      like native-boolean
+      like native-string
+      like native-undefined
+    flex true

@@ -1,0 +1,7 @@
+
+load @term/bind/code/browser/dom/g-lenum
+  find g-lenum
+
+form webgl-compressed-texture-etc1, name <WEBGL_compressed_texture_etc1>
+  link compressed-rgb-etc1-webgl, name <COMPRESSED_RGB_ETC1_WEBGL>
+    like g-lenum

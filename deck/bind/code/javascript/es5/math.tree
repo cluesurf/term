@@ -1,0 +1,103 @@
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form math, name <Math>
+  link e, name <E>
+    like native-number
+  link ln10, name <LN10>
+    like native-number
+  link ln2, name <LN2>
+    like native-number
+  link log2-e, name <LOG2E>
+    like native-number
+  link log10-e, name <LOG10E>
+    like native-number
+  link pi, name <PI>
+    like native-number
+  link sqrt1-2, name <SQRT1_2>
+    like native-number
+  link sqrt2, name <SQRT2>
+    like native-number
+
+  task abs, name <abs>
+    take x, like native-number
+    like native-number
+
+  task acos, name <acos>
+    take x, like native-number
+    like native-number
+
+  task asin, name <asin>
+    take x, like native-number
+    like native-number
+
+  task atan, name <atan>
+    take x, like native-number
+    like native-number
+
+  task atan2, name <atan2>
+    take y, like native-number
+    take x, like native-number
+    like native-number
+
+  task ceil, name <ceil>
+    take x, like native-number
+    like native-number
+
+  task cos, name <cos>
+    take x, like native-number
+    like native-number
+
+  task exp, name <exp>
+    take x, like native-number
+    like native-number
+
+  task floor, name <floor>
+    take x, like native-number
+    like native-number
+
+  task log, name <log>
+    take x, like native-number
+    like native-number
+
+  task max, name <max>
+    take values
+      like native-array
+        like native-number
+      rest true
+    like native-number
+
+  task min, name <min>
+    take values
+      like native-array
+        like native-number
+      rest true
+    like native-number
+
+  task pow, name <pow>
+    take x, like native-number
+    take y, like native-number
+    like native-number
+
+  task random, name <random>
+    like native-number
+
+  task round, name <round>
+    take x, like native-number
+    like native-number
+
+  task sin, name <sin>
+    take x, like native-number
+    like native-number
+
+  task sqrt, name <sqrt>
+    take x, like native-number
+    like native-number
+
+  task tan, name <tan>
+    take x, like native-number
+    like native-number

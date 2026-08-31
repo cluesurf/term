@@ -1,0 +1,34 @@
+
+bear @term/bind/code/javascript/node/punycode/ucs2
+
+load @term/bind/code/javascript
+  find native-string
+
+load @term/bind/code/node/punycode
+  find ucs2
+
+host ucs2, name <ucs2>
+  like ucs2
+
+host version, name <version>
+  like native-string
+
+task decode, name <decode>
+  like native-string
+
+  take string, like native-string
+
+task encode, name <encode>
+  like native-string
+
+  take string, like native-string
+
+task to-unicode, name <toUnicode>
+  like native-string
+
+  take domain, like native-string
+
+task to-ascii, name <toASCII>
+  like native-string
+
+  take domain, like native-string

@@ -1,0 +1,19 @@
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form media-key-system-media-capability, name <MediaKeySystemMediaCapability>
+  link content-type, name <contentType>
+    like native-string
+    lock false
+  link encryption-scheme, name <encryptionScheme>
+    like or
+      like native-string
+      like native-null
+    lock false
+  link robustness, name <robustness>
+    like native-string
+    lock false

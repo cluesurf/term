@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/dom/worker-event-map
+  find worker-event-map
+
+load @term/bind/code/browser/webworker/abstract-worker-event-map
+  find abstract-worker-event-map
+
+load @term/bind/code/browser/webworker/message-event
+  find message-event
+
+form worker-event-map, name <WorkerEventMap>
+  base abstract-worker-event-map
+
+  link message, name <message>
+    like message-event
+    lock false
+  link messageerror, name <messageerror>
+    like message-event
+    lock false

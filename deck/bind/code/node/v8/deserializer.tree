@@ -1,0 +1,50 @@
+
+load @term/bind
+  find any
+  find tuple
+
+load @term/bind/code/javascript
+  find array-buffer
+  find native-boolean
+  find native-number
+  find native-void
+  find node-js-typed-array
+
+load @term/bind/code/node/buffer
+  find buffer
+
+form deserializer, name <Deserializer>
+  task read-header, name <readHeader>
+    like native-boolean
+
+  task read-value, name <readValue>
+    like any
+
+  task transfer-array-buffer, name <transferArrayBuffer>
+    like native-void
+
+    take id, like native-number
+    take array-buffer, like array-buffer
+
+  task get-wire-format-version, name <getWireFormatVersion>
+    like native-number
+
+  task read-uint32, name <readUint32>
+    like native-number
+
+  task read-uint64, name <readUint64>
+    like tuple
+      like native-number
+      like native-number
+
+  task read-double, name <readDouble>
+    like native-number
+
+  task read-raw-bytes, name <readRawBytes>
+    like buffer
+
+    take length, like native-number
+
+form deserializer-constructor
+  hook make
+    take data, like node-js-typed-array

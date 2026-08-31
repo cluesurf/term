@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/algorithm
+  find algorithm
+
+load @term/bind/code/browser/dom/buffer-source
+  find buffer-source
+
+load @term/bind/code/browser/dom/hash-algorithm-identifier
+  find hash-algorithm-identifier
+
+form hkdf-params, name <HkdfParams>
+  base algorithm
+
+  link hash, name <hash>
+    like hash-algorithm-identifier
+    lock false
+  link info, name <info>
+    like buffer-source
+    lock false
+  link salt, name <salt>
+    like buffer-source
+    lock false

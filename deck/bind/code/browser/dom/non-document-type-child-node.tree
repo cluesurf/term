@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/javascript/native
+  find native-null
+
+form non-document-type-child-node, name <NonDocumentTypeChildNode>
+  link next-element-sibling, name <nextElementSibling>
+    like or
+      like element
+      like native-null
+  link previous-element-sibling, name <previousElementSibling>
+    like or
+      like element
+      like native-null

@@ -1,0 +1,27 @@
+
+load @term/bind
+  find or
+  find unknown
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/perf-hooks
+  find entry-type
+  find node-gc-performance-detail
+
+form performance-entry, name <PerformanceEntry>
+  link duration, name <duration>, like native-number
+  link name, name <name>, like native-string
+  link start-time, name <startTime>, like native-number
+  link entry-type, name <entryType>, like entry-type
+  link detail, name <detail>
+    like or
+      like node-gc-performance-detail
+      like unknown
+      like native-undefined
+
+form performance-entry-constructor
+  hook make

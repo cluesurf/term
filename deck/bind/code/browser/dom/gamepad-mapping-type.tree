@@ -1,0 +1,6 @@
+
+form gamepad-mapping-type, name <GamepadMappingType>
+  like or
+    text <>
+    text <standard>
+    text <xr-standard>

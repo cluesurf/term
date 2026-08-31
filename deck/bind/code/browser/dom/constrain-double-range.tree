@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/double-range
+  find double-range
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form constrain-double-range, name <ConstrainDoubleRange>
+  base double-range
+
+  link exact, name <exact>
+    like native-number
+    lock false
+  link ideal, name <ideal>
+    like native-number
+    lock false

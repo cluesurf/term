@@ -1,0 +1,8 @@
+
+load @term/bind/code/node/crypto
+  find private-key-input
+  find signing-options
+
+form sign-private-key-input, name <SignPrivateKeyInput>
+  base private-key-input
+  base signing-options

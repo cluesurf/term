@@ -1,0 +1,21 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form client-rect, name <ClientRect>
+  link bottom, name <bottom>
+    like native-number
+    lock false
+  link height, name <height>
+    like native-number
+  link left, name <left>
+    like native-number
+    lock false
+  link right, name <right>
+    like native-number
+    lock false
+  link top, name <top>
+    like native-number
+    lock false
+  link width, name <width>
+    like native-number

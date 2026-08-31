@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/document-and-element-event-handlers-event-map
+  find document-and-element-event-handlers-event-map
+
+load @term/bind/code/browser/dom/element-event-map
+  find element-event-map
+
+load @term/bind/code/browser/dom/global-event-handlers-event-map
+  find global-event-handlers-event-map
+
+form html-element-event-map, name <HTMLElementEventMap>
+  base element-event-map
+  base document-and-element-event-handlers-event-map
+  base global-event-handlers-event-map

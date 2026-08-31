@@ -1,0 +1,49 @@
+
+load @term/bind/code/browser/dom/audio-node
+  find audio-node
+
+load @term/bind/code/javascript/es5/float32-array
+  find float32-array
+
+load @term/bind/code/javascript/es5/uint8-array
+  find uint8-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form analyser-node, name <AnalyserNode>
+  base audio-node
+
+  link fft-size, name <fftSize>
+    like native-number
+    lock false
+  link frequency-bin-count, name <frequencyBinCount>
+    like native-number
+  link max-decibels, name <maxDecibels>
+    like native-number
+    lock false
+  link min-decibels, name <minDecibels>
+    like native-number
+    lock false
+  link smoothing-time-constant, name <smoothingTimeConstant>
+    like native-number
+    lock false
+
+  task get-byte-frequency-data, name <getByteFrequencyData>
+    take array, like uint8-array
+    like native-void
+
+  task get-byte-time-domain-data, name <getByteTimeDomainData>
+    take array, like uint8-array
+    like native-void
+
+  task get-float-frequency-data, name <getFloatFrequencyData>
+    take array, like float32-array
+    like native-void
+
+  task get-float-time-domain-data, name <getFloatTimeDomainData>
+    take array, like float32-array
+    like native-void

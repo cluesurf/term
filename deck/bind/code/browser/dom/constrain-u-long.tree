@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/constrain-u-long-range
+  find constrain-u-long-range
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form constrain-u-long, name <ConstrainULong>
+  like or
+    like native-number
+    like constrain-u-long-range

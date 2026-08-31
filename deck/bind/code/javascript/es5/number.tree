@@ -1,0 +1,50 @@
+
+load @term/bind/code/javascript/es5/number
+  find number
+
+load @term/bind/code/javascript/intl-number-format-options
+  find intl-number-format-options
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form number, name <Number>
+  task to-string, name <toString>
+    take radix, like maybe
+      like native-number
+    like native-string
+
+  task to-fixed, name <toFixed>
+    take fraction-digits, like maybe
+      like native-number
+    like native-string
+
+  task to-exponential, name <toExponential>
+    take fraction-digits, like maybe
+      like native-number
+    like native-string
+
+  task to-precision, name <toPrecision>
+    take precision, like maybe
+      like native-number
+    like native-string
+
+  task value-of, name <valueOf>
+    like native-number
+
+form number, name <Number>
+  task to-locale-string, name <toLocaleString>
+    take locales, like maybe
+      like or
+        like native-string
+        like native-array
+          like native-string
+    take options, like maybe
+      like intl-number-format-options
+    like native-string

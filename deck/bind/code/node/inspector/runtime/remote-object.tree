@@ -1,0 +1,57 @@
+
+load @term/bind
+  find any
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/inspector/runtime
+  find custom-preview
+  find object-preview
+  find remote-object-id
+  find unserializable-value
+
+form remote-object, name <RemoteObject>
+  link type, name <type>
+    like native-string
+    flex true
+  link subtype, name <subtype>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link class-name, name <className>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link value, name <value>
+    like any
+    flex true
+  link unserializable-value, name <unserializableValue>
+    like or
+      like unserializable-value
+      like native-undefined
+    flex true
+  link description, name <description>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link object-id, name <objectId>
+    like or
+      like remote-object-id
+      like native-undefined
+    flex true
+  link preview, name <preview>
+    like or
+      like object-preview
+      like native-undefined
+    flex true
+  link custom-preview, name <customPreview>
+    like or
+      like custom-preview
+      like native-undefined
+    flex true

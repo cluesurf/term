@@ -1,0 +1,33 @@
+
+load @term/bind/code/javascript/es2015/iterable/iterable
+  find iterable
+
+load @term/bind/code/javascript/es2018/promise/promise
+  find promise
+
+load @term/bind/code/javascript/es2020/promise/promise-constructor
+  find promise-constructor
+
+load @term/bind/code/javascript/es5/promise-like
+  find promise-like
+
+load @term/bind/code/javascript/native
+  find native-array
+
+form promise-constructor, name <PromiseConstructor>
+  task any, name <any>
+    head t
+    take values
+      like or
+        like native-array
+          like or
+            like t
+            like promise-like
+              like t
+        like iterable
+          like or
+            like t
+            like promise-like
+              like t
+    like promise
+      like t

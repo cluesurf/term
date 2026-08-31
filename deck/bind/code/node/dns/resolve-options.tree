@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript
+  find native-boolean
+
+form resolve-options, name <ResolveOptions>
+  link ttl, name <ttl>
+    like native-boolean
+    flex true

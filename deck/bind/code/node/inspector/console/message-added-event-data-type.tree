@@ -1,0 +1,8 @@
+
+load @term/bind/code/node/inspector/console
+  find console-message
+
+form message-added-event-data-type, name <MessageAddedEventDataType>
+  link message, name <message>
+    like console-message
+    flex true

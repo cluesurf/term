@@ -1,0 +1,26 @@
+
+load @term/bind/code/browser/dom/media-capabilities-decoding-info
+  find media-capabilities-decoding-info
+
+load @term/bind/code/browser/dom/media-capabilities-encoding-info
+  find media-capabilities-encoding-info
+
+load @term/bind/code/browser/dom/media-decoding-configuration
+  find media-decoding-configuration
+
+load @term/bind/code/browser/dom/media-encoding-configuration
+  find media-encoding-configuration
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+form media-capabilities, name <MediaCapabilities>
+  task decoding-info, name <decodingInfo>
+    take configuration, like media-decoding-configuration
+    like promise
+      like media-capabilities-decoding-info
+
+  task encoding-info, name <encodingInfo>
+    take configuration, like media-encoding-configuration
+    like promise
+      like media-capabilities-encoding-info

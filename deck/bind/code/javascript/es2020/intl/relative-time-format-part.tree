@@ -1,0 +1,17 @@
+
+load @term/bind/code/javascript/es2020/intl/relative-time-format-unit
+  find relative-time-format-unit
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form relative-time-format-part, name <RelativeTimeFormatPart>
+  link type, name <type>
+    like native-string
+    lock false
+  link value, name <value>
+    like native-string
+    lock false
+  link unit, name <unit>
+    like relative-time-format-unit
+    lock false

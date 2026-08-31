@@ -1,0 +1,18 @@
+
+load @term/bind/code/browser/dom/canvas-gradient
+  find canvas-gradient
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form canvas-gradient, name <CanvasGradient>
+  task add-color-stop, name <addColorStop>
+    take offset, like native-number
+    take color, like native-string
+    like native-void

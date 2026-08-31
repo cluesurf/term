@@ -1,0 +1,6 @@
+
+form request-redirect, name <RequestRedirect>
+  like or
+    text <error>
+    text <follow>
+    text <manual>

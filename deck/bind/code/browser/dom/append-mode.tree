@@ -1,0 +1,5 @@
+
+form append-mode, name <AppendMode>
+  like or
+    text <segments>
+    text <sequence>

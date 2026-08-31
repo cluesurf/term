@@ -1,0 +1,29 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-string
+  find native-symbol
+  find native-this
+  find native-void
+
+load @term/bind
+  find any
+  find or
+  find task
+
+form node-event-target, name <NodeEventTarget>
+  task once, name <once>
+    like native-this
+
+    take event-name
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true

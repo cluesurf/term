@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/media-stream
+  find media-stream
+
+form media-stream-audio-source-options, name <MediaStreamAudioSourceOptions>
+  link media-stream, name <mediaStream>
+    like media-stream
+    lock false

@@ -1,0 +1,26 @@
+
+load @term/bind/code/javascript
+  find native-string
+
+load @term/bind/code/node/crypto/certificate
+  find certificate
+
+form certificate, name <Certificate>
+  link c, name <C>
+    like native-string
+    flex true
+  link st, name <ST>
+    like native-string
+    flex true
+  link l, name <L>
+    like native-string
+    flex true
+  link o, name <O>
+    like native-string
+    flex true
+  link ou, name <OU>
+    like native-string
+    flex true
+  link cn, name <CN>
+    like native-string
+    flex true

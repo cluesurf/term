@@ -1,0 +1,34 @@
+
+load @term/bind/code/browser/dom/underlying-source-cancel-callback
+  find underlying-source-cancel-callback
+
+load @term/bind/code/browser/dom/underlying-source-pull-callback
+  find underlying-source-pull-callback
+
+load @term/bind/code/browser/dom/underlying-source-start-callback
+  find underlying-source-start-callback
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+form underlying-source, name <UnderlyingSource>
+  head r
+    back native-any
+
+  link cancel, name <cancel>
+    like underlying-source-cancel-callback
+    lock false
+  link pull, name <pull>
+    like underlying-source-pull-callback
+      like r
+    lock false
+  link start, name <start>
+    like underlying-source-start-callback
+      like r
+    lock false
+  link type, name <type>
+    like native-undefined
+    lock false

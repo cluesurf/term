@@ -1,0 +1,15 @@
+
+load @term/bind
+  find task
+
+load @term/bind/code/node/perf-hooks
+  find event-loop-utilization
+
+form event-loop-utility-function, name <EventLoopUtilityFunction>
+  like task
+    like event-loop-utilization
+
+    take util1, like event-loop-utilization
+      void true
+    take util2, like event-loop-utilization
+      void true

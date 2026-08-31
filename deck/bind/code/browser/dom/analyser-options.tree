@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/audio-node-options
+  find audio-node-options
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form analyser-options, name <AnalyserOptions>
+  base audio-node-options
+
+  link fft-size, name <fftSize>
+    like native-number
+    lock false
+  link max-decibels, name <maxDecibels>
+    like native-number
+    lock false
+  link min-decibels, name <minDecibels>
+    like native-number
+    lock false
+  link smoothing-time-constant, name <smoothingTimeConstant>
+    like native-number
+    lock false

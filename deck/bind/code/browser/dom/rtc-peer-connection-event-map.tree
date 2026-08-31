@@ -1,0 +1,38 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/rtc-data-channel-event
+  find rtc-data-channel-event
+
+load @term/bind/code/browser/dom/rtc-peer-connection-ice-event
+  find rtc-peer-connection-ice-event
+
+load @term/bind/code/browser/dom/rtc-track-event
+  find rtc-track-event
+
+form rtc-peer-connection-event-map, name <RTCPeerConnectionEventMap>
+  link connectionstatechange, name <connectionstatechange>
+    like event
+    lock false
+  link datachannel, name <datachannel>
+    like rtc-data-channel-event
+    lock false
+  link icecandidate, name <icecandidate>
+    like rtc-peer-connection-ice-event
+    lock false
+  link iceconnectionstatechange, name <iceconnectionstatechange>
+    like event
+    lock false
+  link icegatheringstatechange, name <icegatheringstatechange>
+    like event
+    lock false
+  link negotiationneeded, name <negotiationneeded>
+    like event
+    lock false
+  link signalingstatechange, name <signalingstatechange>
+    like event
+    lock false
+  link track, name <track>
+    like rtc-track-event
+    lock false

@@ -1,0 +1,7 @@
+
+load @term/bind/code/javascript
+  find native-boolean
+
+form abort-signal, name <AbortSignal>
+  link aborted, name <aborted>
+    like native-boolean

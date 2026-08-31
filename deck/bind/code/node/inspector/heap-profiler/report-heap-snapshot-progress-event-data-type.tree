@@ -1,0 +1,22 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-undefined
+
+form report-heap-snapshot-progress-event-data-type
+  name <ReportHeapSnapshotProgressEventDataType>
+  link done, name <done>
+    like native-number
+    flex true
+  link total, name <total>
+    like native-number
+    flex true
+  link finished, name <finished>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

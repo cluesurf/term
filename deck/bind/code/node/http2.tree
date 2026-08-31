@@ -1,0 +1,164 @@
+
+bear @term/bind/code/javascript/node/http2/incoming-http-status-header
+bear @term/bind/code/javascript/node/http2/incoming-http-headers
+bear @term/bind/code/javascript/node/http2/stream-priority-options
+bear @term/bind/code/javascript/node/http2/stream-state
+bear @term/bind/code/javascript/node/http2/server-stream-response-options
+bear @term/bind/code/javascript/node/http2/stat-options
+bear @term/bind/code/javascript/node/http2/server-stream-file-response-options
+bear @term/bind/code/javascript/node/http2/server-stream-file-response-options-with-error
+bear @term/bind/code/javascript/node/http2/http2-stream
+bear @term/bind/code/javascript/node/http2/client-http2-stream
+bear @term/bind/code/javascript/node/http2/server-http2-stream
+bear @term/bind/code/javascript/node/http2/settings
+bear @term/bind/code/javascript/node/http2/client-session-request-options
+bear @term/bind/code/javascript/node/http2/session-state
+bear @term/bind/code/javascript/node/http2/http2-session
+bear @term/bind/code/javascript/node/http2/client-http2-session
+bear @term/bind/code/javascript/node/http2/alternative-service-options
+bear @term/bind/code/javascript/node/http2/server-http2-session
+bear @term/bind/code/javascript/node/http2/session-options
+bear @term/bind/code/javascript/node/http2/client-session-options
+bear @term/bind/code/javascript/node/http2/server-session-options
+bear @term/bind/code/javascript/node/http2/secure-client-session-options
+bear @term/bind/code/javascript/node/http2/secure-server-session-options
+bear @term/bind/code/javascript/node/http2/server-options
+bear @term/bind/code/javascript/node/http2/secure-server-options
+bear @term/bind/code/javascript/node/http2/http2-server-common
+bear @term/bind/code/javascript/node/http2/http2-server
+bear @term/bind/code/javascript/node/http2/http2-secure-server
+bear @term/bind/code/javascript/node/http2/http2-server-request
+bear @term/bind/code/javascript/node/http2/http2-server-response
+bear @term/bind/code/javascript/node/http2/constants
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find http2-server-request
+  find http2-server-response
+  find native-string
+  find native-symbol
+  find native-void
+  find net-socket
+  find tls-tls-socket
+  find url-url
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/globals
+  find uint8-array
+
+load @term/bind/code/node/http2
+  find client-http2-session
+  find client-session-options
+  find http2-secure-server
+  find http2-server
+  find secure-client-session-options
+  find secure-server-options
+  find server-options
+  find settings
+
+host sensitive-headers, name <sensitiveHeaders>
+  like native-symbol
+
+task get-default-settings, name <getDefaultSettings>
+  like settings
+
+task get-packed-settings, name <getPackedSettings>
+  like buffer
+
+  take settings, like settings
+
+task get-unpacked-settings, name <getUnpackedSettings>
+  like settings
+
+  take buf, like uint8-array
+
+task create-server, name <createServer>
+  like http2-server
+
+  take on-request-handler
+    like task
+      like native-void
+
+      take request, like http2-server-request
+      take response, like http2-server-response
+    void true
+
+task create-server, name <createServer>
+  like http2-server
+
+  take options, like server-options
+  take on-request-handler
+    like task
+      like native-void
+
+      take request, like http2-server-request
+      take response, like http2-server-response
+    void true
+
+task create-secure-server, name <createSecureServer>
+  like http2-secure-server
+
+  take on-request-handler
+    like task
+      like native-void
+
+      take request, like http2-server-request
+      take response, like http2-server-response
+    void true
+
+task create-secure-server, name <createSecureServer>
+  like http2-secure-server
+
+  take options, like secure-server-options
+  take on-request-handler
+    like task
+      like native-void
+
+      take request, like http2-server-request
+      take response, like http2-server-response
+    void true
+
+task connect, name <connect>
+  like client-http2-session
+
+  take authority
+    like or
+      like native-string
+      like url-url
+  take listener
+    like task
+      like native-void
+
+      take session, like client-http2-session
+      take socket
+        like or
+          like net-socket
+          like tls-tls-socket
+
+task connect, name <connect>
+  like client-http2-session
+
+  take authority
+    like or
+      like native-string
+      like url-url
+  take options
+    like or
+      like client-session-options
+      like secure-client-session-options
+    void true
+  take listener
+    like task
+      like native-void
+
+      take session, like client-http2-session
+      take socket
+        like or
+          like net-socket
+          like tls-tls-socket
+    void true

@@ -1,0 +1,7 @@
+
+load @term/bind/code/browser/dom/gamepad-haptic-actuator-type
+  find gamepad-haptic-actuator-type
+
+form gamepad-haptic-actuator, name <GamepadHapticActuator>
+  link type, name <type>
+    like gamepad-haptic-actuator-type

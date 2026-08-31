@@ -1,0 +1,15 @@
+
+load @term/bind/code/browser/dom/blob
+  find blob
+
+load @term/bind/code/browser/dom/canvas-image-source
+  find canvas-image-source
+
+load @term/bind/code/browser/dom/image-data
+  find image-data
+
+form image-bitmap-source, name <ImageBitmapSource>
+  like or
+    like canvas-image-source
+    like blob
+    like image-data

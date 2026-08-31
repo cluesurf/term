@@ -1,0 +1,14 @@
+
+form date-time-format-part-types, name <DateTimeFormatPartTypes>
+  like or
+    text <day>
+    text <dayPeriod>
+    text <era>
+    text <hour>
+    text <literal>
+    text <minute>
+    text <month>
+    text <second>
+    text <timeZoneName>
+    text <weekday>
+    text <year>

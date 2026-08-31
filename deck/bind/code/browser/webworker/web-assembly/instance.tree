@@ -1,0 +1,10 @@
+
+load @term/bind/code/browser/dom/instance
+  find instance
+
+load @term/bind/code/browser/webworker/exports
+  find exports
+
+form instance, name <Instance>
+  link exports, name <exports>
+    like exports

@@ -1,0 +1,38 @@
+
+load @term/bind/code/browser/webworker/client-types
+  find client-types
+
+load @term/bind/code/browser/webworker/frame-type
+  find frame-type
+
+load @term/bind/code/browser/webworker/transferable
+  find transferable
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form client, name <Client>
+  link frame-type, name <frameType>
+    like frame-type
+  link id, name <id>
+    like native-string
+  link type, name <type>
+    like client-types
+  link url, name <url>
+    like native-string
+
+  task post-message, name <postMessage>
+    take message, like native-any
+    take transfer, like maybe
+      like native-array
+        like transferable
+    like native-void

@@ -1,0 +1,12 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+form post-message-options, name <PostMessageOptions>
+  link transfer, name <transfer>
+    like native-array
+      like native-any
+    lock false

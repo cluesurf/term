@@ -1,0 +1,15 @@
+
+load @term/bind/code/javascript/es2015/symbol/wellknown/symbol
+  find symbol
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+form symbol, name <Symbol>
+  link description, name <description>
+    like or
+      like native-string
+      like native-undefined

@@ -1,0 +1,245 @@
+
+form native-boolean
+
+form native-string
+
+form native-number
+
+form native-null
+
+form native-undefined
+
+form native-this
+
+form native-symbol
+
+form native-object
+
+form native-bigint
+
+task test
+  take test, like force
+  take block, like force
+
+  call native-test
+    bind test, read test
+    bind block, read block
+
+task test-else
+  take test, like force
+  take block, like force
+  take other, like force
+
+  call native-test-else
+    bind test, read test
+    bind block, read block
+    bind else, read other
+
+task debug-break
+  call debug
+    bind keyword, text <debugger>
+
+task compute-bitwise-or
+  take left
+  take right
+
+  call compute-binary-operation
+    bind left, read left
+    bind operation, text <|>
+    bind right, read right
+
+task test-if-equal
+  take left
+  take right
+
+  call compute-binary-operation
+    bind left, read left
+    bind operation, text <==>
+    bind right, read right
+
+task test-if-null
+  take value
+
+  call compute-binary-operation
+    bind left, read value
+    bind operation, text <==>
+    bind right, text <null>
+
+task test-if-strictly-equal
+  take left
+  take right
+
+  call compute-binary-operation
+    bind left, read left
+    bind operation, text <===>
+    bind right, read right
+
+task get-typeof
+  take value
+
+  call call-keyword
+    bind keyword, text <typeof>
+    bind value, read value
+
+task get-instanceof
+  take left
+  take right
+
+  call compute-binary-operation
+    bind left, read left
+    bind operator, text <instanceof>
+    bind right, read right
+
+task set-field
+  take object
+  take attribute, like chord
+  take value
+
+  call set-dynamic-aspect
+    bind object, read object
+    bind aspect, read attribute
+    bind factor, read value
+
+task get-field
+  take object
+  take attribute, like chord
+
+  call get-dynamic-aspect
+    bind object, read object
+    bind aspect, read attribute
+
+task remove-field
+  take object
+  take attribute, like chord
+
+  call delete-dynamic-aspect
+    bind object, read object
+    bind aspect, read attribute
+
+task shift-left
+  take left
+  take right
+
+  call compute-binary-operation
+    bind left, read left
+    bind operation, text <\<\<>
+    bind right, read right
+
+task shift-right
+  take left
+  take right
+
+  call compute-binary-operation
+    bind left, read left
+    bind operation, text <\>\>>
+    bind right, read right
+
+task shift-right-unsigned
+  take left
+  take right
+
+  call compute-binary-operation
+    bind left, read left
+    bind operation, text <\>\>\>>
+    bind right, read right
+
+task compute-bitwise-and
+  take left
+  take right
+
+  call compute-binary-operation
+    bind left, read left
+    bind operation, text <&>
+    bind right, read right
+
+task test-or
+  take left
+  take right
+
+  call compute-binary-operation
+    bind left, read left
+    bind operation, text <||>
+    bind right, read right
+
+task try-catch
+  take block, like function
+  take error, like function
+
+  call try
+    bind block, read block
+    bind error, read error
+
+task test-if-truthy
+  take value
+
+  call compute-prefixed-unary-operation
+    bind operation, text <!!>
+    bind value, read value
+
+task test-opposite
+  take value
+
+  call compute-prefixed-unary-operation
+    bind operation, text <!>
+    bind value, read value
+
+task test-not-equal
+  take left
+  take right
+
+  call compute-binary-operation
+    bind left, read left
+    bind operation, text <!==>
+    bind right, read right
+
+task flip-block
+  take value
+
+  call compute-prefixed-unary-operation
+    bind operation, text <~>
+    bind value, read value
+
+task test-gt
+  take left
+  take right
+
+  call compute-binary-operation
+    bind left, read left
+    bind operation, text <\>>
+    bind right, read right
+
+task test-lt
+  take left
+  take right
+
+  call compute-binary-operation
+    bind left, read left
+    bind operation, text <\<>
+    bind right, read right
+
+task test-gte
+  take left
+  take right
+
+  call compute-binary-operation
+    bind left, read left
+    bind operation, text <\>=>
+    bind right, read right
+
+task test-lte
+  take left
+  take right
+
+  call compute-binary-operation
+    bind left, read left
+    bind operation, text <\<=>
+    bind right, read right
+
+task test-and
+  take left
+  take right
+
+  call compute-binary-operation
+    bind left, read left
+    bind operation, text <&&>
+    bind right, read right

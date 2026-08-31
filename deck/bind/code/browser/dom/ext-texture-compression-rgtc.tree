@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/g-lenum
+  find g-lenum
+
+form ext-texture-compression-rgtc, name <EXT_texture_compression_rgtc>
+  link compressed-red-green-rgtc2-ext, name <COMPRESSED_RED_GREEN_RGTC2_EXT>
+    like g-lenum
+  link compressed-red-rgtc1-ext, name <COMPRESSED_RED_RGTC1_EXT>
+    like g-lenum
+  link compressed-signed-red-green-rgtc2-ext, name <COMPRESSED_SIGNED_RED_GREEN_RGTC2_EXT>
+    like g-lenum
+  link compressed-signed-red-rgtc1-ext, name <COMPRESSED_SIGNED_RED_RGTC1_EXT>
+    like g-lenum

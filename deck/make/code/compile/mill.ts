@@ -4444,16 +4444,29 @@ export function mill(tree: RootNode, file: string): MillResult {
                   ? headName(attrGroup)
                   : undefined
 
-              const valueNode = rest(child)[1]
+              // like `hook` below: one node is the value, MORE than one is a handler BODY and becomes a closure.
+              // Only the first was read before, so the rest were dropped without a word.
+              const valueNodes = rest(child).slice(1)
+              const valueNode = valueNodes[0]
+              const multi = valueNodes.length > 1
 
               if (attrName) {
-                const value: Expression = valueNode
-                  ? toExpression(valueNode, scope)
-                  : { form: 'unit', span }
+                const value: Expression = multi
+                  ? {
+                      form: 'closure',
+                      params: [],
+                      body: toStatements(valueNodes, new Set(scope)),
+                      span: spanOf(child),
+                    }
+                  : valueNode
+                    ? toExpression(valueNode, scope)
+                    : { form: 'unit', span }
 
+                // an attribute whose value is a call (or a statement body) is an EVENT handler: `seed click, call add`
                 const event =
-                  valueNode?.kind === 'group' &&
-                  headName(valueNode) === 'call'
+                  multi ||
+                  (valueNode?.kind === 'group' &&
+                    headName(valueNode) === 'call')
 
                 attributes.push({
                   name: attrName,

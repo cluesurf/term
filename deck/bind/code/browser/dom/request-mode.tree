@@ -1,0 +1,7 @@
+
+form request-mode, name <RequestMode>
+  like or
+    text <cors>
+    text <navigate>
+    text <no-cors>
+    text <same-origin>

@@ -1,0 +1,1127 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/animation-event
+  find animation-event
+
+load @term/bind/code/browser/dom/animation-playback-event
+  find animation-playback-event
+
+load @term/bind/code/browser/dom/attr
+  find attr
+
+load @term/bind/code/browser/dom/audio-processing-event
+  find audio-processing-event
+
+load @term/bind/code/browser/dom/before-unload-event
+  find before-unload-event
+
+load @term/bind/code/browser/dom/blob-event
+  find blob-event
+
+load @term/bind/code/browser/dom/cdata-section
+  find cdata-section
+
+load @term/bind/code/browser/dom/clipboard-event
+  find clipboard-event
+
+load @term/bind/code/browser/dom/close-event
+  find close-event
+
+load @term/bind/code/browser/dom/comment
+  find comment
+
+load @term/bind/code/browser/dom/composition-event
+  find composition-event
+
+load @term/bind/code/browser/dom/custom-event
+  find custom-event
+
+load @term/bind/code/browser/dom/device-motion-event
+  find device-motion-event
+
+load @term/bind/code/browser/dom/device-orientation-event
+  find device-orientation-event
+
+load @term/bind/code/browser/dom/document-and-element-event-handlers
+  find document-and-element-event-handlers
+
+load @term/bind/code/browser/dom/document-event-map
+  find document-event-map
+
+load @term/bind/code/browser/dom/document-fragment
+  find document-fragment
+
+load @term/bind/code/browser/dom/document-or-shadow-root
+  find document-or-shadow-root
+
+load @term/bind/code/browser/dom/document-ready-state
+  find document-ready-state
+
+load @term/bind/code/browser/dom/document-timeline
+  find document-timeline
+
+load @term/bind/code/browser/dom/document-type
+  find document-type
+
+load @term/bind/code/browser/dom/dom-implementation
+  find dom-implementation
+
+load @term/bind/code/browser/dom/drag-event
+  find drag-event
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/browser/dom/element-creation-options
+  find element-creation-options
+
+load @term/bind/code/browser/dom/error-event
+  find error-event
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/focus-event
+  find focus-event
+
+load @term/bind/code/browser/dom/font-face-set-load-event
+  find font-face-set-load-event
+
+load @term/bind/code/browser/dom/font-face-source
+  find font-face-source
+
+load @term/bind/code/browser/dom/form-data-event
+  find form-data-event
+
+load @term/bind/code/browser/dom/gamepad-event
+  find gamepad-event
+
+load @term/bind/code/browser/dom/global-event-handlers
+  find global-event-handlers
+
+load @term/bind/code/browser/dom/hash-change-event
+  find hash-change-event
+
+load @term/bind/code/browser/dom/html-all-collection
+  find html-all-collection
+
+load @term/bind/code/browser/dom/html-anchor-element
+  find html-anchor-element
+
+load @term/bind/code/browser/dom/html-area-element
+  find html-area-element
+
+load @term/bind/code/browser/dom/html-collection
+  find html-collection
+
+load @term/bind/code/browser/dom/html-collection-of
+  find html-collection-of
+
+load @term/bind/code/browser/dom/html-element
+  find html-element
+
+load @term/bind/code/browser/dom/html-element-deprecated-tag-name-map
+  find html-element-deprecated-tag-name-map
+
+load @term/bind/code/browser/dom/html-element-tag-name-map
+  find html-element-tag-name-map
+
+load @term/bind/code/browser/dom/html-embed-element
+  find html-embed-element
+
+load @term/bind/code/browser/dom/html-form-element
+  find html-form-element
+
+load @term/bind/code/browser/dom/html-head-element
+  find html-head-element
+
+load @term/bind/code/browser/dom/html-image-element
+  find html-image-element
+
+load @term/bind/code/browser/dom/html-or-svg-script-element
+  find html-or-svg-script-element
+
+load @term/bind/code/browser/dom/html-script-element
+  find html-script-element
+
+load @term/bind/code/browser/dom/idb-version-change-event
+  find idb-version-change-event
+
+load @term/bind/code/browser/dom/input-event
+  find input-event
+
+load @term/bind/code/browser/dom/keyboard-event
+  find keyboard-event
+
+load @term/bind/code/browser/dom/location
+  find location
+
+load @term/bind/code/browser/dom/media-encrypted-event
+  find media-encrypted-event
+
+load @term/bind/code/browser/dom/media-key-message-event
+  find media-key-message-event
+
+load @term/bind/code/browser/dom/media-query-list-event
+  find media-query-list-event
+
+load @term/bind/code/browser/dom/media-recorder-error-event
+  find media-recorder-error-event
+
+load @term/bind/code/browser/dom/media-stream-track-event
+  find media-stream-track-event
+
+load @term/bind/code/browser/dom/message-event
+  find message-event
+
+load @term/bind/code/browser/dom/mouse-event
+  find mouse-event
+
+load @term/bind/code/browser/dom/mutation-event
+  find mutation-event
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/browser/dom/node-filter
+  find node-filter
+
+load @term/bind/code/browser/dom/node-iterator
+  find node-iterator
+
+load @term/bind/code/browser/dom/node-list-of
+  find node-list-of
+
+load @term/bind/code/browser/dom/non-element-parent-node
+  find non-element-parent-node
+
+load @term/bind/code/browser/dom/offline-audio-completion-event
+  find offline-audio-completion-event
+
+load @term/bind/code/browser/dom/page-transition-event
+  find page-transition-event
+
+load @term/bind/code/browser/dom/parent-node
+  find parent-node
+
+load @term/bind/code/browser/dom/payment-method-change-event
+  find payment-method-change-event
+
+load @term/bind/code/browser/dom/payment-request-update-event
+  find payment-request-update-event
+
+load @term/bind/code/browser/dom/pointer-event
+  find pointer-event
+
+load @term/bind/code/browser/dom/pop-state-event
+  find pop-state-event
+
+load @term/bind/code/browser/dom/processing-instruction
+  find processing-instruction
+
+load @term/bind/code/browser/dom/progress-event
+  find progress-event
+
+load @term/bind/code/browser/dom/promise-rejection-event
+  find promise-rejection-event
+
+load @term/bind/code/browser/dom/range
+  find range
+
+load @term/bind/code/browser/dom/rtc-data-channel-event
+  find rtc-data-channel-event
+
+load @term/bind/code/browser/dom/rtc-peer-connection-ice-error-event
+  find rtc-peer-connection-ice-error-event
+
+load @term/bind/code/browser/dom/rtc-peer-connection-ice-event
+  find rtc-peer-connection-ice-event
+
+load @term/bind/code/browser/dom/rtc-track-event
+  find rtc-track-event
+
+load @term/bind/code/browser/dom/rtcdtmf-tone-change-event
+  find rtcdtmf-tone-change-event
+
+load @term/bind/code/browser/dom/security-policy-violation-event
+  find security-policy-violation-event
+
+load @term/bind/code/browser/dom/selection
+  find selection
+
+load @term/bind/code/browser/dom/speech-recognition-error-event
+  find speech-recognition-error-event
+
+load @term/bind/code/browser/dom/speech-synthesis-error-event
+  find speech-synthesis-error-event
+
+load @term/bind/code/browser/dom/speech-synthesis-event
+  find speech-synthesis-event
+
+load @term/bind/code/browser/dom/storage-event
+  find storage-event
+
+load @term/bind/code/browser/dom/submit-event
+  find submit-event
+
+load @term/bind/code/browser/dom/svg-element
+  find svg-element
+
+load @term/bind/code/browser/dom/svg-element-tag-name-map
+  find svg-element-tag-name-map
+
+load @term/bind/code/browser/dom/text
+  find text
+
+load @term/bind/code/browser/dom/touch-event
+  find touch-event
+
+load @term/bind/code/browser/dom/track-event
+  find track-event
+
+load @term/bind/code/browser/dom/transition-event
+  find transition-event
+
+load @term/bind/code/browser/dom/tree-walker
+  find tree-walker
+
+load @term/bind/code/browser/dom/ui-event
+  find ui-event
+
+load @term/bind/code/browser/dom/url
+  find url
+
+load @term/bind/code/browser/dom/visibility-state
+  find visibility-state
+
+load @term/bind/code/browser/dom/web-gl-context-event
+  find web-gl-context-event
+
+load @term/bind/code/browser/dom/wheel-event
+  find wheel-event
+
+load @term/bind/code/browser/dom/window-proxy
+  find window-proxy
+
+load @term/bind/code/browser/dom/x-path-evaluator-base
+  find x-path-evaluator-base
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form document, name <Document>
+  base node
+  base document-and-element-event-handlers
+  base document-or-shadow-root
+  base font-face-source
+  base global-event-handlers
+  base non-element-parent-node
+  base parent-node
+  base x-path-evaluator-base
+
+  link url, name <URL>
+    like native-string
+  link alink-color, name <alinkColor>
+    like native-string
+    lock false
+  link all, name <all>
+    like html-all-collection
+  link anchors, name <anchors>
+    like html-collection-of
+      like html-anchor-element
+  link applets, name <applets>
+    like html-collection
+  link bg-color, name <bgColor>
+    like native-string
+    lock false
+  link body, name <body>
+    like html-element
+    lock false
+  link character-set, name <characterSet>
+    like native-string
+  link charset, name <charset>
+    like native-string
+  link compat-mode, name <compatMode>
+    like native-string
+  link content-type, name <contentType>
+    like native-string
+  link cookie, name <cookie>
+    like native-string
+    lock false
+  link current-script, name <currentScript>
+    like or
+      like html-or-svg-script-element
+      like native-null
+  link default-view, name <defaultView>
+    like or
+      like and
+        like window-proxy
+        like global-this
+      like native-null
+  link design-mode, name <designMode>
+    like native-string
+    lock false
+  link dir, name <dir>
+    like native-string
+    lock false
+  link doctype, name <doctype>
+    like or
+      like document-type
+      like native-null
+  link document-element, name <documentElement>
+    like html-element
+  link document-uri, name <documentURI>
+    like native-string
+  link domain, name <domain>
+    like native-string
+    lock false
+  link embeds, name <embeds>
+    like html-collection-of
+      like html-embed-element
+  link fg-color, name <fgColor>
+    like native-string
+    lock false
+  link forms, name <forms>
+    like html-collection-of
+      like html-form-element
+  link fullscreen, name <fullscreen>
+    like native-boolean
+  link fullscreen-enabled, name <fullscreenEnabled>
+    like native-boolean
+  link head, name <head>
+    like html-head-element
+  link hidden, name <hidden>
+    like native-boolean
+  link images, name <images>
+    like html-collection-of
+      like html-image-element
+  link implementation, name <implementation>
+    like dom-implementation
+  link input-encoding, name <inputEncoding>
+    like native-string
+  link last-modified, name <lastModified>
+    like native-string
+  link link-color, name <linkColor>
+    like native-string
+    lock false
+  link links, name <links>
+    like html-collection-of
+      like or
+        like html-anchor-element
+        like html-area-element
+  link onfullscreenchange, name <onfullscreenchange>
+    like or
+      like task
+        take this, like document
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onfullscreenerror, name <onfullscreenerror>
+    like or
+      like task
+        take this, like document
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onpointerlockchange, name <onpointerlockchange>
+    like or
+      like task
+        take this, like document
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onpointerlockerror, name <onpointerlockerror>
+    like or
+      like task
+        take this, like document
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onreadystatechange, name <onreadystatechange>
+    like or
+      like task
+        take this, like document
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onvisibilitychange, name <onvisibilitychange>
+    like or
+      like task
+        take this, like document
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link owner-document, name <ownerDocument>
+    like native-null
+  link picture-in-picture-enabled, name <pictureInPictureEnabled>
+    like native-boolean
+  link plugins, name <plugins>
+    like html-collection-of
+      like html-embed-element
+  link ready-state, name <readyState>
+    like document-ready-state
+  link referrer, name <referrer>
+    like native-string
+  link scripts, name <scripts>
+    like html-collection-of
+      like html-script-element
+  link scrolling-element, name <scrollingElement>
+    like or
+      like element
+      like native-null
+  link timeline, name <timeline>
+    like document-timeline
+  link title, name <title>
+    like native-string
+    lock false
+  link visibility-state, name <visibilityState>
+    like visibility-state
+  link vlink-color, name <vlinkColor>
+    like native-string
+    lock false
+
+  task location, name <location>
+    like location
+
+  task location, name <location>
+    take href
+      like or
+        like native-string
+        like location
+    like native-void
+
+  task adopt-node, name <adoptNode>
+    head t
+      base node
+    take node, like t
+    like t
+
+  task capture-events, name <captureEvents>
+    like native-void
+
+  task clear, name <clear>
+    like native-void
+
+  task close, name <close>
+    like native-void
+
+  task create-attribute, name <createAttribute>
+    take local-name, like native-string
+    like attr
+
+  task create-attribute-ns, name <createAttributeNS>
+    take namespace
+      like or
+        like native-string
+        like native-null
+    take qualified-name, like native-string
+    like attr
+
+  task create-cdata-section, name <createCDATASection>
+    take data, like native-string
+    like cdata-section
+
+  task create-comment, name <createComment>
+    take data, like native-string
+    like comment
+
+  task create-document-fragment, name <createDocumentFragment>
+    like document-fragment
+
+  task create-element, name <createElement>
+    head k
+      base link-read
+        like html-element-tag-name-map
+    take tag-name, like k
+    take options, like maybe
+      like element-creation-options
+    like index
+      like html-element-tag-name-map
+      like k
+
+  task create-element, name <createElement>
+    head k
+      base link-read
+        like html-element-deprecated-tag-name-map
+    take tag-name, like k
+    take options, like maybe
+      like element-creation-options
+    like index
+      like html-element-deprecated-tag-name-map
+      like k
+
+  task create-element, name <createElement>
+    take tag-name, like native-string
+    take options, like maybe
+      like element-creation-options
+    like html-element
+
+  task create-element-ns, name <createElementNS>
+    take namespace-uri, text <http://www.w3.org/1999/xhtml>
+    take qualified-name, like native-string
+    like html-element
+
+  task create-element-ns, name <createElementNS>
+    head k
+      base link-read
+        like svg-element-tag-name-map
+    take namespace-uri, text <http://www.w3.org/2000/svg>
+    take qualified-name, like k
+    like index
+      like svg-element-tag-name-map
+      like k
+
+  task create-element-ns, name <createElementNS>
+    take namespace-uri, text <http://www.w3.org/2000/svg>
+    take qualified-name, like native-string
+    like svg-element
+
+  task create-element-ns, name <createElementNS>
+    take namespace-uri
+      like or
+        like native-string
+        like native-null
+    take qualified-name, like native-string
+    take options, like maybe
+      like element-creation-options
+    like element
+
+  task create-element-ns, name <createElementNS>
+    take namespace
+      like or
+        like native-string
+        like native-null
+    take qualified-name, like native-string
+    take options, like maybe
+      like or
+        like native-string
+        like element-creation-options
+    like element
+
+  task create-event, name <createEvent>
+    take event-interface, text <AnimationEvent>
+    like animation-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <AnimationPlaybackEvent>
+    like animation-playback-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <AudioProcessingEvent>
+    like audio-processing-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <BeforeUnloadEvent>
+    like before-unload-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <BlobEvent>
+    like blob-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <ClipboardEvent>
+    like clipboard-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <CloseEvent>
+    like close-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <CompositionEvent>
+    like composition-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <CustomEvent>
+    like custom-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <DeviceMotionEvent>
+    like device-motion-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <DeviceOrientationEvent>
+    like device-orientation-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <DragEvent>
+    like drag-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <ErrorEvent>
+    like error-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <FocusEvent>
+    like focus-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <FontFaceSetLoadEvent>
+    like font-face-set-load-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <FormDataEvent>
+    like form-data-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <GamepadEvent>
+    like gamepad-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <HashChangeEvent>
+    like hash-change-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <IDBVersionChangeEvent>
+    like idb-version-change-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <InputEvent>
+    like input-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <KeyboardEvent>
+    like keyboard-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <MediaEncryptedEvent>
+    like media-encrypted-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <MediaKeyMessageEvent>
+    like media-key-message-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <MediaQueryListEvent>
+    like media-query-list-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <MediaRecorderErrorEvent>
+    like media-recorder-error-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <MediaStreamTrackEvent>
+    like media-stream-track-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <MessageEvent>
+    like message-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <MouseEvent>
+    like mouse-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <MouseEvents>
+    like mouse-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <MutationEvent>
+    like mutation-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <MutationEvents>
+    like mutation-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <OfflineAudioCompletionEvent>
+    like offline-audio-completion-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <PageTransitionEvent>
+    like page-transition-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <PaymentMethodChangeEvent>
+    like payment-method-change-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <PaymentRequestUpdateEvent>
+    like payment-request-update-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <PointerEvent>
+    like pointer-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <PopStateEvent>
+    like pop-state-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <ProgressEvent>
+    like progress-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <PromiseRejectionEvent>
+    like promise-rejection-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <RTCDTMFToneChangeEvent>
+    like rtcdtmf-tone-change-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <RTCDataChannelEvent>
+    like rtc-data-channel-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <RTCPeerConnectionIceErrorEvent>
+    like rtc-peer-connection-ice-error-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <RTCPeerConnectionIceEvent>
+    like rtc-peer-connection-ice-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <RTCTrackEvent>
+    like rtc-track-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <SecurityPolicyViolationEvent>
+    like security-policy-violation-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <SpeechRecognitionErrorEvent>
+    like speech-recognition-error-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <SpeechSynthesisErrorEvent>
+    like speech-synthesis-error-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <SpeechSynthesisEvent>
+    like speech-synthesis-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <StorageEvent>
+    like storage-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <SubmitEvent>
+    like submit-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <TouchEvent>
+    like touch-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <TrackEvent>
+    like track-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <TransitionEvent>
+    like transition-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <UIEvent>
+    like ui-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <UIEvents>
+    like ui-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <WebGLContextEvent>
+    like web-gl-context-event
+
+  task create-event, name <createEvent>
+    take event-interface, text <WheelEvent>
+    like wheel-event
+
+  task create-event, name <createEvent>
+    take event-interface, like native-string
+    like event
+
+  task create-node-iterator, name <createNodeIterator>
+    take root, like node
+    take what-to-show, like maybe
+      like native-number
+    take filter, like maybe
+      like or
+        like node-filter
+        like native-null
+    like node-iterator
+
+  task create-processing-instruction, name <createProcessingInstruction>
+    take target, like native-string
+    take data, like native-string
+    like processing-instruction
+
+  task create-range, name <createRange>
+    like range
+
+  task create-text-node, name <createTextNode>
+    take data, like native-string
+    like text
+
+  task create-tree-walker, name <createTreeWalker>
+    take root, like node
+    take what-to-show, like maybe
+      like native-number
+    take filter, like maybe
+      like or
+        like node-filter
+        like native-null
+    like tree-walker
+
+  task element-from-point, name <elementFromPoint>
+    take x, like native-number
+    take y, like native-number
+    like or
+      like element
+      like native-null
+
+  task elements-from-point, name <elementsFromPoint>
+    take x, like native-number
+    take y, like native-number
+    like native-array
+      like element
+
+  task exec-command, name <execCommand>
+    take command-id, like native-string
+    take show-ui, like maybe
+      like native-boolean
+    take value, like maybe
+      like native-string
+    like native-boolean
+
+  task exit-fullscreen, name <exitFullscreen>
+    like promise
+      like native-void
+
+  task exit-picture-in-picture, name <exitPictureInPicture>
+    like promise
+      like native-void
+
+  task exit-pointer-lock, name <exitPointerLock>
+    like native-void
+
+  task get-element-by-id, name <getElementById>
+    take element-id, like native-string
+    like or
+      like html-element
+      like native-null
+
+  task get-elements-by-class-name, name <getElementsByClassName>
+    take class-names, like native-string
+    like html-collection-of
+      like element
+
+  task get-elements-by-name, name <getElementsByName>
+    take element-name, like native-string
+    like node-list-of
+      like html-element
+
+  task get-elements-by-tag-name, name <getElementsByTagName>
+    head k
+      base link-read
+        like html-element-tag-name-map
+    take qualified-name, like k
+    like html-collection-of
+      like index
+        like html-element-tag-name-map
+        like k
+
+  task get-elements-by-tag-name, name <getElementsByTagName>
+    head k
+      base link-read
+        like svg-element-tag-name-map
+    take qualified-name, like k
+    like html-collection-of
+      like index
+        like svg-element-tag-name-map
+        like k
+
+  task get-elements-by-tag-name, name <getElementsByTagName>
+    take qualified-name, like native-string
+    like html-collection-of
+      like element
+
+  task get-elements-by-tag-name-ns, name <getElementsByTagNameNS>
+    take namespace-uri, text <http://www.w3.org/1999/xhtml>
+    take local-name, like native-string
+    like html-collection-of
+      like html-element
+
+  task get-elements-by-tag-name-ns, name <getElementsByTagNameNS>
+    take namespace-uri, text <http://www.w3.org/2000/svg>
+    take local-name, like native-string
+    like html-collection-of
+      like svg-element
+
+  task get-elements-by-tag-name-ns, name <getElementsByTagNameNS>
+    take namespace
+      like or
+        like native-string
+        like native-null
+    take local-name, like native-string
+    like html-collection-of
+      like element
+
+  task get-selection, name <getSelection>
+    like or
+      like selection
+      like native-null
+
+  task has-focus, name <hasFocus>
+    like native-boolean
+
+  task has-storage-access, name <hasStorageAccess>
+    like promise
+      like native-boolean
+
+  task import-node, name <importNode>
+    head t
+      base node
+    take node, like t
+    take deep, like maybe
+      like native-boolean
+    like t
+
+  task open, name <open>
+    take unused1, like maybe
+      like native-string
+    take unused2, like maybe
+      like native-string
+    like document
+
+  task open, name <open>
+    take url
+      like or
+        like native-string
+        like url
+    take name, like native-string
+    take features, like native-string
+    like or
+      like window-proxy
+      like native-null
+
+  task query-command-enabled, name <queryCommandEnabled>
+    take command-id, like native-string
+    like native-boolean
+
+  task query-command-indeterm, name <queryCommandIndeterm>
+    take command-id, like native-string
+    like native-boolean
+
+  task query-command-state, name <queryCommandState>
+    take command-id, like native-string
+    like native-boolean
+
+  task query-command-supported, name <queryCommandSupported>
+    take command-id, like native-string
+    like native-boolean
+
+  task query-command-value, name <queryCommandValue>
+    take command-id, like native-string
+    like native-string
+
+  task release-events, name <releaseEvents>
+    like native-void
+
+  task request-storage-access, name <requestStorageAccess>
+    like promise
+      like native-void
+
+  task write, name <write>
+    take text
+      like native-array
+        like native-string
+      rest true
+    like native-void
+
+  task writeln, name <writeln>
+    take text
+      like native-array
+        like native-string
+      rest true
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like document-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like document
+        take ev
+          like index
+            like document-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like document-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like document
+        take ev
+          like index
+            like document-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

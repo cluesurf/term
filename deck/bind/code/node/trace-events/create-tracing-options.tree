@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-string
+
+form create-tracing-options, name <CreateTracingOptions>
+  link categories, name <categories>
+    like array
+      like native-string
+    flex true

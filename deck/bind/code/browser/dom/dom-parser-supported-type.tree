@@ -1,0 +1,8 @@
+
+form dom-parser-supported-type, name <DOMParserSupportedType>
+  like or
+    text <application/xhtml+xml>
+    text <application/xml>
+    text <image/svg+xml>
+    text <text/html>
+    text <text/xml>

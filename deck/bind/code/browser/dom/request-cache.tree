@@ -1,0 +1,9 @@
+
+form request-cache, name <RequestCache>
+  like or
+    text <default>
+    text <force-cache>
+    text <no-cache>
+    text <no-store>
+    text <only-if-cached>
+    text <reload>

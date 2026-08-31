@@ -1,0 +1,45 @@
+
+bear @term/bind/code/javascript/node/dgram/remote-info
+bear @term/bind/code/javascript/node/dgram/bind-options
+bear @term/bind/code/javascript/node/dgram/socket-type
+bear @term/bind/code/javascript/node/dgram/socket-options
+bear @term/bind/code/javascript/node/dgram/socket
+
+load @term/bind
+  find task
+
+load @term/bind/code/javascript
+  find native-void
+  find socket
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/dgram
+  find remote-info
+  find socket-options
+  find socket-type
+
+task create-socket, name <createSocket>
+  like socket
+
+  take type, like socket-type
+  take callback
+    like task
+      like native-void
+
+      take msg, like buffer
+      take rinfo, like remote-info
+    void true
+
+task create-socket, name <createSocket>
+  like socket
+
+  take options, like socket-options
+  take callback
+    like task
+      like native-void
+
+      take msg, like buffer
+      take rinfo, like remote-info
+    void true

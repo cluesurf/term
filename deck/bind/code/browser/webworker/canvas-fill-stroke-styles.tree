@@ -1,0 +1,61 @@
+
+load @term/bind/code/browser/dom/canvas-fill-stroke-styles
+  find canvas-fill-stroke-styles
+
+load @term/bind/code/browser/webworker/canvas-gradient
+  find canvas-gradient
+
+load @term/bind/code/browser/webworker/canvas-image-source
+  find canvas-image-source
+
+load @term/bind/code/browser/webworker/canvas-pattern
+  find canvas-pattern
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form canvas-fill-stroke-styles, name <CanvasFillStrokeStyles>
+  link fill-style, name <fillStyle>
+    like or
+      like native-string
+      like canvas-gradient
+      like canvas-pattern
+    lock false
+  link stroke-style, name <strokeStyle>
+    like or
+      like native-string
+      like canvas-gradient
+      like canvas-pattern
+    lock false
+
+  task create-linear-gradient, name <createLinearGradient>
+    take x0, like native-number
+    take y0, like native-number
+    take x1, like native-number
+    take y1, like native-number
+    like canvas-gradient
+
+  task create-pattern, name <createPattern>
+    take image, like canvas-image-source
+    take repetition
+      like or
+        like native-string
+        like native-null
+    like or
+      like canvas-pattern
+      like native-null
+
+  task create-radial-gradient, name <createRadialGradient>
+    take x0, like native-number
+    take y0, like native-number
+    take r0, like native-number
+    take x1, like native-number
+    take y1, like native-number
+    take r1, like native-number
+    like canvas-gradient

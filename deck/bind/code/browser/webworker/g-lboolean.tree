@@ -1,0 +1,6 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form g-lboolean, name <GLboolean>
+  like native-boolean

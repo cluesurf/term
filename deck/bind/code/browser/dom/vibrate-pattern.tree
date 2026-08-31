@@ -1,0 +1,12 @@
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form vibrate-pattern, name <VibratePattern>
+  like or
+    like native-number
+    like native-array
+      like native-number

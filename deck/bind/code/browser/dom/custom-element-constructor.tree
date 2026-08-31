@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/html-element
+  find html-element
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+form custom-element-constructor, name <CustomElementConstructor>
+  hook make
+    take params
+      like native-array
+        like native-any
+      rest true
+    like html-element

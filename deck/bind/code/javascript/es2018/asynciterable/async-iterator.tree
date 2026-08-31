@@ -1,0 +1,53 @@
+
+load @term/bind/code/javascript/es2015/iterable/iterator-result
+  find iterator-result
+
+load @term/bind/code/javascript/es2015/symbol/wellknown/promise
+  find promise
+
+load @term/bind/code/javascript/es5/promise-like
+  find promise-like
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+form async-iterator, name <AsyncIterator>
+  head t
+  head t-return
+    back native-any
+  head t-next
+    back native-undefined
+
+  task next, name <next>
+    take args
+      like or
+        like band
+        like band
+          like t-next
+      rest true
+    like promise
+      like iterator-result
+        like t
+        like t-return
+
+  task return, name <return>
+    take value, like maybe
+      like or
+        like t-return
+        like promise-like
+          like t-return
+    like promise
+      like iterator-result
+        like t
+        like t-return
+
+  task throw, name <throw>
+    take e, like maybe
+      like native-any
+    like promise
+      like iterator-result
+        like t
+        like t-return

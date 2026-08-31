@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/es2015/core/function
+  find function
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form function, name <Function>
+  task {symbol/has-instance}
+    take value, like native-any
+    like native-boolean

@@ -1,0 +1,18 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+
+form srv-record, name <SrvRecord>
+  link priority, name <priority>
+    like native-number
+    flex true
+  link weight, name <weight>
+    like native-number
+    flex true
+  link port, name <port>
+    like native-number
+    flex true
+  link name, name <name>
+    like native-string
+    flex true

@@ -1,0 +1,19 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-undefined
+
+load @term/bind/code/node/fs
+  find stat-options
+
+form stat-sync-options, name <StatSyncOptions>
+  base stat-options
+
+  link throw-if-no-entry, name <throwIfNoEntry>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

@@ -1,0 +1,5 @@
+
+form panning-model-type, name <PanningModelType>
+  like or
+    text <HRTF>
+    text <equalpower>

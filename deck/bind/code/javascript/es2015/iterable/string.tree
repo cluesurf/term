@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/es2015/core/string
+  find string
+
+load @term/bind/code/javascript/es2015/iterable/iterable-iterator
+  find iterable-iterator
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form string, name <String>
+  task {symbol/iterator}
+    like iterable-iterator
+      like native-string

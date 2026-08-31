@@ -1,0 +1,28 @@
+
+load @term/bind
+  find task
+
+load @term/bind/code/javascript
+  find native-number
+  find native-this
+  find native-void
+
+load @term/bind/code/node/http2
+  find settings
+
+form http2-server-common, name <HTTP2ServerCommon>
+  task set-timeout, name <setTimeout>
+    like native-this
+
+    take msec, like native-number
+      void true
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task update-settings, name <updateSettings>
+    like native-void
+
+    take settings, like settings

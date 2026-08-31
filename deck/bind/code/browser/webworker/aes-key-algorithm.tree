@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/aes-key-algorithm
+  find aes-key-algorithm
+
+load @term/bind/code/browser/webworker/key-algorithm
+  find key-algorithm
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form aes-key-algorithm, name <AesKeyAlgorithm>
+  base key-algorithm
+
+  link length, name <length>
+    like native-number
+    lock false

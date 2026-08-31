@@ -1,0 +1,17 @@
+
+load @term/bind/code/javascript/es2018/intl/ldml-plural-rule
+  find ldml-plural-rule
+
+load @term/bind/code/javascript/es2018/intl/resolved-plural-rules-options
+  find resolved-plural-rules-options
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form plural-rules, name <PluralRules>
+  task resolved-options, name <resolvedOptions>
+    like resolved-plural-rules-options
+
+  task select, name <select>
+    take n, like native-number
+    like ldml-plural-rule

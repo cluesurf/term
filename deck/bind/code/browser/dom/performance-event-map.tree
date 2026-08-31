@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form performance-event-map, name <PerformanceEventMap>
+  link resourcetimingbufferfull, name <resourcetimingbufferfull>
+    like event
+    lock false

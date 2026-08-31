@@ -1,0 +1,29 @@
+
+load @term/bind/code/javascript/es2015/iterable/symbol-constructor
+  find symbol-constructor
+
+load @term/bind/code/javascript/es5/symbol
+  find symbol
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-symbol
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+form symbol-constructor, name <SymbolConstructor>
+  link prototype, name <prototype>
+    like symbol
+
+  task for, name <for>
+    take key, like native-string
+    like native-symbol
+
+  task key-for, name <keyFor>
+    take sym, like native-symbol
+    like or
+      like native-string
+      like native-undefined

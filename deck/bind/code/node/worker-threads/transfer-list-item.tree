@@ -1,0 +1,18 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find array-buffer
+  find blob
+  find file-handle
+  find message-port
+  find x509-certificate
+
+form transfer-list-item, name <TransferListItem>
+  like or
+    like array-buffer
+    like message-port
+    like file-handle
+    like x509-certificate
+    like blob

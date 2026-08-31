@@ -1,0 +1,12 @@
+
+load @term/bind
+  find or
+
+form transcode-encoding, name <TranscodeEncoding>
+  like or
+    text <ascii>
+    text <utf8>
+    text <utf16le>
+    text <ucs2>
+    text <latin1>
+    text <binary>

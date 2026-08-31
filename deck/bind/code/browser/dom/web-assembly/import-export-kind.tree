@@ -1,0 +1,7 @@
+
+form import-export-kind, name <ImportExportKind>
+  like or
+    text <function>
+    text <global>
+    text <memory>
+    text <table>

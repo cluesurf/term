@@ -1,0 +1,71 @@
+
+load @term/bind/code/javascript/es5/array-buffer-like
+  find array-buffer-like
+
+load @term/bind/code/javascript/es5/array-like
+  find array-like
+
+load @term/bind/code/javascript/es5/float64-array
+  find float64-array
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form float64-array-constructor, name <Float64ArrayConstructor>
+  link prototype, name <prototype>
+    like float64-array
+  link bytes-per-element, name <BYTES_PER_ELEMENT>
+    like native-number
+
+  task of, name <of>
+    take items
+      like native-array
+        like native-number
+      rest true
+    like float64-array
+
+  task from, name <from>
+    take array-like
+      like array-like
+        like native-number
+    like float64-array
+
+  task from, name <from>
+    head t
+    take array-like
+      like array-like
+        like t
+    take mapfn
+      like task
+        take v, like t
+        take k, like native-number
+        like native-number
+    take this-arg, like maybe
+      like native-any
+    like float64-array
+
+  hook make
+    take length, like native-number
+    like float64-array
+
+  hook make
+    take array
+      like or
+        like array-like
+          like native-number
+        like array-buffer-like
+    like float64-array
+
+  hook make
+    take buffer, like array-buffer-like
+    take byte-offset, like maybe
+      like native-number
+    take length, like maybe
+      like native-number
+    like float64-array

@@ -1,0 +1,103 @@
+
+form build-hasher-default, name <std::hash::BuildHasherDefault>
+  task build-hasher, name <build_hasher>
+    note <Creates a new hasher.>
+
+    take self
+      cite free
+
+    free seed
+      like h
+        cite free
+
+  task hash-one, name <hash_one>
+    note <Calculates the hash of a single value.>
+
+    lead t
+      like hash
+        cite free
+
+    head t
+
+    take self
+      cite free
+    take x
+      like t
+        cite free
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like build-hasher-default
+        like h
+          cite free
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like build-hasher-default
+        like h
+          cite free
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like build-hasher-default
+        like h
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free

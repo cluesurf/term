@@ -1,0 +1,176 @@
+
+load @term/bind/code/javascript/es5/reg-exp
+  find reg-exp
+
+load @term/bind/code/javascript/es5/reg-exp-match-array
+  find reg-exp-match-array
+
+load @term/bind/code/javascript/es5/string
+  find string
+
+load @term/bind/code/javascript/intl-collator-options
+  find intl-collator-options
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form string, name <String>
+  link length, name <length>
+    like native-number
+
+  task to-string, name <toString>
+    like native-string
+
+  task char-at, name <charAt>
+    take pos, like native-number
+    like native-string
+
+  task char-code-at, name <charCodeAt>
+    take index, like native-number
+    like native-number
+
+  task concat, name <concat>
+    take strings
+      like native-array
+        like native-string
+      rest true
+    like native-string
+
+  task index-of, name <indexOf>
+    take search-string, like native-string
+    take position, like maybe
+      like native-number
+    like native-number
+
+  task last-index-of, name <lastIndexOf>
+    take search-string, like native-string
+    take position, like maybe
+      like native-number
+    like native-number
+
+  task locale-compare, name <localeCompare>
+    take that, like native-string
+    like native-number
+
+  task match, name <match>
+    take regexp
+      like or
+        like native-string
+        like reg-exp
+    like or
+      like reg-exp-match-array
+      like native-null
+
+  task replace, name <replace>
+    take search-value
+      like or
+        like native-string
+        like reg-exp
+    take replace-value, like native-string
+    like native-string
+
+  task replace, name <replace>
+    take search-value
+      like or
+        like native-string
+        like reg-exp
+    take replacer
+      like task
+        take substring, like native-string
+        take args
+          like native-array
+            like native-any
+          rest true
+        like native-string
+    like native-string
+
+  task search, name <search>
+    take regexp
+      like or
+        like native-string
+        like reg-exp
+    like native-number
+
+  task slice, name <slice>
+    take start, like maybe
+      like native-number
+    take end, like maybe
+      like native-number
+    like native-string
+
+  task split, name <split>
+    take separator
+      like or
+        like native-string
+        like reg-exp
+    take limit, like maybe
+      like native-number
+    like native-array
+      like native-string
+
+  task substring, name <substring>
+    take start, like native-number
+    take end, like maybe
+      like native-number
+    like native-string
+
+  task to-lower-case, name <toLowerCase>
+    like native-string
+
+  task to-locale-lower-case, name <toLocaleLowerCase>
+    take locales, like maybe
+      like or
+        like native-string
+        like native-array
+          like native-string
+    like native-string
+
+  task to-upper-case, name <toUpperCase>
+    like native-string
+
+  task to-locale-upper-case, name <toLocaleUpperCase>
+    take locales, like maybe
+      like or
+        like native-string
+        like native-array
+          like native-string
+    like native-string
+
+  task trim, name <trim>
+    like native-string
+
+  task substr, name <substr>
+    take from, like native-number
+    take length, like maybe
+      like native-number
+    like native-string
+
+  task value-of, name <valueOf>
+    like native-string
+
+  mesh index, like native-number
+    like native-string
+
+form string, name <String>
+  task locale-compare, name <localeCompare>
+    take that, like native-string
+    take locales, like maybe
+      like or
+        like native-string
+        like native-array
+          like native-string
+    take options, like maybe
+      like intl-collator-options
+    like native-number

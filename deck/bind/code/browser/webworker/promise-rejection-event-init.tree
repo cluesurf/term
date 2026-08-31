@@ -1,0 +1,23 @@
+
+load @term/bind/code/browser/dom/promise-rejection-event-init
+  find promise-rejection-event-init
+
+load @term/bind/code/browser/webworker/event-init
+  find event-init
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form promise-rejection-event-init, name <PromiseRejectionEventInit>
+  base event-init
+
+  link promise, name <promise>
+    like promise
+      like native-any
+    lock false
+  link reason, name <reason>
+    like native-any
+    lock false

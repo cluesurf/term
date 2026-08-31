@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/webworker/import-value
+  find import-value
+
+load @term/bind/code/javascript/es5/record
+  find record
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form module-imports, name <ModuleImports>
+  like record
+    like native-string
+    like import-value

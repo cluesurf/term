@@ -1,0 +1,38 @@
+
+load @term/bind
+  find any
+  find like
+  find never
+  find or
+  find test
+
+load @term/bind/code/javascript
+  find node-js-writable-stream
+  find st
+
+load @term/bind/code/node/stream/internal
+  find pipeline-destination-iterable-function
+  find pipeline-destination-promise-function
+  find pipeline-transform-source
+
+form pipeline-destination, name <PipelineDestination>
+  head s
+    base pipeline-transform-source
+      like any
+  head p
+
+  like test
+    stem roll
+      like s
+      like pipeline-transform-source
+        name st
+      hook true
+        like or
+          like node-js-writable-stream
+          like pipeline-destination-iterable-function
+            like st
+          like pipeline-destination-promise-function
+            like st
+            like p
+      hook false
+        like never

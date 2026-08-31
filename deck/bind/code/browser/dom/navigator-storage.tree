@@ -1,0 +1,7 @@
+
+load @term/bind/code/browser/dom/storage-manager
+  find storage-manager
+
+form navigator-storage, name <NavigatorStorage>
+  link storage, name <storage>
+    like storage-manager

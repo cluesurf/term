@@ -1,0 +1,73 @@
+
+load @term/bind/code/browser/dom/request
+  find request
+
+load @term/bind/code/browser/webworker/abort-signal
+  find abort-signal
+
+load @term/bind/code/browser/webworker/body
+  find body
+
+load @term/bind/code/browser/webworker/headers
+  find headers
+
+load @term/bind/code/browser/webworker/referrer-policy
+  find referrer-policy
+
+load @term/bind/code/browser/webworker/request-cache
+  find request-cache
+
+load @term/bind/code/browser/webworker/request-credentials
+  find request-credentials
+
+load @term/bind/code/browser/webworker/request-destination
+  find request-destination
+
+load @term/bind/code/browser/webworker/request-mode
+  find request-mode
+
+load @term/bind/code/browser/webworker/request-redirect
+  find request-redirect
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form request, name <Request>
+  base body
+
+  link cache, name <cache>
+    like request-cache
+  link credentials, name <credentials>
+    like request-credentials
+  link destination, name <destination>
+    like request-destination
+  link headers, name <headers>
+    like headers
+  link integrity, name <integrity>
+    like native-string
+  link is-history-navigation, name <isHistoryNavigation>
+    like native-boolean
+  link is-reload-navigation, name <isReloadNavigation>
+    like native-boolean
+  link keepalive, name <keepalive>
+    like native-boolean
+  link method, name <method>
+    like native-string
+  link mode, name <mode>
+    like request-mode
+  link redirect, name <redirect>
+    like request-redirect
+  link referrer, name <referrer>
+    like native-string
+  link referrer-policy, name <referrerPolicy>
+    like referrer-policy
+  link signal, name <signal>
+    like abort-signal
+  link url, name <url>
+    like native-string
+
+  task clone, name <clone>
+    like request

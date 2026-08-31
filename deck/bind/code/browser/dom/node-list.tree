@@ -1,0 +1,39 @@
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form node-list, name <NodeList>
+  link length, name <length>
+    like native-number
+
+  task item, name <item>
+    take index, like native-number
+    like or
+      like node
+      like native-null
+
+  task for-each, name <forEach>
+    take callbackfn
+      like task
+        take value, like node
+        take key, like native-number
+        take parent, like node-list
+        like native-void
+    take this-arg, like maybe
+      like native-any
+    like native-void
+
+  mesh index, like native-number
+    like node

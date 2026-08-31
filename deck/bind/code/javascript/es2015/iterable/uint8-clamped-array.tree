@@ -1,0 +1,28 @@
+
+load @term/bind/code/javascript/es2015/iterable/iterable-iterator
+  find iterable-iterator
+
+load @term/bind/code/javascript/es5/uint8-clamped-array
+  find uint8-clamped-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form uint8-clamped-array, name <Uint8ClampedArray>
+  task {symbol/iterator}
+    like iterable-iterator
+      like native-number
+
+  task entries, name <entries>
+    like iterable-iterator
+      like band
+        like native-number
+        like native-number
+
+  task keys, name <keys>
+    like iterable-iterator
+      like native-number
+
+  task values, name <values>
+    like iterable-iterator
+      like native-number

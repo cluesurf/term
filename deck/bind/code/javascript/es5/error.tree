@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form error, name <Error>
+  link name, name <name>
+    like native-string
+    lock false
+  link message, name <message>
+    like native-string
+    lock false
+  link stack, name <stack>
+    like native-string
+    lock false

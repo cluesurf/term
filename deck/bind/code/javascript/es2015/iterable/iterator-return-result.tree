@@ -1,0 +1,10 @@
+
+form iterator-return-result, name <IteratorReturnResult>
+  head t-return
+
+  link done, name <done>
+    text <true>
+    lock false
+  link value, name <value>
+    like t-return
+    lock false

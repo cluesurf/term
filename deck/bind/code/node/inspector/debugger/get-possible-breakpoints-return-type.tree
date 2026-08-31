@@ -1,0 +1,12 @@
+
+load @term/bind/code/javascript
+  find array
+
+load @term/bind/code/node/inspector/debugger
+  find break-location
+
+form get-possible-breakpoints-return-type, name <GetPossibleBreakpointsReturnType>
+  link locations, name <locations>
+    like array
+      like break-location
+    flex true

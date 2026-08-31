@@ -1,0 +1,37 @@
+
+load @term/bind/code/browser/dom/event-modifier-init
+  find event-modifier-init
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form keyboard-event-init, name <KeyboardEventInit>
+  base event-modifier-init
+
+  link char-code, name <charCode>
+    like native-number
+    lock false
+  link code, name <code>
+    like native-string
+    lock false
+  link is-composing, name <isComposing>
+    like native-boolean
+    lock false
+  link key, name <key>
+    like native-string
+    lock false
+  link key-code, name <keyCode>
+    like native-number
+    lock false
+  link location, name <location>
+    like native-number
+    lock false
+  link repeat, name <repeat>
+    like native-boolean
+    lock false

@@ -1,0 +1,7 @@
+
+form rtc-ice-candidate-type, name <RTCIceCandidateType>
+  like or
+    text <host>
+    text <prflx>
+    text <relay>
+    text <srflx>

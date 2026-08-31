@@ -1,0 +1,15 @@
+
+load @term/bind/code/browser/dom/g-lint
+  find g-lint
+
+load @term/bind/code/javascript/es5/int32-array
+  find int32-array
+
+load @term/bind/code/javascript/native
+  find native-array
+
+form int32-list, name <Int32List>
+  like or
+    like int32-array
+    like native-array
+      like g-lint

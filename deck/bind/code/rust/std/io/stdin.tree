@@ -1,0 +1,315 @@
+
+form stdin, name <std::io::Stdin>
+  task lock, name <lock>
+    note <Locks this handle to the standard input stream, returning a readable guard.>
+
+    take self
+      cite free
+
+    free seed
+      like stdin-lock
+        time mask
+        cite free
+
+  task read-line, name <read_line>
+    note <Locks this handle and reads a line of input, appending it to the specified buffer.>
+
+    take self
+      cite free
+    take buf
+      like string
+      lock free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task into-locked, name <into_locked>
+    note <Consumes this handle to the standard input stream, locking the shared global buffer associated with the stream and returning a readable guard.>
+
+    take self
+      cite free
+
+    free seed
+      like stdin-lock
+        time calm
+        cite free
+
+  task lines, name <lines>
+    note <Consumes this handle and returns an iterator over input lines.>
+
+    take self
+      cite free
+
+    free seed
+      like lines
+        like stdin-lock
+          time calm
+          cite free
+        cite free
+
+  task split, name <split>
+    note <Consumes this handle and returns an iterator over input bytes, split at the specified byte value.>
+
+    take self
+      cite free
+    take byte
+      like u8
+        cite free
+      cite free
+
+    free seed
+      like split
+        like stdin-lock
+          time calm
+          cite free
+        cite free
+
+  task as-fd, name <as_fd>
+    note <Borrows the file descriptor.>
+
+    take self
+      cite free
+
+    free seed
+      like borrowed-fd
+        time mask
+        cite free
+
+  task as-handle, name <as_handle>
+    note <Borrows the handle.>
+
+    take self
+      cite free
+
+    free seed
+      like borrowed-handle
+        time mask
+        cite free
+
+  task as-raw-fd, name <as_raw_fd>
+    note <Extracts the raw file descriptor.>
+
+    take self
+      cite free
+
+    free seed
+      like raw-fd
+        cite free
+
+  task as-raw-handle, name <as_raw_handle>
+    note <Extracts the raw handle, without taking any ownership.>
+
+    take self
+      cite free
+
+    free seed
+      like raw-handle
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task read, name <read>
+    note <Pull some bytes from this source into the specified buffer, returning how many bytes were read.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task read-vectored, name <read_vectored>
+    note <Like read, except that it reads into a slice of buffers.>
+
+    take self
+      cite free
+    take bufs
+      like list
+        like io-slice-mut
+          time mask
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task is-read-vectored, name <is_read_vectored>
+    note <Determines if this Reader has an efficient read_vectored implementation.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task read-to-end, name <read_to_end>
+    note <Read all bytes until EOF in this source, placing them into buf.>
+
+    take self
+      cite free
+    take buf
+      like vec
+        like u8
+          cite free
+      lock free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task read-to-string, name <read_to_string>
+    note <Read all bytes until EOF in this source, appending them to buf.>
+
+    take self
+      cite free
+    take buf
+      like string
+      lock free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task read-exact, name <read_exact>
+    note <Read the exact number of bytes required to fill buf.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task read-buf, name <read_buf>
+    note <Pull some bytes from this source into the specified buffer.>
+
+    take self
+      cite free
+    take buf
+      like read-buf
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task read-buf-exact, name <read_buf_exact>
+    note <Read the exact number of bytes required to fill buf.>
+
+    take self
+      cite free
+    take buf
+      like read-buf
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task by-ref, name <by_ref>
+    note <Creates a “by reference” adaptor for this instance of Read.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like self
+
+  task bytes, name <bytes>
+    note <Transforms this Read instance to an Iterator over its bytes.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like bytes
+        like self
+          cite free
+        cite free
+
+  task chain, name <chain>
+    note <Creates an adapter which will chain this stream with another.>
+
+    lead self
+      like sized
+        cite free
+
+    head r
+
+    take self
+      cite free
+    take next
+      like r
+        cite free
+      cite free
+
+    free seed
+      like chain
+        like self
+          cite free
+        like r
+          cite free
+        cite free
+
+  task take, name <take>
+    note <Creates an adapter which will read at most limit bytes from it.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+    take limit
+      like u64
+        cite free
+      cite free
+
+    free seed
+      like take
+        like self
+          cite free
+        cite free

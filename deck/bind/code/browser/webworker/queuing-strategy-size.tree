@@ -1,0 +1,10 @@
+
+load @term/bind/code/browser/dom/queuing-strategy-size
+  find queuing-strategy-size
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form queuing-strategy-size, name <QueuingStrategySize>
+  head t
+    back native-any

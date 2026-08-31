@@ -1,0 +1,94 @@
+
+bear @term/bind/code/javascript/node/vm/context
+bear @term/bind/code/javascript/node/vm/base-options
+bear @term/bind/code/javascript/node/vm/script-options
+bear @term/bind/code/javascript/node/vm/running-script-options
+bear @term/bind/code/javascript/node/vm/compile-function-options
+bear @term/bind/code/javascript/node/vm/create-context-options
+bear @term/bind/code/javascript/node/vm/measure-memory-mode
+bear @term/bind/code/javascript/node/vm/measure-memory-options
+bear @term/bind/code/javascript/node/vm/memory-measurement
+bear @term/bind/code/javascript/node/vm/script
+
+load @term/bind
+  find any
+  find or
+
+load @term/bind/code/javascript
+  find function
+  find native-boolean
+  find native-string
+  find promise
+  find readonly-array
+
+load @term/bind/code/node/vm
+  find compile-function-options
+  find context
+  find create-context-options
+  find measure-memory-options
+  find memory-measurement
+  find running-script-options
+
+task create-context, name <createContext>
+  like context
+
+  take sandbox, like context
+    void true
+  take options, like create-context-options
+    void true
+
+task is-context, name <isContext>
+  like native-boolean
+
+  take sandbox, like context
+
+task run-in-context, name <runInContext>
+  like any
+
+  take code, like native-string
+  take contextified-object, like context
+  take options
+    like or
+      like running-script-options
+      like native-string
+    void true
+
+task run-in-new-context, name <runInNewContext>
+  like any
+
+  take code, like native-string
+  take context-object, like context
+    void true
+  take options
+    like or
+      like running-script-options
+      like native-string
+    void true
+
+task run-in-this-context, name <runInThisContext>
+  like any
+
+  take code, like native-string
+  take options
+    like or
+      like running-script-options
+      like native-string
+    void true
+
+task compile-function, name <compileFunction>
+  like function
+
+  take code, like native-string
+  take params
+    like readonly-array
+      like native-string
+    void true
+  take options, like compile-function-options
+    void true
+
+task measure-memory, name <measureMemory>
+  like promise
+    like memory-measurement
+
+  take options, like measure-memory-options
+    void true

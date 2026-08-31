@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript/es5/property-descriptor
+  find property-descriptor
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form property-descriptor-map, name <PropertyDescriptorMap>
+  mesh s, like native-string
+    like property-descriptor

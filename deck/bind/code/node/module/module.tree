@@ -1,0 +1,48 @@
+
+load @term/bind/code/node/globals
+  find node-module
+  find node-require
+
+load @term/bind/code/javascript
+  find array
+  find native-string
+  find native-void
+  find url
+
+load @term/bind
+  find or
+
+load @term/bind/code/node/module
+  find module
+
+form module, name <Module>
+  base node-module
+
+form module, name <Module>
+
+form module-constructor
+  link builtin-modules, name <builtinModules>
+    like array
+      like native-string
+  link module, name <Module>, like module
+
+  task run-main, name <runMain>
+    like native-void
+
+  task wrap, name <wrap>
+    like native-string
+
+    take code, like native-string
+
+  task create-require, name <createRequire>
+    like node-require
+
+    take path
+      like or
+        like native-string
+        like url
+
+  hook make
+    take id, like native-string
+    take parent, like module
+      void true

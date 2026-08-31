@@ -1,0 +1,20 @@
+
+load @term/bind/code/javascript
+  find native-number
+
+load @term/bind/code/node/module
+  find source-map-payload
+  find source-mapping
+
+form source-map, name <SourceMap>
+  link payload, name <payload>, like source-map-payload
+
+  task find-entry, name <findEntry>
+    like source-mapping
+
+    take line, like native-number
+    take column, like native-number
+
+form source-map-constructor
+  hook make
+    take payload, like source-map-payload

@@ -1,0 +1,43 @@
+
+load @term/bind/code/browser/dom/fill-mode
+  find fill-mode
+
+load @term/bind/code/browser/dom/playback-direction
+  find playback-direction
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form effect-timing, name <EffectTiming>
+  link delay, name <delay>
+    like native-number
+    lock false
+  link direction, name <direction>
+    like playback-direction
+    lock false
+  link duration, name <duration>
+    like or
+      like native-number
+      like native-string
+    lock false
+  link easing, name <easing>
+    like native-string
+    lock false
+  link end-delay, name <endDelay>
+    like native-number
+    lock false
+  link fill, name <fill>
+    like fill-mode
+    lock false
+  link iteration-start, name <iterationStart>
+    like native-number
+    lock false
+  link iterations, name <iterations>
+    like native-number
+    lock false
+  link playback-rate, name <playbackRate>
+    like native-number
+    lock false

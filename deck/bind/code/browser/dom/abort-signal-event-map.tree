@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form abort-signal-event-map, name <AbortSignalEventMap>
+  link abort, name <abort>
+    like event
+    lock false

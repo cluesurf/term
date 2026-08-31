@@ -1,0 +1,15 @@
+
+load @term/bind/code/browser/dom/blob
+  find blob
+
+load @term/bind/code/browser/dom/media-source
+  find media-source
+
+load @term/bind/code/browser/dom/media-stream
+  find media-stream
+
+form media-provider, name <MediaProvider>
+  like or
+    like media-stream
+    like media-source
+    like blob

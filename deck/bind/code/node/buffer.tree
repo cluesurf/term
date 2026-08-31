@@ -1,0 +1,83 @@
+
+bear @term/bind/code/javascript/node/buffer/transcode-encoding
+bear @term/bind/code/javascript/node/buffer/blob-options
+bear @term/bind/code/javascript/node/buffer/blob
+bear @term/bind/code/javascript/node/buffer/buffer-encoding
+bear @term/bind/code/javascript/node/buffer/with-implicit-coercion
+bear @term/bind/code/javascript/node/buffer/buffer-constructor
+bear @term/bind/code/javascript/node/buffer/buffer
+
+load @term/bind/code/javascript
+  find blob
+  find native-number
+  find native-string
+  find native-undefined
+  find uint8-array
+
+load @term/bind/code/node/buffer
+  find buffer
+  find buffer-constructor
+  find transcode-encoding
+
+load @term/bind
+  find form
+  find or
+
+host buffer, name <Buffer>
+  home true
+  like buffer-constructor
+
+task atob, name <atob>
+  home true
+  like native-string
+
+  take data, like native-string
+
+task btoa, name <btoa>
+  home true
+  like native-string
+
+  take data, like native-string
+
+host inspect-max-bytes, name <INSPECT_MAX_BYTES>
+  like native-number
+
+host k-max-length, name <kMaxLength>
+  like native-number
+
+host k-string-max-length, name <kStringMaxLength>
+  like native-number
+
+host constants, name <constants>
+  like form
+    link max-length, name <MAX_LENGTH>
+      like native-number
+      flex true
+    link max-string-length, name <MAX_STRING_LENGTH>
+      like native-number
+      flex true
+
+host slow-buffer, name <SlowBuffer>
+  like form
+    hook make
+      like buffer
+
+      take size, like native-number
+
+    link prototype, name <prototype>
+      like buffer
+      flex true
+
+task transcode, name <transcode>
+  like buffer
+
+  take source, like uint8-array
+  take from-enc, like transcode-encoding
+  take to-enc, like transcode-encoding
+
+task resolve-object-url, name <resolveObjectURL>
+  like or
+    like blob
+    like native-undefined
+
+  take id, like native-string

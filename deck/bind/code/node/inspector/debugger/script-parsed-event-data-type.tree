@@ -1,0 +1,74 @@
+
+load @term/bind
+  find form
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-string
+  find native-undefined
+  find runtime-execution-context-id
+  find runtime-script-id
+  find runtime-stack-trace
+
+form script-parsed-event-data-type, name <ScriptParsedEventDataType>
+  link script-id, name <scriptId>
+    like runtime-script-id
+    flex true
+  link url, name <url>
+    like native-string
+    flex true
+  link start-line, name <startLine>
+    like native-number
+    flex true
+  link start-column, name <startColumn>
+    like native-number
+    flex true
+  link end-line, name <endLine>
+    like native-number
+    flex true
+  link end-column, name <endColumn>
+    like native-number
+    flex true
+  link execution-context-id, name <executionContextId>
+    like runtime-execution-context-id
+    flex true
+  link hash, name <hash>
+    like native-string
+    flex true
+  link execution-context-aux-data, name <executionContextAuxData>
+    like or
+      like form
+      like native-undefined
+    flex true
+  link is-live-edit, name <isLiveEdit>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link source-map-url, name <sourceMapURL>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link has-source-url, name <hasSourceURL>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link is-module, name <isModule>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link length, name <length>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link stack-trace, name <stackTrace>
+    like or
+      like runtime-stack-trace
+      like native-undefined
+    flex true

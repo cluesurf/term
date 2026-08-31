@@ -1,0 +1,16 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find array-buffer
+  find native-bigint
+  find node-js-array-buffer-view
+  find shared-array-buffer
+
+form large-number-like, name <LargeNumberLike>
+  like or
+    like node-js-array-buffer-view
+    like shared-array-buffer
+    like array-buffer
+    like native-bigint

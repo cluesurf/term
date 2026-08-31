@@ -1,0 +1,76 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form canvas-path, name <CanvasPath>
+  task arc, name <arc>
+    take x, like native-number
+    take y, like native-number
+    take radius, like native-number
+    take start-angle, like native-number
+    take end-angle, like native-number
+    take counterclockwise, like maybe
+      like native-boolean
+    like native-void
+
+  task arc-to, name <arcTo>
+    take x1, like native-number
+    take y1, like native-number
+    take x2, like native-number
+    take y2, like native-number
+    take radius, like native-number
+    like native-void
+
+  task bezier-curve-to, name <bezierCurveTo>
+    take cp1x, like native-number
+    take cp1y, like native-number
+    take cp2x, like native-number
+    take cp2y, like native-number
+    take x, like native-number
+    take y, like native-number
+    like native-void
+
+  task close-path, name <closePath>
+    like native-void
+
+  task ellipse, name <ellipse>
+    take x, like native-number
+    take y, like native-number
+    take radius-x, like native-number
+    take radius-y, like native-number
+    take rotation, like native-number
+    take start-angle, like native-number
+    take end-angle, like native-number
+    take counterclockwise, like maybe
+      like native-boolean
+    like native-void
+
+  task line-to, name <lineTo>
+    take x, like native-number
+    take y, like native-number
+    like native-void
+
+  task move-to, name <moveTo>
+    take x, like native-number
+    take y, like native-number
+    like native-void
+
+  task quadratic-curve-to, name <quadraticCurveTo>
+    take cpx, like native-number
+    take cpy, like native-number
+    take x, like native-number
+    take y, like native-number
+    like native-void
+
+  task rect, name <rect>
+    take x, like native-number
+    take y, like native-number
+    take w, like native-number
+    take h, like native-number
+    like native-void

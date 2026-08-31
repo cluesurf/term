@@ -1,0 +1,13 @@
+
+load @term/bind/code/node/crypto/jwk-key-export-options
+  find jwk-key-export-options
+
+form jwk-key-export-options, name <JwkKeyExportOptions>
+  link format, name <format>
+    text <jwk>
+    flex true
+
+form jwk-key-export-options, name <JwkKeyExportOptions>
+  link format, name <format>
+    text <jwk>
+    flex true

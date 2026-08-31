@@ -1,0 +1,648 @@
+
+load @term/bind/code/javascript
+  find address-info
+  find array
+  find error
+  find native-boolean
+  find native-null
+  find native-number
+  find native-string
+  find native-symbol
+  find native-this
+  find native-void
+  find readonly-array
+  find uint8-array
+
+load @term/bind
+  find any
+  find or
+  find task
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/dgram
+  find bind-options
+  find remote-info
+
+form socket, name <Socket>
+  base event-emitter
+  task add-membership, name <addMembership>
+    like native-void
+
+    take multicast-address, like native-string
+    take multicast-interface, like native-string
+      void true
+
+  task address, name <address>
+    like address-info
+
+  task bind, name <bind>
+    like native-this
+
+    take port, like native-number
+      void true
+    take address, like native-string
+      void true
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task bind, name <bind>
+    like native-this
+
+    take port, like native-number
+      void true
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task bind, name <bind>
+    like native-this
+
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task bind, name <bind>
+    like native-this
+
+    take options, like bind-options
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task close, name <close>
+    like native-this
+
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task connect, name <connect>
+    like native-void
+
+    take port, like native-number
+    take address, like native-string
+      void true
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task connect, name <connect>
+    like native-void
+
+    take port, like native-number
+    take callback
+      like task
+        like native-void
+
+  task disconnect, name <disconnect>
+    like native-void
+
+  task drop-membership, name <dropMembership>
+    like native-void
+
+    take multicast-address, like native-string
+    take multicast-interface, like native-string
+      void true
+
+  task get-recv-buffer-size, name <getRecvBufferSize>
+    like native-number
+
+  task get-send-buffer-size, name <getSendBufferSize>
+    like native-number
+
+  task ref, name <ref>
+    like native-this
+
+  task remote-address, name <remoteAddress>
+    like address-info
+
+  task send, name <send>
+    like native-void
+
+    take msg
+      like or
+        like native-string
+        like uint8-array
+        like readonly-array
+          like any
+    take port, like native-number
+      void true
+    take address, like native-string
+      void true
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+        take bytes, like native-number
+      void true
+
+  task send, name <send>
+    like native-void
+
+    take msg
+      like or
+        like native-string
+        like uint8-array
+        like readonly-array
+          like any
+    take port, like native-number
+      void true
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+        take bytes, like native-number
+      void true
+
+  task send, name <send>
+    like native-void
+
+    take msg
+      like or
+        like native-string
+        like uint8-array
+        like readonly-array
+          like any
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+        take bytes, like native-number
+      void true
+
+  task send, name <send>
+    like native-void
+
+    take msg
+      like or
+        like native-string
+        like uint8-array
+    take offset, like native-number
+    take length, like native-number
+    take port, like native-number
+      void true
+    take address, like native-string
+      void true
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+        take bytes, like native-number
+      void true
+
+  task send, name <send>
+    like native-void
+
+    take msg
+      like or
+        like native-string
+        like uint8-array
+    take offset, like native-number
+    take length, like native-number
+    take port, like native-number
+      void true
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+        take bytes, like native-number
+      void true
+
+  task send, name <send>
+    like native-void
+
+    take msg
+      like or
+        like native-string
+        like uint8-array
+    take offset, like native-number
+    take length, like native-number
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+        take bytes, like native-number
+      void true
+
+  task set-broadcast, name <setBroadcast>
+    like native-void
+
+    take flag, like native-boolean
+
+  task set-multicast-interface, name <setMulticastInterface>
+    like native-void
+
+    take multicast-interface, like native-string
+
+  task set-multicast-loopback, name <setMulticastLoopback>
+    like native-boolean
+
+    take flag, like native-boolean
+
+  task set-multicast-ttl, name <setMulticastTTL>
+    like native-number
+
+    take ttl, like native-number
+
+  task set-recv-buffer-size, name <setRecvBufferSize>
+    like native-void
+
+    take size, like native-number
+
+  task set-send-buffer-size, name <setSendBufferSize>
+    like native-void
+
+    take size, like native-number
+
+  task set-ttl, name <setTTL>
+    like native-number
+
+    take ttl, like native-number
+
+  task unref, name <unref>
+    like native-this
+
+  task add-source-specific-membership, name <addSourceSpecificMembership>
+    like native-void
+
+    take source-address, like native-string
+    take group-address, like native-string
+    take multicast-interface, like native-string
+      void true
+
+  task drop-source-specific-membership, name <dropSourceSpecificMembership>
+    like native-void
+
+    take source-address, like native-string
+    take group-address, like native-string
+    take multicast-interface, like native-string
+      void true
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take msg, like buffer
+        take rinfo, like remote-info
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take args
+      like array
+        like any
+      rest true
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <close>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <connect>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <error>
+    take err, like error
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <listening>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <message>
+    take msg, like buffer
+    take rinfo, like remote-info
+
+  task on, name <on>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task on, name <on>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task on, name <on>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take msg, like buffer
+        take rinfo, like remote-info
+
+  task once, name <once>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task once, name <once>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task once, name <once>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take msg, like buffer
+        take rinfo, like remote-info
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take msg, like buffer
+        take rinfo, like remote-info
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take msg, like buffer
+        take rinfo, like remote-info

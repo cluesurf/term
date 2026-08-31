@@ -1,0 +1,71 @@
+
+bear @term/bind/code/javascript/node/v8/heap-space-info
+bear @term/bind/code/javascript/node/v8/does-zap-code-space-flag
+bear @term/bind/code/javascript/node/v8/heap-info
+bear @term/bind/code/javascript/node/v8/heap-code-statistics
+bear @term/bind/code/javascript/node/v8/serializer
+bear @term/bind/code/javascript/node/v8/default-serializer
+bear @term/bind/code/javascript/node/v8/deserializer
+bear @term/bind/code/javascript/node/v8/default-deserializer
+
+load @term/bind/code/javascript
+  find array
+  find native-number
+  find native-string
+  find native-void
+  find node-js-typed-array
+  find readable
+
+load @term/bind
+  find any
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/v8
+  find heap-code-statistics
+  find heap-info
+  find heap-space-info
+
+task cached-data-version-tag, name <cachedDataVersionTag>
+  like native-number
+
+task get-heap-statistics, name <getHeapStatistics>
+  like heap-info
+
+task get-heap-space-statistics, name <getHeapSpaceStatistics>
+  like array
+    like heap-space-info
+
+task set-flags-from-string, name <setFlagsFromString>
+  like native-void
+
+  take flags, like native-string
+
+task get-heap-snapshot, name <getHeapSnapshot>
+  like readable
+
+task write-heap-snapshot, name <writeHeapSnapshot>
+  like native-string
+
+  take filename, like native-string
+    void true
+
+task get-heap-code-statistics, name <getHeapCodeStatistics>
+  like heap-code-statistics
+
+task serialize, name <serialize>
+  like buffer
+
+  take value, like any
+
+task deserialize, name <deserialize>
+  like any
+
+  take buffer, like node-js-typed-array
+
+task take-coverage, name <takeCoverage>
+  like native-void
+
+task stop-coverage, name <stopCoverage>
+  like native-void

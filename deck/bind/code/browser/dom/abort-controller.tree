@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/abort-signal
+  find abort-signal
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form abort-controller, name <AbortController>
+  link signal, name <signal>
+    like abort-signal
+
+  task abort, name <abort>
+    like native-void

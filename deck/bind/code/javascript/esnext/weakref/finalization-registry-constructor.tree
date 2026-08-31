@@ -1,0 +1,23 @@
+
+load @term/bind/code/javascript/es2021/weakref/finalization-registry-constructor
+  find finalization-registry-constructor
+
+load @term/bind/code/javascript/esnext/weakref/finalization-registry
+  find finalization-registry
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form finalization-registry-constructor, name <FinalizationRegistryConstructor>
+  link prototype, name <prototype>
+    like finalization-registry
+
+  hook make
+    take cleanup-callback
+      like task
+        take held-value, like native-any
+        like native-void
+    like finalization-registry

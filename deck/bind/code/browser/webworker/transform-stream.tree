@@ -1,0 +1,25 @@
+
+load @term/bind/code/browser/dom/transform-stream
+  find transform-stream
+
+load @term/bind/code/browser/webworker/readable-stream
+  find readable-stream
+
+load @term/bind/code/browser/webworker/writable-stream
+  find writable-stream
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form transform-stream, name <TransformStream>
+  head i
+    back native-any
+  head o
+    back native-any
+
+  link readable, name <readable>
+    like readable-stream
+      like o
+  link writable, name <writable>
+    like writable-stream
+      like i

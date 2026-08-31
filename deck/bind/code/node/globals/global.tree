@@ -1,0 +1,3 @@
+
+host global, name <global>
+  like global-this

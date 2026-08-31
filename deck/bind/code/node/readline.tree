@@ -1,0 +1,100 @@
+
+bear @term/bind/code/javascript/node/readline/key
+bear @term/bind/code/javascript/node/readline/interface
+bear @term/bind/code/javascript/node/readline/read-line
+bear @term/bind/code/javascript/node/readline/completer
+bear @term/bind/code/javascript/node/readline/async-completer
+bear @term/bind/code/javascript/node/readline/completer-result
+bear @term/bind/code/javascript/node/readline/read-line-options
+bear @term/bind/code/javascript/node/readline/direction
+bear @term/bind/code/javascript/node/readline/cursor-pos
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find interface
+  find native-boolean
+  find native-number
+  find native-void
+  find node-js-readable-stream
+  find node-js-writable-stream
+
+load @term/bind/code/node/readline
+  find async-completer
+  find completer
+  find direction
+  find read-line-options
+
+task create-interface, name <createInterface>
+  like interface
+
+  take input, like node-js-readable-stream
+  take output, like node-js-writable-stream
+    void true
+  take completer
+    like or
+      like completer
+      like async-completer
+    void true
+  take terminal, like native-boolean
+    void true
+
+task create-interface, name <createInterface>
+  like interface
+
+  take options, like read-line-options
+
+task emit-keypress-events, name <emitKeypressEvents>
+  like native-void
+
+  take stream, like node-js-readable-stream
+  take readline-interface, like interface
+    void true
+
+task clear-line, name <clearLine>
+  like native-boolean
+
+  take stream, like node-js-writable-stream
+  take dir, like direction
+  take callback
+    like task
+      like native-void
+
+    void true
+
+task clear-screen-down, name <clearScreenDown>
+  like native-boolean
+
+  take stream, like node-js-writable-stream
+  take callback
+    like task
+      like native-void
+
+    void true
+
+task cursor-to, name <cursorTo>
+  like native-boolean
+
+  take stream, like node-js-writable-stream
+  take x, like native-number
+  take y, like native-number
+    void true
+  take callback
+    like task
+      like native-void
+
+    void true
+
+task move-cursor, name <moveCursor>
+  like native-boolean
+
+  take stream, like node-js-writable-stream
+  take dx, like native-number
+  take dy, like native-number
+  take callback
+    like task
+      like native-void
+
+    void true

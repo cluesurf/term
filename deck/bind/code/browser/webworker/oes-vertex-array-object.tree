@@ -1,0 +1,48 @@
+
+load @term/bind/code/browser/dom/oes-vertex-array-object
+  find oes-vertex-array-object
+
+load @term/bind/code/browser/webworker/g-lboolean
+  find g-lboolean
+
+load @term/bind/code/browser/webworker/g-lenum
+  find g-lenum
+
+load @term/bind/code/browser/webworker/web-gl-vertex-array-object-oes
+  find web-gl-vertex-array-object-oes
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form oes-vertex-array-object, name <OES_vertex_array_object>
+  link vertex-array-binding-oes, name <VERTEX_ARRAY_BINDING_OES>
+    like g-lenum
+
+  task bind-vertex-array-oes, name <bindVertexArrayOES>
+    take array-object
+      like or
+        like web-gl-vertex-array-object-oes
+        like native-null
+    like native-void
+
+  task create-vertex-array-oes, name <createVertexArrayOES>
+    like or
+      like web-gl-vertex-array-object-oes
+      like native-null
+
+  task delete-vertex-array-oes, name <deleteVertexArrayOES>
+    take array-object
+      like or
+        like web-gl-vertex-array-object-oes
+        like native-null
+    like native-void
+
+  task is-vertex-array-oes, name <isVertexArrayOES>
+    take array-object
+      like or
+        like web-gl-vertex-array-object-oes
+        like native-null
+    like g-lboolean

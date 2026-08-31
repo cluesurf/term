@@ -1,0 +1,47 @@
+
+load @term/bind/code/browser/dom/svg-number
+  find svg-number
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form svg-number-list, name <SVGNumberList>
+  link length, name <length>
+    like native-number
+  link number-of-items, name <numberOfItems>
+    like native-number
+
+  task append-item, name <appendItem>
+    take new-item, like svg-number
+    like svg-number
+
+  task clear, name <clear>
+    like native-void
+
+  task get-item, name <getItem>
+    take index, like native-number
+    like svg-number
+
+  task initialize, name <initialize>
+    take new-item, like svg-number
+    like svg-number
+
+  task insert-item-before, name <insertItemBefore>
+    take new-item, like svg-number
+    take index, like native-number
+    like svg-number
+
+  task remove-item, name <removeItem>
+    take index, like native-number
+    like svg-number
+
+  task replace-item, name <replaceItem>
+    take new-item, like svg-number
+    take index, like native-number
+    like svg-number
+
+  mesh index, like native-number
+    like svg-number

@@ -1,0 +1,45 @@
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/browser/dom/node-filter
+  find node-filter
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form node-iterator, name <NodeIterator>
+  link filter, name <filter>
+    like or
+      like node-filter
+      like native-null
+  link pointer-before-reference-node, name <pointerBeforeReferenceNode>
+    like native-boolean
+  link reference-node, name <referenceNode>
+    like node
+  link root, name <root>
+    like node
+  link what-to-show, name <whatToShow>
+    like native-number
+
+  task detach, name <detach>
+    like native-void
+
+  task next-node, name <nextNode>
+    like or
+      like node
+      like native-null
+
+  task previous-node, name <previousNode>
+    like or
+      like node
+      like native-null

@@ -1,0 +1,5 @@
+
+form media-stream-track-state, name <MediaStreamTrackState>
+  like or
+    text <ended>
+    text <live>

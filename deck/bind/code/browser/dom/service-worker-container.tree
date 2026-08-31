@@ -1,0 +1,176 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/browser/dom/message-event
+  find message-event
+
+load @term/bind/code/browser/dom/registration-options
+  find registration-options
+
+load @term/bind/code/browser/dom/service-worker
+  find service-worker
+
+load @term/bind/code/browser/dom/service-worker-container-event-map
+  find service-worker-container-event-map
+
+load @term/bind/code/browser/dom/service-worker-registration
+  find service-worker-registration
+
+load @term/bind/code/browser/dom/url
+  find url
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/es5/readonly-array
+  find readonly-array
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form service-worker-container, name <ServiceWorkerContainer>
+  base event-target
+
+  link controller, name <controller>
+    like or
+      like service-worker
+      like native-null
+  link oncontrollerchange, name <oncontrollerchange>
+    like or
+      like task
+        take this, like service-worker-container
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onmessage, name <onmessage>
+    like or
+      like task
+        take this, like service-worker-container
+        take ev, like message-event
+        like native-any
+      like native-null
+    lock false
+  link onmessageerror, name <onmessageerror>
+    like or
+      like task
+        take this, like service-worker-container
+        take ev, like message-event
+        like native-any
+      like native-null
+    lock false
+  link ready, name <ready>
+    like promise
+      like service-worker-registration
+
+  task get-registration, name <getRegistration>
+    take client-url, like maybe
+      like or
+        like native-string
+        like url
+    like promise
+      like or
+        like service-worker-registration
+        like native-undefined
+
+  task get-registrations, name <getRegistrations>
+    like promise
+      like readonly-array
+        like service-worker-registration
+
+  task register, name <register>
+    take script-url
+      like or
+        like native-string
+        like url
+    take options, like maybe
+      like registration-options
+    like promise
+      like service-worker-registration
+
+  task start-messages, name <startMessages>
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like service-worker-container-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like service-worker-container
+        take ev
+          like index
+            like service-worker-container-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like service-worker-container-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like service-worker-container
+        take ev
+          like index
+            like service-worker-container-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

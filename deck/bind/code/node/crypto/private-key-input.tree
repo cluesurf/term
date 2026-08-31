@@ -1,0 +1,38 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/crypto
+  find key-format
+
+form private-key-input, name <PrivateKeyInput>
+  link key, name <key>
+    like or
+      like native-string
+      like buffer
+    flex true
+  link format, name <format>
+    like or
+      like key-format
+      like native-undefined
+    flex true
+  link type, name <type>
+    like or
+      text <pkcs1>
+      text <pkcs8>
+      text <sec1>
+      like native-undefined
+    flex true
+  link passphrase, name <passphrase>
+    like or
+      like native-string
+      like buffer
+      like native-undefined
+    flex true

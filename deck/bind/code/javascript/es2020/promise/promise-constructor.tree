@@ -1,0 +1,54 @@
+
+load @term/bind/code/javascript/es2015/iterable/iterable
+  find iterable
+
+load @term/bind/code/javascript/es2015/symbol/wellknown/promise-constructor
+  find promise-constructor
+
+load @term/bind/code/javascript/es2018/promise/promise
+  find promise
+
+load @term/bind/code/javascript/es2020/promise/promise-settled-result
+  find promise-settled-result
+
+load @term/bind/code/javascript/es5/promise-like
+  find promise-like
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-unknown
+
+load @term/bind/code/javascript/u
+  find u
+
+form promise-constructor, name <PromiseConstructor>
+  task all-settled, name <allSettled>
+    head t
+      base or
+        like native-array
+          like native-unknown
+        like band
+          like native-unknown
+    take values, like t
+    like promise
+      like any
+
+  task all-settled, name <allSettled>
+    head t
+    take values
+      like iterable
+        like t
+    like promise
+      like native-array
+        like promise-settled-result
+          like test
+            stem roll
+              like t
+              like promise-like
+                name u
+              hook true
+                like u
+              hook false
+                like t

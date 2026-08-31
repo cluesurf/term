@@ -1,0 +1,23 @@
+
+load @term/bind/code/browser/dom/idb-key-range
+  find idb-key-range
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form idb-key-range, name <IDBKeyRange>
+  link lower, name <lower>
+    like native-any
+  link lower-open, name <lowerOpen>
+    like native-boolean
+  link upper, name <upper>
+    like native-any
+  link upper-open, name <upperOpen>
+    like native-boolean
+
+  task includes, name <includes>
+    take key, like native-any
+    like native-boolean

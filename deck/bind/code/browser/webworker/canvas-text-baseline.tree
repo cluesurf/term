@@ -1,0 +1,9 @@
+
+form canvas-text-baseline, name <CanvasTextBaseline>
+  like or
+    text <alphabetic>
+    text <bottom>
+    text <hanging>
+    text <ideographic>
+    text <middle>
+    text <top>

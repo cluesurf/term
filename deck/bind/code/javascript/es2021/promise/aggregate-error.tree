@@ -1,0 +1,17 @@
+
+load @term/bind/code/javascript/es5/error
+  find error
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+form aggregate-error, name <AggregateError>
+  base error
+
+  link errors, name <errors>
+    like native-array
+      like native-any
+    lock false

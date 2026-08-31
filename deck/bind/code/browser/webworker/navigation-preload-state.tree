@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form navigation-preload-state, name <NavigationPreloadState>
+  link enabled, name <enabled>
+    like native-boolean
+    lock false
+  link header-value, name <headerValue>
+    like native-string
+    lock false

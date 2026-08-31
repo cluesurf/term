@@ -1,0 +1,5 @@
+
+load @term/bind/code/browser/dom/web-gl-sampler
+  find web-gl-sampler
+
+form web-gl-sampler, name <WebGLSampler>

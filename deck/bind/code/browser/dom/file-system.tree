@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/file-system-directory-entry
+  find file-system-directory-entry
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form file-system, name <FileSystem>
+  link name, name <name>
+    like native-string
+  link root, name <root>
+    like file-system-directory-entry

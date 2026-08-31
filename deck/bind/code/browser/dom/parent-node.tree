@@ -1,0 +1,133 @@
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/browser/dom/html-collection
+  find html-collection
+
+load @term/bind/code/browser/dom/html-element-tag-name-map
+  find html-element-tag-name-map
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/browser/dom/node-list-of
+  find node-list-of
+
+load @term/bind/code/browser/dom/svg-element-tag-name-map
+  find svg-element-tag-name-map
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form parent-node, name <ParentNode>
+  link child-element-count, name <childElementCount>
+    like native-number
+  link children, name <children>
+    like html-collection
+  link first-element-child, name <firstElementChild>
+    like or
+      like element
+      like native-null
+  link last-element-child, name <lastElementChild>
+    like or
+      like element
+      like native-null
+
+  task append, name <append>
+    take nodes
+      like native-array
+        like or
+          like node
+          like native-string
+      rest true
+    like native-void
+
+  task prepend, name <prepend>
+    take nodes
+      like native-array
+        like or
+          like node
+          like native-string
+      rest true
+    like native-void
+
+  task query-selector, name <querySelector>
+    head k
+      base link-read
+        like html-element-tag-name-map
+    take selectors, like k
+    like or
+      like index
+        like html-element-tag-name-map
+        like k
+      like native-null
+
+  task query-selector, name <querySelector>
+    head k
+      base link-read
+        like svg-element-tag-name-map
+    take selectors, like k
+    like or
+      like index
+        like svg-element-tag-name-map
+        like k
+      like native-null
+
+  task query-selector, name <querySelector>
+    head e
+      base element
+      back element
+    take selectors, like native-string
+    like or
+      like e
+      like native-null
+
+  task query-selector-all, name <querySelectorAll>
+    head k
+      base link-read
+        like html-element-tag-name-map
+    take selectors, like k
+    like node-list-of
+      like index
+        like html-element-tag-name-map
+        like k
+
+  task query-selector-all, name <querySelectorAll>
+    head k
+      base link-read
+        like svg-element-tag-name-map
+    take selectors, like k
+    like node-list-of
+      like index
+        like svg-element-tag-name-map
+        like k
+
+  task query-selector-all, name <querySelectorAll>
+    head e
+      base element
+      back element
+    take selectors, like native-string
+    like node-list-of
+      like e
+
+  task replace-children, name <replaceChildren>
+    take nodes
+      like native-array
+        like or
+          like node
+          like native-string
+      rest true
+    like native-void

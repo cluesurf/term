@@ -1,0 +1,5 @@
+
+form relative-time-format-numeric, name <RelativeTimeFormatNumeric>
+  like or
+    text <always>
+    text <auto>

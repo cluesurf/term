@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/dom/algorithm
+  find algorithm
+
+load @term/bind/code/browser/dom/buffer-source
+  find buffer-source
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form aes-ctr-params, name <AesCtrParams>
+  base algorithm
+
+  link counter, name <counter>
+    like buffer-source
+    lock false
+  link length, name <length>
+    like native-number
+    lock false

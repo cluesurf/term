@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/webworker/image-bitmap-rendering-context
+  find image-bitmap-rendering-context
+
+load @term/bind/code/browser/webworker/offscreen-canvas-rendering-context2-d
+  find offscreen-canvas-rendering-context2-d
+
+load @term/bind/code/browser/webworker/web-gl-rendering-context
+  find web-gl-rendering-context
+
+load @term/bind/code/browser/webworker/web-gl2-rendering-context
+  find web-gl2-rendering-context
+
+form offscreen-rendering-context, name <OffscreenRenderingContext>
+  like or
+    like offscreen-canvas-rendering-context2-d
+    like image-bitmap-rendering-context
+    like web-gl-rendering-context
+    like web-gl2-rendering-context

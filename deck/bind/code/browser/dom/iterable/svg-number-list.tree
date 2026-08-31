@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/svg-number
+  find svg-number
+
+load @term/bind/code/browser/dom/svg-number-list
+  find svg-number-list
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+form svg-number-list, name <SVGNumberList>
+  task {symbol/iterator}
+    like iterable-iterator
+      like svg-number

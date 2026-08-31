@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form media-query-list-event-init, name <MediaQueryListEventInit>
+  base event-init
+
+  link matches, name <matches>
+    like native-boolean
+    lock false
+  link media, name <media>
+    like native-string
+    lock false

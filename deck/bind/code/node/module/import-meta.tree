@@ -1,0 +1,25 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find promise
+  find url
+
+form import-meta, name <ImportMeta>
+  home true
+  link url, name <url>
+    like native-string
+    flex true
+
+  task resolve, name <resolve>
+    like promise
+      like native-string
+
+    take specified, like native-string
+    take parent
+      like or
+        like native-string
+        like url
+      void true

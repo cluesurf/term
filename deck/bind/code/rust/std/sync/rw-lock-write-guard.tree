@@ -1,0 +1,53 @@
+
+form rw-lock-write-guard, name <std::sync::RwLockWriteGuard>
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task deref, name <deref>
+    note <Dereferences the value.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+
+  task deref-mut, name <deref_mut>
+    note <Mutably dereferences the value.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task drop, name <drop>
+    note <Executes the destructor for this type.>
+
+    take self
+      cite free

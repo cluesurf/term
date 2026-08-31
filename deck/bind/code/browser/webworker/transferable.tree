@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/webworker/image-bitmap
+  find image-bitmap
+
+load @term/bind/code/browser/webworker/message-port
+  find message-port
+
+load @term/bind/code/browser/webworker/offscreen-canvas
+  find offscreen-canvas
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+form transferable, name <Transferable>
+  like or
+    like array-buffer
+    like message-port
+    like image-bitmap
+    like offscreen-canvas

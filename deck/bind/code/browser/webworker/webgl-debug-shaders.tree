@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/webgl-debug-shaders
+  find webgl-debug-shaders
+
+load @term/bind/code/browser/webworker/web-gl-shader
+  find web-gl-shader
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form webgl-debug-shaders, name <WEBGL_debug_shaders>
+  task get-translated-shader-source, name <getTranslatedShaderSource>
+    take shader, like web-gl-shader
+    like native-string

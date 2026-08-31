@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/idb-transaction-event-map
+  find idb-transaction-event-map
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+form idb-transaction-event-map, name <IDBTransactionEventMap>
+  link abort, name <abort>
+    like event
+    lock false
+  link complete, name <complete>
+    like event
+    lock false
+  link error, name <error>
+    like event
+    lock false

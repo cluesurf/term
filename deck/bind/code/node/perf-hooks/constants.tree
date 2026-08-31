@@ -1,0 +1,40 @@
+
+load @term/bind/code/javascript
+  find native-number
+
+host node-performance-gc-major, name <NODE_PERFORMANCE_GC_MAJOR>
+  like native-number
+
+host node-performance-gc-minor, name <NODE_PERFORMANCE_GC_MINOR>
+  like native-number
+
+host node-performance-gc-incremental, name <NODE_PERFORMANCE_GC_INCREMENTAL>
+  like native-number
+
+host node-performance-gc-weakcb, name <NODE_PERFORMANCE_GC_WEAKCB>
+  like native-number
+
+host node-performance-gc-flags-no, name <NODE_PERFORMANCE_GC_FLAGS_NO>
+  like native-number
+
+host node-performance-gc-flags-construct-retained
+  name <NODE_PERFORMANCE_GC_FLAGS_CONSTRUCT_RETAINED>
+  like native-number
+
+host node-performance-gc-flags-forced, name <NODE_PERFORMANCE_GC_FLAGS_FORCED>
+  like native-number
+
+host node-performance-gc-flags-synchronous-phantom-processing
+  name <NODE_PERFORMANCE_GC_FLAGS_SYNCHRONOUS_PHANTOM_PROCESSING>
+  like native-number
+
+host node-performance-gc-flags-all-available-garbage
+  name <NODE_PERFORMANCE_GC_FLAGS_ALL_AVAILABLE_GARBAGE>
+  like native-number
+
+host node-performance-gc-flags-all-external-memory
+  name <NODE_PERFORMANCE_GC_FLAGS_ALL_EXTERNAL_MEMORY>
+  like native-number
+
+host node-performance-gc-flags-schedule-idle, name <NODE_PERFORMANCE_GC_FLAGS_SCHEDULE_IDLE>
+  like native-number

@@ -1,0 +1,27 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+
+form soa-record, name <SoaRecord>
+  link nsname, name <nsname>
+    like native-string
+    flex true
+  link hostmaster, name <hostmaster>
+    like native-string
+    flex true
+  link serial, name <serial>
+    like native-number
+    flex true
+  link refresh, name <refresh>
+    like native-number
+    flex true
+  link retry, name <retry>
+    like native-number
+    flex true
+  link expire, name <expire>
+    like native-number
+    flex true
+  link minttl, name <minttl>
+    like native-number
+    flex true

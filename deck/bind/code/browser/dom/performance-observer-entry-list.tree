@@ -1,0 +1,20 @@
+
+load @term/bind/code/browser/dom/performance-entry-list
+  find performance-entry-list
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form performance-observer-entry-list, name <PerformanceObserverEntryList>
+  task get-entries, name <getEntries>
+    like performance-entry-list
+
+  task get-entries-by-name, name <getEntriesByName>
+    take name, like native-string
+    take type, like maybe
+      like native-string
+    like performance-entry-list
+
+  task get-entries-by-type, name <getEntriesByType>
+    take type, like native-string
+    like performance-entry-list

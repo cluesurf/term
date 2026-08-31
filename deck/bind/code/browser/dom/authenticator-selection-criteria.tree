@@ -1,0 +1,26 @@
+
+load @term/bind/code/browser/dom/authenticator-attachment
+  find authenticator-attachment
+
+load @term/bind/code/browser/dom/resident-key-requirement
+  find resident-key-requirement
+
+load @term/bind/code/browser/dom/user-verification-requirement
+  find user-verification-requirement
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form authenticator-selection-criteria, name <AuthenticatorSelectionCriteria>
+  link authenticator-attachment, name <authenticatorAttachment>
+    like authenticator-attachment
+    lock false
+  link require-resident-key, name <requireResidentKey>
+    like native-boolean
+    lock false
+  link resident-key, name <residentKey>
+    like resident-key-requirement
+    lock false
+  link user-verification, name <userVerification>
+    like user-verification-requirement
+    lock false

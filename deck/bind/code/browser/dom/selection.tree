@@ -1,0 +1,112 @@
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/browser/dom/range
+  find range
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form selection, name <Selection>
+  link anchor-node, name <anchorNode>
+    like or
+      like node
+      like native-null
+  link anchor-offset, name <anchorOffset>
+    like native-number
+  link focus-node, name <focusNode>
+    like or
+      like node
+      like native-null
+  link focus-offset, name <focusOffset>
+    like native-number
+  link is-collapsed, name <isCollapsed>
+    like native-boolean
+  link range-count, name <rangeCount>
+    like native-number
+  link type, name <type>
+    like native-string
+
+  task add-range, name <addRange>
+    take range, like range
+    like native-void
+
+  task collapse, name <collapse>
+    take node
+      like or
+        like node
+        like native-null
+    take offset, like maybe
+      like native-number
+    like native-void
+
+  task collapse-to-end, name <collapseToEnd>
+    like native-void
+
+  task collapse-to-start, name <collapseToStart>
+    like native-void
+
+  task contains-node, name <containsNode>
+    take node, like node
+    take allow-partial-containment, like maybe
+      like native-boolean
+    like native-boolean
+
+  task delete-from-document, name <deleteFromDocument>
+    like native-void
+
+  task empty, name <empty>
+    like native-void
+
+  task extend, name <extend>
+    take node, like node
+    take offset, like maybe
+      like native-number
+    like native-void
+
+  task get-range-at, name <getRangeAt>
+    take index, like native-number
+    like range
+
+  task remove-all-ranges, name <removeAllRanges>
+    like native-void
+
+  task remove-range, name <removeRange>
+    take range, like range
+    like native-void
+
+  task select-all-children, name <selectAllChildren>
+    take node, like node
+    like native-void
+
+  task set-base-and-extent, name <setBaseAndExtent>
+    take anchor-node, like node
+    take anchor-offset, like native-number
+    take focus-node, like node
+    take focus-offset, like native-number
+    like native-void
+
+  task set-position, name <setPosition>
+    take node
+      like or
+        like node
+        like native-null
+    take offset, like maybe
+      like native-number
+    like native-void
+
+  task to-string, name <toString>
+    like native-string

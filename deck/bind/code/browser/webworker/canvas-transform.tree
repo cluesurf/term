@@ -1,0 +1,59 @@
+
+load @term/bind/code/browser/dom/canvas-transform
+  find canvas-transform
+
+load @term/bind/code/browser/webworker/dom-matrix
+  find dom-matrix
+
+load @term/bind/code/browser/webworker/dom-matrix2-d-init
+  find dom-matrix2-d-init
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form canvas-transform, name <CanvasTransform>
+  task get-transform, name <getTransform>
+    like dom-matrix
+
+  task reset-transform, name <resetTransform>
+    like native-void
+
+  task rotate, name <rotate>
+    take angle, like native-number
+    like native-void
+
+  task scale, name <scale>
+    take x, like native-number
+    take y, like native-number
+    like native-void
+
+  task set-transform, name <setTransform>
+    take a, like native-number
+    take b, like native-number
+    take c, like native-number
+    take d, like native-number
+    take e, like native-number
+    take f, like native-number
+    like native-void
+
+  task set-transform, name <setTransform>
+    take transform, like maybe
+      like dom-matrix2-d-init
+    like native-void
+
+  task transform, name <transform>
+    take a, like native-number
+    take b, like native-number
+    take c, like native-number
+    take d, like native-number
+    take e, like native-number
+    take f, like native-number
+    like native-void
+
+  task translate, name <translate>
+    take x, like native-number
+    take y, like native-number
+    like native-void

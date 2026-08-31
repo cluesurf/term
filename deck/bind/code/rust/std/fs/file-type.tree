@@ -1,0 +1,224 @@
+
+form file-type, name <std::fs::FileType>
+  task is-dir, name <is_dir>
+    note <Tests whether this file type represents a directory. The result is mutually exclusive to the results of is_file and is_symlink; only zero or one of these tests may pass.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-file, name <is_file>
+    note <Tests whether this file type represents a regular file. The result is mutually exclusive to the results of is_dir and is_symlink; only zero or one of these tests may pass.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-symlink, name <is_symlink>
+    note <Tests whether this file type represents a symbolic link. The result is mutually exclusive to the results of is_dir and is_file; only zero or one of these tests may pass.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like file-type
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task is-symlink-dir, name <is_symlink_dir>
+    note <Returns true if this file type is a symbolic link that is also a directory.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-symlink-file, name <is_symlink_file>
+    note <Returns true if this file type is a symbolic link that is also a file.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-block-device, name <is_block_device>
+    note <Returns true if this file type is a block device.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-char-device, name <is_char_device>
+    note <Returns true if this file type is a char device.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-fifo, name <is_fifo>
+    note <Returns true if this file type is a fifo.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-socket, name <is_socket>
+    note <Returns true if this file type is a socket.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-block-device, name <is_block_device>
+    note <Returns true if this file type is a block device.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-char-device, name <is_char_device>
+    note <Returns true if this file type is a character device.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-socket-dgram, name <is_socket_dgram>
+    note <Returns true if this file type is a socket datagram.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-socket-stream, name <is_socket_stream>
+    note <Returns true if this file type is a socket stream.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-socket, name <is_socket>
+    note <Returns true if this file type is any type of socket.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like file-type
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like file-type
+
+    free seed
+      like bool
+        cite free

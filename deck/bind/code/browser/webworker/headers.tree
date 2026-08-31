@@ -1,0 +1,54 @@
+
+load @term/bind/code/browser/dom/iterable/headers
+  find headers
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form headers, name <Headers>
+  task append, name <append>
+    take name, like native-string
+    take value, like native-string
+    like native-void
+
+  task delete, name <delete>
+    take name, like native-string
+    like native-void
+
+  task get, name <get>
+    take name, like native-string
+    like or
+      like native-string
+      like native-null
+
+  task has, name <has>
+    take name, like native-string
+    like native-boolean
+
+  task set, name <set>
+    take name, like native-string
+    take value, like native-string
+    like native-void
+
+  task for-each, name <forEach>
+    take callbackfn
+      like task
+        take value, like native-string
+        take key, like native-string
+        take parent, like headers
+        like native-void
+    take this-arg, like maybe
+      like native-any
+    like native-void

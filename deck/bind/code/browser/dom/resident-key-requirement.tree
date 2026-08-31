@@ -1,0 +1,6 @@
+
+form resident-key-requirement, name <ResidentKeyRequirement>
+  like or
+    text <discouraged>
+    text <preferred>
+    text <required>

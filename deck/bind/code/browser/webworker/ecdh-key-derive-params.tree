@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/ecdh-key-derive-params
+  find ecdh-key-derive-params
+
+load @term/bind/code/browser/webworker/algorithm
+  find algorithm
+
+load @term/bind/code/browser/webworker/crypto-key
+  find crypto-key
+
+form ecdh-key-derive-params, name <EcdhKeyDeriveParams>
+  base algorithm
+
+  link public, name <public>
+    like crypto-key
+    lock false

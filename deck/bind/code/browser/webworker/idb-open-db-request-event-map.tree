@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/idb-open-db-request-event-map
+  find idb-open-db-request-event-map
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+load @term/bind/code/browser/webworker/idb-request-event-map
+  find idb-request-event-map
+
+load @term/bind/code/browser/webworker/idb-version-change-event
+  find idb-version-change-event
+
+form idb-open-db-request-event-map, name <IDBOpenDBRequestEventMap>
+  base idb-request-event-map
+
+  link blocked, name <blocked>
+    like event
+    lock false
+  link upgradeneeded, name <upgradeneeded>
+    like idb-version-change-event
+    lock false

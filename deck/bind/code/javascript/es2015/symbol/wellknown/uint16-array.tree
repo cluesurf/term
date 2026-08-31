@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/es2015/iterable/uint16-array
+  find uint16-array
+
+form uint16-array, name <Uint16Array>
+  link {symbol/to-string-tag}
+    text <Uint16Array>
+    read true

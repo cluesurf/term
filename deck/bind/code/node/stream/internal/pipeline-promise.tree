@@ -1,0 +1,33 @@
+
+load @term/bind
+  find any
+  find like
+  find test
+
+load @term/bind/code/javascript
+  find native-void
+  find p
+  find promise
+
+load @term/bind/code/node/stream/internal
+  find pipeline-destination
+  find pipeline-destination-promise-function
+
+form pipeline-promise, name <PipelinePromise>
+  head s
+    base pipeline-destination
+      like any
+      like any
+
+  like test
+    stem roll
+      like s
+      like pipeline-destination-promise-function
+        like any
+        name p
+      hook true
+        like promise
+          like p
+      hook false
+        like promise
+          like native-void

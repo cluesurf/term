@@ -1,0 +1,55 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-string
+  find node-js-array-buffer-view
+  find verify
+
+load @term/bind/code/node/crypto
+  find binary-like
+  find binary-to-text-encoding
+  find encoding
+  find key-like
+  find verify-key-object-input
+  find verify-public-key-input
+
+form verify, name <Verify>
+  base stream-writable
+  task update, name <update>
+    like verify
+
+    take data, like binary-like
+
+  task update, name <update>
+    like verify
+
+    take data, like native-string
+    take input-encoding, like encoding
+
+  task verify, name <verify>
+    like native-boolean
+
+    take object
+      like or
+        like key-like
+        like verify-key-object-input
+        like verify-public-key-input
+    take signature, like node-js-array-buffer-view
+
+  task verify, name <verify>
+    like native-boolean
+
+    take object
+      like or
+        like key-like
+        like verify-key-object-input
+        like verify-public-key-input
+    take signature, like native-string
+    take signature-format, like binary-to-text-encoding
+      void true
+
+form verify-constructor
+  hook make

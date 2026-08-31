@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form media-source-event-map, name <MediaSourceEventMap>
+  link sourceclose, name <sourceclose>
+    like event
+    lock false
+  link sourceended, name <sourceended>
+    like event
+    lock false
+  link sourceopen, name <sourceopen>
+    like event
+    lock false

@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/dom/custom-event-init
+  find custom-event-init
+
+load @term/bind/code/browser/webworker/event-init
+  find event-init
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form custom-event-init, name <CustomEventInit>
+  base event-init
+
+  head t
+    back native-any
+
+  link detail, name <detail>
+    like t
+    lock false

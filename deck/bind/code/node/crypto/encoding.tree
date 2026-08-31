@@ -1,0 +1,14 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/node/crypto
+  find binary-to-text-encoding
+  find character-encoding
+  find legacy-character-encoding
+
+form encoding, name <Encoding>
+  like or
+    like binary-to-text-encoding
+    like character-encoding
+    like legacy-character-encoding

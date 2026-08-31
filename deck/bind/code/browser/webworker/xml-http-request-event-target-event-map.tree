@@ -1,0 +1,39 @@
+
+load @term/bind/code/browser/dom/xml-http-request-event-target-event-map
+  find xml-http-request-event-target-event-map
+
+load @term/bind/code/browser/webworker/progress-event
+  find progress-event
+
+load @term/bind/code/browser/webworker/xml-http-request-event-target
+  find xml-http-request-event-target
+
+form xml-http-request-event-target-event-map, name <XMLHttpRequestEventTargetEventMap>
+  link abort, name <abort>
+    like progress-event
+      like xml-http-request-event-target
+    lock false
+  link error, name <error>
+    like progress-event
+      like xml-http-request-event-target
+    lock false
+  link load, name <load>
+    like progress-event
+      like xml-http-request-event-target
+    lock false
+  link loadend, name <loadend>
+    like progress-event
+      like xml-http-request-event-target
+    lock false
+  link loadstart, name <loadstart>
+    like progress-event
+      like xml-http-request-event-target
+    lock false
+  link progress, name <progress>
+    like progress-event
+      like xml-http-request-event-target
+    lock false
+  link timeout, name <timeout>
+    like progress-event
+      like xml-http-request-event-target
+    lock false

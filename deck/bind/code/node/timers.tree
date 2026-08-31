@@ -1,0 +1,160 @@
+
+bear @term/bind/code/javascript/node/timers/timer-options
+
+load @term/bind/code/javascript
+  find array
+  find native-number
+  find native-void
+  find node-js-immediate
+  find node-js-timeout
+  find node-js-timer
+
+load @term/bind
+  find any
+  find like
+  find task
+
+host promisify, name <__promisify__>
+  home true
+  like set-timeout-promise
+
+host promisify, name <__promisify__>
+  home true
+  like set-interval-promise
+
+host promisify, name <__promisify__>
+  home true
+  like set-immediate-promise
+
+task set-timeout, name <setTimeout>
+  home true
+  like node-js-timeout
+
+  head t-args
+    base array
+      like any
+
+  take callback
+    like task
+      like native-void
+
+      take args, like t-args
+        rest true
+  take ms, like native-number
+    void true
+  take args, like t-args
+    rest true
+
+task set-timeout, name <setTimeout>
+  home true
+  like node-js-timeout
+
+  take callback
+    like task
+      like native-void
+
+      take args, like native-void
+  take ms, like native-number
+    void true
+
+task clear-timeout, name <clearTimeout>
+  home true
+  like native-void
+
+  take timeout-id, like node-js-timeout
+
+task set-interval, name <setInterval>
+  home true
+  like node-js-timer
+
+  head t-args
+    base array
+      like any
+
+  take callback
+    like task
+      like native-void
+
+      take args, like t-args
+        rest true
+  take ms, like native-number
+    void true
+  take args, like t-args
+    rest true
+
+task set-interval, name <setInterval>
+  home true
+  like node-js-timer
+
+  take callback
+    like task
+      like native-void
+
+      take args, like native-void
+  take ms, like native-number
+    void true
+
+task clear-interval, name <clearInterval>
+  home true
+  like native-void
+
+  take interval-id, like node-js-timeout
+
+task set-immediate, name <setImmediate>
+  home true
+  like node-js-immediate
+
+  head t-args
+    base array
+      like any
+
+  take callback
+    like task
+      like native-void
+
+      take args, like t-args
+        rest true
+  take args, like t-args
+    rest true
+
+task set-immediate, name <setImmediate>
+  home true
+  like node-js-immediate
+
+  take callback
+    like task
+      like native-void
+
+      take args, like native-void
+
+task clear-immediate, name <clearImmediate>
+  home true
+  like native-void
+
+  take immediate-id, like node-js-immediate
+
+task queue-microtask, name <queueMicrotask>
+  home true
+  like native-void
+
+  take callback
+    like task
+      like native-void
+
+host set-timeout, name <setTimeout>
+  like global-set-timeout
+
+host clear-timeout, name <clearTimeout>
+  like global-clear-timeout
+
+host set-interval, name <setInterval>
+  like global-set-interval
+
+host clear-interval, name <clearInterval>
+  like global-clear-interval
+
+host set-immediate, name <setImmediate>
+  like global-set-immediate
+
+host clear-immediate, name <clearImmediate>
+  like global-clear-immediate

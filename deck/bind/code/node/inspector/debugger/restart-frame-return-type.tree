@@ -1,0 +1,28 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-undefined
+  find runtime-stack-trace
+  find runtime-stack-trace-id
+
+load @term/bind
+  find or
+
+load @term/bind/code/node/inspector/debugger
+  find call-frame
+
+form restart-frame-return-type, name <RestartFrameReturnType>
+  link call-frames, name <callFrames>
+    like array
+      like call-frame
+    flex true
+  link async-stack-trace, name <asyncStackTrace>
+    like or
+      like runtime-stack-trace
+      like native-undefined
+    flex true
+  link async-stack-trace-id, name <asyncStackTraceId>
+    like or
+      like runtime-stack-trace-id
+      like native-undefined
+    flex true

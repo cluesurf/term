@@ -1,0 +1,33 @@
+
+load @term/bind/code/browser/dom/device-motion-event-acceleration
+  find device-motion-event-acceleration
+
+load @term/bind/code/browser/dom/device-motion-event-rotation-rate
+  find device-motion-event-rotation-rate
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form device-motion-event, name <DeviceMotionEvent>
+  base event
+
+  link acceleration, name <acceleration>
+    like or
+      like device-motion-event-acceleration
+      like native-null
+  link acceleration-including-gravity, name <accelerationIncludingGravity>
+    like or
+      like device-motion-event-acceleration
+      like native-null
+  link interval, name <interval>
+    like native-number
+  link rotation-rate, name <rotationRate>
+    like or
+      like device-motion-event-rotation-rate
+      like native-null

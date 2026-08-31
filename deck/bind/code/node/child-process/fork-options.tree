@@ -1,0 +1,52 @@
+
+load @term/bind/code/javascript
+  find abortable
+  find array
+  find native-boolean
+  find native-string
+  find native-undefined
+
+load @term/bind
+  find or
+
+load @term/bind/code/node/child-process
+  find messaging-options
+  find process-env-options
+  find stdio-options
+
+form fork-options, name <ForkOptions>
+  base process-env-options
+  base messaging-options
+  base abortable
+
+  link exec-path, name <execPath>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link exec-argv, name <execArgv>
+    like or
+      like array
+        like native-string
+      like native-undefined
+    flex true
+  link silent, name <silent>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link stdio, name <stdio>
+    like or
+      like stdio-options
+      like native-undefined
+    flex true
+  link detached, name <detached>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link windows-verbatim-arguments, name <windowsVerbatimArguments>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/g-lenum
+  find g-lenum
+
+form webgl-compressed-texture-s3tc-srgb, name <WEBGL_compressed_texture_s3tc_srgb>
+  link compressed-srgb-alpha-s3-tc-dxt1-ext, name <COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT>
+    like g-lenum
+  link compressed-srgb-alpha-s3-tc-dxt3-ext, name <COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT>
+    like g-lenum
+  link compressed-srgb-alpha-s3-tc-dxt5-ext, name <COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT>
+    like g-lenum
+  link compressed-srgb-s3-tc-dxt1-ext, name <COMPRESSED_SRGB_S3TC_DXT1_EXT>
+    like g-lenum

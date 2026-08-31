@@ -1,0 +1,6 @@
+
+form remote-playback-state, name <RemotePlaybackState>
+  like or
+    text <connected>
+    text <connecting>
+    text <disconnected>

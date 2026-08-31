@@ -1,0 +1,8 @@
+
+bear @term/bind/code/javascript/node/domain/domain
+
+load @term/bind/code/javascript
+  find domain
+
+task create, name <create>
+  like domain

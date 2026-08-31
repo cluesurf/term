@@ -1,0 +1,20 @@
+
+load @term/bind/code/browser/dom/event-source-event-map
+  find event-source-event-map
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+load @term/bind/code/browser/webworker/message-event
+  find message-event
+
+form event-source-event-map, name <EventSourceEventMap>
+  link error, name <error>
+    like event
+    lock false
+  link message, name <message>
+    like message-event
+    lock false
+  link open, name <open>
+    like event
+    lock false

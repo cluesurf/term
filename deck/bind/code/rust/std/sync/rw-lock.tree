@@ -1,0 +1,147 @@
+
+form rw-lock, name <std::sync::RwLock>
+  task new, name <new>
+    note <Creates a new instance of an RwLock&lt;T&gt; which is unlocked.>
+
+    take t
+      like t
+        cite free
+      cite free
+
+    free seed
+      like rw-lock
+        like t
+          cite free
+        cite free
+
+  task read, name <read>
+    note <Locks this rwlock with shared read access, blocking the current thread until it can be acquired.>
+
+    take self
+      cite free
+
+    free seed
+      like lock-result
+        like rw-lock-read-guard
+          time mask
+          like t
+            cite free
+          cite free
+        cite free
+
+  task try-read, name <try_read>
+    note <Attempts to acquire this rwlock with shared read access.>
+
+    take self
+      cite free
+
+    free seed
+      like try-lock-result
+        like rw-lock-read-guard
+          time mask
+          like t
+            cite free
+          cite free
+        cite free
+
+  task write, name <write>
+    note <Locks this rwlock with exclusive write access, blocking the current thread until it can be acquired.>
+
+    take self
+      cite free
+
+    free seed
+      like lock-result
+        like rw-lock-write-guard
+          time mask
+          like t
+            cite free
+          cite free
+        cite free
+
+  task try-write, name <try_write>
+    note <Attempts to lock this rwlock with exclusive write access.>
+
+    take self
+      cite free
+
+    free seed
+      like try-lock-result
+        like rw-lock-write-guard
+          time mask
+          like t
+            cite free
+          cite free
+        cite free
+
+  task is-poisoned, name <is_poisoned>
+    note <Determines whether the lock is poisoned.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task into-inner, name <into_inner>
+    note <Consumes this RwLock, returning the underlying data.>
+
+    lead t
+      like sized
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like lock-result
+        like t
+          cite free
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the underlying data.>
+
+    take self
+      cite free
+
+    free seed
+      like lock-result
+        like t
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task default, name <default>
+    note <Creates a new RwLock&lt;T&gt;, with the Default value for T.>
+
+    free seed
+      like rw-lock
+        like t
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Creates a new instance of an RwLock&lt;T&gt; which is unlocked. This is equivalent to RwLock::new.>
+
+    take t
+      like t
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free

@@ -1,0 +1,71 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+  find stream-duplex
+  find url-url
+
+load @term/bind/code/node/http2
+  find settings
+
+form session-options, name <SessionOptions>
+  link max-deflate-dynamic-table-size, name <maxDeflateDynamicTableSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link max-session-memory, name <maxSessionMemory>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link max-header-list-pairs, name <maxHeaderListPairs>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link max-outstanding-pings, name <maxOutstandingPings>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link max-send-header-block-length, name <maxSendHeaderBlockLength>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link padding-strategy, name <paddingStrategy>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link peer-max-concurrent-streams, name <peerMaxConcurrentStreams>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link settings, name <settings>
+    like or
+      like settings
+      like native-undefined
+    flex true
+  link unknown-protocol-timeout, name <unknownProtocolTimeout>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+
+  task select-padding, name <selectPadding>
+    like native-number
+
+    take frame-len, like native-number
+    take max-frame-len, like native-number
+
+  task create-connection, name <createConnection>
+    like stream-duplex
+
+    take authority, like url-url
+    take option, like session-options

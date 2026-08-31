@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/dom-rect
+  find dom-rect
+
+load @term/bind/code/browser/dom/dom-rect-list
+  find dom-rect-list
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+form dom-rect-list, name <DOMRectList>
+  task {symbol/iterator}
+    like iterable-iterator
+      like dom-rect

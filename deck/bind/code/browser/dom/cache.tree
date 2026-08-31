@@ -1,0 +1,83 @@
+
+load @term/bind/code/browser/dom/cache-query-options
+  find cache-query-options
+
+load @term/bind/code/browser/dom/request
+  find request
+
+load @term/bind/code/browser/dom/request-info
+  find request-info
+
+load @term/bind/code/browser/dom/response
+  find response
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/es5/readonly-array
+  find readonly-array
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form cache, name <Cache>
+  task add, name <add>
+    take request, like request-info
+    like promise
+      like native-void
+
+  task add-all, name <addAll>
+    take requests
+      like native-array
+        like request-info
+    like promise
+      like native-void
+
+  task delete, name <delete>
+    take request, like request-info
+    take options, like maybe
+      like cache-query-options
+    like promise
+      like native-boolean
+
+  task keys, name <keys>
+    take request, like maybe
+      like request-info
+    take options, like maybe
+      like cache-query-options
+    like promise
+      like readonly-array
+        like request
+
+  task match, name <match>
+    take request, like request-info
+    take options, like maybe
+      like cache-query-options
+    like promise
+      like or
+        like response
+        like native-undefined
+
+  task match-all, name <matchAll>
+    take request, like maybe
+      like request-info
+    take options, like maybe
+      like cache-query-options
+    like promise
+      like readonly-array
+        like response
+
+  task put, name <put>
+    take request, like request-info
+    take response, like response
+    like promise
+      like native-void

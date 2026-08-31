@@ -1,0 +1,29 @@
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find dns-lookup-one-options
+  find native-null
+  find native-number
+  find native-string
+  find native-void
+  find node-js-errno-exception
+
+form lookup-function, name <LookupFunction>
+  like task
+    like native-void
+
+    take hostname, like native-string
+    take options, like dns-lookup-one-options
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like node-js-errno-exception
+            like native-null
+        take address, like native-string
+        take family, like native-number

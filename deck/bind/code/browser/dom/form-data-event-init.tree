@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+load @term/bind/code/browser/dom/form-data
+  find form-data
+
+form form-data-event-init, name <FormDataEventInit>
+  base event-init
+
+  link form-data, name <formData>
+    like form-data
+    lock false

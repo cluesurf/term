@@ -1,0 +1,10 @@
+
+load @term/bind
+  find or
+
+form cipher-ccm-types, name <CipherCCMTypes>
+  like or
+    text <aes-128-ccm>
+    text <aes-192-ccm>
+    text <aes-256-ccm>
+    text <chacha20-poly1305>

@@ -1,0 +1,25 @@
+
+load @term/bind/code/browser/dom/dom-rect
+  find dom-rect
+
+load @term/bind/code/browser/webworker/dom-rect-read-only
+  find dom-rect-read-only
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form dom-rect, name <DOMRect>
+  base dom-rect-read-only
+
+  link height, name <height>
+    like native-number
+    lock false
+  link width, name <width>
+    like native-number
+    lock false
+  link x, name <x>
+    like native-number
+    lock false
+  link y, name <y>
+    like native-number
+    lock false

@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/html-pre-element
+  find html-pre-element
+
+form html-element-deprecated-tag-name-map, name <HTMLElementDeprecatedTagNameMap>
+  link listing, name <listing>
+    like html-pre-element
+    lock false
+  link xmp, name <xmp>
+    like html-pre-element
+    lock false

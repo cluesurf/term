@@ -1,0 +1,135 @@
+
+load @term/bind/code/browser/dom/abstract-range
+  find abstract-range
+
+load @term/bind/code/browser/dom/document-fragment
+  find document-fragment
+
+load @term/bind/code/browser/dom/dom-rect
+  find dom-rect
+
+load @term/bind/code/browser/dom/dom-rect-list
+  find dom-rect-list
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form range, name <Range>
+  base abstract-range
+
+  link common-ancestor-container, name <commonAncestorContainer>
+    like node
+  link end-to-end, name <END_TO_END>
+    like native-number
+  link end-to-start, name <END_TO_START>
+    like native-number
+  link start-to-end, name <START_TO_END>
+    like native-number
+  link start-to-start, name <START_TO_START>
+    like native-number
+
+  task clone-contents, name <cloneContents>
+    like document-fragment
+
+  task clone-range, name <cloneRange>
+    like range
+
+  task collapse, name <collapse>
+    take to-start, like maybe
+      like native-boolean
+    like native-void
+
+  task compare-boundary-points, name <compareBoundaryPoints>
+    take how, like native-number
+    take source-range, like range
+    like native-number
+
+  task compare-point, name <comparePoint>
+    take node, like node
+    take offset, like native-number
+    like native-number
+
+  task create-contextual-fragment, name <createContextualFragment>
+    take fragment, like native-string
+    like document-fragment
+
+  task delete-contents, name <deleteContents>
+    like native-void
+
+  task detach, name <detach>
+    like native-void
+
+  task extract-contents, name <extractContents>
+    like document-fragment
+
+  task get-bounding-client-rect, name <getBoundingClientRect>
+    like dom-rect
+
+  task get-client-rects, name <getClientRects>
+    like dom-rect-list
+
+  task insert-node, name <insertNode>
+    take node, like node
+    like native-void
+
+  task intersects-node, name <intersectsNode>
+    take node, like node
+    like native-boolean
+
+  task is-point-in-range, name <isPointInRange>
+    take node, like node
+    take offset, like native-number
+    like native-boolean
+
+  task select-node, name <selectNode>
+    take node, like node
+    like native-void
+
+  task select-node-contents, name <selectNodeContents>
+    take node, like node
+    like native-void
+
+  task set-end, name <setEnd>
+    take node, like node
+    take offset, like native-number
+    like native-void
+
+  task set-end-after, name <setEndAfter>
+    take node, like node
+    like native-void
+
+  task set-end-before, name <setEndBefore>
+    take node, like node
+    like native-void
+
+  task set-start, name <setStart>
+    take node, like node
+    take offset, like native-number
+    like native-void
+
+  task set-start-after, name <setStartAfter>
+    take node, like node
+    like native-void
+
+  task set-start-before, name <setStartBefore>
+    take node, like node
+    like native-void
+
+  task surround-contents, name <surroundContents>
+    take new-parent, like node
+    like native-void
+
+  task to-string, name <toString>
+    like native-string

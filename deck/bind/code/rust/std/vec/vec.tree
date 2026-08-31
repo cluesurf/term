@@ -1,0 +1,1986 @@
+
+form vec, name <std::vec::Vec>
+  task new, name <new>
+    note <Constructs a new, empty Vec&lt;T&gt;.>
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task with-capacity, name <with_capacity>
+    note <Constructs a new, empty Vec&lt;T&gt; with the specified capacity.>
+
+    take capacity
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task from-raw-parts, name <from_raw_parts>
+    note <Creates a Vec&lt;T&gt; directly from the raw components of another vector.>
+
+    take ptr
+      like t
+        cite free
+      cite free
+      lock free
+      dive take
+    take length
+      like usize
+        cite free
+      cite free
+    take capacity
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task new-in, name <new_in>
+    note <Constructs a new, empty Vec&lt;T, A&gt;.>
+
+    take alloc
+      like a
+        cite free
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+        cite free
+
+  task with-capacity-in, name <with_capacity_in>
+    note <Constructs a new, empty Vec&lt;T, A&gt; with the specified capacity with the provided allocator.>
+
+    take capacity
+      like usize
+        cite free
+      cite free
+    take alloc
+      like a
+        cite free
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+        cite free
+
+  task from-raw-parts-in, name <from_raw_parts_in>
+    note <Creates a Vec&lt;T, A&gt; directly from the raw components of another vector.>
+
+    take ptr
+      like t
+        cite free
+      cite free
+      lock free
+      dive take
+    take length
+      like usize
+        cite free
+      cite free
+    take capacity
+      like usize
+        cite free
+      cite free
+    take alloc
+      like a
+        cite free
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+        cite free
+
+  task into-raw-parts, name <into_raw_parts>
+    note <Decomposes a Vec&lt;T&gt; into its raw components.>
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1, like t
+        take t-2, like usize
+        take t-3, like usize
+
+  task into-raw-parts-with-alloc, name <into_raw_parts_with_alloc>
+    note <Decomposes a Vec&lt;T&gt; into its raw components.>
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1, like t
+        take t-2, like usize
+        take t-3, like usize
+        take t-4, like a
+
+  task capacity, name <capacity>
+    note <Returns the number of elements the vector can hold without reallocating.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task reserve, name <reserve>
+    note <Reserves capacity for at least additional more elements to be inserted in the given Vec&lt;T&gt;. The collection may reserve more space to avoid frequent reallocations. After calling reserve, capacity will be greater than or equal to self.len() + additional. Does nothing if capacity is already sufficient.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task reserve-exact, name <reserve_exact>
+    note <Reserves the minimum capacity for exactly additional more elements to be inserted in the given Vec&lt;T&gt;. After calling reserve_exact, capacity will be greater than or equal to self.len() + additional. Does nothing if the capacity is already sufficient.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task try-reserve, name <try_reserve>
+    note <Tries to reserve capacity for at least additional more elements to be inserted in the given Vec&lt;T&gt;. The collection may reserve more space to avoid frequent reallocations. After calling try_reserve, capacity will be greater than or equal to self.len() + additional. Does nothing if capacity is already sufficient.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        like try-reserve-error
+          cite free
+        cite free
+
+  task try-reserve-exact, name <try_reserve_exact>
+    note <Tries to reserve the minimum capacity for exactly additional elements to be inserted in the given Vec&lt;T&gt;. After calling try_reserve_exact, capacity will be greater than or equal to self.len() + additional if it returns Ok(()). Does nothing if the capacity is already sufficient.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        like try-reserve-error
+          cite free
+        cite free
+
+  task shrink-to-fit, name <shrink_to_fit>
+    note <Shrinks the capacity of the vector as much as possible.>
+
+    take self
+      cite free
+
+  task shrink-to, name <shrink_to>
+    note <Shrinks the capacity of the vector with a lower bound.>
+
+    take self
+      cite free
+    take min-capacity
+      like usize
+        cite free
+      cite free
+
+  task into-boxed-slice, name <into_boxed_slice>
+    note <Converts the vector into Box&lt;[T]&gt;.>
+
+    take self
+      cite free
+
+    free seed
+      like box
+        list t
+        like a
+          cite free
+        cite free
+
+  task truncate, name <truncate>
+    note <Shortens the vector, keeping the first len elements and dropping the rest.>
+
+    take self
+      cite free
+    take len
+      like usize
+        cite free
+      cite free
+
+  task as-slice, name <as_slice>
+    note <Extracts a slice containing the entire vector.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task as-mut-slice, name <as_mut_slice>
+    note <Extracts a mutable slice of the entire vector.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task as-ptr, name <as_ptr>
+    note <Returns a raw pointer to the vector's buffer.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+      calm take
+
+  task as-mut-ptr, name <as_mut_ptr>
+    note <Returns an unsafe mutable pointer to the vector's buffer.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task allocator, name <allocator>
+    note <Returns a reference to the underlying allocator.>
+
+    take self
+      cite free
+
+    free seed
+      like a
+
+  task set-len, name <set_len>
+    note <Forces the length of the vector to new_len.>
+
+    take self
+      cite free
+    take new-len
+      like usize
+        cite free
+      cite free
+
+  task swap-remove, name <swap_remove>
+    note <Removes an element from the vector and returns it.>
+
+    take self
+      cite free
+    take index
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task insert, name <insert>
+    note <Inserts an element at position index within the vector, shifting all elements after it to the right.>
+
+    take self
+      cite free
+    take index
+      like usize
+        cite free
+      cite free
+    take element
+      like t
+        cite free
+      cite free
+
+  task remove, name <remove>
+    note <Removes and returns the element at position index within the vector, shifting all elements after it to the left.>
+
+    take self
+      cite free
+    take index
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task retain, name <retain>
+    note <Retains only the elements specified by the predicate.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+  task retain-mut, name <retain_mut>
+    note <Retains only the elements specified by the predicate, passing a mutable reference to it.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+  task dedup-by-key, name <dedup_by_key>
+    note <Removes all but the first of consecutive elements in the vector that resolve to the same key.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like k
+            cite free
+    lead k
+      like partial-eq
+        like k
+          cite free
+        cite free
+
+    head f
+    head k
+
+    take self
+      cite free
+    take key
+      like f
+        cite free
+      cite free
+
+  task dedup-by, name <dedup_by>
+    note <Removes all but the first of consecutive elements in the vector satisfying a given equality relation.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        take f-2, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take same-bucket
+      like f
+        cite free
+      cite free
+
+  task push, name <push>
+    note <Appends an element to the back of a collection.>
+
+    take self
+      cite free
+    take value
+      like t
+        cite free
+      cite free
+
+  task pop, name <pop>
+    note <Removes the last element from a vector and returns it, or None if it is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like t
+          cite free
+        cite free
+
+  task append, name <append>
+    note <Moves all the elements of other into Self, leaving other empty.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+      lock free
+
+  task drain, name <drain>
+    note <Creates a draining iterator that removes the specified range in the vector and yields the removed items.>
+
+    lead r
+      like range-bounds
+        like usize
+          cite free
+        cite free
+
+    head r
+
+    take self
+      cite free
+    take range
+      like r
+        cite free
+      cite free
+
+    free seed
+      like drain
+        time mask
+        like t
+          cite free
+        like a
+          cite free
+        cite free
+
+  task clear, name <clear>
+    note <Clears the vector, removing all values.>
+
+    take self
+      cite free
+
+  task len, name <len>
+    note <Returns the number of elements in the vector, also referred to as its 'length'.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task is-empty, name <is_empty>
+    note <Returns true if the vector contains no elements.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task split-off, name <split_off>
+    note <Splits the collection into two at the given index.>
+
+    lead a
+      like clone
+        cite free
+
+    take self
+      cite free
+    take at
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+        cite free
+
+  task resize-with, name <resize_with>
+    note <Resizes the Vec in-place so that len is equal to new_len.>
+
+    lead f
+      like fn-mut
+        free seed
+          like t
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take new-len
+      like usize
+        cite free
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+  task leak, name <leak>
+    note <Consumes and leaks the Vec, returning a mutable reference to the contents, &'a mut [T]. Note that the type T must outlive the chosen lifetime 'a. If the type has only static references, or none at all, then this may be chosen to be 'static.>
+
+    lead a
+      time a
+
+    time a
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task spare-capacity-mut, name <spare_capacity_mut>
+    note <Returns the remaining spare capacity of the vector as a slice of MaybeUninit&lt;T&gt;.>
+
+    take self
+      cite free
+
+    free seed
+      like list
+        like maybe-uninit
+          like t
+            cite free
+
+  task split-at-spare-mut, name <split_at_spare_mut>
+    note <Returns vector content as a slice of T, along with the remaining spare capacity of the vector as a slice of MaybeUninit&lt;T&gt;.>
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2
+          like list
+            like maybe-uninit
+              like t
+                cite free
+
+  task resize, name <resize>
+    note <Resizes the Vec in-place so that len is equal to new_len.>
+
+    take self
+      cite free
+    take new-len
+      like usize
+        cite free
+      cite free
+    take value
+      like t
+        cite free
+      cite free
+
+  task extend-from-slice, name <extend_from_slice>
+    note <Clones and appends all elements in a slice to the Vec.>
+
+    take self
+      cite free
+    take other
+      list t
+      cite free
+
+  task extend-from-within, name <extend_from_within>
+    note <Copies elements from src range to the end of the vector.>
+
+    lead r
+      like range-bounds
+        like usize
+          cite free
+        cite free
+
+    head r
+
+    take self
+      cite free
+    take src
+      like r
+        cite free
+      cite free
+
+  task dedup, name <dedup>
+    note <Removes consecutive repeated elements in the vector according to the PartialEq trait implementation.>
+
+    take self
+      cite free
+
+  task splice, name <splice>
+    note <Creates a splicing iterator that replaces the specified range in the vector with the given replace_with iterator and yields the removed items. replace_with does not need to be the same length as range.>
+
+    cast c-1
+      like i
+      like into-iterator
+
+    lead r
+      like range-bounds
+        like usize
+          cite free
+        cite free
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like t
+              cite free
+        cite free
+
+    head r
+    head i
+
+    take self
+      cite free
+    take range
+      like r
+        cite free
+      cite free
+    take replace-with
+      like i
+        cite free
+      cite free
+
+    free seed
+      like splice
+        time mask
+        like c-1/into-iter
+        like a
+          cite free
+        cite free
+
+  task drain-filter, name <drain_filter>
+    note <Creates an iterator which uses a closure to determine if an element should be removed.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take filter
+      like f
+        cite free
+      cite free
+
+    free seed
+      like drain-filter
+        time mask
+        like t
+          cite free
+        like f
+          cite free
+        like a
+          cite free
+        cite free
+
+  task as-mut, name <as_mut>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task as-mut, name <as_mut>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+
+  task borrow, name <borrow>
+    note <Immutably borrows from an owned value.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task borrow-mut, name <borrow_mut>
+    note <Mutably borrows from an owned value.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Creates an empty Vec&lt;T&gt;.>
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task deref, name <deref>
+    note <Dereferences the value.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task deref-mut, name <deref_mut>
+    note <Mutably dereferences the value.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task drop, name <drop>
+    note <Executes the destructor for this type.>
+
+    take self
+      cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like t
+              time a
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take t
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like t
+              cite free
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take item
+      like t
+        cite free
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task from, name <from>
+    note <Allocate a Vec&lt;T&gt; and fill it by cloning s's items.>
+
+    take s
+      list t
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Allocate a Vec&lt;T&gt; and fill it by cloning s's items.>
+
+    take s
+      list t
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Allocate a Vec&lt;u8&gt; and fill it with a UTF-8 string.>
+
+    take s
+      like str
+
+    free seed
+      like vec
+        like u8
+          cite free
+        like global
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Creates a Borrowed variant of Cow from a reference to Vec.>
+
+    take v
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        time a
+
+    free seed
+      like cow
+        time a
+        list t
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take s
+      like list
+        like t
+        name n
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a BinaryHeap&lt;T&gt; into a Vec&lt;T&gt;.>
+
+    take heap
+      like binary-heap
+        like t
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Convert a boxed slice into a vector by transferring ownership of the existing heap allocation.>
+
+    take s
+      like box
+        list t
+        like a
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a CString into a Vec&lt;u8&gt;.>
+
+    take s
+      like c-string
+        cite free
+      cite free
+
+    free seed
+      like vec
+        like u8
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Convert a clone-on-write slice into a vector.>
+
+    take s
+      like cow
+        time a
+        list t
+        cite free
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts the given String to a vector Vec that holds values of type u8.>
+
+    take string
+      like string
+        cite free
+      cite free
+
+    free seed
+      like vec
+        like u8
+          cite free
+        like global
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a Vec&lt;NonZeroU8&gt; into a CString without copying nor checking for inner null bytes.>
+
+    take v
+      like vec
+        like non-zero-u8
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like c-string
+        cite free
+
+  task from, name <from>
+    note <Convert a vector into a boxed slice.>
+
+    take v
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like box
+        list t
+        like a
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Turn a Vec&lt;T&gt; into a VecDeque&lt;T&gt;.>
+
+    take other
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like vec-deque
+        like t
+          cite free
+        like a
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Allocate a reference-counted slice and move v's items into it.>
+
+    take v
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like rc
+        list t
+        cite free
+
+  task from, name <from>
+    note <Allocate a reference-counted slice and move v's items into it.>
+
+    take v
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like arc
+        list t
+        cite free
+
+  task from, name <from>
+    note <Creates an Owned variant of Cow from an owned instance of Vec.>
+
+    take v
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like cow
+        time a
+        list t
+        cite free
+
+  task from, name <from>
+    note <Converts a Vec&lt;T&gt; into a BinaryHeap&lt;T&gt;.>
+
+    take vec
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like binary-heap
+        like t
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Turn a VecDeque&lt;T&gt; into a Vec&lt;T&gt;.>
+
+    take other
+      like vec-deque
+        like t
+          cite free
+        like a
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like t
+              cite free
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task index, name <index>
+    note <Performs the indexing (container[index]) operation.>
+
+    cast c-1
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+      like index
+        like i
+          cite free
+
+    take self
+      cite free
+    take index
+      like i
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task index-mut, name <index_mut>
+    note <Performs the mutable indexing (container[index]) operation.>
+
+    cast c-1
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+      like index
+        like i
+          cite free
+
+    take self
+      cite free
+    take index
+      like i
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task into-iter, name <into_iter>
+    note <Creates an iterator from a value.>
+
+    take self
+      cite free
+
+    free seed
+      like iter
+        time a
+        like t
+          cite free
+        cite free
+
+  task into-iter, name <into_iter>
+    note <Creates a consuming iterator, that is, one that moves each value out of the vector (from start to end). The vector cannot be used after calling this.>
+
+    take self
+      cite free
+
+    free seed
+      like into-iter
+        like t
+          cite free
+        like a
+          cite free
+        cite free
+
+  task into-iter, name <into_iter>
+    note <Creates an iterator from a value.>
+
+    take self
+      cite free
+
+    free seed
+      like iter-mut
+        time a
+        like t
+          cite free
+        cite free
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like list
+        like u
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like list
+        like u
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      list u
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      list u
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      list u
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      list u
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like list
+        like u
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like list
+        like u
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      list u
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      list u
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like u
+          cite free
+        like a
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like u
+          cite free
+        like a
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like u
+          cite free
+        like a
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like u
+          cite free
+        like a
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like u
+          cite free
+        like a
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like u
+          cite free
+        like a
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like u
+          cite free
+        like a
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like u
+          cite free
+        like a
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like u
+          cite free
+        like a
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like u
+          cite free
+        like a
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like u
+          cite free
+        like a
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task try-from, name <try_from>
+    note <Gets the entire contents of the Vec&lt;T&gt; as an array, if its size exactly matches that of the requested array.>
+
+    take vec
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like result
+        like list
+          like t
+          name n
+        like vec
+          like t
+            cite free
+          like a
+            cite free
+          cite free
+        cite free
+
+  task write, name <write>
+    note <Write a buffer into this writer, returning how many bytes were written.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task write-vectored, name <write_vectored>
+    note <Like write, except that it writes from a slice of buffers.>
+
+    take self
+      cite free
+    take bufs
+      like list
+        like io-slice
+          time mask
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task is-write-vectored, name <is_write_vectored>
+    note <Determines if this Writer has an efficient write_vectored implementation.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task write-all, name <write_all>
+    note <Attempts to write an entire buffer into this writer.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task flush, name <flush>
+    note <Flush this output stream, ensuring that all intermediately buffered contents reach their destination.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-all-vectored, name <write_all_vectored>
+    note <Attempts to write multiple buffers into this writer.>
+
+    take self
+      cite free
+    take bufs
+      like list
+        like io-slice
+          time mask
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-fmt, name <write_fmt>
+    note <Writes a formatted string into this writer, returning any error encountered.>
+
+    take self
+      cite free
+    take fmt
+      like arguments
+        time mask
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task by-ref, name <by_ref>
+    note <Creates a “by reference” adapter for this instance of Write.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like self

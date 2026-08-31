@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript/es2015/iterable/float64-array-constructor
+  find float64-array-constructor
+
+load @term/bind/code/javascript/es2016/array/include/float64-array
+  find float64-array
+
+form float64-array-constructor, name <Float64ArrayConstructor>
+  hook make
+    like float64-array

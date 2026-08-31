@@ -1,0 +1,16 @@
+
+load @term/bind
+  find like
+
+load @term/bind/code/javascript
+  find native-string
+
+form inspector-notification, name <InspectorNotification>
+  head t
+
+  link method, name <method>
+    like native-string
+    flex true
+  link params, name <params>
+    like t
+    flex true

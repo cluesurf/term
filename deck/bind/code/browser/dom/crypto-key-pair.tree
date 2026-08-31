@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/crypto-key
+  find crypto-key
+
+form crypto-key-pair, name <CryptoKeyPair>
+  link private-key, name <privateKey>
+    like crypto-key
+    lock false
+  link public-key, name <publicKey>
+    like crypto-key
+    lock false

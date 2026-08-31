@@ -1,0 +1,26 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form error-event, name <ErrorEvent>
+  base event
+
+  link colno, name <colno>
+    like native-number
+  link error, name <error>
+    like native-any
+  link filename, name <filename>
+    like native-string
+  link lineno, name <lineno>
+    like native-number
+  link message, name <message>
+    like native-string

@@ -1,0 +1,23 @@
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form device-motion-event-acceleration-init, name <DeviceMotionEventAccelerationInit>
+  link x, name <x>
+    like or
+      like native-number
+      like native-null
+    lock false
+  link y, name <y>
+    like or
+      like native-number
+      like native-null
+    lock false
+  link z, name <z>
+    like or
+      like native-number
+      like native-null
+    lock false

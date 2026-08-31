@@ -1,0 +1,7 @@
+
+load @term/bind/code/javascript
+  find native-symbol
+
+host custom, name <custom>
+  like native-symbol
+    cool true

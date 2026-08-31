@@ -1,0 +1,16 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-undefined
+
+load @term/bind/code/node/inspector/runtime
+  find execution-context-id
+
+form global-lexical-scope-names-parameter-type, name <GlobalLexicalScopeNamesParameterType>
+  link execution-context-id, name <executionContextId>
+    like or
+      like execution-context-id
+      like native-undefined
+    flex true

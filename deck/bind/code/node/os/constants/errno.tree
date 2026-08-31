@@ -1,0 +1,414 @@
+
+load @term/bind/code/javascript
+  find native-number
+
+host e2-big, name <E2BIG>
+  like native-number
+
+host eacces, name <EACCES>
+  like native-number
+
+host eaddrinuse, name <EADDRINUSE>
+  like native-number
+
+host eaddrnotavail, name <EADDRNOTAVAIL>
+  like native-number
+
+host eafnosupport, name <EAFNOSUPPORT>
+  like native-number
+
+host eagain, name <EAGAIN>
+  like native-number
+
+host ealready, name <EALREADY>
+  like native-number
+
+host ebadf, name <EBADF>
+  like native-number
+
+host ebadmsg, name <EBADMSG>
+  like native-number
+
+host ebusy, name <EBUSY>
+  like native-number
+
+host ecanceled, name <ECANCELED>
+  like native-number
+
+host echild, name <ECHILD>
+  like native-number
+
+host econnaborted, name <ECONNABORTED>
+  like native-number
+
+host econnrefused, name <ECONNREFUSED>
+  like native-number
+
+host econnreset, name <ECONNRESET>
+  like native-number
+
+host edeadlk, name <EDEADLK>
+  like native-number
+
+host edestaddrreq, name <EDESTADDRREQ>
+  like native-number
+
+host edom, name <EDOM>
+  like native-number
+
+host edquot, name <EDQUOT>
+  like native-number
+
+host eexist, name <EEXIST>
+  like native-number
+
+host efault, name <EFAULT>
+  like native-number
+
+host efbig, name <EFBIG>
+  like native-number
+
+host ehostunreach, name <EHOSTUNREACH>
+  like native-number
+
+host eidrm, name <EIDRM>
+  like native-number
+
+host eilseq, name <EILSEQ>
+  like native-number
+
+host einprogress, name <EINPROGRESS>
+  like native-number
+
+host eintr, name <EINTR>
+  like native-number
+
+host einval, name <EINVAL>
+  like native-number
+
+host eio, name <EIO>
+  like native-number
+
+host eisconn, name <EISCONN>
+  like native-number
+
+host eisdir, name <EISDIR>
+  like native-number
+
+host eloop, name <ELOOP>
+  like native-number
+
+host emfile, name <EMFILE>
+  like native-number
+
+host emlink, name <EMLINK>
+  like native-number
+
+host emsgsize, name <EMSGSIZE>
+  like native-number
+
+host emultihop, name <EMULTIHOP>
+  like native-number
+
+host enametoolong, name <ENAMETOOLONG>
+  like native-number
+
+host enetdown, name <ENETDOWN>
+  like native-number
+
+host enetreset, name <ENETRESET>
+  like native-number
+
+host enetunreach, name <ENETUNREACH>
+  like native-number
+
+host enfile, name <ENFILE>
+  like native-number
+
+host enobufs, name <ENOBUFS>
+  like native-number
+
+host enodata, name <ENODATA>
+  like native-number
+
+host enodev, name <ENODEV>
+  like native-number
+
+host enoent, name <ENOENT>
+  like native-number
+
+host enoexec, name <ENOEXEC>
+  like native-number
+
+host enolck, name <ENOLCK>
+  like native-number
+
+host enolink, name <ENOLINK>
+  like native-number
+
+host enomem, name <ENOMEM>
+  like native-number
+
+host enomsg, name <ENOMSG>
+  like native-number
+
+host enoprotoopt, name <ENOPROTOOPT>
+  like native-number
+
+host enospc, name <ENOSPC>
+  like native-number
+
+host enosr, name <ENOSR>
+  like native-number
+
+host enostr, name <ENOSTR>
+  like native-number
+
+host enosys, name <ENOSYS>
+  like native-number
+
+host enotconn, name <ENOTCONN>
+  like native-number
+
+host enotdir, name <ENOTDIR>
+  like native-number
+
+host enotempty, name <ENOTEMPTY>
+  like native-number
+
+host enotsock, name <ENOTSOCK>
+  like native-number
+
+host enotsup, name <ENOTSUP>
+  like native-number
+
+host enotty, name <ENOTTY>
+  like native-number
+
+host enxio, name <ENXIO>
+  like native-number
+
+host eopnotsupp, name <EOPNOTSUPP>
+  like native-number
+
+host eoverflow, name <EOVERFLOW>
+  like native-number
+
+host eperm, name <EPERM>
+  like native-number
+
+host epipe, name <EPIPE>
+  like native-number
+
+host eproto, name <EPROTO>
+  like native-number
+
+host eprotonosupport, name <EPROTONOSUPPORT>
+  like native-number
+
+host eprototype, name <EPROTOTYPE>
+  like native-number
+
+host erange, name <ERANGE>
+  like native-number
+
+host erofs, name <EROFS>
+  like native-number
+
+host espipe, name <ESPIPE>
+  like native-number
+
+host esrch, name <ESRCH>
+  like native-number
+
+host estale, name <ESTALE>
+  like native-number
+
+host etime, name <ETIME>
+  like native-number
+
+host etimedout, name <ETIMEDOUT>
+  like native-number
+
+host etxtbsy, name <ETXTBSY>
+  like native-number
+
+host ewouldblock, name <EWOULDBLOCK>
+  like native-number
+
+host exdev, name <EXDEV>
+  like native-number
+
+host wsaeintr, name <WSAEINTR>
+  like native-number
+
+host wsaebadf, name <WSAEBADF>
+  like native-number
+
+host wsaeacces, name <WSAEACCES>
+  like native-number
+
+host wsaefault, name <WSAEFAULT>
+  like native-number
+
+host wsaeinval, name <WSAEINVAL>
+  like native-number
+
+host wsaemfile, name <WSAEMFILE>
+  like native-number
+
+host wsaewouldblock, name <WSAEWOULDBLOCK>
+  like native-number
+
+host wsaeinprogress, name <WSAEINPROGRESS>
+  like native-number
+
+host wsaealready, name <WSAEALREADY>
+  like native-number
+
+host wsaenotsock, name <WSAENOTSOCK>
+  like native-number
+
+host wsaedestaddrreq, name <WSAEDESTADDRREQ>
+  like native-number
+
+host wsaemsgsize, name <WSAEMSGSIZE>
+  like native-number
+
+host wsaeprototype, name <WSAEPROTOTYPE>
+  like native-number
+
+host wsaenoprotoopt, name <WSAENOPROTOOPT>
+  like native-number
+
+host wsaeprotonosupport, name <WSAEPROTONOSUPPORT>
+  like native-number
+
+host wsaesocktnosupport, name <WSAESOCKTNOSUPPORT>
+  like native-number
+
+host wsaeopnotsupp, name <WSAEOPNOTSUPP>
+  like native-number
+
+host wsaepfnosupport, name <WSAEPFNOSUPPORT>
+  like native-number
+
+host wsaeafnosupport, name <WSAEAFNOSUPPORT>
+  like native-number
+
+host wsaeaddrinuse, name <WSAEADDRINUSE>
+  like native-number
+
+host wsaeaddrnotavail, name <WSAEADDRNOTAVAIL>
+  like native-number
+
+host wsaenetdown, name <WSAENETDOWN>
+  like native-number
+
+host wsaenetunreach, name <WSAENETUNREACH>
+  like native-number
+
+host wsaenetreset, name <WSAENETRESET>
+  like native-number
+
+host wsaeconnaborted, name <WSAECONNABORTED>
+  like native-number
+
+host wsaeconnreset, name <WSAECONNRESET>
+  like native-number
+
+host wsaenobufs, name <WSAENOBUFS>
+  like native-number
+
+host wsaeisconn, name <WSAEISCONN>
+  like native-number
+
+host wsaenotconn, name <WSAENOTCONN>
+  like native-number
+
+host wsaeshutdown, name <WSAESHUTDOWN>
+  like native-number
+
+host wsaetoomanyrefs, name <WSAETOOMANYREFS>
+  like native-number
+
+host wsaetimedout, name <WSAETIMEDOUT>
+  like native-number
+
+host wsaeconnrefused, name <WSAECONNREFUSED>
+  like native-number
+
+host wsaeloop, name <WSAELOOP>
+  like native-number
+
+host wsaenametoolong, name <WSAENAMETOOLONG>
+  like native-number
+
+host wsaehostdown, name <WSAEHOSTDOWN>
+  like native-number
+
+host wsaehostunreach, name <WSAEHOSTUNREACH>
+  like native-number
+
+host wsaenotempty, name <WSAENOTEMPTY>
+  like native-number
+
+host wsaeproclim, name <WSAEPROCLIM>
+  like native-number
+
+host wsaeusers, name <WSAEUSERS>
+  like native-number
+
+host wsaedquot, name <WSAEDQUOT>
+  like native-number
+
+host wsaestale, name <WSAESTALE>
+  like native-number
+
+host wsaeremote, name <WSAEREMOTE>
+  like native-number
+
+host wsasysnotready, name <WSASYSNOTREADY>
+  like native-number
+
+host wsavernotsupported, name <WSAVERNOTSUPPORTED>
+  like native-number
+
+host wsanotinitialised, name <WSANOTINITIALISED>
+  like native-number
+
+host wsaediscon, name <WSAEDISCON>
+  like native-number
+
+host wsaenomore, name <WSAENOMORE>
+  like native-number
+
+host wsaecancelled, name <WSAECANCELLED>
+  like native-number
+
+host wsaeinvalidproctable, name <WSAEINVALIDPROCTABLE>
+  like native-number
+
+host wsaeinvalidprovider, name <WSAEINVALIDPROVIDER>
+  like native-number
+
+host wsaeproviderfailedinit, name <WSAEPROVIDERFAILEDINIT>
+  like native-number
+
+host wsasyscallfailure, name <WSASYSCALLFAILURE>
+  like native-number
+
+host wsaservice-not-found, name <WSASERVICE_NOT_FOUND>
+  like native-number
+
+host wsatype-not-found, name <WSATYPE_NOT_FOUND>
+  like native-number
+
+host wsa-e-no-more, name <WSA_E_NO_MORE>
+  like native-number
+
+host wsa-e-cancelled, name <WSA_E_CANCELLED>
+  like native-number
+
+host wsaerefused, name <WSAEREFUSED>
+  like native-number

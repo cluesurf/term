@@ -1,0 +1,9 @@
+
+load @term/bind/code/javascript/var-date
+  find var-date
+
+form var-date, name <VarDate>
+  link var-date-typekey, name <VarDate_typekey>, like var-date
+
+form var-date-constructor
+  hook make

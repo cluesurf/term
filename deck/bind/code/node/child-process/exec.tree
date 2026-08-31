@@ -1,0 +1,106 @@
+
+load @term/bind
+  find and
+  find form
+  find or
+
+load @term/bind/code/javascript
+  find native-null
+  find native-string
+  find object-encoding-options
+
+load @term/bind/code/node/buffer
+  find buffer
+  find buffer-encoding
+
+load @term/bind/code/node/child-process
+  find exec-options
+  find promise-with-child
+
+task promisify, name <__promisify__>
+  like promise-with-child
+    like form
+      link stdout, name <stdout>
+        like native-string
+        flex true
+      link stderr, name <stderr>
+        like native-string
+        flex true
+
+  take command, like native-string
+
+task promisify, name <__promisify__>
+  like promise-with-child
+    like form
+      link stdout, name <stdout>
+        like buffer
+        flex true
+      link stderr, name <stderr>
+        like buffer
+        flex true
+
+  take command, like native-string
+  take options
+    like and
+      like form
+        link encoding, name <encoding>
+          like or
+            text <buffer>
+            like native-null
+          flex true
+      like exec-options
+
+task promisify, name <__promisify__>
+  like promise-with-child
+    like form
+      link stdout, name <stdout>
+        like native-string
+        flex true
+      link stderr, name <stderr>
+        like native-string
+        flex true
+
+  take command, like native-string
+  take options
+    like and
+      like form
+        link encoding, name <encoding>
+          like buffer-encoding
+          flex true
+      like exec-options
+
+task promisify, name <__promisify__>
+  like promise-with-child
+    like form
+      link stdout, name <stdout>
+        like native-string
+        flex true
+      link stderr, name <stderr>
+        like native-string
+        flex true
+
+  take command, like native-string
+  take options, like exec-options
+
+task promisify, name <__promisify__>
+  like promise-with-child
+    like form
+      link stdout, name <stdout>
+        like or
+          like native-string
+          like buffer
+        flex true
+      link stderr, name <stderr>
+        like or
+          like native-string
+          like buffer
+        flex true
+
+  take command, like native-string
+  take options
+    like or
+      like and
+        like object-encoding-options
+        like exec-options
+      like native-null
+    void true

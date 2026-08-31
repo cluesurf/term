@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/screen-orientation
+  find screen-orientation
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form screen, name <Screen>
+  link avail-height, name <availHeight>
+    like native-number
+  link avail-width, name <availWidth>
+    like native-number
+  link color-depth, name <colorDepth>
+    like native-number
+  link height, name <height>
+    like native-number
+  link orientation, name <orientation>
+    like screen-orientation
+  link pixel-depth, name <pixelDepth>
+    like native-number
+  link width, name <width>
+    like native-number

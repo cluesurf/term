@@ -1,0 +1,116 @@
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form data-view, name <DataView>
+  link buffer, name <buffer>
+    like array-buffer
+  link byte-length, name <byteLength>
+    like native-number
+  link byte-offset, name <byteOffset>
+    like native-number
+
+  task get-float32, name <getFloat32>
+    take byte-offset, like native-number
+    take little-endian, like maybe
+      like native-boolean
+    like native-number
+
+  task get-float64, name <getFloat64>
+    take byte-offset, like native-number
+    take little-endian, like maybe
+      like native-boolean
+    like native-number
+
+  task get-int8, name <getInt8>
+    take byte-offset, like native-number
+    like native-number
+
+  task get-int16, name <getInt16>
+    take byte-offset, like native-number
+    take little-endian, like maybe
+      like native-boolean
+    like native-number
+
+  task get-int32, name <getInt32>
+    take byte-offset, like native-number
+    take little-endian, like maybe
+      like native-boolean
+    like native-number
+
+  task get-uint8, name <getUint8>
+    take byte-offset, like native-number
+    like native-number
+
+  task get-uint16, name <getUint16>
+    take byte-offset, like native-number
+    take little-endian, like maybe
+      like native-boolean
+    like native-number
+
+  task get-uint32, name <getUint32>
+    take byte-offset, like native-number
+    take little-endian, like maybe
+      like native-boolean
+    like native-number
+
+  task set-float32, name <setFloat32>
+    take byte-offset, like native-number
+    take value, like native-number
+    take little-endian, like maybe
+      like native-boolean
+    like native-void
+
+  task set-float64, name <setFloat64>
+    take byte-offset, like native-number
+    take value, like native-number
+    take little-endian, like maybe
+      like native-boolean
+    like native-void
+
+  task set-int8, name <setInt8>
+    take byte-offset, like native-number
+    take value, like native-number
+    like native-void
+
+  task set-int16, name <setInt16>
+    take byte-offset, like native-number
+    take value, like native-number
+    take little-endian, like maybe
+      like native-boolean
+    like native-void
+
+  task set-int32, name <setInt32>
+    take byte-offset, like native-number
+    take value, like native-number
+    take little-endian, like maybe
+      like native-boolean
+    like native-void
+
+  task set-uint8, name <setUint8>
+    take byte-offset, like native-number
+    take value, like native-number
+    like native-void
+
+  task set-uint16, name <setUint16>
+    take byte-offset, like native-number
+    take value, like native-number
+    take little-endian, like maybe
+      like native-boolean
+    like native-void
+
+  task set-uint32, name <setUint32>
+    take byte-offset, like native-number
+    take value, like native-number
+    take little-endian, like maybe
+      like native-boolean
+    like native-void

@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/predefined-color-space
+  find predefined-color-space
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form canvas-rendering-context2-d-settings, name <CanvasRenderingContext2DSettings>
+  link alpha, name <alpha>
+    like native-boolean
+    lock false
+  link color-space, name <colorSpace>
+    like predefined-color-space
+    lock false
+  link desynchronized, name <desynchronized>
+    like native-boolean
+    lock false

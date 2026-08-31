@@ -1,0 +1,135 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/dom-token-list
+  find dom-token-list
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/html-element
+  find html-element
+
+load @term/bind/code/browser/dom/html-element-event-map
+  find html-element-event-map
+
+load @term/bind/code/browser/dom/html-hyperlink-element-utils
+  find html-hyperlink-element-utils
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form html-anchor-element, name <HTMLAnchorElement>
+  base html-element
+  base html-hyperlink-element-utils
+
+  link charset, name <charset>
+    like native-string
+    lock false
+  link coords, name <coords>
+    like native-string
+    lock false
+  link download, name <download>
+    like native-string
+    lock false
+  link hreflang, name <hreflang>
+    like native-string
+    lock false
+  link name, name <name>
+    like native-string
+    lock false
+  link ping, name <ping>
+    like native-string
+    lock false
+  link referrer-policy, name <referrerPolicy>
+    like native-string
+    lock false
+  link rel, name <rel>
+    like native-string
+    lock false
+  link rel-list, name <relList>
+    like dom-token-list
+  link rev, name <rev>
+    like native-string
+    lock false
+  link shape, name <shape>
+    like native-string
+    lock false
+  link target, name <target>
+    like native-string
+    lock false
+  link text, name <text>
+    like native-string
+    lock false
+  link type, name <type>
+    like native-string
+    lock false
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like html-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like html-anchor-element
+        take ev
+          like index
+            like html-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like html-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like html-anchor-element
+        take ev
+          like index
+            like html-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

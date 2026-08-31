@@ -1,0 +1,21 @@
+
+load @term/bind/code/javascript
+  find native-number
+
+host priority-low, name <PRIORITY_LOW>
+  like native-number
+
+host priority-below-normal, name <PRIORITY_BELOW_NORMAL>
+  like native-number
+
+host priority-normal, name <PRIORITY_NORMAL>
+  like native-number
+
+host priority-above-normal, name <PRIORITY_ABOVE_NORMAL>
+  like native-number
+
+host priority-high, name <PRIORITY_HIGH>
+  like native-number
+
+host priority-highest, name <PRIORITY_HIGHEST>
+  like native-number

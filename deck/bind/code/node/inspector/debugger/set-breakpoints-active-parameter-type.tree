@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript
+  find native-boolean
+
+form set-breakpoints-active-parameter-type, name <SetBreakpointsActiveParameterType>
+  link active, name <active>
+    like native-boolean
+    flex true

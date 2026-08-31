@@ -1,0 +1,27 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+
+load @term/bind/code/node/crypto
+  find dsa-encoding
+
+form signing-options, name <SigningOptions>
+  link padding, name <padding>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link salt-length, name <saltLength>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link dsa-encoding, name <dsaEncoding>
+    like or
+      like dsa-encoding
+      like native-undefined
+    flex true

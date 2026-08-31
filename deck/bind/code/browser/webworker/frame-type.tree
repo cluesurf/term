@@ -1,0 +1,7 @@
+
+form frame-type, name <FrameType>
+  like or
+    text <auxiliary>
+    text <nested>
+    text <none>
+    text <top-level>

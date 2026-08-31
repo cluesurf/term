@@ -1,0 +1,10 @@
+
+load @term/bind/code/node/dns
+  find resolve-options
+
+form resolve-with-ttl-options, name <ResolveWithTtlOptions>
+  base resolve-options
+
+  link ttl, name <ttl>
+    text <true>
+    flex true

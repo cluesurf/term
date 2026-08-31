@@ -1,0 +1,14 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+
+form check-prime-options, name <CheckPrimeOptions>
+  link checks, name <checks>
+    like or
+      like native-number
+      like native-undefined
+    flex true

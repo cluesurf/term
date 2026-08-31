@@ -1,0 +1,29 @@
+
+load @term/bind/code/browser/dom/rtc-degradation-preference
+  find rtc-degradation-preference
+
+load @term/bind/code/browser/dom/rtc-rtp-encoding-parameters
+  find rtc-rtp-encoding-parameters
+
+load @term/bind/code/browser/dom/rtc-rtp-parameters
+  find rtc-rtp-parameters
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form rtc-rtp-send-parameters, name <RTCRtpSendParameters>
+  base rtc-rtp-parameters
+
+  link degradation-preference, name <degradationPreference>
+    like rtc-degradation-preference
+    lock false
+  link encodings, name <encodings>
+    like native-array
+      like rtc-rtp-encoding-parameters
+    lock false
+  link transaction-id, name <transactionId>
+    like native-string
+    lock false

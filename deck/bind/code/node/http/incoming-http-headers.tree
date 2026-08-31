@@ -1,0 +1,328 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-string
+  find native-undefined
+
+load @term/bind
+  find or
+
+form incoming-http-headers, name <IncomingHttpHeaders>
+  base node-js-dict
+
+  link accept, name <accept>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link accept-language, name <accept-language>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link accept-patch, name <accept-patch>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link accept-ranges, name <accept-ranges>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link access-control-allow-credentials, name <access-control-allow-credentials>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link access-control-allow-headers, name <access-control-allow-headers>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link access-control-allow-methods, name <access-control-allow-methods>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link access-control-allow-origin, name <access-control-allow-origin>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link access-control-expose-headers, name <access-control-expose-headers>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link access-control-max-age, name <access-control-max-age>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link access-control-request-headers, name <access-control-request-headers>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link access-control-request-method, name <access-control-request-method>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link age, name <age>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link allow, name <allow>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link alt-svc, name <alt-svc>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link authorization, name <authorization>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link cache-control, name <cache-control>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link connection, name <connection>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link content-disposition, name <content-disposition>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link content-encoding, name <content-encoding>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link content-language, name <content-language>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link content-length, name <content-length>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link content-location, name <content-location>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link content-range, name <content-range>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link content-type, name <content-type>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link cookie, name <cookie>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link date, name <date>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link etag, name <etag>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link expect, name <expect>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link expires, name <expires>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link forwarded, name <forwarded>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link from, name <from>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link host, name <host>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link if-match, name <if-match>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link if-modified-since, name <if-modified-since>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link if-none-match, name <if-none-match>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link if-unmodified-since, name <if-unmodified-since>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link last-modified, name <last-modified>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link location, name <location>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link origin, name <origin>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link pragma, name <pragma>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link proxy-authenticate, name <proxy-authenticate>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link proxy-authorization, name <proxy-authorization>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link public-key-pins, name <public-key-pins>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link range, name <range>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link referer, name <referer>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link retry-after, name <retry-after>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link sec-websocket-accept, name <sec-websocket-accept>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link sec-websocket-extensions, name <sec-websocket-extensions>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link sec-websocket-key, name <sec-websocket-key>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link sec-websocket-protocol, name <sec-websocket-protocol>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link sec-websocket-version, name <sec-websocket-version>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link set-cookie, name <set-cookie>
+    like or
+      like array
+        like native-string
+      like native-undefined
+    flex true
+  link strict-transport-security, name <strict-transport-security>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link tk, name <tk>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link trailer, name <trailer>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link transfer-encoding, name <transfer-encoding>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link upgrade, name <upgrade>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link user-agent, name <user-agent>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link vary, name <vary>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link via, name <via>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link warning, name <warning>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link www-authenticate, name <www-authenticate>
+    like or
+      like native-string
+      like native-undefined
+    flex true

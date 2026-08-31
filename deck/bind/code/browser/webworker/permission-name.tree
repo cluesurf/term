@@ -1,0 +1,23 @@
+
+form permission-name, name <PermissionName>
+  like or
+    text <accelerometer>
+    text <ambient-light-sensor>
+    text <background-fetch>
+    text <background-sync>
+    text <bluetooth>
+    text <camera>
+    text <clipboard-read>
+    text <clipboard-write>
+    text <device-info>
+    text <display-capture>
+    text <geolocation>
+    text <gyroscope>
+    text <magnetometer>
+    text <microphone>
+    text <midi>
+    text <nfc>
+    text <notifications>
+    text <persistent-storage>
+    text <push>
+    text <speaker>

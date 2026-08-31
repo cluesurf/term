@@ -1,0 +1,18 @@
+
+bear @term/bind/code/javascript/node/inspector/profiler/profile-node
+bear @term/bind/code/javascript/node/inspector/profiler/profile
+bear @term/bind/code/javascript/node/inspector/profiler/position-tick-info
+bear @term/bind/code/javascript/node/inspector/profiler/coverage-range
+bear @term/bind/code/javascript/node/inspector/profiler/function-coverage
+bear @term/bind/code/javascript/node/inspector/profiler/script-coverage
+bear @term/bind/code/javascript/node/inspector/profiler/type-object
+bear @term/bind/code/javascript/node/inspector/profiler/type-profile-entry
+bear @term/bind/code/javascript/node/inspector/profiler/script-type-profile
+bear @term/bind/code/javascript/node/inspector/profiler/set-sampling-interval-parameter-type
+bear @term/bind/code/javascript/node/inspector/profiler/start-precise-coverage-parameter-type
+bear @term/bind/code/javascript/node/inspector/profiler/stop-return-type
+bear @term/bind/code/javascript/node/inspector/profiler/take-precise-coverage-return-type
+bear @term/bind/code/javascript/node/inspector/profiler/get-best-effort-coverage-return-type
+bear @term/bind/code/javascript/node/inspector/profiler/take-type-profile-return-type
+bear @term/bind/code/javascript/node/inspector/profiler/console-profile-started-event-data-type
+bear @term/bind/code/javascript/node/inspector/profiler/console-profile-finished-event-data-type

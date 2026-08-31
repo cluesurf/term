@@ -1,0 +1,46 @@
+
+load @term/bind
+  find like
+  find or
+
+load @term/bind/code/javascript
+  find array
+  find error
+  find native-null
+  find native-number
+  find native-undefined
+  find node-js-signals
+
+form spawn-sync-returns, name <SpawnSyncReturns>
+  head t
+
+  link pid, name <pid>
+    like native-number
+    flex true
+  link output, name <output>
+    like array
+      like or
+        like t
+        like native-null
+    flex true
+  link stdout, name <stdout>
+    like t
+    flex true
+  link stderr, name <stderr>
+    like t
+    flex true
+  link status, name <status>
+    like or
+      like native-number
+      like native-null
+    flex true
+  link signal, name <signal>
+    like or
+      like node-js-signals
+      like native-null
+    flex true
+  link error, name <error>
+    like or
+      like error
+      like native-undefined
+    flex true

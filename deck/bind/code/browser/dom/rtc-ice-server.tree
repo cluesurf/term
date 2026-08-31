@@ -1,0 +1,26 @@
+
+load @term/bind/code/browser/dom/rtc-ice-credential-type
+  find rtc-ice-credential-type
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form rtc-ice-server, name <RTCIceServer>
+  link credential, name <credential>
+    like native-string
+    lock false
+  link credential-type, name <credentialType>
+    like rtc-ice-credential-type
+    lock false
+  link urls, name <urls>
+    like or
+      like native-string
+      like native-array
+        like native-string
+    lock false
+  link username, name <username>
+    like native-string
+    lock false

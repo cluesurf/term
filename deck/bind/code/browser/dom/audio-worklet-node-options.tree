@@ -1,0 +1,40 @@
+
+load @term/bind/code/browser/dom/audio-node-options
+  find audio-node-options
+
+load @term/bind/code/javascript/es5/record
+  find record
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form audio-worklet-node-options, name <AudioWorkletNodeOptions>
+  base audio-node-options
+
+  link number-of-inputs, name <numberOfInputs>
+    like native-number
+    lock false
+  link number-of-outputs, name <numberOfOutputs>
+    like native-number
+    lock false
+  link output-channel-count, name <outputChannelCount>
+    like native-array
+      like native-number
+    lock false
+  link parameter-data, name <parameterData>
+    like record
+      like native-string
+      like native-number
+    lock false
+  link processor-options, name <processorOptions>
+    like native-any
+    lock false

@@ -1,0 +1,14 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+
+form incoming-http-status-header, name <IncomingHttpStatusHeader>
+  link status, name <:status>
+    like or
+      like native-number
+      like native-undefined
+    flex true

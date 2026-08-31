@@ -1,0 +1,597 @@
+
+load @term/bind/code/javascript
+  find array
+  find iterable-iterator
+  find native-bigint
+  find native-boolean
+  find native-number
+  find native-string
+  find native-this
+  find uint8-array
+
+load @term/bind
+  find form
+  find or
+  find tuple
+
+load @term/bind/code/node/buffer
+  find buffer-encoding
+
+form buffer, name <Buffer>
+  home true
+  base uint8-array
+
+  task write, name <write>
+    like native-number
+
+    take string, like native-string
+    take encoding, like buffer-encoding
+      void true
+
+  task write, name <write>
+    like native-number
+
+    take string, like native-string
+    take offset, like native-number
+    take encoding, like buffer-encoding
+      void true
+
+  task write, name <write>
+    like native-number
+
+    take string, like native-string
+    take offset, like native-number
+    take length, like native-number
+    take encoding, like buffer-encoding
+      void true
+
+  task to-string, name <toString>
+    like native-string
+
+    take encoding, like buffer-encoding
+      void true
+    take start, like native-number
+      void true
+    take end, like native-number
+      void true
+
+  task to-json, name <toJSON>
+    like form
+      link type, name <type>
+        text <Buffer>
+        flex true
+      link data, name <data>
+        like array
+          like native-number
+        flex true
+
+  task equals, name <equals>
+    like native-boolean
+
+    take other-buffer, like uint8-array
+
+  task compare, name <compare>
+    like or
+      text <undefined>
+      text <0>
+      text <1>
+
+    take target, like uint8-array
+    take target-start, like native-number
+      void true
+    take target-end, like native-number
+      void true
+    take source-start, like native-number
+      void true
+    take source-end, like native-number
+      void true
+
+  task copy, name <copy>
+    like native-number
+
+    take target, like uint8-array
+    take target-start, like native-number
+      void true
+    take source-start, like native-number
+      void true
+    take source-end, like native-number
+      void true
+
+  task slice, name <slice>
+    like buffer
+
+    take start, like native-number
+      void true
+    take end, like native-number
+      void true
+
+  task subarray, name <subarray>
+    like buffer
+
+    take start, like native-number
+      void true
+    take end, like native-number
+      void true
+
+  task write-big-int64-be, name <writeBigInt64BE>
+    like native-number
+
+    take value, like native-bigint
+    take offset, like native-number
+      void true
+
+  task write-big-int64-le, name <writeBigInt64LE>
+    like native-number
+
+    take value, like native-bigint
+    take offset, like native-number
+      void true
+
+  task write-big-u-int64-be, name <writeBigUInt64BE>
+    like native-number
+
+    take value, like native-bigint
+    take offset, like native-number
+      void true
+
+  task write-big-uint64-be, name <writeBigUint64BE>
+    like native-number
+
+    take value, like native-bigint
+    take offset, like native-number
+      void true
+
+  task write-big-u-int64-le, name <writeBigUInt64LE>
+    like native-number
+
+    take value, like native-bigint
+    take offset, like native-number
+      void true
+
+  task write-big-uint64-le, name <writeBigUint64LE>
+    like native-number
+
+    take value, like native-bigint
+    take offset, like native-number
+      void true
+
+  task write-u-int-le, name <writeUIntLE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+    take byte-length, like native-number
+
+  task write-uint-le, name <writeUintLE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+    take byte-length, like native-number
+
+  task write-u-int-be, name <writeUIntBE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+    take byte-length, like native-number
+
+  task write-uint-be, name <writeUintBE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+    take byte-length, like native-number
+
+  task write-int-le, name <writeIntLE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+    take byte-length, like native-number
+
+  task write-int-be, name <writeIntBE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+    take byte-length, like native-number
+
+  task read-big-u-int64-be, name <readBigUInt64BE>
+    like native-bigint
+
+    take offset, like native-number
+      void true
+
+  task read-big-uint64-be, name <readBigUint64BE>
+    like native-bigint
+
+    take offset, like native-number
+      void true
+
+  task read-big-u-int64-le, name <readBigUInt64LE>
+    like native-bigint
+
+    take offset, like native-number
+      void true
+
+  task read-big-uint64-le, name <readBigUint64LE>
+    like native-bigint
+
+    take offset, like native-number
+      void true
+
+  task read-big-int64-be, name <readBigInt64BE>
+    like native-bigint
+
+    take offset, like native-number
+      void true
+
+  task read-big-int64-le, name <readBigInt64LE>
+    like native-bigint
+
+    take offset, like native-number
+      void true
+
+  task read-u-int-le, name <readUIntLE>
+    like native-number
+
+    take offset, like native-number
+    take byte-length, like native-number
+
+  task read-uint-le, name <readUintLE>
+    like native-number
+
+    take offset, like native-number
+    take byte-length, like native-number
+
+  task read-u-int-be, name <readUIntBE>
+    like native-number
+
+    take offset, like native-number
+    take byte-length, like native-number
+
+  task read-uint-be, name <readUintBE>
+    like native-number
+
+    take offset, like native-number
+    take byte-length, like native-number
+
+  task read-int-le, name <readIntLE>
+    like native-number
+
+    take offset, like native-number
+    take byte-length, like native-number
+
+  task read-int-be, name <readIntBE>
+    like native-number
+
+    take offset, like native-number
+    take byte-length, like native-number
+
+  task read-u-int8, name <readUInt8>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task read-uint8, name <readUint8>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task read-u-int16-le, name <readUInt16LE>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task read-uint16-le, name <readUint16LE>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task read-u-int16-be, name <readUInt16BE>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task read-uint16-be, name <readUint16BE>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task read-u-int32-le, name <readUInt32LE>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task read-uint32-le, name <readUint32LE>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task read-u-int32-be, name <readUInt32BE>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task read-uint32-be, name <readUint32BE>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task read-int8, name <readInt8>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task read-int16-le, name <readInt16LE>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task read-int16-be, name <readInt16BE>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task read-int32-le, name <readInt32LE>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task read-int32-be, name <readInt32BE>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task read-float-le, name <readFloatLE>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task read-float-be, name <readFloatBE>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task read-double-le, name <readDoubleLE>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task read-double-be, name <readDoubleBE>
+    like native-number
+
+    take offset, like native-number
+      void true
+
+  task reverse, name <reverse>
+    like native-this
+
+  task swap16, name <swap16>
+    like buffer
+
+  task swap32, name <swap32>
+    like buffer
+
+  task swap64, name <swap64>
+    like buffer
+
+  task write-u-int8, name <writeUInt8>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task write-uint8, name <writeUint8>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task write-u-int16-le, name <writeUInt16LE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task write-uint16-le, name <writeUint16LE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task write-u-int16-be, name <writeUInt16BE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task write-uint16-be, name <writeUint16BE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task write-u-int32-le, name <writeUInt32LE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task write-uint32-le, name <writeUint32LE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task write-u-int32-be, name <writeUInt32BE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task write-uint32-be, name <writeUint32BE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task write-int8, name <writeInt8>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task write-int16-le, name <writeInt16LE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task write-int16-be, name <writeInt16BE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task write-int32-le, name <writeInt32LE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task write-int32-be, name <writeInt32BE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task write-float-le, name <writeFloatLE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task write-float-be, name <writeFloatBE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task write-double-le, name <writeDoubleLE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task write-double-be, name <writeDoubleBE>
+    like native-number
+
+    take value, like native-number
+    take offset, like native-number
+      void true
+
+  task fill, name <fill>
+    like native-this
+
+    take value
+      like or
+        like native-string
+        like uint8-array
+        like native-number
+    take offset, like native-number
+      void true
+    take end, like native-number
+      void true
+    take encoding, like buffer-encoding
+      void true
+
+  task index-of, name <indexOf>
+    like native-number
+
+    take value
+      like or
+        like native-string
+        like native-number
+        like uint8-array
+    take byte-offset, like native-number
+      void true
+    take encoding, like buffer-encoding
+      void true
+
+  task last-index-of, name <lastIndexOf>
+    like native-number
+
+    take value
+      like or
+        like native-string
+        like native-number
+        like uint8-array
+    take byte-offset, like native-number
+      void true
+    take encoding, like buffer-encoding
+      void true
+
+  task entries, name <entries>
+    like iterable-iterator
+      like tuple
+        like native-number
+        like native-number
+
+  task includes, name <includes>
+    like native-boolean
+
+    take value
+      like or
+        like native-string
+        like native-number
+        like buffer
+    take byte-offset, like native-number
+      void true
+    take encoding, like buffer-encoding
+      void true
+
+  task keys, name <keys>
+    like iterable-iterator
+      like native-number
+
+  task values, name <values>
+    like iterable-iterator
+      like native-number

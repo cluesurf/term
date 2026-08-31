@@ -1,0 +1,23 @@
+
+load @term/bind/code/javascript/es5/number-format-options
+  find number-format-options
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form number-format-options, name <NumberFormatOptions>
+  link compact-display, name <compactDisplay>
+    like native-string
+    lock false
+  link notation, name <notation>
+    like native-string
+    lock false
+  link sign-display, name <signDisplay>
+    like native-string
+    lock false
+  link unit, name <unit>
+    like native-string
+    lock false
+  link unit-display, name <unitDisplay>
+    like native-string
+    lock false

@@ -1,0 +1,303 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/analyser-node
+  find analyser-node
+
+load @term/bind/code/browser/dom/audio-buffer
+  find audio-buffer
+
+load @term/bind/code/browser/dom/audio-buffer-source-node
+  find audio-buffer-source-node
+
+load @term/bind/code/browser/dom/audio-context-state
+  find audio-context-state
+
+load @term/bind/code/browser/dom/audio-destination-node
+  find audio-destination-node
+
+load @term/bind/code/browser/dom/audio-listener
+  find audio-listener
+
+load @term/bind/code/browser/dom/audio-worklet
+  find audio-worklet
+
+load @term/bind/code/browser/dom/base-audio-context-event-map
+  find base-audio-context-event-map
+
+load @term/bind/code/browser/dom/biquad-filter-node
+  find biquad-filter-node
+
+load @term/bind/code/browser/dom/channel-merger-node
+  find channel-merger-node
+
+load @term/bind/code/browser/dom/channel-splitter-node
+  find channel-splitter-node
+
+load @term/bind/code/browser/dom/constant-source-node
+  find constant-source-node
+
+load @term/bind/code/browser/dom/convolver-node
+  find convolver-node
+
+load @term/bind/code/browser/dom/decode-error-callback
+  find decode-error-callback
+
+load @term/bind/code/browser/dom/decode-success-callback
+  find decode-success-callback
+
+load @term/bind/code/browser/dom/delay-node
+  find delay-node
+
+load @term/bind/code/browser/dom/dynamics-compressor-node
+  find dynamics-compressor-node
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/browser/dom/gain-node
+  find gain-node
+
+load @term/bind/code/browser/dom/iir-filter-node
+  find iir-filter-node
+
+load @term/bind/code/browser/dom/oscillator-node
+  find oscillator-node
+
+load @term/bind/code/browser/dom/panner-node
+  find panner-node
+
+load @term/bind/code/browser/dom/periodic-wave
+  find periodic-wave
+
+load @term/bind/code/browser/dom/periodic-wave-constraints
+  find periodic-wave-constraints
+
+load @term/bind/code/browser/dom/script-processor-node
+  find script-processor-node
+
+load @term/bind/code/browser/dom/stereo-panner-node
+  find stereo-panner-node
+
+load @term/bind/code/browser/dom/wave-shaper-node
+  find wave-shaper-node
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+load @term/bind/code/javascript/es5/float32-array
+  find float32-array
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form base-audio-context, name <BaseAudioContext>
+  base event-target
+
+  link audio-worklet, name <audioWorklet>
+    like audio-worklet
+  link current-time, name <currentTime>
+    like native-number
+  link destination, name <destination>
+    like audio-destination-node
+  link listener, name <listener>
+    like audio-listener
+  link onstatechange, name <onstatechange>
+    like or
+      like task
+        take this, like base-audio-context
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link sample-rate, name <sampleRate>
+    like native-number
+  link state, name <state>
+    like audio-context-state
+
+  task create-analyser, name <createAnalyser>
+    like analyser-node
+
+  task create-biquad-filter, name <createBiquadFilter>
+    like biquad-filter-node
+
+  task create-buffer, name <createBuffer>
+    take number-of-channels, like native-number
+    take length, like native-number
+    take sample-rate, like native-number
+    like audio-buffer
+
+  task create-buffer-source, name <createBufferSource>
+    like audio-buffer-source-node
+
+  task create-channel-merger, name <createChannelMerger>
+    take number-of-inputs, like maybe
+      like native-number
+    like channel-merger-node
+
+  task create-channel-splitter, name <createChannelSplitter>
+    take number-of-outputs, like maybe
+      like native-number
+    like channel-splitter-node
+
+  task create-constant-source, name <createConstantSource>
+    like constant-source-node
+
+  task create-convolver, name <createConvolver>
+    like convolver-node
+
+  task create-delay, name <createDelay>
+    take max-delay-time, like maybe
+      like native-number
+    like delay-node
+
+  task create-dynamics-compressor, name <createDynamicsCompressor>
+    like dynamics-compressor-node
+
+  task create-gain, name <createGain>
+    like gain-node
+
+  task create-iir-filter, name <createIIRFilter>
+    take feedforward
+      like native-array
+        like native-number
+    take feedback
+      like native-array
+        like native-number
+    like iir-filter-node
+
+  task create-oscillator, name <createOscillator>
+    like oscillator-node
+
+  task create-panner, name <createPanner>
+    like panner-node
+
+  task create-periodic-wave, name <createPeriodicWave>
+    take real
+      like or
+        like native-array
+          like native-number
+        like float32-array
+    take imag
+      like or
+        like native-array
+          like native-number
+        like float32-array
+    take constraints, like maybe
+      like periodic-wave-constraints
+    like periodic-wave
+
+  task create-script-processor, name <createScriptProcessor>
+    take buffer-size, like maybe
+      like native-number
+    take number-of-input-channels, like maybe
+      like native-number
+    take number-of-output-channels, like maybe
+      like native-number
+    like script-processor-node
+
+  task create-stereo-panner, name <createStereoPanner>
+    like stereo-panner-node
+
+  task create-wave-shaper, name <createWaveShaper>
+    like wave-shaper-node
+
+  task decode-audio-data, name <decodeAudioData>
+    take audio-data, like array-buffer
+    take success-callback, like maybe
+      like or
+        like decode-success-callback
+        like native-null
+    take error-callback, like maybe
+      like or
+        like decode-error-callback
+        like native-null
+    like promise
+      like audio-buffer
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like base-audio-context-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like base-audio-context
+        take ev
+          like index
+            like base-audio-context-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like base-audio-context-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like base-audio-context
+        take ev
+          like index
+            like base-audio-context-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

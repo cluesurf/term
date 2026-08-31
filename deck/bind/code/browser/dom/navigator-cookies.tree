@@ -1,0 +1,7 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form navigator-cookies, name <NavigatorCookies>
+  link cookie-enabled, name <cookieEnabled>
+    like native-boolean

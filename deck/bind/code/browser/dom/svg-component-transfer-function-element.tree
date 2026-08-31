@@ -1,0 +1,125 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/svg-animated-enumeration
+  find svg-animated-enumeration
+
+load @term/bind/code/browser/dom/svg-animated-number
+  find svg-animated-number
+
+load @term/bind/code/browser/dom/svg-animated-number-list
+  find svg-animated-number-list
+
+load @term/bind/code/browser/dom/svg-element
+  find svg-element
+
+load @term/bind/code/browser/dom/svg-element-event-map
+  find svg-element-event-map
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form svg-component-transfer-function-element, name <SVGComponentTransferFunctionElement>
+  base svg-element
+
+  link amplitude, name <amplitude>
+    like svg-animated-number
+  link exponent, name <exponent>
+    like svg-animated-number
+  link intercept, name <intercept>
+    like svg-animated-number
+  link offset, name <offset>
+    like svg-animated-number
+  link slope, name <slope>
+    like svg-animated-number
+  link table-values, name <tableValues>
+    like svg-animated-number-list
+  link type, name <type>
+    like svg-animated-enumeration
+  link svg-fecomponenttransfer-type-discrete, name <SVG_FECOMPONENTTRANSFER_TYPE_DISCRETE>
+    like native-number
+  link svg-fecomponenttransfer-type-gamma, name <SVG_FECOMPONENTTRANSFER_TYPE_GAMMA>
+    like native-number
+  link svg-fecomponenttransfer-type-identity, name <SVG_FECOMPONENTTRANSFER_TYPE_IDENTITY>
+    like native-number
+  link svg-fecomponenttransfer-type-linear, name <SVG_FECOMPONENTTRANSFER_TYPE_LINEAR>
+    like native-number
+  link svg-fecomponenttransfer-type-table, name <SVG_FECOMPONENTTRANSFER_TYPE_TABLE>
+    like native-number
+  link svg-fecomponenttransfer-type-unknown, name <SVG_FECOMPONENTTRANSFER_TYPE_UNKNOWN>
+    like native-number
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like svg-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like svg-component-transfer-function-element
+        take ev
+          like index
+            like svg-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like svg-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like svg-component-transfer-function-element
+        take ev
+          like index
+            like svg-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

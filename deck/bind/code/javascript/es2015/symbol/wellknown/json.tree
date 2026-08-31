@@ -1,0 +1,11 @@
+
+load @term/bind/code/javascript/es5/json
+  find json
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form json, name <JSON>
+  link {symbol/to-string-tag}
+    like native-string
+    read true

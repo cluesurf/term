@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/dom/rtc-rtp-codec-capability
+  find rtc-rtp-codec-capability
+
+load @term/bind/code/browser/dom/rtc-rtp-header-extension-capability
+  find rtc-rtp-header-extension-capability
+
+load @term/bind/code/javascript/native
+  find native-array
+
+form rtc-rtp-capabilities, name <RTCRtpCapabilities>
+  link codecs, name <codecs>
+    like native-array
+      like rtc-rtp-codec-capability
+    lock false
+  link header-extensions, name <headerExtensions>
+    like native-array
+      like rtc-rtp-header-extension-capability
+    lock false

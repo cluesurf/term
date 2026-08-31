@@ -1,0 +1,30 @@
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form geolocation-coordinates, name <GeolocationCoordinates>
+  link accuracy, name <accuracy>
+    like native-number
+  link altitude, name <altitude>
+    like or
+      like native-number
+      like native-null
+  link altitude-accuracy, name <altitudeAccuracy>
+    like or
+      like native-number
+      like native-null
+  link heading, name <heading>
+    like or
+      like native-number
+      like native-null
+  link latitude, name <latitude>
+    like native-number
+  link longitude, name <longitude>
+    like native-number
+  link speed, name <speed>
+    like or
+      like native-number
+      like native-null

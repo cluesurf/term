@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/blob
+  find blob
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/es5/readonly-array
+  find readonly-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form clipboard-item, name <ClipboardItem>
+  link types, name <types>
+    like readonly-array
+      like native-string
+
+  task get-type, name <getType>
+    take type, like native-string
+    like promise
+      like blob

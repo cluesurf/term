@@ -1,0 +1,26 @@
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+load @term/bind/code/browser/dom/rtc-ice-candidate
+  find rtc-ice-candidate
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form rtc-peer-connection-ice-event-init, name <RTCPeerConnectionIceEventInit>
+  base event-init
+
+  link candidate, name <candidate>
+    like or
+      like rtc-ice-candidate
+      like native-null
+    lock false
+  link url, name <url>
+    like or
+      like native-string
+      like native-null
+    lock false

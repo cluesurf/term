@@ -1,0 +1,21 @@
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form performance-observer-init, name <PerformanceObserverInit>
+  link buffered, name <buffered>
+    like native-boolean
+    lock false
+  link entry-types, name <entryTypes>
+    like native-array
+      like native-string
+    lock false
+  link type, name <type>
+    like native-string
+    lock false

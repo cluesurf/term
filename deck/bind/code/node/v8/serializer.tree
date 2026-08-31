@@ -1,0 +1,52 @@
+
+load @term/bind
+  find any
+
+load @term/bind/code/javascript
+  find array-buffer
+  find native-boolean
+  find native-number
+  find native-void
+  find node-js-typed-array
+
+load @term/bind/code/node/buffer
+  find buffer
+
+form serializer, name <Serializer>
+  task write-header, name <writeHeader>
+    like native-void
+
+  task write-value, name <writeValue>
+    like native-boolean
+
+    take val, like any
+
+  task release-buffer, name <releaseBuffer>
+    like buffer
+
+  task transfer-array-buffer, name <transferArrayBuffer>
+    like native-void
+
+    take id, like native-number
+    take array-buffer, like array-buffer
+
+  task write-uint32, name <writeUint32>
+    like native-void
+
+    take value, like native-number
+
+  task write-uint64, name <writeUint64>
+    like native-void
+
+    take hi, like native-number
+    take lo, like native-number
+
+  task write-double, name <writeDouble>
+    like native-void
+
+    take value, like native-number
+
+  task write-raw-bytes, name <writeRawBytes>
+    like native-void
+
+    take buffer, like node-js-typed-array

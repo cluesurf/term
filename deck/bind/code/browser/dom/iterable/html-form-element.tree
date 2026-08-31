@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/browser/dom/html-form-element
+  find html-form-element
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+form html-form-element, name <HTMLFormElement>
+  task {symbol/iterator}
+    like iterable-iterator
+      like element

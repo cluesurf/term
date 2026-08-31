@@ -1,0 +1,18 @@
+
+load @term/bind/code/javascript/es5/symbol
+  find symbol
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-symbol
+
+form symbol, name <Symbol>
+  link {symbol/to-string-tag}
+    like native-string
+    read true
+
+  task {symbol/to-primitive}
+    take hint, like native-string
+    like native-symbol

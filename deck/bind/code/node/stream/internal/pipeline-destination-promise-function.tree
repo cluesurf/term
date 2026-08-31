@@ -1,0 +1,20 @@
+
+load @term/bind
+  find like
+  find task
+
+load @term/bind/code/javascript
+  find async-iterable
+  find promise
+
+form pipeline-destination-promise-function, name <PipelineDestinationPromiseFunction>
+  head t
+  head p
+
+  like task
+    like promise
+      like p
+
+    take source
+      like async-iterable
+        like t

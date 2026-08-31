@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form svg-number, name <SVGNumber>
+  link value, name <value>
+    like native-number
+    lock false

@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/svg-animated-preserve-aspect-ratio
+  find svg-animated-preserve-aspect-ratio
+
+load @term/bind/code/browser/dom/svg-animated-rect
+  find svg-animated-rect
+
+form svg-fit-to-view-box, name <SVGFitToViewBox>
+  link preserve-aspect-ratio, name <preserveAspectRatio>
+    like svg-animated-preserve-aspect-ratio
+  link view-box, name <viewBox>
+    like svg-animated-rect

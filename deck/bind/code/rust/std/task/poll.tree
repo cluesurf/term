@@ -1,0 +1,603 @@
+
+form poll, name <std::task::Poll>
+  task map, name <map>
+    note <Maps a Poll&lt;T&gt; to Poll&lt;U&gt; by applying a function to a contained value.>
+
+    lead f
+      like fn-once
+        take f-1, like t
+        free seed
+          like u
+            cite free
+
+    head u
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like poll
+        like u
+          cite free
+        cite free
+
+  task is-ready, name <is_ready>
+    note <Returns true if the poll is a Poll::Ready value.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-pending, name <is_pending>
+    note <Returns true if the poll is a Pending value.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ready, name <ready>
+    note <Extracts the successful type of a Poll&lt;T&gt;.>
+
+    take self
+      cite free
+
+    free seed
+      like ready
+        like t
+          cite free
+        cite free
+
+  task map-ok, name <map_ok>
+    note <Maps a Poll&lt;Result&lt;T, E&gt;&gt; to Poll&lt;Result&lt;U, E&gt;&gt; by applying a function to a contained Poll::Ready(Ok) value, leaving all other variants untouched.>
+
+    lead f
+      like fn-once
+        take f-1, like t
+        free seed
+          like u
+            cite free
+
+    head u
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like poll
+        like result
+          like u
+            cite free
+          like e
+            cite free
+          cite free
+        cite free
+
+  task map-err, name <map_err>
+    note <Maps a Poll::Ready&lt;Result&lt;T, E&gt;&gt; to Poll::Ready&lt;Result&lt;T, F&gt;&gt; by applying a function to a contained Poll::Ready(Err) value, leaving all other variants untouched.>
+
+    lead f
+      like fn-once
+        take f-1, like e
+        free seed
+          like u
+            cite free
+
+    head u
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like poll
+        like result
+          like t
+            cite free
+          like u
+            cite free
+          cite free
+        cite free
+
+  task map-ok, name <map_ok>
+    note <Maps a Poll&lt;Option&lt;Result&lt;T, E&gt;&gt;&gt; to Poll&lt;Option&lt;Result&lt;U, E&gt;&gt;&gt; by applying a function to a contained Poll::Ready(Some(Ok)) value, leaving all other variants untouched.>
+
+    lead f
+      like fn-once
+        take f-1, like t
+        free seed
+          like u
+            cite free
+
+    head u
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like poll
+        like option
+          like result
+            like u
+              cite free
+            like e
+              cite free
+            cite free
+          cite free
+        cite free
+
+  task map-err, name <map_err>
+    note <Maps a Poll::Ready&lt;Option&lt;Result&lt;T, E&gt;&gt;&gt; to Poll::Ready&lt;Option&lt;Result&lt;T, F&gt;&gt;&gt; by applying a function to a contained Poll::Ready(Some(Err)) value, leaving all other variants untouched.>
+
+    lead f
+      like fn-once
+        take f-1, like e
+        free seed
+          like u
+            cite free
+
+    head u
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like poll
+        like option
+          like result
+            like t
+              cite free
+            like u
+              cite free
+            cite free
+          cite free
+        cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like poll
+        like t
+          cite free
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Convert to a Ready variant.>
+
+    take t
+      like t
+        cite free
+      cite free
+
+    free seed
+      like poll
+        like t
+          cite free
+        cite free
+
+  task from-residual, name <from_residual>
+    note <Constructs the type from a compatible Residual type.>
+
+    take residual
+      like ready
+        like infallible
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like poll
+        like t
+          cite free
+        cite free
+
+  task from-residual, name <from_residual>
+    note <Constructs the type from a compatible Residual type.>
+
+    take x
+      like result
+        like infallible
+          cite free
+        like e
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like poll
+        like option
+          like result
+            like t
+              cite free
+            like f
+              cite free
+            cite free
+          cite free
+        cite free
+
+  task from-residual, name <from_residual>
+    note <Constructs the type from a compatible Residual type.>
+
+    take x
+      like result
+        like infallible
+          cite free
+        like e
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like poll
+        like result
+          like t
+            cite free
+          like f
+            cite free
+          cite free
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like poll
+        like t
+          cite free
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like poll
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like poll
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like poll
+        like t
+          cite free
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task from-output, name <from_output>
+    note <Constructs the type from its Output type.>
+
+    cast c-1
+      like poll
+        like option
+          like result
+            like t
+              cite free
+            like e
+              cite free
+            cite free
+          cite free
+      like try
+
+    take c
+      like c-1/output
+      cite free
+
+    free seed
+      like poll
+        like option
+          like result
+            like t
+              cite free
+            like e
+              cite free
+            cite free
+          cite free
+        cite free
+
+  task branch, name <branch>
+    note <Used in ? to decide whether the operator should produce a value (because this returned ControlFlow::Continue) or propagate a value back to the caller (because this returned ControlFlow::Break).>
+
+    cast c-1
+      like poll
+        like option
+          like result
+            like t
+              cite free
+            like e
+              cite free
+            cite free
+          cite free
+      like try
+    cast c-2
+      like poll
+        like option
+          like result
+            like t
+              cite free
+            like e
+              cite free
+            cite free
+          cite free
+      like try
+
+    take self
+      cite free
+
+    free seed
+      like control-flow
+        like c-1/residual
+        like c-2/output
+        cite free
+
+  task from-output, name <from_output>
+    note <Constructs the type from its Output type.>
+
+    cast c-1
+      like poll
+        like result
+          like t
+            cite free
+          like e
+            cite free
+          cite free
+      like try
+
+    take c
+      like c-1/output
+      cite free
+
+    free seed
+      like poll
+        like result
+          like t
+            cite free
+          like e
+            cite free
+          cite free
+        cite free
+
+  task branch, name <branch>
+    note <Used in ? to decide whether the operator should produce a value (because this returned ControlFlow::Continue) or propagate a value back to the caller (because this returned ControlFlow::Break).>
+
+    cast c-1
+      like poll
+        like result
+          like t
+            cite free
+          like e
+            cite free
+          cite free
+      like try
+    cast c-2
+      like poll
+        like result
+          like t
+            cite free
+          like e
+            cite free
+          cite free
+      like try
+
+    take self
+      cite free
+
+    free seed
+      like control-flow
+        like c-1/residual
+        like c-2/output
+        cite free

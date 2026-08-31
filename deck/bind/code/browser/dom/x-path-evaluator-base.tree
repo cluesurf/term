@@ -1,0 +1,49 @@
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/browser/dom/x-path-expression
+  find x-path-expression
+
+load @term/bind/code/browser/dom/x-path-ns-resolver
+  find x-path-ns-resolver
+
+load @term/bind/code/browser/dom/x-path-result
+  find x-path-result
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form x-path-evaluator-base, name <XPathEvaluatorBase>
+  task create-expression, name <createExpression>
+    take expression, like native-string
+    take resolver, like maybe
+      like or
+        like x-path-ns-resolver
+        like native-null
+    like x-path-expression
+
+  task create-ns-resolver, name <createNSResolver>
+    take node-resolver, like node
+    like x-path-ns-resolver
+
+  task evaluate, name <evaluate>
+    take expression, like native-string
+    take context-node, like node
+    take resolver, like maybe
+      like or
+        like x-path-ns-resolver
+        like native-null
+    take type, like maybe
+      like native-number
+    take result, like maybe
+      like or
+        like x-path-result
+        like native-null
+    like x-path-result

@@ -1,0 +1,31 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-string
+  find native-undefined
+
+form bind-options, name <BindOptions>
+  link port, name <port>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link address, name <address>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link exclusive, name <exclusive>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link fd, name <fd>
+    like or
+      like native-number
+      like native-undefined
+    flex true

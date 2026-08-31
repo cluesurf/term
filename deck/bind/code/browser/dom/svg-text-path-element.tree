@@ -1,0 +1,118 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/svg-animated-enumeration
+  find svg-animated-enumeration
+
+load @term/bind/code/browser/dom/svg-animated-length
+  find svg-animated-length
+
+load @term/bind/code/browser/dom/svg-element-event-map
+  find svg-element-event-map
+
+load @term/bind/code/browser/dom/svg-text-content-element
+  find svg-text-content-element
+
+load @term/bind/code/browser/dom/svguri-reference
+  find svguri-reference
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form svg-text-path-element, name <SVGTextPathElement>
+  base svg-text-content-element
+  base svguri-reference
+
+  link method, name <method>
+    like svg-animated-enumeration
+  link spacing, name <spacing>
+    like svg-animated-enumeration
+  link start-offset, name <startOffset>
+    like svg-animated-length
+  link textpath-methodtype-align, name <TEXTPATH_METHODTYPE_ALIGN>
+    like native-number
+  link textpath-methodtype-stretch, name <TEXTPATH_METHODTYPE_STRETCH>
+    like native-number
+  link textpath-methodtype-unknown, name <TEXTPATH_METHODTYPE_UNKNOWN>
+    like native-number
+  link textpath-spacingtype-auto, name <TEXTPATH_SPACINGTYPE_AUTO>
+    like native-number
+  link textpath-spacingtype-exact, name <TEXTPATH_SPACINGTYPE_EXACT>
+    like native-number
+  link textpath-spacingtype-unknown, name <TEXTPATH_SPACINGTYPE_UNKNOWN>
+    like native-number
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like svg-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like svg-text-path-element
+        take ev
+          like index
+            like svg-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like svg-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like svg-text-path-element
+        take ev
+          like index
+            like svg-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

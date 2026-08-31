@@ -1,0 +1,5 @@
+
+form scroll-behavior, name <ScrollBehavior>
+  like or
+    text <auto>
+    text <smooth>

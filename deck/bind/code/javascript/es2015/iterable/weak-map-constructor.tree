@@ -1,0 +1,26 @@
+
+load @term/bind/code/javascript/es2015/collection/weak-map-constructor
+  find weak-map-constructor
+
+load @term/bind/code/javascript/es2015/iterable/iterable
+  find iterable
+
+load @term/bind/code/javascript/es2015/iterable/weak-map
+  find weak-map
+
+load @term/bind/code/javascript/native
+  find native-object
+
+form weak-map-constructor, name <WeakMapConstructor>
+  hook make
+    head k
+      base native-object
+    head v
+    take iterable
+      like iterable
+        like band
+          like k
+          like v
+    like weak-map
+      like k
+      like v

@@ -1,0 +1,36 @@
+
+load @term/bind/code/javascript
+  find hmac
+  find native-string
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/crypto
+  find binary-like
+  find binary-to-text-encoding
+  find encoding
+
+form hmac, name <Hmac>
+  base stream-transform
+  task update, name <update>
+    like hmac
+
+    take data, like binary-like
+
+  task update, name <update>
+    like hmac
+
+    take data, like native-string
+    take input-encoding, like encoding
+
+  task digest, name <digest>
+    like buffer
+
+  task digest, name <digest>
+    like native-string
+
+    take encoding, like binary-to-text-encoding
+
+form hmac-constructor
+  hook make

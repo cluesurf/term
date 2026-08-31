@@ -1,0 +1,20 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/idb-version-change-event
+  find idb-version-change-event
+
+form idb-database-event-map, name <IDBDatabaseEventMap>
+  link abort, name <abort>
+    like event
+    lock false
+  link close, name <close>
+    like event
+    lock false
+  link error, name <error>
+    like event
+    lock false
+  link versionchange, name <versionchange>
+    like idb-version-change-event
+    lock false

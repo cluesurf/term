@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/u-long-range
+  find u-long-range
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form constrain-u-long-range, name <ConstrainULongRange>
+  base u-long-range
+
+  link exact, name <exact>
+    like native-number
+    lock false
+  link ideal, name <ideal>
+    like native-number
+    lock false

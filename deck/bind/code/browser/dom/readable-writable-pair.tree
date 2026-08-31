@@ -1,0 +1,24 @@
+
+load @term/bind/code/browser/dom/readable-stream
+  find readable-stream
+
+load @term/bind/code/browser/dom/writable-stream
+  find writable-stream
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form readable-writable-pair, name <ReadableWritablePair>
+  head r
+    back native-any
+  head w
+    back native-any
+
+  link readable, name <readable>
+    like readable-stream
+      like r
+    lock false
+  link writable, name <writable>
+    like writable-stream
+      like w
+    lock false

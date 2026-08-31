@@ -1,0 +1,16 @@
+
+load @term/bind
+  find like
+
+load @term/bind/code/javascript
+  find child-process
+  find promise
+
+form promise-with-child, name <PromiseWithChild>
+  base promise
+
+  head t
+
+  link child, name <child>
+    like child-process
+    flex true

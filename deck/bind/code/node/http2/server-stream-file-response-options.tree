@@ -1,0 +1,42 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find fs-stats
+  find native-boolean
+  find native-number
+  find native-undefined
+  find native-void
+
+load @term/bind/code/node/http
+  find outgoing-http-headers
+
+load @term/bind/code/node/http2
+  find stat-options
+
+form server-stream-file-response-options, name <ServerStreamFileResponseOptions>
+  link wait-for-trailers, name <waitForTrailers>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link offset, name <offset>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link length, name <length>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+
+  task stat-check, name <statCheck>
+    like or
+      like native-void
+      like native-boolean
+
+    take stats, like fs-stats
+    take headers, like outgoing-http-headers
+    take stat-options, like stat-options

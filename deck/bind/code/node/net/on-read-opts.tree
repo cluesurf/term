@@ -1,0 +1,26 @@
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+
+load @term/bind/code/node/globals
+  find uint8-array
+
+form on-read-opts, name <OnReadOpts>
+  link buffer, name <buffer>
+    like or
+      like uint8-array
+      like task
+        like uint8-array
+
+    flex true
+
+  task callback, name <callback>
+    like native-boolean
+
+    take bytes-written, like native-number
+    take buf, like uint8-array

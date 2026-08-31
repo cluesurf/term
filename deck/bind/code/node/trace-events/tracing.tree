@@ -1,0 +1,17 @@
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-string
+  find native-void
+
+form tracing, name <Tracing>
+  link categories, name <categories>
+    like native-string
+  link enabled, name <enabled>
+    like native-boolean
+
+  task disable, name <disable>
+    like native-void
+
+  task enable, name <enable>
+    like native-void

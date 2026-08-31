@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/es2017/intl/date-time-format-part-types
+  find date-time-format-part-types
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form date-time-format-part, name <DateTimeFormatPart>
+  link type, name <type>
+    like date-time-format-part-types
+    lock false
+  link value, name <value>
+    like native-string
+    lock false

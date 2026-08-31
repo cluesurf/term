@@ -1,0 +1,84 @@
+
+load @term/bind/code/browser/dom/request-init
+  find request-init
+
+load @term/bind/code/browser/webworker/abort-signal
+  find abort-signal
+
+load @term/bind/code/browser/webworker/body-init
+  find body-init
+
+load @term/bind/code/browser/webworker/headers-init
+  find headers-init
+
+load @term/bind/code/browser/webworker/referrer-policy
+  find referrer-policy
+
+load @term/bind/code/browser/webworker/request-cache
+  find request-cache
+
+load @term/bind/code/browser/webworker/request-credentials
+  find request-credentials
+
+load @term/bind/code/browser/webworker/request-mode
+  find request-mode
+
+load @term/bind/code/browser/webworker/request-redirect
+  find request-redirect
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form request-init, name <RequestInit>
+  link body, name <body>
+    like or
+      like body-init
+      like native-null
+    lock false
+  link cache, name <cache>
+    like request-cache
+    lock false
+  link credentials, name <credentials>
+    like request-credentials
+    lock false
+  link headers, name <headers>
+    like headers-init
+    lock false
+  link integrity, name <integrity>
+    like native-string
+    lock false
+  link keepalive, name <keepalive>
+    like native-boolean
+    lock false
+  link method, name <method>
+    like native-string
+    lock false
+  link mode, name <mode>
+    like request-mode
+    lock false
+  link redirect, name <redirect>
+    like request-redirect
+    lock false
+  link referrer, name <referrer>
+    like native-string
+    lock false
+  link referrer-policy, name <referrerPolicy>
+    like referrer-policy
+    lock false
+  link signal, name <signal>
+    like or
+      like abort-signal
+      like native-null
+    lock false
+  link window, name <window>
+    like native-any
+    lock false

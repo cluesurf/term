@@ -1,0 +1,73 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-boolean
+  find native-number
+  find native-string
+  find native-undefined
+  find node-js-readable-stream
+  find node-js-writable-stream
+
+load @term/bind
+  find or
+
+load @term/bind/code/node/readline
+  find async-completer
+  find completer
+
+form read-line-options, name <ReadLineOptions>
+  link input, name <input>
+    like node-js-readable-stream
+    flex true
+  link output, name <output>
+    like or
+      like node-js-writable-stream
+      like native-undefined
+    flex true
+  link completer, name <completer>
+    like or
+      like completer
+      like async-completer
+      like native-undefined
+    flex true
+  link terminal, name <terminal>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link history, name <history>
+    like or
+      like array
+        like native-string
+      like native-undefined
+    flex true
+  link history-size, name <historySize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link prompt, name <prompt>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link crlf-delay, name <crlfDelay>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link remove-history-duplicates, name <removeHistoryDuplicates>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link escape-code-timeout, name <escapeCodeTimeout>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link tab-size, name <tabSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true

@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/audio-node-options
+  find audio-node-options
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form channel-splitter-options, name <ChannelSplitterOptions>
+  base audio-node-options
+
+  link number-of-outputs, name <numberOfOutputs>
+    like native-number
+    lock false

@@ -1,0 +1,11 @@
+
+load @term/bind/code/javascript/es2015/core/math
+  find math
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form math, name <Math>
+  link {symbol/to-string-tag}
+    like native-string
+    read true

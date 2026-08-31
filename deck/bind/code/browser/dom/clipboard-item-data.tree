@@ -1,0 +1,10 @@
+
+load @term/bind/code/browser/dom/clipboard-item-data-type
+  find clipboard-item-data-type
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+form clipboard-item-data, name <ClipboardItemData>
+  like promise
+    like clipboard-item-data-type

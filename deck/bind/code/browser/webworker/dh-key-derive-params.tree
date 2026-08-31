@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/webworker/algorithm
+  find algorithm
+
+load @term/bind/code/browser/webworker/crypto-key
+  find crypto-key
+
+form dh-key-derive-params, name <DhKeyDeriveParams>
+  base algorithm
+
+  link public, name <public>
+    like crypto-key
+    lock false

@@ -1,0 +1,29 @@
+
+load @term/bind/code/browser/dom/mutation-observer-init
+  find mutation-observer-init
+
+load @term/bind/code/browser/dom/mutation-record
+  find mutation-record
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form mutation-observer, name <MutationObserver>
+  task disconnect, name <disconnect>
+    like native-void
+
+  task observe, name <observe>
+    take target, like node
+    take options, like maybe
+      like mutation-observer-init
+    like native-void
+
+  task take-records, name <takeRecords>
+    like native-array
+      like mutation-record

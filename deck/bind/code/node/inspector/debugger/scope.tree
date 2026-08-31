@@ -1,0 +1,34 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find native-undefined
+  find runtime-remote-object
+
+load @term/bind/code/node/inspector/debugger
+  find location
+
+form scope, name <Scope>
+  link type, name <type>
+    like native-string
+    flex true
+  link object, name <object>
+    like runtime-remote-object
+    flex true
+  link name, name <name>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link start-location, name <startLocation>
+    like or
+      like location
+      like native-undefined
+    flex true
+  link end-location, name <endLocation>
+    like or
+      like location
+      like native-undefined
+    flex true

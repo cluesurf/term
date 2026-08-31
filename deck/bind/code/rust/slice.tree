@@ -1,0 +1,4779 @@
+
+form slice, name <slice>
+  task len, name <len>
+    note <Returns the number of elements in the slice.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task is-empty, name <is_empty>
+    note <Returns true if the slice has a length of 0.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task first, name <first>
+    note <Returns the first element of the slice, or None if it is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like t
+        cite free
+
+  task first-mut, name <first_mut>
+    note <Returns a mutable pointer to the first element of the slice, or None if it is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like t
+        cite free
+
+  task split-first, name <split_first>
+    note <Returns the first and all the rest of the elements of the slice, or None if it is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like form
+          take t-1, like t
+          take t-2
+            list t
+        cite free
+
+  task split-first-mut, name <split_first_mut>
+    note <Returns the first and all the rest of the elements of the slice, or None if it is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like form
+          take t-1, like t
+          take t-2
+            list t
+        cite free
+
+  task split-last, name <split_last>
+    note <Returns the last and all the rest of the elements of the slice, or None if it is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like form
+          take t-1, like t
+          take t-2
+            list t
+        cite free
+
+  task split-last-mut, name <split_last_mut>
+    note <Returns the last and all the rest of the elements of the slice, or None if it is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like form
+          take t-1, like t
+          take t-2
+            list t
+        cite free
+
+  task last, name <last>
+    note <Returns the last element of the slice, or None if it is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like t
+        cite free
+
+  task last-mut, name <last_mut>
+    note <Returns a mutable pointer to the last item in the slice.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like t
+        cite free
+
+  task get, name <get>
+    note <Returns a reference to an element or subslice depending on the type of index.>
+
+    cast c-1
+      like i
+      like slice-index
+        list t
+
+    lead i
+      like slice-index
+        list t
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take index
+      like i
+        cite free
+      cite free
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to an element or subslice depending on the type of index (see get) or None if the index is out of bounds.>
+
+    cast c-1
+      like i
+      like slice-index
+        list t
+
+    lead i
+      like slice-index
+        list t
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take index
+      like i
+        cite free
+      cite free
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-unchecked, name <get_unchecked>
+    note <Returns a reference to an element or subslice, without doing bounds checking.>
+
+    cast c-1
+      like i
+      like slice-index
+        list t
+
+    lead i
+      like slice-index
+        list t
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take index
+      like i
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a mutable reference to an element or subslice, without doing bounds checking.>
+
+    cast c-1
+      like i
+      like slice-index
+        list t
+
+    lead i
+      like slice-index
+        list t
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take index
+      like i
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task as-ptr, name <as_ptr>
+    note <Returns a raw pointer to the slice's buffer.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+      calm take
+
+  task as-mut-ptr, name <as_mut_ptr>
+    note <Returns an unsafe mutable pointer to the slice's buffer.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task as-ptr-range, name <as_ptr_range>
+    note <Returns the two raw pointers spanning the slice.>
+
+    take self
+      cite free
+
+    free seed
+      like range
+        like t
+          cite free
+        calm take
+        cite free
+
+  task as-mut-ptr-range, name <as_mut_ptr_range>
+    note <Returns the two unsafe mutable pointers spanning the slice.>
+
+    take self
+      cite free
+
+    free seed
+      like range
+        like t
+          cite free
+        cite free
+
+  task swap, name <swap>
+    note <Swaps two elements in the slice.>
+
+    take self
+      cite free
+    take a
+      like usize
+        cite free
+      cite free
+    take b
+      like usize
+        cite free
+      cite free
+
+  task swap-unchecked, name <swap_unchecked>
+    note <Swaps two elements in the slice, without doing bounds checking.>
+
+    take self
+      cite free
+    take a
+      like usize
+        cite free
+      cite free
+    take b
+      like usize
+        cite free
+      cite free
+
+  task reverse, name <reverse>
+    note <Reverses the order of elements in the slice, in place.>
+
+    take self
+      cite free
+
+  task iter, name <iter>
+    note <Returns an iterator over the slice.>
+
+    take self
+      cite free
+
+    free seed
+      like iter
+        time mask
+        like t
+          cite free
+        cite free
+
+  task iter-mut, name <iter_mut>
+    note <Returns an iterator that allows modifying each value.>
+
+    take self
+      cite free
+
+    free seed
+      like iter-mut
+        time mask
+        like t
+          cite free
+        cite free
+
+  task windows, name <windows>
+    note <Returns an iterator over all contiguous windows of length size. The windows overlap. If the slice is shorter than size, the iterator returns no values.>
+
+    take self
+      cite free
+    take size
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like windows
+        time mask
+        like t
+          cite free
+        cite free
+
+  task chunks, name <chunks>
+    note <Returns an iterator over chunk_size elements of the slice at a time, starting at the beginning of the slice.>
+
+    take self
+      cite free
+    take chunk-size
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like chunks
+        time mask
+        like t
+          cite free
+        cite free
+
+  task chunks-mut, name <chunks_mut>
+    note <Returns an iterator over chunk_size elements of the slice at a time, starting at the beginning of the slice.>
+
+    take self
+      cite free
+    take chunk-size
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like chunks-mut
+        time mask
+        like t
+          cite free
+        cite free
+
+  task chunks-exact, name <chunks_exact>
+    note <Returns an iterator over chunk_size elements of the slice at a time, starting at the beginning of the slice.>
+
+    take self
+      cite free
+    take chunk-size
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like chunks-exact
+        time mask
+        like t
+          cite free
+        cite free
+
+  task chunks-exact-mut, name <chunks_exact_mut>
+    note <Returns an iterator over chunk_size elements of the slice at a time, starting at the beginning of the slice.>
+
+    take self
+      cite free
+    take chunk-size
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like chunks-exact-mut
+        time mask
+        like t
+          cite free
+        cite free
+
+  task as-chunks-unchecked, name <as_chunks_unchecked>
+    note <Splits the slice into a slice of N-element arrays, assuming that there's no remainder.>
+
+    head n
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like list
+        like list
+          like t
+          name n
+
+  task as-chunks, name <as_chunks>
+    note <Splits the slice into a slice of N-element arrays, starting at the beginning of the slice, and a remainder slice with length strictly less than N.>
+
+    head n
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1
+          like list
+            like list
+              like t
+              name n
+        take t-2
+          list t
+
+  task as-rchunks, name <as_rchunks>
+    note <Splits the slice into a slice of N-element arrays, starting at the end of the slice, and a remainder slice with length strictly less than N.>
+
+    head n
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2
+          like list
+            like list
+              like t
+              name n
+
+  task array-chunks, name <array_chunks>
+    note <Returns an iterator over N elements of the slice at a time, starting at the beginning of the slice.>
+
+    head n
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like array-chunks
+        time mask
+        like t
+          cite free
+        like n
+          cite free
+        cite free
+
+  task as-chunks-unchecked-mut, name <as_chunks_unchecked_mut>
+    note <Splits the slice into a slice of N-element arrays, assuming that there's no remainder.>
+
+    head n
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like list
+        like list
+          like t
+          name n
+
+  task as-chunks-mut, name <as_chunks_mut>
+    note <Splits the slice into a slice of N-element arrays, starting at the beginning of the slice, and a remainder slice with length strictly less than N.>
+
+    head n
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1
+          like list
+            like list
+              like t
+              name n
+        take t-2
+          list t
+
+  task as-rchunks-mut, name <as_rchunks_mut>
+    note <Splits the slice into a slice of N-element arrays, starting at the end of the slice, and a remainder slice with length strictly less than N.>
+
+    head n
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2
+          like list
+            like list
+              like t
+              name n
+
+  task array-chunks-mut, name <array_chunks_mut>
+    note <Returns an iterator over N elements of the slice at a time, starting at the beginning of the slice.>
+
+    head n
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like array-chunks-mut
+        time mask
+        like t
+          cite free
+        like n
+          cite free
+        cite free
+
+  task array-windows, name <array_windows>
+    note <Returns an iterator over overlapping windows of N elements of a slice, starting at the beginning of the slice.>
+
+    head n
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like array-windows
+        time mask
+        like t
+          cite free
+        like n
+          cite free
+        cite free
+
+  task rchunks, name <rchunks>
+    note <Returns an iterator over chunk_size elements of the slice at a time, starting at the end of the slice.>
+
+    take self
+      cite free
+    take chunk-size
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like r-chunks
+        time mask
+        like t
+          cite free
+        cite free
+
+  task rchunks-mut, name <rchunks_mut>
+    note <Returns an iterator over chunk_size elements of the slice at a time, starting at the end of the slice.>
+
+    take self
+      cite free
+    take chunk-size
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like r-chunks-mut
+        time mask
+        like t
+          cite free
+        cite free
+
+  task rchunks-exact, name <rchunks_exact>
+    note <Returns an iterator over chunk_size elements of the slice at a time, starting at the end of the slice.>
+
+    take self
+      cite free
+    take chunk-size
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like r-chunks-exact
+        time mask
+        like t
+          cite free
+        cite free
+
+  task rchunks-exact-mut, name <rchunks_exact_mut>
+    note <Returns an iterator over chunk_size elements of the slice at a time, starting at the end of the slice.>
+
+    take self
+      cite free
+    take chunk-size
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like r-chunks-exact-mut
+        time mask
+        like t
+          cite free
+        cite free
+
+  task group-by, name <group_by>
+    note <Returns an iterator over the slice producing non-overlapping runs of elements using the predicate to separate them.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        take f-2, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take pred
+      like f
+        cite free
+      cite free
+
+    free seed
+      like group-by
+        time mask
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task group-by-mut, name <group_by_mut>
+    note <Returns an iterator over the slice producing non-overlapping mutable runs of elements using the predicate to separate them.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        take f-2, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take pred
+      like f
+        cite free
+      cite free
+
+    free seed
+      like group-by-mut
+        time mask
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task split-at, name <split_at>
+    note <Divides one slice into two at an index.>
+
+    take self
+      cite free
+    take mid
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2
+          list t
+
+  task split-at-mut, name <split_at_mut>
+    note <Divides one mutable slice into two at an index.>
+
+    take self
+      cite free
+    take mid
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2
+          list t
+
+  task split-at-unchecked, name <split_at_unchecked>
+    note <Divides one slice into two at an index, without doing bounds checking.>
+
+    take self
+      cite free
+    take mid
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2
+          list t
+
+  task split-at-mut-unchecked, name <split_at_mut_unchecked>
+    note <Divides one mutable slice into two at an index, without doing bounds checking.>
+
+    take self
+      cite free
+    take mid
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2
+          list t
+
+  task split-array-ref, name <split_array_ref>
+    note <Divides one slice into an array and a remainder slice at an index.>
+
+    head n
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1
+          like list
+            like t
+            name n
+        take t-2
+          list t
+
+  task split-array-mut, name <split_array_mut>
+    note <Divides one mutable slice into an array and a remainder slice at an index.>
+
+    head n
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1
+          like list
+            like t
+            name n
+        take t-2
+          list t
+
+  task rsplit-array-ref, name <rsplit_array_ref>
+    note <Divides one slice into an array and a remainder slice at an index from the end.>
+
+    head n
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2
+          like list
+            like t
+            name n
+
+  task rsplit-array-mut, name <rsplit_array_mut>
+    note <Divides one mutable slice into an array and a remainder slice at an index from the end.>
+
+    head n
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2
+          like list
+            like t
+            name n
+
+  task split, name <split>
+    note <Returns an iterator over subslices separated by elements that match pred. The matched element is not contained in the subslices.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take pred
+      like f
+        cite free
+      cite free
+
+    free seed
+      like split
+        time mask
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task split-mut, name <split_mut>
+    note <Returns an iterator over mutable subslices separated by elements that match pred. The matched element is not contained in the subslices.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take pred
+      like f
+        cite free
+      cite free
+
+    free seed
+      like split-mut
+        time mask
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task split-inclusive, name <split_inclusive>
+    note <Returns an iterator over subslices separated by elements that match pred. The matched element is contained in the end of the previous subslice as a terminator.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take pred
+      like f
+        cite free
+      cite free
+
+    free seed
+      like split-inclusive
+        time mask
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task split-inclusive-mut, name <split_inclusive_mut>
+    note <Returns an iterator over mutable subslices separated by elements that match pred. The matched element is contained in the previous subslice as a terminator.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take pred
+      like f
+        cite free
+      cite free
+
+    free seed
+      like split-inclusive-mut
+        time mask
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task rsplit, name <rsplit>
+    note <Returns an iterator over subslices separated by elements that match pred, starting at the end of the slice and working backwards. The matched element is not contained in the subslices.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take pred
+      like f
+        cite free
+      cite free
+
+    free seed
+      like r-split
+        time mask
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task rsplit-mut, name <rsplit_mut>
+    note <Returns an iterator over mutable subslices separated by elements that match pred, starting at the end of the slice and working backwards. The matched element is not contained in the subslices.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take pred
+      like f
+        cite free
+      cite free
+
+    free seed
+      like r-split-mut
+        time mask
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task splitn, name <splitn>
+    note <Returns an iterator over subslices separated by elements that match pred, limited to returning at most n items. The matched element is not contained in the subslices.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take n
+      like usize
+        cite free
+      cite free
+    take pred
+      like f
+        cite free
+      cite free
+
+    free seed
+      like split-n
+        time mask
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task splitn-mut, name <splitn_mut>
+    note <Returns an iterator over subslices separated by elements that match pred, limited to returning at most n items. The matched element is not contained in the subslices.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take n
+      like usize
+        cite free
+      cite free
+    take pred
+      like f
+        cite free
+      cite free
+
+    free seed
+      like split-n-mut
+        time mask
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task rsplitn, name <rsplitn>
+    note <Returns an iterator over subslices separated by elements that match pred limited to returning at most n items. This starts at the end of the slice and works backwards. The matched element is not contained in the subslices.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take n
+      like usize
+        cite free
+      cite free
+    take pred
+      like f
+        cite free
+      cite free
+
+    free seed
+      like r-split-n
+        time mask
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task rsplitn-mut, name <rsplitn_mut>
+    note <Returns an iterator over subslices separated by elements that match pred limited to returning at most n items. This starts at the end of the slice and works backwards. The matched element is not contained in the subslices.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take n
+      like usize
+        cite free
+      cite free
+    take pred
+      like f
+        cite free
+      cite free
+
+    free seed
+      like r-split-n-mut
+        time mask
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task contains, name <contains>
+    note <Returns true if the slice contains an element with the given value.>
+
+    lead t
+      like partial-eq
+        like t
+          cite free
+        cite free
+
+    take self
+      cite free
+    take x
+      like t
+
+    free seed
+      like bool
+        cite free
+
+  task starts-with, name <starts_with>
+    note <Returns true if needle is a prefix of the slice.>
+
+    lead t
+      like partial-eq
+        like t
+          cite free
+        cite free
+
+    take self
+      cite free
+    take needle
+      list t
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ends-with, name <ends_with>
+    note <Returns true if needle is a suffix of the slice.>
+
+    lead t
+      like partial-eq
+        like t
+          cite free
+        cite free
+
+    take self
+      cite free
+    take needle
+      list t
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task strip-prefix, name <strip_prefix>
+    note <Returns a subslice with the prefix removed.>
+
+    lead p
+      like slice-pattern
+        like item
+          cite free
+          fall back
+            like t
+              cite free
+        cite free
+    lead t
+      like partial-eq
+        like t
+          cite free
+        cite free
+
+    head p
+
+    take self
+      cite free
+    take prefix
+      like p
+
+    free seed
+      like option
+        list t
+        cite free
+
+  task strip-suffix, name <strip_suffix>
+    note <Returns a subslice with the suffix removed.>
+
+    lead p
+      like slice-pattern
+        like item
+          cite free
+          fall back
+            like t
+              cite free
+        cite free
+    lead t
+      like partial-eq
+        like t
+          cite free
+        cite free
+
+    head p
+
+    take self
+      cite free
+    take suffix
+      like p
+
+    free seed
+      like option
+        list t
+        cite free
+
+  task binary-search, name <binary_search>
+    note <Binary searches this sorted slice for a given element.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+    take x
+      like t
+
+    free seed
+      like result
+        like usize
+          cite free
+        like usize
+          cite free
+        cite free
+
+  task binary-search-by, name <binary_search_by>
+    note <Binary searches this sorted slice with a comparator function.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like ordering
+            cite free
+
+    time a
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        like usize
+          cite free
+        cite free
+
+  task binary-search-by-key, name <binary_search_by_key>
+    note <Binary searches this sorted slice with a key extraction function.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like b
+            cite free
+    lead b
+      like ord
+        cite free
+
+    time a
+
+    head b
+    head f
+
+    take self
+      cite free
+    take b
+      like b
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        like usize
+          cite free
+        cite free
+
+  task sort-unstable, name <sort_unstable>
+    note <Sorts the slice, but might not preserve the order of equal elements.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+
+  task sort-unstable-by, name <sort_unstable_by>
+    note <Sorts the slice with a comparator function, but might not preserve the order of equal elements.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        take f-2, like t
+        free seed
+          like ordering
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take compare
+      like f
+        cite free
+      cite free
+
+  task sort-unstable-by-key, name <sort_unstable_by_key>
+    note <Sorts the slice with a key extraction function, but might not preserve the order of equal elements.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like k
+            cite free
+    lead k
+      like ord
+        cite free
+
+    head k
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+  task partition-at-index, name <partition_at_index>
+    note <Reorder the slice such that the element at index is at its final sorted position.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+    take index
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2, like t
+        take t-3
+          list t
+
+  task partition-at-index-by, name <partition_at_index_by>
+    note <Reorder the slice with a comparator function such that the element at index is at its final sorted position.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        take f-2, like t
+        free seed
+          like ordering
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take index
+      like usize
+        cite free
+      cite free
+    take compare
+      like f
+        cite free
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2, like t
+        take t-3
+          list t
+
+  task partition-at-index-by-key, name <partition_at_index_by_key>
+    note <Reorder the slice with a key extraction function such that the element at index is at its final sorted position.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like k
+            cite free
+    lead k
+      like ord
+        cite free
+
+    head k
+    head f
+
+    take self
+      cite free
+    take index
+      like usize
+        cite free
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2, like t
+        take t-3
+          list t
+
+  task select-nth-unstable, name <select_nth_unstable>
+    note <Reorder the slice such that the element at index is at its final sorted position.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+    take index
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2, like t
+        take t-3
+          list t
+
+  task select-nth-unstable-by, name <select_nth_unstable_by>
+    note <Reorder the slice with a comparator function such that the element at index is at its final sorted position.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        take f-2, like t
+        free seed
+          like ordering
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take index
+      like usize
+        cite free
+      cite free
+    take compare
+      like f
+        cite free
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2, like t
+        take t-3
+          list t
+
+  task select-nth-unstable-by-key, name <select_nth_unstable_by_key>
+    note <Reorder the slice with a key extraction function such that the element at index is at its final sorted position.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like k
+            cite free
+    lead k
+      like ord
+        cite free
+
+    head k
+    head f
+
+    take self
+      cite free
+    take index
+      like usize
+        cite free
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2, like t
+        take t-3
+          list t
+
+  task partition-dedup, name <partition_dedup>
+    note <Moves all consecutive repeated elements to the end of the slice according to the PartialEq trait implementation.>
+
+    lead t
+      like partial-eq
+        like t
+          cite free
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2
+          list t
+
+  task partition-dedup-by, name <partition_dedup_by>
+    note <Moves all but the first of consecutive elements to the end of the slice satisfying a given equality relation.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        take f-2, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take same-bucket
+      like f
+        cite free
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2
+          list t
+
+  task partition-dedup-by-key, name <partition_dedup_by_key>
+    note <Moves all but the first of consecutive elements to the end of the slice that resolve to the same key.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like k
+            cite free
+    lead k
+      like partial-eq
+        like k
+          cite free
+        cite free
+
+    head k
+    head f
+
+    take self
+      cite free
+    take key
+      like f
+        cite free
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2
+          list t
+
+  task rotate-left, name <rotate_left>
+    note <Rotates the slice in-place such that the first mid elements of the slice move to the end while the last self.len() - mid elements move to the front. After calling rotate_left, the element previously at index mid will become the first element in the slice.>
+
+    take self
+      cite free
+    take mid
+      like usize
+        cite free
+      cite free
+
+  task rotate-right, name <rotate_right>
+    note <Rotates the slice in-place such that the first self.len() - k elements of the slice move to the end while the last k elements move to the front. After calling rotate_right, the element previously at index self.len() - k will become the first element in the slice.>
+
+    take self
+      cite free
+    take k
+      like usize
+        cite free
+      cite free
+
+  task fill, name <fill>
+    note <Fills self with elements by cloning value.>
+
+    lead t
+      like clone
+        cite free
+
+    take self
+      cite free
+    take value
+      like t
+        cite free
+      cite free
+
+  task fill-with, name <fill_with>
+    note <Fills self with elements returned by calling a closure repeatedly.>
+
+    lead f
+      like fn-mut
+        free seed
+          like t
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+  task clone-from-slice, name <clone_from_slice>
+    note <Copies the elements from src into self.>
+
+    lead t
+      like clone
+        cite free
+
+    take self
+      cite free
+    take src
+      list t
+      cite free
+
+  task copy-from-slice, name <copy_from_slice>
+    note <Copies all elements from src into self, using a memcpy.>
+
+    lead t
+      like copy
+        cite free
+
+    take self
+      cite free
+    take src
+      list t
+      cite free
+
+  task copy-within, name <copy_within>
+    note <Copies elements from one part of the slice to another part of itself, using a memmove.>
+
+    lead r
+      like range-bounds
+        like usize
+          cite free
+        cite free
+    lead t
+      like copy
+        cite free
+
+    head r
+
+    take self
+      cite free
+    take src
+      like r
+        cite free
+      cite free
+    take dest
+      like usize
+        cite free
+      cite free
+
+  task swap-with-slice, name <swap_with_slice>
+    note <Swaps all elements in self with those in other.>
+
+    take self
+      cite free
+    take other
+      list t
+      cite free
+
+  task align-to, name <align_to>
+    note <Transmute the slice to a slice of another type, ensuring alignment of the types is maintained.>
+
+    head u
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2
+          list u
+        take t-3
+          list t
+
+  task align-to-mut, name <align_to_mut>
+    note <Transmute the slice to a slice of another type, ensuring alignment of the types is maintained.>
+
+    head u
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2
+          list u
+        take t-3
+          list t
+
+  task as-simd, name <as_simd>
+    note <Split a slice into a prefix, a middle of aligned SIMD types, and a suffix.>
+
+    lead t
+      like simd-element
+        cite free
+    lead simd
+      like as-ref
+        like list
+          like t
+          name lanes
+        cite free
+    lead lane-count
+      like supported-lane-count
+        cite free
+
+    head lanes
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2
+          like list
+            like simd
+              like t
+                cite free
+              like lanes
+                cite free
+        take t-3
+          list t
+
+  task as-simd-mut, name <as_simd_mut>
+    note <Split a slice into a prefix, a middle of aligned SIMD types, and a suffix.>
+
+    lead t
+      like simd-element
+        cite free
+    lead simd
+      like as-mut
+        like list
+          like t
+          name lanes
+        cite free
+    lead lane-count
+      like supported-lane-count
+        cite free
+
+    head lanes
+      like usize
+      calm take
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1
+          list t
+        take t-2
+          like list
+            like simd
+              like t
+                cite free
+              like lanes
+                cite free
+        take t-3
+          list t
+
+  task is-sorted, name <is_sorted>
+    note <Checks if the elements of this slice are sorted.>
+
+    lead t
+      like partial-ord
+        like t
+          cite free
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-sorted-by, name <is_sorted_by>
+    note <Checks if the elements of this slice are sorted using the given comparator function.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        take f-2, like t
+        free seed
+          like option
+            like ordering
+              cite free
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take compare
+      like f
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-sorted-by-key, name <is_sorted_by_key>
+    note <Checks if the elements of this slice are sorted using the given key extraction function.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like k
+            cite free
+    lead k
+      like partial-ord
+        like k
+          cite free
+        cite free
+
+    head f
+    head k
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task partition-point, name <partition_point>
+    note <Returns the index of the partition point according to the given predicate (the index of the first element of the second partition).>
+
+    lead p
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head p
+
+    take self
+      cite free
+    take pred
+      like p
+        cite free
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task take, name <take>
+    note <Removes the subslice corresponding to the given range and returns a reference to it.>
+
+    lead r
+      like one-sided-range
+        like usize
+          cite free
+        cite free
+
+    head r
+
+    take self
+      list t
+      cite free
+    take range
+      like r
+        cite free
+      cite free
+
+    free seed
+      like option
+        list t
+        cite free
+
+  task take-mut, name <take_mut>
+    note <Removes the subslice corresponding to the given range and returns a mutable reference to it.>
+
+    lead r
+      like one-sided-range
+        like usize
+          cite free
+        cite free
+
+    head r
+
+    take self
+      list t
+      cite free
+    take range
+      like r
+        cite free
+      cite free
+
+    free seed
+      like option
+        list t
+        cite free
+
+  task take-first, name <take_first>
+    note <Removes the first element of the slice and returns a reference to it.>
+
+    take self
+      list t
+      cite free
+
+    free seed
+      like option
+        like t
+          time a
+        cite free
+
+  task take-first-mut, name <take_first_mut>
+    note <Removes the first element of the slice and returns a mutable reference to it.>
+
+    take self
+      list t
+      cite free
+
+    free seed
+      like option
+        like t
+          time a
+        cite free
+
+  task take-last, name <take_last>
+    note <Removes the last element of the slice and returns a reference to it.>
+
+    take self
+      list t
+      cite free
+
+    free seed
+      like option
+        like t
+          time a
+        cite free
+
+  task take-last-mut, name <take_last_mut>
+    note <Removes the last element of the slice and returns a mutable reference to it.>
+
+    take self
+      list t
+      cite free
+
+    free seed
+      like option
+        like t
+          time a
+        cite free
+
+  task is-ascii, name <is_ascii>
+    note <Checks if all bytes in this slice are within the ASCII range.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq-ignore-ascii-case, name <eq_ignore_ascii_case>
+    note <Checks that two slices are an ASCII case-insensitive match.>
+
+    take self
+      cite free
+    take other
+      list u8
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task make-ascii-uppercase, name <make_ascii_uppercase>
+    note <Converts this slice to its ASCII upper case equivalent in-place.>
+
+    take self
+      cite free
+
+  task make-ascii-lowercase, name <make_ascii_lowercase>
+    note <Converts this slice to its ASCII lower case equivalent in-place.>
+
+    take self
+      cite free
+
+  task escape-ascii, name <escape_ascii>
+    note <Returns an iterator that produces an escaped version of this slice, treating it as an ASCII string.>
+
+    take self
+      cite free
+
+    free seed
+      like escape-ascii
+        time mask
+        cite free
+
+  task sort, name <sort>
+    note <Sorts the slice.>
+
+    lead t
+      like ord
+        cite free
+
+    take self
+      cite free
+
+  task sort-by, name <sort_by>
+    note <Sorts the slice with a comparator function.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        take f-2, like t
+        free seed
+          like ordering
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take compare
+      like f
+        cite free
+      cite free
+
+  task sort-by-key, name <sort_by_key>
+    note <Sorts the slice with a key extraction function.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like k
+            cite free
+    lead k
+      like ord
+        cite free
+
+    head k
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+  task sort-by-cached-key, name <sort_by_cached_key>
+    note <Sorts the slice with a key extraction function.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like k
+            cite free
+    lead k
+      like ord
+        cite free
+
+    head k
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+  task to-vec, name <to_vec>
+    note <Copies self into a new Vec.>
+
+    lead t
+      like clone
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task to-vec-in, name <to_vec_in>
+    note <Copies self into a new Vec with an allocator.>
+
+    lead a
+      like allocator
+        cite free
+    lead t
+      like clone
+        cite free
+
+    head a
+
+    take self
+      cite free
+    take alloc
+      like a
+        cite free
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+        cite free
+
+  task into-vec, name <into_vec>
+    note <Converts self into a vector without clones or allocation.>
+
+    lead a
+      like allocator
+        cite free
+
+    head a
+
+    take self
+      like box
+        list t
+        like a
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like a
+          cite free
+        cite free
+
+  task repeat, name <repeat>
+    note <Creates a vector by repeating a slice n times.>
+
+    lead t
+      like copy
+        cite free
+
+    take self
+      cite free
+    take n
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task concat, name <concat>
+    note <Flattens a slice of T into a single value Self::Output.>
+
+    cast c-1
+      list t
+      like concat
+        like item
+          cite free
+
+    lead item
+      like dynamically-sized
+      list t
+      like concat
+        like item
+          cite free
+        cite free
+
+    head item
+
+    take self
+      cite free
+
+    free seed
+      like c-1/output
+
+  task join, name <join>
+    note <Flattens a slice of T into a single value Self::Output, placing a given separator between each.>
+
+    cast c-1
+      list t
+      like join
+        like separator
+          cite free
+
+      list t
+      like join
+        like separator
+          cite free
+        cite free
+
+    head separator
+
+    take self
+      cite free
+    take sep
+      like separator
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task connect, name <connect>
+    note <Flattens a slice of T into a single value Self::Output, placing a given separator between each.>
+
+    cast c-1
+      list t
+      like join
+        like separator
+          cite free
+
+      list t
+      like join
+        like separator
+          cite free
+        cite free
+
+    head separator
+
+    take self
+      cite free
+    take sep
+      like separator
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task to-ascii-uppercase, name <to_ascii_uppercase>
+    note <Returns a vector containing a copy of this slice where each byte is mapped to its ASCII upper case equivalent.>
+
+    take self
+      cite free
+
+    free seed
+      like vec
+        like u8
+          cite free
+        like global
+          cite free
+        cite free
+
+  task to-ascii-lowercase, name <to_ascii_lowercase>
+    note <Returns a vector containing a copy of this slice where each byte is mapped to its ASCII lower case equivalent.>
+
+    take self
+      cite free
+
+    free seed
+      like vec
+        like u8
+          cite free
+        like global
+          cite free
+        cite free
+
+  task as-mut, name <as_mut>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task as-mut, name <as_mut>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task as-mut, name <as_mut>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task as-mut, name <as_mut>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list u8
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list u8
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list u8
+
+  task is-ascii, name <is_ascii>
+    note <Checks if the value is within the ASCII range.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task to-ascii-uppercase, name <to_ascii_uppercase>
+    note <Makes a copy of the value in its ASCII upper case equivalent.>
+
+    take self
+      cite free
+
+    free seed
+      like self/owned
+
+  task to-ascii-lowercase, name <to_ascii_lowercase>
+    note <Makes a copy of the value in its ASCII lower case equivalent.>
+
+    take self
+      cite free
+
+    free seed
+      like self/owned
+
+  task eq-ignore-ascii-case, name <eq_ignore_ascii_case>
+    note <Checks that two values are an ASCII case-insensitive match.>
+
+    take self
+      cite free
+    take o
+      like self
+
+    free seed
+      like bool
+        cite free
+
+  task make-ascii-uppercase, name <make_ascii_uppercase>
+    note <Converts this type to its ASCII upper case equivalent in-place.>
+
+    take self
+      cite free
+
+  task make-ascii-lowercase, name <make_ascii_lowercase>
+    note <Converts this type to its ASCII lower case equivalent in-place.>
+
+    take self
+      cite free
+
+  task borrow, name <borrow>
+    note <Immutably borrows from an owned value.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task borrow, name <borrow>
+    note <Immutably borrows from an owned value.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task borrow-mut, name <borrow_mut>
+    note <Mutably borrows from an owned value.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task borrow-mut, name <borrow_mut>
+    note <Mutably borrows from an owned value.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task fill-buf, name <fill_buf>
+    note <Returns the contents of the internal buffer, filling it with more data from the inner reader if it is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        list u8
+        cite free
+
+  task consume, name <consume>
+    note <Tells this buffer that amt bytes have been consumed from the buffer, so they should no longer be returned in calls to read.>
+
+    take self
+      cite free
+    take amt
+      like usize
+        cite free
+      cite free
+
+  task has-data-left, name <has_data_left>
+    note <Check if the underlying Read has any data left to be read.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like bool
+          cite free
+        cite free
+
+  task read-until, name <read_until>
+    note <Read all bytes into buf until the delimiter byte or EOF is reached.>
+
+    take self
+      cite free
+    take byte
+      like u8
+        cite free
+      cite free
+    take buf
+      like vec
+        like u8
+          cite free
+      lock free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task read-line, name <read_line>
+    note <Read all bytes until a newline (the 0xA byte) is reached, and append them to the provided buffer.>
+
+    take self
+      cite free
+    take buf
+      like string
+      lock free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task split, name <split>
+    note <Returns an iterator over the contents of this reader split on the byte byte.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+    take byte
+      like u8
+        cite free
+      cite free
+
+    free seed
+      like split
+        like self
+          cite free
+        cite free
+
+  task lines, name <lines>
+    note <Returns an iterator over the lines of this reader.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like lines
+        like self
+          cite free
+        cite free
+
+  task concat, name <concat>
+    note <Implementation of [T]::concat>
+
+    take slice
+      list v
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task concat, name <concat>
+    note <Implementation of [T]::concat>
+
+    take slice
+      list s
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Creates an empty slice.>
+
+    free seed
+      list t
+
+  task default, name <default>
+    note <Creates a mutable empty slice.>
+
+    free seed
+      list t
+
+  task from, name <from>
+    note <Allocate a reference-counted slice and fill it by cloning v's items.>
+
+    take v
+      list t
+      cite free
+
+    free seed
+      like rc
+        list t
+        cite free
+
+  task from, name <from>
+    note <Converts a &[T] into a Box&lt;[T]&gt;>
+
+    take slice
+      list t
+      cite free
+
+    free seed
+      like box
+        list t
+        like global
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Allocate a Vec&lt;T&gt; and fill it by cloning s's items.>
+
+    take s
+      list t
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Allocate a reference-counted slice and fill it by cloning v's items.>
+
+    take v
+      list t
+      cite free
+
+    free seed
+      like arc
+        list t
+        cite free
+
+  task from, name <from>
+    note <Allocate a Vec&lt;T&gt; and fill it by cloning s's items.>
+
+    take s
+      list t
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Creates a Borrowed variant of Cow from a slice.>
+
+    take s
+      list t
+      cite free
+
+    free seed
+      like cow
+        time a
+        list t
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task index, name <index>
+    note <Performs the indexing (container[index]) operation.>
+
+    cast c-1
+      like i
+      like slice-index
+        list t
+
+    take self
+      cite free
+    take index
+      like i
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task index-mut, name <index_mut>
+    note <Performs the mutable indexing (container[index]) operation.>
+
+    cast c-1
+      like i
+      like slice-index
+        list t
+
+    take self
+      cite free
+    take index
+      like i
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task into-iter, name <into_iter>
+    note <Creates an iterator from a value.>
+
+    take self
+      cite free
+
+    free seed
+      like iter
+        time a
+        like t
+          cite free
+        cite free
+
+  task into-iter, name <into_iter>
+    note <Creates an iterator from a value.>
+
+    take self
+      cite free
+
+    free seed
+      like iter-mut
+        time a
+        like t
+          cite free
+        cite free
+
+  task join, name <join>
+    note <Implementation of [T]::join>
+
+    take slice
+      list v
+      cite free
+    take sep
+      list t
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task join, name <join>
+    note <Implementation of [T]::join>
+
+    take slice
+      list v
+      cite free
+    take sep
+      like t
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task join, name <join>
+    note <Implementation of [T]::join>
+
+    take slice
+      list s
+      cite free
+    take sep
+      like str
+
+    free seed
+      like string
+        cite free
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      list t
+      cite free
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      list b
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      list b
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      list u
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      list u
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      list u
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      list u
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      list u
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      list b
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      list b
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      list u
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      list u
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      list u
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      list u
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      list u
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like list
+        like a
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like list
+        like a
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like list
+        like a
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like list
+        like a
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like list
+        like a
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like list
+        like a
+        name n
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      list b
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      list b
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      list b
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      list b
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      list u
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      list u
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like u
+          cite free
+        like a
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like u
+          cite free
+        like a
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like u
+          cite free
+        like a
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like u
+          cite free
+        like a
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like u
+          cite free
+        like a
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like vec
+        like u
+          cite free
+        like a
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      list t
+      cite free
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task into-searcher, name <into_searcher>
+    note <Constructs the associated searcher from self and the haystack to search in.>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like char-slice-searcher
+        time a
+        time b
+        cite free
+
+  task is-contained-in, name <is_contained_in>
+    note <Checks whether the pattern matches anywhere in the haystack>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task is-prefix-of, name <is_prefix_of>
+    note <Checks whether the pattern matches at the front of the haystack>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task strip-prefix-of, name <strip_prefix_of>
+    note <Removes the pattern from the front of haystack, if it matches.>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like option
+        like str
+          time a
+        cite free
+
+  task is-suffix-of, name <is_suffix_of>
+    note <Checks whether the pattern matches at the back of the haystack>
+
+    lead char-slice-searcher
+      like reverse-searcher
+        time a
+        cite free
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task strip-suffix-of, name <strip_suffix_of>
+    note <Removes the pattern from the back of haystack, if it matches.>
+
+    lead char-slice-searcher
+      like reverse-searcher
+        time a
+        cite free
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like option
+        like str
+          time a
+        cite free
+
+  task read, name <read>
+    note <Pull some bytes from this source into the specified buffer, returning how many bytes were read.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task read-buf, name <read_buf>
+    note <Pull some bytes from this source into the specified buffer.>
+
+    take self
+      cite free
+    take buf
+      like read-buf
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task read-vectored, name <read_vectored>
+    note <Like read, except that it reads into a slice of buffers.>
+
+    take self
+      cite free
+    take bufs
+      like list
+        like io-slice-mut
+          time mask
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task is-read-vectored, name <is_read_vectored>
+    note <Determines if this Reader has an efficient read_vectored implementation.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task read-exact, name <read_exact>
+    note <Read the exact number of bytes required to fill buf.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task read-to-end, name <read_to_end>
+    note <Read all bytes until EOF in this source, placing them into buf.>
+
+    take self
+      cite free
+    take buf
+      like vec
+        like u8
+          cite free
+      lock free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task read-to-string, name <read_to_string>
+    note <Read all bytes until EOF in this source, appending them to buf.>
+
+    take self
+      cite free
+    take buf
+      like string
+      lock free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task read-buf-exact, name <read_buf_exact>
+    note <Read the exact number of bytes required to fill buf.>
+
+    take self
+      cite free
+    take buf
+      like read-buf
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task by-ref, name <by_ref>
+    note <Creates a “by reference” adaptor for this instance of Read.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like self
+
+  task bytes, name <bytes>
+    note <Transforms this Read instance to an Iterator over its bytes.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like bytes
+        like self
+          cite free
+        cite free
+
+  task chain, name <chain>
+    note <Creates an adapter which will chain this stream with another.>
+
+    lead self
+      like sized
+        cite free
+
+    head r
+
+    take self
+      cite free
+    take next
+      like r
+        cite free
+      cite free
+
+    free seed
+      like chain
+        like self
+          cite free
+        like r
+          cite free
+        cite free
+
+  task take, name <take>
+    note <Creates an adapter which will read at most limit bytes from it.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+    take limit
+      like u64
+        cite free
+      cite free
+
+    free seed
+      like take
+        like self
+          cite free
+        cite free
+
+  task get, name <get>
+    note <Returns a shared reference to the output at this location, if in bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like option
+        list t
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the output at this location, if in bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like option
+        list t
+        cite free
+
+  task get-unchecked, name <get_unchecked>
+    note <Returns a shared reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    take self
+      cite free
+    take slice
+      list t
+      calm take
+      cite free
+      dive take
+
+    free seed
+      list t
+      calm take
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a mutable reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task index, name <index>
+    note <Returns a shared reference to the output at this location, panicking if out of bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task index-mut, name <index_mut>
+    note <Returns a mutable reference to the output at this location, panicking if out of bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task get, name <get>
+    note <Returns a shared reference to the output at this location, if in bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like option
+        list t
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the output at this location, if in bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like option
+        list t
+        cite free
+
+  task get-unchecked, name <get_unchecked>
+    note <Returns a shared reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    take self
+      cite free
+    take slice
+      list t
+      calm take
+      cite free
+      dive take
+
+    free seed
+      list t
+      calm take
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a mutable reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task index, name <index>
+    note <Returns a shared reference to the output at this location, panicking if out of bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task index-mut, name <index_mut>
+    note <Returns a mutable reference to the output at this location, panicking if out of bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task get, name <get>
+    note <Returns a shared reference to the output at this location, if in bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like option
+        list t
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the output at this location, if in bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like option
+        list t
+        cite free
+
+  task get-unchecked, name <get_unchecked>
+    note <Returns a shared reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    take self
+      cite free
+    take slice
+      list t
+      calm take
+      cite free
+      dive take
+
+    free seed
+      list t
+      calm take
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a mutable reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task index, name <index>
+    note <Returns a shared reference to the output at this location, panicking if out of bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task index-mut, name <index_mut>
+    note <Returns a mutable reference to the output at this location, panicking if out of bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task get, name <get>
+    note <Returns a shared reference to the output at this location, if in bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like option
+        like t
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the output at this location, if in bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like option
+        like t
+        cite free
+
+  task get-unchecked, name <get_unchecked>
+    note <Returns a shared reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    take self
+      cite free
+    take slice
+      list t
+      calm take
+      cite free
+      dive take
+
+    free seed
+      like t
+        cite free
+      calm take
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a mutable reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task index, name <index>
+    note <Returns a shared reference to the output at this location, panicking if out of bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like t
+
+  task index-mut, name <index_mut>
+    note <Returns a mutable reference to the output at this location, panicking if out of bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like t
+
+  task get, name <get>
+    note <Returns a shared reference to the output at this location, if in bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like option
+        list t
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the output at this location, if in bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like option
+        list t
+        cite free
+
+  task get-unchecked, name <get_unchecked>
+    note <Returns a shared reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    take self
+      cite free
+    take slice
+      list t
+      calm take
+      cite free
+      dive take
+
+    free seed
+      list t
+      calm take
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a mutable reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task index, name <index>
+    note <Returns a shared reference to the output at this location, panicking if out of bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task index-mut, name <index_mut>
+    note <Returns a mutable reference to the output at this location, panicking if out of bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task get, name <get>
+    note <Returns a shared reference to the output at this location, if in bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like option
+        list t
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the output at this location, if in bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like option
+        list t
+        cite free
+
+  task get-unchecked, name <get_unchecked>
+    note <Returns a shared reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    take self
+      cite free
+    take slice
+      list t
+      calm take
+      cite free
+      dive take
+
+    free seed
+      list t
+      calm take
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a mutable reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task index, name <index>
+    note <Returns a shared reference to the output at this location, panicking if out of bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task index-mut, name <index_mut>
+    note <Returns a mutable reference to the output at this location, panicking if out of bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task get, name <get>
+    note <Returns a shared reference to the output at this location, if in bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like option
+        list t
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the output at this location, if in bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like option
+        list t
+        cite free
+
+  task get-unchecked, name <get_unchecked>
+    note <Returns a shared reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    take self
+      cite free
+    take slice
+      list t
+      calm take
+      cite free
+      dive take
+
+    free seed
+      list t
+      calm take
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a mutable reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task index, name <index>
+    note <Returns a shared reference to the output at this location, panicking if out of bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task index-mut, name <index_mut>
+    note <Returns a mutable reference to the output at this location, panicking if out of bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task get, name <get>
+    note <Returns a shared reference to the output at this location, if in bounds.>
+
+    cast c-1
+      like form
+        take t-1, like bound
+        take t-2, like bound
+      like slice-index
+        list t
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the output at this location, if in bounds.>
+
+    cast c-1
+      like form
+        take t-1, like bound
+        take t-2, like bound
+      like slice-index
+        list t
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-unchecked, name <get_unchecked>
+    note <Returns a shared reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    cast c-1
+      like form
+        take t-1, like bound
+        take t-2, like bound
+      like slice-index
+        list t
+
+    take self
+      cite free
+    take slice
+      list t
+      calm take
+      cite free
+      dive take
+
+    free seed
+      like c-1/output
+      calm take
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a mutable reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    cast c-1
+      like form
+        take t-1, like bound
+        take t-2, like bound
+      like slice-index
+        list t
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like c-1/output
+
+  task index, name <index>
+    note <Returns a shared reference to the output at this location, panicking if out of bounds.>
+
+    cast c-1
+      like form
+        take t-1, like bound
+        take t-2, like bound
+      like slice-index
+        list t
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like c-1/output
+
+  task index-mut, name <index_mut>
+    note <Returns a mutable reference to the output at this location, panicking if out of bounds.>
+
+    cast c-1
+      like form
+        take t-1, like bound
+        take t-2, like bound
+      like slice-index
+        list t
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like c-1/output
+
+  task as-slice, name <as_slice>
+    note <Currently, the consumers of SlicePattern need a slice.>
+
+    cast c-1
+      list t
+      like slice-pattern
+
+    take self
+      cite free
+
+    free seed
+      like list
+        like c-1/item
+
+  task to-owned, name <to_owned>
+    note <Creates owned data from borrowed data, usually by cloning.>
+
+    take self
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task clone-into, name <clone_into>
+    note <Uses borrowed data to replace owned data, usually by cloning.>
+
+    take self
+      cite free
+    take target
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+      lock free
+
+  task to-socket-addrs, name <to_socket_addrs>
+    note <Converts this object to an iterator of resolved SocketAddrs.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like self/iter
+        cite free
+
+  task try-from, name <try_from>
+    note <Performs the conversion.>
+
+    take slice
+      list t
+      cite free
+
+    free seed
+      like result
+        like list
+          like t
+          name n
+        like try-from-slice-error
+          cite free
+        cite free
+
+  task try-from, name <try_from>
+    note <Performs the conversion.>
+
+    take slice
+      list t
+      cite free
+
+    free seed
+      like result
+        like list
+          like t
+          name n
+        like try-from-slice-error
+          cite free
+        cite free
+
+  task try-from, name <try_from>
+    note <Performs the conversion.>
+
+    take slice
+      list t
+      cite free
+
+    free seed
+      like result
+        like list
+          like t
+          name n
+        like try-from-slice-error
+          cite free
+        cite free
+
+  task try-from, name <try_from>
+    note <Performs the conversion.>
+
+    take slice
+      list t
+      cite free
+
+    free seed
+      like result
+        like list
+          like t
+          name n
+        like try-from-slice-error
+          cite free
+        cite free
+
+  task write, name <write>
+    note <Write a buffer into this writer, returning how many bytes were written.>
+
+    take self
+      cite free
+    take data
+      list u8
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task write-vectored, name <write_vectored>
+    note <Like write, except that it writes from a slice of buffers.>
+
+    take self
+      cite free
+    take bufs
+      like list
+        like io-slice
+          time mask
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task is-write-vectored, name <is_write_vectored>
+    note <Determines if this Writer has an efficient write_vectored implementation.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task write-all, name <write_all>
+    note <Attempts to write an entire buffer into this writer.>
+
+    take self
+      cite free
+    take data
+      list u8
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task flush, name <flush>
+    note <Flush this output stream, ensuring that all intermediately buffered contents reach their destination.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-all-vectored, name <write_all_vectored>
+    note <Attempts to write multiple buffers into this writer.>
+
+    take self
+      cite free
+    take bufs
+      like list
+        like io-slice
+          time mask
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-fmt, name <write_fmt>
+    note <Writes a formatted string into this writer, returning any error encountered.>
+
+    take self
+      cite free
+    take fmt
+      like arguments
+        time mask
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task by-ref, name <by_ref>
+    note <Creates a “by reference” adapter for this instance of Write.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like self

@@ -1,0 +1,27 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-string
+  find native-undefined
+  find runtime-script-id
+
+form search-in-content-parameter-type, name <SearchInContentParameterType>
+  link script-id, name <scriptId>
+    like runtime-script-id
+    flex true
+  link query, name <query>
+    like native-string
+    flex true
+  link case-sensitive, name <caseSensitive>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link is-regex, name <isRegex>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

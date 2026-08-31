@@ -1,0 +1,25 @@
+
+load @term/bind/code/browser/dom/text-track-cue
+  find text-track-cue
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form text-track-cue-list, name <TextTrackCueList>
+  link length, name <length>
+    like native-number
+
+  task get-cue-by-id, name <getCueById>
+    take id, like native-string
+    like or
+      like text-track-cue
+      like native-null
+
+  mesh index, like native-number
+    like text-track-cue

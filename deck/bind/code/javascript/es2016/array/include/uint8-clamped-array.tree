@@ -1,0 +1,16 @@
+
+load @term/bind/code/javascript/es2015/symbol/wellknown/uint8-clamped-array
+  find uint8-clamped-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form uint8-clamped-array, name <Uint8ClampedArray>
+  task includes, name <includes>
+    take search-element, like native-number
+    take from-index, like maybe
+      like native-number
+    like native-boolean

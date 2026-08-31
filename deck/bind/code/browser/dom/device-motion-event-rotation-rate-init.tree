@@ -1,0 +1,23 @@
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form device-motion-event-rotation-rate-init, name <DeviceMotionEventRotationRateInit>
+  link alpha, name <alpha>
+    like or
+      like native-number
+      like native-null
+    lock false
+  link beta, name <beta>
+    like or
+      like native-number
+      like native-null
+    lock false
+  link gamma, name <gamma>
+    like or
+      like native-number
+      like native-null
+    lock false

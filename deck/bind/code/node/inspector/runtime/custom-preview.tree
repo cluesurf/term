@@ -1,0 +1,30 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/inspector/runtime
+  find remote-object-id
+
+form custom-preview, name <CustomPreview>
+  link header, name <header>
+    like native-string
+    flex true
+  link has-body, name <hasBody>
+    like native-boolean
+    flex true
+  link formatter-object-id, name <formatterObjectId>
+    like remote-object-id
+    flex true
+  link bind-remote-object-function-id, name <bindRemoteObjectFunctionId>
+    like remote-object-id
+    flex true
+  link config-object-id, name <configObjectId>
+    like or
+      like remote-object-id
+      like native-undefined
+    flex true

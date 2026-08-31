@@ -1,0 +1,598 @@
+
+load @term/bind/code/javascript
+  find array
+  find async-iterable-iterator
+  find native-boolean
+  find native-null
+  find native-number
+  find native-string
+  find native-symbol
+  find native-this
+  find native-undefined
+  find native-void
+  find node-js-readable-stream
+  find node-js-writable-stream
+
+load @term/bind
+  find any
+  find or
+  find task
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/events/event-emitter
+  find abortable
+
+load @term/bind/code/node/readline
+  find async-completer
+  find completer
+  find cursor-pos
+  find key
+  find read-line-options
+
+form interface, name <Interface>
+  base event-emitter
+  link terminal, name <terminal>, like native-boolean
+  link line, name <line>, like native-string
+  link cursor, name <cursor>, like native-number
+
+  task get-prompt, name <getPrompt>
+    like native-string
+
+  task set-prompt, name <setPrompt>
+    like native-void
+
+    take prompt, like native-string
+
+  task prompt, name <prompt>
+    like native-void
+
+    take preserve-cursor, like native-boolean
+      void true
+
+  task question, name <question>
+    like native-void
+
+    take query, like native-string
+    take callback
+      like task
+        like native-void
+
+        take answer, like native-string
+
+  task question, name <question>
+    like native-void
+
+    take query, like native-string
+    take options, like abortable
+    take callback
+      like task
+        like native-void
+
+        take answer, like native-string
+
+  task pause, name <pause>
+    like native-this
+
+  task resume, name <resume>
+    like native-this
+
+  task close, name <close>
+    like native-void
+
+  task write, name <write>
+    like native-void
+
+    take data
+      like or
+        like native-string
+        like buffer
+    take key, like key
+      void true
+
+  task write, name <write>
+    like native-void
+
+    take data
+      like or
+        like native-undefined
+        like native-null
+        like native-string
+        like buffer
+    take key, like key
+
+  task get-cursor-pos, name <getCursorPos>
+    like cursor-pos
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <line>
+    take listener
+      like task
+        like native-void
+
+        take input, like native-string
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <pause>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <resume>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <SIGCONT>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <SIGINT>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <SIGTSTP>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <history>
+    take listener
+      like task
+        like native-void
+
+        take history
+          like array
+            like native-string
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take args
+      like array
+        like any
+      rest true
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <close>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <line>
+    take input, like native-string
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <pause>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <resume>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <SIGCONT>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <SIGINT>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <SIGTSTP>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <history>
+    take history
+      like array
+        like native-string
+
+  task on, name <on>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task on, name <on>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <line>
+    take listener
+      like task
+        like native-void
+
+        take input, like native-string
+
+  task on, name <on>
+    like native-this
+
+    take event, text <pause>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <resume>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <SIGCONT>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <SIGINT>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <SIGTSTP>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <history>
+    take listener
+      like task
+        like native-void
+
+        take history
+          like array
+            like native-string
+
+  task once, name <once>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task once, name <once>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <line>
+    take listener
+      like task
+        like native-void
+
+        take input, like native-string
+
+  task once, name <once>
+    like native-this
+
+    take event, text <pause>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <resume>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <SIGCONT>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <SIGINT>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <SIGTSTP>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <history>
+    take listener
+      like task
+        like native-void
+
+        take history
+          like array
+            like native-string
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <line>
+    take listener
+      like task
+        like native-void
+
+        take input, like native-string
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <pause>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <resume>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <SIGCONT>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <SIGINT>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <SIGTSTP>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <history>
+    take listener
+      like task
+        like native-void
+
+        take history
+          like array
+            like native-string
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <line>
+    take listener
+      like task
+        like native-void
+
+        take input, like native-string
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <pause>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <resume>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <SIGCONT>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <SIGINT>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <SIGTSTP>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <history>
+    take listener
+      like task
+        like native-void
+
+        take history
+          like array
+            like native-string
+
+  task {symbol/async-iterator}
+    name <Symbol.asyncIterator>
+    like async-iterable-iterator
+      like native-string
+
+form interface-constructor
+  hook make
+    take input, like node-js-readable-stream
+    take output, like node-js-writable-stream
+      void true
+    take completer
+      like or
+        like completer
+        like async-completer
+      void true
+    take terminal, like native-boolean
+      void true
+
+  hook make
+    take options, like read-line-options

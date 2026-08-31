@@ -1,0 +1,19 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-undefined
+
+form start-precise-coverage-parameter-type, name <StartPreciseCoverageParameterType>
+  link call-count, name <callCount>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link detailed, name <detailed>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

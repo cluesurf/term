@@ -1,0 +1,26 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form worker-location, name <WorkerLocation>
+  link hash, name <hash>
+    like native-string
+  link host, name <host>
+    like native-string
+  link hostname, name <hostname>
+    like native-string
+  link href, name <href>
+    like native-string
+  link origin, name <origin>
+    like native-string
+  link pathname, name <pathname>
+    like native-string
+  link port, name <port>
+    like native-string
+  link protocol, name <protocol>
+    like native-string
+  link search, name <search>
+    like native-string
+
+  task to-string, name <toString>
+    like native-string

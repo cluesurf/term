@@ -1,0 +1,27 @@
+
+load @term/bind/code/browser/dom/idb-index
+  find idb-index
+
+load @term/bind/code/browser/dom/idb-index-parameters
+  find idb-index-parameters
+
+load @term/bind/code/browser/dom/idb-object-store
+  find idb-object-store
+
+load @term/bind/code/javascript/iterable
+  find iterable
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form idb-object-store, name <IDBObjectStore>
+  task create-index, name <createIndex>
+    take name, like native-string
+    take key-path
+      like or
+        like native-string
+        like iterable
+          like native-string
+    take options, like maybe
+      like idb-index-parameters
+    like idb-index

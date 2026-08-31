@@ -1,0 +1,6 @@
+
+load @term/bind/code/javascript/es5/error
+  find error
+
+form uri-error, name <URIError>
+  base error

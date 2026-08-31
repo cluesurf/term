@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/text-track
+  find text-track
+
+load @term/bind/code/javascript/native
+  find native-null
+
+form track-event, name <TrackEvent>
+  base event
+
+  link track, name <track>
+    like or
+      like text-track
+      like native-null

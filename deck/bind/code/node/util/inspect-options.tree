@@ -1,0 +1,79 @@
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-null
+  find native-number
+  find native-string
+  find native-undefined
+
+form inspect-options, name <InspectOptions>
+  link getters, name <getters>
+    like or
+      text <get>
+      text <set>
+      like native-boolean
+      like native-undefined
+    flex true
+  link show-hidden, name <showHidden>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link depth, name <depth>
+    like or
+      like native-number
+      like native-null
+      like native-undefined
+    flex true
+  link colors, name <colors>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link custom-inspect, name <customInspect>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link show-proxy, name <showProxy>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link max-array-length, name <maxArrayLength>
+    like or
+      like native-number
+      like native-null
+      like native-undefined
+    flex true
+  link max-string-length, name <maxStringLength>
+    like or
+      like native-number
+      like native-null
+      like native-undefined
+    flex true
+  link break-length, name <breakLength>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link compact, name <compact>
+    like or
+      like native-boolean
+      like native-number
+      like native-undefined
+    flex true
+  link sorted, name <sorted>
+    like or
+      like native-boolean
+      like task
+        like native-number
+
+        take a, like native-string
+        take b, like native-string
+      like native-undefined
+    flex true

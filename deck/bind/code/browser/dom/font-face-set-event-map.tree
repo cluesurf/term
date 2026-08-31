@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form font-face-set-event-map, name <FontFaceSetEventMap>
+  link loading, name <loading>
+    like event
+    lock false
+  link loadingdone, name <loadingdone>
+    like event
+    lock false
+  link loadingerror, name <loadingerror>
+    like event
+    lock false

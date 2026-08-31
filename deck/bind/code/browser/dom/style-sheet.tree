@@ -1,0 +1,47 @@
+
+load @term/bind/code/browser/dom/css-style-sheet
+  find css-style-sheet
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/browser/dom/media-list
+  find media-list
+
+load @term/bind/code/browser/dom/processing-instruction
+  find processing-instruction
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form style-sheet, name <StyleSheet>
+  link disabled, name <disabled>
+    like native-boolean
+    lock false
+  link href, name <href>
+    like or
+      like native-string
+      like native-null
+  link media, name <media>
+    like media-list
+  link owner-node, name <ownerNode>
+    like or
+      like element
+      like processing-instruction
+      like native-null
+  link parent-style-sheet, name <parentStyleSheet>
+    like or
+      like css-style-sheet
+      like native-null
+  link title, name <title>
+    like or
+      like native-string
+      like native-null
+  link type, name <type>
+    like native-string

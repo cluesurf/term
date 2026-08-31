@@ -1,0 +1,8 @@
+
+load @term/bind/code/node/perf-hooks
+  find event-loop-utility-function
+
+form worker-performance, name <WorkerPerformance>
+  link event-loop-utilization, name <eventLoopUtilization>
+    like event-loop-utility-function
+    flex true

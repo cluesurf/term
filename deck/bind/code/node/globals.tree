@@ -1,0 +1,84 @@
+
+bear @term/bind/code/javascript/node/globals/error-constructor
+bear @term/bind/code/javascript/node/globals/node-require
+bear @term/bind/code/javascript/node/globals/require-resolve
+bear @term/bind/code/javascript/node/globals/node-module
+bear @term/bind/code/javascript/node/globals/abort-controller
+bear @term/bind/code/javascript/node/globals/abort-signal
+bear @term/bind/code/javascript/node/globals/relative-indexable
+bear @term/bind/code/javascript/node/globals/string
+bear @term/bind/code/javascript/node/globals/array
+bear @term/bind/code/javascript/node/globals/int8-array
+bear @term/bind/code/javascript/node/globals/uint8-array
+bear @term/bind/code/javascript/node/globals/uint8-clamped-array
+bear @term/bind/code/javascript/node/globals/int16-array
+bear @term/bind/code/javascript/node/globals/uint16-array
+bear @term/bind/code/javascript/node/globals/int32-array
+bear @term/bind/code/javascript/node/globals/uint32-array
+bear @term/bind/code/javascript/node/globals/float32-array
+bear @term/bind/code/javascript/node/globals/float64-array
+bear @term/bind/code/javascript/node/globals/big-int64-array
+bear @term/bind/code/javascript/node/globals/big-uint64-array
+bear @term/bind/code/javascript/node/globals/global
+
+load @term/bind
+  find any
+  find form
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find console
+  find native-string
+  find native-undefined
+  find native-void
+  find node-js-process
+
+load @term/bind/code/node/globals
+  find abort-controller
+  find abort-signal
+  find node-module
+  find node-require
+
+host process, name <process>
+  like node-js-process
+
+host console, name <console>
+  like console
+
+host filename, name <__filename>
+  like native-string
+
+host dirname, name <__dirname>
+  like native-string
+
+host require, name <require>
+  like node-require
+
+host module, name <module>
+  like node-module
+
+host exports, name <exports>
+  like any
+
+host gc, name <gc>
+  like or
+    like native-undefined
+    like task
+      like native-void
+
+host abort-controller, name <AbortController>
+  like form
+    link prototype, name <prototype>
+      like abort-controller
+      flex true
+    hook make
+      like abort-controller
+
+host abort-signal, name <AbortSignal>
+  like form
+    link prototype, name <prototype>
+      like abort-signal
+      flex true
+    hook make
+      like abort-signal

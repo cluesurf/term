@@ -1,0 +1,25 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-undefined
+
+form watch-file-options, name <WatchFileOptions>
+  link bigint, name <bigint>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link persistent, name <persistent>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link interval, name <interval>
+    like or
+      like native-number
+      like native-undefined
+    flex true

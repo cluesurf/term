@@ -1,0 +1,6 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form g-lbitfield, name <GLbitfield>
+  like native-number

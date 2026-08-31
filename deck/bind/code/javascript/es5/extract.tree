@@ -1,0 +1,16 @@
+
+load @term/bind/code/javascript/native
+  find native-never
+
+form extract, name <Extract>
+  head t
+  head u
+
+  like test
+    stem roll
+      like t
+      like u
+      hook true
+        like t
+      hook false
+        like native-never

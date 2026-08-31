@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/es2015/iterable/set-constructor
+  find set-constructor
+
+form set-constructor, name <SetConstructor>
+  link {symbol/species}
+    like set-constructor
+    read true

@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form uvm-entry, name <UvmEntry>
+  like native-array
+    like native-number

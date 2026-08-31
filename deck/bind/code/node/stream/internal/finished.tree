@@ -1,0 +1,25 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-void
+  find node-js-read-write-stream
+  find node-js-readable-stream
+  find node-js-writable-stream
+  find promise
+
+load @term/bind/code/node/stream/internal
+  find finished-options
+
+task promisify, name <__promisify__>
+  like promise
+    like native-void
+
+  take stream
+    like or
+      like node-js-readable-stream
+      like node-js-writable-stream
+      like node-js-read-write-stream
+  take options, like finished-options
+    void true

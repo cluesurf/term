@@ -1,0 +1,38 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find abort-signal
+  find native-number
+  find native-string
+  find native-undefined
+  find node-js-signals
+
+load @term/bind/code/node/child-process
+  find common-options
+
+form exec-options, name <ExecOptions>
+  base common-options
+
+  link shell, name <shell>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link signal, name <signal>
+    like or
+      like abort-signal
+      like native-undefined
+    flex true
+  link max-buffer, name <maxBuffer>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link kill-signal, name <killSignal>
+    like or
+      like node-js-signals
+      like native-number
+      like native-undefined
+    flex true

@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/scroll-behavior
+  find scroll-behavior
+
+form scroll-options, name <ScrollOptions>
+  link behavior, name <behavior>
+    like scroll-behavior
+    lock false

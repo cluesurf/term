@@ -1,0 +1,34 @@
+
+load @term/bind/code/browser/dom/error-event-init
+  find error-event-init
+
+load @term/bind/code/browser/webworker/event-init
+  find event-init
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form error-event-init, name <ErrorEventInit>
+  base event-init
+
+  link colno, name <colno>
+    like native-number
+    lock false
+  link error, name <error>
+    like native-any
+    lock false
+  link filename, name <filename>
+    like native-string
+    lock false
+  link lineno, name <lineno>
+    like native-number
+    lock false
+  link message, name <message>
+    like native-string
+    lock false

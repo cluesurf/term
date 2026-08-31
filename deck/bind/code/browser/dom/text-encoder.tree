@@ -1,0 +1,25 @@
+
+load @term/bind/code/browser/dom/text-encoder-common
+  find text-encoder-common
+
+load @term/bind/code/browser/dom/text-encoder-encode-into-result
+  find text-encoder-encode-into-result
+
+load @term/bind/code/javascript/es5/uint8-array
+  find uint8-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form text-encoder, name <TextEncoder>
+  base text-encoder-common
+
+  task encode, name <encode>
+    take input, like maybe
+      like native-string
+    like uint8-array
+
+  task encode-into, name <encodeInto>
+    take source, like native-string
+    take destination, like uint8-array
+    like text-encoder-encode-into-result

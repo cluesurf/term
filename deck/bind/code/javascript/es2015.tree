@@ -1,0 +1,11 @@
+
+bear @term/bind/code/javascript/es5
+bear @term/bind/code/javascript/es2015/core
+bear @term/bind/code/javascript/es2015/collection
+bear @term/bind/code/javascript/es2015/iterable
+bear @term/bind/code/javascript/es2015/generator
+bear @term/bind/code/javascript/es2015/promise
+bear @term/bind/code/javascript/es2015/proxy
+bear @term/bind/code/javascript/es2015/reflect
+bear @term/bind/code/javascript/es2015/symbol
+bear @term/bind/code/javascript/es2015/symbol/wellknown

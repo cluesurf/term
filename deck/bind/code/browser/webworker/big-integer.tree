@@ -1,0 +1,6 @@
+
+load @term/bind/code/javascript/es5/uint8-array
+  find uint8-array
+
+form big-integer, name <BigInteger>
+  like uint8-array

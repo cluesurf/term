@@ -1,0 +1,7 @@
+
+load @term/bind/code/browser/dom/font-face-set
+  find font-face-set
+
+form font-face-source, name <FontFaceSource>
+  link fonts, name <fonts>
+    like font-face-set

@@ -1,0 +1,3849 @@
+
+load @term/bind/code/javascript
+  find array
+  find console-message-added-event-data-type
+  find debugger-breakpoint-resolved-event-data-type
+  find debugger-continue-to-location-parameter-type
+  find debugger-enable-return-type
+  find debugger-evaluate-on-call-frame-parameter-type
+  find debugger-evaluate-on-call-frame-return-type
+  find debugger-get-possible-breakpoints-parameter-type
+  find debugger-get-possible-breakpoints-return-type
+  find debugger-get-script-source-parameter-type
+  find debugger-get-script-source-return-type
+  find debugger-get-stack-trace-parameter-type
+  find debugger-get-stack-trace-return-type
+  find debugger-pause-on-async-call-parameter-type
+  find debugger-paused-event-data-type
+  find debugger-remove-breakpoint-parameter-type
+  find debugger-restart-frame-parameter-type
+  find debugger-restart-frame-return-type
+  find debugger-script-failed-to-parse-event-data-type
+  find debugger-script-parsed-event-data-type
+  find debugger-search-in-content-parameter-type
+  find debugger-search-in-content-return-type
+  find debugger-set-async-call-stack-depth-parameter-type
+  find debugger-set-blackbox-patterns-parameter-type
+  find debugger-set-blackboxed-ranges-parameter-type
+  find debugger-set-breakpoint-by-url-parameter-type
+  find debugger-set-breakpoint-by-url-return-type
+  find debugger-set-breakpoint-parameter-type
+  find debugger-set-breakpoint-return-type
+  find debugger-set-breakpoints-active-parameter-type
+  find debugger-set-pause-on-exceptions-parameter-type
+  find debugger-set-return-value-parameter-type
+  find debugger-set-script-source-parameter-type
+  find debugger-set-script-source-return-type
+  find debugger-set-skip-all-pauses-parameter-type
+  find debugger-set-variable-value-parameter-type
+  find debugger-step-into-parameter-type
+  find error
+  find heap-profiler-add-heap-snapshot-chunk-event-data-type
+  find heap-profiler-add-inspected-heap-object-parameter-type
+  find heap-profiler-get-heap-object-id-parameter-type
+  find heap-profiler-get-heap-object-id-return-type
+  find heap-profiler-get-object-by-heap-object-id-parameter-type
+  find heap-profiler-get-object-by-heap-object-id-return-type
+  find heap-profiler-get-sampling-profile-return-type
+  find heap-profiler-heap-stats-update-event-data-type
+  find heap-profiler-last-seen-object-id-event-data-type
+  find heap-profiler-report-heap-snapshot-progress-event-data-type
+  find heap-profiler-start-sampling-parameter-type
+  find heap-profiler-start-tracking-heap-objects-parameter-type
+  find heap-profiler-stop-sampling-return-type
+  find heap-profiler-stop-tracking-heap-objects-parameter-type
+  find heap-profiler-take-heap-snapshot-parameter-type
+  find native-boolean
+  find native-null
+  find native-string
+  find native-symbol
+  find native-this
+  find native-void
+  find node-runtime-notify-when-waiting-for-disconnect-parameter-type
+  find node-tracing-data-collected-event-data-type
+  find node-tracing-get-categories-return-type
+  find node-tracing-start-parameter-type
+  find node-worker-attached-to-worker-event-data-type
+  find node-worker-detach-parameter-type
+  find node-worker-detached-from-worker-event-data-type
+  find node-worker-enable-parameter-type
+  find node-worker-received-message-from-worker-event-data-type
+  find node-worker-send-message-to-worker-parameter-type
+  find profiler-console-profile-finished-event-data-type
+  find profiler-console-profile-started-event-data-type
+  find profiler-get-best-effort-coverage-return-type
+  find profiler-set-sampling-interval-parameter-type
+  find profiler-start-precise-coverage-parameter-type
+  find profiler-stop-return-type
+  find profiler-take-precise-coverage-return-type
+  find profiler-take-type-profile-return-type
+  find runtime-await-promise-parameter-type
+  find runtime-await-promise-return-type
+  find runtime-call-function-on-parameter-type
+  find runtime-call-function-on-return-type
+  find runtime-compile-script-parameter-type
+  find runtime-compile-script-return-type
+  find runtime-console-api-called-event-data-type
+  find runtime-evaluate-parameter-type
+  find runtime-evaluate-return-type
+  find runtime-exception-revoked-event-data-type
+  find runtime-exception-thrown-event-data-type
+  find runtime-execution-context-created-event-data-type
+  find runtime-execution-context-destroyed-event-data-type
+  find runtime-get-properties-parameter-type
+  find runtime-get-properties-return-type
+  find runtime-global-lexical-scope-names-parameter-type
+  find runtime-global-lexical-scope-names-return-type
+  find runtime-inspect-requested-event-data-type
+  find runtime-query-objects-parameter-type
+  find runtime-query-objects-return-type
+  find runtime-release-object-group-parameter-type
+  find runtime-release-object-parameter-type
+  find runtime-run-script-parameter-type
+  find runtime-run-script-return-type
+  find runtime-set-custom-object-formatter-enabled-parameter-type
+  find schema-get-domains-return-type
+
+load @term/bind
+  find any
+  find form
+  find or
+  find task
+
+load @term/bind/code/node/inspector
+  find inspector-notification
+
+form session, name <Session>
+  base event-emitter
+  task connect, name <connect>
+    like native-void
+
+  task connect-to-main-thread, name <connectToMainThread>
+    like native-void
+
+  task disconnect, name <disconnect>
+    like native-void
+
+  task post, name <post>
+    like native-void
+
+    take method, like native-string
+    take params, like form
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like form
+          void true
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, like native-string
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like form
+          void true
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Schema.getDomains>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like schema-get-domains-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.evaluate>
+    take params, like runtime-evaluate-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like runtime-evaluate-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.evaluate>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like runtime-evaluate-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.awaitPromise>
+    take params, like runtime-await-promise-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like runtime-await-promise-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.awaitPromise>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like runtime-await-promise-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.callFunctionOn>
+    take params, like runtime-call-function-on-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like runtime-call-function-on-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.callFunctionOn>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like runtime-call-function-on-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.getProperties>
+    take params, like runtime-get-properties-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like runtime-get-properties-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.getProperties>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like runtime-get-properties-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.releaseObject>
+    take params, like runtime-release-object-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.releaseObject>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.releaseObjectGroup>
+    take params, like runtime-release-object-group-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.releaseObjectGroup>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.runIfWaitingForDebugger>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.enable>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.disable>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.discardConsoleEntries>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.setCustomObjectFormatterEnabled>
+    take params, like runtime-set-custom-object-formatter-enabled-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.setCustomObjectFormatterEnabled>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.compileScript>
+    take params, like runtime-compile-script-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like runtime-compile-script-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.compileScript>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like runtime-compile-script-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.runScript>
+    take params, like runtime-run-script-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like runtime-run-script-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.runScript>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like runtime-run-script-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.queryObjects>
+    take params, like runtime-query-objects-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like runtime-query-objects-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.queryObjects>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like runtime-query-objects-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.globalLexicalScopeNames>
+    take params, like runtime-global-lexical-scope-names-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like runtime-global-lexical-scope-names-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Runtime.globalLexicalScopeNames>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like runtime-global-lexical-scope-names-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.enable>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-enable-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.disable>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setBreakpointsActive>
+    take params, like debugger-set-breakpoints-active-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setBreakpointsActive>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setSkipAllPauses>
+    take params, like debugger-set-skip-all-pauses-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setSkipAllPauses>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setBreakpointByUrl>
+    take params, like debugger-set-breakpoint-by-url-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-set-breakpoint-by-url-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setBreakpointByUrl>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-set-breakpoint-by-url-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setBreakpoint>
+    take params, like debugger-set-breakpoint-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-set-breakpoint-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setBreakpoint>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-set-breakpoint-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.removeBreakpoint>
+    take params, like debugger-remove-breakpoint-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.removeBreakpoint>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.getPossibleBreakpoints>
+    take params, like debugger-get-possible-breakpoints-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-get-possible-breakpoints-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.getPossibleBreakpoints>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-get-possible-breakpoints-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.continueToLocation>
+    take params, like debugger-continue-to-location-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.continueToLocation>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.pauseOnAsyncCall>
+    take params, like debugger-pause-on-async-call-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.pauseOnAsyncCall>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.stepOver>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.stepInto>
+    take params, like debugger-step-into-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.stepInto>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.stepOut>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.pause>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.scheduleStepIntoAsync>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.resume>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.getStackTrace>
+    take params, like debugger-get-stack-trace-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-get-stack-trace-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.getStackTrace>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-get-stack-trace-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.searchInContent>
+    take params, like debugger-search-in-content-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-search-in-content-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.searchInContent>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-search-in-content-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setScriptSource>
+    take params, like debugger-set-script-source-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-set-script-source-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setScriptSource>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-set-script-source-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.restartFrame>
+    take params, like debugger-restart-frame-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-restart-frame-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.restartFrame>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-restart-frame-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.getScriptSource>
+    take params, like debugger-get-script-source-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-get-script-source-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.getScriptSource>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-get-script-source-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setPauseOnExceptions>
+    take params, like debugger-set-pause-on-exceptions-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setPauseOnExceptions>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.evaluateOnCallFrame>
+    take params, like debugger-evaluate-on-call-frame-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-evaluate-on-call-frame-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.evaluateOnCallFrame>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like debugger-evaluate-on-call-frame-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setVariableValue>
+    take params, like debugger-set-variable-value-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setVariableValue>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setReturnValue>
+    take params, like debugger-set-return-value-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setReturnValue>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setAsyncCallStackDepth>
+    take params, like debugger-set-async-call-stack-depth-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setAsyncCallStackDepth>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setBlackboxPatterns>
+    take params, like debugger-set-blackbox-patterns-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setBlackboxPatterns>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setBlackboxedRanges>
+    take params, like debugger-set-blackboxed-ranges-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Debugger.setBlackboxedRanges>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Console.enable>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Console.disable>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Console.clearMessages>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Profiler.enable>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Profiler.disable>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Profiler.setSamplingInterval>
+    take params, like profiler-set-sampling-interval-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Profiler.setSamplingInterval>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Profiler.start>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Profiler.stop>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like profiler-stop-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Profiler.startPreciseCoverage>
+    take params, like profiler-start-precise-coverage-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Profiler.startPreciseCoverage>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Profiler.stopPreciseCoverage>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Profiler.takePreciseCoverage>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like profiler-take-precise-coverage-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Profiler.getBestEffortCoverage>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like profiler-get-best-effort-coverage-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Profiler.startTypeProfile>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Profiler.stopTypeProfile>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <Profiler.takeTypeProfile>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like profiler-take-type-profile-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.enable>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.disable>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.startTrackingHeapObjects>
+    take params, like heap-profiler-start-tracking-heap-objects-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.startTrackingHeapObjects>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.stopTrackingHeapObjects>
+    take params, like heap-profiler-stop-tracking-heap-objects-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.stopTrackingHeapObjects>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.takeHeapSnapshot>
+    take params, like heap-profiler-take-heap-snapshot-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.takeHeapSnapshot>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.collectGarbage>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.getObjectByHeapObjectId>
+    take params, like heap-profiler-get-object-by-heap-object-id-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like heap-profiler-get-object-by-heap-object-id-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.getObjectByHeapObjectId>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like heap-profiler-get-object-by-heap-object-id-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.addInspectedHeapObject>
+    take params, like heap-profiler-add-inspected-heap-object-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.addInspectedHeapObject>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.getHeapObjectId>
+    take params, like heap-profiler-get-heap-object-id-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like heap-profiler-get-heap-object-id-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.getHeapObjectId>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like heap-profiler-get-heap-object-id-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.startSampling>
+    take params, like heap-profiler-start-sampling-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.startSampling>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.stopSampling>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like heap-profiler-stop-sampling-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <HeapProfiler.getSamplingProfile>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like heap-profiler-get-sampling-profile-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <NodeTracing.getCategories>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take params, like node-tracing-get-categories-return-type
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <NodeTracing.start>
+    take params, like node-tracing-start-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <NodeTracing.start>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <NodeTracing.stop>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <NodeWorker.sendMessageToWorker>
+    take params, like node-worker-send-message-to-worker-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <NodeWorker.sendMessageToWorker>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <NodeWorker.enable>
+    take params, like node-worker-enable-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <NodeWorker.enable>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <NodeWorker.disable>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <NodeWorker.detach>
+    take params, like node-worker-detach-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <NodeWorker.detach>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <NodeRuntime.notifyWhenWaitingForDisconnect>
+    take params, like node-runtime-notify-when-waiting-for-disconnect-parameter-type
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task post, name <post>
+    like native-void
+
+    take method, text <NodeRuntime.notifyWhenWaitingForDisconnect>
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+      void true
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <inspectorNotification>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like form
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <Runtime.executionContextCreated>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-execution-context-created-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <Runtime.executionContextDestroyed>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-execution-context-destroyed-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <Runtime.executionContextsCleared>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <Runtime.exceptionThrown>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-exception-thrown-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <Runtime.exceptionRevoked>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-exception-revoked-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <Runtime.consoleAPICalled>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-console-api-called-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <Runtime.inspectRequested>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-inspect-requested-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <Debugger.scriptParsed>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-script-parsed-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <Debugger.scriptFailedToParse>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-script-failed-to-parse-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <Debugger.breakpointResolved>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-breakpoint-resolved-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <Debugger.paused>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-paused-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <Debugger.resumed>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <Console.messageAdded>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like console-message-added-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <Profiler.consoleProfileStarted>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like profiler-console-profile-started-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <Profiler.consoleProfileFinished>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like profiler-console-profile-finished-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <HeapProfiler.addHeapSnapshotChunk>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-add-heap-snapshot-chunk-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <HeapProfiler.resetProfiles>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <HeapProfiler.reportHeapSnapshotProgress>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-report-heap-snapshot-progress-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <HeapProfiler.lastSeenObjectId>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-last-seen-object-id-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <HeapProfiler.heapStatsUpdate>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-heap-stats-update-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <NodeTracing.dataCollected>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-tracing-data-collected-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <NodeTracing.tracingComplete>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <NodeWorker.attachedToWorker>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-worker-attached-to-worker-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <NodeWorker.detachedFromWorker>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-worker-detached-from-worker-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <NodeWorker.receivedMessageFromWorker>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-worker-received-message-from-worker-event-data-type
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <NodeRuntime.waitingForDisconnect>
+    take listener
+      like task
+        like native-void
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take args
+      like array
+        like any
+      rest true
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <inspectorNotification>
+    take message
+      like inspector-notification
+        like form
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <Runtime.executionContextCreated>
+    take message
+      like inspector-notification
+        like runtime-execution-context-created-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <Runtime.executionContextDestroyed>
+    take message
+      like inspector-notification
+        like runtime-execution-context-destroyed-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <Runtime.executionContextsCleared>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <Runtime.exceptionThrown>
+    take message
+      like inspector-notification
+        like runtime-exception-thrown-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <Runtime.exceptionRevoked>
+    take message
+      like inspector-notification
+        like runtime-exception-revoked-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <Runtime.consoleAPICalled>
+    take message
+      like inspector-notification
+        like runtime-console-api-called-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <Runtime.inspectRequested>
+    take message
+      like inspector-notification
+        like runtime-inspect-requested-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <Debugger.scriptParsed>
+    take message
+      like inspector-notification
+        like debugger-script-parsed-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <Debugger.scriptFailedToParse>
+    take message
+      like inspector-notification
+        like debugger-script-failed-to-parse-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <Debugger.breakpointResolved>
+    take message
+      like inspector-notification
+        like debugger-breakpoint-resolved-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <Debugger.paused>
+    take message
+      like inspector-notification
+        like debugger-paused-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <Debugger.resumed>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <Console.messageAdded>
+    take message
+      like inspector-notification
+        like console-message-added-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <Profiler.consoleProfileStarted>
+    take message
+      like inspector-notification
+        like profiler-console-profile-started-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <Profiler.consoleProfileFinished>
+    take message
+      like inspector-notification
+        like profiler-console-profile-finished-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <HeapProfiler.addHeapSnapshotChunk>
+    take message
+      like inspector-notification
+        like heap-profiler-add-heap-snapshot-chunk-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <HeapProfiler.resetProfiles>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <HeapProfiler.reportHeapSnapshotProgress>
+    take message
+      like inspector-notification
+        like heap-profiler-report-heap-snapshot-progress-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <HeapProfiler.lastSeenObjectId>
+    take message
+      like inspector-notification
+        like heap-profiler-last-seen-object-id-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <HeapProfiler.heapStatsUpdate>
+    take message
+      like inspector-notification
+        like heap-profiler-heap-stats-update-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <NodeTracing.dataCollected>
+    take message
+      like inspector-notification
+        like node-tracing-data-collected-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <NodeTracing.tracingComplete>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <NodeWorker.attachedToWorker>
+    take message
+      like inspector-notification
+        like node-worker-attached-to-worker-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <NodeWorker.detachedFromWorker>
+    take message
+      like inspector-notification
+        like node-worker-detached-from-worker-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <NodeWorker.receivedMessageFromWorker>
+    take message
+      like inspector-notification
+        like node-worker-received-message-from-worker-event-data-type
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <NodeRuntime.waitingForDisconnect>
+
+  task on, name <on>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task on, name <on>
+    like native-this
+
+    take event, text <inspectorNotification>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like form
+
+  task on, name <on>
+    like native-this
+
+    take event, text <Runtime.executionContextCreated>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-execution-context-created-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <Runtime.executionContextDestroyed>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-execution-context-destroyed-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <Runtime.executionContextsCleared>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <Runtime.exceptionThrown>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-exception-thrown-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <Runtime.exceptionRevoked>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-exception-revoked-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <Runtime.consoleAPICalled>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-console-api-called-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <Runtime.inspectRequested>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-inspect-requested-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <Debugger.scriptParsed>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-script-parsed-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <Debugger.scriptFailedToParse>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-script-failed-to-parse-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <Debugger.breakpointResolved>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-breakpoint-resolved-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <Debugger.paused>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-paused-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <Debugger.resumed>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <Console.messageAdded>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like console-message-added-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <Profiler.consoleProfileStarted>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like profiler-console-profile-started-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <Profiler.consoleProfileFinished>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like profiler-console-profile-finished-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <HeapProfiler.addHeapSnapshotChunk>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-add-heap-snapshot-chunk-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <HeapProfiler.resetProfiles>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <HeapProfiler.reportHeapSnapshotProgress>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-report-heap-snapshot-progress-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <HeapProfiler.lastSeenObjectId>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-last-seen-object-id-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <HeapProfiler.heapStatsUpdate>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-heap-stats-update-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <NodeTracing.dataCollected>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-tracing-data-collected-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <NodeTracing.tracingComplete>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <NodeWorker.attachedToWorker>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-worker-attached-to-worker-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <NodeWorker.detachedFromWorker>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-worker-detached-from-worker-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <NodeWorker.receivedMessageFromWorker>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-worker-received-message-from-worker-event-data-type
+
+  task on, name <on>
+    like native-this
+
+    take event, text <NodeRuntime.waitingForDisconnect>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task once, name <once>
+    like native-this
+
+    take event, text <inspectorNotification>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like form
+
+  task once, name <once>
+    like native-this
+
+    take event, text <Runtime.executionContextCreated>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-execution-context-created-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <Runtime.executionContextDestroyed>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-execution-context-destroyed-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <Runtime.executionContextsCleared>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <Runtime.exceptionThrown>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-exception-thrown-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <Runtime.exceptionRevoked>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-exception-revoked-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <Runtime.consoleAPICalled>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-console-api-called-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <Runtime.inspectRequested>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-inspect-requested-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <Debugger.scriptParsed>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-script-parsed-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <Debugger.scriptFailedToParse>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-script-failed-to-parse-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <Debugger.breakpointResolved>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-breakpoint-resolved-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <Debugger.paused>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-paused-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <Debugger.resumed>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <Console.messageAdded>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like console-message-added-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <Profiler.consoleProfileStarted>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like profiler-console-profile-started-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <Profiler.consoleProfileFinished>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like profiler-console-profile-finished-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <HeapProfiler.addHeapSnapshotChunk>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-add-heap-snapshot-chunk-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <HeapProfiler.resetProfiles>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <HeapProfiler.reportHeapSnapshotProgress>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-report-heap-snapshot-progress-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <HeapProfiler.lastSeenObjectId>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-last-seen-object-id-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <HeapProfiler.heapStatsUpdate>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-heap-stats-update-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <NodeTracing.dataCollected>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-tracing-data-collected-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <NodeTracing.tracingComplete>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <NodeWorker.attachedToWorker>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-worker-attached-to-worker-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <NodeWorker.detachedFromWorker>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-worker-detached-from-worker-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <NodeWorker.receivedMessageFromWorker>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-worker-received-message-from-worker-event-data-type
+
+  task once, name <once>
+    like native-this
+
+    take event, text <NodeRuntime.waitingForDisconnect>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <inspectorNotification>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like form
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <Runtime.executionContextCreated>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-execution-context-created-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <Runtime.executionContextDestroyed>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-execution-context-destroyed-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <Runtime.executionContextsCleared>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <Runtime.exceptionThrown>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-exception-thrown-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <Runtime.exceptionRevoked>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-exception-revoked-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <Runtime.consoleAPICalled>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-console-api-called-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <Runtime.inspectRequested>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-inspect-requested-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <Debugger.scriptParsed>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-script-parsed-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <Debugger.scriptFailedToParse>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-script-failed-to-parse-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <Debugger.breakpointResolved>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-breakpoint-resolved-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <Debugger.paused>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-paused-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <Debugger.resumed>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <Console.messageAdded>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like console-message-added-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <Profiler.consoleProfileStarted>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like profiler-console-profile-started-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <Profiler.consoleProfileFinished>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like profiler-console-profile-finished-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <HeapProfiler.addHeapSnapshotChunk>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-add-heap-snapshot-chunk-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <HeapProfiler.resetProfiles>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <HeapProfiler.reportHeapSnapshotProgress>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-report-heap-snapshot-progress-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <HeapProfiler.lastSeenObjectId>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-last-seen-object-id-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <HeapProfiler.heapStatsUpdate>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-heap-stats-update-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <NodeTracing.dataCollected>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-tracing-data-collected-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <NodeTracing.tracingComplete>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <NodeWorker.attachedToWorker>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-worker-attached-to-worker-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <NodeWorker.detachedFromWorker>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-worker-detached-from-worker-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <NodeWorker.receivedMessageFromWorker>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-worker-received-message-from-worker-event-data-type
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <NodeRuntime.waitingForDisconnect>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <inspectorNotification>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like form
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <Runtime.executionContextCreated>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-execution-context-created-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <Runtime.executionContextDestroyed>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-execution-context-destroyed-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <Runtime.executionContextsCleared>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <Runtime.exceptionThrown>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-exception-thrown-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <Runtime.exceptionRevoked>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-exception-revoked-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <Runtime.consoleAPICalled>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-console-api-called-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <Runtime.inspectRequested>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like runtime-inspect-requested-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <Debugger.scriptParsed>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-script-parsed-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <Debugger.scriptFailedToParse>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-script-failed-to-parse-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <Debugger.breakpointResolved>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-breakpoint-resolved-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <Debugger.paused>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like debugger-paused-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <Debugger.resumed>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <Console.messageAdded>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like console-message-added-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <Profiler.consoleProfileStarted>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like profiler-console-profile-started-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <Profiler.consoleProfileFinished>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like profiler-console-profile-finished-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <HeapProfiler.addHeapSnapshotChunk>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-add-heap-snapshot-chunk-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <HeapProfiler.resetProfiles>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <HeapProfiler.reportHeapSnapshotProgress>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-report-heap-snapshot-progress-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <HeapProfiler.lastSeenObjectId>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-last-seen-object-id-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <HeapProfiler.heapStatsUpdate>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like heap-profiler-heap-stats-update-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <NodeTracing.dataCollected>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-tracing-data-collected-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <NodeTracing.tracingComplete>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <NodeWorker.attachedToWorker>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-worker-attached-to-worker-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <NodeWorker.detachedFromWorker>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-worker-detached-from-worker-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <NodeWorker.receivedMessageFromWorker>
+    take listener
+      like task
+        like native-void
+
+        take message
+          like inspector-notification
+            like node-worker-received-message-from-worker-event-data-type
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <NodeRuntime.waitingForDisconnect>
+    take listener
+      like task
+        like native-void
+
+form session-constructor
+  hook make

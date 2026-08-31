@@ -1,0 +1,7 @@
+
+bear @term/bind/code/javascript/es2015/symbol
+bear @term/bind/code/javascript/es2015/iterable
+bear @term/bind/code/javascript/es2018/asynciterable/symbol-constructor
+bear @term/bind/code/javascript/es2018/asynciterable/async-iterator
+bear @term/bind/code/javascript/es2018/asynciterable/async-iterable
+bear @term/bind/code/javascript/es2018/asynciterable/async-iterable-iterator

@@ -1,0 +1,6 @@
+
+form idb-transaction-mode, name <IDBTransactionMode>
+  like or
+    text <readonly>
+    text <readwrite>
+    text <versionchange>

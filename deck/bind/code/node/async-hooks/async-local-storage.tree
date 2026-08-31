@@ -1,0 +1,61 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-undefined
+  find native-void
+  find t
+
+load @term/bind
+  find any
+  find like
+  find or
+  find task
+
+form async-local-storage, name <AsyncLocalStorage>
+  task disable, name <disable>
+    like native-void
+
+  task get-store, name <getStore>
+    like or
+      like t
+      like native-undefined
+
+  task run, name <run>
+    like r
+
+    head r
+    head t-args
+      base array
+        like any
+
+    take store, like t
+    take callback
+      like task
+        like r
+
+        take args, like t-args
+          rest true
+    take args, like t-args
+      rest true
+
+  task exit, name <exit>
+    like r
+
+    head r
+    head t-args
+      base array
+        like any
+
+    take callback
+      like task
+        like r
+
+        take args, like t-args
+          rest true
+    take args, like t-args
+      rest true
+
+  task enter-with, name <enterWith>
+    like native-void
+
+    take store, like t

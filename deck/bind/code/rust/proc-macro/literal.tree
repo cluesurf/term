@@ -1,0 +1,490 @@
+
+form literal, name <proc_macro::Literal>
+  task u8-suffixed, name <u8_suffixed>
+    note <Creates a new suffixed integer literal with the specified value.>
+
+    take n
+      like u8
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task u16-suffixed, name <u16_suffixed>
+    note <Creates a new suffixed integer literal with the specified value.>
+
+    take n
+      like u16
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task u32-suffixed, name <u32_suffixed>
+    note <Creates a new suffixed integer literal with the specified value.>
+
+    take n
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task u64-suffixed, name <u64_suffixed>
+    note <Creates a new suffixed integer literal with the specified value.>
+
+    take n
+      like u64
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task u128-suffixed, name <u128_suffixed>
+    note <Creates a new suffixed integer literal with the specified value.>
+
+    take n
+      like u128
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task usize-suffixed, name <usize_suffixed>
+    note <Creates a new suffixed integer literal with the specified value.>
+
+    take n
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task i8-suffixed, name <i8_suffixed>
+    note <Creates a new suffixed integer literal with the specified value.>
+
+    take n
+      like i8
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task i16-suffixed, name <i16_suffixed>
+    note <Creates a new suffixed integer literal with the specified value.>
+
+    take n
+      like i16
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task i32-suffixed, name <i32_suffixed>
+    note <Creates a new suffixed integer literal with the specified value.>
+
+    take n
+      like i32
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task i64-suffixed, name <i64_suffixed>
+    note <Creates a new suffixed integer literal with the specified value.>
+
+    take n
+      like i64
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task i128-suffixed, name <i128_suffixed>
+    note <Creates a new suffixed integer literal with the specified value.>
+
+    take n
+      like i128
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task isize-suffixed, name <isize_suffixed>
+    note <Creates a new suffixed integer literal with the specified value.>
+
+    take n
+      like isize
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task u8-unsuffixed, name <u8_unsuffixed>
+    note <Creates a new unsuffixed integer literal with the specified value.>
+
+    take n
+      like u8
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task u16-unsuffixed, name <u16_unsuffixed>
+    note <Creates a new unsuffixed integer literal with the specified value.>
+
+    take n
+      like u16
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task u32-unsuffixed, name <u32_unsuffixed>
+    note <Creates a new unsuffixed integer literal with the specified value.>
+
+    take n
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task u64-unsuffixed, name <u64_unsuffixed>
+    note <Creates a new unsuffixed integer literal with the specified value.>
+
+    take n
+      like u64
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task u128-unsuffixed, name <u128_unsuffixed>
+    note <Creates a new unsuffixed integer literal with the specified value.>
+
+    take n
+      like u128
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task usize-unsuffixed, name <usize_unsuffixed>
+    note <Creates a new unsuffixed integer literal with the specified value.>
+
+    take n
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task i8-unsuffixed, name <i8_unsuffixed>
+    note <Creates a new unsuffixed integer literal with the specified value.>
+
+    take n
+      like i8
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task i16-unsuffixed, name <i16_unsuffixed>
+    note <Creates a new unsuffixed integer literal with the specified value.>
+
+    take n
+      like i16
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task i32-unsuffixed, name <i32_unsuffixed>
+    note <Creates a new unsuffixed integer literal with the specified value.>
+
+    take n
+      like i32
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task i64-unsuffixed, name <i64_unsuffixed>
+    note <Creates a new unsuffixed integer literal with the specified value.>
+
+    take n
+      like i64
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task i128-unsuffixed, name <i128_unsuffixed>
+    note <Creates a new unsuffixed integer literal with the specified value.>
+
+    take n
+      like i128
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task isize-unsuffixed, name <isize_unsuffixed>
+    note <Creates a new unsuffixed integer literal with the specified value.>
+
+    take n
+      like isize
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task f32-unsuffixed, name <f32_unsuffixed>
+    note <Creates a new unsuffixed floating-point literal.>
+
+    take n
+      like f32
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task f32-suffixed, name <f32_suffixed>
+    note <Creates a new suffixed floating-point literal.>
+
+    take n
+      like f32
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task f64-unsuffixed, name <f64_unsuffixed>
+    note <Creates a new unsuffixed floating-point literal.>
+
+    take n
+      like f64
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task f64-suffixed, name <f64_suffixed>
+    note <Creates a new suffixed floating-point literal.>
+
+    take n
+      like f64
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task string, name <string>
+    note <String literal.>
+
+    take string
+      like str
+
+    free seed
+      like literal
+        cite free
+
+  task character, name <character>
+    note <Character literal.>
+
+    take ch
+      like char
+        cite free
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task byte-string, name <byte_string>
+    note <Byte string literal.>
+
+    take bytes
+      list u8
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task span, name <span>
+    note <Returns the span encompassing this literal.>
+
+    take self
+      cite free
+
+    free seed
+      like span
+        cite free
+
+  task set-span, name <set_span>
+    note <Configures the span associated for this literal.>
+
+    take self
+      cite free
+    take span
+      like span
+        cite free
+      cite free
+
+  task subspan, name <subspan>
+    note <Returns a Span that is a subset of self.span() containing only the source bytes in range range. Returns None if the would-be trimmed span is outside the bounds of self.>
+
+    head r
+
+    take self
+      cite free
+    take range
+      like r
+        cite free
+      cite free
+
+    free seed
+      like option
+        like span
+          cite free
+        cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like literal
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take g
+      like literal
+        cite free
+      cite free
+
+    free seed
+      like token-tree
+        cite free
+
+  task from-str, name <from_str>
+    note <Parses a string s to return a value of this type.>
+
+    take src
+      like str
+
+    free seed
+      like result
+        like self
+          cite free
+        like lex-error
+          cite free
+        cite free
+
+  task to-string, name <to_string>
+    note <Converts the given value to a String.>
+
+    take self
+      cite free
+
+    free seed
+      like string
+        cite free

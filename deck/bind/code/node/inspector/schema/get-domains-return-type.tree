@@ -1,0 +1,12 @@
+
+load @term/bind/code/javascript
+  find array
+
+load @term/bind/code/node/inspector/schema
+  find domain
+
+form get-domains-return-type, name <GetDomainsReturnType>
+  link domains, name <domains>
+    like array
+      like domain
+    flex true

@@ -1,0 +1,22 @@
+
+load @term/bind/code/javascript/es5/exclude
+  find exclude
+
+load @term/bind/code/javascript/es5/pick
+  find pick
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form omit, name <Omit>
+  head t
+  head k
+    base link-read
+      like native-any
+
+  like pick
+    like t
+    like exclude
+      like link-read
+        like t
+      like k

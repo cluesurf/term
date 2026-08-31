@@ -1,0 +1,26 @@
+
+load @term/bind/code/browser/dom/web-socket-event-map
+  find web-socket-event-map
+
+load @term/bind/code/browser/webworker/close-event
+  find close-event
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+load @term/bind/code/browser/webworker/message-event
+  find message-event
+
+form web-socket-event-map, name <WebSocketEventMap>
+  link close, name <close>
+    like close-event
+    lock false
+  link error, name <error>
+    like event
+    lock false
+  link message, name <message>
+    like message-event
+    lock false
+  link open, name <open>
+    like event
+    lock false

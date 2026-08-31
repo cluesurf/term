@@ -1,0 +1,158 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form big-int-to-locale-string-options, name <BigIntToLocaleStringOptions>
+  link locale-matcher, name <localeMatcher>
+    like native-string
+    lock false
+  link style, name <style>
+    like native-string
+    lock false
+  link numbering-system, name <numberingSystem>
+    like native-string
+    lock false
+  link unit, name <unit>
+    like native-string
+    lock false
+  link unit-display, name <unitDisplay>
+    like native-string
+    lock false
+  link currency, name <currency>
+    like native-string
+    lock false
+  link currency-display, name <currencyDisplay>
+    like native-string
+    lock false
+  link use-grouping, name <useGrouping>
+    like native-boolean
+    lock false
+  link minimum-integer-digits, name <minimumIntegerDigits>
+    like or
+      text <1>
+      text <2>
+      text <3>
+      text <4>
+      text <5>
+      text <6>
+      text <7>
+      text <8>
+      text <9>
+      text <10>
+      text <11>
+      text <12>
+      text <13>
+      text <14>
+      text <15>
+      text <16>
+      text <17>
+      text <18>
+      text <19>
+      text <20>
+      text <21>
+    lock false
+  link minimum-fraction-digits, name <minimumFractionDigits>
+    like or
+      text <0>
+      text <1>
+      text <2>
+      text <3>
+      text <4>
+      text <5>
+      text <6>
+      text <7>
+      text <8>
+      text <9>
+      text <10>
+      text <11>
+      text <12>
+      text <13>
+      text <14>
+      text <15>
+      text <16>
+      text <17>
+      text <18>
+      text <19>
+      text <20>
+    lock false
+  link maximum-fraction-digits, name <maximumFractionDigits>
+    like or
+      text <0>
+      text <1>
+      text <2>
+      text <3>
+      text <4>
+      text <5>
+      text <6>
+      text <7>
+      text <8>
+      text <9>
+      text <10>
+      text <11>
+      text <12>
+      text <13>
+      text <14>
+      text <15>
+      text <16>
+      text <17>
+      text <18>
+      text <19>
+      text <20>
+    lock false
+  link minimum-significant-digits, name <minimumSignificantDigits>
+    like or
+      text <1>
+      text <2>
+      text <3>
+      text <4>
+      text <5>
+      text <6>
+      text <7>
+      text <8>
+      text <9>
+      text <10>
+      text <11>
+      text <12>
+      text <13>
+      text <14>
+      text <15>
+      text <16>
+      text <17>
+      text <18>
+      text <19>
+      text <20>
+      text <21>
+    lock false
+  link maximum-significant-digits, name <maximumSignificantDigits>
+    like or
+      text <1>
+      text <2>
+      text <3>
+      text <4>
+      text <5>
+      text <6>
+      text <7>
+      text <8>
+      text <9>
+      text <10>
+      text <11>
+      text <12>
+      text <13>
+      text <14>
+      text <15>
+      text <16>
+      text <17>
+      text <18>
+      text <19>
+      text <20>
+      text <21>
+    lock false
+  link notation, name <notation>
+    like native-string
+    lock false
+  link compact-display, name <compactDisplay>
+    like native-string
+    lock false

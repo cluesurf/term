@@ -1,0 +1,32 @@
+
+load @term/bind/code/browser/dom/text-decoder-stream
+  find text-decoder-stream
+
+load @term/bind/code/browser/webworker/buffer-source
+  find buffer-source
+
+load @term/bind/code/browser/webworker/generic-transform-stream
+  find generic-transform-stream
+
+load @term/bind/code/browser/webworker/readable-stream
+  find readable-stream
+
+load @term/bind/code/browser/webworker/text-decoder-common
+  find text-decoder-common
+
+load @term/bind/code/browser/webworker/writable-stream
+  find writable-stream
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form text-decoder-stream, name <TextDecoderStream>
+  base generic-transform-stream
+  base text-decoder-common
+
+  link readable, name <readable>
+    like readable-stream
+      like native-string
+  link writable, name <writable>
+    like writable-stream
+      like buffer-source

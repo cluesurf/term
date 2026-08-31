@@ -1,0 +1,25 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-bigint
+  find native-number
+  find native-void
+
+load @term/bind/code/node/perf-hooks
+  find histogram
+
+form recordable-histogram, name <RecordableHistogram>
+  base histogram
+
+  task record, name <record>
+    like native-void
+
+    take val
+      like or
+        like native-number
+        like native-bigint
+
+  task record-delta, name <recordDelta>
+    like native-void

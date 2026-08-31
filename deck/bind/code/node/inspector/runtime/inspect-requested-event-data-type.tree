@@ -1,0 +1,14 @@
+
+load @term/bind
+  find form
+
+load @term/bind/code/node/inspector/runtime
+  find remote-object
+
+form inspect-requested-event-data-type, name <InspectRequestedEventDataType>
+  link object, name <object>
+    like remote-object
+    flex true
+  link hints, name <hints>
+    like form
+    flex true

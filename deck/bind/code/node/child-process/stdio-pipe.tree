@@ -1,0 +1,16 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-null
+  find native-undefined
+
+load @term/bind/code/node/child-process
+  find stdio-pipe-named
+
+form stdio-pipe, name <StdioPipe>
+  like or
+    like native-undefined
+    like native-null
+    like stdio-pipe-named

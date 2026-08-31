@@ -1,0 +1,783 @@
+
+bear @term/bind/code/javascript/node/dns/lookup-options
+bear @term/bind/code/javascript/node/dns/lookup-one-options
+bear @term/bind/code/javascript/node/dns/lookup-all-options
+bear @term/bind/code/javascript/node/dns/lookup-address
+bear @term/bind/code/javascript/node/dns/lookup
+bear @term/bind/code/javascript/node/dns/lookup-service
+bear @term/bind/code/javascript/node/dns/resolve-options
+bear @term/bind/code/javascript/node/dns/resolve-with-ttl-options
+bear @term/bind/code/javascript/node/dns/record-with-ttl
+bear @term/bind/code/javascript/node/dns/any-record-with-ttl
+bear @term/bind/code/javascript/node/dns/any-a-record
+bear @term/bind/code/javascript/node/dns/any-aaaa-record
+bear @term/bind/code/javascript/node/dns/caa-record
+bear @term/bind/code/javascript/node/dns/mx-record
+bear @term/bind/code/javascript/node/dns/any-mx-record
+bear @term/bind/code/javascript/node/dns/naptr-record
+bear @term/bind/code/javascript/node/dns/any-naptr-record
+bear @term/bind/code/javascript/node/dns/soa-record
+bear @term/bind/code/javascript/node/dns/any-soa-record
+bear @term/bind/code/javascript/node/dns/srv-record
+bear @term/bind/code/javascript/node/dns/any-srv-record
+bear @term/bind/code/javascript/node/dns/any-txt-record
+bear @term/bind/code/javascript/node/dns/any-ns-record
+bear @term/bind/code/javascript/node/dns/any-ptr-record
+bear @term/bind/code/javascript/node/dns/any-cname-record
+bear @term/bind/code/javascript/node/dns/any-record
+bear @term/bind/code/javascript/node/dns/resolve
+bear @term/bind/code/javascript/node/dns/resolve4
+bear @term/bind/code/javascript/node/dns/resolve6
+bear @term/bind/code/javascript/node/dns/resolve-cname
+bear @term/bind/code/javascript/node/dns/resolve-caa
+bear @term/bind/code/javascript/node/dns/resolve-mx
+bear @term/bind/code/javascript/node/dns/resolve-naptr
+bear @term/bind/code/javascript/node/dns/resolve-ns
+bear @term/bind/code/javascript/node/dns/resolve-ptr
+bear @term/bind/code/javascript/node/dns/resolve-soa
+bear @term/bind/code/javascript/node/dns/resolve-srv
+bear @term/bind/code/javascript/node/dns/resolve-txt
+bear @term/bind/code/javascript/node/dns/resolve-any
+bear @term/bind/code/javascript/node/dns/resolver-options
+bear @term/bind/code/javascript/node/dns/resolver
+
+load @term/bind/code/javascript
+  find array
+  find native-null
+  find native-number
+  find native-string
+  find native-void
+  find node-js-errno-exception
+  find readonly-array
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/node/dns
+  find any-record
+  find caa-record
+  find lookup-address
+  find lookup-all-options
+  find lookup-one-options
+  find lookup-options
+  find mx-record
+  find naptr-record
+  find record-with-ttl
+  find resolve-options
+  find resolve-with-ttl-options
+  find soa-record
+  find srv-record
+
+host addrconfig, name <ADDRCONFIG>
+  like native-number
+
+host v4-mapped, name <V4MAPPED>
+  like native-number
+
+host all, name <ALL>
+  like native-number
+
+host nodata, name <NODATA>
+  like native-string
+
+host formerr, name <FORMERR>
+  like native-string
+
+host servfail, name <SERVFAIL>
+  like native-string
+
+host notfound, name <NOTFOUND>
+  like native-string
+
+host notimp, name <NOTIMP>
+  like native-string
+
+host refused, name <REFUSED>
+  like native-string
+
+host badquery, name <BADQUERY>
+  like native-string
+
+host badname, name <BADNAME>
+  like native-string
+
+host badfamily, name <BADFAMILY>
+  like native-string
+
+host badresp, name <BADRESP>
+  like native-string
+
+host connrefused, name <CONNREFUSED>
+  like native-string
+
+host timeout, name <TIMEOUT>
+  like native-string
+
+host eof, name <EOF>
+  like native-string
+
+host file, name <FILE>
+  like native-string
+
+host nomem, name <NOMEM>
+  like native-string
+
+host destruction, name <DESTRUCTION>
+  like native-string
+
+host badstr, name <BADSTR>
+  like native-string
+
+host badflags, name <BADFLAGS>
+  like native-string
+
+host noname, name <NONAME>
+  like native-string
+
+host badhints, name <BADHINTS>
+  like native-string
+
+host notinitialized, name <NOTINITIALIZED>
+  like native-string
+
+host loadiphlpapi, name <LOADIPHLPAPI>
+  like native-string
+
+host addrgetnetworkparams, name <ADDRGETNETWORKPARAMS>
+  like native-string
+
+host cancelled, name <CANCELLED>
+  like native-string
+
+task lookup, name <lookup>
+  like native-void
+
+  take hostname, like native-string
+  take family, like native-number
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take address, like native-string
+      take family, like native-number
+
+task lookup, name <lookup>
+  like native-void
+
+  take hostname, like native-string
+  take options, like lookup-one-options
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take address, like native-string
+      take family, like native-number
+
+task lookup, name <lookup>
+  like native-void
+
+  take hostname, like native-string
+  take options, like lookup-all-options
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like lookup-address
+
+task lookup, name <lookup>
+  like native-void
+
+  take hostname, like native-string
+  take options, like lookup-options
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take address
+        like or
+          like native-string
+          like array
+            like lookup-address
+      take family, like native-number
+
+task lookup, name <lookup>
+  like native-void
+
+  take hostname, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take address, like native-string
+      take family, like native-number
+
+task lookup-service, name <lookupService>
+  like native-void
+
+  take address, like native-string
+  take port, like native-number
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take hostname, like native-string
+      take service, like native-string
+
+task resolve, name <resolve>
+  like native-void
+
+  take hostname, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like native-string
+
+task resolve, name <resolve>
+  like native-void
+
+  take hostname, like native-string
+  take rrtype, text <A>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like native-string
+
+task resolve, name <resolve>
+  like native-void
+
+  take hostname, like native-string
+  take rrtype, text <AAAA>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like native-string
+
+task resolve, name <resolve>
+  like native-void
+
+  take hostname, like native-string
+  take rrtype, text <ANY>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like any-record
+
+task resolve, name <resolve>
+  like native-void
+
+  take hostname, like native-string
+  take rrtype, text <CNAME>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like native-string
+
+task resolve, name <resolve>
+  like native-void
+
+  take hostname, like native-string
+  take rrtype, text <MX>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like mx-record
+
+task resolve, name <resolve>
+  like native-void
+
+  take hostname, like native-string
+  take rrtype, text <NAPTR>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like naptr-record
+
+task resolve, name <resolve>
+  like native-void
+
+  take hostname, like native-string
+  take rrtype, text <NS>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like native-string
+
+task resolve, name <resolve>
+  like native-void
+
+  take hostname, like native-string
+  take rrtype, text <PTR>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like native-string
+
+task resolve, name <resolve>
+  like native-void
+
+  take hostname, like native-string
+  take rrtype, text <SOA>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses, like soa-record
+
+task resolve, name <resolve>
+  like native-void
+
+  take hostname, like native-string
+  take rrtype, text <SRV>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like srv-record
+
+task resolve, name <resolve>
+  like native-void
+
+  take hostname, like native-string
+  take rrtype, text <TXT>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like array
+            like native-string
+
+task resolve, name <resolve>
+  like native-void
+
+  take hostname, like native-string
+  take rrtype, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like or
+          like array
+            like native-string
+          like array
+            like mx-record
+          like array
+            like naptr-record
+          like soa-record
+          like array
+            like srv-record
+          like array
+            like array
+              like native-string
+          like array
+            like any-record
+
+task resolve4, name <resolve4>
+  like native-void
+
+  take hostname, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like native-string
+
+task resolve4, name <resolve4>
+  like native-void
+
+  take hostname, like native-string
+  take options, like resolve-with-ttl-options
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like record-with-ttl
+
+task resolve4, name <resolve4>
+  like native-void
+
+  take hostname, like native-string
+  take options, like resolve-options
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like or
+          like array
+            like native-string
+          like array
+            like record-with-ttl
+
+task resolve6, name <resolve6>
+  like native-void
+
+  take hostname, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like native-string
+
+task resolve6, name <resolve6>
+  like native-void
+
+  take hostname, like native-string
+  take options, like resolve-with-ttl-options
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like record-with-ttl
+
+task resolve6, name <resolve6>
+  like native-void
+
+  take hostname, like native-string
+  take options, like resolve-options
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like or
+          like array
+            like native-string
+          like array
+            like record-with-ttl
+
+task resolve-cname, name <resolveCname>
+  like native-void
+
+  take hostname, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like native-string
+
+task resolve-caa, name <resolveCaa>
+  like native-void
+
+  take hostname, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take records
+        like array
+          like caa-record
+
+task resolve-mx, name <resolveMx>
+  like native-void
+
+  take hostname, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like mx-record
+
+task resolve-naptr, name <resolveNaptr>
+  like native-void
+
+  take hostname, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like naptr-record
+
+task resolve-ns, name <resolveNs>
+  like native-void
+
+  take hostname, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like native-string
+
+task resolve-ptr, name <resolvePtr>
+  like native-void
+
+  take hostname, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like native-string
+
+task resolve-soa, name <resolveSoa>
+  like native-void
+
+  take hostname, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take address, like soa-record
+
+task resolve-srv, name <resolveSrv>
+  like native-void
+
+  take hostname, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like srv-record
+
+task resolve-txt, name <resolveTxt>
+  like native-void
+
+  take hostname, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like array
+            like native-string
+
+task resolve-any, name <resolveAny>
+  like native-void
+
+  take hostname, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take addresses
+        like array
+          like any-record
+
+task reverse, name <reverse>
+  like native-void
+
+  take ip, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like node-js-errno-exception
+          like native-null
+      take hostnames
+        like array
+          like native-string
+
+task set-servers, name <setServers>
+  like native-void
+
+  take servers
+    like readonly-array
+      like native-string
+
+task get-servers, name <getServers>
+  like array
+    like native-string
+
+task set-default-result-order, name <setDefaultResultOrder>
+  like native-void
+
+  take order
+    like or
+      text <ipv4first>
+      text <verbatim>

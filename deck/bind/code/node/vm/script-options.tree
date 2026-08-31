@@ -1,0 +1,38 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-undefined
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/vm
+  find base-options
+
+form script-options, name <ScriptOptions>
+  base base-options
+
+  link display-errors, name <displayErrors>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link timeout, name <timeout>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link cached-data, name <cachedData>
+    like or
+      like buffer
+      like native-undefined
+    flex true
+  link produce-cached-data, name <produceCachedData>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

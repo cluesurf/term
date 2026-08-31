@@ -1,0 +1,35 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/crypto
+  find cipher-mode
+
+form cipher-info, name <CipherInfo>
+  link name, name <name>
+    like native-string
+    flex true
+  link nid, name <nid>
+    like native-number
+    flex true
+  link block-size, name <blockSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link iv-length, name <ivLength>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link key-length, name <keyLength>
+    like native-number
+    flex true
+  link mode, name <mode>
+    like cipher-mode
+    flex true

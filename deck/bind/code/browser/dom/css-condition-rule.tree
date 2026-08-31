@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/css-grouping-rule
+  find css-grouping-rule
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form css-condition-rule, name <CSSConditionRule>
+  base css-grouping-rule
+
+  link condition-text, name <conditionText>
+    like native-string
+    lock false

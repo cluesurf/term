@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript
+  find native-number
+
+form set-async-call-stack-depth-parameter-type, name <SetAsyncCallStackDepthParameterType>
+  link max-depth, name <maxDepth>
+    like native-number
+    flex true

@@ -1,0 +1,29 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-null
+  find native-number
+  find native-undefined
+
+load @term/bind/code/node/fs
+  find read-position
+
+form read-sync-options, name <ReadSyncOptions>
+  link offset, name <offset>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link length, name <length>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link position, name <position>
+    like or
+      like read-position
+      like native-null
+      like native-undefined
+    flex true

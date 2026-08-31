@@ -1,0 +1,50 @@
+
+load @term/bind/code/javascript
+  find array
+  find async-iterable
+  find iterable
+  find node-js-read-write-stream
+  find st
+
+load @term/bind
+  find any
+  find like
+  find or
+  find task
+  find test
+
+load @term/bind/code/node/stream/internal
+  find pipeline-transform-source
+
+form pipeline-transform, name <PipelineTransform>
+  head s
+    base pipeline-transform-source
+      like any
+  head u
+
+  like or
+    like node-js-read-write-stream
+    like task
+      like async-iterable
+        like u
+
+      take source
+        like test
+          stem roll
+            like s
+            like task
+              like or
+                like iterable
+                  name st
+                like async-iterable
+                  name st
+
+              take args
+                like array
+                  like any
+                rest true
+            hook true
+              like async-iterable
+                like st
+            hook false
+              like s

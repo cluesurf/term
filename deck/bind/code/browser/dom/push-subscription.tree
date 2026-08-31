@@ -1,0 +1,43 @@
+
+load @term/bind/code/browser/dom/push-encryption-key-name
+  find push-encryption-key-name
+
+load @term/bind/code/browser/dom/push-subscription-json
+  find push-subscription-json
+
+load @term/bind/code/browser/dom/push-subscription-options
+  find push-subscription-options
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form push-subscription, name <PushSubscription>
+  link endpoint, name <endpoint>
+    like native-string
+  link options, name <options>
+    like push-subscription-options
+
+  task get-key, name <getKey>
+    take name, like push-encryption-key-name
+    like or
+      like array-buffer
+      like native-null
+
+  task to-json, name <toJSON>
+    like push-subscription-json
+
+  task unsubscribe, name <unsubscribe>
+    like promise
+      like native-boolean

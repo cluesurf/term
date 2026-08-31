@@ -1,0 +1,24 @@
+
+load @term/bind/code/browser/dom/performance-observer
+  find performance-observer
+
+load @term/bind/code/browser/webworker/performance-entry-list
+  find performance-entry-list
+
+load @term/bind/code/browser/webworker/performance-observer-init
+  find performance-observer-init
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form performance-observer, name <PerformanceObserver>
+  task disconnect, name <disconnect>
+    like native-void
+
+  task observe, name <observe>
+    take options, like maybe
+      like performance-observer-init
+    like native-void
+
+  task take-records, name <takeRecords>
+    like performance-entry-list

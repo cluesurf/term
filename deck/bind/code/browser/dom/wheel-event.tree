@@ -1,0 +1,24 @@
+
+load @term/bind/code/browser/dom/mouse-event
+  find mouse-event
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form wheel-event, name <WheelEvent>
+  base mouse-event
+
+  link delta-mode, name <deltaMode>
+    like native-number
+  link delta-x, name <deltaX>
+    like native-number
+  link delta-y, name <deltaY>
+    like native-number
+  link delta-z, name <deltaZ>
+    like native-number
+  link dom-delta-line, name <DOM_DELTA_LINE>
+    like native-number
+  link dom-delta-page, name <DOM_DELTA_PAGE>
+    like native-number
+  link dom-delta-pixel, name <DOM_DELTA_PIXEL>
+    like native-number

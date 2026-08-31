@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form hash-change-event, name <HashChangeEvent>
+  base event
+
+  link new-url, name <newURL>
+    like native-string
+  link old-url, name <oldURL>
+    like native-string

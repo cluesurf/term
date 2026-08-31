@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/dom/payment-details-base
+  find payment-details-base
+
+load @term/bind/code/browser/dom/payment-item
+  find payment-item
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form payment-details-init, name <PaymentDetailsInit>
+  base payment-details-base
+
+  link id, name <id>
+    like native-string
+    lock false
+  link total, name <total>
+    like payment-item
+    lock false

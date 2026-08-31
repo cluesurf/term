@@ -1,0 +1,229 @@
+
+bear @term/bind/code/browser/dom/web-assembly/compile-error
+bear @term/bind/code/browser/dom/web-assembly/global
+bear @term/bind/code/browser/dom/web-assembly/instance
+bear @term/bind/code/browser/dom/web-assembly/link-error
+bear @term/bind/code/browser/dom/web-assembly/memory
+bear @term/bind/code/browser/dom/web-assembly/module
+bear @term/bind/code/browser/dom/web-assembly/runtime-error
+bear @term/bind/code/browser/dom/web-assembly/table
+bear @term/bind/code/browser/dom/web-assembly/global-descriptor
+bear @term/bind/code/browser/dom/web-assembly/memory-descriptor
+bear @term/bind/code/browser/dom/web-assembly/module-export-descriptor
+bear @term/bind/code/browser/dom/web-assembly/module-import-descriptor
+bear @term/bind/code/browser/dom/web-assembly/table-descriptor
+bear @term/bind/code/browser/dom/web-assembly/web-assembly-instantiated-source
+bear @term/bind/code/browser/dom/web-assembly/import-export-kind
+bear @term/bind/code/browser/dom/web-assembly/table-kind
+bear @term/bind/code/browser/dom/web-assembly/value-type
+bear @term/bind/code/browser/dom/web-assembly/export-value
+bear @term/bind/code/browser/dom/web-assembly/exports
+bear @term/bind/code/browser/dom/web-assembly/import-value
+bear @term/bind/code/browser/dom/web-assembly/imports
+bear @term/bind/code/browser/dom/web-assembly/module-imports
+
+load @term/bind/code/browser/dom/buffer-source
+  find buffer-source
+
+load @term/bind/code/browser/dom/compile-error
+  find compile-error
+
+load @term/bind/code/browser/dom/global
+  find global
+
+load @term/bind/code/browser/dom/global-descriptor
+  find global-descriptor
+
+load @term/bind/code/browser/dom/imports
+  find imports
+
+load @term/bind/code/browser/dom/instance
+  find instance
+
+load @term/bind/code/browser/dom/link-error
+  find link-error
+
+load @term/bind/code/browser/dom/memory
+  find memory
+
+load @term/bind/code/browser/dom/memory-descriptor
+  find memory-descriptor
+
+load @term/bind/code/browser/dom/module
+  find module
+
+load @term/bind/code/browser/dom/module-export-descriptor
+  find module-export-descriptor
+
+load @term/bind/code/browser/dom/module-import-descriptor
+  find module-import-descriptor
+
+load @term/bind/code/browser/dom/response
+  find response
+
+load @term/bind/code/browser/dom/runtime-error
+  find runtime-error
+
+load @term/bind/code/browser/dom/table
+  find table
+
+load @term/bind/code/browser/dom/table-descriptor
+  find table-descriptor
+
+load @term/bind/code/browser/dom/web-assembly-instantiated-source
+  find web-assembly-instantiated-source
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/es5/promise-like
+  find promise-like
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+host compile-error, name <CompileError>
+  like form
+    link prototype, name <prototype>
+      like compile-error
+      lock false
+    hook make
+      like compile-error
+
+host global, name <Global>
+  like form
+    link prototype, name <prototype>
+      like global
+      lock false
+    hook make
+      take descriptor, like global-descriptor
+      take v, like maybe
+        like native-any
+      like global
+
+host instance, name <Instance>
+  like form
+    link prototype, name <prototype>
+      like instance
+      lock false
+    hook make
+      take module, like module
+      take import-object, like maybe
+        like imports
+      like instance
+
+host link-error, name <LinkError>
+  like form
+    link prototype, name <prototype>
+      like link-error
+      lock false
+    hook make
+      like link-error
+
+host memory, name <Memory>
+  like form
+    link prototype, name <prototype>
+      like memory
+      lock false
+    hook make
+      take descriptor, like memory-descriptor
+      like memory
+
+host module, name <Module>
+  like form
+    link prototype, name <prototype>
+      like module
+      lock false
+    hook make
+      take bytes, like buffer-source
+      like module
+
+    task custom-sections, name <customSections>
+      take module-object, like module
+      take section-name, like native-string
+      like native-array
+        like array-buffer
+
+    task exports, name <exports>
+      take module-object, like module
+      like native-array
+        like module-export-descriptor
+
+    task imports, name <imports>
+      take module-object, like module
+      like native-array
+        like module-import-descriptor
+
+host runtime-error, name <RuntimeError>
+  like form
+    link prototype, name <prototype>
+      like runtime-error
+      lock false
+    hook make
+      like runtime-error
+
+host table, name <Table>
+  like form
+    link prototype, name <prototype>
+      like table
+      lock false
+    hook make
+      take descriptor, like table-descriptor
+      take value, like maybe
+        like native-any
+      like table
+
+task compile, name <compile>
+  take bytes, like buffer-source
+  like promise
+    like module
+
+task compile-streaming, name <compileStreaming>
+  take source
+    like or
+      like response
+      like promise-like
+        like response
+  like promise
+    like module
+
+task instantiate, name <instantiate>
+  take bytes, like buffer-source
+  take import-object, like maybe
+    like imports
+  like promise
+    like web-assembly-instantiated-source
+
+task instantiate, name <instantiate>
+  take module-object, like module
+  take import-object, like maybe
+    like imports
+  like promise
+    like instance
+
+task instantiate-streaming, name <instantiateStreaming>
+  take source
+    like or
+      like response
+      like promise-like
+        like response
+  take import-object, like maybe
+    like imports
+  like promise
+    like web-assembly-instantiated-source
+
+task validate, name <validate>
+  take bytes, like buffer-source
+  like native-boolean

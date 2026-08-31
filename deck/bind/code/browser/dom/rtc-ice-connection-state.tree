@@ -1,0 +1,10 @@
+
+form rtc-ice-connection-state, name <RTCIceConnectionState>
+  like or
+    text <checking>
+    text <closed>
+    text <completed>
+    text <connected>
+    text <disconnected>
+    text <failed>
+    text <new>

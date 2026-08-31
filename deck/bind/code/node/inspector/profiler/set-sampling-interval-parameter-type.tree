@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript
+  find native-number
+
+form set-sampling-interval-parameter-type, name <SetSamplingIntervalParameterType>
+  link interval, name <interval>
+    like native-number
+    flex true

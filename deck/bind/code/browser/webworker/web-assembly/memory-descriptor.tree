@@ -1,0 +1,20 @@
+
+load @term/bind/code/browser/dom/memory-descriptor
+  find memory-descriptor
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form memory-descriptor, name <MemoryDescriptor>
+  link initial, name <initial>
+    like native-number
+    lock false
+  link maximum, name <maximum>
+    like native-number
+    lock false
+  link shared, name <shared>
+    like native-boolean
+    lock false

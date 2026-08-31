@@ -1,0 +1,232 @@
+
+load @term/bind/code/javascript/es5/date
+  find date
+
+load @term/bind/code/javascript/intl-date-time-format-options
+  find intl-date-time-format-options
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form date, name <Date>
+  task to-string, name <toString>
+    like native-string
+
+  task to-date-string, name <toDateString>
+    like native-string
+
+  task to-time-string, name <toTimeString>
+    like native-string
+
+  task to-locale-string, name <toLocaleString>
+    like native-string
+
+  task to-locale-date-string, name <toLocaleDateString>
+    like native-string
+
+  task to-locale-time-string, name <toLocaleTimeString>
+    like native-string
+
+  task value-of, name <valueOf>
+    like native-number
+
+  task get-time, name <getTime>
+    like native-number
+
+  task get-full-year, name <getFullYear>
+    like native-number
+
+  task get-utc-full-year, name <getUTCFullYear>
+    like native-number
+
+  task get-month, name <getMonth>
+    like native-number
+
+  task get-utc-month, name <getUTCMonth>
+    like native-number
+
+  task get-date, name <getDate>
+    like native-number
+
+  task get-utc-date, name <getUTCDate>
+    like native-number
+
+  task get-day, name <getDay>
+    like native-number
+
+  task get-utc-day, name <getUTCDay>
+    like native-number
+
+  task get-hours, name <getHours>
+    like native-number
+
+  task get-utc-hours, name <getUTCHours>
+    like native-number
+
+  task get-minutes, name <getMinutes>
+    like native-number
+
+  task get-utc-minutes, name <getUTCMinutes>
+    like native-number
+
+  task get-seconds, name <getSeconds>
+    like native-number
+
+  task get-utc-seconds, name <getUTCSeconds>
+    like native-number
+
+  task get-milliseconds, name <getMilliseconds>
+    like native-number
+
+  task get-utc-milliseconds, name <getUTCMilliseconds>
+    like native-number
+
+  task get-timezone-offset, name <getTimezoneOffset>
+    like native-number
+
+  task set-time, name <setTime>
+    take time, like native-number
+    like native-number
+
+  task set-milliseconds, name <setMilliseconds>
+    take ms, like native-number
+    like native-number
+
+  task set-utc-milliseconds, name <setUTCMilliseconds>
+    take ms, like native-number
+    like native-number
+
+  task set-seconds, name <setSeconds>
+    take sec, like native-number
+    take ms, like maybe
+      like native-number
+    like native-number
+
+  task set-utc-seconds, name <setUTCSeconds>
+    take sec, like native-number
+    take ms, like maybe
+      like native-number
+    like native-number
+
+  task set-minutes, name <setMinutes>
+    take min, like native-number
+    take sec, like maybe
+      like native-number
+    take ms, like maybe
+      like native-number
+    like native-number
+
+  task set-utc-minutes, name <setUTCMinutes>
+    take min, like native-number
+    take sec, like maybe
+      like native-number
+    take ms, like maybe
+      like native-number
+    like native-number
+
+  task set-hours, name <setHours>
+    take hours, like native-number
+    take min, like maybe
+      like native-number
+    take sec, like maybe
+      like native-number
+    take ms, like maybe
+      like native-number
+    like native-number
+
+  task set-utc-hours, name <setUTCHours>
+    take hours, like native-number
+    take min, like maybe
+      like native-number
+    take sec, like maybe
+      like native-number
+    take ms, like maybe
+      like native-number
+    like native-number
+
+  task set-date, name <setDate>
+    take date, like native-number
+    like native-number
+
+  task set-utc-date, name <setUTCDate>
+    take date, like native-number
+    like native-number
+
+  task set-month, name <setMonth>
+    take month, like native-number
+    take date, like maybe
+      like native-number
+    like native-number
+
+  task set-utc-month, name <setUTCMonth>
+    take month, like native-number
+    take date, like maybe
+      like native-number
+    like native-number
+
+  task set-full-year, name <setFullYear>
+    take year, like native-number
+    take month, like maybe
+      like native-number
+    take date, like maybe
+      like native-number
+    like native-number
+
+  task set-utc-full-year, name <setUTCFullYear>
+    take year, like native-number
+    take month, like maybe
+      like native-number
+    take date, like maybe
+      like native-number
+    like native-number
+
+  task to-utc-string, name <toUTCString>
+    like native-string
+
+  task to-iso-string, name <toISOString>
+    like native-string
+
+  task to-json, name <toJSON>
+    take key, like maybe
+      like native-any
+    like native-string
+
+form date, name <Date>
+  task to-locale-string, name <toLocaleString>
+    take locales, like maybe
+      like or
+        like native-string
+        like native-array
+          like native-string
+    take options, like maybe
+      like intl-date-time-format-options
+    like native-string
+
+  task to-locale-date-string, name <toLocaleDateString>
+    take locales, like maybe
+      like or
+        like native-string
+        like native-array
+          like native-string
+    take options, like maybe
+      like intl-date-time-format-options
+    like native-string
+
+  task to-locale-time-string, name <toLocaleTimeString>
+    take locales, like maybe
+      like or
+        like native-string
+        like native-array
+          like native-string
+    take options, like maybe
+      like intl-date-time-format-options
+    like native-string

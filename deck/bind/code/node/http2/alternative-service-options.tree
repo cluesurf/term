@@ -1,0 +1,16 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find url-url
+
+form alternative-service-options, name <AlternativeServiceOptions>
+  link origin, name <origin>
+    like or
+      like native-number
+      like native-string
+      like url-url
+    flex true

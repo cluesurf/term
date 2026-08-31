@@ -1,0 +1,29 @@
+
+load @term/bind/code/browser/webworker/error-event
+  find error-event
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+load @term/bind/code/browser/webworker/promise-rejection-event
+  find promise-rejection-event
+
+form worker-global-scope-event-map, name <WorkerGlobalScopeEventMap>
+  link error, name <error>
+    like error-event
+    lock false
+  link languagechange, name <languagechange>
+    like event
+    lock false
+  link offline, name <offline>
+    like event
+    lock false
+  link online, name <online>
+    like event
+    lock false
+  link rejectionhandled, name <rejectionhandled>
+    like promise-rejection-event
+    lock false
+  link unhandledrejection, name <unhandledrejection>
+    like promise-rejection-event
+    lock false

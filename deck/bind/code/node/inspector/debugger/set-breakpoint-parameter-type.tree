@@ -1,0 +1,20 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/inspector/debugger
+  find location
+
+form set-breakpoint-parameter-type, name <SetBreakpointParameterType>
+  link location, name <location>
+    like location
+    flex true
+  link condition, name <condition>
+    like or
+      like native-string
+      like native-undefined
+    flex true

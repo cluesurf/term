@@ -1,0 +1,12 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-bigint
+  find native-number
+
+form read-position, name <ReadPosition>
+  like or
+    like native-number
+    like native-bigint

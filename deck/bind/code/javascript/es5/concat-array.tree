@@ -1,0 +1,31 @@
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form concat-array, name <ConcatArray>
+  head t
+
+  link length, name <length>
+    like native-number
+
+  task join, name <join>
+    take separator, like maybe
+      like native-string
+    like native-string
+
+  task slice, name <slice>
+    take start, like maybe
+      like native-number
+    take end, like maybe
+      like native-number
+    like native-array
+      like t
+
+  mesh n, like native-number
+    like t

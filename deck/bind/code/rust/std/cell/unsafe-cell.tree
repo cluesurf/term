@@ -1,0 +1,100 @@
+
+form unsafe-cell, name <std::cell::UnsafeCell>
+  task new, name <new>
+    note <Constructs a new instance of UnsafeCell which will wrap the specified value.>
+
+    take value
+      like t
+        cite free
+      cite free
+
+    free seed
+      like unsafe-cell
+        like t
+          cite free
+        cite free
+
+  task into-inner, name <into_inner>
+    note <Unwraps the value.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task get, name <get>
+    note <Gets a mutable pointer to the wrapped value.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the underlying data.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+
+  task raw-get, name <raw_get>
+    note <Gets a mutable pointer to the wrapped value. The difference from get is that this function accepts a raw pointer, which is useful to avoid the creation of temporary references.>
+
+    take this
+      like unsafe-cell
+        like t
+          cite free
+        cite free
+      calm take
+      cite free
+      dive take
+
+    free seed
+      like t
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Creates an UnsafeCell, with the Default value for T.>
+
+    free seed
+      like unsafe-cell
+        like t
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Performs the conversion.>
+
+    take t
+      like t
+        cite free
+      cite free
+
+    free seed
+      like unsafe-cell
+        like t
+          cite free
+        cite free

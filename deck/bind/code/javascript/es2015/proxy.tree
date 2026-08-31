@@ -1,0 +1,9 @@
+
+bear @term/bind/code/javascript/es2015/proxy/proxy-handler
+bear @term/bind/code/javascript/es2015/proxy/proxy-constructor
+
+load @term/bind/code/javascript/es2015/proxy/proxy-constructor
+  find proxy-constructor
+
+host proxy, name <Proxy>
+  like proxy-constructor

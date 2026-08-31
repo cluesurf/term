@@ -1,0 +1,35 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-undefined
+
+form client-session-request-options, name <ClientSessionRequestOptions>
+  link end-stream, name <endStream>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link exclusive, name <exclusive>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link parent, name <parent>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link weight, name <weight>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link wait-for-trailers, name <waitForTrailers>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

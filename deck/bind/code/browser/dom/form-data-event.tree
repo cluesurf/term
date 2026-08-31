@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/form-data
+  find form-data
+
+form form-data-event, name <FormDataEvent>
+  base event
+
+  link form-data, name <formData>
+    like form-data

@@ -1,0 +1,3 @@
+
+form gamepad-haptic-actuator-type, name <GamepadHapticActuatorType>
+  text <vibration>

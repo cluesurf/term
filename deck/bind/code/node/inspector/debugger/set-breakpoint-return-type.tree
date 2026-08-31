@@ -1,0 +1,12 @@
+
+load @term/bind/code/node/inspector/debugger
+  find breakpoint-id
+  find location
+
+form set-breakpoint-return-type, name <SetBreakpointReturnType>
+  link breakpoint-id, name <breakpointId>
+    like breakpoint-id
+    flex true
+  link actual-location, name <actualLocation>
+    like location
+    flex true

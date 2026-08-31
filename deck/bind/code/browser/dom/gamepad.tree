@@ -1,0 +1,45 @@
+
+load @term/bind/code/browser/dom/dom-high-res-time-stamp
+  find dom-high-res-time-stamp
+
+load @term/bind/code/browser/dom/gamepad-button
+  find gamepad-button
+
+load @term/bind/code/browser/dom/gamepad-haptic-actuator
+  find gamepad-haptic-actuator
+
+load @term/bind/code/browser/dom/gamepad-mapping-type
+  find gamepad-mapping-type
+
+load @term/bind/code/javascript/es5/readonly-array
+  find readonly-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form gamepad, name <Gamepad>
+  link axes, name <axes>
+    like readonly-array
+      like native-number
+  link buttons, name <buttons>
+    like readonly-array
+      like gamepad-button
+  link connected, name <connected>
+    like native-boolean
+  link haptic-actuators, name <hapticActuators>
+    like readonly-array
+      like gamepad-haptic-actuator
+  link id, name <id>
+    like native-string
+  link index, name <index>
+    like native-number
+  link mapping, name <mapping>
+    like gamepad-mapping-type
+  link timestamp, name <timestamp>
+    like dom-high-res-time-stamp

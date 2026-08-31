@@ -1,0 +1,32 @@
+
+load @term/bind/code/browser/dom/file-reader
+  find file-reader
+
+load @term/bind/code/browser/dom/progress-event
+  find progress-event
+
+form file-reader-event-map, name <FileReaderEventMap>
+  link abort, name <abort>
+    like progress-event
+      like file-reader
+    lock false
+  link error, name <error>
+    like progress-event
+      like file-reader
+    lock false
+  link load, name <load>
+    like progress-event
+      like file-reader
+    lock false
+  link loadend, name <loadend>
+    like progress-event
+      like file-reader
+    lock false
+  link loadstart, name <loadstart>
+    like progress-event
+      like file-reader
+    lock false
+  link progress, name <progress>
+    like progress-event
+      like file-reader
+    lock false

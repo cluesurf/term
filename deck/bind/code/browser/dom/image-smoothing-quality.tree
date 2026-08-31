@@ -1,0 +1,6 @@
+
+form image-smoothing-quality, name <ImageSmoothingQuality>
+  like or
+    text <high>
+    text <low>
+    text <medium>

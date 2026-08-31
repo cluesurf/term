@@ -1,0 +1,24 @@
+
+load @term/bind/code/browser/dom/audio-node
+  find audio-node
+
+load @term/bind/code/browser/dom/over-sample-type
+  find over-sample-type
+
+load @term/bind/code/javascript/es5/float32-array
+  find float32-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+form wave-shaper-node, name <WaveShaperNode>
+  base audio-node
+
+  link curve, name <curve>
+    like or
+      like float32-array
+      like native-null
+    lock false
+  link oversample, name <oversample>
+    like over-sample-type
+    lock false

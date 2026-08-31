@@ -1,0 +1,16 @@
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+task import-scripts, name <importScripts>
+  take urls
+    like native-array
+      like native-string
+    rest true
+  like native-void

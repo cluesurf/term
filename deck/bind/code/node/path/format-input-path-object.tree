@@ -1,0 +1,34 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find native-undefined
+
+form format-input-path-object, name <FormatInputPathObject>
+  link root, name <root>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link dir, name <dir>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link base, name <base>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link ext, name <ext>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link name, name <name>
+    like or
+      like native-string
+      like native-undefined
+    flex true

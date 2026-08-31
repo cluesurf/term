@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript
+  find native-string
+
+form cipher-name-and-protocol, name <CipherNameAndProtocol>
+  link name, name <name>
+    like native-string
+    flex true
+  link version, name <version>
+    like native-string
+    flex true
+  link standard-name, name <standardName>
+    like native-string
+    flex true

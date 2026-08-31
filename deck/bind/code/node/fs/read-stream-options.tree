@@ -1,0 +1,19 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+
+load @term/bind/code/node/fs
+  find stream-options
+
+form read-stream-options, name <ReadStreamOptions>
+  base stream-options
+
+  link end, name <end>
+    like or
+      like native-number
+      like native-undefined
+    flex true

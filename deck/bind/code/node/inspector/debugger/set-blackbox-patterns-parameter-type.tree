@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-string
+
+form set-blackbox-patterns-parameter-type, name <SetBlackboxPatternsParameterType>
+  link patterns, name <patterns>
+    like array
+      like native-string
+    flex true

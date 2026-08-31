@@ -1,0 +1,7 @@
+
+form value-type, name <ValueType>
+  like or
+    text <f32>
+    text <f64>
+    text <i32>
+    text <i64>

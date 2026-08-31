@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/algorithm
+  find algorithm
+
+load @term/bind/code/browser/dom/hash-algorithm-identifier
+  find hash-algorithm-identifier
+
+form ecdsa-params, name <EcdsaParams>
+  base algorithm
+
+  link hash, name <hash>
+    like hash-algorithm-identifier
+    lock false

@@ -1,0 +1,63 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form mutation-event, name <MutationEvent>
+  base event
+
+  link attr-change, name <attrChange>
+    like native-number
+  link attr-name, name <attrName>
+    like native-string
+  link new-value, name <newValue>
+    like native-string
+  link prev-value, name <prevValue>
+    like native-string
+  link related-node, name <relatedNode>
+    like or
+      like node
+      like native-null
+  link addition, name <ADDITION>
+    like native-number
+  link modification, name <MODIFICATION>
+    like native-number
+  link removal, name <REMOVAL>
+    like native-number
+
+  task init-mutation-event, name <initMutationEvent>
+    take type-arg, like native-string
+    take bubbles-arg, like maybe
+      like native-boolean
+    take cancelable-arg, like maybe
+      like native-boolean
+    take related-node-arg, like maybe
+      like or
+        like node
+        like native-null
+    take prev-value-arg, like maybe
+      like native-string
+    take new-value-arg, like maybe
+      like native-string
+    take attr-name-arg, like maybe
+      like native-string
+    take attr-change-arg, like maybe
+      like native-number
+    like native-void

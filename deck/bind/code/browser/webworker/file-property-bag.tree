@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/file-property-bag
+  find file-property-bag
+
+load @term/bind/code/browser/webworker/blob-property-bag
+  find blob-property-bag
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form file-property-bag, name <FilePropertyBag>
+  base blob-property-bag
+
+  link last-modified, name <lastModified>
+    like native-number
+    lock false

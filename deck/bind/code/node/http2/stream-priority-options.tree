@@ -1,0 +1,30 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-undefined
+
+form stream-priority-options, name <StreamPriorityOptions>
+  link exclusive, name <exclusive>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link parent, name <parent>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link weight, name <weight>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link silent, name <silent>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

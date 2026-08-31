@@ -1,0 +1,53 @@
+
+load @term/bind
+  find like
+  find or
+  find tuple
+
+load @term/bind/code/javascript
+  find child-process
+  find native-null
+  find native-undefined
+  find readable
+  find writable
+
+form child-process-by-stdio, name <ChildProcessByStdio>
+  base child-process
+
+  head i
+    base or
+      like native-null
+      like writable
+  head o
+    base or
+      like native-null
+      like readable
+  head e
+    base or
+      like native-null
+      like readable
+
+  link stdin, name <stdin>
+    like i
+    flex true
+  link stdout, name <stdout>
+    like o
+    flex true
+  link stderr, name <stderr>
+    like e
+    flex true
+  link stdio, name <stdio>
+    like tuple
+      like i
+      like o
+      like e
+      like or
+        like readable
+        like writable
+        like native-null
+        like native-undefined
+      like or
+        like readable
+        like writable
+        like native-null
+        like native-undefined

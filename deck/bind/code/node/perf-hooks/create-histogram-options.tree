@@ -1,0 +1,27 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-bigint
+  find native-number
+  find native-undefined
+
+form create-histogram-options, name <CreateHistogramOptions>
+  link min, name <min>
+    like or
+      like native-number
+      like native-bigint
+      like native-undefined
+    flex true
+  link max, name <max>
+    like or
+      like native-number
+      like native-bigint
+      like native-undefined
+    flex true
+  link figures, name <figures>
+    like or
+      like native-number
+      like native-undefined
+    flex true

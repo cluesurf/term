@@ -1,0 +1,11 @@
+
+load @term/bind/code/javascript
+  find tls-socket
+
+form secure-pair, name <SecurePair>
+  link encrypted, name <encrypted>
+    like tls-socket
+    flex true
+  link cleartext, name <cleartext>
+    like tls-socket
+    flex true

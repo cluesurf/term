@@ -45,6 +45,7 @@ import type {
   Statement,
 } from '@term/make/code/compile/node'
 import { showType } from '@term/make/code/compile/node'
+import { importPathsOf, makeParseMemo } from '@term/make/code/compile/load'
 
 type TextDocumentParams = {
   textDocument: { uri: string; text?: string }
@@ -191,17 +192,14 @@ function pathFor(uri: string): string | undefined {
   }
 }
 
-// every `load @scope/pkg/...` import path declared in a document (top-level, column 0)
+// every `load @scope/pkg/...` import path a document declares, read with the parser through the SAME function the
+// compiler's dependency walk uses, so the editor and the build cannot disagree about what a file imports. There is
+// ONE parser for `.tree`: note/term/one-parser.md.
 function loadedModules(text: string): string[] {
-  const out: string[] = []
-
-  for (const line of text.split('\n')) {
-    const match = /^load\s+(@\S+)/.exec(line)
-
-    if (match) {
-      out.push(match[1]!)
-    }
-  }
+  const out = importPathsOf(
+    { file: '<document>', text },
+    makeParseMemo(),
+  ).filter(path => path.startsWith('@'))
 
   return out
 }

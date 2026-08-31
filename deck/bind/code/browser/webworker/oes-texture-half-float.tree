@@ -1,0 +1,10 @@
+
+load @term/bind/code/browser/dom/oes-texture-half-float
+  find oes-texture-half-float
+
+load @term/bind/code/browser/webworker/g-lenum
+  find g-lenum
+
+form oes-texture-half-float, name <OES_texture_half_float>
+  link half-float-oes, name <HALF_FLOAT_OES>
+    like g-lenum

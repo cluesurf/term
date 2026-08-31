@@ -1,0 +1,5 @@
+
+form ending-type, name <EndingType>
+  like or
+    text <native>
+    text <transparent>

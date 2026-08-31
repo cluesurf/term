@@ -1,0 +1,17 @@
+
+load @term/bind
+  find task
+
+load @term/bind/code/javascript
+  find native-void
+  find performance-observer
+
+load @term/bind/code/node/perf-hooks
+  find performance-observer-entry-list
+
+form performance-observer-callback, name <PerformanceObserverCallback>
+  like task
+    like native-void
+
+    take list, like performance-observer-entry-list
+    take observer, like performance-observer

@@ -1,0 +1,49 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/net
+  find connect-opts
+  find lookup-function
+
+form tcp-socket-connect-opts, name <TcpSocketConnectOpts>
+  base connect-opts
+
+  link port, name <port>
+    like native-number
+    flex true
+  link host, name <host>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link local-address, name <localAddress>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link local-port, name <localPort>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link hints, name <hints>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link family, name <family>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link lookup, name <lookup>
+    like or
+      like lookup-function
+      like native-undefined
+    flex true

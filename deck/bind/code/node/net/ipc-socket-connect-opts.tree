@@ -1,0 +1,13 @@
+
+load @term/bind/code/javascript
+  find native-string
+
+load @term/bind/code/node/net
+  find connect-opts
+
+form ipc-socket-connect-opts, name <IpcSocketConnectOpts>
+  base connect-opts
+
+  link path, name <path>
+    like native-string
+    flex true

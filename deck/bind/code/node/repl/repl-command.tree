@@ -1,0 +1,20 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/repl
+  find repl-command-action
+
+form repl-command, name <REPLCommand>
+  link help, name <help>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link action, name <action>
+    like repl-command-action
+    flex true

@@ -1,0 +1,23 @@
+
+load @term/bind/code/node/zlib
+  find brotli-options
+  find input-type
+  find zlib
+
+load @term/bind/code/javascript
+  find promise
+
+load @term/bind/code/node/buffer
+  find buffer
+
+form brotli-compress, name <BrotliCompress>
+  base stream-transform
+  base zlib
+
+task promisify, name <__promisify__>
+  like promise
+    like buffer
+
+  take buffer, like input-type
+  take options, like brotli-options
+    void true

@@ -1,0 +1,11 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form u-long-range, name <ULongRange>
+  link max, name <max>
+    like native-number
+    lock false
+  link min, name <min>
+    like native-number
+    lock false

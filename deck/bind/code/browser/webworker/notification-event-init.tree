@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/webworker/extendable-event-init
+  find extendable-event-init
+
+load @term/bind/code/browser/webworker/notification
+  find notification
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form notification-event-init, name <NotificationEventInit>
+  base extendable-event-init
+
+  link action, name <action>
+    like native-string
+    lock false
+  link notification, name <notification>
+    like notification
+    lock false

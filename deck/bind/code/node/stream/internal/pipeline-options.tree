@@ -1,0 +1,8 @@
+
+load @term/bind/code/node/globals
+  find abort-signal
+
+form pipeline-options, name <PipelineOptions>
+  link signal, name <signal>
+    like abort-signal
+    flex true

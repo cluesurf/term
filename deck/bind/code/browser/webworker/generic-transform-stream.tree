@@ -1,0 +1,15 @@
+
+load @term/bind/code/browser/dom/generic-transform-stream
+  find generic-transform-stream
+
+load @term/bind/code/browser/webworker/readable-stream
+  find readable-stream
+
+load @term/bind/code/browser/webworker/writable-stream
+  find writable-stream
+
+form generic-transform-stream, name <GenericTransformStream>
+  link readable, name <readable>
+    like readable-stream
+  link writable, name <writable>
+    like writable-stream

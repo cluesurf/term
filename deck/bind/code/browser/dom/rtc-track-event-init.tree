@@ -1,0 +1,35 @@
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+load @term/bind/code/browser/dom/media-stream
+  find media-stream
+
+load @term/bind/code/browser/dom/media-stream-track
+  find media-stream-track
+
+load @term/bind/code/browser/dom/rtc-rtp-receiver
+  find rtc-rtp-receiver
+
+load @term/bind/code/browser/dom/rtc-rtp-transceiver
+  find rtc-rtp-transceiver
+
+load @term/bind/code/javascript/native
+  find native-array
+
+form rtc-track-event-init, name <RTCTrackEventInit>
+  base event-init
+
+  link receiver, name <receiver>
+    like rtc-rtp-receiver
+    lock false
+  link streams, name <streams>
+    like native-array
+      like media-stream
+    lock false
+  link track, name <track>
+    like media-stream-track
+    lock false
+  link transceiver, name <transceiver>
+    like rtc-rtp-transceiver
+    lock false

@@ -1,0 +1,25 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-undefined
+
+form rm-dir-options, name <RmDirOptions>
+  link max-retries, name <maxRetries>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link recursive, name <recursive>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link retry-delay, name <retryDelay>
+    like or
+      like native-number
+      like native-undefined
+    flex true

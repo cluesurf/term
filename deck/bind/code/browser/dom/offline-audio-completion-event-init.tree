@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/audio-buffer
+  find audio-buffer
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+form offline-audio-completion-event-init, name <OfflineAudioCompletionEventInit>
+  base event-init
+
+  link rendered-buffer, name <renderedBuffer>
+    like audio-buffer
+    lock false

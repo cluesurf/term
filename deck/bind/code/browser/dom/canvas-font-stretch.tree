@@ -1,0 +1,12 @@
+
+form canvas-font-stretch, name <CanvasFontStretch>
+  like or
+    text <condensed>
+    text <expanded>
+    text <extra-condensed>
+    text <extra-expanded>
+    text <normal>
+    text <semi-condensed>
+    text <semi-expanded>
+    text <ultra-condensed>
+    text <ultra-expanded>

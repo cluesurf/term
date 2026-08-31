@@ -1,0 +1,9 @@
+
+form xml-http-request-response-type, name <XMLHttpRequestResponseType>
+  like or
+    text <>
+    text <arraybuffer>
+    text <blob>
+    text <document>
+    text <json>
+    text <text>

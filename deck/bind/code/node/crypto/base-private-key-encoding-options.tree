@@ -1,0 +1,29 @@
+
+load @term/bind
+  find like
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/crypto
+  find key-format
+
+form base-private-key-encoding-options, name <BasePrivateKeyEncodingOptions>
+  head t
+    base key-format
+
+  link format, name <format>
+    like t
+    flex true
+  link cipher, name <cipher>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link passphrase, name <passphrase>
+    like or
+      like native-string
+      like native-undefined
+    flex true

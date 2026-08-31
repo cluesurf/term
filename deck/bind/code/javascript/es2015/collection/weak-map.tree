@@ -1,0 +1,36 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-object
+
+load @term/bind/code/javascript/native
+  find native-this
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+form weak-map, name <WeakMap>
+  head k
+    base native-object
+  head v
+
+  task delete, name <delete>
+    take key, like k
+    like native-boolean
+
+  task get, name <get>
+    take key, like k
+    like or
+      like v
+      like native-undefined
+
+  task has, name <has>
+    take key, like k
+    like native-boolean
+
+  task set, name <set>
+    take key, like k
+    take value, like v
+    like native-this

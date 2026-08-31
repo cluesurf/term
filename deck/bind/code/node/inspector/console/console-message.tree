@@ -1,0 +1,34 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find native-undefined
+
+form console-message, name <ConsoleMessage>
+  link source, name <source>
+    like native-string
+    flex true
+  link level, name <level>
+    like native-string
+    flex true
+  link text, name <text>
+    like native-string
+    flex true
+  link url, name <url>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link line, name <line>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link column, name <column>
+    like or
+      like native-number
+      like native-undefined
+    flex true

@@ -1,0 +1,20 @@
+
+load @term/bind/code/javascript/es5/error-constructor
+  find error-constructor
+
+load @term/bind/code/javascript/es5/uri-error
+  find uri-error
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form uri-error-constructor, name <URIErrorConstructor>
+  base error-constructor
+
+  link prototype, name <prototype>
+    like uri-error
+
+  hook make
+    take message, like maybe
+      like native-string
+    like uri-error

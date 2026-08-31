@@ -1,0 +1,22 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+
+load @term/bind/code/node/buffer
+  find buffer-encoding
+
+form open-dir-options, name <OpenDirOptions>
+  link encoding, name <encoding>
+    like or
+      like buffer-encoding
+      like native-undefined
+    flex true
+  link buffer-size, name <bufferSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true

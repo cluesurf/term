@@ -1,0 +1,6 @@
+
+form over-sample-type, name <OverSampleType>
+  like or
+    text <2x>
+    text <4x>
+    text <none>

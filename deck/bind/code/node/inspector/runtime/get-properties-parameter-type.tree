@@ -1,0 +1,30 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-undefined
+
+load @term/bind/code/node/inspector/runtime
+  find remote-object-id
+
+form get-properties-parameter-type, name <GetPropertiesParameterType>
+  link object-id, name <objectId>
+    like remote-object-id
+    flex true
+  link own-properties, name <ownProperties>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link accessor-properties-only, name <accessorPropertiesOnly>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link generate-preview, name <generatePreview>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

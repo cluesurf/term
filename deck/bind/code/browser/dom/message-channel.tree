@@ -1,0 +1,9 @@
+
+load @term/bind/code/browser/dom/message-port
+  find message-port
+
+form message-channel, name <MessageChannel>
+  link port1, name <port1>
+    like message-port
+  link port2, name <port2>
+    like message-port

@@ -1,0 +1,6 @@
+
+form canvas-line-join, name <CanvasLineJoin>
+  like or
+    text <bevel>
+    text <miter>
+    text <round>

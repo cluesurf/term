@@ -1,0 +1,28 @@
+
+load @term/bind/code/browser/scripthost/date
+  find date
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form date, name <Date>
+  task {symbol/to-primitive}
+    take hint, text <default>
+    like native-string
+
+  task {symbol/to-primitive}
+    take hint, text <string>
+    like native-string
+
+  task {symbol/to-primitive}
+    take hint, text <number>
+    like native-number
+
+  task {symbol/to-primitive}
+    take hint, like native-string
+    like or
+      like native-string
+      like native-number

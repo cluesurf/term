@@ -1,0 +1,127 @@
+
+load @term/bind/code/javascript
+  find array
+  find iterable
+  find iterable-iterator
+  find native-boolean
+  find native-null
+  find native-string
+  find native-this
+  find native-void
+  find readonly-array
+  find record
+
+load @term/bind
+  find like
+  find or
+  find task
+  find tuple
+
+load @term/bind/code/node/url
+  find url-search-params
+
+form url-search-params, name <URLSearchParams>
+  task append, name <append>
+    like native-void
+
+    take name, like native-string
+    take value, like native-string
+
+  task delete, name <delete>
+    like native-void
+
+    take name, like native-string
+
+  task entries, name <entries>
+    like iterable-iterator
+      like tuple
+        like native-string
+        like native-string
+
+  task for-each, name <forEach>
+    like native-void
+
+    head t-this
+      back native-this
+
+    take callback
+      like task
+        like native-void
+
+        take this, like t-this
+        take value, like native-string
+        take name, like native-string
+        take search-params, like url-search-params
+    take this-arg, like t-this
+      void true
+
+  task get, name <get>
+    like or
+      like native-string
+      like native-null
+
+    take name, like native-string
+
+  task get-all, name <getAll>
+    like array
+      like native-string
+
+    take name, like native-string
+
+  task has, name <has>
+    like native-boolean
+
+    take name, like native-string
+
+  task keys, name <keys>
+    like iterable-iterator
+      like native-string
+
+  task set, name <set>
+    like native-void
+
+    take name, like native-string
+    take value, like native-string
+
+  task sort, name <sort>
+    like native-void
+
+  task to-string, name <toString>
+    like native-string
+
+  task values, name <values>
+    like iterable-iterator
+      like native-string
+
+  task {symbol/iterator}
+    name <Symbol.iterator>
+    like iterable-iterator
+      like tuple
+        like native-string
+        like native-string
+
+form url-search-params-constructor
+  hook make
+    take init
+      like or
+        like url-search-params
+        like native-string
+        like record
+          like native-string
+          like or
+            like native-string
+            like readonly-array
+              like native-string
+        like iterable
+          like tuple
+            like native-string
+            like native-string
+        like readonly-array
+          like tuple
+            like native-string
+            like native-string
+      void true
+
+form url-search-params, name <URLSearchParams>
+  home true
+  base url-search-params

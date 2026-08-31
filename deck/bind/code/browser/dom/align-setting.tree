@@ -1,0 +1,8 @@
+
+form align-setting, name <AlignSetting>
+  like or
+    text <center>
+    text <end>
+    text <left>
+    text <right>
+    text <start>

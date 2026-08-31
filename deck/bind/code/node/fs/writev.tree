@@ -1,0 +1,20 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find node-js-array-buffer-view
+  find promise
+  find readonly-array
+
+load @term/bind/code/node/fs
+  find write-v-result
+
+task promisify, name <__promisify__>
+  like promise
+    like write-v-result
+
+  take fd, like native-number
+  take buffers
+    like readonly-array
+      like node-js-array-buffer-view
+  take position, like native-number
+    void true

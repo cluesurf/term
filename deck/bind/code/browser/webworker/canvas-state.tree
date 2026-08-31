@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/canvas-state
+  find canvas-state
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form canvas-state, name <CanvasState>
+  task restore, name <restore>
+    like native-void
+
+  task save, name <save>
+    like native-void

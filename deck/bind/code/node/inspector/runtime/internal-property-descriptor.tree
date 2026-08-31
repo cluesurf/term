@@ -1,0 +1,20 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/inspector/runtime
+  find remote-object
+
+form internal-property-descriptor, name <InternalPropertyDescriptor>
+  link name, name <name>
+    like native-string
+    flex true
+  link value, name <value>
+    like or
+      like remote-object
+      like native-undefined
+    flex true

@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/image-smoothing-quality
+  find image-smoothing-quality
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form canvas-image-smoothing, name <CanvasImageSmoothing>
+  link image-smoothing-enabled, name <imageSmoothingEnabled>
+    like native-boolean
+    lock false
+  link image-smoothing-quality, name <imageSmoothingQuality>
+    like image-smoothing-quality
+    lock false

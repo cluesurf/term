@@ -1,0 +1,49 @@
+
+load @term/bind/code/browser/dom/dom-matrix-init
+  find dom-matrix-init
+
+load @term/bind/code/browser/webworker/dom-matrix2-d-init
+  find dom-matrix2-d-init
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form dom-matrix-init, name <DOMMatrixInit>
+  base dom-matrix2-d-init
+
+  link is2-d, name <is2D>
+    like native-boolean
+    lock false
+  link m13, name <m13>
+    like native-number
+    lock false
+  link m14, name <m14>
+    like native-number
+    lock false
+  link m23, name <m23>
+    like native-number
+    lock false
+  link m24, name <m24>
+    like native-number
+    lock false
+  link m31, name <m31>
+    like native-number
+    lock false
+  link m32, name <m32>
+    like native-number
+    lock false
+  link m33, name <m33>
+    like native-number
+    lock false
+  link m34, name <m34>
+    like native-number
+    lock false
+  link m43, name <m43>
+    like native-number
+    lock false
+  link m44, name <m44>
+    like native-number
+    lock false

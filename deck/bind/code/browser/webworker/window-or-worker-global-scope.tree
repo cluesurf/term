@@ -1,0 +1,141 @@
+
+load @term/bind/code/browser/dom/window-or-worker-global-scope
+  find window-or-worker-global-scope
+
+load @term/bind/code/browser/webworker/cache-storage
+  find cache-storage
+
+load @term/bind/code/browser/webworker/crypto
+  find crypto
+
+load @term/bind/code/browser/webworker/idb-factory
+  find idb-factory
+
+load @term/bind/code/browser/webworker/image-bitmap
+  find image-bitmap
+
+load @term/bind/code/browser/webworker/image-bitmap-options
+  find image-bitmap-options
+
+load @term/bind/code/browser/webworker/image-bitmap-source
+  find image-bitmap-source
+
+load @term/bind/code/browser/webworker/performance
+  find performance
+
+load @term/bind/code/browser/webworker/request-info
+  find request-info
+
+load @term/bind/code/browser/webworker/request-init
+  find request-init
+
+load @term/bind/code/browser/webworker/response
+  find response
+
+load @term/bind/code/browser/webworker/timer-handler
+  find timer-handler
+
+load @term/bind/code/browser/webworker/void-function
+  find void-function
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form window-or-worker-global-scope, name <WindowOrWorkerGlobalScope>
+  link caches, name <caches>
+    like cache-storage
+  link crypto, name <crypto>
+    like crypto
+  link indexed-db, name <indexedDB>
+    like idb-factory
+  link is-secure-context, name <isSecureContext>
+    like native-boolean
+  link origin, name <origin>
+    like native-string
+  link performance, name <performance>
+    like performance
+
+  task atob, name <atob>
+    take data, like native-string
+    like native-string
+
+  task btoa, name <btoa>
+    take data, like native-string
+    like native-string
+
+  task clear-interval, name <clearInterval>
+    take handle, like maybe
+      like native-number
+    like native-void
+
+  task clear-timeout, name <clearTimeout>
+    take handle, like maybe
+      like native-number
+    like native-void
+
+  task create-image-bitmap, name <createImageBitmap>
+    take image, like image-bitmap-source
+    take options, like maybe
+      like image-bitmap-options
+    like promise
+      like image-bitmap
+
+  task create-image-bitmap, name <createImageBitmap>
+    take image, like image-bitmap-source
+    take sx, like native-number
+    take sy, like native-number
+    take sw, like native-number
+    take sh, like native-number
+    take options, like maybe
+      like image-bitmap-options
+    like promise
+      like image-bitmap
+
+  task fetch, name <fetch>
+    take input, like request-info
+    take init, like maybe
+      like request-init
+    like promise
+      like response
+
+  task queue-microtask, name <queueMicrotask>
+    take callback, like void-function
+    like native-void
+
+  task set-interval, name <setInterval>
+    take handler, like timer-handler
+    take timeout, like maybe
+      like native-number
+    take arguments
+      like native-array
+        like native-any
+      rest true
+    like native-number
+
+  task set-timeout, name <setTimeout>
+    take handler, like timer-handler
+    take timeout, like maybe
+      like native-number
+    take arguments
+      like native-array
+        like native-any
+      rest true
+    like native-number

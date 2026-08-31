@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/rtc-sdp-type
+  find rtc-sdp-type
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form rtc-local-session-description-init, name <RTCLocalSessionDescriptionInit>
+  link sdp, name <sdp>
+    like native-string
+    lock false
+  link type, name <type>
+    like rtc-sdp-type
+    lock false

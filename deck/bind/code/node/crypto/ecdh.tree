@@ -1,0 +1,106 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find native-void
+  find node-js-array-buffer-view
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/crypto
+  find binary-like
+  find binary-to-text-encoding
+  find ecdh-key-format
+
+form ecdh, name <ECDH>
+  task generate-keys, name <generateKeys>
+    like buffer
+
+  task generate-keys, name <generateKeys>
+    like native-string
+
+    take encoding, like binary-to-text-encoding
+    take format, like ecdh-key-format
+      void true
+
+  task compute-secret, name <computeSecret>
+    like buffer
+
+    take other-public-key, like node-js-array-buffer-view
+
+  task compute-secret, name <computeSecret>
+    like buffer
+
+    take other-public-key, like native-string
+    take input-encoding, like binary-to-text-encoding
+
+  task compute-secret, name <computeSecret>
+    like native-string
+
+    take other-public-key, like node-js-array-buffer-view
+    take output-encoding, like binary-to-text-encoding
+
+  task compute-secret, name <computeSecret>
+    like native-string
+
+    take other-public-key, like native-string
+    take input-encoding, like binary-to-text-encoding
+    take output-encoding, like binary-to-text-encoding
+
+  task get-private-key, name <getPrivateKey>
+    like buffer
+
+  task get-private-key, name <getPrivateKey>
+    like native-string
+
+    take encoding, like binary-to-text-encoding
+
+  task get-public-key, name <getPublicKey>
+    like buffer
+
+  task get-public-key, name <getPublicKey>
+    like native-string
+
+    take encoding, like binary-to-text-encoding
+    take format, like ecdh-key-format
+      void true
+
+  task set-private-key, name <setPrivateKey>
+    like native-void
+
+    take private-key, like node-js-array-buffer-view
+
+  task set-private-key, name <setPrivateKey>
+    like native-void
+
+    take private-key, like native-string
+    take encoding, like binary-to-text-encoding
+
+form ecdh-constructor
+  hook make
+
+  task convert-key, name <convertKey>
+    like or
+      like buffer
+      like native-string
+
+    take key, like binary-like
+    take curve, like native-string
+    take input-encoding, like binary-to-text-encoding
+      void true
+    take output-encoding
+      like or
+        text <latin1>
+        text <hex>
+        text <base64>
+        text <base64url>
+      void true
+    take format
+      like or
+        text <uncompressed>
+        text <compressed>
+        text <hybrid>
+      void true

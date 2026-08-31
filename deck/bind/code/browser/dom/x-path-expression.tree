@@ -1,0 +1,23 @@
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/browser/dom/x-path-result
+  find x-path-result
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form x-path-expression, name <XPathExpression>
+  task evaluate, name <evaluate>
+    take context-node, like node
+    take type, like maybe
+      like native-number
+    take result, like maybe
+      like or
+        like x-path-result
+        like native-null
+    like x-path-result

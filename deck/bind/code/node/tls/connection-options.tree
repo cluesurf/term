@@ -1,0 +1,84 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-null
+  find native-number
+  find native-string
+  find native-undefined
+  find net-lookup-function
+  find stream-duplex
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/tls
+  find common-connection-options
+  find psk-callback-negotation
+  find secure-context-options
+
+form connection-options, name <ConnectionOptions>
+  base secure-context-options
+  base common-connection-options
+
+  link host, name <host>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link port, name <port>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link path, name <path>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link socket, name <socket>
+    like or
+      like stream-duplex
+      like native-undefined
+    flex true
+  link check-server-identity, name <checkServerIdentity>
+    like or
+      like check-server-identity
+      like native-undefined
+    flex true
+  link servername, name <servername>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link session, name <session>
+    like or
+      like buffer
+      like native-undefined
+    flex true
+  link min-dh-size, name <minDHSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link lookup, name <lookup>
+    like or
+      like net-lookup-function
+      like native-undefined
+    flex true
+  link timeout, name <timeout>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+
+  task psk-callback, name <pskCallback>
+    like or
+      like psk-callback-negotation
+      like native-null
+
+    take hint
+      like or
+        like native-string
+        like native-null

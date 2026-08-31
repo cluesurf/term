@@ -1,0 +1,28 @@
+
+bear @term/bind/code/javascript/es2020/bigint/big-int-to-locale-string-options
+bear @term/bind/code/javascript/es2020/bigint/big-int
+bear @term/bind/code/javascript/es2020/bigint/big-int-constructor
+bear @term/bind/code/javascript/es2020/bigint/big-int64-array
+bear @term/bind/code/javascript/es2020/bigint/big-int64-array-constructor
+bear @term/bind/code/javascript/es2020/bigint/big-uint64-array
+bear @term/bind/code/javascript/es2020/bigint/big-uint64-array-constructor
+bear @term/bind/code/javascript/es2020/bigint/data-view
+bear @term/bind/code/javascript/es2020/bigint/intl
+
+load @term/bind/code/javascript/es2020/bigint/big-int-constructor
+  find big-int-constructor
+
+load @term/bind/code/javascript/es2020/bigint/big-int64-array-constructor
+  find big-int64-array-constructor
+
+load @term/bind/code/javascript/es2020/bigint/big-uint64-array-constructor
+  find big-uint64-array-constructor
+
+host big-int, name <BigInt>
+  like big-int-constructor
+
+host big-int64-array, name <BigInt64Array>
+  like big-int64-array-constructor
+
+host big-uint64-array, name <BigUint64Array>
+  like big-uint64-array-constructor

@@ -1,0 +1,51 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-boolean
+  find native-number
+  find native-object
+  find native-string
+  find native-undefined
+  find node-js-dict
+
+load @term/bind
+  find or
+
+form wasi-options, name <WASIOptions>
+  link args, name <args>
+    like or
+      like array
+        like native-string
+      like native-undefined
+    flex true
+  link env, name <env>
+    like or
+      like native-object
+      like native-undefined
+    flex true
+  link preopens, name <preopens>
+    like or
+      like node-js-dict
+        like native-string
+      like native-undefined
+    flex true
+  link return-on-exit, name <returnOnExit>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link stdin, name <stdin>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link stdout, name <stdout>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link stderr, name <stderr>
+    like or
+      like native-number
+      like native-undefined
+    flex true

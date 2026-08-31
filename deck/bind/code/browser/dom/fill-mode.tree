@@ -1,0 +1,8 @@
+
+form fill-mode, name <FillMode>
+  like or
+    text <auto>
+    text <backwards>
+    text <both>
+    text <forwards>
+    text <none>

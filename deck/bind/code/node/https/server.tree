@@ -1,0 +1,1111 @@
+
+load @term/bind/code/javascript
+  find array
+  find duplex
+  find error
+  find http-incoming-message
+  find http-request-listener
+  find http-server-response
+  find native-boolean
+  find native-null
+  find native-string
+  find native-this
+  find native-void
+  find tls-tls-socket
+
+load @term/bind
+  find any
+  find or
+  find task
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/https
+  find server-options
+
+form server, name <Server>
+  base http-server
+
+form server, name <Server>
+  base tls-server
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <keylog>
+    take listener
+      like task
+        like native-void
+
+        take line, like buffer
+        take tls-socket, like tls-tls-socket
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <newSession>
+    take listener
+      like task
+        like native-void
+
+        take session-id, like buffer
+        take session-data, like buffer
+        take callback
+          like task
+            like native-void
+
+            take err, like error
+            take resp, like buffer
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <OCSPRequest>
+    take listener
+      like task
+        like native-void
+
+        take certificate, like buffer
+        take issuer, like buffer
+        take callback
+          like task
+            like native-void
+
+            take err
+              like or
+                like error
+                like native-null
+            take resp, like buffer
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <resumeSession>
+    take listener
+      like task
+        like native-void
+
+        take session-id, like buffer
+        take callback
+          like task
+            like native-void
+
+            take err, like error
+            take session-data, like buffer
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <secureConnection>
+    take listener
+      like task
+        like native-void
+
+        take tls-socket, like tls-tls-socket
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <tlsClientError>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+        take tls-socket, like tls-tls-socket
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <connection>
+    take listener
+      like task
+        like native-void
+
+        take socket, like duplex
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <checkContinue>
+    take listener, like http-request-listener
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <checkExpectation>
+    take listener, like http-request-listener
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <clientError>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+        take socket, like duplex
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+        take req, like http-incoming-message
+        take socket, like duplex
+        take head, like buffer
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <request>
+    take listener, like http-request-listener
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <upgrade>
+    take listener
+      like task
+        like native-void
+
+        take req, like http-incoming-message
+        take socket, like duplex
+        take head, like buffer
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, like native-string
+    take args
+      like array
+        like any
+      rest true
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <keylog>
+    take line, like buffer
+    take tls-socket, like tls-tls-socket
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <newSession>
+    take session-id, like buffer
+    take session-data, like buffer
+    take callback
+      like task
+        like native-void
+
+        take err, like error
+        take resp, like buffer
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <OCSPRequest>
+    take certificate, like buffer
+    take issuer, like buffer
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take resp, like buffer
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <resumeSession>
+    take session-id, like buffer
+    take callback
+      like task
+        like native-void
+
+        take err, like error
+        take session-data, like buffer
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <secureConnection>
+    take tls-socket, like tls-tls-socket
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <tlsClientError>
+    take err, like error
+    take tls-socket, like tls-tls-socket
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <close>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <connection>
+    take socket, like duplex
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <error>
+    take err, like error
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <listening>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <checkContinue>
+    take req, like http-incoming-message
+    take res, like http-server-response
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <checkExpectation>
+    take req, like http-incoming-message
+    take res, like http-server-response
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <clientError>
+    take err, like error
+    take socket, like duplex
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <connect>
+    take req, like http-incoming-message
+    take socket, like duplex
+    take head, like buffer
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <request>
+    take req, like http-incoming-message
+    take res, like http-server-response
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <upgrade>
+    take req, like http-incoming-message
+    take socket, like duplex
+    take head, like buffer
+
+  task on, name <on>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task on, name <on>
+    like native-this
+
+    take event, text <keylog>
+    take listener
+      like task
+        like native-void
+
+        take line, like buffer
+        take tls-socket, like tls-tls-socket
+
+  task on, name <on>
+    like native-this
+
+    take event, text <newSession>
+    take listener
+      like task
+        like native-void
+
+        take session-id, like buffer
+        take session-data, like buffer
+        take callback
+          like task
+            like native-void
+
+            take err, like error
+            take resp, like buffer
+
+  task on, name <on>
+    like native-this
+
+    take event, text <OCSPRequest>
+    take listener
+      like task
+        like native-void
+
+        take certificate, like buffer
+        take issuer, like buffer
+        take callback
+          like task
+            like native-void
+
+            take err
+              like or
+                like error
+                like native-null
+            take resp, like buffer
+
+  task on, name <on>
+    like native-this
+
+    take event, text <resumeSession>
+    take listener
+      like task
+        like native-void
+
+        take session-id, like buffer
+        take callback
+          like task
+            like native-void
+
+            take err, like error
+            take session-data, like buffer
+
+  task on, name <on>
+    like native-this
+
+    take event, text <secureConnection>
+    take listener
+      like task
+        like native-void
+
+        take tls-socket, like tls-tls-socket
+
+  task on, name <on>
+    like native-this
+
+    take event, text <tlsClientError>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+        take tls-socket, like tls-tls-socket
+
+  task on, name <on>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <connection>
+    take listener
+      like task
+        like native-void
+
+        take socket, like duplex
+
+  task on, name <on>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task on, name <on>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <checkContinue>
+    take listener, like http-request-listener
+
+  task on, name <on>
+    like native-this
+
+    take event, text <checkExpectation>
+    take listener, like http-request-listener
+
+  task on, name <on>
+    like native-this
+
+    take event, text <clientError>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+        take socket, like duplex
+
+  task on, name <on>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+        take req, like http-incoming-message
+        take socket, like duplex
+        take head, like buffer
+
+  task on, name <on>
+    like native-this
+
+    take event, text <request>
+    take listener, like http-request-listener
+
+  task on, name <on>
+    like native-this
+
+    take event, text <upgrade>
+    take listener
+      like task
+        like native-void
+
+        take req, like http-incoming-message
+        take socket, like duplex
+        take head, like buffer
+
+  task once, name <once>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task once, name <once>
+    like native-this
+
+    take event, text <keylog>
+    take listener
+      like task
+        like native-void
+
+        take line, like buffer
+        take tls-socket, like tls-tls-socket
+
+  task once, name <once>
+    like native-this
+
+    take event, text <newSession>
+    take listener
+      like task
+        like native-void
+
+        take session-id, like buffer
+        take session-data, like buffer
+        take callback
+          like task
+            like native-void
+
+            take err, like error
+            take resp, like buffer
+
+  task once, name <once>
+    like native-this
+
+    take event, text <OCSPRequest>
+    take listener
+      like task
+        like native-void
+
+        take certificate, like buffer
+        take issuer, like buffer
+        take callback
+          like task
+            like native-void
+
+            take err
+              like or
+                like error
+                like native-null
+            take resp, like buffer
+
+  task once, name <once>
+    like native-this
+
+    take event, text <resumeSession>
+    take listener
+      like task
+        like native-void
+
+        take session-id, like buffer
+        take callback
+          like task
+            like native-void
+
+            take err, like error
+            take session-data, like buffer
+
+  task once, name <once>
+    like native-this
+
+    take event, text <secureConnection>
+    take listener
+      like task
+        like native-void
+
+        take tls-socket, like tls-tls-socket
+
+  task once, name <once>
+    like native-this
+
+    take event, text <tlsClientError>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+        take tls-socket, like tls-tls-socket
+
+  task once, name <once>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <connection>
+    take listener
+      like task
+        like native-void
+
+        take socket, like duplex
+
+  task once, name <once>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task once, name <once>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <checkContinue>
+    take listener, like http-request-listener
+
+  task once, name <once>
+    like native-this
+
+    take event, text <checkExpectation>
+    take listener, like http-request-listener
+
+  task once, name <once>
+    like native-this
+
+    take event, text <clientError>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+        take socket, like duplex
+
+  task once, name <once>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+        take req, like http-incoming-message
+        take socket, like duplex
+        take head, like buffer
+
+  task once, name <once>
+    like native-this
+
+    take event, text <request>
+    take listener, like http-request-listener
+
+  task once, name <once>
+    like native-this
+
+    take event, text <upgrade>
+    take listener
+      like task
+        like native-void
+
+        take req, like http-incoming-message
+        take socket, like duplex
+        take head, like buffer
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <keylog>
+    take listener
+      like task
+        like native-void
+
+        take line, like buffer
+        take tls-socket, like tls-tls-socket
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <newSession>
+    take listener
+      like task
+        like native-void
+
+        take session-id, like buffer
+        take session-data, like buffer
+        take callback
+          like task
+            like native-void
+
+            take err, like error
+            take resp, like buffer
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <OCSPRequest>
+    take listener
+      like task
+        like native-void
+
+        take certificate, like buffer
+        take issuer, like buffer
+        take callback
+          like task
+            like native-void
+
+            take err
+              like or
+                like error
+                like native-null
+            take resp, like buffer
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <resumeSession>
+    take listener
+      like task
+        like native-void
+
+        take session-id, like buffer
+        take callback
+          like task
+            like native-void
+
+            take err, like error
+            take session-data, like buffer
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <secureConnection>
+    take listener
+      like task
+        like native-void
+
+        take tls-socket, like tls-tls-socket
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <tlsClientError>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+        take tls-socket, like tls-tls-socket
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <connection>
+    take listener
+      like task
+        like native-void
+
+        take socket, like duplex
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <checkContinue>
+    take listener, like http-request-listener
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <checkExpectation>
+    take listener, like http-request-listener
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <clientError>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+        take socket, like duplex
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+        take req, like http-incoming-message
+        take socket, like duplex
+        take head, like buffer
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <request>
+    take listener, like http-request-listener
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <upgrade>
+    take listener
+      like task
+        like native-void
+
+        take req, like http-incoming-message
+        take socket, like duplex
+        take head, like buffer
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <keylog>
+    take listener
+      like task
+        like native-void
+
+        take line, like buffer
+        take tls-socket, like tls-tls-socket
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <newSession>
+    take listener
+      like task
+        like native-void
+
+        take session-id, like buffer
+        take session-data, like buffer
+        take callback
+          like task
+            like native-void
+
+            take err, like error
+            take resp, like buffer
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <OCSPRequest>
+    take listener
+      like task
+        like native-void
+
+        take certificate, like buffer
+        take issuer, like buffer
+        take callback
+          like task
+            like native-void
+
+            take err
+              like or
+                like error
+                like native-null
+            take resp, like buffer
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <resumeSession>
+    take listener
+      like task
+        like native-void
+
+        take session-id, like buffer
+        take callback
+          like task
+            like native-void
+
+            take err, like error
+            take session-data, like buffer
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <secureConnection>
+    take listener
+      like task
+        like native-void
+
+        take tls-socket, like tls-tls-socket
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <tlsClientError>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+        take tls-socket, like tls-tls-socket
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <connection>
+    take listener
+      like task
+        like native-void
+
+        take socket, like duplex
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <listening>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <checkContinue>
+    take listener, like http-request-listener
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <checkExpectation>
+    take listener, like http-request-listener
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <clientError>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+        take socket, like duplex
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+        take req, like http-incoming-message
+        take socket, like duplex
+        take head, like buffer
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <request>
+    take listener, like http-request-listener
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <upgrade>
+    take listener
+      like task
+        like native-void
+
+        take req, like http-incoming-message
+        take socket, like duplex
+        take head, like buffer
+
+form server-constructor
+  hook make
+    take request-listener, like http-request-listener
+      void true
+
+  hook make
+    take options, like server-options
+    take request-listener, like http-request-listener
+      void true

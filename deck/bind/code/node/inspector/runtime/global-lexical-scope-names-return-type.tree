@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-string
+
+form global-lexical-scope-names-return-type, name <GlobalLexicalScopeNamesReturnType>
+  link names, name <names>
+    like array
+      like native-string
+    flex true

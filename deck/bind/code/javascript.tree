@@ -1,0 +1,14 @@
+
+bear @term/bind/code/javascript/es5
+bear @term/bind/code/javascript/dom
+bear @term/bind/code/javascript/webworker
+bear @term/bind/code/javascript/scripthost
+bear @term/bind/code/javascript/es2015
+bear @term/bind/code/javascript/es6
+bear @term/bind/code/javascript/es2016
+bear @term/bind/code/javascript/es2017
+bear @term/bind/code/javascript/es2018
+bear @term/bind/code/javascript/es2019
+bear @term/bind/code/javascript/es2020
+bear @term/bind/code/javascript/es2021
+bear @term/bind/code/javascript/esnext

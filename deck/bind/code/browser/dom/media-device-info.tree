@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/media-device-kind
+  find media-device-kind
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form media-device-info, name <MediaDeviceInfo>
+  link device-id, name <deviceId>
+    like native-string
+  link group-id, name <groupId>
+    like native-string
+  link kind, name <kind>
+    like media-device-kind
+  link label, name <label>
+    like native-string
+
+  task to-json, name <toJSON>
+    like native-any

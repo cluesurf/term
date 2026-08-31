@@ -1,0 +1,52 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/inspector/runtime
+  find execution-context-id
+  find script-id
+
+form run-script-parameter-type, name <RunScriptParameterType>
+  link script-id, name <scriptId>
+    like script-id
+    flex true
+  link execution-context-id, name <executionContextId>
+    like or
+      like execution-context-id
+      like native-undefined
+    flex true
+  link object-group, name <objectGroup>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link silent, name <silent>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link include-command-line-api, name <includeCommandLineAPI>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link return-by-value, name <returnByValue>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link generate-preview, name <generatePreview>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link await-promise, name <awaitPromise>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

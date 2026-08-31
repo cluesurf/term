@@ -1,0 +1,152 @@
+
+bear @term/bind/code/javascript/node/tls/certificate
+bear @term/bind/code/javascript/node/tls/peer-certificate
+bear @term/bind/code/javascript/node/tls/detailed-peer-certificate
+bear @term/bind/code/javascript/node/tls/cipher-name-and-protocol
+bear @term/bind/code/javascript/node/tls/ephemeral-key-info
+bear @term/bind/code/javascript/node/tls/key-object
+bear @term/bind/code/javascript/node/tls/pxf-object
+bear @term/bind/code/javascript/node/tls/tls-socket-options
+bear @term/bind/code/javascript/node/tls/tls-socket
+bear @term/bind/code/javascript/node/tls/common-connection-options
+bear @term/bind/code/javascript/node/tls/tls-options
+bear @term/bind/code/javascript/node/tls/psk-callback-negotation
+bear @term/bind/code/javascript/node/tls/connection-options
+bear @term/bind/code/javascript/node/tls/server
+bear @term/bind/code/javascript/node/tls/secure-pair
+bear @term/bind/code/javascript/node/tls/secure-version
+bear @term/bind/code/javascript/node/tls/secure-context-options
+bear @term/bind/code/javascript/node/tls/secure-context
+
+load @term/bind/code/javascript
+  find array
+  find error
+  find native-boolean
+  find native-number
+  find native-string
+  find native-undefined
+  find native-void
+  find readonly-array
+  find tls-socket
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/node/https
+  find server
+
+load @term/bind/code/node/tls
+  find connection-options
+  find peer-certificate
+  find secure-context
+  find secure-context-options
+  find secure-pair
+  find secure-version
+  find tls-options
+
+host client-reneg-limit, name <CLIENT_RENEG_LIMIT>
+  like native-number
+
+host client-reneg-window, name <CLIENT_RENEG_WINDOW>
+  like native-number
+
+host default-ecdh-curve, name <DEFAULT_ECDH_CURVE>
+  like native-string
+
+host default-max-version, name <DEFAULT_MAX_VERSION>
+  like secure-version
+
+host default-min-version, name <DEFAULT_MIN_VERSION>
+  like secure-version
+
+host root-certificates, name <rootCertificates>
+  like readonly-array
+    like native-string
+
+task check-server-identity, name <checkServerIdentity>
+  like or
+    like error
+    like native-undefined
+
+  take hostname, like native-string
+  take cert, like peer-certificate
+
+task create-server, name <createServer>
+  like server
+
+  take secure-connection-listener
+    like task
+      like native-void
+
+      take socket, like tls-socket
+    void true
+
+task create-server, name <createServer>
+  like server
+
+  take options, like tls-options
+  take secure-connection-listener
+    like task
+      like native-void
+
+      take socket, like tls-socket
+    void true
+
+task connect, name <connect>
+  like tls-socket
+
+  take options, like connection-options
+  take secure-connect-listener
+    like task
+      like native-void
+
+    void true
+
+task connect, name <connect>
+  like tls-socket
+
+  take port, like native-number
+  take host, like native-string
+    void true
+  take options, like connection-options
+    void true
+  take secure-connect-listener
+    like task
+      like native-void
+
+    void true
+
+task connect, name <connect>
+  like tls-socket
+
+  take port, like native-number
+  take options, like connection-options
+    void true
+  take secure-connect-listener
+    like task
+      like native-void
+
+    void true
+
+task create-secure-pair, name <createSecurePair>
+  like secure-pair
+
+  take context, like secure-context
+    void true
+  take is-server, like native-boolean
+    void true
+  take request-cert, like native-boolean
+    void true
+  take reject-unauthorized, like native-boolean
+    void true
+
+task create-secure-context, name <createSecureContext>
+  like secure-context
+
+  take options, like secure-context-options
+    void true
+
+task get-ciphers, name <getCiphers>
+  like array
+    like native-string

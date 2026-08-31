@@ -1,0 +1,9 @@
+
+load @term/bind
+  find or
+
+form cipher-gcm-types, name <CipherGCMTypes>
+  like or
+    text <aes-128-gcm>
+    text <aes-192-gcm>
+    text <aes-256-gcm>

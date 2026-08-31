@@ -1,0 +1,27 @@
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-string
+
+form copy-options, name <CopyOptions>
+  link dereference, name <dereference>
+    like native-boolean
+    flex true
+  link error-on-exist, name <errorOnExist>
+    like native-boolean
+    flex true
+  link force, name <force>
+    like native-boolean
+    flex true
+  link preserve-timestamps, name <preserveTimestamps>
+    like native-boolean
+    flex true
+  link recursive, name <recursive>
+    like native-boolean
+    flex true
+
+  task filter, name <filter>
+    like native-boolean
+
+    take source, like native-string
+    take destination, like native-string

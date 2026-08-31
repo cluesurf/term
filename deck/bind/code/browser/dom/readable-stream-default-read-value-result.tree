@@ -1,0 +1,10 @@
+
+form readable-stream-default-read-value-result, name <ReadableStreamDefaultReadValueResult>
+  head t
+
+  link done, name <done>
+    text <false>
+    lock false
+  link value, name <value>
+    like t
+    lock false

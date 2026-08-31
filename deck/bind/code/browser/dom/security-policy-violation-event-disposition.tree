@@ -1,0 +1,5 @@
+
+form security-policy-violation-event-disposition, name <SecurityPolicyViolationEventDisposition>
+  like or
+    text <enforce>
+    text <report>

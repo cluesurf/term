@@ -1,0 +1,202 @@
+
+form control-flow, name <std::ops::ControlFlow>
+  task is-break, name <is_break>
+    note <Returns true if this is a Break variant.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-continue, name <is_continue>
+    note <Returns true if this is a Continue variant.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task break-value, name <break_value>
+    note <Converts the ControlFlow into an Option which is Some if the ControlFlow was Break and None otherwise.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like b
+          cite free
+        cite free
+
+  task map-break, name <map_break>
+    note <Maps ControlFlow&lt;B, C&gt; to ControlFlow&lt;T, C&gt; by applying a function to the break value in case it exists.>
+
+    lead f
+      like fn-once
+        take f-1, like b
+        free seed
+          like t
+            cite free
+
+    head t
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like control-flow
+        like t
+          cite free
+        like c
+          cite free
+        cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like control-flow
+        like b
+          cite free
+        like c
+          cite free
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task from-residual, name <from_residual>
+    note <Constructs the type from a compatible Residual type.>
+
+    take residual
+      like control-flow
+        like b
+          cite free
+        like infallible
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like control-flow
+        like b
+          cite free
+        like c
+          cite free
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like control-flow
+        like b
+          cite free
+        like c
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like control-flow
+        like b
+          cite free
+        like c
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task from-output, name <from_output>
+    note <Constructs the type from its Output type.>
+
+    cast c-1
+      like control-flow
+        like b
+          cite free
+        like c
+          cite free
+      like try
+
+    take output
+      like c-1/output
+      cite free
+
+    free seed
+      like control-flow
+        like b
+          cite free
+        like c
+          cite free
+        cite free
+
+  task branch, name <branch>
+    note <Used in ? to decide whether the operator should produce a value (because this returned ControlFlow::Continue) or propagate a value back to the caller (because this returned ControlFlow::Break).>
+
+    cast c-1
+      like control-flow
+        like b
+          cite free
+        like c
+          cite free
+      like try
+    cast c-2
+      like control-flow
+        like b
+          cite free
+        like c
+          cite free
+      like try
+
+    take self
+      cite free
+
+    free seed
+      like control-flow
+        like c-1/residual
+        like c-2/output
+        cite free

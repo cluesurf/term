@@ -1,0 +1,523 @@
+
+form binary-heap, name <std::collections::binary_heap::BinaryHeap>
+  task new, name <new>
+    note <Creates an empty BinaryHeap as a max-heap.>
+
+    free seed
+      like binary-heap
+        like t
+          cite free
+        cite free
+
+  task with-capacity, name <with_capacity>
+    note <Creates an empty BinaryHeap with a specific capacity. This preallocates enough memory for capacity elements, so that the BinaryHeap does not have to be reallocated until it contains at least that many values.>
+
+    take capacity
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like binary-heap
+        like t
+          cite free
+        cite free
+
+  task peek-mut, name <peek_mut>
+    note <Returns a mutable reference to the greatest item in the binary heap, or None if it is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like peek-mut
+          time mask
+          like t
+            cite free
+          cite free
+        cite free
+
+  task pop, name <pop>
+    note <Removes the greatest item from the binary heap and returns it, or None if it is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like t
+          cite free
+        cite free
+
+  task push, name <push>
+    note <Pushes an item onto the binary heap.>
+
+    take self
+      cite free
+    take item
+      like t
+        cite free
+      cite free
+
+  task into-sorted-vec, name <into_sorted_vec>
+    note <Consumes the BinaryHeap and returns a vector in sorted (ascending) order.>
+
+    take self
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task append, name <append>
+    note <Moves all the elements of other into self, leaving other empty.>
+
+    take self
+      cite free
+    take other
+      like binary-heap
+        like t
+          cite free
+      lock free
+
+  task drain-sorted, name <drain_sorted>
+    note <Returns an iterator which retrieves elements in heap order. The retrieved elements are removed from the original heap. The remaining elements will be removed on drop in heap order.>
+
+    take self
+      cite free
+
+    free seed
+      like drain-sorted
+        time mask
+        like t
+          cite free
+        cite free
+
+  task retain, name <retain>
+    note <Retains only the elements specified by the predicate.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+  task iter, name <iter>
+    note <Returns an iterator visiting all values in the underlying vector, in arbitrary order.>
+
+    take self
+      cite free
+
+    free seed
+      like iter
+        time mask
+        like t
+          cite free
+        cite free
+
+  task into-iter-sorted, name <into_iter_sorted>
+    note <Returns an iterator which retrieves elements in heap order. This method consumes the original heap.>
+
+    take self
+      cite free
+
+    free seed
+      like into-iter-sorted
+        like t
+          cite free
+        cite free
+
+  task peek, name <peek>
+    note <Returns the greatest item in the binary heap, or None if it is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like t
+        cite free
+
+  task capacity, name <capacity>
+    note <Returns the number of elements the binary heap can hold without reallocating.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task reserve-exact, name <reserve_exact>
+    note <Reserves the minimum capacity for exactly additional more elements to be inserted in the given BinaryHeap. Does nothing if the capacity is already sufficient.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task reserve, name <reserve>
+    note <Reserves capacity for at least additional more elements to be inserted in the BinaryHeap. The collection may reserve more space to avoid frequent reallocations.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task try-reserve-exact, name <try_reserve_exact>
+    note <Tries to reserve the minimum capacity for exactly additional elements to be inserted in the given BinaryHeap&lt;T&gt;. After calling try_reserve_exact, capacity will be greater than or equal to self.len() + additional if it returns Ok(()). Does nothing if the capacity is already sufficient.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        like try-reserve-error
+          cite free
+        cite free
+
+  task try-reserve, name <try_reserve>
+    note <Tries to reserve capacity for at least additional more elements to be inserted in the given BinaryHeap&lt;T&gt;. The collection may reserve more space to avoid frequent reallocations. After calling try_reserve, capacity will be greater than or equal to self.len() + additional. Does nothing if capacity is already sufficient.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        like try-reserve-error
+          cite free
+        cite free
+
+  task shrink-to-fit, name <shrink_to_fit>
+    note <Discards as much additional capacity as possible.>
+
+    take self
+      cite free
+
+  task shrink-to, name <shrink_to>
+    note <Discards capacity with a lower bound.>
+
+    take self
+      cite free
+    take min-capacity
+      like usize
+        cite free
+      cite free
+
+  task as-slice, name <as_slice>
+    note <Returns a slice of all values in the underlying vector, in arbitrary order.>
+
+    take self
+      cite free
+
+    free seed
+      list t
+
+  task into-vec, name <into_vec>
+    note <Consumes the BinaryHeap and returns the underlying vector in arbitrary order.>
+
+    take self
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task len, name <len>
+    note <Returns the length of the binary heap.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task is-empty, name <is_empty>
+    note <Checks if the binary heap is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task drain, name <drain>
+    note <Clears the binary heap, returning an iterator over the removed elements.>
+
+    take self
+      cite free
+
+    free seed
+      like drain
+        time mask
+        like t
+          cite free
+        cite free
+
+  task clear, name <clear>
+    note <Drops all items from the binary heap.>
+
+    take self
+      cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like binary-heap
+        like t
+          cite free
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like binary-heap
+        like t
+          cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Creates an empty BinaryHeap&lt;T&gt;.>
+
+    free seed
+      like binary-heap
+        like t
+          cite free
+        cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like t
+              time a
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take t
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like t
+              cite free
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take item
+      like t
+        cite free
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task from, name <from>
+    take arr
+      like list
+        like t
+        name n
+      cite free
+
+    free seed
+      like binary-heap
+        like t
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a BinaryHeap&lt;T&gt; into a Vec&lt;T&gt;.>
+
+    take heap
+      like binary-heap
+        like t
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a Vec&lt;T&gt; into a BinaryHeap&lt;T&gt;.>
+
+    take vec
+      like vec
+        like t
+          cite free
+        like global
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like binary-heap
+        like t
+          cite free
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like t
+              cite free
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like binary-heap
+        like t
+          cite free
+        cite free
+
+  task into-iter, name <into_iter>
+    note <Creates a consuming iterator, that is, one that moves each value out of the binary heap in arbitrary order. The binary heap cannot be used after calling this.>
+
+    take self
+      cite free
+
+    free seed
+      like into-iter
+        like t
+          cite free
+        cite free
+
+  task into-iter, name <into_iter>
+    note <Creates an iterator from a value.>
+
+    take self
+      cite free
+
+    free seed
+      like iter
+        time a
+        like t
+          cite free
+        cite free

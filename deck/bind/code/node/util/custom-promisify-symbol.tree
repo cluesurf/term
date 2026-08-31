@@ -1,0 +1,16 @@
+
+load @term/bind
+  find like
+
+load @term/bind/code/javascript
+  find function
+
+form custom-promisify-symbol, name <CustomPromisifySymbol>
+  base function
+
+  head t-custom
+    base function
+
+  link {promisify/custom}
+    like t-custom
+    computed true

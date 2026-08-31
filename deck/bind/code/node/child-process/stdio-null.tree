@@ -1,0 +1,12 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find stream
+
+form stdio-null, name <StdioNull>
+  like or
+    text <inherit>
+    text <ignore>
+    like stream

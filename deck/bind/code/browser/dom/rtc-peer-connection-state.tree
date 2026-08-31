@@ -1,0 +1,9 @@
+
+form rtc-peer-connection-state, name <RTCPeerConnectionState>
+  like or
+    text <closed>
+    text <connected>
+    text <connecting>
+    text <disconnected>
+    text <failed>
+    text <new>

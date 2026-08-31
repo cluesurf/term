@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/audio-node
+  find audio-node
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form audio-destination-node, name <AudioDestinationNode>
+  base audio-node
+
+  link max-channel-count, name <maxChannelCount>
+    like native-number

@@ -1,0 +1,33 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/inspector/runtime
+  find object-preview
+
+form property-preview, name <PropertyPreview>
+  link name, name <name>
+    like native-string
+    flex true
+  link type, name <type>
+    like native-string
+    flex true
+  link value, name <value>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link value-preview, name <valuePreview>
+    like or
+      like object-preview
+      like native-undefined
+    flex true
+  link subtype, name <subtype>
+    like or
+      like native-string
+      like native-undefined
+    flex true

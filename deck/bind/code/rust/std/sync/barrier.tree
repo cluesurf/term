@@ -1,0 +1,37 @@
+
+form barrier, name <std::sync::Barrier>
+  task new, name <new>
+    note <Creates a new barrier that can block a given number of threads.>
+
+    take n
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like barrier
+        cite free
+
+  task wait, name <wait>
+    note <Blocks the current thread until all threads have rendezvoused here.>
+
+    take self
+      cite free
+
+    free seed
+      like barrier-wait-result
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free

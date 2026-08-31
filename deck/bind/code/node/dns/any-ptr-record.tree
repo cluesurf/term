@@ -1,0 +1,11 @@
+
+load @term/bind/code/javascript
+  find native-string
+
+form any-ptr-record, name <AnyPtrRecord>
+  link type, name <type>
+    text <PTR>
+    flex true
+  link value, name <value>
+    like native-string
+    flex true

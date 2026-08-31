@@ -1,0 +1,137 @@
+
+bear @term/bind/code/browser/scripthost/active-x-object
+bear @term/bind/code/browser/scripthost/i-text-writer
+bear @term/bind/code/browser/scripthost/text-stream-base
+bear @term/bind/code/browser/scripthost/text-stream-writer
+bear @term/bind/code/browser/scripthost/text-stream-reader
+bear @term/bind/code/browser/scripthost/safe-array
+bear @term/bind/code/browser/scripthost/enumerator
+bear @term/bind/code/browser/scripthost/enumerator-constructor
+bear @term/bind/code/browser/scripthost/vb-array
+bear @term/bind/code/browser/scripthost/vb-array-constructor
+bear @term/bind/code/browser/scripthost/var-date
+bear @term/bind/code/browser/scripthost/date-constructor
+bear @term/bind/code/browser/scripthost/date
+
+load @term/bind/code/browser/scripthost/active-x-object
+  find active-x-object
+
+load @term/bind/code/browser/scripthost/enumerator-constructor
+  find enumerator-constructor
+
+load @term/bind/code/browser/scripthost/text-stream-reader
+  find text-stream-reader
+
+load @term/bind/code/browser/scripthost/text-stream-writer
+  find text-stream-writer
+
+load @term/bind/code/browser/scripthost/vb-array-constructor
+  find vb-array-constructor
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+host active-x-object, name <ActiveXObject>
+  like active-x-object
+
+host w-script, name <WScript>
+  like form
+    task echo, name <Echo>
+      take s, like native-any
+      like native-void
+
+    link std-err, name <StdErr>
+      like text-stream-writer
+      lock false
+    link std-out, name <StdOut>
+      like text-stream-writer
+      lock false
+    link arguments, name <Arguments>
+      like form
+        link length, name <length>
+          like native-number
+          lock false
+        task item, name <Item>
+          take n, like native-number
+          like native-string
+
+      lock false
+    link script-full-name, name <ScriptFullName>
+      like native-string
+      lock false
+    task quit, name <Quit>
+      take exit-code, like maybe
+        like native-number
+      like native-number
+
+    link build-version, name <BuildVersion>
+      like native-number
+      lock false
+    link full-name, name <FullName>
+      like native-string
+      lock false
+    link interactive, name <Interactive>
+      like native-boolean
+      lock false
+    link name, name <Name>
+      like native-string
+      lock false
+    link path, name <Path>
+      like native-string
+      lock false
+    link script-name, name <ScriptName>
+      like native-string
+      lock false
+    link std-in, name <StdIn>
+      like text-stream-reader
+      lock false
+    link version, name <Version>
+      like native-string
+      lock false
+    task connect-object, name <ConnectObject>
+      take obj-event-source, like native-any
+      take str-prefix, like native-string
+      like native-void
+
+    task create-object, name <CreateObject>
+      take str-prog-id, like native-string
+      take str-prefix, like maybe
+        like native-string
+      like native-any
+
+    task disconnect-object, name <DisconnectObject>
+      take obj, like native-any
+      like native-void
+
+    task get-object, name <GetObject>
+      take str-pathname, like native-string
+      take str-prog-id, like maybe
+        like native-string
+      take str-prefix, like maybe
+        like native-string
+      like native-any
+
+    task sleep, name <Sleep>
+      take int-time, like native-number
+      like native-void
+
+host wsh, name <WSH>
+  like w-script
+
+host enumerator, name <Enumerator>
+  like enumerator-constructor
+
+host vb-array, name <VBArray>
+  like vb-array-constructor

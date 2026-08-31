@@ -1,0 +1,66 @@
+
+load @term/bind/code/javascript/es2015/core/object-constructor
+  find object-constructor
+
+load @term/bind/code/javascript/es5/array-like
+  find array-like
+
+load @term/bind/code/javascript/es5/property-descriptor
+  find property-descriptor
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form object-constructor, name <ObjectConstructor>
+  task values, name <values>
+    head t
+    take o
+      like or
+        like form
+          mesh s, like native-string
+            like t
+        like array-like
+          like t
+    like native-array
+      like t
+
+  task values, name <values>
+    take o, like form
+    like native-array
+      like native-any
+
+  task entries, name <entries>
+    head t
+    take o
+      like or
+        like form
+          mesh s, like native-string
+            like t
+        like array-like
+          like t
+    like native-array
+      like band
+        like native-string
+        like t
+
+  task entries, name <entries>
+    take o, like form
+    like native-array
+      like band
+        like native-string
+        like native-any
+
+  task get-own-property-descriptors, name <getOwnPropertyDescriptors>
+    head t
+    take o, like t
+    like and
+      like any
+      like form
+        mesh x, like native-string
+          like property-descriptor

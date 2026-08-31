@@ -1,0 +1,9 @@
+
+form rtc-signaling-state, name <RTCSignalingState>
+  like or
+    text <closed>
+    text <have-local-offer>
+    text <have-local-pranswer>
+    text <have-remote-offer>
+    text <have-remote-pranswer>
+    text <stable>

@@ -1,0 +1,10 @@
+
+load @term/bind
+  find or
+
+form legacy-character-encoding, name <LegacyCharacterEncoding>
+  like or
+    text <ascii>
+    text <binary>
+    text <ucs2>
+    text <ucs-2>

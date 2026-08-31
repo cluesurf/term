@@ -1,0 +1,19 @@
+
+load @term/bind
+  find any
+  find like
+  find or
+
+load @term/bind/code/node/stream/internal
+  find pipeline-source
+  find pipeline-transform
+
+form pipeline-transform-source, name <PipelineTransformSource>
+  head t
+
+  like or
+    like pipeline-source
+      like t
+    like pipeline-transform
+      like any
+      like t

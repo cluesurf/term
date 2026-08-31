@@ -1,0 +1,16 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find url
+
+load @term/bind/code/node/buffer
+  find buffer
+
+form path-like, name <PathLike>
+  like or
+    like native-string
+    like buffer
+    like url

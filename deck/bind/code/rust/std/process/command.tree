@@ -1,0 +1,471 @@
+
+form command, name <std::process::Command>
+  task new, name <new>
+    note <Constructs a new Command for launching the program at path program, with the following default configuration:>
+
+    head s
+
+    take program
+      like s
+        cite free
+      cite free
+
+    free seed
+      like command
+        cite free
+
+  task arg, name <arg>
+    note <Adds an argument to pass to the program.>
+
+    head s
+
+    take self
+      cite free
+    take arg
+      like s
+        cite free
+      cite free
+
+    free seed
+      like command
+
+  task args, name <args>
+    note <Adds multiple arguments to pass to the program.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like s
+              cite free
+        cite free
+    lead s
+      like as-ref
+        like os-str
+          cite free
+        cite free
+
+    head i
+    head s
+
+    take self
+      cite free
+    take args
+      like i
+        cite free
+      cite free
+
+    free seed
+      like command
+
+  task env, name <env>
+    note <Inserts or updates an environment variable mapping.>
+
+    lead k
+      like as-ref
+        like os-str
+          cite free
+        cite free
+    lead v
+      like as-ref
+        like os-str
+          cite free
+        cite free
+
+    head k
+    head v
+
+    take self
+      cite free
+    take key
+      like k
+        cite free
+      cite free
+    take val
+      like v
+        cite free
+      cite free
+
+    free seed
+      like command
+
+  task envs, name <envs>
+    note <Adds or updates multiple environment variable mappings.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like form
+              take t-1, like k
+              take t-2, like v
+        cite free
+    lead k
+      like as-ref
+        like os-str
+          cite free
+        cite free
+    lead v
+      like as-ref
+        like os-str
+          cite free
+        cite free
+
+    head i
+    head k
+    head v
+
+    take self
+      cite free
+    take vars
+      like i
+        cite free
+      cite free
+
+    free seed
+      like command
+
+  task env-remove, name <env_remove>
+    note <Removes an environment variable mapping.>
+
+    head k
+
+    take self
+      cite free
+    take key
+      like k
+        cite free
+      cite free
+
+    free seed
+      like command
+
+  task env-clear, name <env_clear>
+    note <Clears the entire environment map for the child process.>
+
+    take self
+      cite free
+
+    free seed
+      like command
+
+  task current-dir, name <current_dir>
+    note <Sets the working directory for the child process.>
+
+    head p
+
+    take self
+      cite free
+    take dir
+      like p
+        cite free
+      cite free
+
+    free seed
+      like command
+
+  task stdin, name <stdin>
+    note <Configuration for the child process's standard input (stdin) handle.>
+
+    head t
+
+    take self
+      cite free
+    take cfg
+      like t
+        cite free
+      cite free
+
+    free seed
+      like command
+
+  task stdout, name <stdout>
+    note <Configuration for the child process's standard output (stdout) handle.>
+
+    head t
+
+    take self
+      cite free
+    take cfg
+      like t
+        cite free
+      cite free
+
+    free seed
+      like command
+
+  task stderr, name <stderr>
+    note <Configuration for the child process's standard error (stderr) handle.>
+
+    head t
+
+    take self
+      cite free
+    take cfg
+      like t
+        cite free
+      cite free
+
+    free seed
+      like command
+
+  task spawn, name <spawn>
+    note <Executes the command as a child process, returning a handle to it.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like child
+          cite free
+        cite free
+
+  task output, name <output>
+    note <Executes the command as a child process, waiting for it to finish and collecting all of its output.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like output
+          cite free
+        cite free
+
+  task status, name <status>
+    note <Executes a command as a child process, waiting for it to finish and collecting its status.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like exit-status
+          cite free
+        cite free
+
+  task get-program, name <get_program>
+    note <Returns the path to the program that was given to Command::new.>
+
+    take self
+      cite free
+
+    free seed
+      like os-str
+
+  task get-args, name <get_args>
+    note <Returns an iterator of the arguments that will be passed to the program.>
+
+    take self
+      cite free
+
+    free seed
+      like command-args
+        time mask
+        cite free
+
+  task get-envs, name <get_envs>
+    note <Returns an iterator of the environment variables that will be set when the process is spawned.>
+
+    take self
+      cite free
+
+    free seed
+      like command-envs
+        time mask
+        cite free
+
+  task get-current-dir, name <get_current_dir>
+    note <Returns the working directory for the child process.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like path
+        cite free
+
+  task create-pidfd, name <create_pidfd>
+    note <Sets whether a PidFd should be created for the Child spawned by this Command. By default, no pidfd will be created.>
+
+    take self
+      cite free
+    take val
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like command
+
+  task creation-flags, name <creation_flags>
+    note <Sets the process creation flags to be passed to CreateProcess.>
+
+    take self
+      cite free
+    take flags
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like command
+
+  task force-quotes, name <force_quotes>
+    note <Forces all arguments to be wrapped in quote (") characters.>
+
+    take self
+      cite free
+    take enabled
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like command
+
+  task raw-arg, name <raw_arg>
+    note <Append literal text to the command line without any quoting or escaping.>
+
+    head s
+
+    take self
+      cite free
+    take raw-text
+      like s
+        cite free
+      cite free
+
+    free seed
+      like command
+
+  task uid, name <uid>
+    note <Sets the child process's user ID. This translates to a setuid call in the child process. Failure in the setuid call will cause the spawn to fail.>
+
+    take self
+      cite free
+    take id
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like command
+
+  task gid, name <gid>
+    note <Similar to uid, but sets the group ID of the child process. This has the same semantics as the uid field.>
+
+    take self
+      cite free
+    take id
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like command
+
+  task groups, name <groups>
+    note <Sets the supplementary group IDs for the calling process. Translates to a setgroups call in the child process.>
+
+    take self
+      cite free
+    take groups
+      list u32
+      cite free
+
+    free seed
+      like command
+
+  task pre-exec, name <pre_exec>
+    note <Schedules a closure to be run just before the exec function is invoked.>
+
+    lead f
+      like fn-mut
+        free seed
+          like result
+            like form
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like command
+
+  task exec, name <exec>
+    note <Performs all the required setup by this Command, followed by calling the execvp syscall.>
+
+    take self
+      cite free
+
+    free seed
+      like error
+        cite free
+
+  task arg0, name <arg0>
+    note <Set executable argument>
+
+    lead s
+      like as-ref
+        like os-str
+          cite free
+        cite free
+
+    head s
+
+    take self
+      cite free
+    take arg
+      like s
+        cite free
+      cite free
+
+    free seed
+      like command
+
+  task before-exec, name <before_exec>
+    note <Schedules a closure to be run just before the exec function is invoked.>
+
+    lead f
+      like fn-mut
+        free seed
+          like result
+            like form
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like command
+
+  task fmt, name <fmt>
+    note <Format the program and arguments of a Command for display. Any non-utf8 data is lossily converted using the utf8 replacement character.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free

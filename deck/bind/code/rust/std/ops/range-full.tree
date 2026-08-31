@@ -1,0 +1,406 @@
+
+form range-full, name <std::ops::RangeFull>
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like range-full
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take fmt
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Returns the “default value” for a type.>
+
+    free seed
+      like range-full
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task index, name <index>
+    note <Performs the indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range-full
+        cite free
+      cite free
+
+    free seed
+      like str
+
+  task index, name <index>
+    note <Performs the indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range-full
+        cite free
+      cite free
+
+    free seed
+      like c-str
+
+  task index, name <index>
+    note <Performs the indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range-full
+        cite free
+      cite free
+
+    free seed
+      like os-str
+
+  task index-mut, name <index_mut>
+    note <Performs the mutable indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range-full
+        cite free
+      cite free
+
+    free seed
+      like str
+
+  task index-mut, name <index_mut>
+    note <Performs the mutable indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range-full
+        cite free
+      cite free
+
+    free seed
+      like os-str
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like range-full
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task start-bound, name <start_bound>
+    note <Start index bound.>
+
+    take self
+      cite free
+
+    free seed
+      like bound
+        like t
+        cite free
+
+  task end-bound, name <end_bound>
+    note <End index bound.>
+
+    take self
+      cite free
+
+    free seed
+      like bound
+        like t
+        cite free
+
+  task contains, name <contains>
+    note <Returns true if item is contained in the range.>
+
+    lead t
+      like partial-ord
+        like u
+          cite free
+        cite free
+    lead u
+      like partial-ord
+        like t
+          cite free
+        cite free
+
+    head u
+
+    take self
+      cite free
+    take item
+      like u
+
+    free seed
+      like bool
+        cite free
+
+  task get, name <get>
+    note <Returns a shared reference to the output at this location, if in bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like option
+        list t
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the output at this location, if in bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      like option
+        list t
+        cite free
+
+  task get-unchecked, name <get_unchecked>
+    note <Returns a shared reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    take self
+      cite free
+    take slice
+      list t
+      calm take
+      cite free
+      dive take
+
+    free seed
+      list t
+      calm take
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a mutable reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task index, name <index>
+    note <Returns a shared reference to the output at this location, panicking if out of bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task index-mut, name <index_mut>
+    note <Returns a mutable reference to the output at this location, panicking if out of bounds.>
+
+    take self
+      cite free
+    take slice
+      list t
+      cite free
+
+    free seed
+      list t
+
+  task get, name <get>
+    note <Returns a shared reference to the output at this location, if in bounds.>
+
+    cast c-1
+      like range-full
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the output at this location, if in bounds.>
+
+    cast c-1
+      like range-full
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+      lock free
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-unchecked, name <get_unchecked>
+    note <Returns a shared reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    cast c-1
+      like range-full
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+        cite free
+      calm take
+      cite free
+      dive take
+
+    free seed
+      like c-1/output
+      calm take
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a mutable reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    cast c-1
+      like range-full
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+        cite free
+      cite free
+      lock free
+      dive take
+
+    free seed
+      like c-1/output
+
+  task index, name <index>
+    note <Returns a shared reference to the output at this location, panicking if out of bounds.>
+
+    cast c-1
+      like range-full
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+
+    free seed
+      like c-1/output
+
+  task index-mut, name <index_mut>
+    note <Returns a mutable reference to the output at this location, panicking if out of bounds.>
+
+    cast c-1
+      like range-full
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+      lock free
+
+    free seed
+      like c-1/output

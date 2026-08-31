@@ -1,0 +1,328 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/file-list
+  find file-list
+
+load @term/bind/code/browser/dom/file-system-entry
+  find file-system-entry
+
+load @term/bind/code/browser/dom/html-element
+  find html-element
+
+load @term/bind/code/browser/dom/html-element-event-map
+  find html-element-event-map
+
+load @term/bind/code/browser/dom/html-form-element
+  find html-form-element
+
+load @term/bind/code/browser/dom/html-label-element
+  find html-label-element
+
+load @term/bind/code/browser/dom/node-list-of
+  find node-list-of
+
+load @term/bind/code/browser/dom/selection-mode
+  find selection-mode
+
+load @term/bind/code/browser/dom/validity-state
+  find validity-state
+
+load @term/bind/code/javascript/es5/date
+  find date
+
+load @term/bind/code/javascript/es5/readonly-array
+  find readonly-array
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form html-input-element, name <HTMLInputElement>
+  base html-element
+
+  link accept, name <accept>
+    like native-string
+    lock false
+  link align, name <align>
+    like native-string
+    lock false
+  link alt, name <alt>
+    like native-string
+    lock false
+  link autocomplete, name <autocomplete>
+    like native-string
+    lock false
+  link capture, name <capture>
+    like native-string
+    lock false
+  link checked, name <checked>
+    like native-boolean
+    lock false
+  link default-checked, name <defaultChecked>
+    like native-boolean
+    lock false
+  link default-value, name <defaultValue>
+    like native-string
+    lock false
+  link dir-name, name <dirName>
+    like native-string
+    lock false
+  link disabled, name <disabled>
+    like native-boolean
+    lock false
+  link files, name <files>
+    like or
+      like file-list
+      like native-null
+    lock false
+  link form, name <form>
+    like or
+      like html-form-element
+      like native-null
+  link form-action, name <formAction>
+    like native-string
+    lock false
+  link form-enctype, name <formEnctype>
+    like native-string
+    lock false
+  link form-method, name <formMethod>
+    like native-string
+    lock false
+  link form-no-validate, name <formNoValidate>
+    like native-boolean
+    lock false
+  link form-target, name <formTarget>
+    like native-string
+    lock false
+  link height, name <height>
+    like native-number
+    lock false
+  link indeterminate, name <indeterminate>
+    like native-boolean
+    lock false
+  link labels, name <labels>
+    like or
+      like node-list-of
+        like html-label-element
+      like native-null
+  link list, name <list>
+    like or
+      like html-element
+      like native-null
+  link max, name <max>
+    like native-string
+    lock false
+  link max-length, name <maxLength>
+    like native-number
+    lock false
+  link min, name <min>
+    like native-string
+    lock false
+  link min-length, name <minLength>
+    like native-number
+    lock false
+  link multiple, name <multiple>
+    like native-boolean
+    lock false
+  link name, name <name>
+    like native-string
+    lock false
+  link pattern, name <pattern>
+    like native-string
+    lock false
+  link placeholder, name <placeholder>
+    like native-string
+    lock false
+  link read-only, name <readOnly>
+    like native-boolean
+    lock false
+  link required, name <required>
+    like native-boolean
+    lock false
+  link selection-direction, name <selectionDirection>
+    like or
+      text <forward>
+      text <backward>
+      text <none>
+      like native-null
+    lock false
+  link selection-end, name <selectionEnd>
+    like or
+      like native-number
+      like native-null
+    lock false
+  link selection-start, name <selectionStart>
+    like or
+      like native-number
+      like native-null
+    lock false
+  link size, name <size>
+    like native-number
+    lock false
+  link src, name <src>
+    like native-string
+    lock false
+  link step, name <step>
+    like native-string
+    lock false
+  link type, name <type>
+    like native-string
+    lock false
+  link use-map, name <useMap>
+    like native-string
+    lock false
+  link validation-message, name <validationMessage>
+    like native-string
+  link validity, name <validity>
+    like validity-state
+  link value, name <value>
+    like native-string
+    lock false
+  link value-as-date, name <valueAsDate>
+    like or
+      like date
+      like native-null
+    lock false
+  link value-as-number, name <valueAsNumber>
+    like native-number
+    lock false
+  link webkit-entries, name <webkitEntries>
+    like readonly-array
+      like file-system-entry
+  link webkitdirectory, name <webkitdirectory>
+    like native-boolean
+    lock false
+  link width, name <width>
+    like native-number
+    lock false
+  link will-validate, name <willValidate>
+    like native-boolean
+
+  task check-validity, name <checkValidity>
+    like native-boolean
+
+  task report-validity, name <reportValidity>
+    like native-boolean
+
+  task select, name <select>
+    like native-void
+
+  task set-custom-validity, name <setCustomValidity>
+    take error, like native-string
+    like native-void
+
+  task set-range-text, name <setRangeText>
+    take replacement, like native-string
+    like native-void
+
+  task set-range-text, name <setRangeText>
+    take replacement, like native-string
+    take start, like native-number
+    take end, like native-number
+    take selection-mode, like maybe
+      like selection-mode
+    like native-void
+
+  task set-selection-range, name <setSelectionRange>
+    take start
+      like or
+        like native-number
+        like native-null
+    take end
+      like or
+        like native-number
+        like native-null
+    take direction, like maybe
+      like or
+        text <forward>
+        text <backward>
+        text <none>
+    like native-void
+
+  task step-down, name <stepDown>
+    take n, like maybe
+      like native-number
+    like native-void
+
+  task step-up, name <stepUp>
+    take n, like maybe
+      like native-number
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like html-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like html-input-element
+        take ev
+          like index
+            like html-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like html-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like html-input-element
+        take ev
+          like index
+            like html-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

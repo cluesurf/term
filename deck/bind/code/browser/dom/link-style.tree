@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/css-style-sheet
+  find css-style-sheet
+
+load @term/bind/code/javascript/native
+  find native-null
+
+form link-style, name <LinkStyle>
+  link sheet, name <sheet>
+    like or
+      like css-style-sheet
+      like native-null

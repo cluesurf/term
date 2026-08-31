@@ -1,0 +1,56 @@
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/browser/dom/touch-type
+  find touch-type
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form touch-init, name <TouchInit>
+  link altitude-angle, name <altitudeAngle>
+    like native-number
+    lock false
+  link azimuth-angle, name <azimuthAngle>
+    like native-number
+    lock false
+  link client-x, name <clientX>
+    like native-number
+    lock false
+  link client-y, name <clientY>
+    like native-number
+    lock false
+  link force, name <force>
+    like native-number
+    lock false
+  link identifier, name <identifier>
+    like native-number
+    lock false
+  link page-x, name <pageX>
+    like native-number
+    lock false
+  link page-y, name <pageY>
+    like native-number
+    lock false
+  link radius-x, name <radiusX>
+    like native-number
+    lock false
+  link radius-y, name <radiusY>
+    like native-number
+    lock false
+  link rotation-angle, name <rotationAngle>
+    like native-number
+    lock false
+  link screen-x, name <screenX>
+    like native-number
+    lock false
+  link screen-y, name <screenY>
+    like native-number
+    lock false
+  link target, name <target>
+    like event-target
+    lock false
+  link touch-type, name <touchType>
+    like touch-type
+    lock false

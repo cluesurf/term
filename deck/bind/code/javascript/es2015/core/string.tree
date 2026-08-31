@@ -1,0 +1,105 @@
+
+load @term/bind/code/javascript/es5/string
+  find string
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+form string, name <String>
+  task code-point-at, name <codePointAt>
+    take pos, like native-number
+    like or
+      like native-number
+      like native-undefined
+
+  task includes, name <includes>
+    take search-string, like native-string
+    take position, like maybe
+      like native-number
+    like native-boolean
+
+  task ends-with, name <endsWith>
+    take search-string, like native-string
+    take end-position, like maybe
+      like native-number
+    like native-boolean
+
+  task normalize, name <normalize>
+    take form
+      like or
+        text <NFC>
+        text <NFD>
+        text <NFKC>
+        text <NFKD>
+    like native-string
+
+  task normalize, name <normalize>
+    take form, like maybe
+      like native-string
+    like native-string
+
+  task repeat, name <repeat>
+    take count, like native-number
+    like native-string
+
+  task starts-with, name <startsWith>
+    take search-string, like native-string
+    take position, like maybe
+      like native-number
+    like native-boolean
+
+  task anchor, name <anchor>
+    take name, like native-string
+    like native-string
+
+  task big, name <big>
+    like native-string
+
+  task blink, name <blink>
+    like native-string
+
+  task bold, name <bold>
+    like native-string
+
+  task fixed, name <fixed>
+    like native-string
+
+  task fontcolor, name <fontcolor>
+    take color, like native-string
+    like native-string
+
+  task fontsize, name <fontsize>
+    take size, like native-number
+    like native-string
+
+  task fontsize, name <fontsize>
+    take size, like native-string
+    like native-string
+
+  task italics, name <italics>
+    like native-string
+
+  task link, name <link>
+    take url, like native-string
+    like native-string
+
+  task small, name <small>
+    like native-string
+
+  task strike, name <strike>
+    like native-string
+
+  task sub, name <sub>
+    like native-string
+
+  task sup, name <sup>
+    like native-string

@@ -1,0 +1,203 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/binary-type
+  find binary-type
+
+load @term/bind/code/browser/dom/blob
+  find blob
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/browser/dom/message-event
+  find message-event
+
+load @term/bind/code/browser/dom/rtc-data-channel-event-map
+  find rtc-data-channel-event-map
+
+load @term/bind/code/browser/dom/rtc-data-channel-state
+  find rtc-data-channel-state
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+load @term/bind/code/javascript/es5/array-buffer-view
+  find array-buffer-view
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form rtc-data-channel, name <RTCDataChannel>
+  base event-target
+
+  link binary-type, name <binaryType>
+    like binary-type
+    lock false
+  link buffered-amount, name <bufferedAmount>
+    like native-number
+  link buffered-amount-low-threshold, name <bufferedAmountLowThreshold>
+    like native-number
+    lock false
+  link id, name <id>
+    like or
+      like native-number
+      like native-null
+  link label, name <label>
+    like native-string
+  link max-packet-life-time, name <maxPacketLifeTime>
+    like or
+      like native-number
+      like native-null
+  link max-retransmits, name <maxRetransmits>
+    like or
+      like native-number
+      like native-null
+  link negotiated, name <negotiated>
+    like native-boolean
+  link onbufferedamountlow, name <onbufferedamountlow>
+    like or
+      like task
+        take this, like rtc-data-channel
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onclose, name <onclose>
+    like or
+      like task
+        take this, like rtc-data-channel
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onerror, name <onerror>
+    like or
+      like task
+        take this, like rtc-data-channel
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onmessage, name <onmessage>
+    like or
+      like task
+        take this, like rtc-data-channel
+        take ev, like message-event
+        like native-any
+      like native-null
+    lock false
+  link onopen, name <onopen>
+    like or
+      like task
+        take this, like rtc-data-channel
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link ordered, name <ordered>
+    like native-boolean
+  link protocol, name <protocol>
+    like native-string
+  link ready-state, name <readyState>
+    like rtc-data-channel-state
+
+  task close, name <close>
+    like native-void
+
+  task send, name <send>
+    take data, like native-string
+    like native-void
+
+  task send, name <send>
+    take data, like blob
+    like native-void
+
+  task send, name <send>
+    take data, like array-buffer
+    like native-void
+
+  task send, name <send>
+    take data, like array-buffer-view
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like rtc-data-channel-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like rtc-data-channel
+        take ev
+          like index
+            like rtc-data-channel-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like rtc-data-channel-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like rtc-data-channel
+        take ev
+          like index
+            like rtc-data-channel-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

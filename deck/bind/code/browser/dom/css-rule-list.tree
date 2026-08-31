@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/css-rule
+  find css-rule
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form css-rule-list, name <CSSRuleList>
+  link length, name <length>
+    like native-number
+
+  task item, name <item>
+    take index, like native-number
+    like or
+      like css-rule
+      like native-null
+
+  mesh index, like native-number
+    like css-rule

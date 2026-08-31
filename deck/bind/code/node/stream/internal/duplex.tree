@@ -1,0 +1,208 @@
+
+load @term/bind
+  find any
+  find form
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find array-buffer
+  find async-generator-function
+  find async-iterable
+  find blob
+  find duplex
+  find error
+  find iterable
+  find native-boolean
+  find native-null
+  find native-number
+  find native-string
+  find native-this
+  find native-undefined
+  find native-void
+  find object
+  find promise
+  find stream
+
+load @term/bind/code/node/buffer
+  find buffer-encoding
+
+load @term/bind/code/node/globals
+  find array
+
+load @term/bind/code/node/stream/internal
+  find duplex-options
+
+form duplex, name <Duplex>
+  base readable
+  link writable, name <writable>, like native-boolean
+  link writable-ended, name <writableEnded>, like native-boolean
+  link writable-finished, name <writableFinished>, like native-boolean
+  link writable-high-water-mark, name <writableHighWaterMark>, like native-number
+  link writable-length, name <writableLength>, like native-number
+  link writable-object-mode, name <writableObjectMode>, like native-boolean
+  link writable-corked, name <writableCorked>, like native-number
+  link allow-half-open, name <allowHalfOpen>, like native-boolean
+
+  task write, name <_write>
+    like native-void
+
+    take chunk, like any
+    take encoding, like buffer-encoding
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+          void true
+
+  task writev, name <_writev>
+    like native-void
+
+    take chunks
+      like array
+        like form
+          link chunk, name <chunk>
+            like any
+            flex true
+          link encoding, name <encoding>
+            like buffer-encoding
+            flex true
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+          void true
+
+  task destroy, name <_destroy>
+    like native-void
+
+    take error
+      like or
+        like error
+        like native-null
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+
+  task final, name <_final>
+    like native-void
+
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+          void true
+
+  task write, name <write>
+    like native-boolean
+
+    take chunk, like any
+    take encoding, like buffer-encoding
+      void true
+    take cb
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+            like native-undefined
+      void true
+
+  task write, name <write>
+    like native-boolean
+
+    take chunk, like any
+    take cb
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+            like native-undefined
+      void true
+
+  task set-default-encoding, name <setDefaultEncoding>
+    like native-this
+
+    take encoding, like buffer-encoding
+
+  task end, name <end>
+    like native-this
+
+    take cb
+      like task
+        like native-void
+
+      void true
+
+  task end, name <end>
+    like native-this
+
+    take chunk, like any
+    take cb
+      like task
+        like native-void
+
+      void true
+
+  task end, name <end>
+    like native-this
+
+    take chunk, like any
+    take encoding, like buffer-encoding
+      void true
+    take cb
+      like task
+        like native-void
+
+      void true
+
+  task cork, name <cork>
+    like native-void
+
+  task uncork, name <uncork>
+    like native-void
+
+form duplex-constructor
+  hook make
+    take opts, like duplex-options
+      void true
+
+  task from, name <from>
+    like duplex
+
+    take src
+      like or
+        like stream
+        like blob
+        like array-buffer
+        like native-string
+        like iterable
+          like any
+        like async-iterable
+          like any
+        like async-generator-function
+        like promise
+          like any
+        like object

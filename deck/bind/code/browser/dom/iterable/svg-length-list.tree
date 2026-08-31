@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/svg-length
+  find svg-length
+
+load @term/bind/code/browser/dom/svg-length-list
+  find svg-length-list
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+form svg-length-list, name <SVGLengthList>
+  task {symbol/iterator}
+    like iterable-iterator
+      like svg-length

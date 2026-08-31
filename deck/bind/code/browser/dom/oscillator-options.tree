@@ -1,0 +1,28 @@
+
+load @term/bind/code/browser/dom/audio-node-options
+  find audio-node-options
+
+load @term/bind/code/browser/dom/oscillator-type
+  find oscillator-type
+
+load @term/bind/code/browser/dom/periodic-wave
+  find periodic-wave
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form oscillator-options, name <OscillatorOptions>
+  base audio-node-options
+
+  link detune, name <detune>
+    like native-number
+    lock false
+  link frequency, name <frequency>
+    like native-number
+    lock false
+  link periodic-wave, name <periodicWave>
+    like periodic-wave
+    lock false
+  link type, name <type>
+    like oscillator-type
+    lock false

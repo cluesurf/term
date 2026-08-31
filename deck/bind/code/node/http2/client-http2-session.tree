@@ -1,0 +1,433 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-boolean
+  find native-number
+  find native-string
+  find native-symbol
+  find native-this
+  find native-void
+  find net-socket
+  find readonly-array
+  find tls-tls-socket
+
+load @term/bind
+  find and
+  find any
+  find or
+  find task
+
+load @term/bind/code/node/http
+  find outgoing-http-headers
+
+load @term/bind/code/node/http2
+  find client-http2-stream
+  find client-session-request-options
+  find http2-session
+  find incoming-http-headers
+  find incoming-http-status-header
+
+form client-http2-session, name <ClientHttp2Session>
+  base http2-session
+
+  task request, name <request>
+    like client-http2-stream
+
+    take headers, like outgoing-http-headers
+      void true
+    take options, like client-session-request-options
+      void true
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <altsvc>
+    take listener
+      like task
+        like native-void
+
+        take alt, like native-string
+        take origin, like native-string
+        take stream, like native-number
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <origin>
+    take listener
+      like task
+        like native-void
+
+        take origins
+          like array
+            like native-string
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+        take session, like client-http2-session
+        take socket
+          like or
+            like net-socket
+            like tls-tls-socket
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <stream>
+    take listener
+      like task
+        like native-void
+
+        take stream, like client-http2-stream
+        take headers
+          like and
+            like incoming-http-headers
+            like incoming-http-status-header
+        take flags, like native-number
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <altsvc>
+    take alt, like native-string
+    take origin, like native-string
+    take stream, like native-number
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <origin>
+    take origins
+      like readonly-array
+        like native-string
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <connect>
+    take session, like client-http2-session
+    take socket
+      like or
+        like net-socket
+        like tls-tls-socket
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <stream>
+    take stream, like client-http2-stream
+    take headers
+      like and
+        like incoming-http-headers
+        like incoming-http-status-header
+    take flags, like native-number
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take args
+      like array
+        like any
+      rest true
+
+  task on, name <on>
+    like native-this
+
+    take event, text <altsvc>
+    take listener
+      like task
+        like native-void
+
+        take alt, like native-string
+        take origin, like native-string
+        take stream, like native-number
+
+  task on, name <on>
+    like native-this
+
+    take event, text <origin>
+    take listener
+      like task
+        like native-void
+
+        take origins
+          like array
+            like native-string
+
+  task on, name <on>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+        take session, like client-http2-session
+        take socket
+          like or
+            like net-socket
+            like tls-tls-socket
+
+  task on, name <on>
+    like native-this
+
+    take event, text <stream>
+    take listener
+      like task
+        like native-void
+
+        take stream, like client-http2-stream
+        take headers
+          like and
+            like incoming-http-headers
+            like incoming-http-status-header
+        take flags, like native-number
+
+  task on, name <on>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task once, name <once>
+    like native-this
+
+    take event, text <altsvc>
+    take listener
+      like task
+        like native-void
+
+        take alt, like native-string
+        take origin, like native-string
+        take stream, like native-number
+
+  task once, name <once>
+    like native-this
+
+    take event, text <origin>
+    take listener
+      like task
+        like native-void
+
+        take origins
+          like array
+            like native-string
+
+  task once, name <once>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+        take session, like client-http2-session
+        take socket
+          like or
+            like net-socket
+            like tls-tls-socket
+
+  task once, name <once>
+    like native-this
+
+    take event, text <stream>
+    take listener
+      like task
+        like native-void
+
+        take stream, like client-http2-stream
+        take headers
+          like and
+            like incoming-http-headers
+            like incoming-http-status-header
+        take flags, like native-number
+
+  task once, name <once>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <altsvc>
+    take listener
+      like task
+        like native-void
+
+        take alt, like native-string
+        take origin, like native-string
+        take stream, like native-number
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <origin>
+    take listener
+      like task
+        like native-void
+
+        take origins
+          like array
+            like native-string
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+        take session, like client-http2-session
+        take socket
+          like or
+            like net-socket
+            like tls-tls-socket
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <stream>
+    take listener
+      like task
+        like native-void
+
+        take stream, like client-http2-stream
+        take headers
+          like and
+            like incoming-http-headers
+            like incoming-http-status-header
+        take flags, like native-number
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <altsvc>
+    take listener
+      like task
+        like native-void
+
+        take alt, like native-string
+        take origin, like native-string
+        take stream, like native-number
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <origin>
+    take listener
+      like task
+        like native-void
+
+        take origins
+          like array
+            like native-string
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <connect>
+    take listener
+      like task
+        like native-void
+
+        take session, like client-http2-session
+        take socket
+          like or
+            like net-socket
+            like tls-tls-socket
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <stream>
+    take listener
+      like task
+        like native-void
+
+        take stream, like client-http2-stream
+        take headers
+          like and
+            like incoming-http-headers
+            like incoming-http-status-header
+        take flags, like native-number
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true

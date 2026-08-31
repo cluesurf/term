@@ -1,0 +1,337 @@
+
+bear @term/bind/code/javascript/es5/symbol
+bear @term/bind/code/javascript/es5/property-key
+bear @term/bind/code/javascript/es5/property-descriptor
+bear @term/bind/code/javascript/es5/property-descriptor-map
+bear @term/bind/code/javascript/es5/object
+bear @term/bind/code/javascript/es5/object-constructor
+bear @term/bind/code/javascript/es5/function
+bear @term/bind/code/javascript/es5/function-constructor
+bear @term/bind/code/javascript/es5/this-parameter-type
+bear @term/bind/code/javascript/es5/omit-this-parameter
+bear @term/bind/code/javascript/es5/callable-function
+bear @term/bind/code/javascript/es5/newable-function
+bear @term/bind/code/javascript/es5/i-arguments
+bear @term/bind/code/javascript/es5/string
+bear @term/bind/code/javascript/es5/string-constructor
+bear @term/bind/code/javascript/es5/boolean
+bear @term/bind/code/javascript/es5/boolean-constructor
+bear @term/bind/code/javascript/es5/number
+bear @term/bind/code/javascript/es5/number-constructor
+bear @term/bind/code/javascript/es5/template-strings-array
+bear @term/bind/code/javascript/es5/import-meta
+bear @term/bind/code/javascript/es5/math
+bear @term/bind/code/javascript/es5/date
+bear @term/bind/code/javascript/es5/date-constructor
+bear @term/bind/code/javascript/es5/reg-exp-match-array
+bear @term/bind/code/javascript/es5/reg-exp-exec-array
+bear @term/bind/code/javascript/es5/reg-exp
+bear @term/bind/code/javascript/es5/reg-exp-constructor
+bear @term/bind/code/javascript/es5/error
+bear @term/bind/code/javascript/es5/error-constructor
+bear @term/bind/code/javascript/es5/eval-error
+bear @term/bind/code/javascript/es5/eval-error-constructor
+bear @term/bind/code/javascript/es5/range-error
+bear @term/bind/code/javascript/es5/range-error-constructor
+bear @term/bind/code/javascript/es5/reference-error
+bear @term/bind/code/javascript/es5/reference-error-constructor
+bear @term/bind/code/javascript/es5/syntax-error
+bear @term/bind/code/javascript/es5/syntax-error-constructor
+bear @term/bind/code/javascript/es5/type-error
+bear @term/bind/code/javascript/es5/type-error-constructor
+bear @term/bind/code/javascript/es5/uri-error
+bear @term/bind/code/javascript/es5/uri-error-constructor
+bear @term/bind/code/javascript/es5/json
+bear @term/bind/code/javascript/es5/readonly-array
+bear @term/bind/code/javascript/es5/concat-array
+bear @term/bind/code/javascript/es5/array
+bear @term/bind/code/javascript/es5/array-constructor
+bear @term/bind/code/javascript/es5/typed-property-descriptor
+bear @term/bind/code/javascript/es5/class-decorator
+bear @term/bind/code/javascript/es5/property-decorator
+bear @term/bind/code/javascript/es5/method-decorator
+bear @term/bind/code/javascript/es5/parameter-decorator
+bear @term/bind/code/javascript/es5/promise-constructor-like
+bear @term/bind/code/javascript/es5/promise-like
+bear @term/bind/code/javascript/es5/promise
+bear @term/bind/code/javascript/es5/array-like
+bear @term/bind/code/javascript/es5/partial
+bear @term/bind/code/javascript/es5/required
+bear @term/bind/code/javascript/es5/readonly
+bear @term/bind/code/javascript/es5/pick
+bear @term/bind/code/javascript/es5/record
+bear @term/bind/code/javascript/es5/exclude
+bear @term/bind/code/javascript/es5/extract
+bear @term/bind/code/javascript/es5/omit
+bear @term/bind/code/javascript/es5/non-nullable
+bear @term/bind/code/javascript/es5/parameters
+bear @term/bind/code/javascript/es5/constructor-parameters
+bear @term/bind/code/javascript/es5/return-type
+bear @term/bind/code/javascript/es5/instance-type
+bear @term/bind/code/javascript/es5/uppercase
+bear @term/bind/code/javascript/es5/lowercase
+bear @term/bind/code/javascript/es5/capitalize
+bear @term/bind/code/javascript/es5/uncapitalize
+bear @term/bind/code/javascript/es5/this-type
+bear @term/bind/code/javascript/es5/array-buffer
+bear @term/bind/code/javascript/es5/array-buffer-types
+bear @term/bind/code/javascript/es5/array-buffer-like
+bear @term/bind/code/javascript/es5/array-buffer-constructor
+bear @term/bind/code/javascript/es5/array-buffer-view
+bear @term/bind/code/javascript/es5/data-view
+bear @term/bind/code/javascript/es5/data-view-constructor
+bear @term/bind/code/javascript/es5/int8-array
+bear @term/bind/code/javascript/es5/int8-array-constructor
+bear @term/bind/code/javascript/es5/uint8-array
+bear @term/bind/code/javascript/es5/uint8-array-constructor
+bear @term/bind/code/javascript/es5/uint8-clamped-array
+bear @term/bind/code/javascript/es5/uint8-clamped-array-constructor
+bear @term/bind/code/javascript/es5/int16-array
+bear @term/bind/code/javascript/es5/int16-array-constructor
+bear @term/bind/code/javascript/es5/uint16-array
+bear @term/bind/code/javascript/es5/uint16-array-constructor
+bear @term/bind/code/javascript/es5/int32-array
+bear @term/bind/code/javascript/es5/int32-array-constructor
+bear @term/bind/code/javascript/es5/uint32-array
+bear @term/bind/code/javascript/es5/uint32-array-constructor
+bear @term/bind/code/javascript/es5/float32-array
+bear @term/bind/code/javascript/es5/float32-array-constructor
+bear @term/bind/code/javascript/es5/float64-array
+bear @term/bind/code/javascript/es5/float64-array-constructor
+bear @term/bind/code/javascript/es5/intl
+
+load @term/bind/code/javascript/es5/array-buffer-constructor
+  find array-buffer-constructor
+
+load @term/bind/code/javascript/es5/array-constructor
+  find array-constructor
+
+load @term/bind/code/javascript/es5/boolean-constructor
+  find boolean-constructor
+
+load @term/bind/code/javascript/es5/data-view-constructor
+  find data-view-constructor
+
+load @term/bind/code/javascript/es5/date-constructor
+  find date-constructor
+
+load @term/bind/code/javascript/es5/error-constructor
+  find error-constructor
+
+load @term/bind/code/javascript/es5/eval-error-constructor
+  find eval-error-constructor
+
+load @term/bind/code/javascript/es5/float32-array-constructor
+  find float32-array-constructor
+
+load @term/bind/code/javascript/es5/float64-array-constructor
+  find float64-array-constructor
+
+load @term/bind/code/javascript/es5/function-constructor
+  find function-constructor
+
+load @term/bind/code/javascript/es5/int16-array-constructor
+  find int16-array-constructor
+
+load @term/bind/code/javascript/es5/int32-array-constructor
+  find int32-array-constructor
+
+load @term/bind/code/javascript/es5/int8-array-constructor
+  find int8-array-constructor
+
+load @term/bind/code/javascript/es5/json
+  find json
+
+load @term/bind/code/javascript/es5/math
+  find math
+
+load @term/bind/code/javascript/es5/number-constructor
+  find number-constructor
+
+load @term/bind/code/javascript/es5/object-constructor
+  find object-constructor
+
+load @term/bind/code/javascript/es5/range-error-constructor
+  find range-error-constructor
+
+load @term/bind/code/javascript/es5/reference-error-constructor
+  find reference-error-constructor
+
+load @term/bind/code/javascript/es5/reg-exp-constructor
+  find reg-exp-constructor
+
+load @term/bind/code/javascript/es5/string-constructor
+  find string-constructor
+
+load @term/bind/code/javascript/es5/syntax-error-constructor
+  find syntax-error-constructor
+
+load @term/bind/code/javascript/es5/type-error-constructor
+  find type-error-constructor
+
+load @term/bind/code/javascript/es5/uint16-array-constructor
+  find uint16-array-constructor
+
+load @term/bind/code/javascript/es5/uint32-array-constructor
+  find uint32-array-constructor
+
+load @term/bind/code/javascript/es5/uint8-array-constructor
+  find uint8-array-constructor
+
+load @term/bind/code/javascript/es5/uint8-clamped-array-constructor
+  find uint8-clamped-array-constructor
+
+load @term/bind/code/javascript/es5/uri-error-constructor
+  find uri-error-constructor
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+host na-n, name <NaN>
+  like native-number
+
+host infinity, name <Infinity>
+  like native-number
+
+host object, name <Object>
+  like object-constructor
+
+host function, name <Function>
+  like function-constructor
+
+host string, name <String>
+  like string-constructor
+
+host boolean, name <Boolean>
+  like boolean-constructor
+
+host number, name <Number>
+  like number-constructor
+
+host math, name <Math>
+  like math
+
+host date, name <Date>
+  like date-constructor
+
+host reg-exp, name <RegExp>
+  like reg-exp-constructor
+
+host error, name <Error>
+  like error-constructor
+
+host eval-error, name <EvalError>
+  like eval-error-constructor
+
+host range-error, name <RangeError>
+  like range-error-constructor
+
+host reference-error, name <ReferenceError>
+  like reference-error-constructor
+
+host syntax-error, name <SyntaxError>
+  like syntax-error-constructor
+
+host type-error, name <TypeError>
+  like type-error-constructor
+
+host uri-error, name <URIError>
+  like uri-error-constructor
+
+host json, name <JSON>
+  like json
+
+host array, name <Array>
+  like array-constructor
+
+host array-buffer, name <ArrayBuffer>
+  like array-buffer-constructor
+
+host data-view, name <DataView>
+  like data-view-constructor
+
+host int8-array, name <Int8Array>
+  like int8-array-constructor
+
+host uint8-array, name <Uint8Array>
+  like uint8-array-constructor
+
+host uint8-clamped-array, name <Uint8ClampedArray>
+  like uint8-clamped-array-constructor
+
+host int16-array, name <Int16Array>
+  like int16-array-constructor
+
+host uint16-array, name <Uint16Array>
+  like uint16-array-constructor
+
+host int32-array, name <Int32Array>
+  like int32-array-constructor
+
+host uint32-array, name <Uint32Array>
+  like uint32-array-constructor
+
+host float32-array, name <Float32Array>
+  like float32-array-constructor
+
+host float64-array, name <Float64Array>
+  like float64-array-constructor
+
+task eval, name <eval>
+  take x, like native-string
+  like native-any
+
+task parse-int, name <parseInt>
+  take string, like native-string
+  take radix, like maybe
+    like native-number
+  like native-number
+
+task parse-float, name <parseFloat>
+  take string, like native-string
+  like native-number
+
+task is-na-n, name <isNaN>
+  take number, like native-number
+  like native-boolean
+
+task is-finite, name <isFinite>
+  take number, like native-number
+  like native-boolean
+
+task decode-uri, name <decodeURI>
+  take encoded-uri, like native-string
+  like native-string
+
+task decode-uri-component, name <decodeURIComponent>
+  take encoded-uri-component, like native-string
+  like native-string
+
+task encode-uri, name <encodeURI>
+  take uri, like native-string
+  like native-string
+
+task encode-uri-component, name <encodeURIComponent>
+  take uri-component
+    like or
+      like native-string
+      like native-number
+      like native-boolean
+  like native-string
+
+task escape, name <escape>
+  take string, like native-string
+  like native-string
+
+task unescape, name <unescape>
+  take string, like native-string
+  like native-string

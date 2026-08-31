@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/es2016/array/include/int8-array
+  find int8-array
+
+form int8-array
+  hook self
+  hook make
+    like int8-array

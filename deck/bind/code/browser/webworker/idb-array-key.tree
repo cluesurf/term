@@ -1,0 +1,6 @@
+
+load @term/bind/code/javascript/es5/array
+  find array
+
+form idb-array-key, name <IDBArrayKey>
+  base array

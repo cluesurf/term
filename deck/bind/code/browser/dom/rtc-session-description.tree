@@ -1,0 +1,18 @@
+
+load @term/bind/code/browser/dom/rtc-sdp-type
+  find rtc-sdp-type
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form rtc-session-description, name <RTCSessionDescription>
+  link sdp, name <sdp>
+    like native-string
+  link type, name <type>
+    like rtc-sdp-type
+
+  task to-json, name <toJSON>
+    like native-any

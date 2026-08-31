@@ -1,0 +1,5 @@
+
+form relative-time-format-locale-matcher, name <RelativeTimeFormatLocaleMatcher>
+  like or
+    text <lookup>
+    text <best fit>

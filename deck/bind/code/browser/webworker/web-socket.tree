@@ -1,0 +1,186 @@
+
+load @term/bind/code/browser/dom/web-socket
+  find web-socket
+
+load @term/bind/code/browser/webworker/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/webworker/binary-type
+  find binary-type
+
+load @term/bind/code/browser/webworker/blob
+  find blob
+
+load @term/bind/code/browser/webworker/close-event
+  find close-event
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+load @term/bind/code/browser/webworker/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/webworker/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/webworker/event-target
+  find event-target
+
+load @term/bind/code/browser/webworker/message-event
+  find message-event
+
+load @term/bind/code/browser/webworker/web-socket-event-map
+  find web-socket-event-map
+
+load @term/bind/code/javascript/es5/array-buffer-like
+  find array-buffer-like
+
+load @term/bind/code/javascript/es5/array-buffer-view
+  find array-buffer-view
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form web-socket, name <WebSocket>
+  base event-target
+
+  link binary-type, name <binaryType>
+    like binary-type
+    lock false
+  link buffered-amount, name <bufferedAmount>
+    like native-number
+  link extensions, name <extensions>
+    like native-string
+  link onclose, name <onclose>
+    like or
+      like task
+        take this, like web-socket
+        take ev, like close-event
+        like native-any
+      like native-null
+    lock false
+  link onerror, name <onerror>
+    like or
+      like task
+        take this, like web-socket
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onmessage, name <onmessage>
+    like or
+      like task
+        take this, like web-socket
+        take ev, like message-event
+        like native-any
+      like native-null
+    lock false
+  link onopen, name <onopen>
+    like or
+      like task
+        take this, like web-socket
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link protocol, name <protocol>
+    like native-string
+  link ready-state, name <readyState>
+    like native-number
+  link url, name <url>
+    like native-string
+  link closed, name <CLOSED>
+    like native-number
+  link closing, name <CLOSING>
+    like native-number
+  link connecting, name <CONNECTING>
+    like native-number
+  link open, name <OPEN>
+    like native-number
+
+  task close, name <close>
+    take code, like maybe
+      like native-number
+    take reason, like maybe
+      like native-string
+    like native-void
+
+  task send, name <send>
+    take data
+      like or
+        like native-string
+        like array-buffer-like
+        like blob
+        like array-buffer-view
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like web-socket-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like web-socket
+        take ev
+          like index
+            like web-socket-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like web-socket-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like web-socket
+        take ev
+          like index
+            like web-socket-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

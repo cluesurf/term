@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/fullscreen-navigation-ui
+  find fullscreen-navigation-ui
+
+form fullscreen-options, name <FullscreenOptions>
+  link navigation-ui, name <navigationUI>
+    like fullscreen-navigation-ui
+    lock false

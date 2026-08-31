@@ -1,0 +1,7 @@
+
+form navigation-type, name <NavigationType>
+  like or
+    text <back_forward>
+    text <navigate>
+    text <prerender>
+    text <reload>

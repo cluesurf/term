@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/media-stream-track-event
+  find media-stream-track-event
+
+form media-stream-event-map, name <MediaStreamEventMap>
+  link addtrack, name <addtrack>
+    like media-stream-track-event
+    lock false
+  link removetrack, name <removetrack>
+    like media-stream-track-event
+    lock false

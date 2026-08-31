@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form offline-audio-context-options, name <OfflineAudioContextOptions>
+  link length, name <length>
+    like native-number
+    lock false
+  link number-of-channels, name <numberOfChannels>
+    like native-number
+    lock false
+  link sample-rate, name <sampleRate>
+    like native-number
+    lock false

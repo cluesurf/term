@@ -1,0 +1,39 @@
+
+load @term/bind
+  find and
+  find form
+  find or
+
+load @term/bind/code/javascript
+  find native-null
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/buffer
+  find buffer-encoding
+
+load @term/bind/code/node/events/event-emitter
+  find abortable
+
+load @term/bind/code/node/fs
+  find mode
+  find object-encoding-options
+
+form write-file-options, name <WriteFileOptions>
+  like or
+    like and
+      like object-encoding-options
+      like abortable
+      like form
+        link mode, name <mode>
+          like or
+            like mode
+            like native-undefined
+          flex true
+        link flag, name <flag>
+          like or
+            like native-string
+            like native-undefined
+          flex true
+    like buffer-encoding
+    like native-null

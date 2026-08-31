@@ -1,0 +1,11 @@
+
+bear @term/bind/code/javascript/node/cluster/cluster-settings
+bear @term/bind/code/javascript/node/cluster/address
+bear @term/bind/code/javascript/node/cluster/worker
+bear @term/bind/code/javascript/node/cluster/cluster
+
+load @term/bind/code/node/cluster
+  find cluster
+
+host cluster, name <cluster>
+  like cluster

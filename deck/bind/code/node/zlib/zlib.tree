@@ -1,0 +1,52 @@
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-string
+  find native-undefined
+  find native-void
+
+form zlib, name <Zlib>
+  link bytes-read, name <bytesRead>
+    like native-number
+  link bytes-written, name <bytesWritten>
+    like native-number
+  link shell, name <shell>
+    like or
+      like native-boolean
+      like native-string
+      like native-undefined
+    flex true
+
+  task close, name <close>
+    like native-void
+
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task flush, name <flush>
+    like native-void
+
+    take kind, like native-number
+      void true
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task flush, name <flush>
+    like native-void
+
+    take callback
+      like task
+        like native-void
+
+      void true

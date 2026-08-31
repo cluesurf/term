@@ -1,0 +1,13 @@
+
+load @term/bind/code/javascript
+  find native-boolean
+
+load @term/bind/code/node/util
+  find debug-logger-function
+
+form debug-logger, name <DebugLogger>
+  base debug-logger-function
+
+  link enabled, name <enabled>
+    like native-boolean
+    flex true

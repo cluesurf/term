@@ -1,0 +1,22 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-undefined
+
+load @term/bind/code/node/vm
+  find context
+  find measure-memory-mode
+
+form measure-memory-options, name <MeasureMemoryOptions>
+  link mode, name <mode>
+    like or
+      like measure-memory-mode
+      like native-undefined
+    flex true
+  link context, name <context>
+    like or
+      like context
+      like native-undefined
+    flex true

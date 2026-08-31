@@ -1,0 +1,20 @@
+
+load @term/bind/code/javascript/es2020/intl/relative-time-format-locale-matcher
+  find relative-time-format-locale-matcher
+
+load @term/bind/code/javascript/es2020/intl/relative-time-format-numeric
+  find relative-time-format-numeric
+
+load @term/bind/code/javascript/es2020/intl/relative-time-format-style
+  find relative-time-format-style
+
+form relative-time-format-options, name <RelativeTimeFormatOptions>
+  link locale-matcher, name <localeMatcher>
+    like relative-time-format-locale-matcher
+    lock false
+  link numeric, name <numeric>
+    like relative-time-format-numeric
+    lock false
+  link style, name <style>
+    like relative-time-format-style
+    lock false

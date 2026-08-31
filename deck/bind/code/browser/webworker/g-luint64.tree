@@ -1,0 +1,6 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form g-luint64, name <GLuint64>
+  like native-number

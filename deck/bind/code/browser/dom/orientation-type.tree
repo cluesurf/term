@@ -1,0 +1,7 @@
+
+form orientation-type, name <OrientationType>
+  like or
+    text <landscape-primary>
+    text <landscape-secondary>
+    text <portrait-primary>
+    text <portrait-secondary>

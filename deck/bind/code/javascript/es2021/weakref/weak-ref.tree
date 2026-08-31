@@ -1,0 +1,19 @@
+
+load @term/bind/code/javascript/native
+  find native-object
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+form weak-ref, name <WeakRef>
+  head t
+    base native-object
+
+  link {symbol/to-string-tag}
+    text <WeakRef>
+    read true
+
+  task deref, name <deref>
+    like or
+      like t
+      like native-undefined

@@ -1,0 +1,3296 @@
+
+form str, name <str>
+  task len, name <len>
+    note <Returns the length of self.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task is-empty, name <is_empty>
+    note <Returns true if self has a length of zero bytes.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-char-boundary, name <is_char_boundary>
+    note <Checks that index-th byte is the first byte in a UTF-8 code point sequence or the end of the string.>
+
+    take self
+      cite free
+    take index
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task as-bytes, name <as_bytes>
+    note <Converts a string slice to a byte slice. To convert the byte slice back into a string slice, use the from_utf8 function.>
+
+    take self
+      cite free
+
+    free seed
+      list u8
+
+  task as-bytes-mut, name <as_bytes_mut>
+    note <Converts a mutable string slice to a mutable byte slice.>
+
+    take self
+      cite free
+
+    free seed
+      list u8
+
+  task as-ptr, name <as_ptr>
+    note <Converts a string slice to a raw pointer.>
+
+    take self
+      cite free
+
+    free seed
+      like u8
+        cite free
+      calm take
+
+  task as-mut-ptr, name <as_mut_ptr>
+    note <Converts a mutable string slice to a raw pointer.>
+
+    take self
+      cite free
+
+    free seed
+      like u8
+        cite free
+
+  task get, name <get>
+    note <Returns a subslice of str.>
+
+    cast c-1
+      like i
+      like slice-index
+        like str
+          cite free
+
+    lead i
+      like slice-index
+        like str
+          cite free
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take i
+      like i
+        cite free
+      cite free
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable subslice of str.>
+
+    cast c-1
+      like i
+      like slice-index
+        like str
+          cite free
+
+    lead i
+      like slice-index
+        like str
+          cite free
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take i
+      like i
+        cite free
+      cite free
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-unchecked, name <get_unchecked>
+    note <Returns an unchecked subslice of str.>
+
+    cast c-1
+      like i
+      like slice-index
+        like str
+          cite free
+
+    lead i
+      like slice-index
+        like str
+          cite free
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take i
+      like i
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a mutable, unchecked subslice of str.>
+
+    cast c-1
+      like i
+      like slice-index
+        like str
+          cite free
+
+    lead i
+      like slice-index
+        like str
+          cite free
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take i
+      like i
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task slice-unchecked, name <slice_unchecked>
+    note <Creates a string slice from another string slice, bypassing safety checks.>
+
+    take self
+      cite free
+    take begin
+      like usize
+        cite free
+      cite free
+    take end
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like str
+
+  task slice-mut-unchecked, name <slice_mut_unchecked>
+    note <Creates a string slice from another string slice, bypassing safety checks. This is generally not recommended, use with caution! For a safe alternative see str and IndexMut.>
+
+    take self
+      cite free
+    take begin
+      like usize
+        cite free
+      cite free
+    take end
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like str
+
+  task split-at, name <split_at>
+    note <Divide one string slice into two at an index.>
+
+    take self
+      cite free
+    take mid
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like form
+        take t-1, like str
+        take t-2, like str
+
+  task split-at-mut, name <split_at_mut>
+    note <Divide one mutable string slice into two at an index.>
+
+    take self
+      cite free
+    take mid
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like form
+        take t-1, like str
+        take t-2, like str
+
+  task chars, name <chars>
+    note <Returns an iterator over the chars of a string slice.>
+
+    take self
+      cite free
+
+    free seed
+      like chars
+        time mask
+        cite free
+
+  task char-indices, name <char_indices>
+    note <Returns an iterator over the chars of a string slice, and their positions.>
+
+    take self
+      cite free
+
+    free seed
+      like char-indices
+        time mask
+        cite free
+
+  task bytes, name <bytes>
+    note <An iterator over the bytes of a string slice.>
+
+    take self
+      cite free
+
+    free seed
+      like bytes
+        time mask
+        cite free
+
+  task split-whitespace, name <split_whitespace>
+    note <Splits a string slice by whitespace.>
+
+    take self
+      cite free
+
+    free seed
+      like split-whitespace
+        time mask
+        cite free
+
+  task split-ascii-whitespace, name <split_ascii_whitespace>
+    note <Splits a string slice by ASCII whitespace.>
+
+    take self
+      cite free
+
+    free seed
+      like split-ascii-whitespace
+        time mask
+        cite free
+
+  task lines, name <lines>
+    note <An iterator over the lines of a string, as string slices.>
+
+    take self
+      cite free
+
+    free seed
+      like lines
+        time mask
+        cite free
+
+  task lines-any, name <lines_any>
+    note <An iterator over the lines of a string.>
+
+    take self
+      cite free
+
+    free seed
+      like lines-any
+        time mask
+        cite free
+
+  task encode-utf16, name <encode_utf16>
+    note <Returns an iterator of u16 over the string encoded as UTF-16.>
+
+    take self
+      cite free
+
+    free seed
+      like encode-utf16
+        time mask
+        cite free
+
+  task contains, name <contains>
+    note <Returns true if the given pattern matches a sub-slice of this string slice.>
+
+    lead p
+      like pattern
+        time a
+        cite free
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task starts-with, name <starts_with>
+    note <Returns true if the given pattern matches a prefix of this string slice.>
+
+    lead p
+      like pattern
+        time a
+        cite free
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ends-with, name <ends_with>
+    note <Returns true if the given pattern matches a suffix of this string slice.>
+
+    cast c-1
+      like p
+      like pattern
+        time a
+
+    lead p
+      like pattern
+        time a
+        cite free
+    lead c-1/searcher
+      like reverse-searcher
+        time a
+        cite free
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task find, name <find>
+    note <Returns the byte index of the first character of this string slice that matches the pattern.>
+
+    lead p
+      like pattern
+        time a
+        cite free
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like option
+        like usize
+          cite free
+        cite free
+
+  task rfind, name <rfind>
+    note <Returns the byte index for the first character of the rightmost match of the pattern in this string slice.>
+
+    cast c-1
+      like p
+      like pattern
+        time a
+
+    lead p
+      like pattern
+        time a
+        cite free
+    lead c-1/searcher
+      like reverse-searcher
+        time a
+        cite free
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like option
+        like usize
+          cite free
+        cite free
+
+  task split, name <split>
+    note <An iterator over substrings of this string slice, separated by characters matched by a pattern.>
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like split
+        time a
+        like p
+          cite free
+        cite free
+
+  task split-inclusive, name <split_inclusive>
+    note <An iterator over substrings of this string slice, separated by characters matched by a pattern. Differs from the iterator produced by split in that split_inclusive leaves the matched part as the terminator of the substring.>
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like split-inclusive
+        time a
+        like p
+          cite free
+        cite free
+
+  task rsplit, name <rsplit>
+    note <An iterator over substrings of the given string slice, separated by characters matched by a pattern and yielded in reverse order.>
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like r-split
+        time a
+        like p
+          cite free
+        cite free
+
+  task split-terminator, name <split_terminator>
+    note <An iterator over substrings of the given string slice, separated by characters matched by a pattern.>
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like split-terminator
+        time a
+        like p
+          cite free
+        cite free
+
+  task rsplit-terminator, name <rsplit_terminator>
+    note <An iterator over substrings of self, separated by characters matched by a pattern and yielded in reverse order.>
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like r-split-terminator
+        time a
+        like p
+          cite free
+        cite free
+
+  task splitn, name <splitn>
+    note <An iterator over substrings of the given string slice, separated by a pattern, restricted to returning at most n items.>
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take n
+      like usize
+        cite free
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like split-n
+        time a
+        like p
+          cite free
+        cite free
+
+  task rsplitn, name <rsplitn>
+    note <An iterator over substrings of this string slice, separated by a pattern, starting from the end of the string, restricted to returning at most n items.>
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take n
+      like usize
+        cite free
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like r-split-n
+        time a
+        like p
+          cite free
+        cite free
+
+  task split-once, name <split_once>
+    note <Splits the string on the first occurrence of the specified delimiter and returns prefix before delimiter and suffix after delimiter.>
+
+    lead p
+      like pattern
+        time a
+        cite free
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take delimiter
+      like p
+        cite free
+      cite free
+
+    free seed
+      like option
+        like form
+          take t-1, like str
+          take t-2, like str
+        cite free
+
+  task rsplit-once, name <rsplit_once>
+    note <Splits the string on the last occurrence of the specified delimiter and returns prefix before delimiter and suffix after delimiter.>
+
+    cast c-1
+      like p
+      like pattern
+        time a
+
+    lead p
+      like pattern
+        time a
+        cite free
+    lead c-1/searcher
+      like reverse-searcher
+        time a
+        cite free
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take delimiter
+      like p
+        cite free
+      cite free
+
+    free seed
+      like option
+        like form
+          take t-1, like str
+          take t-2, like str
+        cite free
+
+  task matches, name <matches>
+    note <An iterator over the disjoint matches of a pattern within the given string slice.>
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like matches
+        time a
+        like p
+          cite free
+        cite free
+
+  task rmatches, name <rmatches>
+    note <An iterator over the disjoint matches of a pattern within this string slice, yielded in reverse order.>
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like r-matches
+        time a
+        like p
+          cite free
+        cite free
+
+  task match-indices, name <match_indices>
+    note <An iterator over the disjoint matches of a pattern within this string slice as well as the index that the match starts at.>
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like match-indices
+        time a
+        like p
+          cite free
+        cite free
+
+  task rmatch-indices, name <rmatch_indices>
+    note <An iterator over the disjoint matches of a pattern within self, yielded in reverse order along with the index of the match.>
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like r-match-indices
+        time a
+        like p
+          cite free
+        cite free
+
+  task trim, name <trim>
+    note <Returns a string slice with leading and trailing whitespace removed.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task trim-start, name <trim_start>
+    note <Returns a string slice with leading whitespace removed.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task trim-end, name <trim_end>
+    note <Returns a string slice with trailing whitespace removed.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task trim-left, name <trim_left>
+    note <Returns a string slice with leading whitespace removed.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task trim-right, name <trim_right>
+    note <Returns a string slice with trailing whitespace removed.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task trim-matches, name <trim_matches>
+    note <Returns a string slice with all prefixes and suffixes that match a pattern repeatedly removed.>
+
+    cast c-1
+      like p
+      like pattern
+        time a
+
+    lead p
+      like pattern
+        time a
+        cite free
+    lead c-1/searcher
+      like double-ended-searcher
+        time a
+        cite free
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like str
+        time a
+
+  task trim-start-matches, name <trim_start_matches>
+    note <Returns a string slice with all prefixes that match a pattern repeatedly removed.>
+
+    lead p
+      like pattern
+        time a
+        cite free
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like str
+        time a
+
+  task strip-prefix, name <strip_prefix>
+    note <Returns a string slice with the prefix removed.>
+
+    lead p
+      like pattern
+        time a
+        cite free
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take prefix
+      like p
+        cite free
+      cite free
+
+    free seed
+      like option
+        like str
+          time a
+        cite free
+
+  task strip-suffix, name <strip_suffix>
+    note <Returns a string slice with the suffix removed.>
+
+    cast c-1
+      like p
+      like pattern
+        time a
+
+    lead p
+      like pattern
+        time a
+        cite free
+    lead c-1/searcher
+      like reverse-searcher
+        time a
+        cite free
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take suffix
+      like p
+        cite free
+      cite free
+
+    free seed
+      like option
+        like str
+          time a
+        cite free
+
+  task trim-end-matches, name <trim_end_matches>
+    note <Returns a string slice with all suffixes that match a pattern repeatedly removed.>
+
+    cast c-1
+      like p
+      like pattern
+        time a
+
+    lead p
+      like pattern
+        time a
+        cite free
+    lead c-1/searcher
+      like reverse-searcher
+        time a
+        cite free
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like str
+        time a
+
+  task trim-left-matches, name <trim_left_matches>
+    note <Returns a string slice with all prefixes that match a pattern repeatedly removed.>
+
+    lead p
+      like pattern
+        time a
+        cite free
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like str
+        time a
+
+  task trim-right-matches, name <trim_right_matches>
+    note <Returns a string slice with all suffixes that match a pattern repeatedly removed.>
+
+    cast c-1
+      like p
+      like pattern
+        time a
+
+    lead p
+      like pattern
+        time a
+        cite free
+    lead c-1/searcher
+      like reverse-searcher
+        time a
+        cite free
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+    free seed
+      like str
+        time a
+
+  task parse, name <parse>
+    note <Parses this string slice into another type.>
+
+    cast c-1
+      like f
+      like from-str
+
+    lead f
+      like from-str
+        cite free
+
+    head f
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like f
+          cite free
+        like c-1/err
+        cite free
+
+  task is-ascii, name <is_ascii>
+    note <Checks if all characters in this string are within the ASCII range.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq-ignore-ascii-case, name <eq_ignore_ascii_case>
+    note <Checks that two strings are an ASCII case-insensitive match.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like bool
+        cite free
+
+  task make-ascii-uppercase, name <make_ascii_uppercase>
+    note <Converts this string to its ASCII upper case equivalent in-place.>
+
+    take self
+      cite free
+
+  task make-ascii-lowercase, name <make_ascii_lowercase>
+    note <Converts this string to its ASCII lower case equivalent in-place.>
+
+    take self
+      cite free
+
+  task escape-debug, name <escape_debug>
+    note <Return an iterator that escapes each char in self with char::escape_debug.>
+
+    take self
+      cite free
+
+    free seed
+      like escape-debug
+        time mask
+        cite free
+
+  task escape-default, name <escape_default>
+    note <Return an iterator that escapes each char in self with char::escape_default.>
+
+    take self
+      cite free
+
+    free seed
+      like escape-default
+        time mask
+        cite free
+
+  task escape-unicode, name <escape_unicode>
+    note <Return an iterator that escapes each char in self with char::escape_unicode.>
+
+    take self
+      cite free
+
+    free seed
+      like escape-unicode
+        time mask
+        cite free
+
+  task into-boxed-bytes, name <into_boxed_bytes>
+    note <Converts a Box&lt;str&gt; into a Box&lt;[u8]&gt; without copying or allocating.>
+
+    take self
+      like box
+        like str
+          cite free
+        like global
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like box
+        list u8
+        like global
+          cite free
+        cite free
+
+  task replace, name <replace>
+    note <Replaces all matches of a pattern with another string.>
+
+    lead p
+      like pattern
+        time a
+        cite free
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take from
+      like p
+        cite free
+      cite free
+    take to
+      like str
+
+    free seed
+      like string
+        cite free
+
+  task replacen, name <replacen>
+    note <Replaces first N matches of a pattern with another string.>
+
+    lead p
+      like pattern
+        time a
+        cite free
+
+    time a
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+    take to
+      like str
+    take count
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task to-lowercase, name <to_lowercase>
+    note <Returns the lowercase equivalent of this string slice, as a new String.>
+
+    take self
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task to-uppercase, name <to_uppercase>
+    note <Returns the uppercase equivalent of this string slice, as a new String.>
+
+    take self
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task into-string, name <into_string>
+    note <Converts a Box&lt;str&gt; into a String without copying or allocating.>
+
+    take self
+      like box
+        like str
+          cite free
+        like global
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task repeat, name <repeat>
+    note <Creates a new String by repeating a string n times.>
+
+    take self
+      cite free
+    take n
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task to-ascii-uppercase, name <to_ascii_uppercase>
+    note <Returns a copy of this string where each character is mapped to its ASCII upper case equivalent.>
+
+    take self
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task to-ascii-lowercase, name <to_ascii_lowercase>
+    note <Returns a copy of this string where each character is mapped to its ASCII lower case equivalent.>
+
+    take self
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task add, name <add>
+    note <Performs the + operation.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like string
+        cite free
+
+  task add, name <add>
+    note <Performs the + operation.>
+
+    cast c-1
+      like cow
+        time a
+        like str
+          cite free
+      like add
+        like str
+          time a
+
+    take self
+      cite free
+    take rhs
+      like str
+        time a
+
+    free seed
+      like c-1/output
+
+  task add-assign, name <add_assign>
+    note <Performs the += operation.>
+
+    take self
+      cite free
+    take other
+      like str
+
+  task add-assign, name <add_assign>
+    note <Performs the += operation.>
+
+    take self
+      cite free
+    take rhs
+      like str
+        time a
+
+  task as-mut, name <as_mut>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task as-mut, name <as_mut>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list u8
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      like os-str
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      like path
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task is-ascii, name <is_ascii>
+    note <Checks if the value is within the ASCII range.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task to-ascii-uppercase, name <to_ascii_uppercase>
+    note <Makes a copy of the value in its ASCII upper case equivalent.>
+
+    take self
+      cite free
+
+    free seed
+      like self/owned
+
+  task to-ascii-lowercase, name <to_ascii_lowercase>
+    note <Makes a copy of the value in its ASCII lower case equivalent.>
+
+    take self
+      cite free
+
+    free seed
+      like self/owned
+
+  task eq-ignore-ascii-case, name <eq_ignore_ascii_case>
+    note <Checks that two values are an ASCII case-insensitive match.>
+
+    take self
+      cite free
+    take o
+      like self
+
+    free seed
+      like bool
+        cite free
+
+  task make-ascii-uppercase, name <make_ascii_uppercase>
+    note <Converts this type to its ASCII upper case equivalent in-place.>
+
+    take self
+      cite free
+
+  task make-ascii-lowercase, name <make_ascii_lowercase>
+    note <Converts this type to its ASCII lower case equivalent in-place.>
+
+    take self
+      cite free
+
+  task borrow, name <borrow>
+    note <Immutably borrows from an owned value.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task borrow-mut, name <borrow_mut>
+    note <Mutably borrows from an owned value.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task concat, name <concat>
+    note <Implementation of [T]::concat>
+
+    take slice
+      list s
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Creates an empty str>
+
+    free seed
+      like str
+        time 
+
+  task default, name <default>
+    note <Creates an empty mutable str>
+
+    free seed
+      like str
+        time 
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like str
+              time a
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take s
+      like str
+        time a
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task from, name <from>
+    note <Converts a &mut str into a String.>
+
+    take s
+      like str
+      lock free
+
+    free seed
+      like string
+        cite free
+
+  task from, name <from>
+    note <Converts a &str into a Box&lt;str&gt;>
+
+    take s
+      like str
+
+    free seed
+      like box
+        like str
+          cite free
+        like global
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Allocate a Vec&lt;u8&gt; and fill it with a UTF-8 string.>
+
+    take s
+      like str
+
+    free seed
+      like vec
+        like u8
+          cite free
+        like global
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a &str into a String.>
+
+    take s
+      like str
+
+    free seed
+      like string
+        cite free
+
+  task from, name <from>
+    note <Allocate a reference-counted string slice and copy v into it.>
+
+    take v
+      like str
+
+    free seed
+      like rc
+        like str
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Allocate a reference-counted str and copy v into it.>
+
+    take v
+      like str
+
+    free seed
+      like arc
+        like str
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a str into a box of dyn Error + Send + Sync.>
+
+    take err
+      like str
+
+    free seed
+      like box
+        like error
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a str into a box of dyn Error.>
+
+    take err
+      like str
+
+    free seed
+      like box
+        like error
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a string slice into a Borrowed variant. No heap allocation is performed, and the string is not copied.>
+
+    take s
+      like str
+        time a
+
+    free seed
+      like cow
+        time a
+        like str
+          cite free
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like str
+              time a
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like str
+              time b
+        cite free
+
+    head i
+
+    take it
+      like i
+        cite free
+      cite free
+
+    free seed
+      like cow
+        time a
+        like str
+          cite free
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task index, name <index>
+    note <Performs the indexing (container[index]) operation.>
+
+    cast c-1
+      like i
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take index
+      like i
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task index-mut, name <index_mut>
+    note <Performs the mutable indexing (container[index]) operation.>
+
+    cast c-1
+      like i
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take index
+      like i
+        cite free
+      cite free
+
+    free seed
+      like c-1/output
+
+  task join, name <join>
+    note <Implementation of [T]::join>
+
+    take slice
+      list s
+      cite free
+    take sep
+      like str
+
+    free seed
+      like string
+        cite free
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like str
+        time b
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like str
+        time b
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like cow
+        time a
+        like str
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like cow
+        time a
+        like str
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like cow
+        time a
+        like str
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like cow
+        time a
+        like str
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like os-str
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like os-string
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like string
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like string
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like string
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like string
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task is-prefix-of, name <is_prefix_of>
+    note <Checks whether the pattern matches at the front of the haystack.>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task strip-prefix-of, name <strip_prefix_of>
+    note <Removes the pattern from the front of haystack, if it matches.>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like option
+        like str
+          time a
+        cite free
+
+  task is-suffix-of, name <is_suffix_of>
+    note <Checks whether the pattern matches at the back of the haystack.>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task strip-suffix-of, name <strip_suffix_of>
+    note <Removes the pattern from the back of haystack, if it matches.>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like option
+        like str
+          time a
+        cite free
+
+  task into-searcher, name <into_searcher>
+    note <Constructs the associated searcher from self and the haystack to search in.>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like str-searcher
+        time a
+        time b
+        cite free
+
+  task is-contained-in, name <is_contained_in>
+    note <Checks whether the pattern matches anywhere in the haystack>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task get, name <get>
+    note <Returns a shared reference to the output at this location, if in bounds.>
+
+    cast c-1
+      like range
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the output at this location, if in bounds.>
+
+    cast c-1
+      like range
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+      lock free
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-unchecked, name <get_unchecked>
+    note <Returns a shared reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    cast c-1
+      like range
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+        cite free
+      calm take
+      cite free
+      dive take
+
+    free seed
+      like c-1/output
+      calm take
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a mutable reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    cast c-1
+      like range
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+        cite free
+      cite free
+      lock free
+      dive take
+
+    free seed
+      like c-1/output
+
+  task index, name <index>
+    note <Returns a shared reference to the output at this location, panicking if out of bounds.>
+
+    cast c-1
+      like range
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+
+    free seed
+      like c-1/output
+
+  task index-mut, name <index_mut>
+    note <Returns a mutable reference to the output at this location, panicking if out of bounds.>
+
+    cast c-1
+      like range
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+      lock free
+
+    free seed
+      like c-1/output
+
+  task get, name <get>
+    note <Returns a shared reference to the output at this location, if in bounds.>
+
+    cast c-1
+      like range-to
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the output at this location, if in bounds.>
+
+    cast c-1
+      like range-to
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+      lock free
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-unchecked, name <get_unchecked>
+    note <Returns a shared reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    cast c-1
+      like range-to
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+        cite free
+      calm take
+      cite free
+      dive take
+
+    free seed
+      like c-1/output
+      calm take
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a mutable reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    cast c-1
+      like range-to
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+        cite free
+      cite free
+      lock free
+      dive take
+
+    free seed
+      like c-1/output
+
+  task index, name <index>
+    note <Returns a shared reference to the output at this location, panicking if out of bounds.>
+
+    cast c-1
+      like range-to
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+
+    free seed
+      like c-1/output
+
+  task index-mut, name <index_mut>
+    note <Returns a mutable reference to the output at this location, panicking if out of bounds.>
+
+    cast c-1
+      like range-to
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+      lock free
+
+    free seed
+      like c-1/output
+
+  task get, name <get>
+    note <Returns a shared reference to the output at this location, if in bounds.>
+
+    cast c-1
+      like range-full
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the output at this location, if in bounds.>
+
+    cast c-1
+      like range-full
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+      lock free
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-unchecked, name <get_unchecked>
+    note <Returns a shared reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    cast c-1
+      like range-full
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+        cite free
+      calm take
+      cite free
+      dive take
+
+    free seed
+      like c-1/output
+      calm take
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a mutable reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    cast c-1
+      like range-full
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+        cite free
+      cite free
+      lock free
+      dive take
+
+    free seed
+      like c-1/output
+
+  task index, name <index>
+    note <Returns a shared reference to the output at this location, panicking if out of bounds.>
+
+    cast c-1
+      like range-full
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+
+    free seed
+      like c-1/output
+
+  task index-mut, name <index_mut>
+    note <Returns a mutable reference to the output at this location, panicking if out of bounds.>
+
+    cast c-1
+      like range-full
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+      lock free
+
+    free seed
+      like c-1/output
+
+  task get, name <get>
+    note <Returns a shared reference to the output at this location, if in bounds.>
+
+    cast c-1
+      like range-from
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the output at this location, if in bounds.>
+
+    cast c-1
+      like range-from
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+      lock free
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-unchecked, name <get_unchecked>
+    note <Returns a shared reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    cast c-1
+      like range-from
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+        cite free
+      calm take
+      cite free
+      dive take
+
+    free seed
+      like c-1/output
+      calm take
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a mutable reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    cast c-1
+      like range-from
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+        cite free
+      cite free
+      lock free
+      dive take
+
+    free seed
+      like c-1/output
+
+  task index, name <index>
+    note <Returns a shared reference to the output at this location, panicking if out of bounds.>
+
+    cast c-1
+      like range-from
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+
+    free seed
+      like c-1/output
+
+  task index-mut, name <index_mut>
+    note <Returns a mutable reference to the output at this location, panicking if out of bounds.>
+
+    cast c-1
+      like range-from
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+      lock free
+
+    free seed
+      like c-1/output
+
+  task get, name <get>
+    note <Returns a shared reference to the output at this location, if in bounds.>
+
+    cast c-1
+      like range-to-inclusive
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the output at this location, if in bounds.>
+
+    cast c-1
+      like range-to-inclusive
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+      lock free
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-unchecked, name <get_unchecked>
+    note <Returns a shared reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    cast c-1
+      like range-to-inclusive
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+        cite free
+      calm take
+      cite free
+      dive take
+
+    free seed
+      like c-1/output
+      calm take
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a mutable reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    cast c-1
+      like range-to-inclusive
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+        cite free
+      cite free
+      lock free
+      dive take
+
+    free seed
+      like c-1/output
+
+  task index, name <index>
+    note <Returns a shared reference to the output at this location, panicking if out of bounds.>
+
+    cast c-1
+      like range-to-inclusive
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+
+    free seed
+      like c-1/output
+
+  task index-mut, name <index_mut>
+    note <Returns a mutable reference to the output at this location, panicking if out of bounds.>
+
+    cast c-1
+      like range-to-inclusive
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+      lock free
+
+    free seed
+      like c-1/output
+
+  task get, name <get>
+    note <Returns a shared reference to the output at this location, if in bounds.>
+
+    cast c-1
+      like range-inclusive
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Returns a mutable reference to the output at this location, if in bounds.>
+
+    cast c-1
+      like range-inclusive
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+      lock free
+
+    free seed
+      like option
+        like c-1/output
+        cite free
+
+  task get-unchecked, name <get_unchecked>
+    note <Returns a shared reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    cast c-1
+      like range-inclusive
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+        cite free
+      calm take
+      cite free
+      dive take
+
+    free seed
+      like c-1/output
+      calm take
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Returns a mutable reference to the output at this location, without performing any bounds checking. Calling this method with an out-of-bounds index or a dangling slice pointer is undefined behavior even if the resulting reference is not used.>
+
+    cast c-1
+      like range-inclusive
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+        cite free
+      cite free
+      lock free
+      dive take
+
+    free seed
+      like c-1/output
+
+  task index, name <index>
+    note <Returns a shared reference to the output at this location, panicking if out of bounds.>
+
+    cast c-1
+      like range-inclusive
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+
+    free seed
+      like c-1/output
+
+  task index-mut, name <index_mut>
+    note <Returns a mutable reference to the output at this location, panicking if out of bounds.>
+
+    cast c-1
+      like range-inclusive
+        like usize
+          cite free
+      like slice-index
+        like str
+          cite free
+
+    take self
+      cite free
+    take slice
+      like str
+      lock free
+
+    free seed
+      like c-1/output
+
+  task to-owned, name <to_owned>
+    note <Creates owned data from borrowed data, usually by cloning.>
+
+    take self
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task clone-into, name <clone_into>
+    note <Uses borrowed data to replace owned data, usually by cloning.>
+
+    take self
+      cite free
+    take target
+      like string
+      lock free
+
+  task to-socket-addrs, name <to_socket_addrs>
+    note <Converts this object to an iterator of resolved SocketAddrs.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like into-iter
+          like socket-addr
+            cite free
+          cite free
+        cite free
+
+  task to-string, name <to_string>
+    note <Converts the given value to a String.>
+
+    take self
+      cite free
+
+    free seed
+      like string
+        cite free

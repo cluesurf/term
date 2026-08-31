@@ -1,0 +1,13 @@
+
+load @term/bind/code/node/buffer
+  find buffer-encoding
+
+load @term/bind/code/node/child-process
+  find exec-file-options
+
+form exec-file-options-with-string-encoding, name <ExecFileOptionsWithStringEncoding>
+  base exec-file-options
+
+  link encoding, name <encoding>
+    like buffer-encoding
+    flex true

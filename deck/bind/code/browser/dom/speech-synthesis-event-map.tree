@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form speech-synthesis-event-map, name <SpeechSynthesisEventMap>
+  link voiceschanged, name <voiceschanged>
+    like event
+    lock false

@@ -1,0 +1,24 @@
+
+load @term/bind/code/browser/dom/media-image
+  find media-image
+
+load @term/bind/code/javascript/es5/readonly-array
+  find readonly-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form media-metadata, name <MediaMetadata>
+  link album, name <album>
+    like native-string
+    lock false
+  link artist, name <artist>
+    like native-string
+    lock false
+  link artwork, name <artwork>
+    like readonly-array
+      like media-image
+    lock false
+  link title, name <title>
+    like native-string
+    lock false

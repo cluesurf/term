@@ -1,0 +1,29 @@
+
+load @term/bind/code/browser/dom/speech-synthesis-error-event
+  find speech-synthesis-error-event
+
+load @term/bind/code/browser/dom/speech-synthesis-event
+  find speech-synthesis-event
+
+form speech-synthesis-utterance-event-map, name <SpeechSynthesisUtteranceEventMap>
+  link boundary, name <boundary>
+    like speech-synthesis-event
+    lock false
+  link end, name <end>
+    like speech-synthesis-event
+    lock false
+  link error, name <error>
+    like speech-synthesis-error-event
+    lock false
+  link mark, name <mark>
+    like speech-synthesis-event
+    lock false
+  link pause, name <pause>
+    like speech-synthesis-event
+    lock false
+  link resume, name <resume>
+    like speech-synthesis-event
+    lock false
+  link start, name <start>
+    like speech-synthesis-event
+    lock false

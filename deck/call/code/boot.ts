@@ -38,6 +38,7 @@ import {
 import { toConstant } from '@term/make/code/compile/typescript'
 import { parse } from '@term/make/code/parser/tree'
 import type { GroupNode } from '@term/make/code/parser/tree'
+import { manifestValueOf } from '@term/call/code/manifest-name'
 import {
   logStep,
   logGood,
@@ -649,8 +650,7 @@ export async function callBoot(input: {
       const deckFile = path.join(appDir ?? projectRoot, 'deck.tree')
 
       if (existsSync(deckFile)) {
-        const m = /^deck\s+(\S+)/m.exec(readFileSync(deckFile, 'utf8'))
-        const tail = m?.[1]?.split('/').pop()
+        const tail = manifestValueOf(deckFile, 'deck')?.split('/').pop()
 
         if (tail) {
           return tail.replace(/\.tree$/, '')

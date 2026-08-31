@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/media-track-constraint-set
+  find media-track-constraint-set
+
+load @term/bind/code/javascript/native
+  find native-array
+
+form media-track-constraints, name <MediaTrackConstraints>
+  base media-track-constraint-set
+
+  link advanced, name <advanced>
+    like native-array
+      like media-track-constraint-set
+    lock false

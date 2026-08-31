@@ -1,0 +1,43 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-number
+  find native-string
+  find native-undefined
+  find runtime-call-frame
+
+load @term/bind
+  find or
+
+load @term/bind/code/node/inspector/profiler
+  find position-tick-info
+
+form profile-node, name <ProfileNode>
+  link id, name <id>
+    like native-number
+    flex true
+  link call-frame, name <callFrame>
+    like runtime-call-frame
+    flex true
+  link hit-count, name <hitCount>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link children, name <children>
+    like or
+      like array
+        like native-number
+      like native-undefined
+    flex true
+  link deopt-reason, name <deoptReason>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link position-ticks, name <positionTicks>
+    like or
+      like array
+        like position-tick-info
+      like native-undefined
+    flex true

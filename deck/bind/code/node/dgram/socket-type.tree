@@ -1,0 +1,8 @@
+
+load @term/bind
+  find or
+
+form socket-type, name <SocketType>
+  like or
+    text <udp4>
+    text <udp6>

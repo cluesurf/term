@@ -1,0 +1,29 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-undefined
+
+load @term/bind/code/node/events/event-emitter
+  find abortable
+
+form finished-options, name <FinishedOptions>
+  base abortable
+
+  link error, name <error>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link readable, name <readable>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link writable, name <writable>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

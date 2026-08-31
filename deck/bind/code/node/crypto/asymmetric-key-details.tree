@@ -1,0 +1,46 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-bigint
+  find native-number
+  find native-string
+  find native-undefined
+
+form asymmetric-key-details, name <AsymmetricKeyDetails>
+  link modulus-length, name <modulusLength>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link public-exponent, name <publicExponent>
+    like or
+      like native-bigint
+      like native-undefined
+    flex true
+  link hash-algorithm, name <hashAlgorithm>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link mgf1-hash-algorithm, name <mgf1HashAlgorithm>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link salt-length, name <saltLength>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link divisor-length, name <divisorLength>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link named-curve, name <namedCurve>
+    like or
+      like native-string
+      like native-undefined
+    flex true

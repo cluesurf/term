@@ -1,0 +1,13 @@
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+form mime-type, name <MimeType>
+  link description, name <description>
+    like native-undefined
+  link enabled-plugin, name <enabledPlugin>
+    like native-undefined
+  link suffixes, name <suffixes>
+    like native-undefined
+  link type, name <type>
+    like native-undefined

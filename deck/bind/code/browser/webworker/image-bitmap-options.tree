@@ -1,0 +1,38 @@
+
+load @term/bind/code/browser/dom/image-bitmap-options
+  find image-bitmap-options
+
+load @term/bind/code/browser/webworker/color-space-conversion
+  find color-space-conversion
+
+load @term/bind/code/browser/webworker/image-orientation
+  find image-orientation
+
+load @term/bind/code/browser/webworker/premultiply-alpha
+  find premultiply-alpha
+
+load @term/bind/code/browser/webworker/resize-quality
+  find resize-quality
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form image-bitmap-options, name <ImageBitmapOptions>
+  link color-space-conversion, name <colorSpaceConversion>
+    like color-space-conversion
+    lock false
+  link image-orientation, name <imageOrientation>
+    like image-orientation
+    lock false
+  link premultiply-alpha, name <premultiplyAlpha>
+    like premultiply-alpha
+    lock false
+  link resize-height, name <resizeHeight>
+    like native-number
+    lock false
+  link resize-quality, name <resizeQuality>
+    like resize-quality
+    lock false
+  link resize-width, name <resizeWidth>
+    like native-number
+    lock false

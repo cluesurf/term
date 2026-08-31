@@ -1,0 +1,12 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+
+form exception-revoked-event-data-type, name <ExceptionRevokedEventDataType>
+  link reason, name <reason>
+    like native-string
+    flex true
+  link exception-id, name <exceptionId>
+    like native-number
+    flex true

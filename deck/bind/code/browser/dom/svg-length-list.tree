@@ -1,0 +1,47 @@
+
+load @term/bind/code/browser/dom/svg-length
+  find svg-length
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form svg-length-list, name <SVGLengthList>
+  link length, name <length>
+    like native-number
+  link number-of-items, name <numberOfItems>
+    like native-number
+
+  task append-item, name <appendItem>
+    take new-item, like svg-length
+    like svg-length
+
+  task clear, name <clear>
+    like native-void
+
+  task get-item, name <getItem>
+    take index, like native-number
+    like svg-length
+
+  task initialize, name <initialize>
+    take new-item, like svg-length
+    like svg-length
+
+  task insert-item-before, name <insertItemBefore>
+    take new-item, like svg-length
+    take index, like native-number
+    like svg-length
+
+  task remove-item, name <removeItem>
+    take index, like native-number
+    like svg-length
+
+  task replace-item, name <replaceItem>
+    take new-item, like svg-length
+    take index, like native-number
+    like svg-length
+
+  mesh index, like native-number
+    like svg-length

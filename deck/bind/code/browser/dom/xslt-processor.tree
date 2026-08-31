@@ -1,0 +1,66 @@
+
+load @term/bind/code/browser/dom/document
+  find document
+
+load @term/bind/code/browser/dom/document-fragment
+  find document-fragment
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form xslt-processor, name <XSLTProcessor>
+  task clear-parameters, name <clearParameters>
+    like native-void
+
+  task get-parameter, name <getParameter>
+    take namespace-uri
+      like or
+        like native-string
+        like native-null
+    take local-name, like native-string
+    like native-any
+
+  task import-stylesheet, name <importStylesheet>
+    take style, like node
+    like native-void
+
+  task remove-parameter, name <removeParameter>
+    take namespace-uri
+      like or
+        like native-string
+        like native-null
+    take local-name, like native-string
+    like native-void
+
+  task reset, name <reset>
+    like native-void
+
+  task set-parameter, name <setParameter>
+    take namespace-uri
+      like or
+        like native-string
+        like native-null
+    take local-name, like native-string
+    take value, like native-any
+    like native-void
+
+  task transform-to-document, name <transformToDocument>
+    take source, like node
+    like document
+
+  task transform-to-fragment, name <transformToFragment>
+    take source, like node
+    take output, like document
+    like document-fragment

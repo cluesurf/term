@@ -1,0 +1,150 @@
+
+load @term/bind
+  find any
+  find form
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find duplex
+  find error
+  find native-boolean
+  find native-null
+  find native-number
+  find native-undefined
+  find native-void
+
+load @term/bind/code/node/buffer
+  find buffer-encoding
+
+load @term/bind/code/node/globals
+  find array
+
+load @term/bind/code/node/stream/internal
+  find readable-options
+  find writable-options
+
+form duplex-options, name <DuplexOptions>
+  base readable-options
+  base writable-options
+
+  link allow-half-open, name <allowHalfOpen>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link readable-object-mode, name <readableObjectMode>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link writable-object-mode, name <writableObjectMode>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link readable-high-water-mark, name <readableHighWaterMark>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link writable-high-water-mark, name <writableHighWaterMark>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link writable-corked, name <writableCorked>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+
+  task construct, name <construct>
+    like native-void
+
+    take this, like duplex
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+          void true
+
+  task read, name <read>
+    like native-void
+
+    take this, like duplex
+    take size, like native-number
+
+  task write, name <write>
+    like native-void
+
+    take this, like duplex
+    take chunk, like any
+    take encoding, like buffer-encoding
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+          void true
+
+  task writev, name <writev>
+    like native-void
+
+    take this, like duplex
+    take chunks
+      like array
+        like form
+          link chunk, name <chunk>
+            like any
+            flex true
+          link encoding, name <encoding>
+            like buffer-encoding
+            flex true
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+          void true
+
+  task final, name <final>
+    like native-void
+
+    take this, like duplex
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+          void true
+
+  task destroy, name <destroy>
+    like native-void
+
+    take this, like duplex
+    take error
+      like or
+        like error
+        like native-null
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null

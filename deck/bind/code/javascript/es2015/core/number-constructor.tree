@@ -1,0 +1,49 @@
+
+load @term/bind/code/javascript/es5/number-constructor
+  find number-constructor
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-unknown
+
+form number-constructor, name <NumberConstructor>
+  link epsilon, name <EPSILON>
+    like native-number
+  link max-safe-integer, name <MAX_SAFE_INTEGER>
+    like native-number
+  link min-safe-integer, name <MIN_SAFE_INTEGER>
+    like native-number
+
+  task is-finite, name <isFinite>
+    take number, like native-unknown
+    like native-boolean
+
+  task is-integer, name <isInteger>
+    take number, like native-unknown
+    like native-boolean
+
+  task is-na-n, name <isNaN>
+    take number, like native-unknown
+    like native-boolean
+
+  task is-safe-integer, name <isSafeInteger>
+    take number, like native-unknown
+    like native-boolean
+
+  task parse-float, name <parseFloat>
+    take string, like native-string
+    like native-number
+
+  task parse-int, name <parseInt>
+    take string, like native-string
+    take radix, like maybe
+      like native-number
+    like native-number

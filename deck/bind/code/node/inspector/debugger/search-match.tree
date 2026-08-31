@@ -1,0 +1,12 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+
+form search-match, name <SearchMatch>
+  link line-number, name <lineNumber>
+    like native-number
+    flex true
+  link line-content, name <lineContent>
+    like native-string
+    flex true

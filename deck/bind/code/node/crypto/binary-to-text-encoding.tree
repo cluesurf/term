@@ -1,0 +1,10 @@
+
+load @term/bind
+  find or
+
+form binary-to-text-encoding, name <BinaryToTextEncoding>
+  like or
+    text <base64>
+    text <base64url>
+    text <hex>
+    text <binary>

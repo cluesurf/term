@@ -1,0 +1,11 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form constrain-boolean-parameters, name <ConstrainBooleanParameters>
+  link exact, name <exact>
+    like native-boolean
+    lock false
+  link ideal, name <ideal>
+    like native-boolean
+    lock false

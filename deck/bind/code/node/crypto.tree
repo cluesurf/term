@@ -1,0 +1,2158 @@
+
+bear @term/bind/code/javascript/node/crypto/certificate
+bear @term/bind/code/javascript/node/crypto/constants
+bear @term/bind/code/javascript/node/crypto/hash-options
+bear @term/bind/code/javascript/node/crypto/binary-to-text-encoding
+bear @term/bind/code/javascript/node/crypto/character-encoding
+bear @term/bind/code/javascript/node/crypto/legacy-character-encoding
+bear @term/bind/code/javascript/node/crypto/encoding
+bear @term/bind/code/javascript/node/crypto/ecdh-key-format
+bear @term/bind/code/javascript/node/crypto/hash
+bear @term/bind/code/javascript/node/crypto/hmac
+bear @term/bind/code/javascript/node/crypto/key-object-type
+bear @term/bind/code/javascript/node/crypto/key-export-options
+bear @term/bind/code/javascript/node/crypto/jwk-key-export-options
+bear @term/bind/code/javascript/node/crypto/json-web-key
+bear @term/bind/code/javascript/node/crypto/asymmetric-key-details
+bear @term/bind/code/javascript/node/crypto/key-object
+bear @term/bind/code/javascript/node/crypto/cipher-ccm-types
+bear @term/bind/code/javascript/node/crypto/cipher-gcm-types
+bear @term/bind/code/javascript/node/crypto/binary-like
+bear @term/bind/code/javascript/node/crypto/cipher-key
+bear @term/bind/code/javascript/node/crypto/cipher-ccm-options
+bear @term/bind/code/javascript/node/crypto/cipher-gcm-options
+bear @term/bind/code/javascript/node/crypto/cipher
+bear @term/bind/code/javascript/node/crypto/cipher-ccm
+bear @term/bind/code/javascript/node/crypto/cipher-gcm
+bear @term/bind/code/javascript/node/crypto/decipher
+bear @term/bind/code/javascript/node/crypto/decipher-ccm
+bear @term/bind/code/javascript/node/crypto/decipher-gcm
+bear @term/bind/code/javascript/node/crypto/private-key-input
+bear @term/bind/code/javascript/node/crypto/public-key-input
+bear @term/bind/code/javascript/node/crypto/json-web-key-input
+bear @term/bind/code/javascript/node/crypto/dsa-encoding
+bear @term/bind/code/javascript/node/crypto/signing-options
+bear @term/bind/code/javascript/node/crypto/sign-private-key-input
+bear @term/bind/code/javascript/node/crypto/sign-key-object-input
+bear @term/bind/code/javascript/node/crypto/verify-public-key-input
+bear @term/bind/code/javascript/node/crypto/verify-key-object-input
+bear @term/bind/code/javascript/node/crypto/key-like
+bear @term/bind/code/javascript/node/crypto/sign
+bear @term/bind/code/javascript/node/crypto/verify
+bear @term/bind/code/javascript/node/crypto/diffie-hellman
+bear @term/bind/code/javascript/node/crypto/scrypt-options
+bear @term/bind/code/javascript/node/crypto/rsa-public-key
+bear @term/bind/code/javascript/node/crypto/rsa-private-key
+bear @term/bind/code/javascript/node/crypto/ecdh
+bear @term/bind/code/javascript/node/crypto/key-type
+bear @term/bind/code/javascript/node/crypto/key-format
+bear @term/bind/code/javascript/node/crypto/base-private-key-encoding-options
+bear @term/bind/code/javascript/node/crypto/key-pair-key-object-result
+bear @term/bind/code/javascript/node/crypto/ed25519-key-pair-key-object-options
+bear @term/bind/code/javascript/node/crypto/ed448-key-pair-key-object-options
+bear @term/bind/code/javascript/node/crypto/x25519-key-pair-key-object-options
+bear @term/bind/code/javascript/node/crypto/x448-key-pair-key-object-options
+bear @term/bind/code/javascript/node/crypto/ec-key-pair-key-object-options
+bear @term/bind/code/javascript/node/crypto/rsa-key-pair-key-object-options
+bear @term/bind/code/javascript/node/crypto/rsapss-key-pair-key-object-options
+bear @term/bind/code/javascript/node/crypto/dsa-key-pair-key-object-options
+bear @term/bind/code/javascript/node/crypto/rsa-key-pair-options
+bear @term/bind/code/javascript/node/crypto/rsapss-key-pair-options
+bear @term/bind/code/javascript/node/crypto/dsa-key-pair-options
+bear @term/bind/code/javascript/node/crypto/ec-key-pair-options
+bear @term/bind/code/javascript/node/crypto/ed25519-key-pair-options
+bear @term/bind/code/javascript/node/crypto/ed448-key-pair-options
+bear @term/bind/code/javascript/node/crypto/x25519-key-pair-options
+bear @term/bind/code/javascript/node/crypto/x448-key-pair-options
+bear @term/bind/code/javascript/node/crypto/key-pair-sync-result
+bear @term/bind/code/javascript/node/crypto/generate-key-pair
+bear @term/bind/code/javascript/node/crypto/cipher-mode
+bear @term/bind/code/javascript/node/crypto/cipher-info-options
+bear @term/bind/code/javascript/node/crypto/cipher-info
+bear @term/bind/code/javascript/node/crypto/secure-heap-usage
+bear @term/bind/code/javascript/node/crypto/random-uuid-options
+bear @term/bind/code/javascript/node/crypto/x509-check-options
+bear @term/bind/code/javascript/node/crypto/x509-certificate
+bear @term/bind/code/javascript/node/crypto/large-number-like
+bear @term/bind/code/javascript/node/crypto/generate-prime-options
+bear @term/bind/code/javascript/node/crypto/generate-prime-options-big-int
+bear @term/bind/code/javascript/node/crypto/generate-prime-options-array-buffer
+bear @term/bind/code/javascript/node/crypto/check-prime-options
+bear @term/bind/code/javascript/node/crypto/webcrypto
+
+load @term/bind/code/javascript
+  find array
+  find array-buffer
+  find cipher
+  find decipher
+  find diffie-hellman
+  find ecdh
+  find error
+  find hash
+  find hmac
+  find key-object
+  find native-bigint
+  find native-boolean
+  find native-null
+  find native-number
+  find native-string
+  find native-undefined
+  find native-void
+  find node-js-array-buffer-view
+  find sign
+  find stream-transform-options
+  find stream-writable-options
+  find verify
+
+load @term/bind
+  find and
+  find form
+  find like
+  find or
+  find task
+
+load @term/bind/code/node/buffer
+  find buffer
+  find buffer-encoding
+
+load @term/bind/code/node/crypto
+  find binary-like
+  find binary-to-text-encoding
+  find certificate
+  find check-prime-options
+  find cipher-ccm
+  find cipher-ccm-options
+  find cipher-ccm-types
+  find cipher-gcm
+  find cipher-gcm-options
+  find cipher-gcm-types
+  find cipher-info
+  find cipher-info-options
+  find cipher-key
+  find decipher-ccm
+  find decipher-gcm
+  find dsa-key-pair-key-object-options
+  find dsa-key-pair-options
+  find ec-key-pair-key-object-options
+  find ec-key-pair-options
+  find ed25519-key-pair-key-object-options
+  find ed25519-key-pair-options
+  find ed448-key-pair-key-object-options
+  find ed448-key-pair-options
+  find generate-prime-options
+  find generate-prime-options-array-buffer
+  find generate-prime-options-big-int
+  find hash-options
+  find json-web-key-input
+  find key-like
+  find key-pair-key-object-result
+  find key-pair-sync-result
+  find large-number-like
+  find private-key-input
+  find public-key-input
+  find random-uuid-options
+  find rsa-key-pair-key-object-options
+  find rsa-key-pair-options
+  find rsa-private-key
+  find rsa-public-key
+  find rsapss-key-pair-key-object-options
+  find rsapss-key-pair-options
+  find scrypt-options
+  find secure-heap-usage
+  find sign-key-object-input
+  find sign-private-key-input
+  find verify-key-object-input
+  find verify-public-key-input
+  find x25519-key-pair-key-object-options
+  find x25519-key-pair-options
+  find x448-key-pair-key-object-options
+  find x448-key-pair-options
+
+host certificate, name <Certificate>
+  like and
+    like certificate
+    like form
+      hook make
+        like certificate
+
+      task export-challenge, name <exportChallenge>
+        like buffer
+
+        take spkac, like binary-like
+
+      task export-public-key, name <exportPublicKey>
+        like buffer
+
+        take spkac, like binary-like
+        take encoding, like native-string
+          void true
+
+      task verify-spkac, name <verifySpkac>
+        like native-boolean
+
+        take spkac, like node-js-array-buffer-view
+
+host fips, name <fips>
+  like native-boolean
+
+host default-encoding, name <DEFAULT_ENCODING>
+  like buffer-encoding
+
+task create-hash, name <createHash>
+  like hash
+
+  take algorithm, like native-string
+  take options, like hash-options
+    void true
+
+task create-hmac, name <createHmac>
+  like hmac
+
+  take algorithm, like native-string
+  take key
+    like or
+      like binary-like
+      like key-object
+  take options, like stream-transform-options
+    void true
+
+task create-cipher, name <createCipher>
+  like cipher-ccm
+
+  take algorithm, like cipher-ccm-types
+  take password, like binary-like
+  take options, like cipher-ccm-options
+
+task create-cipher, name <createCipher>
+  like cipher-gcm
+
+  take algorithm, like cipher-gcm-types
+  take password, like binary-like
+  take options, like cipher-gcm-options
+    void true
+
+task create-cipher, name <createCipher>
+  like cipher
+
+  take algorithm, like native-string
+  take password, like binary-like
+  take options, like stream-transform-options
+    void true
+
+task create-cipheriv, name <createCipheriv>
+  like cipher-ccm
+
+  take algorithm, like cipher-ccm-types
+  take key, like cipher-key
+  take iv
+    like or
+      like binary-like
+      like native-null
+  take options, like cipher-ccm-options
+
+task create-cipheriv, name <createCipheriv>
+  like cipher-gcm
+
+  take algorithm, like cipher-gcm-types
+  take key, like cipher-key
+  take iv
+    like or
+      like binary-like
+      like native-null
+  take options, like cipher-gcm-options
+    void true
+
+task create-cipheriv, name <createCipheriv>
+  like cipher
+
+  take algorithm, like native-string
+  take key, like cipher-key
+  take iv
+    like or
+      like binary-like
+      like native-null
+  take options, like stream-transform-options
+    void true
+
+task create-decipher, name <createDecipher>
+  like decipher-ccm
+
+  take algorithm, like cipher-ccm-types
+  take password, like binary-like
+  take options, like cipher-ccm-options
+
+task create-decipher, name <createDecipher>
+  like decipher-gcm
+
+  take algorithm, like cipher-gcm-types
+  take password, like binary-like
+  take options, like cipher-gcm-options
+    void true
+
+task create-decipher, name <createDecipher>
+  like decipher
+
+  take algorithm, like native-string
+  take password, like binary-like
+  take options, like stream-transform-options
+    void true
+
+task create-decipheriv, name <createDecipheriv>
+  like decipher-ccm
+
+  take algorithm, like cipher-ccm-types
+  take key, like cipher-key
+  take iv
+    like or
+      like binary-like
+      like native-null
+  take options, like cipher-ccm-options
+
+task create-decipheriv, name <createDecipheriv>
+  like decipher-gcm
+
+  take algorithm, like cipher-gcm-types
+  take key, like cipher-key
+  take iv
+    like or
+      like binary-like
+      like native-null
+  take options, like cipher-gcm-options
+    void true
+
+task create-decipheriv, name <createDecipheriv>
+  like decipher
+
+  take algorithm, like native-string
+  take key, like cipher-key
+  take iv
+    like or
+      like binary-like
+      like native-null
+  take options, like stream-transform-options
+    void true
+
+task generate-key, name <generateKey>
+  like native-void
+
+  take type
+    like or
+      text <hmac>
+      text <aes>
+  take options
+    like form
+      link length, name <length>
+        like native-number
+        flex true
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take key, like key-object
+
+task generate-key-sync, name <generateKeySync>
+  like key-object
+
+  take type
+    like or
+      text <hmac>
+      text <aes>
+  take options
+    like form
+      link length, name <length>
+        like native-number
+        flex true
+
+task create-private-key, name <createPrivateKey>
+  like key-object
+
+  take key
+    like or
+      like private-key-input
+      like native-string
+      like buffer
+      like json-web-key-input
+
+task create-public-key, name <createPublicKey>
+  like key-object
+
+  take key
+    like or
+      like public-key-input
+      like native-string
+      like buffer
+      like key-object
+      like json-web-key-input
+
+task create-secret-key, name <createSecretKey>
+  like key-object
+
+  take key, like node-js-array-buffer-view
+
+task create-secret-key, name <createSecretKey>
+  like key-object
+
+  take key, like native-string
+  take encoding, like buffer-encoding
+
+task create-sign, name <createSign>
+  like sign
+
+  take algorithm, like native-string
+  take options, like stream-writable-options
+    void true
+
+task create-verify, name <createVerify>
+  like verify
+
+  take algorithm, like native-string
+  take options, like stream-writable-options
+    void true
+
+task create-diffie-hellman, name <createDiffieHellman>
+  like diffie-hellman
+
+  take prime-length, like native-number
+  take generator
+    like or
+      like native-number
+      like node-js-array-buffer-view
+    void true
+
+task create-diffie-hellman, name <createDiffieHellman>
+  like diffie-hellman
+
+  take prime, like node-js-array-buffer-view
+
+task create-diffie-hellman, name <createDiffieHellman>
+  like diffie-hellman
+
+  take prime, like native-string
+  take prime-encoding, like binary-to-text-encoding
+
+task create-diffie-hellman, name <createDiffieHellman>
+  like diffie-hellman
+
+  take prime, like native-string
+  take prime-encoding, like binary-to-text-encoding
+  take generator
+    like or
+      like native-number
+      like node-js-array-buffer-view
+
+task create-diffie-hellman, name <createDiffieHellman>
+  like diffie-hellman
+
+  take prime, like native-string
+  take prime-encoding, like binary-to-text-encoding
+  take generator, like native-string
+  take generator-encoding, like binary-to-text-encoding
+
+task get-diffie-hellman, name <getDiffieHellman>
+  like diffie-hellman
+
+  take group-name, like native-string
+
+task pbkdf2, name <pbkdf2>
+  like native-void
+
+  take password, like binary-like
+  take salt, like binary-like
+  take iterations, like native-number
+  take keylen, like native-number
+  take digest, like native-string
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take derived-key, like buffer
+
+task pbkdf2-sync, name <pbkdf2Sync>
+  like buffer
+
+  take password, like binary-like
+  take salt, like binary-like
+  take iterations, like native-number
+  take keylen, like native-number
+  take digest, like native-string
+
+task random-bytes, name <randomBytes>
+  like buffer
+
+  take size, like native-number
+
+task random-bytes, name <randomBytes>
+  like native-void
+
+  take size, like native-number
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take buf, like buffer
+
+task pseudo-random-bytes, name <pseudoRandomBytes>
+  like buffer
+
+  take size, like native-number
+
+task pseudo-random-bytes, name <pseudoRandomBytes>
+  like native-void
+
+  take size, like native-number
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take buf, like buffer
+
+task random-int, name <randomInt>
+  like native-number
+
+  take max, like native-number
+
+task random-int, name <randomInt>
+  like native-number
+
+  take min, like native-number
+  take max, like native-number
+
+task random-int, name <randomInt>
+  like native-void
+
+  take max, like native-number
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take value, like native-number
+
+task random-int, name <randomInt>
+  like native-void
+
+  take min, like native-number
+  take max, like native-number
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take value, like native-number
+
+task random-fill-sync, name <randomFillSync>
+  like t
+
+  head t
+    base node-js-array-buffer-view
+
+  take buffer, like t
+  take offset, like native-number
+    void true
+  take size, like native-number
+    void true
+
+task random-fill, name <randomFill>
+  like native-void
+
+  head t
+    base node-js-array-buffer-view
+
+  take buffer, like t
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take buf, like t
+
+task random-fill, name <randomFill>
+  like native-void
+
+  head t
+    base node-js-array-buffer-view
+
+  take buffer, like t
+  take offset, like native-number
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take buf, like t
+
+task random-fill, name <randomFill>
+  like native-void
+
+  head t
+    base node-js-array-buffer-view
+
+  take buffer, like t
+  take offset, like native-number
+  take size, like native-number
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take buf, like t
+
+task scrypt, name <scrypt>
+  like native-void
+
+  take password, like binary-like
+  take salt, like binary-like
+  take keylen, like native-number
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take derived-key, like buffer
+
+task scrypt, name <scrypt>
+  like native-void
+
+  take password, like binary-like
+  take salt, like binary-like
+  take keylen, like native-number
+  take options, like scrypt-options
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take derived-key, like buffer
+
+task scrypt-sync, name <scryptSync>
+  like buffer
+
+  take password, like binary-like
+  take salt, like binary-like
+  take keylen, like native-number
+  take options, like scrypt-options
+    void true
+
+task public-encrypt, name <publicEncrypt>
+  like buffer
+
+  take key
+    like or
+      like rsa-public-key
+      like rsa-private-key
+      like key-like
+  take buffer, like node-js-array-buffer-view
+
+task public-decrypt, name <publicDecrypt>
+  like buffer
+
+  take key
+    like or
+      like rsa-public-key
+      like rsa-private-key
+      like key-like
+  take buffer, like node-js-array-buffer-view
+
+task private-decrypt, name <privateDecrypt>
+  like buffer
+
+  take private-key
+    like or
+      like rsa-private-key
+      like key-like
+  take buffer, like node-js-array-buffer-view
+
+task private-encrypt, name <privateEncrypt>
+  like buffer
+
+  take private-key
+    like or
+      like rsa-private-key
+      like key-like
+  take buffer, like node-js-array-buffer-view
+
+task get-ciphers, name <getCiphers>
+  like array
+    like native-string
+
+task get-curves, name <getCurves>
+  like array
+    like native-string
+
+task get-fips, name <getFips>
+  like or
+    text <1>
+    text <0>
+
+task get-hashes, name <getHashes>
+  like array
+    like native-string
+
+task create-ecdh, name <createECDH>
+  like ecdh
+
+  take curve-name, like native-string
+
+task timing-safe-equal, name <timingSafeEqual>
+  like native-boolean
+
+  take a, like node-js-array-buffer-view
+  take b, like node-js-array-buffer-view
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like native-string
+    like native-string
+
+  take type, text <rsa>
+  take options
+    like rsa-key-pair-options
+      text <pem>
+      text <pem>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like native-string
+    like buffer
+
+  take type, text <rsa>
+  take options
+    like rsa-key-pair-options
+      text <pem>
+      text <der>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like buffer
+    like native-string
+
+  take type, text <rsa>
+  take options
+    like rsa-key-pair-options
+      text <der>
+      text <pem>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like buffer
+    like buffer
+
+  take type, text <rsa>
+  take options
+    like rsa-key-pair-options
+      text <der>
+      text <der>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-key-object-result
+
+  take type, text <rsa>
+  take options, like rsa-key-pair-key-object-options
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like native-string
+    like native-string
+
+  take type, text <rsa-pss>
+  take options
+    like rsapss-key-pair-options
+      text <pem>
+      text <pem>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like native-string
+    like buffer
+
+  take type, text <rsa-pss>
+  take options
+    like rsapss-key-pair-options
+      text <pem>
+      text <der>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like buffer
+    like native-string
+
+  take type, text <rsa-pss>
+  take options
+    like rsapss-key-pair-options
+      text <der>
+      text <pem>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like buffer
+    like buffer
+
+  take type, text <rsa-pss>
+  take options
+    like rsapss-key-pair-options
+      text <der>
+      text <der>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-key-object-result
+
+  take type, text <rsa-pss>
+  take options, like rsapss-key-pair-key-object-options
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like native-string
+    like native-string
+
+  take type, text <dsa>
+  take options
+    like dsa-key-pair-options
+      text <pem>
+      text <pem>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like native-string
+    like buffer
+
+  take type, text <dsa>
+  take options
+    like dsa-key-pair-options
+      text <pem>
+      text <der>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like buffer
+    like native-string
+
+  take type, text <dsa>
+  take options
+    like dsa-key-pair-options
+      text <der>
+      text <pem>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like buffer
+    like buffer
+
+  take type, text <dsa>
+  take options
+    like dsa-key-pair-options
+      text <der>
+      text <der>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-key-object-result
+
+  take type, text <dsa>
+  take options, like dsa-key-pair-key-object-options
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like native-string
+    like native-string
+
+  take type, text <ec>
+  take options
+    like ec-key-pair-options
+      text <pem>
+      text <pem>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like native-string
+    like buffer
+
+  take type, text <ec>
+  take options
+    like ec-key-pair-options
+      text <pem>
+      text <der>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like buffer
+    like native-string
+
+  take type, text <ec>
+  take options
+    like ec-key-pair-options
+      text <der>
+      text <pem>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like buffer
+    like buffer
+
+  take type, text <ec>
+  take options
+    like ec-key-pair-options
+      text <der>
+      text <der>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-key-object-result
+
+  take type, text <ec>
+  take options, like ec-key-pair-key-object-options
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like native-string
+    like native-string
+
+  take type, text <ed25519>
+  take options
+    like ed25519-key-pair-options
+      text <pem>
+      text <pem>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like native-string
+    like buffer
+
+  take type, text <ed25519>
+  take options
+    like ed25519-key-pair-options
+      text <pem>
+      text <der>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like buffer
+    like native-string
+
+  take type, text <ed25519>
+  take options
+    like ed25519-key-pair-options
+      text <der>
+      text <pem>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like buffer
+    like buffer
+
+  take type, text <ed25519>
+  take options
+    like ed25519-key-pair-options
+      text <der>
+      text <der>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-key-object-result
+
+  take type, text <ed25519>
+  take options, like ed25519-key-pair-key-object-options
+    void true
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like native-string
+    like native-string
+
+  take type, text <ed448>
+  take options
+    like ed448-key-pair-options
+      text <pem>
+      text <pem>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like native-string
+    like buffer
+
+  take type, text <ed448>
+  take options
+    like ed448-key-pair-options
+      text <pem>
+      text <der>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like buffer
+    like native-string
+
+  take type, text <ed448>
+  take options
+    like ed448-key-pair-options
+      text <der>
+      text <pem>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like buffer
+    like buffer
+
+  take type, text <ed448>
+  take options
+    like ed448-key-pair-options
+      text <der>
+      text <der>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-key-object-result
+
+  take type, text <ed448>
+  take options, like ed448-key-pair-key-object-options
+    void true
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like native-string
+    like native-string
+
+  take type, text <x25519>
+  take options
+    like x25519-key-pair-options
+      text <pem>
+      text <pem>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like native-string
+    like buffer
+
+  take type, text <x25519>
+  take options
+    like x25519-key-pair-options
+      text <pem>
+      text <der>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like buffer
+    like native-string
+
+  take type, text <x25519>
+  take options
+    like x25519-key-pair-options
+      text <der>
+      text <pem>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like buffer
+    like buffer
+
+  take type, text <x25519>
+  take options
+    like x25519-key-pair-options
+      text <der>
+      text <der>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-key-object-result
+
+  take type, text <x25519>
+  take options, like x25519-key-pair-key-object-options
+    void true
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like native-string
+    like native-string
+
+  take type, text <x448>
+  take options
+    like x448-key-pair-options
+      text <pem>
+      text <pem>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like native-string
+    like buffer
+
+  take type, text <x448>
+  take options
+    like x448-key-pair-options
+      text <pem>
+      text <der>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like buffer
+    like native-string
+
+  take type, text <x448>
+  take options
+    like x448-key-pair-options
+      text <der>
+      text <pem>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-sync-result
+    like buffer
+    like buffer
+
+  take type, text <x448>
+  take options
+    like x448-key-pair-options
+      text <der>
+      text <der>
+
+task generate-key-pair-sync, name <generateKeyPairSync>
+  like key-pair-key-object-result
+
+  take type, text <x448>
+  take options, like x448-key-pair-key-object-options
+    void true
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <rsa>
+  take options
+    like rsa-key-pair-options
+      text <pem>
+      text <pem>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like native-string
+      take private-key, like native-string
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <rsa>
+  take options
+    like rsa-key-pair-options
+      text <pem>
+      text <der>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like native-string
+      take private-key, like buffer
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <rsa>
+  take options
+    like rsa-key-pair-options
+      text <der>
+      text <pem>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like buffer
+      take private-key, like native-string
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <rsa>
+  take options
+    like rsa-key-pair-options
+      text <der>
+      text <der>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like buffer
+      take private-key, like buffer
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <rsa>
+  take options, like rsa-key-pair-key-object-options
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like key-object
+      take private-key, like key-object
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <rsa-pss>
+  take options
+    like rsapss-key-pair-options
+      text <pem>
+      text <pem>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like native-string
+      take private-key, like native-string
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <rsa-pss>
+  take options
+    like rsapss-key-pair-options
+      text <pem>
+      text <der>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like native-string
+      take private-key, like buffer
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <rsa-pss>
+  take options
+    like rsapss-key-pair-options
+      text <der>
+      text <pem>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like buffer
+      take private-key, like native-string
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <rsa-pss>
+  take options
+    like rsapss-key-pair-options
+      text <der>
+      text <der>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like buffer
+      take private-key, like buffer
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <rsa-pss>
+  take options, like rsapss-key-pair-key-object-options
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like key-object
+      take private-key, like key-object
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <dsa>
+  take options
+    like dsa-key-pair-options
+      text <pem>
+      text <pem>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like native-string
+      take private-key, like native-string
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <dsa>
+  take options
+    like dsa-key-pair-options
+      text <pem>
+      text <der>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like native-string
+      take private-key, like buffer
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <dsa>
+  take options
+    like dsa-key-pair-options
+      text <der>
+      text <pem>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like buffer
+      take private-key, like native-string
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <dsa>
+  take options
+    like dsa-key-pair-options
+      text <der>
+      text <der>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like buffer
+      take private-key, like buffer
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <dsa>
+  take options, like dsa-key-pair-key-object-options
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like key-object
+      take private-key, like key-object
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <ec>
+  take options
+    like ec-key-pair-options
+      text <pem>
+      text <pem>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like native-string
+      take private-key, like native-string
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <ec>
+  take options
+    like ec-key-pair-options
+      text <pem>
+      text <der>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like native-string
+      take private-key, like buffer
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <ec>
+  take options
+    like ec-key-pair-options
+      text <der>
+      text <pem>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like buffer
+      take private-key, like native-string
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <ec>
+  take options
+    like ec-key-pair-options
+      text <der>
+      text <der>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like buffer
+      take private-key, like buffer
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <ec>
+  take options, like ec-key-pair-key-object-options
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like key-object
+      take private-key, like key-object
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <ed25519>
+  take options
+    like ed25519-key-pair-options
+      text <pem>
+      text <pem>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like native-string
+      take private-key, like native-string
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <ed25519>
+  take options
+    like ed25519-key-pair-options
+      text <pem>
+      text <der>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like native-string
+      take private-key, like buffer
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <ed25519>
+  take options
+    like ed25519-key-pair-options
+      text <der>
+      text <pem>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like buffer
+      take private-key, like native-string
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <ed25519>
+  take options
+    like ed25519-key-pair-options
+      text <der>
+      text <der>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like buffer
+      take private-key, like buffer
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <ed25519>
+  take options
+    like or
+      like ed25519-key-pair-key-object-options
+      like native-undefined
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like key-object
+      take private-key, like key-object
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <ed448>
+  take options
+    like ed448-key-pair-options
+      text <pem>
+      text <pem>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like native-string
+      take private-key, like native-string
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <ed448>
+  take options
+    like ed448-key-pair-options
+      text <pem>
+      text <der>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like native-string
+      take private-key, like buffer
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <ed448>
+  take options
+    like ed448-key-pair-options
+      text <der>
+      text <pem>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like buffer
+      take private-key, like native-string
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <ed448>
+  take options
+    like ed448-key-pair-options
+      text <der>
+      text <der>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like buffer
+      take private-key, like buffer
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <ed448>
+  take options
+    like or
+      like ed448-key-pair-key-object-options
+      like native-undefined
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like key-object
+      take private-key, like key-object
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <x25519>
+  take options
+    like x25519-key-pair-options
+      text <pem>
+      text <pem>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like native-string
+      take private-key, like native-string
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <x25519>
+  take options
+    like x25519-key-pair-options
+      text <pem>
+      text <der>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like native-string
+      take private-key, like buffer
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <x25519>
+  take options
+    like x25519-key-pair-options
+      text <der>
+      text <pem>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like buffer
+      take private-key, like native-string
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <x25519>
+  take options
+    like x25519-key-pair-options
+      text <der>
+      text <der>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like buffer
+      take private-key, like buffer
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <x25519>
+  take options
+    like or
+      like x25519-key-pair-key-object-options
+      like native-undefined
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like key-object
+      take private-key, like key-object
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <x448>
+  take options
+    like x448-key-pair-options
+      text <pem>
+      text <pem>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like native-string
+      take private-key, like native-string
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <x448>
+  take options
+    like x448-key-pair-options
+      text <pem>
+      text <der>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like native-string
+      take private-key, like buffer
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <x448>
+  take options
+    like x448-key-pair-options
+      text <der>
+      text <pem>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like buffer
+      take private-key, like native-string
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <x448>
+  take options
+    like x448-key-pair-options
+      text <der>
+      text <der>
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like buffer
+      take private-key, like buffer
+
+task generate-key-pair, name <generateKeyPair>
+  like native-void
+
+  take type, text <x448>
+  take options
+    like or
+      like x448-key-pair-key-object-options
+      like native-undefined
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take public-key, like key-object
+      take private-key, like key-object
+
+task sign, name <sign>
+  like buffer
+
+  take algorithm
+    like or
+      like native-string
+      like native-null
+      like native-undefined
+  take data, like node-js-array-buffer-view
+  take key
+    like or
+      like key-like
+      like sign-key-object-input
+      like sign-private-key-input
+
+task sign, name <sign>
+  like native-void
+
+  take algorithm
+    like or
+      like native-string
+      like native-null
+      like native-undefined
+  take data, like node-js-array-buffer-view
+  take key
+    like or
+      like key-like
+      like sign-key-object-input
+      like sign-private-key-input
+  take callback
+    like task
+      like native-void
+
+      take error
+        like or
+          like error
+          like native-null
+      take data, like buffer
+
+task verify, name <verify>
+  like native-boolean
+
+  take algorithm
+    like or
+      like native-string
+      like native-null
+      like native-undefined
+  take data, like node-js-array-buffer-view
+  take key
+    like or
+      like key-like
+      like verify-key-object-input
+      like verify-public-key-input
+  take signature, like node-js-array-buffer-view
+
+task verify, name <verify>
+  like native-void
+
+  take algorithm
+    like or
+      like native-string
+      like native-null
+      like native-undefined
+  take data, like node-js-array-buffer-view
+  take key
+    like or
+      like key-like
+      like verify-key-object-input
+      like verify-public-key-input
+  take signature, like node-js-array-buffer-view
+  take callback
+    like task
+      like native-void
+
+      take error
+        like or
+          like error
+          like native-null
+      take result, like native-boolean
+
+task diffie-hellman, name <diffieHellman>
+  like buffer
+
+  take options
+    like form
+      link private-key, name <privateKey>
+        like key-object
+        flex true
+      link public-key, name <publicKey>
+        like key-object
+        flex true
+
+task get-cipher-info, name <getCipherInfo>
+  like or
+    like cipher-info
+    like native-undefined
+
+  take name-or-nid
+    like or
+      like native-string
+      like native-number
+  take options, like cipher-info-options
+    void true
+
+task hkdf, name <hkdf>
+  like native-void
+
+  take digest, like native-string
+  take irm
+    like or
+      like binary-like
+      like key-object
+  take salt, like binary-like
+  take info, like binary-like
+  take keylen, like native-number
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take derived-key, like array-buffer
+
+task hkdf-sync, name <hkdfSync>
+  like array-buffer
+
+  take digest, like native-string
+  take ikm
+    like or
+      like binary-like
+      like key-object
+  take salt, like binary-like
+  take info, like binary-like
+  take keylen, like native-number
+
+task secure-heap-used, name <secureHeapUsed>
+  like secure-heap-usage
+
+task random-uuid, name <randomUUID>
+  like native-string
+
+  take options, like random-uuid-options
+    void true
+
+task generate-prime, name <generatePrime>
+  like native-void
+
+  take size, like native-number
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take prime, like array-buffer
+
+task generate-prime, name <generatePrime>
+  like native-void
+
+  take size, like native-number
+  take options, like generate-prime-options-big-int
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take prime, like native-bigint
+
+task generate-prime, name <generatePrime>
+  like native-void
+
+  take size, like native-number
+  take options, like generate-prime-options-array-buffer
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take prime, like array-buffer
+
+task generate-prime, name <generatePrime>
+  like native-void
+
+  take size, like native-number
+  take options, like generate-prime-options
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take prime
+        like or
+          like array-buffer
+          like native-bigint
+
+task generate-prime-sync, name <generatePrimeSync>
+  like array-buffer
+
+  take size, like native-number
+
+task generate-prime-sync, name <generatePrimeSync>
+  like native-bigint
+
+  take size, like native-number
+  take options, like generate-prime-options-big-int
+
+task generate-prime-sync, name <generatePrimeSync>
+  like array-buffer
+
+  take size, like native-number
+  take options, like generate-prime-options-array-buffer
+
+task generate-prime-sync, name <generatePrimeSync>
+  like or
+    like array-buffer
+    like native-bigint
+
+  take size, like native-number
+  take options, like generate-prime-options
+
+task check-prime, name <checkPrime>
+  like native-void
+
+  take value, like large-number-like
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take result, like native-boolean
+
+task check-prime, name <checkPrime>
+  like native-void
+
+  take value, like large-number-like
+  take options, like check-prime-options
+  take callback
+    like task
+      like native-void
+
+      take err
+        like or
+          like error
+          like native-null
+      take result, like native-boolean
+
+task check-prime-sync, name <checkPrimeSync>
+  like native-boolean
+
+  take candidate, like large-number-like
+  take options, like check-prime-options
+    void true

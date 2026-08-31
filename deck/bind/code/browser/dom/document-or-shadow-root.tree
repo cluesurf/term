@@ -1,0 +1,39 @@
+
+load @term/bind/code/browser/dom/animation
+  find animation
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/browser/dom/style-sheet-list
+  find style-sheet-list
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+form document-or-shadow-root, name <DocumentOrShadowRoot>
+  link active-element, name <activeElement>
+    like or
+      like element
+      like native-null
+  link fullscreen-element, name <fullscreenElement>
+    like or
+      like element
+      like native-null
+  link picture-in-picture-element, name <pictureInPictureElement>
+    like or
+      like element
+      like native-null
+  link pointer-lock-element, name <pointerLockElement>
+    like or
+      like element
+      like native-null
+  link style-sheets, name <styleSheets>
+    like style-sheet-list
+
+  task get-animations, name <getAnimations>
+    like native-array
+      like animation

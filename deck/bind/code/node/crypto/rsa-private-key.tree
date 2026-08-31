@@ -1,0 +1,37 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find native-undefined
+  find node-js-typed-array
+
+load @term/bind/code/node/crypto
+  find key-like
+
+form rsa-private-key, name <RsaPrivateKey>
+  link key, name <key>
+    like key-like
+    flex true
+  link passphrase, name <passphrase>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link oaep-hash, name <oaepHash>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link oaep-label, name <oaepLabel>
+    like or
+      like node-js-typed-array
+      like native-undefined
+    flex true
+  link padding, name <padding>
+    like or
+      like native-number
+      like native-undefined
+    flex true

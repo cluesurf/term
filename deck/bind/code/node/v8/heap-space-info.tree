@@ -1,0 +1,21 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+
+form heap-space-info, name <HeapSpaceInfo>
+  link space-name, name <space_name>
+    like native-string
+    flex true
+  link space-size, name <space_size>
+    like native-number
+    flex true
+  link space-used-size, name <space_used_size>
+    like native-number
+    flex true
+  link space-available-size, name <space_available_size>
+    like native-number
+    flex true
+  link physical-space-size, name <physical_space_size>
+    like native-number
+    flex true

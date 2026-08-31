@@ -1,0 +1,17 @@
+
+load @term/bind/code/javascript/es5/reg-exp
+  find reg-exp
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form reg-exp, name <RegExp>
+  link flags, name <flags>
+    like native-string
+  link sticky, name <sticky>
+    like native-boolean
+  link unicode, name <unicode>
+    like native-boolean

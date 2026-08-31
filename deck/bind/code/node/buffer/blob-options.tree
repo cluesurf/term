@@ -1,0 +1,22 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/buffer
+  find buffer-encoding
+
+form blob-options, name <BlobOptions>
+  link encoding, name <encoding>
+    like or
+      like buffer-encoding
+      like native-undefined
+    flex true
+  link type, name <type>
+    like or
+      like native-string
+      like native-undefined
+    flex true

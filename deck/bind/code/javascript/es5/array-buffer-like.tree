@@ -1,0 +1,9 @@
+
+load @term/bind/code/javascript/es5/array-buffer-types
+  find array-buffer-types
+
+form array-buffer-like, name <ArrayBufferLike>
+  like index
+    like array-buffer-types
+    like link-read
+      like array-buffer-types

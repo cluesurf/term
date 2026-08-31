@@ -1,0 +1,33 @@
+
+load @term/bind/code/browser/dom/dom-string-map
+  find dom-string-map
+
+load @term/bind/code/browser/dom/focus-options
+  find focus-options
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form html-or-svg-element, name <HTMLOrSVGElement>
+  link dataset, name <dataset>
+    like dom-string-map
+  link nonce, name <nonce>
+    like native-string
+    lock false
+  link tab-index, name <tabIndex>
+    like native-number
+    lock false
+
+  task blur, name <blur>
+    like native-void
+
+  task focus, name <focus>
+    take options, like maybe
+      like focus-options
+    like native-void

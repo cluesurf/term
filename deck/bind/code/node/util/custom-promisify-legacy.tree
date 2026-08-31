@@ -1,0 +1,16 @@
+
+load @term/bind
+  find like
+
+load @term/bind/code/javascript
+  find function
+
+form custom-promisify-legacy, name <CustomPromisifyLegacy>
+  base function
+
+  head t-custom
+    base function
+
+  link promisify, name <__promisify__>
+    like t-custom
+    flex true

@@ -1,0 +1,11 @@
+
+form speech-recognition-error-code, name <SpeechRecognitionErrorCode>
+  like or
+    text <aborted>
+    text <audio-capture>
+    text <bad-grammar>
+    text <language-not-supported>
+    text <network>
+    text <no-speech>
+    text <not-allowed>
+    text <service-not-allowed>

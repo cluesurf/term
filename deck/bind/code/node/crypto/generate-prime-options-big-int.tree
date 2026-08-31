@@ -1,0 +1,10 @@
+
+load @term/bind/code/node/crypto
+  find generate-prime-options
+
+form generate-prime-options-big-int, name <GeneratePrimeOptionsBigInt>
+  base generate-prime-options
+
+  link bigint, name <bigint>
+    text <true>
+    flex true

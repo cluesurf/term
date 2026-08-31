@@ -1,0 +1,19 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-null
+  find native-string
+
+load @term/bind/code/node/url
+  find url
+
+form url-with-string-query, name <UrlWithStringQuery>
+  base url
+
+  link query, name <query>
+    like or
+      like native-string
+      like native-null
+    flex true

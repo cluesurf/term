@@ -1,0 +1,27 @@
+
+load @term/bind
+  find like
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+
+load @term/bind/code/node/buffer
+  find buffer
+
+form key-pair-sync-result, name <KeyPairSyncResult>
+  head t1
+    base or
+      like native-string
+      like buffer
+  head t2
+    base or
+      like native-string
+      like buffer
+
+  link public-key, name <publicKey>
+    like t1
+    flex true
+  link private-key, name <privateKey>
+    like t2
+    flex true

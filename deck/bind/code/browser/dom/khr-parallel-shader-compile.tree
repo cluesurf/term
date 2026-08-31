@@ -1,0 +1,7 @@
+
+load @term/bind/code/browser/dom/g-lenum
+  find g-lenum
+
+form khr-parallel-shader-compile, name <KHR_parallel_shader_compile>
+  link completion-status-khr, name <COMPLETION_STATUS_KHR>
+    like g-lenum

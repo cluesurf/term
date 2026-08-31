@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/webworker/message-event
+  find message-event
+
+load @term/bind/code/browser/webworker/worker-global-scope-event-map
+  find worker-global-scope-event-map
+
+form dedicated-worker-global-scope-event-map, name <DedicatedWorkerGlobalScopeEventMap>
+  base worker-global-scope-event-map
+
+  link message, name <message>
+    like message-event
+    lock false
+  link messageerror, name <messageerror>
+    like message-event
+    lock false

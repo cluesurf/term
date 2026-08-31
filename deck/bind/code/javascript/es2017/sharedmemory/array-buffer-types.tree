@@ -1,0 +1,11 @@
+
+load @term/bind/code/javascript/es2017/sharedmemory/shared-array-buffer
+  find shared-array-buffer
+
+load @term/bind/code/javascript/es5/array-buffer-types
+  find array-buffer-types
+
+form array-buffer-types, name <ArrayBufferTypes>
+  link shared-array-buffer, name <SharedArrayBuffer>
+    like shared-array-buffer
+    lock false

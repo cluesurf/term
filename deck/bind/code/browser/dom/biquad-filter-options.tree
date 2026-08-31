@@ -1,0 +1,28 @@
+
+load @term/bind/code/browser/dom/audio-node-options
+  find audio-node-options
+
+load @term/bind/code/browser/dom/biquad-filter-type
+  find biquad-filter-type
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form biquad-filter-options, name <BiquadFilterOptions>
+  base audio-node-options
+
+  link q, name <Q>
+    like native-number
+    lock false
+  link detune, name <detune>
+    like native-number
+    lock false
+  link frequency, name <frequency>
+    like native-number
+    lock false
+  link gain, name <gain>
+    like native-number
+    lock false
+  link type, name <type>
+    like biquad-filter-type
+    lock false

@@ -1,0 +1,75 @@
+
+load @term/bind/code/javascript
+  find array
+  find error
+  find native-boolean
+  find native-number
+  find native-string
+  find native-this
+  find native-undefined
+  find native-void
+  find node-js-dict
+  find socket
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/node/http
+  find incoming-http-headers
+
+form incoming-message, name <IncomingMessage>
+  base stream-readable
+  link aborted, name <aborted>, like native-boolean
+  link http-version, name <httpVersion>, like native-string
+  link http-version-major, name <httpVersionMajor>, like native-number
+  link http-version-minor, name <httpVersionMinor>, like native-number
+  link complete, name <complete>, like native-boolean
+  link connection, name <connection>, like socket
+  link socket, name <socket>, like socket
+  link headers, name <headers>, like incoming-http-headers
+  link raw-headers, name <rawHeaders>
+    like array
+      like native-string
+  link trailers, name <trailers>
+    like node-js-dict
+      like native-string
+  link raw-trailers, name <rawTrailers>
+    like array
+      like native-string
+  link method, name <method>
+    like or
+      like native-string
+      like native-undefined
+  link url, name <url>
+    like or
+      like native-string
+      like native-undefined
+  link status-code, name <statusCode>
+    like or
+      like native-number
+      like native-undefined
+  link status-message, name <statusMessage>
+    like or
+      like native-string
+      like native-undefined
+
+  task set-timeout, name <setTimeout>
+    like native-this
+
+    take msecs, like native-number
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task destroy, name <destroy>
+    like native-this
+
+    take error, like error
+      void true
+
+form incoming-message-constructor
+  hook make
+    take socket, like socket

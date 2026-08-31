@@ -1,0 +1,9 @@
+
+form rtc-stats-ice-candidate-pair-state, name <RTCStatsIceCandidatePairState>
+  like or
+    text <failed>
+    text <frozen>
+    text <in-progress>
+    text <inprogress>
+    text <succeeded>
+    text <waiting>

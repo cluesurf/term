@@ -1,0 +1,60 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-boolean
+  find native-number
+  find native-string
+  find native-undefined
+
+load @term/bind
+  find any
+  find or
+  find task
+
+form cluster-settings, name <ClusterSettings>
+  link exec-argv, name <execArgv>
+    like or
+      like array
+        like native-string
+      like native-undefined
+    flex true
+  link exec, name <exec>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link args, name <args>
+    like or
+      like array
+        like native-string
+      like native-undefined
+    flex true
+  link silent, name <silent>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link stdio, name <stdio>
+    like or
+      like array
+        like any
+      like native-undefined
+    flex true
+  link uid, name <uid>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link gid, name <gid>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link inspect-port, name <inspectPort>
+    like or
+      like native-number
+      like task
+        like native-number
+
+      like native-undefined
+    flex true

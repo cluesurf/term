@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript/es2015/iterable/uint16-array-constructor
+  find uint16-array-constructor
+
+load @term/bind/code/javascript/es2016/array/include/uint16-array
+  find uint16-array
+
+form uint16-array-constructor, name <Uint16ArrayConstructor>
+  hook make
+    like uint16-array

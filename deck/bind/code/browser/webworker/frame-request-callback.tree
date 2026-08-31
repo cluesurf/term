@@ -1,0 +1,5 @@
+
+load @term/bind/code/browser/dom/frame-request-callback
+  find frame-request-callback
+
+form frame-request-callback, name <FrameRequestCallback>

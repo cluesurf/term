@@ -1,0 +1,21 @@
+
+load @term/bind/code/browser/dom/character-data
+  find character-data
+
+load @term/bind/code/browser/dom/document
+  find document
+
+load @term/bind/code/browser/dom/link-style
+  find link-style
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form processing-instruction, name <ProcessingInstruction>
+  base character-data
+  base link-style
+
+  link owner-document, name <ownerDocument>
+    like document
+  link target, name <target>
+    like native-string

@@ -1,0 +1,11 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form text-encoder-encode-into-result, name <TextEncoderEncodeIntoResult>
+  link read, name <read>
+    like native-number
+    lock false
+  link written, name <written>
+    like native-number
+    lock false

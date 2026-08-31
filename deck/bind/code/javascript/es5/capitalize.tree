@@ -1,0 +1,9 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form capitalize, name <Capitalize>
+  head s
+    base native-string
+
+  intrinsic

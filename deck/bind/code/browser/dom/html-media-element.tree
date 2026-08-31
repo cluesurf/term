@@ -1,0 +1,275 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/can-play-type-result
+  find can-play-type-result
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/html-element
+  find html-element
+
+load @term/bind/code/browser/dom/html-media-element-event-map
+  find html-media-element-event-map
+
+load @term/bind/code/browser/dom/media-encrypted-event
+  find media-encrypted-event
+
+load @term/bind/code/browser/dom/media-error
+  find media-error
+
+load @term/bind/code/browser/dom/media-keys
+  find media-keys
+
+load @term/bind/code/browser/dom/media-provider
+  find media-provider
+
+load @term/bind/code/browser/dom/remote-playback
+  find remote-playback
+
+load @term/bind/code/browser/dom/text-track
+  find text-track
+
+load @term/bind/code/browser/dom/text-track-kind
+  find text-track-kind
+
+load @term/bind/code/browser/dom/text-track-list
+  find text-track-list
+
+load @term/bind/code/browser/dom/time-ranges
+  find time-ranges
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form html-media-element, name <HTMLMediaElement>
+  base html-element
+
+  link autoplay, name <autoplay>
+    like native-boolean
+    lock false
+  link buffered, name <buffered>
+    like time-ranges
+  link controls, name <controls>
+    like native-boolean
+    lock false
+  link cross-origin, name <crossOrigin>
+    like or
+      like native-string
+      like native-null
+    lock false
+  link current-src, name <currentSrc>
+    like native-string
+  link current-time, name <currentTime>
+    like native-number
+    lock false
+  link default-muted, name <defaultMuted>
+    like native-boolean
+    lock false
+  link default-playback-rate, name <defaultPlaybackRate>
+    like native-number
+    lock false
+  link disable-remote-playback, name <disableRemotePlayback>
+    like native-boolean
+    lock false
+  link duration, name <duration>
+    like native-number
+  link ended, name <ended>
+    like native-boolean
+  link error, name <error>
+    like or
+      like media-error
+      like native-null
+  link loop, name <loop>
+    like native-boolean
+    lock false
+  link media-keys, name <mediaKeys>
+    like or
+      like media-keys
+      like native-null
+  link muted, name <muted>
+    like native-boolean
+    lock false
+  link network-state, name <networkState>
+    like native-number
+  link onencrypted, name <onencrypted>
+    like or
+      like task
+        take this, like html-media-element
+        take ev, like media-encrypted-event
+        like native-any
+      like native-null
+    lock false
+  link onwaitingforkey, name <onwaitingforkey>
+    like or
+      like task
+        take this, like html-media-element
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link paused, name <paused>
+    like native-boolean
+  link playback-rate, name <playbackRate>
+    like native-number
+    lock false
+  link played, name <played>
+    like time-ranges
+  link preload, name <preload>
+    like native-string
+    lock false
+  link ready-state, name <readyState>
+    like native-number
+  link remote, name <remote>
+    like remote-playback
+  link seekable, name <seekable>
+    like time-ranges
+  link seeking, name <seeking>
+    like native-boolean
+  link src, name <src>
+    like native-string
+    lock false
+  link src-object, name <srcObject>
+    like or
+      like media-provider
+      like native-null
+    lock false
+  link text-tracks, name <textTracks>
+    like text-track-list
+  link volume, name <volume>
+    like native-number
+    lock false
+  link have-current-data, name <HAVE_CURRENT_DATA>
+    like native-number
+  link have-enough-data, name <HAVE_ENOUGH_DATA>
+    like native-number
+  link have-future-data, name <HAVE_FUTURE_DATA>
+    like native-number
+  link have-metadata, name <HAVE_METADATA>
+    like native-number
+  link have-nothing, name <HAVE_NOTHING>
+    like native-number
+  link network-empty, name <NETWORK_EMPTY>
+    like native-number
+  link network-idle, name <NETWORK_IDLE>
+    like native-number
+  link network-loading, name <NETWORK_LOADING>
+    like native-number
+  link network-no-source, name <NETWORK_NO_SOURCE>
+    like native-number
+
+  task add-text-track, name <addTextTrack>
+    take kind, like text-track-kind
+    take label, like maybe
+      like native-string
+    take language, like maybe
+      like native-string
+    like text-track
+
+  task can-play-type, name <canPlayType>
+    take type, like native-string
+    like can-play-type-result
+
+  task fast-seek, name <fastSeek>
+    take time, like native-number
+    like native-void
+
+  task load, name <load>
+    like native-void
+
+  task pause, name <pause>
+    like native-void
+
+  task play, name <play>
+    like promise
+      like native-void
+
+  task set-media-keys, name <setMediaKeys>
+    take media-keys
+      like or
+        like media-keys
+        like native-null
+    like promise
+      like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like html-media-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like html-media-element
+        take ev
+          like index
+            like html-media-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like html-media-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like html-media-element
+        take ev
+          like index
+            like html-media-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

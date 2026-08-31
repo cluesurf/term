@@ -1,0 +1,44 @@
+
+load @term/bind/code/browser/dom/custom-element-constructor
+  find custom-element-constructor
+
+load @term/bind/code/browser/dom/element-definition-options
+  find element-definition-options
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form custom-element-registry, name <CustomElementRegistry>
+  task define, name <define>
+    take name, like native-string
+    take constructor, like custom-element-constructor
+    take options, like maybe
+      like element-definition-options
+    like native-void
+
+  task get, name <get>
+    take name, like native-string
+    like or
+      like custom-element-constructor
+      like native-undefined
+
+  task upgrade, name <upgrade>
+    take root, like node
+    like native-void
+
+  task when-defined, name <whenDefined>
+    take name, like native-string
+    like promise
+      like custom-element-constructor

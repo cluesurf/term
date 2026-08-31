@@ -1,0 +1,23 @@
+
+load @term/bind/code/browser/dom/html-canvas-element
+  find html-canvas-element
+
+load @term/bind/code/browser/dom/html-or-svg-image-element
+  find html-or-svg-image-element
+
+load @term/bind/code/browser/dom/html-video-element
+  find html-video-element
+
+load @term/bind/code/browser/dom/image-bitmap
+  find image-bitmap
+
+load @term/bind/code/browser/dom/offscreen-canvas
+  find offscreen-canvas
+
+form canvas-image-source, name <CanvasImageSource>
+  like or
+    like html-or-svg-image-element
+    like html-video-element
+    like html-canvas-element
+    like image-bitmap
+    like offscreen-canvas

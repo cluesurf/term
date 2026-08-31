@@ -1,0 +1,6 @@
+
+load @term/bind/code/browser/dom/rtc-rtp-contributing-source
+  find rtc-rtp-contributing-source
+
+form rtc-rtp-synchronization-source, name <RTCRtpSynchronizationSource>
+  base rtc-rtp-contributing-source

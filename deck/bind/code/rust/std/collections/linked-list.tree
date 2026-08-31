@@ -1,0 +1,682 @@
+
+form linked-list, name <std::collections::LinkedList>
+  task new, name <new>
+    note <Creates an empty LinkedList.>
+
+    free seed
+      like linked-list
+        like t
+          cite free
+        cite free
+
+  task append, name <append>
+    note <Moves all elements from other to the end of the list.>
+
+    take self
+      cite free
+    take other
+      like linked-list
+        like t
+          cite free
+      lock free
+
+  task iter, name <iter>
+    note <Provides a forward iterator.>
+
+    take self
+      cite free
+
+    free seed
+      like iter
+        time mask
+        like t
+          cite free
+        cite free
+
+  task iter-mut, name <iter_mut>
+    note <Provides a forward iterator with mutable references.>
+
+    take self
+      cite free
+
+    free seed
+      like iter-mut
+        time mask
+        like t
+          cite free
+        cite free
+
+  task cursor-front, name <cursor_front>
+    note <Provides a cursor at the front element.>
+
+    take self
+      cite free
+
+    free seed
+      like cursor
+        time mask
+        like t
+          cite free
+        cite free
+
+  task cursor-front-mut, name <cursor_front_mut>
+    note <Provides a cursor with editing operations at the front element.>
+
+    take self
+      cite free
+
+    free seed
+      like cursor-mut
+        time mask
+        like t
+          cite free
+        cite free
+
+  task cursor-back, name <cursor_back>
+    note <Provides a cursor at the back element.>
+
+    take self
+      cite free
+
+    free seed
+      like cursor
+        time mask
+        like t
+          cite free
+        cite free
+
+  task cursor-back-mut, name <cursor_back_mut>
+    note <Provides a cursor with editing operations at the back element.>
+
+    take self
+      cite free
+
+    free seed
+      like cursor-mut
+        time mask
+        like t
+          cite free
+        cite free
+
+  task is-empty, name <is_empty>
+    note <Returns true if the LinkedList is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task len, name <len>
+    note <Returns the length of the LinkedList.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task clear, name <clear>
+    note <Removes all elements from the LinkedList.>
+
+    take self
+      cite free
+
+  task contains, name <contains>
+    note <Returns true if the LinkedList contains an element equal to the given value.>
+
+    lead t
+      like partial-eq
+        like t
+          cite free
+        cite free
+
+    take self
+      cite free
+    take x
+      like t
+
+    free seed
+      like bool
+        cite free
+
+  task front, name <front>
+    note <Provides a reference to the front element, or None if the list is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like t
+        cite free
+
+  task front-mut, name <front_mut>
+    note <Provides a mutable reference to the front element, or None if the list is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like t
+        cite free
+
+  task back, name <back>
+    note <Provides a reference to the back element, or None if the list is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like t
+        cite free
+
+  task back-mut, name <back_mut>
+    note <Provides a mutable reference to the back element, or None if the list is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like t
+        cite free
+
+  task push-front, name <push_front>
+    note <Adds an element first in the list.>
+
+    take self
+      cite free
+    take elt
+      like t
+        cite free
+      cite free
+
+  task pop-front, name <pop_front>
+    note <Removes the first element and returns it, or None if the list is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like t
+          cite free
+        cite free
+
+  task push-back, name <push_back>
+    note <Appends an element to the back of a list.>
+
+    take self
+      cite free
+    take elt
+      like t
+        cite free
+      cite free
+
+  task pop-back, name <pop_back>
+    note <Removes the last element from a list and returns it, or None if it is empty.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like t
+          cite free
+        cite free
+
+  task split-off, name <split_off>
+    note <Splits the list into two at the given index. Returns everything after the given index, including the index.>
+
+    take self
+      cite free
+    take at
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like linked-list
+        like t
+          cite free
+        cite free
+
+  task remove, name <remove>
+    note <Removes the element at the given index and returns it.>
+
+    take self
+      cite free
+    take at
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like t
+        cite free
+
+  task drain-filter, name <drain_filter>
+    note <Creates an iterator which uses a closure to determine if an element should be removed.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take filter
+      like f
+        cite free
+      cite free
+
+    free seed
+      like drain-filter
+        time mask
+        like t
+          cite free
+        like f
+          cite free
+        cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like linked-list
+        like t
+          cite free
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take other
+      like linked-list
+        like t
+          cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Creates an empty LinkedList&lt;T&gt;.>
+
+    free seed
+      like linked-list
+        like t
+          cite free
+        cite free
+
+  task drop, name <drop>
+    note <Executes the destructor for this type.>
+
+    take self
+      cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like t
+              time a
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take t
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like t
+              cite free
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take elem
+      like t
+        cite free
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task from, name <from>
+    take arr
+      like list
+        like t
+        name n
+      cite free
+
+    free seed
+      like linked-list
+        like t
+          cite free
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like t
+              cite free
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like linked-list
+        like t
+          cite free
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task into-iter, name <into_iter>
+    note <Consumes the list into an iterator yielding elements by value.>
+
+    take self
+      cite free
+
+    free seed
+      like into-iter
+        like t
+          cite free
+        cite free
+
+  task into-iter, name <into_iter>
+    note <Creates an iterator from a value.>
+
+    take self
+      cite free
+
+    free seed
+      like iter
+        time a
+        like t
+          cite free
+        cite free
+
+  task into-iter, name <into_iter>
+    note <Creates an iterator from a value.>
+
+    take self
+      cite free
+
+    free seed
+      like iter-mut
+        time a
+        like t
+          cite free
+        cite free
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like linked-list
+        like t
+          cite free
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like linked-list
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like linked-list
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like linked-list
+        like t
+          cite free
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free

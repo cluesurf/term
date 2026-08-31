@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript/es2015/iterable/uint8-array-constructor
+  find uint8-array-constructor
+
+load @term/bind/code/javascript/es2016/array/include/uint8-array
+  find uint8-array
+
+form uint8-array-constructor, name <Uint8ArrayConstructor>
+  hook make
+    like uint8-array

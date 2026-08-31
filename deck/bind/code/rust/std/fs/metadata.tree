@@ -1,0 +1,614 @@
+
+form metadata, name <std::fs::Metadata>
+  task file-type, name <file_type>
+    note <Returns the file type for this metadata.>
+
+    take self
+      cite free
+
+    free seed
+      like file-type
+        cite free
+
+  task is-dir, name <is_dir>
+    note <Returns true if this metadata is for a directory. The result is mutually exclusive to the result of Metadata::is_file, and will be false for symlink metadata obtained from symlink_metadata.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-file, name <is_file>
+    note <Returns true if this metadata is for a regular file. The result is mutually exclusive to the result of Metadata::is_dir, and will be false for symlink metadata obtained from symlink_metadata.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-symlink, name <is_symlink>
+    note <Returns true if this metadata is for a symbolic link.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task len, name <len>
+    note <Returns the size of the file, in bytes, this metadata is for.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task permissions, name <permissions>
+    note <Returns the permissions of the file this metadata is for.>
+
+    take self
+      cite free
+
+    free seed
+      like permissions
+        cite free
+
+  task modified, name <modified>
+    note <Returns the last modification time listed in this metadata.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like system-time
+          cite free
+        cite free
+
+  task accessed, name <accessed>
+    note <Returns the last access time of this metadata.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like system-time
+          cite free
+        cite free
+
+  task created, name <created>
+    note <Returns the creation time listed in this metadata.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like system-time
+          cite free
+        cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like metadata
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task dev, name <dev>
+    note <Returns the ID of the device containing the file.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task ino, name <ino>
+    note <Returns the inode number.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task mode, name <mode>
+    note <Returns the rights applied to this file.>
+
+    take self
+      cite free
+
+    free seed
+      like u32
+        cite free
+
+  task nlink, name <nlink>
+    note <Returns the number of hard links pointing to this file.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task uid, name <uid>
+    note <Returns the user ID of the owner of this file.>
+
+    take self
+      cite free
+
+    free seed
+      like u32
+        cite free
+
+  task gid, name <gid>
+    note <Returns the group ID of the owner of this file.>
+
+    take self
+      cite free
+
+    free seed
+      like u32
+        cite free
+
+  task rdev, name <rdev>
+    note <Returns the device ID of this file (if it is a special one).>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task size, name <size>
+    note <Returns the total size of this file in bytes.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task atime, name <atime>
+    note <Returns the last access time of the file, in seconds since Unix Epoch.>
+
+    take self
+      cite free
+
+    free seed
+      like i64
+        cite free
+
+  task atime-nsec, name <atime_nsec>
+    note <Returns the last access time of the file, in nanoseconds since atime.>
+
+    take self
+      cite free
+
+    free seed
+      like i64
+        cite free
+
+  task mtime, name <mtime>
+    note <Returns the last modification time of the file, in seconds since Unix Epoch.>
+
+    take self
+      cite free
+
+    free seed
+      like i64
+        cite free
+
+  task mtime-nsec, name <mtime_nsec>
+    note <Returns the last modification time of the file, in nanoseconds since mtime.>
+
+    take self
+      cite free
+
+    free seed
+      like i64
+        cite free
+
+  task ctime, name <ctime>
+    note <Returns the last status change time of the file, in seconds since Unix Epoch.>
+
+    take self
+      cite free
+
+    free seed
+      like i64
+        cite free
+
+  task ctime-nsec, name <ctime_nsec>
+    note <Returns the last status change time of the file, in nanoseconds since ctime.>
+
+    take self
+      cite free
+
+    free seed
+      like i64
+        cite free
+
+  task blksize, name <blksize>
+    note <Returns the block size for filesystem I/O.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task blocks, name <blocks>
+    note <Returns the number of blocks allocated to the file, in 512-byte units.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task dev, name <dev>
+    note <Returns the st_dev field of the internal filestat_t>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task ino, name <ino>
+    note <Returns the st_ino field of the internal filestat_t>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task nlink, name <nlink>
+    note <Returns the st_nlink field of the internal filestat_t>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task size, name <size>
+    note <Returns the st_size field of the internal filestat_t>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task atim, name <atim>
+    note <Returns the st_atim field of the internal filestat_t>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task mtim, name <mtim>
+    note <Returns the st_mtim field of the internal filestat_t>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task ctim, name <ctim>
+    note <Returns the st_ctim field of the internal filestat_t>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task file-attributes, name <file_attributes>
+    note <Returns the value of the dwFileAttributes field of this metadata.>
+
+    take self
+      cite free
+
+    free seed
+      like u32
+        cite free
+
+  task creation-time, name <creation_time>
+    note <Returns the value of the ftCreationTime field of this metadata.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task last-access-time, name <last_access_time>
+    note <Returns the value of the ftLastAccessTime field of this metadata.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task last-write-time, name <last_write_time>
+    note <Returns the value of the ftLastWriteTime field of this metadata.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task file-size, name <file_size>
+    note <Returns the value of the nFileSize\{High,Low\} fields of this metadata.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task volume-serial-number, name <volume_serial_number>
+    note <Returns the value of the dwVolumeSerialNumber field of this metadata.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like u32
+          cite free
+        cite free
+
+  task number-of-links, name <number_of_links>
+    note <Returns the value of the nNumberOfLinks field of this metadata.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like u32
+          cite free
+        cite free
+
+  task file-index, name <file_index>
+    note <Returns the value of the nFileIndex\{Low,High\} fields of this metadata.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like u64
+          cite free
+        cite free
+
+  task as-raw-stat, name <as_raw_stat>
+    note <Gain a reference to the underlying stat structure which contains the raw information returned by the OS.>
+
+    take self
+      cite free
+
+    free seed
+      like stat
+
+  task st-dev, name <st_dev>
+    note <Returns the device ID on which this file resides.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task st-ino, name <st_ino>
+    note <Returns the inode number.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task st-mode, name <st_mode>
+    note <Returns the file type and mode.>
+
+    take self
+      cite free
+
+    free seed
+      like u32
+        cite free
+
+  task st-nlink, name <st_nlink>
+    note <Returns the number of hard links to file.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task st-uid, name <st_uid>
+    note <Returns the user ID of the file owner.>
+
+    take self
+      cite free
+
+    free seed
+      like u32
+        cite free
+
+  task st-gid, name <st_gid>
+    note <Returns the group ID of the file owner.>
+
+    take self
+      cite free
+
+    free seed
+      like u32
+        cite free
+
+  task st-rdev, name <st_rdev>
+    note <Returns the device ID that this file represents. Only relevant for special file.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task st-size, name <st_size>
+    note <Returns the size of the file (if it is a regular file or a symbolic link) in bytes.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task st-atime, name <st_atime>
+    note <Returns the last access time of the file, in seconds since Unix Epoch.>
+
+    take self
+      cite free
+
+    free seed
+      like i64
+        cite free
+
+  task st-atime-nsec, name <st_atime_nsec>
+    note <Returns the last access time of the file, in nanoseconds since st_atime.>
+
+    take self
+      cite free
+
+    free seed
+      like i64
+        cite free
+
+  task st-mtime, name <st_mtime>
+    note <Returns the last modification time of the file, in seconds since Unix Epoch.>
+
+    take self
+      cite free
+
+    free seed
+      like i64
+        cite free
+
+  task st-mtime-nsec, name <st_mtime_nsec>
+    note <Returns the last modification time of the file, in nanoseconds since st_mtime.>
+
+    take self
+      cite free
+
+    free seed
+      like i64
+        cite free
+
+  task st-ctime, name <st_ctime>
+    note <Returns the last status change time of the file, in seconds since Unix Epoch.>
+
+    take self
+      cite free
+
+    free seed
+      like i64
+        cite free
+
+  task st-ctime-nsec, name <st_ctime_nsec>
+    note <Returns the last status change time of the file, in nanoseconds since st_ctime.>
+
+    take self
+      cite free
+
+    free seed
+      like i64
+        cite free
+
+  task st-blksize, name <st_blksize>
+    note <Returns the “preferred” block size for efficient filesystem I/O.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task st-blocks, name <st_blocks>
+    note <Returns the number of blocks allocated to the file, 512-byte units.>
+
+    take self
+      cite free
+
+    free seed
+      like u64
+        cite free

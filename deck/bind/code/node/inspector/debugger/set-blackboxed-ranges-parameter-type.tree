@@ -1,0 +1,16 @@
+
+load @term/bind/code/javascript
+  find array
+  find runtime-script-id
+
+load @term/bind/code/node/inspector/debugger
+  find script-position
+
+form set-blackboxed-ranges-parameter-type, name <SetBlackboxedRangesParameterType>
+  link script-id, name <scriptId>
+    like runtime-script-id
+    flex true
+  link positions, name <positions>
+    like array
+      like script-position
+    flex true

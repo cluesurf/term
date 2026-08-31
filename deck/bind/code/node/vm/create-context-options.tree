@@ -1,0 +1,41 @@
+
+load @term/bind
+  find form
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-string
+  find native-undefined
+
+form create-context-options, name <CreateContextOptions>
+  link name, name <name>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link origin, name <origin>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link code-generation, name <codeGeneration>
+    like or
+      like form
+        link strings, name <strings>
+          like or
+            like native-boolean
+            like native-undefined
+          flex true
+        link wasm, name <wasm>
+          like or
+            like native-boolean
+            like native-undefined
+          flex true
+      like native-undefined
+    flex true
+  link microtask-mode, name <microtaskMode>
+    like or
+      text <afterEvaluate>
+      like native-undefined
+    flex true

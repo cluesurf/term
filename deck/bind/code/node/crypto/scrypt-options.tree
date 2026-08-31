@@ -1,0 +1,44 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+
+form scrypt-options, name <ScryptOptions>
+  link cost, name <cost>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link block-size, name <blockSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link parallelization, name <parallelization>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link n, name <N>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link r, name <r>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link p, name <p>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link maxmem, name <maxmem>
+    like or
+      like native-number
+      like native-undefined
+    flex true

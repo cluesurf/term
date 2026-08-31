@@ -1,0 +1,962 @@
+
+bear @term/bind/code/javascript/node/util/inspect-options
+bear @term/bind/code/javascript/node/util/style
+bear @term/bind/code/javascript/node/util/custom-inspect-function
+bear @term/bind/code/javascript/node/util/inspect-options-stylized
+bear @term/bind/code/javascript/node/util/inspect
+bear @term/bind/code/javascript/node/util/debug-logger-function
+bear @term/bind/code/javascript/node/util/debug-logger
+bear @term/bind/code/javascript/node/util/custom-promisify-legacy
+bear @term/bind/code/javascript/node/util/custom-promisify-symbol
+bear @term/bind/code/javascript/node/util/custom-promisify
+bear @term/bind/code/javascript/node/util/promisify
+bear @term/bind/code/javascript/node/util/text-decoder
+bear @term/bind/code/javascript/node/util/encode-into-result
+bear @term/bind/code/javascript/node/util/text-encoder
+bear @term/bind/code/javascript/node/util/util-types
+
+load @term/bind/code/javascript
+  find array
+  find date
+  find error
+  find function
+  find map
+  find native-boolean
+  find native-null
+  find native-number
+  find native-string
+  find native-symbol
+  find native-undefined
+  find native-void
+  find node-js-errno-exception
+  find promise
+  find reg-exp
+
+load @term/bind
+  find any
+  find like
+  find or
+  find task
+  find tuple
+  find unknown
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/util
+  find custom-promisify
+  find debug-logger
+  find debug-logger-function
+  find inspect-options
+
+host debug, name <debug>
+  like debuglog
+
+task format, name <format>
+  like native-string
+
+  take format, like any
+    void true
+  take param
+    like array
+      like any
+    rest true
+
+task format-with-options, name <formatWithOptions>
+  like native-string
+
+  take inspect-options, like inspect-options
+  take format, like any
+    void true
+  take param
+    like array
+      like any
+    rest true
+
+task get-system-error-name, name <getSystemErrorName>
+  like native-string
+
+  take err, like native-number
+
+task get-system-error-map, name <getSystemErrorMap>
+  like map
+    like native-number
+    like tuple
+      like native-string
+      like native-string
+
+task log, name <log>
+  like native-void
+
+  take string, like native-string
+
+task to-usv-string, name <toUSVString>
+  like native-string
+
+  take string, like native-string
+
+task inspect, name <inspect>
+  like native-string
+
+  take object, like any
+  take show-hidden, like native-boolean
+    void true
+  take depth
+    like or
+      like native-number
+      like native-null
+    void true
+  take color, like native-boolean
+    void true
+
+task inspect, name <inspect>
+  like native-string
+
+  take object, like any
+  take options, like inspect-options
+    void true
+
+task is-array, name <isArray>
+  like native-boolean
+  rank object
+    like array
+      like unknown
+
+  take object, like unknown
+
+task is-reg-exp, name <isRegExp>
+  like native-boolean
+  rank object, like reg-exp
+
+  take object, like unknown
+
+task is-date, name <isDate>
+  like native-boolean
+  rank object, like date
+
+  take object, like unknown
+
+task is-error, name <isError>
+  like native-boolean
+  rank object, like error
+
+  take object, like unknown
+
+task inherits, name <inherits>
+  like native-void
+
+  take constructor, like unknown
+  take super-constructor, like unknown
+
+task debuglog, name <debuglog>
+  like debug-logger
+
+  take section, like native-string
+  take callback
+    like task
+      like native-void
+
+      take fn, like debug-logger-function
+    void true
+
+task is-boolean, name <isBoolean>
+  like native-boolean
+  rank object, like native-boolean
+
+  take object, like unknown
+
+task is-buffer, name <isBuffer>
+  like native-boolean
+  rank object, like buffer
+
+  take object, like unknown
+
+task is-function, name <isFunction>
+  like native-boolean
+
+  take object, like unknown
+
+task is-null, name <isNull>
+  like native-boolean
+  rank object, like native-null
+
+  take object, like unknown
+
+task is-null-or-undefined, name <isNullOrUndefined>
+  like native-boolean
+  rank object
+    like or
+      like native-null
+      like native-undefined
+
+  take object, like unknown
+
+task is-number, name <isNumber>
+  like native-boolean
+  rank object, like native-number
+
+  take object, like unknown
+
+task is-object, name <isObject>
+  like native-boolean
+
+  take object, like unknown
+
+task is-primitive, name <isPrimitive>
+  like native-boolean
+
+  take object, like unknown
+
+task is-string, name <isString>
+  like native-boolean
+  rank object, like native-string
+
+  take object, like unknown
+
+task is-symbol, name <isSymbol>
+  like native-boolean
+  rank object, like native-symbol
+
+  take object, like unknown
+
+task is-undefined, name <isUndefined>
+  like native-boolean
+  rank object, like native-undefined
+
+  take object, like unknown
+
+task deprecate, name <deprecate>
+  like t
+
+  head t
+    base function
+
+  take fn, like t
+  take msg, like native-string
+  take code, like native-string
+    void true
+
+task is-deep-strict-equal, name <isDeepStrictEqual>
+  like native-boolean
+
+  take val1, like unknown
+  take val2, like unknown
+
+task strip-vt-control-characters, name <stripVTControlCharacters>
+  like native-string
+
+  take str, like native-string
+
+task callbackify, name <callbackify>
+  like task
+    like native-void
+
+    take callback
+      like task
+        like native-void
+
+        take err, like node-js-errno-exception
+
+  take fn
+    like task
+      like promise
+        like native-void
+
+task callbackify, name <callbackify>
+  like task
+    like native-void
+
+    take callback
+      like task
+        like native-void
+
+        take err, like node-js-errno-exception
+        take result, like t-result
+
+  head t-result
+
+  take fn
+    like task
+      like promise
+        like t-result
+
+task callbackify, name <callbackify>
+  like task
+    like native-void
+
+    take arg1, like t1
+    take callback
+      like task
+        like native-void
+
+        take err, like node-js-errno-exception
+
+  head t1
+
+  take fn
+    like task
+      like promise
+        like native-void
+
+      take arg1, like t1
+
+task callbackify, name <callbackify>
+  like task
+    like native-void
+
+    take arg1, like t1
+    take callback
+      like task
+        like native-void
+
+        take err, like node-js-errno-exception
+        take result, like t-result
+
+  head t1
+  head t-result
+
+  take fn
+    like task
+      like promise
+        like t-result
+
+      take arg1, like t1
+
+task callbackify, name <callbackify>
+  like task
+    like native-void
+
+    take arg1, like t1
+    take arg2, like t2
+    take callback
+      like task
+        like native-void
+
+        take err, like node-js-errno-exception
+
+  head t1
+  head t2
+
+  take fn
+    like task
+      like promise
+        like native-void
+
+      take arg1, like t1
+      take arg2, like t2
+
+task callbackify, name <callbackify>
+  like task
+    like native-void
+
+    take arg1, like t1
+    take arg2, like t2
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like node-js-errno-exception
+            like native-null
+        take result, like t-result
+
+  head t1
+  head t2
+  head t-result
+
+  take fn
+    like task
+      like promise
+        like t-result
+
+      take arg1, like t1
+      take arg2, like t2
+
+task callbackify, name <callbackify>
+  like task
+    like native-void
+
+    take arg1, like t1
+    take arg2, like t2
+    take arg3, like t3
+    take callback
+      like task
+        like native-void
+
+        take err, like node-js-errno-exception
+
+  head t1
+  head t2
+  head t3
+
+  take fn
+    like task
+      like promise
+        like native-void
+
+      take arg1, like t1
+      take arg2, like t2
+      take arg3, like t3
+
+task callbackify, name <callbackify>
+  like task
+    like native-void
+
+    take arg1, like t1
+    take arg2, like t2
+    take arg3, like t3
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like node-js-errno-exception
+            like native-null
+        take result, like t-result
+
+  head t1
+  head t2
+  head t3
+  head t-result
+
+  take fn
+    like task
+      like promise
+        like t-result
+
+      take arg1, like t1
+      take arg2, like t2
+      take arg3, like t3
+
+task callbackify, name <callbackify>
+  like task
+    like native-void
+
+    take arg1, like t1
+    take arg2, like t2
+    take arg3, like t3
+    take arg4, like t4
+    take callback
+      like task
+        like native-void
+
+        take err, like node-js-errno-exception
+
+  head t1
+  head t2
+  head t3
+  head t4
+
+  take fn
+    like task
+      like promise
+        like native-void
+
+      take arg1, like t1
+      take arg2, like t2
+      take arg3, like t3
+      take arg4, like t4
+
+task callbackify, name <callbackify>
+  like task
+    like native-void
+
+    take arg1, like t1
+    take arg2, like t2
+    take arg3, like t3
+    take arg4, like t4
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like node-js-errno-exception
+            like native-null
+        take result, like t-result
+
+  head t1
+  head t2
+  head t3
+  head t4
+  head t-result
+
+  take fn
+    like task
+      like promise
+        like t-result
+
+      take arg1, like t1
+      take arg2, like t2
+      take arg3, like t3
+      take arg4, like t4
+
+task callbackify, name <callbackify>
+  like task
+    like native-void
+
+    take arg1, like t1
+    take arg2, like t2
+    take arg3, like t3
+    take arg4, like t4
+    take arg5, like t5
+    take callback
+      like task
+        like native-void
+
+        take err, like node-js-errno-exception
+
+  head t1
+  head t2
+  head t3
+  head t4
+  head t5
+
+  take fn
+    like task
+      like promise
+        like native-void
+
+      take arg1, like t1
+      take arg2, like t2
+      take arg3, like t3
+      take arg4, like t4
+      take arg5, like t5
+
+task callbackify, name <callbackify>
+  like task
+    like native-void
+
+    take arg1, like t1
+    take arg2, like t2
+    take arg3, like t3
+    take arg4, like t4
+    take arg5, like t5
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like node-js-errno-exception
+            like native-null
+        take result, like t-result
+
+  head t1
+  head t2
+  head t3
+  head t4
+  head t5
+  head t-result
+
+  take fn
+    like task
+      like promise
+        like t-result
+
+      take arg1, like t1
+      take arg2, like t2
+      take arg3, like t3
+      take arg4, like t4
+      take arg5, like t5
+
+task callbackify, name <callbackify>
+  like task
+    like native-void
+
+    take arg1, like t1
+    take arg2, like t2
+    take arg3, like t3
+    take arg4, like t4
+    take arg5, like t5
+    take arg6, like t6
+    take callback
+      like task
+        like native-void
+
+        take err, like node-js-errno-exception
+
+  head t1
+  head t2
+  head t3
+  head t4
+  head t5
+  head t6
+
+  take fn
+    like task
+      like promise
+        like native-void
+
+      take arg1, like t1
+      take arg2, like t2
+      take arg3, like t3
+      take arg4, like t4
+      take arg5, like t5
+      take arg6, like t6
+
+task callbackify, name <callbackify>
+  like task
+    like native-void
+
+    take arg1, like t1
+    take arg2, like t2
+    take arg3, like t3
+    take arg4, like t4
+    take arg5, like t5
+    take arg6, like t6
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like node-js-errno-exception
+            like native-null
+        take result, like t-result
+
+  head t1
+  head t2
+  head t3
+  head t4
+  head t5
+  head t6
+  head t-result
+
+  take fn
+    like task
+      like promise
+        like t-result
+
+      take arg1, like t1
+      take arg2, like t2
+      take arg3, like t3
+      take arg4, like t4
+      take arg5, like t5
+      take arg6, like t6
+
+task promisify, name <promisify>
+  like t-custom
+
+  head t-custom
+    base function
+
+  take fn
+    like custom-promisify
+      like t-custom
+
+task promisify, name <promisify>
+  like task
+    like promise
+      like t-result
+
+  head t-result
+
+  take fn
+    like task
+      like native-void
+
+      take callback
+        like task
+          like native-void
+
+          take err, like any
+          take result, like t-result
+
+task promisify, name <promisify>
+  like task
+    like promise
+      like native-void
+
+  take fn
+    like task
+      like native-void
+
+      take callback
+        like task
+          like native-void
+
+          take err, like any
+            void true
+
+task promisify, name <promisify>
+  like task
+    like promise
+      like t-result
+
+    take arg1, like t1
+
+  head t1
+  head t-result
+
+  take fn
+    like task
+      like native-void
+
+      take arg1, like t1
+      take callback
+        like task
+          like native-void
+
+          take err, like any
+          take result, like t-result
+
+task promisify, name <promisify>
+  like task
+    like promise
+      like native-void
+
+    take arg1, like t1
+
+  head t1
+
+  take fn
+    like task
+      like native-void
+
+      take arg1, like t1
+      take callback
+        like task
+          like native-void
+
+          take err, like any
+            void true
+
+task promisify, name <promisify>
+  like task
+    like promise
+      like t-result
+
+    take arg1, like t1
+    take arg2, like t2
+
+  head t1
+  head t2
+  head t-result
+
+  take fn
+    like task
+      like native-void
+
+      take arg1, like t1
+      take arg2, like t2
+      take callback
+        like task
+          like native-void
+
+          take err, like any
+          take result, like t-result
+
+task promisify, name <promisify>
+  like task
+    like promise
+      like native-void
+
+    take arg1, like t1
+    take arg2, like t2
+
+  head t1
+  head t2
+
+  take fn
+    like task
+      like native-void
+
+      take arg1, like t1
+      take arg2, like t2
+      take callback
+        like task
+          like native-void
+
+          take err, like any
+            void true
+
+task promisify, name <promisify>
+  like task
+    like promise
+      like t-result
+
+    take arg1, like t1
+    take arg2, like t2
+    take arg3, like t3
+
+  head t1
+  head t2
+  head t3
+  head t-result
+
+  take fn
+    like task
+      like native-void
+
+      take arg1, like t1
+      take arg2, like t2
+      take arg3, like t3
+      take callback
+        like task
+          like native-void
+
+          take err, like any
+          take result, like t-result
+
+task promisify, name <promisify>
+  like task
+    like promise
+      like native-void
+
+    take arg1, like t1
+    take arg2, like t2
+    take arg3, like t3
+
+  head t1
+  head t2
+  head t3
+
+  take fn
+    like task
+      like native-void
+
+      take arg1, like t1
+      take arg2, like t2
+      take arg3, like t3
+      take callback
+        like task
+          like native-void
+
+          take err, like any
+            void true
+
+task promisify, name <promisify>
+  like task
+    like promise
+      like t-result
+
+    take arg1, like t1
+    take arg2, like t2
+    take arg3, like t3
+    take arg4, like t4
+
+  head t1
+  head t2
+  head t3
+  head t4
+  head t-result
+
+  take fn
+    like task
+      like native-void
+
+      take arg1, like t1
+      take arg2, like t2
+      take arg3, like t3
+      take arg4, like t4
+      take callback
+        like task
+          like native-void
+
+          take err, like any
+          take result, like t-result
+
+task promisify, name <promisify>
+  like task
+    like promise
+      like native-void
+
+    take arg1, like t1
+    take arg2, like t2
+    take arg3, like t3
+    take arg4, like t4
+
+  head t1
+  head t2
+  head t3
+  head t4
+
+  take fn
+    like task
+      like native-void
+
+      take arg1, like t1
+      take arg2, like t2
+      take arg3, like t3
+      take arg4, like t4
+      take callback
+        like task
+          like native-void
+
+          take err, like any
+            void true
+
+task promisify, name <promisify>
+  like task
+    like promise
+      like t-result
+
+    take arg1, like t1
+    take arg2, like t2
+    take arg3, like t3
+    take arg4, like t4
+    take arg5, like t5
+
+  head t1
+  head t2
+  head t3
+  head t4
+  head t5
+  head t-result
+
+  take fn
+    like task
+      like native-void
+
+      take arg1, like t1
+      take arg2, like t2
+      take arg3, like t3
+      take arg4, like t4
+      take arg5, like t5
+      take callback
+        like task
+          like native-void
+
+          take err, like any
+          take result, like t-result
+
+task promisify, name <promisify>
+  like task
+    like promise
+      like native-void
+
+    take arg1, like t1
+    take arg2, like t2
+    take arg3, like t3
+    take arg4, like t4
+    take arg5, like t5
+
+  head t1
+  head t2
+  head t3
+  head t4
+  head t5
+
+  take fn
+    like task
+      like native-void
+
+      take arg1, like t1
+      take arg2, like t2
+      take arg3, like t3
+      take arg4, like t4
+      take arg5, like t5
+      take callback
+        like task
+          like native-void
+
+          take err, like any
+            void true
+
+task promisify, name <promisify>
+  like function
+
+  take fn, like function

@@ -1,0 +1,250 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/before-unload-event
+  find before-unload-event
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/message-event
+  find message-event
+
+load @term/bind/code/browser/dom/page-transition-event
+  find page-transition-event
+
+load @term/bind/code/browser/dom/pop-state-event
+  find pop-state-event
+
+load @term/bind/code/browser/dom/promise-rejection-event
+  find promise-rejection-event
+
+load @term/bind/code/browser/dom/storage-event
+  find storage-event
+
+load @term/bind/code/browser/dom/window-event-handlers-event-map
+  find window-event-handlers-event-map
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form window-event-handlers, name <WindowEventHandlers>
+  link onafterprint, name <onafterprint>
+    like or
+      like task
+        take this, like window-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onbeforeprint, name <onbeforeprint>
+    like or
+      like task
+        take this, like window-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onbeforeunload, name <onbeforeunload>
+    like or
+      like task
+        take this, like window-event-handlers
+        take ev, like before-unload-event
+        like native-any
+      like native-null
+    lock false
+  link ongamepadconnected, name <ongamepadconnected>
+    like or
+      like task
+        take this, like window-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link ongamepaddisconnected, name <ongamepaddisconnected>
+    like or
+      like task
+        take this, like window-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onhashchange, name <onhashchange>
+    like or
+      like task
+        take this, like window-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onlanguagechange, name <onlanguagechange>
+    like or
+      like task
+        take this, like window-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onmessage, name <onmessage>
+    like or
+      like task
+        take this, like window-event-handlers
+        take ev, like message-event
+        like native-any
+      like native-null
+    lock false
+  link onmessageerror, name <onmessageerror>
+    like or
+      like task
+        take this, like window-event-handlers
+        take ev, like message-event
+        like native-any
+      like native-null
+    lock false
+  link onoffline, name <onoffline>
+    like or
+      like task
+        take this, like window-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link ononline, name <ononline>
+    like or
+      like task
+        take this, like window-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onpagehide, name <onpagehide>
+    like or
+      like task
+        take this, like window-event-handlers
+        take ev, like page-transition-event
+        like native-any
+      like native-null
+    lock false
+  link onpageshow, name <onpageshow>
+    like or
+      like task
+        take this, like window-event-handlers
+        take ev, like page-transition-event
+        like native-any
+      like native-null
+    lock false
+  link onpopstate, name <onpopstate>
+    like or
+      like task
+        take this, like window-event-handlers
+        take ev, like pop-state-event
+        like native-any
+      like native-null
+    lock false
+  link onrejectionhandled, name <onrejectionhandled>
+    like or
+      like task
+        take this, like window-event-handlers
+        take ev, like promise-rejection-event
+        like native-any
+      like native-null
+    lock false
+  link onstorage, name <onstorage>
+    like or
+      like task
+        take this, like window-event-handlers
+        take ev, like storage-event
+        like native-any
+      like native-null
+    lock false
+  link onunhandledrejection, name <onunhandledrejection>
+    like or
+      like task
+        take this, like window-event-handlers
+        take ev, like promise-rejection-event
+        like native-any
+      like native-null
+    lock false
+  link onunload, name <onunload>
+    like or
+      like task
+        take this, like window-event-handlers
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like window-event-handlers-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like window-event-handlers
+        take ev
+          like index
+            like window-event-handlers-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like window-event-handlers-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like window-event-handlers
+        take ev
+          like index
+            like window-event-handlers-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

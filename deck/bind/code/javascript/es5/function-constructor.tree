@@ -1,0 +1,20 @@
+
+load @term/bind/code/javascript/es5/function
+  find function
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form function-constructor, name <FunctionConstructor>
+  link prototype, name <prototype>
+    like function
+
+  hook make
+    take args
+      like native-array
+        like native-string
+      rest true
+    like function

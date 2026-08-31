@@ -1,0 +1,21 @@
+
+load @term/bind/code/browser/dom/error-callback
+  find error-callback
+
+load @term/bind/code/browser/dom/file-callback
+  find file-callback
+
+load @term/bind/code/browser/dom/file-system-entry
+  find file-system-entry
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form file-system-file-entry, name <FileSystemFileEntry>
+  base file-system-entry
+
+  task file, name <file>
+    take success-callback, like file-callback
+    take error-callback, like maybe
+      like error-callback
+    like native-void

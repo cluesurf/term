@@ -1,0 +1,478 @@
+
+load @term/bind/code/javascript/es2015/iterable/promise
+  find promise
+
+load @term/bind/code/javascript/es2015/iterable/promise-constructor
+  find promise-constructor
+
+load @term/bind/code/javascript/es5/promise-like
+  find promise-like
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-never
+
+load @term/bind/code/javascript/native
+  find native-void
+
+load @term/bind/code/javascript/u
+  find u
+
+form promise-constructor, name <PromiseConstructor>
+  link prototype, name <prototype>
+    like promise
+      like native-any
+
+  task all, name <all>
+    head t1
+    head t2
+    head t3
+    head t4
+    head t5
+    head t6
+    head t7
+    head t8
+    head t9
+    head t10
+    take values
+      like band
+        like or
+          like t1
+          like promise-like
+            like t1
+        like or
+          like t2
+          like promise-like
+            like t2
+        like or
+          like t3
+          like promise-like
+            like t3
+        like or
+          like t4
+          like promise-like
+            like t4
+        like or
+          like t5
+          like promise-like
+            like t5
+        like or
+          like t6
+          like promise-like
+            like t6
+        like or
+          like t7
+          like promise-like
+            like t7
+        like or
+          like t8
+          like promise-like
+            like t8
+        like or
+          like t9
+          like promise-like
+            like t9
+        like or
+          like t10
+          like promise-like
+            like t10
+    like promise
+      like band
+        like t1
+        like t2
+        like t3
+        like t4
+        like t5
+        like t6
+        like t7
+        like t8
+        like t9
+        like t10
+
+  task all, name <all>
+    head t1
+    head t2
+    head t3
+    head t4
+    head t5
+    head t6
+    head t7
+    head t8
+    head t9
+    take values
+      like band
+        like or
+          like t1
+          like promise-like
+            like t1
+        like or
+          like t2
+          like promise-like
+            like t2
+        like or
+          like t3
+          like promise-like
+            like t3
+        like or
+          like t4
+          like promise-like
+            like t4
+        like or
+          like t5
+          like promise-like
+            like t5
+        like or
+          like t6
+          like promise-like
+            like t6
+        like or
+          like t7
+          like promise-like
+            like t7
+        like or
+          like t8
+          like promise-like
+            like t8
+        like or
+          like t9
+          like promise-like
+            like t9
+    like promise
+      like band
+        like t1
+        like t2
+        like t3
+        like t4
+        like t5
+        like t6
+        like t7
+        like t8
+        like t9
+
+  task all, name <all>
+    head t1
+    head t2
+    head t3
+    head t4
+    head t5
+    head t6
+    head t7
+    head t8
+    take values
+      like band
+        like or
+          like t1
+          like promise-like
+            like t1
+        like or
+          like t2
+          like promise-like
+            like t2
+        like or
+          like t3
+          like promise-like
+            like t3
+        like or
+          like t4
+          like promise-like
+            like t4
+        like or
+          like t5
+          like promise-like
+            like t5
+        like or
+          like t6
+          like promise-like
+            like t6
+        like or
+          like t7
+          like promise-like
+            like t7
+        like or
+          like t8
+          like promise-like
+            like t8
+    like promise
+      like band
+        like t1
+        like t2
+        like t3
+        like t4
+        like t5
+        like t6
+        like t7
+        like t8
+
+  task all, name <all>
+    head t1
+    head t2
+    head t3
+    head t4
+    head t5
+    head t6
+    head t7
+    take values
+      like band
+        like or
+          like t1
+          like promise-like
+            like t1
+        like or
+          like t2
+          like promise-like
+            like t2
+        like or
+          like t3
+          like promise-like
+            like t3
+        like or
+          like t4
+          like promise-like
+            like t4
+        like or
+          like t5
+          like promise-like
+            like t5
+        like or
+          like t6
+          like promise-like
+            like t6
+        like or
+          like t7
+          like promise-like
+            like t7
+    like promise
+      like band
+        like t1
+        like t2
+        like t3
+        like t4
+        like t5
+        like t6
+        like t7
+
+  task all, name <all>
+    head t1
+    head t2
+    head t3
+    head t4
+    head t5
+    head t6
+    take values
+      like band
+        like or
+          like t1
+          like promise-like
+            like t1
+        like or
+          like t2
+          like promise-like
+            like t2
+        like or
+          like t3
+          like promise-like
+            like t3
+        like or
+          like t4
+          like promise-like
+            like t4
+        like or
+          like t5
+          like promise-like
+            like t5
+        like or
+          like t6
+          like promise-like
+            like t6
+    like promise
+      like band
+        like t1
+        like t2
+        like t3
+        like t4
+        like t5
+        like t6
+
+  task all, name <all>
+    head t1
+    head t2
+    head t3
+    head t4
+    head t5
+    take values
+      like band
+        like or
+          like t1
+          like promise-like
+            like t1
+        like or
+          like t2
+          like promise-like
+            like t2
+        like or
+          like t3
+          like promise-like
+            like t3
+        like or
+          like t4
+          like promise-like
+            like t4
+        like or
+          like t5
+          like promise-like
+            like t5
+    like promise
+      like band
+        like t1
+        like t2
+        like t3
+        like t4
+        like t5
+
+  task all, name <all>
+    head t1
+    head t2
+    head t3
+    head t4
+    take values
+      like band
+        like or
+          like t1
+          like promise-like
+            like t1
+        like or
+          like t2
+          like promise-like
+            like t2
+        like or
+          like t3
+          like promise-like
+            like t3
+        like or
+          like t4
+          like promise-like
+            like t4
+    like promise
+      like band
+        like t1
+        like t2
+        like t3
+        like t4
+
+  task all, name <all>
+    head t1
+    head t2
+    head t3
+    take values
+      like band
+        like or
+          like t1
+          like promise-like
+            like t1
+        like or
+          like t2
+          like promise-like
+            like t2
+        like or
+          like t3
+          like promise-like
+            like t3
+    like promise
+      like band
+        like t1
+        like t2
+        like t3
+
+  task all, name <all>
+    head t1
+    head t2
+    take values
+      like band
+        like or
+          like t1
+          like promise-like
+            like t1
+        like or
+          like t2
+          like promise-like
+            like t2
+    like promise
+      like band
+        like t1
+        like t2
+
+  task all, name <all>
+    head t
+    take values
+      like native-array
+        like or
+          like t
+          like promise-like
+            like t
+    like promise
+      like native-array
+        like t
+
+  task race, name <race>
+    head t
+    take values
+      like native-array
+        like t
+    like promise
+      like test
+        stem roll
+          like t
+          like promise-like
+            name u
+          hook true
+            like u
+          hook false
+            like t
+
+  task reject, name <reject>
+    head t
+      back native-never
+    take reason, like maybe
+      like native-any
+    like promise
+      like t
+
+  task resolve, name <resolve>
+    like promise
+      like native-void
+
+  task resolve, name <resolve>
+    head t
+    take value
+      like or
+        like t
+        like promise-like
+          like t
+    like promise
+      like t
+
+  hook make
+    head t
+    take executor
+      like task
+        take resolve
+          like task
+            take value
+              like or
+                like t
+                like promise-like
+                  like t
+            like native-void
+        take reject
+          like task
+            take reason, like maybe
+              like native-any
+            like native-void
+        like native-void
+    like promise
+      like t

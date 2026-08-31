@@ -1,0 +1,49 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-undefined
+  find partial
+
+form agent-options, name <AgentOptions>
+  base partial
+
+  link keep-alive, name <keepAlive>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link keep-alive-msecs, name <keepAliveMsecs>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link max-sockets, name <maxSockets>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link max-total-sockets, name <maxTotalSockets>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link max-free-sockets, name <maxFreeSockets>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link timeout, name <timeout>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link scheduling, name <scheduling>
+    like or
+      text <fifo>
+      text <lifo>
+      like native-undefined
+    flex true

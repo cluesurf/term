@@ -1,0 +1,5 @@
+
+form font-face-set-load-status, name <FontFaceSetLoadStatus>
+  like or
+    text <loaded>
+    text <loading>

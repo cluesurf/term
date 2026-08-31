@@ -1,0 +1,39 @@
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+load @term/bind/code/browser/dom/storage
+  find storage
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form storage-event-init, name <StorageEventInit>
+  base event-init
+
+  link key, name <key>
+    like or
+      like native-string
+      like native-null
+    lock false
+  link new-value, name <newValue>
+    like or
+      like native-string
+      like native-null
+    lock false
+  link old-value, name <oldValue>
+    like or
+      like native-string
+      like native-null
+    lock false
+  link storage-area, name <storageArea>
+    like or
+      like storage
+      like native-null
+    lock false
+  link url, name <url>
+    like native-string
+    lock false

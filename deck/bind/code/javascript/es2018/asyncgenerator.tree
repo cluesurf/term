@@ -1,0 +1,5 @@
+
+bear @term/bind/code/javascript/es2018/asynciterable
+bear @term/bind/code/javascript/es2018/asyncgenerator/async-generator
+bear @term/bind/code/javascript/es2018/asyncgenerator/async-generator-function
+bear @term/bind/code/javascript/es2018/asyncgenerator/async-generator-function-constructor

@@ -1,0 +1,18 @@
+
+load @term/bind
+  find or
+
+form buffer-encoding, name <BufferEncoding>
+  home true
+  like or
+    text <ascii>
+    text <utf8>
+    text <utf-8>
+    text <utf16le>
+    text <ucs2>
+    text <ucs-2>
+    text <base64>
+    text <base64url>
+    text <latin1>
+    text <binary>
+    text <hex>

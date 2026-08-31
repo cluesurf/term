@@ -1,0 +1,1659 @@
+
+load @term/bind/code/browser/dom/angle-instanced-arrays
+  find angle-instanced-arrays
+
+load @term/bind/code/browser/dom/ext-blend-minmax
+  find ext-blend-minmax
+
+load @term/bind/code/browser/dom/ext-color-buffer-float
+  find ext-color-buffer-float
+
+load @term/bind/code/browser/dom/ext-color-buffer-half-float
+  find ext-color-buffer-half-float
+
+load @term/bind/code/browser/dom/ext-float-blend
+  find ext-float-blend
+
+load @term/bind/code/browser/dom/ext-frag-depth
+  find ext-frag-depth
+
+load @term/bind/code/browser/dom/ext-s-rgb
+  find ext-s-rgb
+
+load @term/bind/code/browser/dom/ext-shader-texture-lod
+  find ext-shader-texture-lod
+
+load @term/bind/code/browser/dom/ext-texture-filter-anisotropic
+  find ext-texture-filter-anisotropic
+
+load @term/bind/code/browser/dom/float32-list
+  find float32-list
+
+load @term/bind/code/browser/dom/g-lbitfield
+  find g-lbitfield
+
+load @term/bind/code/browser/dom/g-lboolean
+  find g-lboolean
+
+load @term/bind/code/browser/dom/g-lclampf
+  find g-lclampf
+
+load @term/bind/code/browser/dom/g-lenum
+  find g-lenum
+
+load @term/bind/code/browser/dom/g-lfloat
+  find g-lfloat
+
+load @term/bind/code/browser/dom/g-lint
+  find g-lint
+
+load @term/bind/code/browser/dom/g-lintptr
+  find g-lintptr
+
+load @term/bind/code/browser/dom/g-lsizei
+  find g-lsizei
+
+load @term/bind/code/browser/dom/g-luint
+  find g-luint
+
+load @term/bind/code/browser/dom/khr-parallel-shader-compile
+  find khr-parallel-shader-compile
+
+load @term/bind/code/browser/dom/oes-element-index-uint
+  find oes-element-index-uint
+
+load @term/bind/code/browser/dom/oes-standard-derivatives
+  find oes-standard-derivatives
+
+load @term/bind/code/browser/dom/oes-texture-float
+  find oes-texture-float
+
+load @term/bind/code/browser/dom/oes-texture-float-linear
+  find oes-texture-float-linear
+
+load @term/bind/code/browser/dom/oes-texture-half-float
+  find oes-texture-half-float
+
+load @term/bind/code/browser/dom/oes-texture-half-float-linear
+  find oes-texture-half-float-linear
+
+load @term/bind/code/browser/dom/oes-vertex-array-object
+  find oes-vertex-array-object
+
+load @term/bind/code/browser/dom/ovr-multiview2
+  find ovr-multiview2
+
+load @term/bind/code/browser/dom/web-gl-active-info
+  find web-gl-active-info
+
+load @term/bind/code/browser/dom/web-gl-buffer
+  find web-gl-buffer
+
+load @term/bind/code/browser/dom/web-gl-context-attributes
+  find web-gl-context-attributes
+
+load @term/bind/code/browser/dom/web-gl-framebuffer
+  find web-gl-framebuffer
+
+load @term/bind/code/browser/dom/web-gl-program
+  find web-gl-program
+
+load @term/bind/code/browser/dom/web-gl-renderbuffer
+  find web-gl-renderbuffer
+
+load @term/bind/code/browser/dom/web-gl-shader
+  find web-gl-shader
+
+load @term/bind/code/browser/dom/web-gl-shader-precision-format
+  find web-gl-shader-precision-format
+
+load @term/bind/code/browser/dom/web-gl-texture
+  find web-gl-texture
+
+load @term/bind/code/browser/dom/web-gl-uniform-location
+  find web-gl-uniform-location
+
+load @term/bind/code/browser/dom/webgl-color-buffer-float
+  find webgl-color-buffer-float
+
+load @term/bind/code/browser/dom/webgl-compressed-texture-astc
+  find webgl-compressed-texture-astc
+
+load @term/bind/code/browser/dom/webgl-compressed-texture-etc
+  find webgl-compressed-texture-etc
+
+load @term/bind/code/browser/dom/webgl-compressed-texture-etc1
+  find webgl-compressed-texture-etc1
+
+load @term/bind/code/browser/dom/webgl-compressed-texture-pvrtc
+  find webgl-compressed-texture-pvrtc
+
+load @term/bind/code/browser/dom/webgl-compressed-texture-s3tc
+  find webgl-compressed-texture-s3tc
+
+load @term/bind/code/browser/dom/webgl-compressed-texture-s3tc-srgb
+  find webgl-compressed-texture-s3tc-srgb
+
+load @term/bind/code/browser/dom/webgl-debug-renderer-info
+  find webgl-debug-renderer-info
+
+load @term/bind/code/browser/dom/webgl-debug-shaders
+  find webgl-debug-shaders
+
+load @term/bind/code/browser/dom/webgl-depth-texture
+  find webgl-depth-texture
+
+load @term/bind/code/browser/dom/webgl-draw-buffers
+  find webgl-draw-buffers
+
+load @term/bind/code/browser/dom/webgl-lose-context
+  find webgl-lose-context
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form web-gl-rendering-context-base, name <WebGLRenderingContextBase>
+  link drawing-buffer-height, name <drawingBufferHeight>
+    like g-lsizei
+  link drawing-buffer-width, name <drawingBufferWidth>
+    like g-lsizei
+  link active-attributes, name <ACTIVE_ATTRIBUTES>
+    like g-lenum
+  link active-texture, name <ACTIVE_TEXTURE>
+    like g-lenum
+  link active-uniforms, name <ACTIVE_UNIFORMS>
+    like g-lenum
+  link aliased-line-width-range, name <ALIASED_LINE_WIDTH_RANGE>
+    like g-lenum
+  link aliased-point-size-range, name <ALIASED_POINT_SIZE_RANGE>
+    like g-lenum
+  link alpha, name <ALPHA>
+    like g-lenum
+  link alpha-bits, name <ALPHA_BITS>
+    like g-lenum
+  link always, name <ALWAYS>
+    like g-lenum
+  link array-buffer, name <ARRAY_BUFFER>
+    like g-lenum
+  link array-buffer-binding, name <ARRAY_BUFFER_BINDING>
+    like g-lenum
+  link attached-shaders, name <ATTACHED_SHADERS>
+    like g-lenum
+  link back, name <BACK>
+    like g-lenum
+  link blend, name <BLEND>
+    like g-lenum
+  link blend-color, name <BLEND_COLOR>
+    like g-lenum
+  link blend-dst-alpha, name <BLEND_DST_ALPHA>
+    like g-lenum
+  link blend-dst-rgb, name <BLEND_DST_RGB>
+    like g-lenum
+  link blend-equation, name <BLEND_EQUATION>
+    like g-lenum
+  link blend-equation-alpha, name <BLEND_EQUATION_ALPHA>
+    like g-lenum
+  link blend-equation-rgb, name <BLEND_EQUATION_RGB>
+    like g-lenum
+  link blend-src-alpha, name <BLEND_SRC_ALPHA>
+    like g-lenum
+  link blend-src-rgb, name <BLEND_SRC_RGB>
+    like g-lenum
+  link blue-bits, name <BLUE_BITS>
+    like g-lenum
+  link bool, name <BOOL>
+    like g-lenum
+  link bool-vec2, name <BOOL_VEC2>
+    like g-lenum
+  link bool-vec3, name <BOOL_VEC3>
+    like g-lenum
+  link bool-vec4, name <BOOL_VEC4>
+    like g-lenum
+  link browser-default-webgl, name <BROWSER_DEFAULT_WEBGL>
+    like g-lenum
+  link buffer-size, name <BUFFER_SIZE>
+    like g-lenum
+  link buffer-usage, name <BUFFER_USAGE>
+    like g-lenum
+  link byte, name <BYTE>
+    like g-lenum
+  link ccw, name <CCW>
+    like g-lenum
+  link clamp-to-edge, name <CLAMP_TO_EDGE>
+    like g-lenum
+  link color-attachment0, name <COLOR_ATTACHMENT0>
+    like g-lenum
+  link color-buffer-bit, name <COLOR_BUFFER_BIT>
+    like g-lenum
+  link color-clear-value, name <COLOR_CLEAR_VALUE>
+    like g-lenum
+  link color-writemask, name <COLOR_WRITEMASK>
+    like g-lenum
+  link compile-status, name <COMPILE_STATUS>
+    like g-lenum
+  link compressed-texture-formats, name <COMPRESSED_TEXTURE_FORMATS>
+    like g-lenum
+  link constant-alpha, name <CONSTANT_ALPHA>
+    like g-lenum
+  link constant-color, name <CONSTANT_COLOR>
+    like g-lenum
+  link context-lost-webgl, name <CONTEXT_LOST_WEBGL>
+    like g-lenum
+  link cull-face, name <CULL_FACE>
+    like g-lenum
+  link cull-face-mode, name <CULL_FACE_MODE>
+    like g-lenum
+  link current-program, name <CURRENT_PROGRAM>
+    like g-lenum
+  link current-vertex-attrib, name <CURRENT_VERTEX_ATTRIB>
+    like g-lenum
+  link cw, name <CW>
+    like g-lenum
+  link decr, name <DECR>
+    like g-lenum
+  link decr-wrap, name <DECR_WRAP>
+    like g-lenum
+  link delete-status, name <DELETE_STATUS>
+    like g-lenum
+  link depth-attachment, name <DEPTH_ATTACHMENT>
+    like g-lenum
+  link depth-bits, name <DEPTH_BITS>
+    like g-lenum
+  link depth-buffer-bit, name <DEPTH_BUFFER_BIT>
+    like g-lenum
+  link depth-clear-value, name <DEPTH_CLEAR_VALUE>
+    like g-lenum
+  link depth-component, name <DEPTH_COMPONENT>
+    like g-lenum
+  link depth-component16, name <DEPTH_COMPONENT16>
+    like g-lenum
+  link depth-func, name <DEPTH_FUNC>
+    like g-lenum
+  link depth-range, name <DEPTH_RANGE>
+    like g-lenum
+  link depth-stencil, name <DEPTH_STENCIL>
+    like g-lenum
+  link depth-stencil-attachment, name <DEPTH_STENCIL_ATTACHMENT>
+    like g-lenum
+  link depth-test, name <DEPTH_TEST>
+    like g-lenum
+  link depth-writemask, name <DEPTH_WRITEMASK>
+    like g-lenum
+  link dither, name <DITHER>
+    like g-lenum
+  link dont-care, name <DONT_CARE>
+    like g-lenum
+  link dst-alpha, name <DST_ALPHA>
+    like g-lenum
+  link dst-color, name <DST_COLOR>
+    like g-lenum
+  link dynamic-draw, name <DYNAMIC_DRAW>
+    like g-lenum
+  link element-array-buffer, name <ELEMENT_ARRAY_BUFFER>
+    like g-lenum
+  link element-array-buffer-binding, name <ELEMENT_ARRAY_BUFFER_BINDING>
+    like g-lenum
+  link equal, name <EQUAL>
+    like g-lenum
+  link fastest, name <FASTEST>
+    like g-lenum
+  link float, name <FLOAT>
+    like g-lenum
+  link float-mat2, name <FLOAT_MAT2>
+    like g-lenum
+  link float-mat3, name <FLOAT_MAT3>
+    like g-lenum
+  link float-mat4, name <FLOAT_MAT4>
+    like g-lenum
+  link float-vec2, name <FLOAT_VEC2>
+    like g-lenum
+  link float-vec3, name <FLOAT_VEC3>
+    like g-lenum
+  link float-vec4, name <FLOAT_VEC4>
+    like g-lenum
+  link fragment-shader, name <FRAGMENT_SHADER>
+    like g-lenum
+  link framebuffer, name <FRAMEBUFFER>
+    like g-lenum
+  link framebuffer-attachment-object-name, name <FRAMEBUFFER_ATTACHMENT_OBJECT_NAME>
+    like g-lenum
+  link framebuffer-attachment-object-type, name <FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE>
+    like g-lenum
+  link framebuffer-attachment-texture-cube-map-face
+    name <FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE>
+    like g-lenum
+  link framebuffer-attachment-texture-level, name <FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL>
+    like g-lenum
+  link framebuffer-binding, name <FRAMEBUFFER_BINDING>
+    like g-lenum
+  link framebuffer-complete, name <FRAMEBUFFER_COMPLETE>
+    like g-lenum
+  link framebuffer-incomplete-attachment, name <FRAMEBUFFER_INCOMPLETE_ATTACHMENT>
+    like g-lenum
+  link framebuffer-incomplete-dimensions, name <FRAMEBUFFER_INCOMPLETE_DIMENSIONS>
+    like g-lenum
+  link framebuffer-incomplete-missing-attachment
+    name <FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT>
+    like g-lenum
+  link framebuffer-unsupported, name <FRAMEBUFFER_UNSUPPORTED>
+    like g-lenum
+  link front, name <FRONT>
+    like g-lenum
+  link front-and-back, name <FRONT_AND_BACK>
+    like g-lenum
+  link front-face, name <FRONT_FACE>
+    like g-lenum
+  link func-add, name <FUNC_ADD>
+    like g-lenum
+  link func-reverse-subtract, name <FUNC_REVERSE_SUBTRACT>
+    like g-lenum
+  link func-subtract, name <FUNC_SUBTRACT>
+    like g-lenum
+  link generate-mipmap-hint, name <GENERATE_MIPMAP_HINT>
+    like g-lenum
+  link gequal, name <GEQUAL>
+    like g-lenum
+  link greater, name <GREATER>
+    like g-lenum
+  link green-bits, name <GREEN_BITS>
+    like g-lenum
+  link high-float, name <HIGH_FLOAT>
+    like g-lenum
+  link high-int, name <HIGH_INT>
+    like g-lenum
+  link implementation-color-read-format, name <IMPLEMENTATION_COLOR_READ_FORMAT>
+    like g-lenum
+  link implementation-color-read-type, name <IMPLEMENTATION_COLOR_READ_TYPE>
+    like g-lenum
+  link incr, name <INCR>
+    like g-lenum
+  link incr-wrap, name <INCR_WRAP>
+    like g-lenum
+  link int, name <INT>
+    like g-lenum
+  link int-vec2, name <INT_VEC2>
+    like g-lenum
+  link int-vec3, name <INT_VEC3>
+    like g-lenum
+  link int-vec4, name <INT_VEC4>
+    like g-lenum
+  link invalid-enum, name <INVALID_ENUM>
+    like g-lenum
+  link invalid-framebuffer-operation, name <INVALID_FRAMEBUFFER_OPERATION>
+    like g-lenum
+  link invalid-operation, name <INVALID_OPERATION>
+    like g-lenum
+  link invalid-value, name <INVALID_VALUE>
+    like g-lenum
+  link invert, name <INVERT>
+    like g-lenum
+  link keep, name <KEEP>
+    like g-lenum
+  link lequal, name <LEQUAL>
+    like g-lenum
+  link less, name <LESS>
+    like g-lenum
+  link linear, name <LINEAR>
+    like g-lenum
+  link linear-mipmap-linear, name <LINEAR_MIPMAP_LINEAR>
+    like g-lenum
+  link linear-mipmap-nearest, name <LINEAR_MIPMAP_NEAREST>
+    like g-lenum
+  link lines, name <LINES>
+    like g-lenum
+  link line-loop, name <LINE_LOOP>
+    like g-lenum
+  link line-strip, name <LINE_STRIP>
+    like g-lenum
+  link line-width, name <LINE_WIDTH>
+    like g-lenum
+  link link-status, name <LINK_STATUS>
+    like g-lenum
+  link low-float, name <LOW_FLOAT>
+    like g-lenum
+  link low-int, name <LOW_INT>
+    like g-lenum
+  link luminance, name <LUMINANCE>
+    like g-lenum
+  link luminance-alpha, name <LUMINANCE_ALPHA>
+    like g-lenum
+  link max-combined-texture-image-units, name <MAX_COMBINED_TEXTURE_IMAGE_UNITS>
+    like g-lenum
+  link max-cube-map-texture-size, name <MAX_CUBE_MAP_TEXTURE_SIZE>
+    like g-lenum
+  link max-fragment-uniform-vectors, name <MAX_FRAGMENT_UNIFORM_VECTORS>
+    like g-lenum
+  link max-renderbuffer-size, name <MAX_RENDERBUFFER_SIZE>
+    like g-lenum
+  link max-texture-image-units, name <MAX_TEXTURE_IMAGE_UNITS>
+    like g-lenum
+  link max-texture-size, name <MAX_TEXTURE_SIZE>
+    like g-lenum
+  link max-varying-vectors, name <MAX_VARYING_VECTORS>
+    like g-lenum
+  link max-vertex-attribs, name <MAX_VERTEX_ATTRIBS>
+    like g-lenum
+  link max-vertex-texture-image-units, name <MAX_VERTEX_TEXTURE_IMAGE_UNITS>
+    like g-lenum
+  link max-vertex-uniform-vectors, name <MAX_VERTEX_UNIFORM_VECTORS>
+    like g-lenum
+  link max-viewport-dims, name <MAX_VIEWPORT_DIMS>
+    like g-lenum
+  link medium-float, name <MEDIUM_FLOAT>
+    like g-lenum
+  link medium-int, name <MEDIUM_INT>
+    like g-lenum
+  link mirrored-repeat, name <MIRRORED_REPEAT>
+    like g-lenum
+  link nearest, name <NEAREST>
+    like g-lenum
+  link nearest-mipmap-linear, name <NEAREST_MIPMAP_LINEAR>
+    like g-lenum
+  link nearest-mipmap-nearest, name <NEAREST_MIPMAP_NEAREST>
+    like g-lenum
+  link never, name <NEVER>
+    like g-lenum
+  link nicest, name <NICEST>
+    like g-lenum
+  link none, name <NONE>
+    like g-lenum
+  link notequal, name <NOTEQUAL>
+    like g-lenum
+  link no-error, name <NO_ERROR>
+    like g-lenum
+  link one, name <ONE>
+    like g-lenum
+  link one-minus-constant-alpha, name <ONE_MINUS_CONSTANT_ALPHA>
+    like g-lenum
+  link one-minus-constant-color, name <ONE_MINUS_CONSTANT_COLOR>
+    like g-lenum
+  link one-minus-dst-alpha, name <ONE_MINUS_DST_ALPHA>
+    like g-lenum
+  link one-minus-dst-color, name <ONE_MINUS_DST_COLOR>
+    like g-lenum
+  link one-minus-src-alpha, name <ONE_MINUS_SRC_ALPHA>
+    like g-lenum
+  link one-minus-src-color, name <ONE_MINUS_SRC_COLOR>
+    like g-lenum
+  link out-of-memory, name <OUT_OF_MEMORY>
+    like g-lenum
+  link pack-alignment, name <PACK_ALIGNMENT>
+    like g-lenum
+  link points, name <POINTS>
+    like g-lenum
+  link polygon-offset-factor, name <POLYGON_OFFSET_FACTOR>
+    like g-lenum
+  link polygon-offset-fill, name <POLYGON_OFFSET_FILL>
+    like g-lenum
+  link polygon-offset-units, name <POLYGON_OFFSET_UNITS>
+    like g-lenum
+  link red-bits, name <RED_BITS>
+    like g-lenum
+  link renderbuffer, name <RENDERBUFFER>
+    like g-lenum
+  link renderbuffer-alpha-size, name <RENDERBUFFER_ALPHA_SIZE>
+    like g-lenum
+  link renderbuffer-binding, name <RENDERBUFFER_BINDING>
+    like g-lenum
+  link renderbuffer-blue-size, name <RENDERBUFFER_BLUE_SIZE>
+    like g-lenum
+  link renderbuffer-depth-size, name <RENDERBUFFER_DEPTH_SIZE>
+    like g-lenum
+  link renderbuffer-green-size, name <RENDERBUFFER_GREEN_SIZE>
+    like g-lenum
+  link renderbuffer-height, name <RENDERBUFFER_HEIGHT>
+    like g-lenum
+  link renderbuffer-internal-format, name <RENDERBUFFER_INTERNAL_FORMAT>
+    like g-lenum
+  link renderbuffer-red-size, name <RENDERBUFFER_RED_SIZE>
+    like g-lenum
+  link renderbuffer-stencil-size, name <RENDERBUFFER_STENCIL_SIZE>
+    like g-lenum
+  link renderbuffer-width, name <RENDERBUFFER_WIDTH>
+    like g-lenum
+  link renderer, name <RENDERER>
+    like g-lenum
+  link repeat, name <REPEAT>
+    like g-lenum
+  link replace, name <REPLACE>
+    like g-lenum
+  link rgb, name <RGB>
+    like g-lenum
+  link rgb565, name <RGB565>
+    like g-lenum
+  link rgb5-a1, name <RGB5_A1>
+    like g-lenum
+  link rgba, name <RGBA>
+    like g-lenum
+  link rgba4, name <RGBA4>
+    like g-lenum
+  link sampler-2-d, name <SAMPLER_2D>
+    like g-lenum
+  link sampler-cube, name <SAMPLER_CUBE>
+    like g-lenum
+  link samples, name <SAMPLES>
+    like g-lenum
+  link sample-alpha-to-coverage, name <SAMPLE_ALPHA_TO_COVERAGE>
+    like g-lenum
+  link sample-buffers, name <SAMPLE_BUFFERS>
+    like g-lenum
+  link sample-coverage, name <SAMPLE_COVERAGE>
+    like g-lenum
+  link sample-coverage-invert, name <SAMPLE_COVERAGE_INVERT>
+    like g-lenum
+  link sample-coverage-value, name <SAMPLE_COVERAGE_VALUE>
+    like g-lenum
+  link scissor-box, name <SCISSOR_BOX>
+    like g-lenum
+  link scissor-test, name <SCISSOR_TEST>
+    like g-lenum
+  link shader-type, name <SHADER_TYPE>
+    like g-lenum
+  link shading-language-version, name <SHADING_LANGUAGE_VERSION>
+    like g-lenum
+  link short, name <SHORT>
+    like g-lenum
+  link src-alpha, name <SRC_ALPHA>
+    like g-lenum
+  link src-alpha-saturate, name <SRC_ALPHA_SATURATE>
+    like g-lenum
+  link src-color, name <SRC_COLOR>
+    like g-lenum
+  link static-draw, name <STATIC_DRAW>
+    like g-lenum
+  link stencil-attachment, name <STENCIL_ATTACHMENT>
+    like g-lenum
+  link stencil-back-fail, name <STENCIL_BACK_FAIL>
+    like g-lenum
+  link stencil-back-func, name <STENCIL_BACK_FUNC>
+    like g-lenum
+  link stencil-back-pass-depth-fail, name <STENCIL_BACK_PASS_DEPTH_FAIL>
+    like g-lenum
+  link stencil-back-pass-depth-pass, name <STENCIL_BACK_PASS_DEPTH_PASS>
+    like g-lenum
+  link stencil-back-ref, name <STENCIL_BACK_REF>
+    like g-lenum
+  link stencil-back-value-mask, name <STENCIL_BACK_VALUE_MASK>
+    like g-lenum
+  link stencil-back-writemask, name <STENCIL_BACK_WRITEMASK>
+    like g-lenum
+  link stencil-bits, name <STENCIL_BITS>
+    like g-lenum
+  link stencil-buffer-bit, name <STENCIL_BUFFER_BIT>
+    like g-lenum
+  link stencil-clear-value, name <STENCIL_CLEAR_VALUE>
+    like g-lenum
+  link stencil-fail, name <STENCIL_FAIL>
+    like g-lenum
+  link stencil-func, name <STENCIL_FUNC>
+    like g-lenum
+  link stencil-index8, name <STENCIL_INDEX8>
+    like g-lenum
+  link stencil-pass-depth-fail, name <STENCIL_PASS_DEPTH_FAIL>
+    like g-lenum
+  link stencil-pass-depth-pass, name <STENCIL_PASS_DEPTH_PASS>
+    like g-lenum
+  link stencil-ref, name <STENCIL_REF>
+    like g-lenum
+  link stencil-test, name <STENCIL_TEST>
+    like g-lenum
+  link stencil-value-mask, name <STENCIL_VALUE_MASK>
+    like g-lenum
+  link stencil-writemask, name <STENCIL_WRITEMASK>
+    like g-lenum
+  link stream-draw, name <STREAM_DRAW>
+    like g-lenum
+  link subpixel-bits, name <SUBPIXEL_BITS>
+    like g-lenum
+  link texture, name <TEXTURE>
+    like g-lenum
+  link texture0, name <TEXTURE0>
+    like g-lenum
+  link texture1, name <TEXTURE1>
+    like g-lenum
+  link texture10, name <TEXTURE10>
+    like g-lenum
+  link texture11, name <TEXTURE11>
+    like g-lenum
+  link texture12, name <TEXTURE12>
+    like g-lenum
+  link texture13, name <TEXTURE13>
+    like g-lenum
+  link texture14, name <TEXTURE14>
+    like g-lenum
+  link texture15, name <TEXTURE15>
+    like g-lenum
+  link texture16, name <TEXTURE16>
+    like g-lenum
+  link texture17, name <TEXTURE17>
+    like g-lenum
+  link texture18, name <TEXTURE18>
+    like g-lenum
+  link texture19, name <TEXTURE19>
+    like g-lenum
+  link texture2, name <TEXTURE2>
+    like g-lenum
+  link texture20, name <TEXTURE20>
+    like g-lenum
+  link texture21, name <TEXTURE21>
+    like g-lenum
+  link texture22, name <TEXTURE22>
+    like g-lenum
+  link texture23, name <TEXTURE23>
+    like g-lenum
+  link texture24, name <TEXTURE24>
+    like g-lenum
+  link texture25, name <TEXTURE25>
+    like g-lenum
+  link texture26, name <TEXTURE26>
+    like g-lenum
+  link texture27, name <TEXTURE27>
+    like g-lenum
+  link texture28, name <TEXTURE28>
+    like g-lenum
+  link texture29, name <TEXTURE29>
+    like g-lenum
+  link texture3, name <TEXTURE3>
+    like g-lenum
+  link texture30, name <TEXTURE30>
+    like g-lenum
+  link texture31, name <TEXTURE31>
+    like g-lenum
+  link texture4, name <TEXTURE4>
+    like g-lenum
+  link texture5, name <TEXTURE5>
+    like g-lenum
+  link texture6, name <TEXTURE6>
+    like g-lenum
+  link texture7, name <TEXTURE7>
+    like g-lenum
+  link texture8, name <TEXTURE8>
+    like g-lenum
+  link texture9, name <TEXTURE9>
+    like g-lenum
+  link texture-2-d, name <TEXTURE_2D>
+    like g-lenum
+  link texture-binding-2-d, name <TEXTURE_BINDING_2D>
+    like g-lenum
+  link texture-binding-cube-map, name <TEXTURE_BINDING_CUBE_MAP>
+    like g-lenum
+  link texture-cube-map, name <TEXTURE_CUBE_MAP>
+    like g-lenum
+  link texture-cube-map-negative-x, name <TEXTURE_CUBE_MAP_NEGATIVE_X>
+    like g-lenum
+  link texture-cube-map-negative-y, name <TEXTURE_CUBE_MAP_NEGATIVE_Y>
+    like g-lenum
+  link texture-cube-map-negative-z, name <TEXTURE_CUBE_MAP_NEGATIVE_Z>
+    like g-lenum
+  link texture-cube-map-positive-x, name <TEXTURE_CUBE_MAP_POSITIVE_X>
+    like g-lenum
+  link texture-cube-map-positive-y, name <TEXTURE_CUBE_MAP_POSITIVE_Y>
+    like g-lenum
+  link texture-cube-map-positive-z, name <TEXTURE_CUBE_MAP_POSITIVE_Z>
+    like g-lenum
+  link texture-mag-filter, name <TEXTURE_MAG_FILTER>
+    like g-lenum
+  link texture-min-filter, name <TEXTURE_MIN_FILTER>
+    like g-lenum
+  link texture-wrap-s, name <TEXTURE_WRAP_S>
+    like g-lenum
+  link texture-wrap-t, name <TEXTURE_WRAP_T>
+    like g-lenum
+  link triangles, name <TRIANGLES>
+    like g-lenum
+  link triangle-fan, name <TRIANGLE_FAN>
+    like g-lenum
+  link triangle-strip, name <TRIANGLE_STRIP>
+    like g-lenum
+  link unpack-alignment, name <UNPACK_ALIGNMENT>
+    like g-lenum
+  link unpack-colorspace-conversion-webgl, name <UNPACK_COLORSPACE_CONVERSION_WEBGL>
+    like g-lenum
+  link unpack-flip-y-webgl, name <UNPACK_FLIP_Y_WEBGL>
+    like g-lenum
+  link unpack-premultiply-alpha-webgl, name <UNPACK_PREMULTIPLY_ALPHA_WEBGL>
+    like g-lenum
+  link unsigned-byte, name <UNSIGNED_BYTE>
+    like g-lenum
+  link unsigned-int, name <UNSIGNED_INT>
+    like g-lenum
+  link unsigned-short, name <UNSIGNED_SHORT>
+    like g-lenum
+  link unsigned-short-4-4-4-4, name <UNSIGNED_SHORT_4_4_4_4>
+    like g-lenum
+  link unsigned-short-5-5-5-1, name <UNSIGNED_SHORT_5_5_5_1>
+    like g-lenum
+  link unsigned-short-5-6-5, name <UNSIGNED_SHORT_5_6_5>
+    like g-lenum
+  link validate-status, name <VALIDATE_STATUS>
+    like g-lenum
+  link vendor, name <VENDOR>
+    like g-lenum
+  link version, name <VERSION>
+    like g-lenum
+  link vertex-attrib-array-buffer-binding, name <VERTEX_ATTRIB_ARRAY_BUFFER_BINDING>
+    like g-lenum
+  link vertex-attrib-array-enabled, name <VERTEX_ATTRIB_ARRAY_ENABLED>
+    like g-lenum
+  link vertex-attrib-array-normalized, name <VERTEX_ATTRIB_ARRAY_NORMALIZED>
+    like g-lenum
+  link vertex-attrib-array-pointer, name <VERTEX_ATTRIB_ARRAY_POINTER>
+    like g-lenum
+  link vertex-attrib-array-size, name <VERTEX_ATTRIB_ARRAY_SIZE>
+    like g-lenum
+  link vertex-attrib-array-stride, name <VERTEX_ATTRIB_ARRAY_STRIDE>
+    like g-lenum
+  link vertex-attrib-array-type, name <VERTEX_ATTRIB_ARRAY_TYPE>
+    like g-lenum
+  link vertex-shader, name <VERTEX_SHADER>
+    like g-lenum
+  link viewport, name <VIEWPORT>
+    like g-lenum
+  link zero, name <ZERO>
+    like g-lenum
+
+  task active-texture, name <activeTexture>
+    take texture, like g-lenum
+    like native-void
+
+  task attach-shader, name <attachShader>
+    take program, like web-gl-program
+    take shader, like web-gl-shader
+    like native-void
+
+  task bind-attrib-location, name <bindAttribLocation>
+    take program, like web-gl-program
+    take index, like g-luint
+    take name, like native-string
+    like native-void
+
+  task bind-buffer, name <bindBuffer>
+    take target, like g-lenum
+    take buffer
+      like or
+        like web-gl-buffer
+        like native-null
+    like native-void
+
+  task bind-framebuffer, name <bindFramebuffer>
+    take target, like g-lenum
+    take framebuffer
+      like or
+        like web-gl-framebuffer
+        like native-null
+    like native-void
+
+  task bind-renderbuffer, name <bindRenderbuffer>
+    take target, like g-lenum
+    take renderbuffer
+      like or
+        like web-gl-renderbuffer
+        like native-null
+    like native-void
+
+  task bind-texture, name <bindTexture>
+    take target, like g-lenum
+    take texture
+      like or
+        like web-gl-texture
+        like native-null
+    like native-void
+
+  task blend-color, name <blendColor>
+    take red, like g-lclampf
+    take green, like g-lclampf
+    take blue, like g-lclampf
+    take alpha, like g-lclampf
+    like native-void
+
+  task blend-equation, name <blendEquation>
+    take mode, like g-lenum
+    like native-void
+
+  task blend-equation-separate, name <blendEquationSeparate>
+    take mode-rgb, like g-lenum
+    take mode-alpha, like g-lenum
+    like native-void
+
+  task blend-func, name <blendFunc>
+    take sfactor, like g-lenum
+    take dfactor, like g-lenum
+    like native-void
+
+  task blend-func-separate, name <blendFuncSeparate>
+    take src-rgb, like g-lenum
+    take dst-rgb, like g-lenum
+    take src-alpha, like g-lenum
+    take dst-alpha, like g-lenum
+    like native-void
+
+  task check-framebuffer-status, name <checkFramebufferStatus>
+    take target, like g-lenum
+    like g-lenum
+
+  task clear, name <clear>
+    take mask, like g-lbitfield
+    like native-void
+
+  task clear-color, name <clearColor>
+    take red, like g-lclampf
+    take green, like g-lclampf
+    take blue, like g-lclampf
+    take alpha, like g-lclampf
+    like native-void
+
+  task clear-depth, name <clearDepth>
+    take depth, like g-lclampf
+    like native-void
+
+  task clear-stencil, name <clearStencil>
+    take s, like g-lint
+    like native-void
+
+  task color-mask, name <colorMask>
+    take red, like g-lboolean
+    take green, like g-lboolean
+    take blue, like g-lboolean
+    take alpha, like g-lboolean
+    like native-void
+
+  task compile-shader, name <compileShader>
+    take shader, like web-gl-shader
+    like native-void
+
+  task copy-tex-image2-d, name <copyTexImage2D>
+    take target, like g-lenum
+    take level, like g-lint
+    take internalformat, like g-lenum
+    take x, like g-lint
+    take y, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    take border, like g-lint
+    like native-void
+
+  task copy-tex-sub-image2-d, name <copyTexSubImage2D>
+    take target, like g-lenum
+    take level, like g-lint
+    take xoffset, like g-lint
+    take yoffset, like g-lint
+    take x, like g-lint
+    take y, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    like native-void
+
+  task create-buffer, name <createBuffer>
+    like or
+      like web-gl-buffer
+      like native-null
+
+  task create-framebuffer, name <createFramebuffer>
+    like or
+      like web-gl-framebuffer
+      like native-null
+
+  task create-program, name <createProgram>
+    like or
+      like web-gl-program
+      like native-null
+
+  task create-renderbuffer, name <createRenderbuffer>
+    like or
+      like web-gl-renderbuffer
+      like native-null
+
+  task create-shader, name <createShader>
+    take type, like g-lenum
+    like or
+      like web-gl-shader
+      like native-null
+
+  task create-texture, name <createTexture>
+    like or
+      like web-gl-texture
+      like native-null
+
+  task cull-face, name <cullFace>
+    take mode, like g-lenum
+    like native-void
+
+  task delete-buffer, name <deleteBuffer>
+    take buffer
+      like or
+        like web-gl-buffer
+        like native-null
+    like native-void
+
+  task delete-framebuffer, name <deleteFramebuffer>
+    take framebuffer
+      like or
+        like web-gl-framebuffer
+        like native-null
+    like native-void
+
+  task delete-program, name <deleteProgram>
+    take program
+      like or
+        like web-gl-program
+        like native-null
+    like native-void
+
+  task delete-renderbuffer, name <deleteRenderbuffer>
+    take renderbuffer
+      like or
+        like web-gl-renderbuffer
+        like native-null
+    like native-void
+
+  task delete-shader, name <deleteShader>
+    take shader
+      like or
+        like web-gl-shader
+        like native-null
+    like native-void
+
+  task delete-texture, name <deleteTexture>
+    take texture
+      like or
+        like web-gl-texture
+        like native-null
+    like native-void
+
+  task depth-func, name <depthFunc>
+    take func, like g-lenum
+    like native-void
+
+  task depth-mask, name <depthMask>
+    take flag, like g-lboolean
+    like native-void
+
+  task depth-range, name <depthRange>
+    take z-near, like g-lclampf
+    take z-far, like g-lclampf
+    like native-void
+
+  task detach-shader, name <detachShader>
+    take program, like web-gl-program
+    take shader, like web-gl-shader
+    like native-void
+
+  task disable, name <disable>
+    take cap, like g-lenum
+    like native-void
+
+  task disable-vertex-attrib-array, name <disableVertexAttribArray>
+    take index, like g-luint
+    like native-void
+
+  task draw-arrays, name <drawArrays>
+    take mode, like g-lenum
+    take first, like g-lint
+    take count, like g-lsizei
+    like native-void
+
+  task draw-elements, name <drawElements>
+    take mode, like g-lenum
+    take count, like g-lsizei
+    take type, like g-lenum
+    take offset, like g-lintptr
+    like native-void
+
+  task enable, name <enable>
+    take cap, like g-lenum
+    like native-void
+
+  task enable-vertex-attrib-array, name <enableVertexAttribArray>
+    take index, like g-luint
+    like native-void
+
+  task finish, name <finish>
+    like native-void
+
+  task flush, name <flush>
+    like native-void
+
+  task framebuffer-renderbuffer, name <framebufferRenderbuffer>
+    take target, like g-lenum
+    take attachment, like g-lenum
+    take renderbuffertarget, like g-lenum
+    take renderbuffer
+      like or
+        like web-gl-renderbuffer
+        like native-null
+    like native-void
+
+  task framebuffer-texture2-d, name <framebufferTexture2D>
+    take target, like g-lenum
+    take attachment, like g-lenum
+    take textarget, like g-lenum
+    take texture
+      like or
+        like web-gl-texture
+        like native-null
+    take level, like g-lint
+    like native-void
+
+  task front-face, name <frontFace>
+    take mode, like g-lenum
+    like native-void
+
+  task generate-mipmap, name <generateMipmap>
+    take target, like g-lenum
+    like native-void
+
+  task get-active-attrib, name <getActiveAttrib>
+    take program, like web-gl-program
+    take index, like g-luint
+    like or
+      like web-gl-active-info
+      like native-null
+
+  task get-active-uniform, name <getActiveUniform>
+    take program, like web-gl-program
+    take index, like g-luint
+    like or
+      like web-gl-active-info
+      like native-null
+
+  task get-attached-shaders, name <getAttachedShaders>
+    take program, like web-gl-program
+    like or
+      like native-array
+        like web-gl-shader
+      like native-null
+
+  task get-attrib-location, name <getAttribLocation>
+    take program, like web-gl-program
+    take name, like native-string
+    like g-lint
+
+  task get-buffer-parameter, name <getBufferParameter>
+    take target, like g-lenum
+    take pname, like g-lenum
+    like native-any
+
+  task get-context-attributes, name <getContextAttributes>
+    like or
+      like web-gl-context-attributes
+      like native-null
+
+  task get-error, name <getError>
+    like g-lenum
+
+  task get-extension, name <getExtension>
+    take extension-name, text <EXT_blend_minmax>
+    like or
+      like ext-blend-minmax
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <EXT_color_buffer_float>
+    like or
+      like ext-color-buffer-float
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <EXT_color_buffer_half_float>
+    like or
+      like ext-color-buffer-half-float
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <EXT_float_blend>
+    like or
+      like ext-float-blend
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <EXT_texture_filter_anisotropic>
+    like or
+      like ext-texture-filter-anisotropic
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <EXT_frag_depth>
+    like or
+      like ext-frag-depth
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <EXT_shader_texture_lod>
+    like or
+      like ext-shader-texture-lod
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <EXT_sRGB>
+    like or
+      like ext-s-rgb
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <KHR_parallel_shader_compile>
+    like or
+      like khr-parallel-shader-compile
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <OES_vertex_array_object>
+    like or
+      like oes-vertex-array-object
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <OVR_multiview2>
+    like or
+      like ovr-multiview2
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <WEBGL_color_buffer_float>
+    like or
+      like webgl-color-buffer-float
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <WEBGL_compressed_texture_astc>
+    like or
+      like webgl-compressed-texture-astc
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <WEBGL_compressed_texture_etc>
+    like or
+      like webgl-compressed-texture-etc
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <WEBGL_compressed_texture_etc1>
+    like or
+      like webgl-compressed-texture-etc1
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <WEBGL_compressed_texture_pvrtc>
+    like or
+      like webgl-compressed-texture-pvrtc
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <WEBGL_compressed_texture_s3tc_srgb>
+    like or
+      like webgl-compressed-texture-s3tc-srgb
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <WEBGL_debug_shaders>
+    like or
+      like webgl-debug-shaders
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <WEBGL_draw_buffers>
+    like or
+      like webgl-draw-buffers
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <WEBGL_lose_context>
+    like or
+      like webgl-lose-context
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <WEBGL_depth_texture>
+    like or
+      like webgl-depth-texture
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <WEBGL_debug_renderer_info>
+    like or
+      like webgl-debug-renderer-info
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <WEBGL_compressed_texture_s3tc>
+    like or
+      like webgl-compressed-texture-s3tc
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <OES_texture_half_float_linear>
+    like or
+      like oes-texture-half-float-linear
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <OES_texture_half_float>
+    like or
+      like oes-texture-half-float
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <OES_texture_float_linear>
+    like or
+      like oes-texture-float-linear
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <OES_texture_float>
+    like or
+      like oes-texture-float
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <OES_standard_derivatives>
+    like or
+      like oes-standard-derivatives
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <OES_element_index_uint>
+    like or
+      like oes-element-index-uint
+      like native-null
+
+  task get-extension, name <getExtension>
+    take extension-name, text <ANGLE_instanced_arrays>
+    like or
+      like angle-instanced-arrays
+      like native-null
+
+  task get-extension, name <getExtension>
+    take name, like native-string
+    like native-any
+
+  task get-framebuffer-attachment-parameter, name <getFramebufferAttachmentParameter>
+    take target, like g-lenum
+    take attachment, like g-lenum
+    take pname, like g-lenum
+    like native-any
+
+  task get-parameter, name <getParameter>
+    take pname, like g-lenum
+    like native-any
+
+  task get-program-info-log, name <getProgramInfoLog>
+    take program, like web-gl-program
+    like or
+      like native-string
+      like native-null
+
+  task get-program-parameter, name <getProgramParameter>
+    take program, like web-gl-program
+    take pname, like g-lenum
+    like native-any
+
+  task get-renderbuffer-parameter, name <getRenderbufferParameter>
+    take target, like g-lenum
+    take pname, like g-lenum
+    like native-any
+
+  task get-shader-info-log, name <getShaderInfoLog>
+    take shader, like web-gl-shader
+    like or
+      like native-string
+      like native-null
+
+  task get-shader-parameter, name <getShaderParameter>
+    take shader, like web-gl-shader
+    take pname, like g-lenum
+    like native-any
+
+  task get-shader-precision-format, name <getShaderPrecisionFormat>
+    take shadertype, like g-lenum
+    take precisiontype, like g-lenum
+    like or
+      like web-gl-shader-precision-format
+      like native-null
+
+  task get-shader-source, name <getShaderSource>
+    take shader, like web-gl-shader
+    like or
+      like native-string
+      like native-null
+
+  task get-supported-extensions, name <getSupportedExtensions>
+    like or
+      like native-array
+        like native-string
+      like native-null
+
+  task get-tex-parameter, name <getTexParameter>
+    take target, like g-lenum
+    take pname, like g-lenum
+    like native-any
+
+  task get-uniform, name <getUniform>
+    take program, like web-gl-program
+    take location, like web-gl-uniform-location
+    like native-any
+
+  task get-uniform-location, name <getUniformLocation>
+    take program, like web-gl-program
+    take name, like native-string
+    like or
+      like web-gl-uniform-location
+      like native-null
+
+  task get-vertex-attrib, name <getVertexAttrib>
+    take index, like g-luint
+    take pname, like g-lenum
+    like native-any
+
+  task get-vertex-attrib-offset, name <getVertexAttribOffset>
+    take index, like g-luint
+    take pname, like g-lenum
+    like g-lintptr
+
+  task hint, name <hint>
+    take target, like g-lenum
+    take mode, like g-lenum
+    like native-void
+
+  task is-buffer, name <isBuffer>
+    take buffer
+      like or
+        like web-gl-buffer
+        like native-null
+    like g-lboolean
+
+  task is-context-lost, name <isContextLost>
+    like native-boolean
+
+  task is-enabled, name <isEnabled>
+    take cap, like g-lenum
+    like g-lboolean
+
+  task is-framebuffer, name <isFramebuffer>
+    take framebuffer
+      like or
+        like web-gl-framebuffer
+        like native-null
+    like g-lboolean
+
+  task is-program, name <isProgram>
+    take program
+      like or
+        like web-gl-program
+        like native-null
+    like g-lboolean
+
+  task is-renderbuffer, name <isRenderbuffer>
+    take renderbuffer
+      like or
+        like web-gl-renderbuffer
+        like native-null
+    like g-lboolean
+
+  task is-shader, name <isShader>
+    take shader
+      like or
+        like web-gl-shader
+        like native-null
+    like g-lboolean
+
+  task is-texture, name <isTexture>
+    take texture
+      like or
+        like web-gl-texture
+        like native-null
+    like g-lboolean
+
+  task line-width, name <lineWidth>
+    take width, like g-lfloat
+    like native-void
+
+  task link-program, name <linkProgram>
+    take program, like web-gl-program
+    like native-void
+
+  task pixel-storei, name <pixelStorei>
+    take pname, like g-lenum
+    take param
+      like or
+        like g-lint
+        like g-lboolean
+    like native-void
+
+  task polygon-offset, name <polygonOffset>
+    take factor, like g-lfloat
+    take units, like g-lfloat
+    like native-void
+
+  task renderbuffer-storage, name <renderbufferStorage>
+    take target, like g-lenum
+    take internalformat, like g-lenum
+    take width, like g-lsizei
+    take height, like g-lsizei
+    like native-void
+
+  task sample-coverage, name <sampleCoverage>
+    take value, like g-lclampf
+    take invert, like g-lboolean
+    like native-void
+
+  task scissor, name <scissor>
+    take x, like g-lint
+    take y, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    like native-void
+
+  task shader-source, name <shaderSource>
+    take shader, like web-gl-shader
+    take source, like native-string
+    like native-void
+
+  task stencil-func, name <stencilFunc>
+    take func, like g-lenum
+    take ref, like g-lint
+    take mask, like g-luint
+    like native-void
+
+  task stencil-func-separate, name <stencilFuncSeparate>
+    take face, like g-lenum
+    take func, like g-lenum
+    take ref, like g-lint
+    take mask, like g-luint
+    like native-void
+
+  task stencil-mask, name <stencilMask>
+    take mask, like g-luint
+    like native-void
+
+  task stencil-mask-separate, name <stencilMaskSeparate>
+    take face, like g-lenum
+    take mask, like g-luint
+    like native-void
+
+  task stencil-op, name <stencilOp>
+    take fail, like g-lenum
+    take zfail, like g-lenum
+    take zpass, like g-lenum
+    like native-void
+
+  task stencil-op-separate, name <stencilOpSeparate>
+    take face, like g-lenum
+    take fail, like g-lenum
+    take zfail, like g-lenum
+    take zpass, like g-lenum
+    like native-void
+
+  task tex-parameterf, name <texParameterf>
+    take target, like g-lenum
+    take pname, like g-lenum
+    take param, like g-lfloat
+    like native-void
+
+  task tex-parameteri, name <texParameteri>
+    take target, like g-lenum
+    take pname, like g-lenum
+    take param, like g-lint
+    like native-void
+
+  task uniform1f, name <uniform1f>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take x, like g-lfloat
+    like native-void
+
+  task uniform1i, name <uniform1i>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take x, like g-lint
+    like native-void
+
+  task uniform2f, name <uniform2f>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take x, like g-lfloat
+    take y, like g-lfloat
+    like native-void
+
+  task uniform2i, name <uniform2i>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take x, like g-lint
+    take y, like g-lint
+    like native-void
+
+  task uniform3f, name <uniform3f>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take x, like g-lfloat
+    take y, like g-lfloat
+    take z, like g-lfloat
+    like native-void
+
+  task uniform3i, name <uniform3i>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take x, like g-lint
+    take y, like g-lint
+    take z, like g-lint
+    like native-void
+
+  task uniform4f, name <uniform4f>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take x, like g-lfloat
+    take y, like g-lfloat
+    take z, like g-lfloat
+    take w, like g-lfloat
+    like native-void
+
+  task uniform4i, name <uniform4i>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take x, like g-lint
+    take y, like g-lint
+    take z, like g-lint
+    take w, like g-lint
+    like native-void
+
+  task use-program, name <useProgram>
+    take program
+      like or
+        like web-gl-program
+        like native-null
+    like native-void
+
+  task validate-program, name <validateProgram>
+    take program, like web-gl-program
+    like native-void
+
+  task vertex-attrib1f, name <vertexAttrib1f>
+    take index, like g-luint
+    take x, like g-lfloat
+    like native-void
+
+  task vertex-attrib1fv, name <vertexAttrib1fv>
+    take index, like g-luint
+    take values, like float32-list
+    like native-void
+
+  task vertex-attrib2f, name <vertexAttrib2f>
+    take index, like g-luint
+    take x, like g-lfloat
+    take y, like g-lfloat
+    like native-void
+
+  task vertex-attrib2fv, name <vertexAttrib2fv>
+    take index, like g-luint
+    take values, like float32-list
+    like native-void
+
+  task vertex-attrib3f, name <vertexAttrib3f>
+    take index, like g-luint
+    take x, like g-lfloat
+    take y, like g-lfloat
+    take z, like g-lfloat
+    like native-void
+
+  task vertex-attrib3fv, name <vertexAttrib3fv>
+    take index, like g-luint
+    take values, like float32-list
+    like native-void
+
+  task vertex-attrib4f, name <vertexAttrib4f>
+    take index, like g-luint
+    take x, like g-lfloat
+    take y, like g-lfloat
+    take z, like g-lfloat
+    take w, like g-lfloat
+    like native-void
+
+  task vertex-attrib4fv, name <vertexAttrib4fv>
+    take index, like g-luint
+    take values, like float32-list
+    like native-void
+
+  task vertex-attrib-pointer, name <vertexAttribPointer>
+    take index, like g-luint
+    take size, like g-lint
+    take type, like g-lenum
+    take normalized, like g-lboolean
+    take stride, like g-lsizei
+    take offset, like g-lintptr
+    like native-void
+
+  task viewport, name <viewport>
+    take x, like g-lint
+    take y, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    like native-void

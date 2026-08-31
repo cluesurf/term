@@ -1,0 +1,154 @@
+
+load @term/bind/code/javascript/es5/function
+  find function
+
+load @term/bind/code/javascript/es5/object
+  find object
+
+load @term/bind/code/javascript/es5/property-descriptor
+  find property-descriptor
+
+load @term/bind/code/javascript/es5/property-descriptor-map
+  find property-descriptor-map
+
+load @term/bind/code/javascript/es5/property-key
+  find property-key
+
+load @term/bind/code/javascript/es5/readonly
+  find readonly
+
+load @term/bind/code/javascript/es5/this-type
+  find this-type
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-object
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+form object-constructor, name <ObjectConstructor>
+  link prototype, name <prototype>
+    like object
+
+  task get-prototype-of, name <getPrototypeOf>
+    take o, like native-any
+    like native-any
+
+  task get-own-property-descriptor, name <getOwnPropertyDescriptor>
+    take o, like native-any
+    take p, like property-key
+    like or
+      like property-descriptor
+      like native-undefined
+
+  task get-own-property-names, name <getOwnPropertyNames>
+    take o, like native-any
+    like native-array
+      like native-string
+
+  task create, name <create>
+    take o
+      like or
+        like native-object
+        like native-null
+    like native-any
+
+  task create, name <create>
+    take o
+      like or
+        like native-object
+        like native-null
+    take properties
+      like and
+        like property-descriptor-map
+        like this-type
+          like native-any
+    like native-any
+
+  task define-property, name <defineProperty>
+    head t
+    take o, like t
+    take p, like property-key
+    take attributes
+      like and
+        like property-descriptor
+        like this-type
+          like native-any
+    like t
+
+  task define-properties, name <defineProperties>
+    head t
+    take o, like t
+    take properties
+      like and
+        like property-descriptor-map
+        like this-type
+          like native-any
+    like t
+
+  task seal, name <seal>
+    head t
+    take o, like t
+    like t
+
+  task freeze, name <freeze>
+    head t
+    take a
+      like native-array
+        like t
+    like native-array
+      like t
+
+  task freeze, name <freeze>
+    head t
+      base function
+    take f, like t
+    like t
+
+  task freeze, name <freeze>
+    head t
+    take o, like t
+    like readonly
+      like t
+
+  task prevent-extensions, name <preventExtensions>
+    head t
+    take o, like t
+    like t
+
+  task is-sealed, name <isSealed>
+    take o, like native-any
+    like native-boolean
+
+  task is-frozen, name <isFrozen>
+    take o, like native-any
+    like native-boolean
+
+  task is-extensible, name <isExtensible>
+    take o, like native-any
+    like native-boolean
+
+  task keys, name <keys>
+    take o, like native-object
+    like native-array
+      like native-string
+
+  hook make
+    take value, like maybe
+      like native-any
+    like object

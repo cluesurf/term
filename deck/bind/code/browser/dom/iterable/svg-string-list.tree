@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/svg-string-list
+  find svg-string-list
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form svg-string-list, name <SVGStringList>
+  task {symbol/iterator}
+    like iterable-iterator
+      like native-string

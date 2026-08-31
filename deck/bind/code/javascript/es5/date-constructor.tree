@@ -1,0 +1,60 @@
+
+load @term/bind/code/javascript/es5/date
+  find date
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form date-constructor, name <DateConstructor>
+  link prototype, name <prototype>
+    like date
+
+  task parse, name <parse>
+    take s, like native-string
+    like native-number
+
+  task utc, name <UTC>
+    take year, like native-number
+    take month, like native-number
+    take date, like maybe
+      like native-number
+    take hours, like maybe
+      like native-number
+    take minutes, like maybe
+      like native-number
+    take seconds, like maybe
+      like native-number
+    take ms, like maybe
+      like native-number
+    like native-number
+
+  task now, name <now>
+    like native-number
+
+  hook make
+    like date
+
+  hook make
+    take value
+      like or
+        like native-number
+        like native-string
+    like date
+
+  hook make
+    take year, like native-number
+    take month, like native-number
+    take date, like maybe
+      like native-number
+    take hours, like maybe
+      like native-number
+    take minutes, like maybe
+      like native-number
+    take seconds, like maybe
+      like native-number
+    take ms, like maybe
+      like native-number
+    like date

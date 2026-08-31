@@ -1,0 +1,78 @@
+
+form io-slice, name <std::io::IoSlice>
+  task new, name <new>
+    note <Creates a new IoSlice wrapping a byte slice.>
+
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like io-slice
+        time a
+        cite free
+
+  task advance, name <advance>
+    note <Advance the internal cursor of the slice.>
+
+    take self
+      cite free
+    take n
+      like usize
+        cite free
+      cite free
+
+  task advance-slices, name <advance_slices>
+    note <Advance the internal cursor of the slices.>
+
+    take bufs
+      like list
+        like io-slice
+          time a
+      cite free
+    take n
+      like usize
+        cite free
+      cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like io-slice
+        time a
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take fmt
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task deref, name <deref>
+    note <Dereferences the value.>
+
+    take self
+      cite free
+
+    free seed
+      list u8

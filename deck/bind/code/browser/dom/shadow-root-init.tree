@@ -1,0 +1,20 @@
+
+load @term/bind/code/browser/dom/shadow-root-mode
+  find shadow-root-mode
+
+load @term/bind/code/browser/dom/slot-assignment-mode
+  find slot-assignment-mode
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form shadow-root-init, name <ShadowRootInit>
+  link delegates-focus, name <delegatesFocus>
+    like native-boolean
+    lock false
+  link mode, name <mode>
+    like shadow-root-mode
+    lock false
+  link slot-assignment, name <slotAssignment>
+    like slot-assignment-mode
+    lock false

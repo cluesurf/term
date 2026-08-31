@@ -1,0 +1,39 @@
+
+load @term/bind/code/browser/dom/media-key-system-media-capability
+  find media-key-system-media-capability
+
+load @term/bind/code/browser/dom/media-keys-requirement
+  find media-keys-requirement
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form media-key-system-configuration, name <MediaKeySystemConfiguration>
+  link audio-capabilities, name <audioCapabilities>
+    like native-array
+      like media-key-system-media-capability
+    lock false
+  link distinctive-identifier, name <distinctiveIdentifier>
+    like media-keys-requirement
+    lock false
+  link init-data-types, name <initDataTypes>
+    like native-array
+      like native-string
+    lock false
+  link label, name <label>
+    like native-string
+    lock false
+  link persistent-state, name <persistentState>
+    like media-keys-requirement
+    lock false
+  link session-types, name <sessionTypes>
+    like native-array
+      like native-string
+    lock false
+  link video-capabilities, name <videoCapabilities>
+    like native-array
+      like media-key-system-media-capability
+    lock false

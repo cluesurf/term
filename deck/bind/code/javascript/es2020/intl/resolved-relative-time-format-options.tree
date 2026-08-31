@@ -1,0 +1,26 @@
+
+load @term/bind/code/javascript/es2020/intl/relative-time-format-numeric
+  find relative-time-format-numeric
+
+load @term/bind/code/javascript/es2020/intl/relative-time-format-style
+  find relative-time-format-style
+
+load @term/bind/code/javascript/es2020/intl/unicode-bcp47-locale-identifier
+  find unicode-bcp47-locale-identifier
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form resolved-relative-time-format-options, name <ResolvedRelativeTimeFormatOptions>
+  link locale, name <locale>
+    like unicode-bcp47-locale-identifier
+    lock false
+  link style, name <style>
+    like relative-time-format-style
+    lock false
+  link numeric, name <numeric>
+    like relative-time-format-numeric
+    lock false
+  link numbering-system, name <numberingSystem>
+    like native-string
+    lock false

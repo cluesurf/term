@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form media-encrypted-event, name <MediaEncryptedEvent>
+  base event
+
+  link init-data, name <initData>
+    like or
+      like array-buffer
+      like native-null
+  link init-data-type, name <initDataType>
+    like native-string

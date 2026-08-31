@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/es2015/iterable/iterable-iterator
+  find iterable-iterator
+
+load @term/bind/code/javascript/es5/i-arguments
+  find i-arguments
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form i-arguments, name <IArguments>
+  task {symbol/iterator}
+    like iterable-iterator
+      like native-any

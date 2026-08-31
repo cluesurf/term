@@ -1,0 +1,35 @@
+
+load @term/bind/code/javascript/es2015/iterable/int16-array
+  find int16-array
+
+load @term/bind/code/javascript/es2015/iterable/iterable
+  find iterable
+
+load @term/bind/code/javascript/es5/int16-array-constructor
+  find int16-array-constructor
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form int16-array-constructor, name <Int16ArrayConstructor>
+  task from, name <from>
+    take array-like
+      like iterable
+        like native-number
+    take mapfn, like maybe
+      like task
+        take v, like native-number
+        take k, like native-number
+        like native-number
+    take this-arg, like maybe
+      like native-any
+    like int16-array
+
+  hook make
+    take elements
+      like iterable
+        like native-number
+    like int16-array

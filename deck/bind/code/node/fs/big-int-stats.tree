@@ -1,0 +1,22 @@
+
+load @term/bind/code/javascript
+  find native-bigint
+
+load @term/bind/code/node/fs
+  find stats-base
+
+form big-int-stats, name <BigIntStats>
+  base stats-base
+
+  link atime-ns, name <atimeNs>
+    like native-bigint
+    flex true
+  link mtime-ns, name <mtimeNs>
+    like native-bigint
+    flex true
+  link ctime-ns, name <ctimeNs>
+    like native-bigint
+    flex true
+  link birthtime-ns, name <birthtimeNs>
+    like native-bigint
+    flex true

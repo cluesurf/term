@@ -56,6 +56,15 @@ export function makeParseMemo(): ParseMemo {
   }
 }
 
+// the `load` / `bear` paths a module names, read from its tree. The ONE way to ask that question: `collectModules`
+// walks the graph with it and `separate.ts` orders the graph with it, so the two cannot disagree about what a file
+// imports (separate.ts used to line-scan for `^(load|bear)` with no text-literal tracking at all).
+export function importPathsOf(source: Source, parsed: ParseMemo): string[] {
+  const tree = parsed(source)
+
+  return tree.ok ? scanImports(tree.tree).paths : []
+}
+
 function scanImports(tree: RootNode): ImportScan {
   const paths: string[] = []
 

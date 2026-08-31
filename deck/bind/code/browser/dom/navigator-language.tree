@@ -1,0 +1,13 @@
+
+load @term/bind/code/javascript/es5/readonly-array
+  find readonly-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form navigator-language, name <NavigatorLanguage>
+  link language, name <language>
+    like native-string
+  link languages, name <languages>
+    like readonly-array
+      like native-string

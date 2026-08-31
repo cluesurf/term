@@ -1,0 +1,54 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+
+form session-state, name <SessionState>
+  link effective-local-window-size, name <effectiveLocalWindowSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link effective-recv-data-length, name <effectiveRecvDataLength>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link next-stream-id, name <nextStreamID>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link local-window-size, name <localWindowSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link last-proc-stream-id, name <lastProcStreamID>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link remote-window-size, name <remoteWindowSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link outbound-queue-size, name <outboundQueueSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link deflate-dynamic-table-size, name <deflateDynamicTableSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link inflate-dynamic-table-size, name <inflateDynamicTableSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true

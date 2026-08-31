@@ -1,0 +1,41 @@
+
+load @term/bind/code/browser/dom/file
+  find file
+
+load @term/bind/code/browser/dom/file-system-entry
+  find file-system-entry
+
+load @term/bind/code/browser/dom/function-string-callback
+  find function-string-callback
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form data-transfer-item, name <DataTransferItem>
+  link kind, name <kind>
+    like native-string
+  link type, name <type>
+    like native-string
+
+  task get-as-file, name <getAsFile>
+    like or
+      like file
+      like native-null
+
+  task get-as-string, name <getAsString>
+    take callback
+      like or
+        like function-string-callback
+        like native-null
+    like native-void
+
+  task webkit-get-as-entry, name <webkitGetAsEntry>
+    like or
+      like file-system-entry
+      like native-null

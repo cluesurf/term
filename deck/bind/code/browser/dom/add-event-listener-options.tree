@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/abort-signal
+  find abort-signal
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form add-event-listener-options, name <AddEventListenerOptions>
+  base event-listener-options
+
+  link once, name <once>
+    like native-boolean
+    lock false
+  link passive, name <passive>
+    like native-boolean
+    lock false
+  link signal, name <signal>
+    like abort-signal
+    lock false

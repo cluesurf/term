@@ -1,0 +1,20 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-undefined
+
+load @term/bind/code/node/inspector/runtime
+  find exception-details
+  find remote-object
+
+form evaluate-return-type, name <EvaluateReturnType>
+  link result, name <result>
+    like remote-object
+    flex true
+  link exception-details, name <exceptionDetails>
+    like or
+      like exception-details
+      like native-undefined
+    flex true

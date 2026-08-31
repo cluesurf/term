@@ -1,0 +1,53 @@
+
+bear @term/bind/code/javascript/node/querystring/stringify-options
+bear @term/bind/code/javascript/node/querystring/parse-options
+bear @term/bind/code/javascript/node/querystring/parsed-url-query
+bear @term/bind/code/javascript/node/querystring/parsed-url-query-input
+
+load @term/bind/code/javascript
+  find native-string
+
+load @term/bind/code/node/querystring
+  find parse-options
+  find parsed-url-query
+  find parsed-url-query-input
+  find stringify-options
+
+host encode, name <encode>
+  like stringify
+
+host decode, name <decode>
+  like parse
+
+task stringify, name <stringify>
+  like native-string
+
+  take obj, like parsed-url-query-input
+    void true
+  take sep, like native-string
+    void true
+  take eq, like native-string
+    void true
+  take options, like stringify-options
+    void true
+
+task parse, name <parse>
+  like parsed-url-query
+
+  take str, like native-string
+  take sep, like native-string
+    void true
+  take eq, like native-string
+    void true
+  take options, like parse-options
+    void true
+
+task escape, name <escape>
+  like native-string
+
+  take str, like native-string
+
+task unescape, name <unescape>
+  like native-string
+
+  take str, like native-string

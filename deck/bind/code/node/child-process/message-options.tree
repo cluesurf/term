@@ -1,0 +1,14 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-undefined
+
+form message-options, name <MessageOptions>
+  link keep-open, name <keepOpen>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

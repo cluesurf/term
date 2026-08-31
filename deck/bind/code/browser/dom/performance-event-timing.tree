@@ -1,0 +1,29 @@
+
+load @term/bind/code/browser/dom/dom-high-res-time-stamp
+  find dom-high-res-time-stamp
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/browser/dom/performance-entry
+  find performance-entry
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+form performance-event-timing, name <PerformanceEventTiming>
+  base performance-entry
+
+  link cancelable, name <cancelable>
+    like native-boolean
+  link processing-end, name <processingEnd>
+    like dom-high-res-time-stamp
+  link processing-start, name <processingStart>
+    like dom-high-res-time-stamp
+  link target, name <target>
+    like or
+      like node
+      like native-null

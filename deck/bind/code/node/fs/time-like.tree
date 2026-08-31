@@ -1,0 +1,14 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find date
+  find native-number
+  find native-string
+
+form time-like, name <TimeLike>
+  like or
+    like native-string
+    like native-number
+    like date

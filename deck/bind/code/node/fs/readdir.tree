@@ -1,0 +1,100 @@
+
+load @term/bind/code/javascript
+  find array
+  find dirent
+  find native-null
+  find native-string
+  find native-undefined
+  find promise
+
+load @term/bind
+  find and
+  find form
+  find or
+
+load @term/bind/code/node/buffer
+  find buffer
+  find buffer-encoding
+
+load @term/bind/code/node/fs
+  find object-encoding-options
+  find path-like
+
+task promisify, name <__promisify__>
+  like promise
+    like array
+      like native-string
+
+  take path, like path-like
+  take options
+    like or
+      like form
+        link encoding, name <encoding>
+          like or
+            like buffer-encoding
+            like native-null
+          flex true
+        link with-file-types, name <withFileTypes>
+          like or
+            text <false>
+            like native-undefined
+          flex true
+      like buffer-encoding
+      like native-null
+    void true
+
+task promisify, name <__promisify__>
+  like promise
+    like array
+      like buffer
+
+  take path, like path-like
+  take options
+    like or
+      text <buffer>
+      like form
+        link encoding, name <encoding>
+          text <buffer>
+          flex true
+        link with-file-types, name <withFileTypes>
+          like or
+            text <false>
+            like native-undefined
+          flex true
+
+task promisify, name <__promisify__>
+  like promise
+    like or
+      like array
+        like native-string
+      like array
+        like buffer
+
+  take path, like path-like
+  take options
+    like or
+      like and
+        like object-encoding-options
+        like form
+          link with-file-types, name <withFileTypes>
+            like or
+              text <false>
+              like native-undefined
+            flex true
+      like buffer-encoding
+      like native-null
+    void true
+
+task promisify, name <__promisify__>
+  like promise
+    like array
+      like dirent
+
+  take path, like path-like
+  take options
+    like and
+      like object-encoding-options
+      like form
+        link with-file-types, name <withFileTypes>
+          text <true>
+          flex true

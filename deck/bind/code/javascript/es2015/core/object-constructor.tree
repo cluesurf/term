@@ -1,0 +1,92 @@
+
+load @term/bind/code/javascript/es5/object-constructor
+  find object-constructor
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-object
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-symbol
+
+form object-constructor, name <ObjectConstructor>
+  task assign, name <assign>
+    head t
+    head u
+    take target, like t
+    take source, like u
+    like and
+      like t
+      like u
+
+  task assign, name <assign>
+    head t
+    head u
+    head v
+    take target, like t
+    take source1, like u
+    take source2, like v
+    like and
+      like t
+      like u
+      like v
+
+  task assign, name <assign>
+    head t
+    head u
+    head v
+    head w
+    take target, like t
+    take source1, like u
+    take source2, like v
+    take source3, like w
+    like and
+      like t
+      like u
+      like v
+      like w
+
+  task assign, name <assign>
+    take target, like native-object
+    take sources
+      like native-array
+        like native-any
+      rest true
+    like native-any
+
+  task get-own-property-symbols, name <getOwnPropertySymbols>
+    take o, like native-any
+    like native-array
+      like native-symbol
+
+  task keys, name <keys>
+    take o, like form
+    like native-array
+      like native-string
+
+  task is, name <is>
+    take value1, like native-any
+    take value2, like native-any
+    like native-boolean
+
+  task set-prototype-of, name <setPrototypeOf>
+    take o, like native-any
+    take proto
+      like or
+        like native-object
+        like native-null
+    like native-any

@@ -1,0 +1,78 @@
+
+load @term/bind
+  find like
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find error
+  find native-boolean
+  find native-null
+  find native-number
+  find native-undefined
+  find native-void
+  find stream
+
+load @term/bind/code/node/events/event-emitter
+  find abortable
+
+load @term/bind/code/node/fs/stream-options
+  find stream-options
+
+form stream-options, name <StreamOptions>
+  base abortable
+
+  head t
+    base stream
+
+  link emit-close, name <emitClose>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link high-water-mark, name <highWaterMark>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link object-mode, name <objectMode>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link auto-destroy, name <autoDestroy>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+
+  task construct, name <construct>
+    like native-void
+
+    take this, like t
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+          void true
+
+  task destroy, name <destroy>
+    like native-void
+
+    take this, like t
+    take error
+      like or
+        like error
+        like native-null
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null

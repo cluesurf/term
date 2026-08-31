@@ -1,0 +1,179 @@
+
+form ref-mut, name <std::cell::RefMut>
+  task map, name <map>
+    note <Makes a new RefMut for a component of the borrowed data, e.g., an enum variant.>
+
+    lead f
+      like fn-once
+        take f-1, like t
+        free seed
+          like u
+    lead u
+      like dynamically-sized
+
+    head u
+    head f
+
+    take orig
+      like ref-mut
+        time b
+        like t
+          cite free
+        cite free
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like ref-mut
+        time b
+        like u
+          cite free
+        cite free
+
+  task filter-map, name <filter_map>
+    note <Makes a new RefMut for an optional component of the borrowed data. The original guard is returned as an Err(..) if the closure returns None.>
+
+    lead f
+      like fn-once
+        take f-1, like t
+        free seed
+          like option
+            like u
+            cite free
+    lead u
+      like dynamically-sized
+
+    head u
+    head f
+
+    take orig
+      like ref-mut
+        time b
+        like t
+          cite free
+        cite free
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like result
+        like ref-mut
+          time b
+          like u
+            cite free
+          cite free
+        like ref-mut
+          time b
+          like t
+            cite free
+          cite free
+        cite free
+
+  task map-split, name <map_split>
+    note <Splits a RefMut into multiple RefMuts for different components of the borrowed data.>
+
+    lead f
+      like fn-once
+        take f-1, like t
+        free seed
+          like form
+            take t-1, like u
+            take t-2, like v
+    lead u
+      like dynamically-sized
+    lead v
+      like dynamically-sized
+
+    head u
+    head v
+    head f
+
+    take orig
+      like ref-mut
+        time b
+        like t
+          cite free
+        cite free
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like form
+        take t-1, like ref-mut
+        take t-2, like ref-mut
+
+  task leak, name <leak>
+    note <Convert into a mutable reference to the underlying data.>
+
+    take orig
+      like ref-mut
+        time b
+        like t
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like t
+        time b
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task deref, name <deref>
+    note <Dereferences the value.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+
+  task deref-mut, name <deref_mut>
+    note <Mutably dereferences the value.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free

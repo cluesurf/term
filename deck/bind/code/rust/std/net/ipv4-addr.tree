@@ -1,0 +1,618 @@
+
+form ipv4-addr, name <std::net::Ipv4Addr>
+  task new, name <new>
+    note <Creates a new IPv4 address from four eight-bit octets.>
+
+    take a
+      like u8
+        cite free
+      cite free
+    take b
+      like u8
+        cite free
+      cite free
+    take c
+      like u8
+        cite free
+      cite free
+    take d
+      like u8
+        cite free
+      cite free
+
+    free seed
+      like ipv4-addr
+        cite free
+
+  task octets, name <octets>
+    note <Returns the four eight-bit integers that make up this address.>
+
+    take self
+      cite free
+
+    free seed
+      like list
+        like u8
+        name 4
+
+  task is-unspecified, name <is_unspecified>
+    note <Returns true for the special 'unspecified' address (0.0.0.0).>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-loopback, name <is_loopback>
+    note <Returns true if this is a loopback address (127.0.0.0/8).>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-private, name <is_private>
+    note <Returns true if this is a private address.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-link-local, name <is_link_local>
+    note <Returns true if the address is link-local (169.254.0.0/16).>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-global, name <is_global>
+    note <Returns true if the address appears to be globally routable. See iana-ipv4-special-registry.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-shared, name <is_shared>
+    note <Returns true if this address is part of the Shared Address Space defined in IETF RFC 6598 (100.64.0.0/10).>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-benchmarking, name <is_benchmarking>
+    note <Returns true if this address part of the 198.18.0.0/15 range, which is reserved for network devices benchmarking. This range is defined in IETF RFC 2544 as 192.18.0.0 through 198.19.255.255 but errata 423 corrects it to 198.18.0.0/15.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-reserved, name <is_reserved>
+    note <Returns true if this address is reserved by IANA for future use. IETF RFC 1112 defines the block of reserved addresses as 240.0.0.0/4. This range normally includes the broadcast address 255.255.255.255, but this implementation explicitly excludes it, since it is obviously not reserved for future use.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-multicast, name <is_multicast>
+    note <Returns true if this is a multicast address (224.0.0.0/4).>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-broadcast, name <is_broadcast>
+    note <Returns true if this is a broadcast address (255.255.255.255).>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-documentation, name <is_documentation>
+    note <Returns true if this address is in a range designated for documentation.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task to-ipv6-compatible, name <to_ipv6_compatible>
+    note <Converts this address to an IPv4-compatible IPv6 address.>
+
+    take self
+      cite free
+
+    free seed
+      like ipv6-addr
+        cite free
+
+  task to-ipv6-mapped, name <to_ipv6_mapped>
+    note <Converts this address to an IPv4-mapped IPv6 address.>
+
+    take self
+      cite free
+
+    free seed
+      like ipv6-addr
+        cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like ipv4-addr
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take fmt
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take fmt
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task from, name <from>
+    note <Creates an Ipv4Addr from a four element byte array.>
+
+    take octets
+      like list
+        like u8
+        name 4
+      cite free
+
+    free seed
+      like ipv4-addr
+        cite free
+
+  task from, name <from>
+    note <Copies this address to a new IpAddr::V4.>
+
+    take ipv4
+      like ipv4-addr
+        cite free
+      cite free
+
+    free seed
+      like ip-addr
+        cite free
+
+  task from, name <from>
+    note <Converts an Ipv4Addr into a host byte order u32.>
+
+    take ip
+      like ipv4-addr
+        cite free
+      cite free
+
+    free seed
+      like u32
+        cite free
+
+  task from, name <from>
+    note <Converts a host byte order u32 into an Ipv4Addr.>
+
+    take ip
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like ipv4-addr
+        cite free
+
+  task from-str, name <from_str>
+    note <Parses a string s to return a value of this type.>
+
+    take s
+      like str
+
+    free seed
+      like result
+        like ipv4-addr
+          cite free
+        like addr-parse-error
+          cite free
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    head h
+
+    take self
+      cite free
+    take s
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like ipv4-addr
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like ip-addr
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like ipv4-addr
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like ipv4-addr
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like ip-addr
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like ipv4-addr
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like ipv4-addr
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free

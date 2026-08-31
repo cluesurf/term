@@ -1,0 +1,38 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find native-undefined
+
+form caa-record, name <CaaRecord>
+  link critial, name <critial>
+    like native-number
+    flex true
+  link issue, name <issue>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link issuewild, name <issuewild>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link iodef, name <iodef>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link contactemail, name <contactemail>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link contactphone, name <contactphone>
+    like or
+      like native-string
+      like native-undefined
+    flex true

@@ -1,0 +1,12 @@
+
+load @term/bind/code/javascript/native
+  find native-symbol
+
+load @term/bind/code/javascript/es2015/symbol/wellknown/symbol
+  find symbol
+
+form symbol
+  hook self
+    link async-iterator, name <asyncIterator>
+      like native-symbol
+        cool true

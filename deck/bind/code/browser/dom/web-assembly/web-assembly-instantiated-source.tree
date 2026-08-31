@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/instance
+  find instance
+
+load @term/bind/code/browser/dom/module
+  find module
+
+form web-assembly-instantiated-source, name <WebAssemblyInstantiatedSource>
+  link instance, name <instance>
+    like instance
+    lock false
+  link module, name <module>
+    like module
+    lock false

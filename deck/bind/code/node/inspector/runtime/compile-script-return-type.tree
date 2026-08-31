@@ -1,0 +1,22 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-undefined
+
+load @term/bind/code/node/inspector/runtime
+  find exception-details
+  find script-id
+
+form compile-script-return-type, name <CompileScriptReturnType>
+  link script-id, name <scriptId>
+    like or
+      like script-id
+      like native-undefined
+    flex true
+  link exception-details, name <exceptionDetails>
+    like or
+      like exception-details
+      like native-undefined
+    flex true

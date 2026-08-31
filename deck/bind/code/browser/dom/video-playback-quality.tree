@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/dom-high-res-time-stamp
+  find dom-high-res-time-stamp
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form video-playback-quality, name <VideoPlaybackQuality>
+  link corrupted-video-frames, name <corruptedVideoFrames>
+    like native-number
+  link creation-time, name <creationTime>
+    like dom-high-res-time-stamp
+  link dropped-video-frames, name <droppedVideoFrames>
+    like native-number
+  link total-video-frames, name <totalVideoFrames>
+    like native-number

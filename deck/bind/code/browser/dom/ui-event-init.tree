@@ -1,0 +1,27 @@
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+load @term/bind/code/browser/dom/window
+  find window
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form ui-event-init, name <UIEventInit>
+  base event-init
+
+  link detail, name <detail>
+    like native-number
+    lock false
+  link view, name <view>
+    like or
+      like window
+      like native-null
+    lock false
+  link which, name <which>
+    like native-number
+    lock false

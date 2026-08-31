@@ -1,0 +1,33 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/net
+  find ip-version
+
+form socket-address-init-options, name <SocketAddressInitOptions>
+  link address, name <address>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link family, name <family>
+    like or
+      like ip-version
+      like native-undefined
+    flex true
+  link flowlabel, name <flowlabel>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link port, name <port>
+    like or
+      like native-number
+      like native-undefined
+    flex true

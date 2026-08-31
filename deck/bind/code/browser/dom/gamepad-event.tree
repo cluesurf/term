@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/gamepad
+  find gamepad
+
+form gamepad-event, name <GamepadEvent>
+  base event
+
+  link gamepad, name <gamepad>
+    like gamepad

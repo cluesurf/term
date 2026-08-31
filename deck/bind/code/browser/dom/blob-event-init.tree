@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/blob
+  find blob
+
+load @term/bind/code/browser/dom/dom-high-res-time-stamp
+  find dom-high-res-time-stamp
+
+form blob-event-init, name <BlobEventInit>
+  link data, name <data>
+    like blob
+    lock false
+  link timecode, name <timecode>
+    like dom-high-res-time-stamp
+    lock false

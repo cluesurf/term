@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/text-decoder-common
+  find text-decoder-common
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form text-decoder-common, name <TextDecoderCommon>
+  link encoding, name <encoding>
+    like native-string
+  link fatal, name <fatal>
+    like native-boolean
+  link ignore-bom, name <ignoreBOM>
+    like native-boolean

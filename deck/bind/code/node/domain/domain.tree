@@ -1,0 +1,77 @@
+
+load @term/bind/code/javascript
+  find array
+  find event-emitter
+  find function
+  find native-void
+  find node-js-timer
+
+load @term/bind
+  find any
+  find like
+  find or
+  find task
+
+form domain, name <Domain>
+  base event-emitter
+  link members, name <members>
+    like array
+      like or
+        like event-emitter
+        like node-js-timer
+
+  task enter, name <enter>
+    like native-void
+
+  task exit, name <exit>
+    like native-void
+
+  task run, name <run>
+    like t
+
+    head t
+
+    take fn
+      like task
+        like t
+
+        take args
+          like array
+            like any
+          rest true
+    take args
+      like array
+        like any
+      rest true
+
+  task add, name <add>
+    like native-void
+
+    take emitter
+      like or
+        like event-emitter
+        like node-js-timer
+
+  task remove, name <remove>
+    like native-void
+
+    take emitter
+      like or
+        like event-emitter
+        like node-js-timer
+
+  task bind, name <bind>
+    like t
+
+    head t
+      base function
+
+    take callback, like t
+
+  task intercept, name <intercept>
+    like t
+
+    head t
+      base function
+
+    take callback, like t

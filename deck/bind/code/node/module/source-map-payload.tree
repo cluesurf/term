@@ -1,0 +1,31 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-number
+  find native-string
+
+form source-map-payload, name <SourceMapPayload>
+  link file, name <file>
+    like native-string
+    flex true
+  link version, name <version>
+    like native-number
+    flex true
+  link sources, name <sources>
+    like array
+      like native-string
+    flex true
+  link sources-content, name <sourcesContent>
+    like array
+      like native-string
+    flex true
+  link names, name <names>
+    like array
+      like native-string
+    flex true
+  link mappings, name <mappings>
+    like native-string
+    flex true
+  link source-root, name <sourceRoot>
+    like native-string
+    flex true

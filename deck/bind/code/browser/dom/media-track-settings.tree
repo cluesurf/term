@@ -1,0 +1,44 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form media-track-settings, name <MediaTrackSettings>
+  link aspect-ratio, name <aspectRatio>
+    like native-number
+    lock false
+  link device-id, name <deviceId>
+    like native-string
+    lock false
+  link echo-cancellation, name <echoCancellation>
+    like native-boolean
+    lock false
+  link facing-mode, name <facingMode>
+    like native-string
+    lock false
+  link frame-rate, name <frameRate>
+    like native-number
+    lock false
+  link group-id, name <groupId>
+    like native-string
+    lock false
+  link height, name <height>
+    like native-number
+    lock false
+  link restrict-own-audio, name <restrictOwnAudio>
+    like native-boolean
+    lock false
+  link sample-rate, name <sampleRate>
+    like native-number
+    lock false
+  link sample-size, name <sampleSize>
+    like native-number
+    lock false
+  link width, name <width>
+    like native-number
+    lock false

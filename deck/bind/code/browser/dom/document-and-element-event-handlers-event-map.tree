@@ -1,0 +1,15 @@
+
+load @term/bind/code/browser/dom/clipboard-event
+  find clipboard-event
+
+form document-and-element-event-handlers-event-map
+  name <DocumentAndElementEventHandlersEventMap>
+  link copy, name <copy>
+    like clipboard-event
+    lock false
+  link cut, name <cut>
+    like clipboard-event
+    lock false
+  link paste, name <paste>
+    like clipboard-event
+    lock false

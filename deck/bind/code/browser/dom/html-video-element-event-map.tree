@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/html-media-element-event-map
+  find html-media-element-event-map
+
+form html-video-element-event-map, name <HTMLVideoElementEventMap>
+  base html-media-element-event-map
+
+  link enterpictureinpicture, name <enterpictureinpicture>
+    like event
+    lock false
+  link leavepictureinpicture, name <leavepictureinpicture>
+    like event
+    lock false

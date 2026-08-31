@@ -1,0 +1,9 @@
+
+load @term/bind/code/browser/dom/readable-stream-default-reader
+  find readable-stream-default-reader
+
+form readable-stream-reader, name <ReadableStreamReader>
+  head t
+
+  like readable-stream-default-reader
+    like t

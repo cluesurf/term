@@ -1,0 +1,5 @@
+
+form visibility-state, name <VisibilityState>
+  like or
+    text <hidden>
+    text <visible>

@@ -1,0 +1,42 @@
+
+load @term/bind/code/browser/webworker/extendable-event
+  find extendable-event
+
+load @term/bind/code/browser/webworker/request
+  find request
+
+load @term/bind/code/browser/webworker/response
+  find response
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form fetch-event, name <FetchEvent>
+  base extendable-event
+
+  link client-id, name <clientId>
+    like native-string
+  link preload-response, name <preloadResponse>
+    like promise
+      like native-any
+  link request, name <request>
+    like request
+  link resulting-client-id, name <resultingClientId>
+    like native-string
+
+  task respond-with, name <respondWith>
+    take r
+      like or
+        like response
+        like promise
+          like response
+    like native-void

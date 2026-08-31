@@ -1,0 +1,11 @@
+
+form key-usage, name <KeyUsage>
+  like or
+    text <decrypt>
+    text <deriveBits>
+    text <deriveKey>
+    text <encrypt>
+    text <sign>
+    text <unwrapKey>
+    text <verify>
+    text <wrapKey>

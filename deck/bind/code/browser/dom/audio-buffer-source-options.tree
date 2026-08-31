@@ -1,0 +1,34 @@
+
+load @term/bind/code/browser/dom/audio-buffer
+  find audio-buffer
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form audio-buffer-source-options, name <AudioBufferSourceOptions>
+  link buffer, name <buffer>
+    like or
+      like audio-buffer
+      like native-null
+    lock false
+  link detune, name <detune>
+    like native-number
+    lock false
+  link loop, name <loop>
+    like native-boolean
+    lock false
+  link loop-end, name <loopEnd>
+    like native-number
+    lock false
+  link loop-start, name <loopStart>
+    like native-number
+    lock false
+  link playback-rate, name <playbackRate>
+    like native-number
+    lock false

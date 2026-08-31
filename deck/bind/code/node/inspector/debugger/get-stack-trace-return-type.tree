@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript
+  find runtime-stack-trace
+
+form get-stack-trace-return-type, name <GetStackTraceReturnType>
+  link stack-trace, name <stackTrace>
+    like runtime-stack-trace
+    flex true

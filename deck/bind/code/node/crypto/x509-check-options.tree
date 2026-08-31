@@ -1,0 +1,25 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+
+form x509-check-options, name <X509CheckOptions>
+  link subject, name <subject>
+    like or
+      text <always>
+      text <never>
+    flex true
+  link wildcards, name <wildcards>
+    like native-boolean
+    flex true
+  link partial-wildcards, name <partialWildcards>
+    like native-boolean
+    flex true
+  link multi-label-wildcards, name <multiLabelWildcards>
+    like native-boolean
+    flex true
+  link single-label-subdomains, name <singleLabelSubdomains>
+    like native-boolean
+    flex true

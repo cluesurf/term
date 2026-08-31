@@ -1,0 +1,45 @@
+
+load @term/bind/code/browser/dom/mutation-record-type
+  find mutation-record-type
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/browser/dom/node-list
+  find node-list
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form mutation-record, name <MutationRecord>
+  link added-nodes, name <addedNodes>
+    like node-list
+  link attribute-name, name <attributeName>
+    like or
+      like native-string
+      like native-null
+  link attribute-namespace, name <attributeNamespace>
+    like or
+      like native-string
+      like native-null
+  link next-sibling, name <nextSibling>
+    like or
+      like node
+      like native-null
+  link old-value, name <oldValue>
+    like or
+      like native-string
+      like native-null
+  link previous-sibling, name <previousSibling>
+    like or
+      like node
+      like native-null
+  link removed-nodes, name <removedNodes>
+    like node-list
+  link target, name <target>
+    like node
+  link type, name <type>
+    like mutation-record-type

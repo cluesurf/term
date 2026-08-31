@@ -1,0 +1,49 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/inspector/debugger
+  find call-frame-id
+
+form evaluate-on-call-frame-parameter-type, name <EvaluateOnCallFrameParameterType>
+  link call-frame-id, name <callFrameId>
+    like call-frame-id
+    flex true
+  link expression, name <expression>
+    like native-string
+    flex true
+  link object-group, name <objectGroup>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link include-command-line-api, name <includeCommandLineAPI>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link silent, name <silent>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link return-by-value, name <returnByValue>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link generate-preview, name <generatePreview>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link throw-on-side-effect, name <throwOnSideEffect>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

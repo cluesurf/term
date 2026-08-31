@@ -1,0 +1,5 @@
+
+form media-key-session-type, name <MediaKeySessionType>
+  like or
+    text <persistent-license>
+    text <temporary>

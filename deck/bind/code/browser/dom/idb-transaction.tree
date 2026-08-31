@@ -1,0 +1,152 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/dom-exception
+  find dom-exception
+
+load @term/bind/code/browser/dom/dom-string-list
+  find dom-string-list
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/browser/dom/idb-database
+  find idb-database
+
+load @term/bind/code/browser/dom/idb-object-store
+  find idb-object-store
+
+load @term/bind/code/browser/dom/idb-transaction-event-map
+  find idb-transaction-event-map
+
+load @term/bind/code/browser/dom/idb-transaction-mode
+  find idb-transaction-mode
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form idb-transaction, name <IDBTransaction>
+  base event-target
+
+  link db, name <db>
+    like idb-database
+  link error, name <error>
+    like or
+      like dom-exception
+      like native-null
+  link mode, name <mode>
+    like idb-transaction-mode
+  link object-store-names, name <objectStoreNames>
+    like dom-string-list
+  link onabort, name <onabort>
+    like or
+      like task
+        take this, like idb-transaction
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link oncomplete, name <oncomplete>
+    like or
+      like task
+        take this, like idb-transaction
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onerror, name <onerror>
+    like or
+      like task
+        take this, like idb-transaction
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+
+  task abort, name <abort>
+    like native-void
+
+  task commit, name <commit>
+    like native-void
+
+  task object-store, name <objectStore>
+    take name, like native-string
+    like idb-object-store
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like idb-transaction-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like idb-transaction
+        take ev
+          like index
+            like idb-transaction-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like idb-transaction-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like idb-transaction
+        take ev
+          like index
+            like idb-transaction-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

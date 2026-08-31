@@ -1,0 +1,23 @@
+
+load @term/bind/code/javascript/native
+  find native-never
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+form non-nullable, name <NonNullable>
+  head t
+
+  like test
+    stem roll
+      like t
+      like or
+        like native-null
+        like native-undefined
+      hook true
+        like native-never
+      hook false
+        like t

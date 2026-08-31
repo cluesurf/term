@@ -1,0 +1,39 @@
+
+load @term/bind/code/browser/dom/media-key-system-access
+  find media-key-system-access
+
+load @term/bind/code/browser/dom/media-key-system-configuration
+  find media-key-system-configuration
+
+load @term/bind/code/browser/dom/navigator
+  find navigator
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/iterable
+  find iterable
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form navigator, name <Navigator>
+  task request-media-key-system-access, name <requestMediaKeySystemAccess>
+    take key-system, like native-string
+    take supported-configurations
+      like iterable
+        like media-key-system-configuration
+    like promise
+      like media-key-system-access
+
+  task vibrate, name <vibrate>
+    take pattern
+      like iterable
+        like native-number
+    like native-boolean

@@ -1,0 +1,20 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/inspector/heap-profiler
+  find heap-snapshot-object-id
+
+form get-object-by-heap-object-id-parameter-type, name <GetObjectByHeapObjectIdParameterType>
+  link object-id, name <objectId>
+    like heap-snapshot-object-id
+    flex true
+  link object-group, name <objectGroup>
+    like or
+      like native-string
+      like native-undefined
+    flex true

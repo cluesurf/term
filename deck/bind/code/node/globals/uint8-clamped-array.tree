@@ -1,0 +1,6 @@
+
+load @term/bind/code/node/globals
+  find relative-indexable
+
+form uint8-clamped-array, name <Uint8ClampedArray>
+  base relative-indexable

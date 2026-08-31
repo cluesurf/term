@@ -1,0 +1,708 @@
+
+form pin, name <std::pin::Pin>
+  task new, name <new>
+    note <Construct a new Pin&lt;P&gt; around a pointer to some data of a type that implements Unpin.>
+
+    take pointer
+      like p
+        cite free
+      cite free
+
+    free seed
+      like pin
+        like p
+          cite free
+        cite free
+
+  task into-inner, name <into_inner>
+    note <Unwraps this Pin&lt;P&gt; returning the underlying pointer.>
+
+    take pin
+      like pin
+        like p
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like p
+        cite free
+
+  task new-unchecked, name <new_unchecked>
+    note <Construct a new Pin&lt;P&gt; around a reference to some data of a type that may or may not implement Unpin.>
+
+    take pointer
+      like p
+        cite free
+      cite free
+
+    free seed
+      like pin
+        like p
+          cite free
+        cite free
+
+  task as-ref, name <as_ref>
+    note <Gets a pinned shared reference from this pinned pointer.>
+
+    cast c-1
+      like p
+      like deref
+
+    take self
+      cite free
+
+    free seed
+      like pin
+        like c-1/target
+        cite free
+
+  task into-inner-unchecked, name <into_inner_unchecked>
+    note <Unwraps this Pin&lt;P&gt; returning the underlying pointer.>
+
+    take pin
+      like pin
+        like p
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like p
+        cite free
+
+  task as-mut, name <as_mut>
+    note <Gets a pinned mutable reference from this pinned pointer.>
+
+    cast c-1
+      like p
+      like deref
+
+    take self
+      cite free
+
+    free seed
+      like pin
+        like c-1/target
+        cite free
+
+  task set, name <set>
+    note <Assigns a new value to the memory behind the pinned reference.>
+
+    cast c-1
+      like p
+      like deref
+    cast c-2
+      like p
+      like deref
+
+    lead c-1/target
+      like sized
+        cite free
+
+    take self
+      cite free
+    take value
+      like c-2/target
+      cite free
+
+  task map-unchecked, name <map_unchecked>
+    note <Constructs a new pin by mapping the interior value.>
+
+    lead f
+      like fn-once
+        take f-1, like t
+        free seed
+          like u
+    lead u
+      like dynamically-sized
+
+    head u
+    head f
+
+    take self
+      cite free
+    take func
+      like f
+        cite free
+      cite free
+
+    free seed
+      like pin
+        like u
+          time a
+        cite free
+
+  task get-ref, name <get_ref>
+    note <Gets a shared reference out of a pin.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        time a
+
+  task into-ref, name <into_ref>
+    note <Converts this Pin&lt;&mut T&gt; into a Pin&lt;&T&gt; with the same lifetime.>
+
+    take self
+      cite free
+
+    free seed
+      like pin
+        like t
+          time a
+        cite free
+
+  task get-mut, name <get_mut>
+    note <Gets a mutable reference to the data inside of this Pin.>
+
+    lead t
+      like unpin
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like t
+        time a
+
+  task get-unchecked-mut, name <get_unchecked_mut>
+    note <Gets a mutable reference to the data inside of this Pin.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        time a
+
+  task map-unchecked-mut, name <map_unchecked_mut>
+    note <Construct a new pin by mapping the interior value.>
+
+    lead f
+      like fn-once
+        take f-1, like t
+        free seed
+          like u
+    lead u
+      like dynamically-sized
+
+    head u
+    head f
+
+    take self
+      cite free
+    take func
+      like f
+        cite free
+      cite free
+
+    free seed
+      like pin
+        like u
+          time a
+        cite free
+
+  task static-ref, name <static_ref>
+    note <Get a pinned reference from a static reference.>
+
+    take r
+      like t
+        time static
+
+    free seed
+      like pin
+        like t
+          time static
+        cite free
+
+  task as-deref-mut, name <as_deref_mut>
+    note <Gets a pinned mutable reference from this nested pinned pointer.>
+
+    cast c-1
+      like p
+      like deref
+
+    take self
+      cite free
+
+    free seed
+      like pin
+        like c-1/target
+        cite free
+
+  task static-mut, name <static_mut>
+    note <Get a pinned mutable reference from a static mutable reference.>
+
+    take r
+      like t
+        time static
+      lock free
+
+    free seed
+      like pin
+        like t
+          time static
+        cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like pin
+        like p
+          cite free
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task deref, name <deref>
+    note <Dereferences the value.>
+
+    cast c-1
+      like p
+      like deref
+
+    take self
+      cite free
+
+    free seed
+      like c-1/target
+
+  task deref-mut, name <deref_mut>
+    note <Mutably dereferences the value.>
+
+    cast c-1
+      like p
+      like deref
+
+    take self
+      cite free
+
+    free seed
+      like c-1/target
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a Box&lt;T&gt; into a Pin&lt;Box&lt;T&gt;&gt;>
+
+    take boxed
+      like box
+        like t
+          cite free
+        like a
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like pin
+        like box
+          like t
+            cite free
+          like a
+            cite free
+          cite free
+        cite free
+
+  task poll, name <poll>
+    note <Attempt to resolve the future to a final value, registering the current task for wakeup if the value is not yet available.>
+
+    cast c-1
+      like pin
+        like p
+          cite free
+      like future
+
+    take self
+      like pin
+        like pin
+          like p
+            cite free
+        cite free
+      cite free
+    take cx
+      like context
+        time mask
+      lock free
+
+    free seed
+      like poll
+        like c-1/output
+        cite free
+
+  task resume, name <resume>
+    note <Resumes the execution of this generator.>
+
+    cast c-1
+      like pin
+        like g
+          time 
+      like generator
+        like r
+          cite free
+    cast c-2
+      like pin
+        like g
+          time 
+      like generator
+        like r
+          cite free
+
+    take self
+      like pin
+        like pin
+          like g
+            time 
+        cite free
+      cite free
+    take arg
+      like r
+        cite free
+      cite free
+
+    free seed
+      like generator-state
+        like c-1/yield
+        like c-2/return
+        cite free
+
+  task resume, name <resume>
+    note <Resumes the execution of this generator.>
+
+    cast c-1
+      like pin
+        like box
+          like g
+            cite free
+          like a
+            cite free
+          cite free
+      like generator
+        like r
+          cite free
+    cast c-2
+      like pin
+        like box
+          like g
+            cite free
+          like a
+            cite free
+          cite free
+      like generator
+        like r
+          cite free
+
+    take self
+      like pin
+        like pin
+          like box
+            like g
+              cite free
+            like a
+              cite free
+            cite free
+        cite free
+      cite free
+    take arg
+      like r
+        cite free
+      cite free
+
+    free seed
+      like generator-state
+        like c-1/yield
+        like c-2/return
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like pin
+        like p
+          cite free
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like pin
+        like q
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like pin
+        like q
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like pin
+        like q
+          cite free
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like pin
+        like q
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like pin
+        like q
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like pin
+        like q
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like pin
+        like q
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task poll-next, name <poll_next>
+    note <Attempt to pull out the next value of this stream, registering the current task for wakeup if the value is not yet available, and returning None if the stream is exhausted.>
+
+    cast c-1
+      like pin
+        like p
+          cite free
+      like stream
+
+    take self
+      like pin
+        like pin
+          like p
+            cite free
+        cite free
+      cite free
+    take cx
+      like context
+        time mask
+      lock free
+
+    free seed
+      like poll
+        like option
+          like c-1/item
+          cite free
+        cite free
+
+  task size-hint, name <size_hint>
+    note <Returns the bounds on the remaining length of the stream.>
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1, like usize
+        take t-2, like option

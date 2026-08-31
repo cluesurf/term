@@ -1,0 +1,24 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+
+form naptr-record, name <NaptrRecord>
+  link flags, name <flags>
+    like native-string
+    flex true
+  link service, name <service>
+    like native-string
+    flex true
+  link regexp, name <regexp>
+    like native-string
+    flex true
+  link replacement, name <replacement>
+    like native-string
+    flex true
+  link order, name <order>
+    like native-number
+    flex true
+  link preference, name <preference>
+    like native-number
+    flex true

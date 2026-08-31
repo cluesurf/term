@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/algorithm
+  find algorithm
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form aes-key-gen-params, name <AesKeyGenParams>
+  base algorithm
+
+  link length, name <length>
+    like native-number
+    lock false

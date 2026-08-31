@@ -1,0 +1,25 @@
+
+load @term/bind/code/browser/dom/event-modifier-init
+  find event-modifier-init
+
+load @term/bind/code/browser/dom/touch
+  find touch
+
+load @term/bind/code/javascript/native
+  find native-array
+
+form touch-event-init, name <TouchEventInit>
+  base event-modifier-init
+
+  link changed-touches, name <changedTouches>
+    like native-array
+      like touch
+    lock false
+  link target-touches, name <targetTouches>
+    like native-array
+      like touch
+    lock false
+  link touches, name <touches>
+    like native-array
+      like touch
+    lock false

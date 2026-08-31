@@ -1,0 +1,32 @@
+
+load @term/bind/code/javascript/es2020/bigint/big-int-to-locale-string-options
+  find big-int-to-locale-string-options
+
+load @term/bind/code/javascript/native
+  find native-bigint
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form big-int, name <BigInt>
+  link {symbol/to-string-tag}
+    text <BigInt>
+    read true
+
+  task to-string, name <toString>
+    take radix, like maybe
+      like native-number
+    like native-string
+
+  task to-locale-string, name <toLocaleString>
+    take locales, like maybe
+      like native-string
+    take options, like maybe
+      like big-int-to-locale-string-options
+    like native-string
+
+  task value-of, name <valueOf>
+    like native-bigint

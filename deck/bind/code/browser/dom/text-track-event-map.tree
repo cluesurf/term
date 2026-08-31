@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form text-track-event-map, name <TextTrackEventMap>
+  link cuechange, name <cuechange>
+    like event
+    lock false

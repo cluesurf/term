@@ -1,0 +1,6 @@
+
+load @term/bind/code/javascript
+  find function
+
+form stat-sync-fn, name <StatSyncFn>
+  base function

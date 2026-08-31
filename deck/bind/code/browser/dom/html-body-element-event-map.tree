@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/html-element-event-map
+  find html-element-event-map
+
+load @term/bind/code/browser/dom/window-event-handlers-event-map
+  find window-event-handlers-event-map
+
+form html-body-element-event-map, name <HTMLBodyElementEventMap>
+  base html-element-event-map
+  base window-event-handlers-event-map
+
+  link orientationchange, name <orientationchange>
+    like event
+    lock false

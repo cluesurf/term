@@ -1,0 +1,12 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/node/dns
+  find any-a-record
+  find any-aaaa-record
+
+form any-record-with-ttl, name <AnyRecordWithTtl>
+  like or
+    like any-a-record
+    like any-aaaa-record

@@ -1,0 +1,93 @@
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/browser/dom/ui-event
+  find ui-event
+
+load @term/bind/code/browser/dom/window
+  find window
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form mouse-event, name <MouseEvent>
+  base ui-event
+
+  link alt-key, name <altKey>
+    like native-boolean
+  link button, name <button>
+    like native-number
+  link buttons, name <buttons>
+    like native-number
+  link client-x, name <clientX>
+    like native-number
+  link client-y, name <clientY>
+    like native-number
+  link ctrl-key, name <ctrlKey>
+    like native-boolean
+  link meta-key, name <metaKey>
+    like native-boolean
+  link movement-x, name <movementX>
+    like native-number
+  link movement-y, name <movementY>
+    like native-number
+  link offset-x, name <offsetX>
+    like native-number
+  link offset-y, name <offsetY>
+    like native-number
+  link page-x, name <pageX>
+    like native-number
+  link page-y, name <pageY>
+    like native-number
+  link related-target, name <relatedTarget>
+    like or
+      like event-target
+      like native-null
+  link screen-x, name <screenX>
+    like native-number
+  link screen-y, name <screenY>
+    like native-number
+  link shift-key, name <shiftKey>
+    like native-boolean
+  link x, name <x>
+    like native-number
+  link y, name <y>
+    like native-number
+
+  task get-modifier-state, name <getModifierState>
+    take key-arg, like native-string
+    like native-boolean
+
+  task init-mouse-event, name <initMouseEvent>
+    take type-arg, like native-string
+    take can-bubble-arg, like native-boolean
+    take cancelable-arg, like native-boolean
+    take view-arg, like window
+    take detail-arg, like native-number
+    take screen-x-arg, like native-number
+    take screen-y-arg, like native-number
+    take client-x-arg, like native-number
+    take client-y-arg, like native-number
+    take ctrl-key-arg, like native-boolean
+    take alt-key-arg, like native-boolean
+    take shift-key-arg, like native-boolean
+    take meta-key-arg, like native-boolean
+    take button-arg, like native-number
+    take related-target-arg
+      like or
+        like event-target
+        like native-null
+    like native-void

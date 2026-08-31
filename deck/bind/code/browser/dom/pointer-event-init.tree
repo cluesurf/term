@@ -1,0 +1,60 @@
+
+load @term/bind/code/browser/dom/mouse-event-init
+  find mouse-event-init
+
+load @term/bind/code/browser/dom/pointer-event
+  find pointer-event
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form pointer-event-init, name <PointerEventInit>
+  base mouse-event-init
+
+  link coalesced-events, name <coalescedEvents>
+    like native-array
+      like pointer-event
+    lock false
+  link height, name <height>
+    like native-number
+    lock false
+  link is-primary, name <isPrimary>
+    like native-boolean
+    lock false
+  link pointer-id, name <pointerId>
+    like native-number
+    lock false
+  link pointer-type, name <pointerType>
+    like native-string
+    lock false
+  link predicted-events, name <predictedEvents>
+    like native-array
+      like pointer-event
+    lock false
+  link pressure, name <pressure>
+    like native-number
+    lock false
+  link tangential-pressure, name <tangentialPressure>
+    like native-number
+    lock false
+  link tilt-x, name <tiltX>
+    like native-number
+    lock false
+  link tilt-y, name <tiltY>
+    like native-number
+    lock false
+  link twist, name <twist>
+    like native-number
+    lock false
+  link width, name <width>
+    like native-number
+    lock false

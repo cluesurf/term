@@ -1,0 +1,28 @@
+
+load @term/bind/code/javascript/es2015/collection/set
+  find set
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+form set-constructor, name <SetConstructor>
+  link prototype, name <prototype>
+    like set
+      like native-any
+
+  hook make
+    head t
+      back native-any
+    take values, like maybe
+      like or
+        like native-array
+          like t
+        like native-null
+    like set
+      like t

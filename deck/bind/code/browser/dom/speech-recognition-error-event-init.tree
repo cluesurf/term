@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+load @term/bind/code/browser/dom/speech-recognition-error-code
+  find speech-recognition-error-code
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form speech-recognition-error-event-init, name <SpeechRecognitionErrorEventInit>
+  base event-init
+
+  link error, name <error>
+    like speech-recognition-error-code
+    lock false
+  link message, name <message>
+    like native-string
+    lock false

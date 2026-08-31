@@ -1,0 +1,11 @@
+
+form orientation-lock-type, name <OrientationLockType>
+  like or
+    text <any>
+    text <landscape>
+    text <landscape-primary>
+    text <landscape-secondary>
+    text <natural>
+    text <portrait>
+    text <portrait-primary>
+    text <portrait-secondary>

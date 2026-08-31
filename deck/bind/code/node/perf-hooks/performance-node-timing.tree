@@ -1,0 +1,12 @@
+
+load @term/bind/code/javascript
+  find native-number
+
+form performance-node-timing, name <PerformanceNodeTiming>
+  base performance-entry
+  link bootstrap-complete, name <bootstrapComplete>, like native-number
+  link environment, name <environment>, like native-number
+  link idle-time, name <idleTime>, like native-number
+  link loop-exit, name <loopExit>, like native-number
+  link loop-start, name <loopStart>, like native-number
+  link v8-start, name <v8Start>, like native-number

@@ -1,0 +1,6 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form dom-time-stamp, name <DOMTimeStamp>
+  like native-number

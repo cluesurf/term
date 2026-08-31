@@ -1,0 +1,6 @@
+
+form media-keys-requirement, name <MediaKeysRequirement>
+  like or
+    text <not-allowed>
+    text <optional>
+    text <required>

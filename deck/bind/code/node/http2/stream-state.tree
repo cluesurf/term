@@ -1,0 +1,39 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+
+form stream-state, name <StreamState>
+  link local-window-size, name <localWindowSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link state, name <state>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link local-close, name <localClose>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link remote-close, name <remoteClose>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link sum-dependency-weight, name <sumDependencyWeight>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link weight, name <weight>
+    like or
+      like native-number
+      like native-undefined
+    flex true

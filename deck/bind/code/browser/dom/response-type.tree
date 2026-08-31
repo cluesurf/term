@@ -1,0 +1,9 @@
+
+form response-type, name <ResponseType>
+  like or
+    text <basic>
+    text <cors>
+    text <default>
+    text <error>
+    text <opaque>
+    text <opaqueredirect>

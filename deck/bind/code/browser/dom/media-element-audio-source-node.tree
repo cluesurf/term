@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/audio-node
+  find audio-node
+
+load @term/bind/code/browser/dom/html-media-element
+  find html-media-element
+
+form media-element-audio-source-node, name <MediaElementAudioSourceNode>
+  base audio-node
+
+  link media-element, name <mediaElement>
+    like html-media-element

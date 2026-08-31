@@ -1,0 +1,12 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+
+form mx-record, name <MxRecord>
+  link priority, name <priority>
+    like native-number
+    flex true
+  link exchange, name <exchange>
+    like native-string
+    flex true

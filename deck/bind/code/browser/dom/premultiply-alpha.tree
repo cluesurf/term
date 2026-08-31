@@ -1,0 +1,6 @@
+
+form premultiply-alpha, name <PremultiplyAlpha>
+  like or
+    text <default>
+    text <none>
+    text <premultiply>

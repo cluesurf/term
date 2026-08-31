@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/dom-rect
+  find dom-rect
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form dom-rect-list, name <DOMRectList>
+  link length, name <length>
+    like native-number
+
+  task item, name <item>
+    take index, like native-number
+    like or
+      like dom-rect
+      like native-null
+
+  mesh index, like native-number
+    like dom-rect

@@ -1,0 +1,68 @@
+
+load @term/bind/code/javascript
+  find array
+  find error
+  find native-boolean
+  find native-null
+  find native-string
+  find native-undefined
+  find native-void
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/node/globals
+  find uint8-array
+
+load @term/bind/code/node/tls
+  find secure-context
+
+form common-connection-options, name <CommonConnectionOptions>
+  link secure-context, name <secureContext>
+    like or
+      like secure-context
+      like native-undefined
+    flex true
+  link enable-trace, name <enableTrace>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link request-cert, name <requestCert>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link alpn-protocols, name <ALPNProtocols>
+    like or
+      like array
+        like native-string
+      like array
+        like uint8-array
+      like uint8-array
+      like native-undefined
+    flex true
+  link sni-callback, name <SNICallback>
+    like or
+      like task
+        like native-void
+
+        take servername, like native-string
+        take cb
+          like task
+            like native-void
+
+            take err
+              like or
+                like error
+                like native-null
+            take ctx, like secure-context
+              void true
+      like native-undefined
+    flex true
+  link reject-unauthorized, name <rejectUnauthorized>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

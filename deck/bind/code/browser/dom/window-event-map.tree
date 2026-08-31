@@ -1,0 +1,38 @@
+
+load @term/bind/code/browser/dom/device-motion-event
+  find device-motion-event
+
+load @term/bind/code/browser/dom/device-orientation-event
+  find device-orientation-event
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/gamepad-event
+  find gamepad-event
+
+load @term/bind/code/browser/dom/global-event-handlers-event-map
+  find global-event-handlers-event-map
+
+load @term/bind/code/browser/dom/window-event-handlers-event-map
+  find window-event-handlers-event-map
+
+form window-event-map, name <WindowEventMap>
+  base global-event-handlers-event-map
+  base window-event-handlers-event-map
+
+  link devicemotion, name <devicemotion>
+    like device-motion-event
+    lock false
+  link deviceorientation, name <deviceorientation>
+    like device-orientation-event
+    lock false
+  link gamepadconnected, name <gamepadconnected>
+    like gamepad-event
+    lock false
+  link gamepaddisconnected, name <gamepaddisconnected>
+    like gamepad-event
+    lock false
+  link orientationchange, name <orientationchange>
+    like event
+    lock false

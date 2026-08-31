@@ -1,0 +1,359 @@
+
+form instant, name <std::time::Instant>
+  task now, name <now>
+    note <Returns an instant corresponding to “now”.>
+
+    free seed
+      like instant
+        cite free
+
+  task duration-since, name <duration_since>
+    note <Returns the amount of time elapsed from another instant to this one.>
+
+    take self
+      cite free
+    take earlier
+      like instant
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task checked-duration-since, name <checked_duration_since>
+    note <Returns the amount of time elapsed from another instant to this one, or None if that instant is later than this one.>
+
+    take self
+      cite free
+    take earlier
+      like instant
+        cite free
+      cite free
+
+    free seed
+      like option
+        like duration
+          cite free
+        cite free
+
+  task saturating-duration-since, name <saturating_duration_since>
+    note <Returns the amount of time elapsed from another instant to this one, or zero duration if that instant is later than this one.>
+
+    take self
+      cite free
+    take earlier
+      like instant
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task elapsed, name <elapsed>
+    note <Returns the amount of time elapsed since this instant was created.>
+
+    take self
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task checked-add, name <checked_add>
+    note <Returns Some(t) where t is the time self + duration if t can be represented as Instant (which means it's inside the bounds of the underlying data structure), None otherwise.>
+
+    take self
+      cite free
+    take duration
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like option
+        like instant
+          cite free
+        cite free
+
+  task checked-sub, name <checked_sub>
+    note <Returns Some(t) where t is the time self - duration if t can be represented as Instant (which means it's inside the bounds of the underlying data structure), None otherwise.>
+
+    take self
+      cite free
+    take duration
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like option
+        like instant
+          cite free
+        cite free
+
+  task add, name <add>
+    note <This function may panic if the resulting point in time cannot be represented by the underlying data structure. See Instant::checked_add for a version without panic.>
+
+    take self
+      cite free
+    take other
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like instant
+        cite free
+
+  task add-assign, name <add_assign>
+    note <Performs the += operation.>
+
+    take self
+      cite free
+    take other
+      like duration
+        cite free
+      cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like instant
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like instant
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like instant
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like instant
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like instant
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task sub, name <sub>
+    note <Performs the - operation.>
+
+    take self
+      cite free
+    take other
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like instant
+        cite free
+
+  task sub, name <sub>
+    note <Performs the - operation.>
+
+    take self
+      cite free
+    take other
+      like instant
+        cite free
+      cite free
+
+    free seed
+      like duration
+        cite free
+
+  task sub-assign, name <sub_assign>
+    note <Performs the -= operation.>
+
+    take self
+      cite free
+    take other
+      like duration
+        cite free
+      cite free

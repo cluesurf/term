@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form payment-request-event-map, name <PaymentRequestEventMap>
+  link paymentmethodchange, name <paymentmethodchange>
+    like event
+    lock false

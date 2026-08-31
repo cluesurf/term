@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/audio-node-options
+  find audio-node-options
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form stereo-panner-options, name <StereoPannerOptions>
+  base audio-node-options
+
+  link pan, name <pan>
+    like native-number
+    lock false

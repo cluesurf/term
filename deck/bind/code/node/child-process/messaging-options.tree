@@ -1,0 +1,32 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find abortable
+  find native-number
+  find native-undefined
+  find node-js-signals
+
+load @term/bind/code/node/child-process
+  find serialization-type
+
+form messaging-options, name <MessagingOptions>
+  base abortable
+
+  link serialization, name <serialization>
+    like or
+      like serialization-type
+      like native-undefined
+    flex true
+  link kill-signal, name <killSignal>
+    like or
+      like node-js-signals
+      like native-number
+      like native-undefined
+    flex true
+  link timeout, name <timeout>
+    like or
+      like native-number
+      like native-undefined
+    flex true

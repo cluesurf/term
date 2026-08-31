@@ -1,0 +1,280 @@
+
+form formatter, name <std::fmt::Formatter>
+  task pad-integral, name <pad_integral>
+    note <Performs the correct padding for an integer which has already been emitted into a str. The str should not contain the sign for the integer, that will be added by this method.>
+
+    take self
+      cite free
+    take is-nonnegative
+      like bool
+        cite free
+      cite free
+    take prefix
+      like str
+    take buf
+      like str
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task pad, name <pad>
+    note <This function takes a string slice and emits it to the internal buffer after applying the relevant formatting flags specified. The flags recognized for generic strings are:>
+
+    take self
+      cite free
+    take s
+      like str
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task write-str, name <write_str>
+    note <Writes some data to the underlying buffer contained within this formatter.>
+
+    take self
+      cite free
+    take data
+      like str
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task write-fmt, name <write_fmt>
+    note <Writes some formatted information into this instance.>
+
+    take self
+      cite free
+    take fmt
+      like arguments
+        time mask
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task flags, name <flags>
+    note <Flags for formatting>
+
+    take self
+      cite free
+
+    free seed
+      like u32
+        cite free
+
+  task fill, name <fill>
+    note <Character used as 'fill' whenever there is alignment.>
+
+    take self
+      cite free
+
+    free seed
+      like char
+        cite free
+
+  task align, name <align>
+    note <Flag indicating what form of alignment was requested.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like alignment
+          cite free
+        cite free
+
+  task width, name <width>
+    note <Optionally specified integer width that the output should be.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like usize
+          cite free
+        cite free
+
+  task precision, name <precision>
+    note <Optionally specified precision for numeric types. Alternatively, the maximum width for string types.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like usize
+          cite free
+        cite free
+
+  task sign-plus, name <sign_plus>
+    note <Determines if the + flag was specified.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task sign-minus, name <sign_minus>
+    note <Determines if the - flag was specified.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task alternate, name <alternate>
+    note <Determines if the # flag was specified.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task sign-aware-zero-pad, name <sign_aware_zero_pad>
+    note <Determines if the 0 flag was specified.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task debug-struct, name <debug_struct>
+    note <Creates a DebugStruct builder designed to assist with creation of fmt::Debug implementations for structs.>
+
+    take self
+      cite free
+    take name
+      like str
+
+    free seed
+      like debug-struct
+        time b
+        time a
+        cite free
+
+  task debug-tuple, name <debug_tuple>
+    note <Creates a DebugTuple builder designed to assist with creation of fmt::Debug implementations for tuple structs.>
+
+    take self
+      cite free
+    take name
+      like str
+
+    free seed
+      like debug-tuple
+        time b
+        time a
+        cite free
+
+  task debug-list, name <debug_list>
+    note <Creates a DebugList builder designed to assist with creation of fmt::Debug implementations for list-like structures.>
+
+    take self
+      cite free
+
+    free seed
+      like debug-list
+        time b
+        time a
+        cite free
+
+  task debug-set, name <debug_set>
+    note <Creates a DebugSet builder designed to assist with creation of fmt::Debug implementations for set-like structures.>
+
+    take self
+      cite free
+
+    free seed
+      like debug-set
+        time b
+        time a
+        cite free
+
+  task debug-map, name <debug_map>
+    note <Creates a DebugMap builder designed to assist with creation of fmt::Debug implementations for map-like structures.>
+
+    take self
+      cite free
+
+    free seed
+      like debug-map
+        time b
+        time a
+        cite free
+
+  task write-str, name <write_str>
+    note <Writes a string slice into this writer, returning whether the write succeeded.>
+
+    take self
+      cite free
+    take s
+      like str
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task write-char, name <write_char>
+    note <Writes a char into this writer, returning whether the write succeeded.>
+
+    take self
+      cite free
+    take c
+      like char
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task write-fmt, name <write_fmt>
+    note <Glue for usage of the write! macro with implementors of this trait.>
+
+    take self
+      cite free
+    take args
+      like arguments
+        time mask
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free

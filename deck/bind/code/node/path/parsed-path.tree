@@ -1,0 +1,20 @@
+
+load @term/bind/code/javascript
+  find native-string
+
+form parsed-path, name <ParsedPath>
+  link root, name <root>
+    like native-string
+    flex true
+  link dir, name <dir>
+    like native-string
+    flex true
+  link base, name <base>
+    like native-string
+    flex true
+  link ext, name <ext>
+    like native-string
+    flex true
+  link name, name <name>
+    like native-string
+    flex true

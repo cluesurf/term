@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/webworker/global
+  find global
+
+load @term/bind/code/browser/webworker/memory
+  find memory
+
+load @term/bind/code/browser/webworker/table
+  find table
+
+load @term/bind/code/javascript/es5/function
+  find function
+
+form export-value, name <ExportValue>
+  like or
+    like function
+    like global
+    like memory
+    like table

@@ -1,0 +1,64 @@
+
+load @term/bind
+  find form
+  find like
+  find or
+
+load @term/bind/code/javascript
+  find native-null
+  find native-number
+  find native-string
+  find node-js-array-buffer-view
+  find promise
+
+load @term/bind/code/node/buffer
+  find buffer-encoding
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link bytes-written, name <bytesWritten>
+        like native-number
+        flex true
+      link buffer, name <buffer>
+        like t-buffer
+        flex true
+
+  head t-buffer
+    base node-js-array-buffer-view
+
+  take fd, like native-number
+  take buffer, like t-buffer
+    void true
+  take offset, like native-number
+    void true
+  take length, like native-number
+    void true
+  take position
+    like or
+      like native-number
+      like native-null
+    void true
+
+task promisify, name <__promisify__>
+  like promise
+    like form
+      link bytes-written, name <bytesWritten>
+        like native-number
+        flex true
+      link buffer, name <buffer>
+        like native-string
+        flex true
+
+  take fd, like native-number
+  take string, like native-string
+  take position
+    like or
+      like native-number
+      like native-null
+    void true
+  take encoding
+    like or
+      like buffer-encoding
+      like native-null
+    void true

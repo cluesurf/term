@@ -1,0 +1,71 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find key-object
+  find native-number
+  find native-string
+  find native-undefined
+  find webcrypto-crypto-key
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/crypto
+  find asymmetric-key-details
+  find json-web-key
+  find jwk-key-export-options
+  find key-export-options
+  find key-object-type
+  find key-type
+
+form key-object, name <KeyObject>
+  link asymmetric-key-type, name <asymmetricKeyType>
+    like or
+      like key-type
+      like native-undefined
+  link asymmetric-key-size, name <asymmetricKeySize>
+    like or
+      like native-number
+      like native-undefined
+  link asymmetric-key-details, name <asymmetricKeyDetails>
+    like or
+      like asymmetric-key-details
+      like native-undefined
+  link symmetric-key-size, name <symmetricKeySize>
+    like or
+      like native-number
+      like native-undefined
+  link type, name <type>, like key-object-type
+
+  task export, name <export>
+    like or
+      like native-string
+      like buffer
+
+    take options
+      like key-export-options
+        text <pem>
+
+  task export, name <export>
+    like buffer
+
+    take options
+      like key-export-options
+        text <der>
+      void true
+
+  task export, name <export>
+    like json-web-key
+
+    take options, like jwk-key-export-options
+      void true
+
+form key-object-constructor
+  hook make
+
+  task from, name <from>
+    like key-object
+
+    take key, like webcrypto-crypto-key

@@ -1,0 +1,40 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form html-hyperlink-element-utils, name <HTMLHyperlinkElementUtils>
+  link hash, name <hash>
+    like native-string
+    lock false
+  link host, name <host>
+    like native-string
+    lock false
+  link hostname, name <hostname>
+    like native-string
+    lock false
+  link href, name <href>
+    like native-string
+    lock false
+  link origin, name <origin>
+    like native-string
+  link password, name <password>
+    like native-string
+    lock false
+  link pathname, name <pathname>
+    like native-string
+    lock false
+  link port, name <port>
+    like native-string
+    lock false
+  link protocol, name <protocol>
+    like native-string
+    lock false
+  link search, name <search>
+    like native-string
+    lock false
+  link username, name <username>
+    like native-string
+    lock false
+
+  task to-string, name <toString>
+    like native-string

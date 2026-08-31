@@ -1,0 +1,31 @@
+
+load @term/bind/code/browser/dom/rtc-sent-rtp-stream-stats
+  find rtc-sent-rtp-stream-stats
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form rtc-outbound-rtp-stream-stats, name <RTCOutboundRtpStreamStats>
+  base rtc-sent-rtp-stream-stats
+
+  link fir-count, name <firCount>
+    like native-number
+    lock false
+  link frames-encoded, name <framesEncoded>
+    like native-number
+    lock false
+  link nack-count, name <nackCount>
+    like native-number
+    lock false
+  link pli-count, name <pliCount>
+    like native-number
+    lock false
+  link qp-sum, name <qpSum>
+    like native-number
+    lock false
+  link remote-id, name <remoteId>
+    like native-string
+    lock false

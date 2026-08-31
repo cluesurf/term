@@ -1,0 +1,15 @@
+
+load @term/bind/code/browser/dom/g-lfloat
+  find g-lfloat
+
+load @term/bind/code/javascript/es5/float32-array
+  find float32-array
+
+load @term/bind/code/javascript/native
+  find native-array
+
+form float32-list, name <Float32List>
+  like or
+    like float32-array
+    like native-array
+      like g-lfloat

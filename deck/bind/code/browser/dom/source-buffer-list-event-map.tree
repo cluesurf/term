@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form source-buffer-list-event-map, name <SourceBufferListEventMap>
+  link addsourcebuffer, name <addsourcebuffer>
+    like event
+    lock false
+  link removesourcebuffer, name <removesourcebuffer>
+    like event
+    lock false

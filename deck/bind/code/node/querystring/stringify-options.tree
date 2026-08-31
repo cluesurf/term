@@ -1,0 +1,18 @@
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find native-string
+  find native-undefined
+
+form stringify-options, name <StringifyOptions>
+  link encode-uri-component, name <encodeURIComponent>
+    like or
+      like task
+        like native-string
+
+        take str, like native-string
+      like native-undefined
+    flex true

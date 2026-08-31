@@ -1,0 +1,24 @@
+
+load @term/bind/code/browser/dom/queuing-strategy
+  find queuing-strategy
+
+load @term/bind/code/browser/webworker/queuing-strategy-size
+  find queuing-strategy-size
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form queuing-strategy, name <QueuingStrategy>
+  head t
+    back native-any
+
+  link high-water-mark, name <highWaterMark>
+    like native-number
+    lock false
+  link size, name <size>
+    like queuing-strategy-size
+      like t
+    lock false

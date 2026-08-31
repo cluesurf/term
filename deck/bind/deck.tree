@@ -1,0 +1,10 @@
+
+deck @term/bind
+  head <The Term platform binding library: typed handles for the host APIs each backend exposes>
+  code <0.0.2>
+  lock <Apache 2.0>
+  bear ./code
+  mind <Lance Pollard>, base <lp@elk.fm>
+  term <information>
+  term <computation>
+  term <library>

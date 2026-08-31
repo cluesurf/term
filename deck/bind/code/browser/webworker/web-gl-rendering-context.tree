@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/web-gl-rendering-context
+  find web-gl-rendering-context
+
+load @term/bind/code/browser/webworker/web-gl-rendering-context-base
+  find web-gl-rendering-context-base
+
+load @term/bind/code/browser/webworker/web-gl-rendering-context-overloads
+  find web-gl-rendering-context-overloads
+
+form web-gl-rendering-context, name <WebGLRenderingContext>
+  base web-gl-rendering-context-base
+  base web-gl-rendering-context-overloads

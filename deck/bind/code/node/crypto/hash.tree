@@ -1,0 +1,43 @@
+
+load @term/bind/code/javascript
+  find hash
+  find native-string
+  find stream-transform-options
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/crypto
+  find binary-like
+  find binary-to-text-encoding
+  find encoding
+
+form hash, name <Hash>
+  base stream-transform
+  task copy, name <copy>
+    like hash
+
+    take options, like stream-transform-options
+      void true
+
+  task update, name <update>
+    like hash
+
+    take data, like binary-like
+
+  task update, name <update>
+    like hash
+
+    take data, like native-string
+    take input-encoding, like encoding
+
+  task digest, name <digest>
+    like buffer
+
+  task digest, name <digest>
+    like native-string
+
+    take encoding, like binary-to-text-encoding
+
+form hash-constructor
+  hook make

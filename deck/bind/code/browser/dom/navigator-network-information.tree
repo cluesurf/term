@@ -1,0 +1,7 @@
+
+load @term/bind/code/browser/dom/network-information
+  find network-information
+
+form navigator-network-information, name <NavigatorNetworkInformation>
+  link connection, name <connection>
+    like network-information

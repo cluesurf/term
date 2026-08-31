@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/constrain-dom-string-parameters
+  find constrain-dom-string-parameters
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form constrain-dom-string, name <ConstrainDOMString>
+  like or
+    like native-string
+    like native-array
+      like native-string
+    like constrain-dom-string-parameters

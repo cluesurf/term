@@ -1,0 +1,18 @@
+
+load @term/bind/code/browser/dom/text-metrics
+  find text-metrics
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form text-metrics, name <TextMetrics>
+  link actual-bounding-box-ascent, name <actualBoundingBoxAscent>
+    like native-number
+  link actual-bounding-box-descent, name <actualBoundingBoxDescent>
+    like native-number
+  link actual-bounding-box-left, name <actualBoundingBoxLeft>
+    like native-number
+  link actual-bounding-box-right, name <actualBoundingBoxRight>
+    like native-number
+  link width, name <width>
+    like native-number

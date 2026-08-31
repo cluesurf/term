@@ -1,0 +1,37 @@
+
+load @term/bind/code/javascript/es2015/collection/map
+  find map
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+form map-constructor, name <MapConstructor>
+  link prototype, name <prototype>
+    like map
+      like native-any
+      like native-any
+
+  hook make
+    like map
+      like native-any
+      like native-any
+
+  hook make
+    head k
+    head v
+    take entries, like maybe
+      like or
+        like native-array
+          like band
+            like k
+            like v
+        like native-null
+    like map
+      like k
+      like v

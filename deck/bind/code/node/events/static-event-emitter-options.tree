@@ -1,0 +1,14 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find abort-signal
+  find native-undefined
+
+form static-event-emitter-options, name <StaticEventEmitterOptions>
+  link signal, name <signal>
+    like or
+      like abort-signal
+      like native-undefined
+    flex true

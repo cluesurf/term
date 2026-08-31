@@ -1,0 +1,57 @@
+
+load @term/bind/code/browser/dom/css-rule
+  find css-rule
+
+load @term/bind/code/browser/dom/css-rule-list
+  find css-rule-list
+
+load @term/bind/code/browser/dom/style-sheet
+  find style-sheet
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form css-style-sheet, name <CSSStyleSheet>
+  base style-sheet
+
+  link css-rules, name <cssRules>
+    like css-rule-list
+  link owner-rule, name <ownerRule>
+    like or
+      like css-rule
+      like native-null
+  link rules, name <rules>
+    like css-rule-list
+
+  task add-rule, name <addRule>
+    take selector, like maybe
+      like native-string
+    take style, like maybe
+      like native-string
+    take index, like maybe
+      like native-number
+    like native-number
+
+  task delete-rule, name <deleteRule>
+    take index, like native-number
+    like native-void
+
+  task insert-rule, name <insertRule>
+    take rule, like native-string
+    take index, like maybe
+      like native-number
+    like native-number
+
+  task remove-rule, name <removeRule>
+    take index, like maybe
+      like native-number
+    like native-void

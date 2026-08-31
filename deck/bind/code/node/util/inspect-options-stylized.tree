@@ -1,0 +1,16 @@
+
+load @term/bind/code/javascript
+  find native-string
+
+load @term/bind/code/node/util
+  find inspect-options
+  find style
+
+form inspect-options-stylized, name <InspectOptionsStylized>
+  base inspect-options
+
+  task stylize, name <stylize>
+    like native-string
+
+    take text, like native-string
+    take style-type, like style

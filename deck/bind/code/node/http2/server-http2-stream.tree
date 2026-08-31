@@ -1,0 +1,99 @@
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find error
+  find fs-promises-file-handle
+  find native-boolean
+  find native-null
+  find native-number
+  find native-string
+  find native-void
+
+load @term/bind/code/node/http
+  find outgoing-http-headers
+
+load @term/bind/code/node/http2
+  find http2-stream
+  find server-stream-file-response-options
+  find server-stream-file-response-options-with-error
+  find server-stream-response-options
+  find stream-priority-options
+
+form server-http2-stream, name <ServerHttp2Stream>
+  base http2-stream
+
+  link headers-sent, name <headersSent>
+    like native-boolean
+  link push-allowed, name <pushAllowed>
+    like native-boolean
+
+  task additional-headers, name <additionalHeaders>
+    like native-void
+
+    take headers, like outgoing-http-headers
+
+  task push-stream, name <pushStream>
+    like native-void
+
+    take headers, like outgoing-http-headers
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take push-stream, like server-http2-stream
+        take headers, like outgoing-http-headers
+      void true
+
+  task push-stream, name <pushStream>
+    like native-void
+
+    take headers, like outgoing-http-headers
+    take options, like stream-priority-options
+      void true
+    take callback
+      like task
+        like native-void
+
+        take err
+          like or
+            like error
+            like native-null
+        take push-stream, like server-http2-stream
+        take headers, like outgoing-http-headers
+      void true
+
+  task respond, name <respond>
+    like native-void
+
+    take headers, like outgoing-http-headers
+      void true
+    take options, like server-stream-response-options
+      void true
+
+  task respond-with-fd, name <respondWithFD>
+    like native-void
+
+    take fd
+      like or
+        like native-number
+        like fs-promises-file-handle
+    take headers, like outgoing-http-headers
+      void true
+    take options, like server-stream-file-response-options
+      void true
+
+  task respond-with-file, name <respondWithFile>
+    like native-void
+
+    take path, like native-string
+    take headers, like outgoing-http-headers
+      void true
+    take options, like server-stream-file-response-options-with-error
+      void true

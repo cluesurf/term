@@ -1,0 +1,10 @@
+
+load @term/bind/code/browser/webworker/performance-entry
+  find performance-entry
+
+load @term/bind/code/javascript/native
+  find native-array
+
+form performance-entry-list, name <PerformanceEntryList>
+  like native-array
+    like performance-entry

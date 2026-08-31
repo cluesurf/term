@@ -1,0 +1,12 @@
+
+load @term/bind/code/javascript/native
+  find native-symbol
+
+load @term/bind/code/javascript/es2019/symbol/symbol
+  find symbol
+
+form symbol
+  hook self
+    link match-all, name <matchAll>
+      like native-symbol
+        cool true

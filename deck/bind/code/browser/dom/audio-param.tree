@@ -1,0 +1,65 @@
+
+load @term/bind/code/browser/dom/automation-rate
+  find automation-rate
+
+load @term/bind/code/javascript/es5/float32-array
+  find float32-array
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form audio-param, name <AudioParam>
+  link automation-rate, name <automationRate>
+    like automation-rate
+    lock false
+  link default-value, name <defaultValue>
+    like native-number
+  link max-value, name <maxValue>
+    like native-number
+  link min-value, name <minValue>
+    like native-number
+  link value, name <value>
+    like native-number
+    lock false
+
+  task cancel-and-hold-at-time, name <cancelAndHoldAtTime>
+    take cancel-time, like native-number
+    like audio-param
+
+  task cancel-scheduled-values, name <cancelScheduledValues>
+    take cancel-time, like native-number
+    like audio-param
+
+  task exponential-ramp-to-value-at-time, name <exponentialRampToValueAtTime>
+    take value, like native-number
+    take end-time, like native-number
+    like audio-param
+
+  task linear-ramp-to-value-at-time, name <linearRampToValueAtTime>
+    take value, like native-number
+    take end-time, like native-number
+    like audio-param
+
+  task set-target-at-time, name <setTargetAtTime>
+    take target, like native-number
+    take start-time, like native-number
+    take time-constant, like native-number
+    like audio-param
+
+  task set-value-at-time, name <setValueAtTime>
+    take value, like native-number
+    take start-time, like native-number
+    like audio-param
+
+  task set-value-curve-at-time, name <setValueCurveAtTime>
+    take values
+      like or
+        like native-array
+          like native-number
+        like float32-array
+    take start-time, like native-number
+    take duration, like native-number
+    like audio-param

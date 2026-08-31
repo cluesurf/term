@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/dom/canvas-path-drawing-styles
+  find canvas-path-drawing-styles
+
+load @term/bind/code/javascript/iterable
+  find iterable
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form canvas-path-drawing-styles, name <CanvasPathDrawingStyles>
+  task set-line-dash, name <setLineDash>
+    take segments
+      like iterable
+        like native-number
+    like native-void

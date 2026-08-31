@@ -1,0 +1,96 @@
+
+load @term/bind/code/browser/dom/abstract-worker-event-map
+  find abstract-worker-event-map
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/error-event
+  find error-event
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form abstract-worker, name <AbstractWorker>
+  link onerror, name <onerror>
+    like or
+      like task
+        take this, like abstract-worker
+        take ev, like error-event
+        like native-any
+      like native-null
+    lock false
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like abstract-worker-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like abstract-worker
+        take ev
+          like index
+            like abstract-worker-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like abstract-worker-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like abstract-worker
+        take ev
+          like index
+            like abstract-worker-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

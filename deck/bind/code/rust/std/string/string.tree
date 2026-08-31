@@ -1,0 +1,1968 @@
+
+form string, name <std::string::String>
+  task new, name <new>
+    note <Creates a new empty String.>
+
+    free seed
+      like string
+        cite free
+
+  task with-capacity, name <with_capacity>
+    note <Creates a new empty String with a particular capacity.>
+
+    take capacity
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task from-utf8, name <from_utf8>
+    note <Converts a vector of bytes to a String.>
+
+    take vec
+      like vec
+        like u8
+          cite free
+        like global
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like result
+        like string
+          cite free
+        like from-utf8-error
+          cite free
+        cite free
+
+  task from-utf8-lossy, name <from_utf8_lossy>
+    note <Converts a slice of bytes to a string, including invalid characters.>
+
+    take v
+      list u8
+      cite free
+
+    free seed
+      like cow
+        time mask
+        like str
+          cite free
+        cite free
+
+  task from-utf16, name <from_utf16>
+    note <Decode a UTF-16–encoded vector v into a String, returning Err if v contains any invalid data.>
+
+    take v
+      list u16
+      cite free
+
+    free seed
+      like result
+        like string
+          cite free
+        like from-utf16-error
+          cite free
+        cite free
+
+  task from-utf16-lossy, name <from_utf16_lossy>
+    note <Decode a UTF-16–encoded slice v into a String, replacing invalid data with the replacement character (U+FFFD).>
+
+    take v
+      list u16
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task into-raw-parts, name <into_raw_parts>
+    note <Decomposes a String into its raw components.>
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1, like u8
+        take t-2, like usize
+        take t-3, like usize
+
+  task from-raw-parts, name <from_raw_parts>
+    note <Creates a new String from a length, capacity, and pointer.>
+
+    take buf
+      like u8
+        cite free
+      cite free
+      lock free
+      dive take
+    take length
+      like usize
+        cite free
+      cite free
+    take capacity
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task from-utf8-unchecked, name <from_utf8_unchecked>
+    note <Converts a vector of bytes to a String without checking that the string contains valid UTF-8.>
+
+    take bytes
+      like vec
+        like u8
+          cite free
+        like global
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task into-bytes, name <into_bytes>
+    note <Converts a String into a byte vector.>
+
+    take self
+      cite free
+
+    free seed
+      like vec
+        like u8
+          cite free
+        like global
+          cite free
+        cite free
+
+  task as-str, name <as_str>
+    note <Extracts a string slice containing the entire String.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task as-mut-str, name <as_mut_str>
+    note <Converts a String into a mutable string slice.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task push-str, name <push_str>
+    note <Appends a given string slice onto the end of this String.>
+
+    take self
+      cite free
+    take string
+      like str
+
+  task extend-from-within, name <extend_from_within>
+    note <Copies elements from src range to the end of the string.>
+
+    lead r
+      like range-bounds
+        like usize
+          cite free
+        cite free
+
+    head r
+
+    take self
+      cite free
+    take src
+      like r
+        cite free
+      cite free
+
+  task capacity, name <capacity>
+    note <Returns this String's capacity, in bytes.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task reserve, name <reserve>
+    note <Ensures that this String's capacity is at least additional bytes larger than its length.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task reserve-exact, name <reserve_exact>
+    note <Ensures that this String's capacity is additional bytes larger than its length.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task try-reserve, name <try_reserve>
+    note <Tries to reserve capacity for at least additional more elements to be inserted in the given String. The collection may reserve more space to avoid frequent reallocations. After calling reserve, capacity will be greater than or equal to self.len() + additional. Does nothing if capacity is already sufficient.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        like try-reserve-error
+          cite free
+        cite free
+
+  task try-reserve-exact, name <try_reserve_exact>
+    note <Tries to reserve the minimum capacity for exactly additional more elements to be inserted in the given String. After calling reserve_exact, capacity will be greater than or equal to self.len() + additional. Does nothing if the capacity is already sufficient.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        like try-reserve-error
+          cite free
+        cite free
+
+  task shrink-to-fit, name <shrink_to_fit>
+    note <Shrinks the capacity of this String to match its length.>
+
+    take self
+      cite free
+
+  task shrink-to, name <shrink_to>
+    note <Shrinks the capacity of this String with a lower bound.>
+
+    take self
+      cite free
+    take min-capacity
+      like usize
+        cite free
+      cite free
+
+  task push, name <push>
+    note <Appends the given char to the end of this String.>
+
+    take self
+      cite free
+    take ch
+      like char
+        cite free
+      cite free
+
+  task as-bytes, name <as_bytes>
+    note <Returns a byte slice of this String's contents.>
+
+    take self
+      cite free
+
+    free seed
+      list u8
+
+  task truncate, name <truncate>
+    note <Shortens this String to the specified length.>
+
+    take self
+      cite free
+    take new-len
+      like usize
+        cite free
+      cite free
+
+  task pop, name <pop>
+    note <Removes the last character from the string buffer and returns it.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like char
+          cite free
+        cite free
+
+  task remove, name <remove>
+    note <Removes a char from this String at a byte position and returns it.>
+
+    take self
+      cite free
+    take idx
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like char
+        cite free
+
+  task remove-matches, name <remove_matches>
+    note <Remove all matches of pattern pat in the String.>
+
+    lead p
+      like pattern
+        time x
+        cite free
+
+    head p
+
+    take self
+      cite free
+    take pat
+      like p
+        cite free
+      cite free
+
+  task retain, name <retain>
+    note <Retains only the characters specified by the predicate.>
+
+    lead f
+      like fn-mut
+        take f-1, like char
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+  task insert, name <insert>
+    note <Inserts a character into this String at a byte position.>
+
+    take self
+      cite free
+    take idx
+      like usize
+        cite free
+      cite free
+    take ch
+      like char
+        cite free
+      cite free
+
+  task insert-str, name <insert_str>
+    note <Inserts a string slice into this String at a byte position.>
+
+    take self
+      cite free
+    take idx
+      like usize
+        cite free
+      cite free
+    take string
+      like str
+
+  task as-mut-vec, name <as_mut_vec>
+    note <Returns a mutable reference to the contents of this String.>
+
+    take self
+      cite free
+
+    free seed
+      like vec
+        like u8
+          cite free
+        like global
+          cite free
+
+  task len, name <len>
+    note <Returns the length of this String, in bytes, not chars or graphemes. In other words, it might not be what a human considers the length of the string.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task is-empty, name <is_empty>
+    note <Returns true if this String has a length of zero, and false otherwise.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task split-off, name <split_off>
+    note <Splits the string into two at the given byte index.>
+
+    take self
+      cite free
+    take at
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task clear, name <clear>
+    note <Truncates this String, removing all contents.>
+
+    take self
+      cite free
+
+  task drain, name <drain>
+    note <Creates a draining iterator that removes the specified range in the String and yields the removed chars.>
+
+    head r
+
+    take self
+      cite free
+    take range
+      like r
+        cite free
+      cite free
+
+    free seed
+      like drain
+        time mask
+        cite free
+
+  task replace-range, name <replace_range>
+    note <Removes the specified range in the string, and replaces it with the given string. The given string doesn't need to be the same length as the range.>
+
+    lead r
+      like range-bounds
+        like usize
+          cite free
+        cite free
+
+    head r
+
+    take self
+      cite free
+    take range
+      like r
+        cite free
+      cite free
+    take replace-with
+      like str
+
+  task into-boxed-str, name <into_boxed_str>
+    note <Converts this String into a Box&lt;str&gt;.>
+
+    take self
+      cite free
+
+    free seed
+      like box
+        like str
+          cite free
+        like global
+          cite free
+        cite free
+
+  task add, name <add>
+    note <Performs the + operation.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like string
+        cite free
+
+  task add-assign, name <add_assign>
+    note <Performs the += operation.>
+
+    take self
+      cite free
+    take other
+      like str
+
+  task as-mut, name <as_mut>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      list u8
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      like os-str
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      like path
+
+  task as-ref, name <as_ref>
+    note <Performs the conversion.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task borrow, name <borrow>
+    note <Immutably borrows from an owned value.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task borrow-mut, name <borrow_mut>
+    note <Mutably borrows from an owned value.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like string
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Creates an empty String.>
+
+    free seed
+      like string
+        cite free
+
+  task deref, name <deref>
+    note <Dereferences the value.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task deref-mut, name <deref_mut>
+    note <Mutably dereferences the value.>
+
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like char
+              time a
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take char
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like str
+              time a
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take s
+      like str
+        time a
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like box
+              like str
+                cite free
+              like global
+                cite free
+              cite free
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take item
+      like a
+        cite free
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like cow
+              time a
+              like str
+                cite free
+              cite free
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take s
+      like cow
+        time a
+        like str
+          cite free
+        cite free
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like string
+              cite free
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take s
+      like string
+        cite free
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like char
+              cite free
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take c
+      like char
+        cite free
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task from, name <from>
+    note <Converts a &String into a String.>
+
+    take s
+      like string
+
+    free seed
+      like string
+        cite free
+
+  task from, name <from>
+    note <Converts a &mut str into a String.>
+
+    take s
+      like str
+      lock free
+
+    free seed
+      like string
+        cite free
+
+  task from, name <from>
+    note <Converts a &str into a String.>
+
+    take s
+      like str
+
+    free seed
+      like string
+        cite free
+
+  task from, name <from>
+    note <Converts a String reference into a Borrowed variant. No heap allocation is performed, and the string is not copied.>
+
+    take s
+      like string
+        time a
+
+    free seed
+      like cow
+        time a
+        like str
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts the given boxed str slice to a String. It is notable that the str slice is owned.>
+
+    take s
+      like box
+        like str
+          cite free
+        like global
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task from, name <from>
+    note <Converts a clone-on-write string to an owned instance of String.>
+
+    take s
+      like cow
+        time a
+        like str
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task from, name <from>
+    note <Converts the given String to a vector Vec that holds values of type u8.>
+
+    take string
+      like string
+        cite free
+      cite free
+
+    free seed
+      like vec
+        like u8
+          cite free
+        like global
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Allocate a reference-counted str and copy v into it.>
+
+    take v
+      like string
+        cite free
+      cite free
+
+    free seed
+      like arc
+        like str
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts the given String to a boxed str slice that is owned.>
+
+    take s
+      like string
+        cite free
+      cite free
+
+    free seed
+      like box
+        like str
+          cite free
+        like global
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a String into an Owned variant. No heap allocation is performed, and the string is not copied.>
+
+    take s
+      like string
+        cite free
+      cite free
+
+    free seed
+      like cow
+        time a
+        like str
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Allocate a reference-counted string slice and copy v into it.>
+
+    take v
+      like string
+        cite free
+      cite free
+
+    free seed
+      like rc
+        like str
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a String into a box of dyn Error + Send + Sync.>
+
+    take err
+      like string
+        cite free
+      cite free
+
+    free seed
+      like box
+        like error
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a String into a box of dyn Error.>
+
+    take str-err
+      like string
+        cite free
+      cite free
+
+    free seed
+      like box
+        like error
+          cite free
+        cite free
+
+  task from, name <from>
+    note <Converts a String into an OsString.>
+
+    take s
+      like string
+        cite free
+      cite free
+
+    free seed
+      like os-string
+        cite free
+
+  task from, name <from>
+    note <Converts a String into a PathBuf>
+
+    take s
+      like string
+        cite free
+      cite free
+
+    free seed
+      like path-buf
+        cite free
+
+  task from, name <from>
+    note <Allocates an owned String from a single character.>
+
+    take c
+      like char
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like char
+              time a
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like str
+              time a
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like box
+              like str
+                cite free
+              like global
+                cite free
+              cite free
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like cow
+              time a
+              like str
+                cite free
+              cite free
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like string
+              cite free
+        cite free
+
+    head i
+
+    take it
+      like i
+        cite free
+      cite free
+
+    free seed
+      like cow
+        time a
+        like str
+          cite free
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like string
+              cite free
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like char
+              cite free
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task from-str, name <from_str>
+    note <Parses a string s to return a value of this type.>
+
+    cast c-1
+      like string
+      like from-str
+
+    take s
+      like str
+
+    free seed
+      like result
+        like string
+          cite free
+        like c-1/err
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take self
+      cite free
+    take hasher
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task index, name <index>
+    note <Performs the indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range
+        like usize
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like str
+
+  task index, name <index>
+    note <Performs the indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range-from
+        like usize
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like str
+
+  task index, name <index>
+    note <Performs the indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range-full
+        cite free
+      cite free
+
+    free seed
+      like str
+
+  task index, name <index>
+    note <Performs the indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range-inclusive
+        like usize
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like str
+
+  task index, name <index>
+    note <Performs the indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range-to
+        like usize
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like str
+
+  task index, name <index>
+    note <Performs the indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range-to-inclusive
+        like usize
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like str
+
+  task index-mut, name <index_mut>
+    note <Performs the mutable indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range
+        like usize
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like str
+
+  task index-mut, name <index_mut>
+    note <Performs the mutable indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range-from
+        like usize
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like str
+
+  task index-mut, name <index_mut>
+    note <Performs the mutable indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range-full
+        cite free
+      cite free
+
+    free seed
+      like str
+
+  task index-mut, name <index_mut>
+    note <Performs the mutable indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range-inclusive
+        like usize
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like str
+
+  task index-mut, name <index_mut>
+    note <Performs the mutable indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range-to
+        like usize
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like str
+
+  task index-mut, name <index_mut>
+    note <Performs the mutable indexing (container[index]) operation.>
+
+    take self
+      cite free
+    take index
+      like range-to-inclusive
+        like usize
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like str
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like string
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like cow
+        time a
+        like str
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like cow
+        time a
+        like str
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like string
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like string
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like string
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like string
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like string
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like string
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like string
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like string
+
+    free seed
+      like bool
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like str
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like string
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like rhs
+
+    free seed
+      like bool
+        cite free
+
+  task into-searcher, name <into_searcher>
+    note <Constructs the associated searcher from self and the haystack to search in.>
+
+    cast c-1
+      like str
+      like pattern
+        time a
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like c-1/searcher
+
+  task is-contained-in, name <is_contained_in>
+    note <Checks whether the pattern matches anywhere in the haystack>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task is-prefix-of, name <is_prefix_of>
+    note <Checks whether the pattern matches at the front of the haystack>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task strip-prefix-of, name <strip_prefix_of>
+    note <Removes the pattern from the front of haystack, if it matches.>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like option
+        like str
+          time a
+        cite free
+
+  task is-suffix-of, name <is_suffix_of>
+    note <Checks whether the pattern matches at the back of the haystack>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task strip-suffix-of, name <strip_suffix_of>
+    note <Removes the pattern from the back of haystack, if it matches.>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like option
+        like str
+          time a
+        cite free
+
+  task to-socket-addrs, name <to_socket_addrs>
+    note <Converts this object to an iterator of resolved SocketAddrs.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like into-iter
+          like socket-addr
+            cite free
+          cite free
+        cite free
+
+  task to-string, name <to_string>
+    note <Converts the given value to a String.>
+
+    take self
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task write-str, name <write_str>
+    note <Writes a string slice into this writer, returning whether the write succeeded.>
+
+    take self
+      cite free
+    take s
+      like str
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task write-char, name <write_char>
+    note <Writes a char into this writer, returning whether the write succeeded.>
+
+    take self
+      cite free
+    take c
+      like char
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task write-fmt, name <write_fmt>
+    note <Glue for usage of the write! macro with implementors of this trait.>
+
+    take self
+      cite free
+    take args
+      like arguments
+        time mask
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free

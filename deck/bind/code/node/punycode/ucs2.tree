@@ -1,0 +1,20 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-number
+  find native-string
+  find readonly-array
+
+form ucs2, name <ucs2>
+  task decode, name <decode>
+    like array
+      like native-number
+
+    take string, like native-string
+
+  task encode, name <encode>
+    like native-string
+
+    take code-points
+      like readonly-array
+        like native-number

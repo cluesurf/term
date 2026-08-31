@@ -1,0 +1,18 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-undefined
+
+load @term/bind/code/node/crypto
+  find generate-prime-options
+
+form generate-prime-options-array-buffer, name <GeneratePrimeOptionsArrayBuffer>
+  base generate-prime-options
+
+  link bigint, name <bigint>
+    like or
+      text <false>
+      like native-undefined
+    flex true

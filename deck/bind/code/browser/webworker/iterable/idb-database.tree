@@ -1,0 +1,26 @@
+
+load @term/bind/code/browser/webworker/idb-database
+  find idb-database
+
+load @term/bind/code/browser/webworker/idb-transaction
+  find idb-transaction
+
+load @term/bind/code/browser/webworker/idb-transaction-mode
+  find idb-transaction-mode
+
+load @term/bind/code/javascript/iterable
+  find iterable
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form idb-database, name <IDBDatabase>
+  task transaction, name <transaction>
+    take store-names
+      like or
+        like native-string
+        like iterable
+          like native-string
+    take mode, like maybe
+      like idb-transaction-mode
+    like idb-transaction

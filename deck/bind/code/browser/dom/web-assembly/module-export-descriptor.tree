@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/import-export-kind
+  find import-export-kind
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form module-export-descriptor, name <ModuleExportDescriptor>
+  link kind, name <kind>
+    like import-export-kind
+    lock false
+  link name, name <name>
+    like native-string
+    lock false

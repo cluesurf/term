@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/browser/dom/path2-d
+  find path2-d
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form canvas-user-interface, name <CanvasUserInterface>
+  task draw-focus-if-needed, name <drawFocusIfNeeded>
+    take element, like element
+    like native-void
+
+  task draw-focus-if-needed, name <drawFocusIfNeeded>
+    take path, like path2-d
+    take element, like element
+    like native-void

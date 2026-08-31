@@ -1,0 +1,38 @@
+
+load @term/bind/code/javascript/es2015/symbol/symbol-constructor
+  find symbol-constructor
+
+load @term/bind/code/javascript/native
+  find native-symbol
+
+form symbol-constructor, name <SymbolConstructor>
+  link has-instance, name <hasInstance>
+    like native-symbol
+      cool true
+  link is-concat-spreadable, name <isConcatSpreadable>
+    like native-symbol
+      cool true
+  link match, name <match>
+    like native-symbol
+      cool true
+  link replace, name <replace>
+    like native-symbol
+      cool true
+  link search, name <search>
+    like native-symbol
+      cool true
+  link species, name <species>
+    like native-symbol
+      cool true
+  link split, name <split>
+    like native-symbol
+      cool true
+  link to-primitive, name <toPrimitive>
+    like native-symbol
+      cool true
+  link to-string-tag, name <toStringTag>
+    like native-symbol
+      cool true
+  link unscopables, name <unscopables>
+    like native-symbol
+      cool true

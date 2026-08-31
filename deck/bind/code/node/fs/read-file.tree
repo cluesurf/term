@@ -1,0 +1,79 @@
+
+load @term/bind
+  find and
+  find form
+  find or
+
+load @term/bind/code/javascript
+  find native-null
+  find native-string
+  find native-undefined
+  find promise
+
+load @term/bind/code/node/buffer
+  find buffer
+  find buffer-encoding
+
+load @term/bind/code/node/fs
+  find object-encoding-options
+  find path-or-file-descriptor
+
+task promisify, name <__promisify__>
+  like promise
+    like buffer
+
+  take path, like path-or-file-descriptor
+  take options
+    like or
+      like form
+        link encoding, name <encoding>
+          like or
+            like native-null
+            like native-undefined
+          flex true
+        link flag, name <flag>
+          like or
+            like native-string
+            like native-undefined
+          flex true
+      like native-null
+    void true
+
+task promisify, name <__promisify__>
+  like promise
+    like native-string
+
+  take path, like path-or-file-descriptor
+  take options
+    like or
+      like form
+        link encoding, name <encoding>
+          like buffer-encoding
+          flex true
+        link flag, name <flag>
+          like or
+            like native-string
+            like native-undefined
+          flex true
+      like buffer-encoding
+
+task promisify, name <__promisify__>
+  like promise
+    like or
+      like native-string
+      like buffer
+
+  take path, like path-or-file-descriptor
+  take options
+    like or
+      like and
+        like object-encoding-options
+        like form
+          link flag, name <flag>
+            like or
+              like native-string
+              like native-undefined
+            flex true
+      like buffer-encoding
+      like native-null
+    void true

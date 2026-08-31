@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/global
+  find global
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form global, name <Global>
+  link value, name <value>
+    like native-any
+    lock false
+
+  task value-of, name <valueOf>
+    like native-any

@@ -1,0 +1,21 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+
+load @term/bind/code/node/net
+  find socket-constructor-opts
+  find tcp-socket-connect-opts
+
+form tcp-net-connect-opts, name <TcpNetConnectOpts>
+  base tcp-socket-connect-opts
+  base socket-constructor-opts
+
+  link timeout, name <timeout>
+    like or
+      like native-number
+      like native-undefined
+    flex true

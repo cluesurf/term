@@ -1,0 +1,15 @@
+
+form speech-synthesis-error-code, name <SpeechSynthesisErrorCode>
+  like or
+    text <audio-busy>
+    text <audio-hardware>
+    text <canceled>
+    text <interrupted>
+    text <invalid-argument>
+    text <language-unavailable>
+    text <network>
+    text <not-allowed>
+    text <synthesis-failed>
+    text <synthesis-unavailable>
+    text <text-too-long>
+    text <voice-unavailable>

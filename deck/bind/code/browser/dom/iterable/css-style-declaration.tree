@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/css-style-declaration
+  find css-style-declaration
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form css-style-declaration, name <CSSStyleDeclaration>
+  task {symbol/iterator}
+    like iterable-iterator
+      like native-string

@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/browser/dom/rtc-ice-gatherer-state
+  find rtc-ice-gatherer-state
+
+load @term/bind/code/browser/dom/rtc-ice-transport-state
+  find rtc-ice-transport-state
+
+form rtc-ice-transport, name <RTCIceTransport>
+  base event-target
+
+  link gathering-state, name <gatheringState>
+    like rtc-ice-gatherer-state
+  link state, name <state>
+    like rtc-ice-transport-state

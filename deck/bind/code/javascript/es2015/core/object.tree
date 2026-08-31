@@ -1,0 +1,90 @@
+
+load @term/bind/code/javascript
+  find array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+  find native-null
+  find native-object
+  find native-string
+  find native-symbol
+
+load @term/bind/code/javascript/es5/object
+  find object
+
+form object
+  hook self
+    task assign, name <assign>
+      like and
+        like t
+        like u
+
+      head t
+      head u
+
+      take target
+      take source
+
+    task assign, name <assign>
+      like and
+        like t
+        like u
+        like v
+
+      head t
+      head u
+      head v
+
+      take target
+      take source1
+      take source2
+
+    task assign, name <assign>
+      like and
+        like t
+        like u
+        like v
+        like w
+
+      head t
+      head u
+      head v
+      head w
+
+      take target
+      take source1
+      take source2
+      take source3
+
+    task assign, name <assign>
+      like any
+
+      take target
+      take sources
+        like array
+          like any
+        rest true
+
+    task get-own-property-symbols, name <getOwnPropertySymbols>
+      like array
+        like native-symbol
+
+      take o
+
+    task keys, name <keys>
+      like array
+        like native-string
+
+      take o
+
+    task is, name <is>
+      like native-boolean
+
+      take value1
+      take value2
+
+    task set-prototype-of, name <setPrototypeOf>
+      like any
+
+      take o
+      take proto

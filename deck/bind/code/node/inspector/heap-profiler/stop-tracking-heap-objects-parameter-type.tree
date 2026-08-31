@@ -1,0 +1,14 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-undefined
+
+form stop-tracking-heap-objects-parameter-type, name <StopTrackingHeapObjectsParameterType>
+  link report-progress, name <reportProgress>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

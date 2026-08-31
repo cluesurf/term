@@ -1,0 +1,8 @@
+
+load @term/bind
+  find or
+
+form does-zap-code-space-flag, name <DoesZapCodeSpaceFlag>
+  like or
+    text <0>
+    text <1>

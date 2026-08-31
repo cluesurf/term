@@ -1,0 +1,50 @@
+
+load @term/bind
+  find form
+  find or
+  find unknown
+
+load @term/bind/code/javascript
+  find function
+  find native-boolean
+  find native-string
+  find native-undefined
+
+form assertion-error, name <AssertionError>
+  base error
+  link actual, name <actual>, like unknown
+  link expected, name <expected>, like unknown
+  link operator, name <operator>, like native-string
+  link generated-message, name <generatedMessage>, like native-boolean
+  link code, name <code>, text <ERR_ASSERTION>
+
+form assertion-error-constructor
+  hook make
+    take options
+      like form
+        link message, name <message>
+          like or
+            like native-string
+            like native-undefined
+          flex true
+        link actual, name <actual>
+          like or
+            like unknown
+            like native-undefined
+          flex true
+        link expected, name <expected>
+          like or
+            like unknown
+            like native-undefined
+          flex true
+        link operator, name <operator>
+          like or
+            like native-string
+            like native-undefined
+          flex true
+        link stack-start-fn, name <stackStartFn>
+          like or
+            like function
+            like native-undefined
+          flex true
+      void true

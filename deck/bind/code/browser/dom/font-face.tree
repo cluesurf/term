@@ -1,0 +1,56 @@
+
+load @term/bind/code/browser/dom/font-face-load-status
+  find font-face-load-status
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form font-face, name <FontFace>
+  link ascent-override, name <ascentOverride>
+    like native-string
+    lock false
+  link descent-override, name <descentOverride>
+    like native-string
+    lock false
+  link display, name <display>
+    like native-string
+    lock false
+  link family, name <family>
+    like native-string
+    lock false
+  link feature-settings, name <featureSettings>
+    like native-string
+    lock false
+  link line-gap-override, name <lineGapOverride>
+    like native-string
+    lock false
+  link loaded, name <loaded>
+    like promise
+      like font-face
+  link status, name <status>
+    like font-face-load-status
+  link stretch, name <stretch>
+    like native-string
+    lock false
+  link style, name <style>
+    like native-string
+    lock false
+  link unicode-range, name <unicodeRange>
+    like native-string
+    lock false
+  link variant, name <variant>
+    like native-string
+    lock false
+  link variation-settings, name <variationSettings>
+    like native-string
+    lock false
+  link weight, name <weight>
+    like native-string
+    lock false
+
+  task load, name <load>
+    like promise
+      like font-face

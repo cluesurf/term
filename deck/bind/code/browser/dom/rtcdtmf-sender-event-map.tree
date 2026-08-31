@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/rtcdtmf-tone-change-event
+  find rtcdtmf-tone-change-event
+
+form rtcdtmf-sender-event-map, name <RTCDTMFSenderEventMap>
+  link tonechange, name <tonechange>
+    like rtcdtmf-tone-change-event
+    lock false

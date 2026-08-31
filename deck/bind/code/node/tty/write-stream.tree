@@ -1,0 +1,231 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-boolean
+  find native-number
+  find native-object
+  find native-string
+  find native-symbol
+  find native-this
+  find native-void
+
+load @term/bind
+  find any
+  find or
+  find task
+  find tuple
+
+load @term/bind/code/node/tty
+  find direction
+
+form write-stream, name <WriteStream>
+  base net-socket
+  link columns, name <columns>, like native-number
+  link rows, name <rows>, like native-number
+  link is-tty, name <isTTY>, like native-boolean
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <resize>
+    take listener
+      like task
+        like native-void
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take args
+      like array
+        like any
+      rest true
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <resize>
+
+  task on, name <on>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task on, name <on>
+    like native-this
+
+    take event, text <resize>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task once, name <once>
+    like native-this
+
+    take event, text <resize>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <resize>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <resize>
+    take listener
+      like task
+        like native-void
+
+  task clear-line, name <clearLine>
+    like native-boolean
+
+    take dir, like direction
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task clear-screen-down, name <clearScreenDown>
+    like native-boolean
+
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task cursor-to, name <cursorTo>
+    like native-boolean
+
+    take x, like native-number
+    take y, like native-number
+      void true
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task cursor-to, name <cursorTo>
+    like native-boolean
+
+    take x, like native-number
+    take callback
+      like task
+        like native-void
+
+  task move-cursor, name <moveCursor>
+    like native-boolean
+
+    take dx, like native-number
+    take dy, like native-number
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task get-color-depth, name <getColorDepth>
+    like native-number
+
+    take env, like native-object
+      void true
+
+  task has-colors, name <hasColors>
+    like native-boolean
+
+    take count, like native-number
+      void true
+
+  task has-colors, name <hasColors>
+    like native-boolean
+
+    take env, like native-object
+      void true
+
+  task has-colors, name <hasColors>
+    like native-boolean
+
+    take count, like native-number
+    take env, like native-object
+      void true
+
+  task get-window-size, name <getWindowSize>
+    like tuple
+      like native-number
+      like native-number
+
+form write-stream-constructor
+  hook make
+    take fd, like native-number

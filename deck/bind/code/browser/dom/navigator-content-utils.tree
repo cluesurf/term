@@ -1,0 +1,18 @@
+
+load @term/bind/code/browser/dom/url
+  find url
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form navigator-content-utils, name <NavigatorContentUtils>
+  task register-protocol-handler, name <registerProtocolHandler>
+    take scheme, like native-string
+    take url
+      like or
+        like native-string
+        like url
+    like native-void

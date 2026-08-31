@@ -1,0 +1,11 @@
+
+load @term/bind/code/javascript/es5/function
+  find function
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form timer-handler, name <TimerHandler>
+  like or
+    like native-string
+    like function

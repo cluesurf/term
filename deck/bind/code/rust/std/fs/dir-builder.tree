@@ -1,0 +1,65 @@
+
+form dir-builder, name <std::fs::DirBuilder>
+  task new, name <new>
+    note <Creates a new set of options with default mode/security settings for all platforms and also non-recursive.>
+
+    free seed
+      like dir-builder
+        cite free
+
+  task recursive, name <recursive>
+    note <Indicates that directories should be created recursively, creating all parent directories. Parents that do not exist are created with the same security and permissions settings.>
+
+    take self
+      cite free
+    take recursive
+      like bool
+        cite free
+      cite free
+
+    free seed
+      like self
+
+  task create, name <create>
+    note <Creates the specified directory with the options configured in this builder.>
+
+    head p
+
+    take self
+      cite free
+    take path
+      like p
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task mode, name <mode>
+    note <Sets the mode to create new directories with. This option defaults to 0o777.>
+
+    take self
+      cite free
+    take mode
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like dir-builder

@@ -1,0 +1,9 @@
+
+load @term/bind/code/browser/dom/svg-angle
+  find svg-angle
+
+form svg-animated-angle, name <SVGAnimatedAngle>
+  link anim-val, name <animVal>
+    like svg-angle
+  link base-val, name <baseVal>
+    like svg-angle

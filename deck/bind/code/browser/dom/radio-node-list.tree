@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/node-list
+  find node-list
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form radio-node-list, name <RadioNodeList>
+  base node-list
+
+  link value, name <value>
+    like native-string
+    lock false

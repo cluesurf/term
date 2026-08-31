@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript/es2015/iterable/uint8-clamped-array-constructor
+  find uint8-clamped-array-constructor
+
+load @term/bind/code/javascript/es2016/array/include/uint8-clamped-array
+  find uint8-clamped-array
+
+form uint8-clamped-array-constructor, name <Uint8ClampedArrayConstructor>
+  hook make
+    like uint8-clamped-array

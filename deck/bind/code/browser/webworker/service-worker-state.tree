@@ -1,0 +1,9 @@
+
+form service-worker-state, name <ServiceWorkerState>
+  like or
+    text <activated>
+    text <activating>
+    text <installed>
+    text <installing>
+    text <parsed>
+    text <redundant>

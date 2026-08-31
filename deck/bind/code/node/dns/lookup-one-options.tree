@@ -1,0 +1,18 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-undefined
+
+load @term/bind/code/node/dns
+  find lookup-options
+
+form lookup-one-options, name <LookupOneOptions>
+  base lookup-options
+
+  link all, name <all>
+    like or
+      text <false>
+      like native-undefined
+    flex true

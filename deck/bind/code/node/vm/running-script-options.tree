@@ -1,0 +1,35 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-undefined
+
+load @term/bind/code/node/vm
+  find base-options
+
+form running-script-options, name <RunningScriptOptions>
+  base base-options
+
+  link display-errors, name <displayErrors>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link timeout, name <timeout>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link break-on-sigint, name <breakOnSigint>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link microtask-mode, name <microtaskMode>
+    like or
+      text <afterEvaluate>
+      like native-undefined
+    flex true

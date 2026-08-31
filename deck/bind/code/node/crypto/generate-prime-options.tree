@@ -1,0 +1,32 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-undefined
+
+load @term/bind/code/node/crypto
+  find large-number-like
+
+form generate-prime-options, name <GeneratePrimeOptions>
+  link add, name <add>
+    like or
+      like large-number-like
+      like native-undefined
+    flex true
+  link rem, name <rem>
+    like or
+      like large-number-like
+      like native-undefined
+    flex true
+  link safe, name <safe>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link bigint, name <bigint>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

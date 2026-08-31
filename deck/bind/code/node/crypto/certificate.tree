@@ -1,0 +1,29 @@
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-string
+  find node-js-array-buffer-view
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/crypto
+  find binary-like
+
+form certificate, name <Certificate>
+  task export-challenge, name <exportChallenge>
+    like buffer
+
+    take spkac, like binary-like
+
+  task export-public-key, name <exportPublicKey>
+    like buffer
+
+    take spkac, like binary-like
+    take encoding, like native-string
+      void true
+
+  task verify-spkac, name <verifySpkac>
+    like native-boolean
+
+    take spkac, like node-js-array-buffer-view

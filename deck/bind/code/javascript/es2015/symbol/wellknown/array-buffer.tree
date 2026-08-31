@@ -1,0 +1,11 @@
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form array-buffer, name <ArrayBuffer>
+  link {symbol/to-string-tag}
+    like native-string
+    read true

@@ -1,0 +1,14 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find array-buffer
+  find native-string
+  find node-js-array-buffer-view
+
+form input-type, name <InputType>
+  like or
+    like native-string
+    like array-buffer
+    like node-js-array-buffer-view

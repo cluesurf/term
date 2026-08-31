@@ -1,0 +1,40 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/security-policy-violation-event-disposition
+  find security-policy-violation-event-disposition
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form security-policy-violation-event, name <SecurityPolicyViolationEvent>
+  base event
+
+  link blocked-uri, name <blockedURI>
+    like native-string
+  link column-number, name <columnNumber>
+    like native-number
+  link disposition, name <disposition>
+    like security-policy-violation-event-disposition
+  link document-uri, name <documentURI>
+    like native-string
+  link effective-directive, name <effectiveDirective>
+    like native-string
+  link line-number, name <lineNumber>
+    like native-number
+  link original-policy, name <originalPolicy>
+    like native-string
+  link referrer, name <referrer>
+    like native-string
+  link sample, name <sample>
+    like native-string
+  link source-file, name <sourceFile>
+    like native-string
+  link status-code, name <statusCode>
+    like native-number
+  link violated-directive, name <violatedDirective>
+    like native-string

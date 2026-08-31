@@ -1,0 +1,30 @@
+
+load @term/bind/code/javascript/es2015/core/array
+  find array
+
+load @term/bind/code/javascript/es2015/iterable/iterable-iterator
+  find iterable-iterator
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form array, name <Array>
+  head t
+
+  task {symbol/iterator}
+    like iterable-iterator
+      like t
+
+  task entries, name <entries>
+    like iterable-iterator
+      like band
+        like native-number
+        like t
+
+  task keys, name <keys>
+    like iterable-iterator
+      like native-number
+
+  task values, name <values>
+    like iterable-iterator
+      like t

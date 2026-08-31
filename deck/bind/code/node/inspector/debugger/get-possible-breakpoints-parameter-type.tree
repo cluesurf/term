@@ -1,0 +1,25 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-undefined
+
+load @term/bind/code/node/inspector/debugger
+  find location
+
+form get-possible-breakpoints-parameter-type, name <GetPossibleBreakpointsParameterType>
+  link start, name <start>
+    like location
+    flex true
+  link end, name <end>
+    like or
+      like location
+      like native-undefined
+    flex true
+  link restrict-to-function, name <restrictToFunction>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

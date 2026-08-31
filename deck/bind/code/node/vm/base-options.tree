@@ -1,0 +1,25 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find native-undefined
+
+form base-options, name <BaseOptions>
+  link filename, name <filename>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link line-offset, name <lineOffset>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link column-offset, name <columnOffset>
+    like or
+      like native-number
+      like native-undefined
+    flex true

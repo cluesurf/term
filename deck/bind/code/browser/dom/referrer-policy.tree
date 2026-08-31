@@ -1,0 +1,12 @@
+
+form referrer-policy, name <ReferrerPolicy>
+  like or
+    text <>
+    text <no-referrer>
+    text <no-referrer-when-downgrade>
+    text <origin>
+    text <origin-when-cross-origin>
+    text <same-origin>
+    text <strict-origin>
+    text <strict-origin-when-cross-origin>
+    text <unsafe-url>

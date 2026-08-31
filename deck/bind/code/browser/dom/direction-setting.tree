@@ -1,0 +1,6 @@
+
+form direction-setting, name <DirectionSetting>
+  like or
+    text <>
+    text <lr>
+    text <rl>

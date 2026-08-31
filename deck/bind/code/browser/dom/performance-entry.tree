@@ -1,0 +1,22 @@
+
+load @term/bind/code/browser/dom/dom-high-res-time-stamp
+  find dom-high-res-time-stamp
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form performance-entry, name <PerformanceEntry>
+  link duration, name <duration>
+    like dom-high-res-time-stamp
+  link entry-type, name <entryType>
+    like native-string
+  link name, name <name>
+    like native-string
+  link start-time, name <startTime>
+    like dom-high-res-time-stamp
+
+  task to-json, name <toJSON>
+    like native-any

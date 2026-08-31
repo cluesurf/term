@@ -1,0 +1,24 @@
+
+load @term/bind/code/browser/dom/audio-param
+  find audio-param
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form audio-param-map, name <AudioParamMap>
+  task for-each, name <forEach>
+    take callbackfn
+      like task
+        take value, like audio-param
+        take key, like native-string
+        take parent, like audio-param-map
+        like native-void
+    take this-arg, like maybe
+      like native-any
+    like native-void

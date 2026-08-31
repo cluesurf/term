@@ -1,0 +1,35 @@
+
+bear @term/bind/code/javascript/es2015/collection/map
+bear @term/bind/code/javascript/es2015/collection/map-constructor
+bear @term/bind/code/javascript/es2015/collection/readonly-map
+bear @term/bind/code/javascript/es2015/collection/weak-map
+bear @term/bind/code/javascript/es2015/collection/weak-map-constructor
+bear @term/bind/code/javascript/es2015/collection/set
+bear @term/bind/code/javascript/es2015/collection/set-constructor
+bear @term/bind/code/javascript/es2015/collection/readonly-set
+bear @term/bind/code/javascript/es2015/collection/weak-set
+bear @term/bind/code/javascript/es2015/collection/weak-set-constructor
+
+load @term/bind/code/javascript/es2015/collection/map-constructor
+  find map-constructor
+
+load @term/bind/code/javascript/es2015/collection/set-constructor
+  find set-constructor
+
+load @term/bind/code/javascript/es2015/collection/weak-map-constructor
+  find weak-map-constructor
+
+load @term/bind/code/javascript/es2015/collection/weak-set-constructor
+  find weak-set-constructor
+
+host map, name <Map>
+  like map-constructor
+
+host weak-map, name <WeakMap>
+  like weak-map-constructor
+
+host set, name <Set>
+  like set-constructor
+
+host weak-set, name <WeakSet>
+  like weak-set-constructor

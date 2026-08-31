@@ -7,6 +7,7 @@ import { existsSync, readFileSync, statSync } from 'fs'
 import path from 'path'
 import { parseRoleFile, matchRole } from '@cluesurf/deck.tree'
 import type { RoleConfig } from '@cluesurf/deck.tree'
+import { manifestValueOf } from '@term/call/code/manifest-name'
 
 export type RoleOf = (file: string) => string | null
 
@@ -38,10 +39,10 @@ function readRoles(root: string): RoleConfig | undefined {
   const manifestPath = path.join(root, 'deck.tree')
 
   if (existsSync(manifestPath)) {
-    const match = /^\s*role\s+(\S+)/m.exec(readFileSync(manifestPath, 'utf8'))
+    const declared = manifestValueOf(manifestPath, 'role')
 
-    if (match?.[1]) {
-      const at = path.resolve(root, match[1])
+    if (declared) {
+      const at = path.resolve(root, declared)
       candidates.unshift(existsSync(at) && statSync(at).isDirectory() ? path.join(at, 'role.tree') : at)
     }
   }

@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form pop-state-event, name <PopStateEvent>
+  base event
+
+  link state, name <state>
+    like native-any

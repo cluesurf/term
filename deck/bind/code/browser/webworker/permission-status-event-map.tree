@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/permission-status-event-map
+  find permission-status-event-map
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+form permission-status-event-map, name <PermissionStatusEventMap>
+  link change, name <change>
+    like event
+    lock false

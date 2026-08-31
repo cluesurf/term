@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/safe-array
+  find safe-array
+
+load @term/bind/code/javascript/t
+  find t
+
+form safe-array, name <SafeArray>
+  link safe-array-typekey, name <SafeArray_typekey>
+    like safe-array
+      like t
+
+form safe-array-constructor
+  hook make

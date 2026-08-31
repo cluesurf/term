@@ -1,0 +1,12 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+
+form mode, name <Mode>
+  like or
+    like native-number
+    like native-string

@@ -1,0 +1,30 @@
+
+load @term/bind/code/javascript/es2015/collection/readonly-map
+  find readonly-map
+
+load @term/bind/code/javascript/es2015/iterable/iterable-iterator
+  find iterable-iterator
+
+form readonly-map, name <ReadonlyMap>
+  head k
+  head v
+
+  task {symbol/iterator}
+    like iterable-iterator
+      like band
+        like k
+        like v
+
+  task entries, name <entries>
+    like iterable-iterator
+      like band
+        like k
+        like v
+
+  task keys, name <keys>
+    like iterable-iterator
+      like k
+
+  task values, name <values>
+    like iterable-iterator
+      like v

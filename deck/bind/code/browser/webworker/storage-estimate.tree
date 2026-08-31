@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/storage-estimate
+  find storage-estimate
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form storage-estimate, name <StorageEstimate>
+  link quota, name <quota>
+    like native-number
+    lock false
+  link usage, name <usage>
+    like native-number
+    lock false

@@ -1,0 +1,109 @@
+
+bear @term/bind/code/javascript/node/events/event-emitter/abortable
+
+load @term/bind
+  find any
+  find or
+
+load @term/bind/code/javascript
+  find array
+  find async-iterable-iterator
+  find function
+  find native-boolean
+  find native-number
+  find native-string
+  find native-symbol
+  find native-void
+  find node-js-event-emitter
+  find promise
+
+load @term/bind/code/node/events
+  find dom-event-target
+  find event-emitter-options
+  find node-event-target
+  find static-event-emitter-options
+
+form event-emitter, name <EventEmitter>
+  base node-js-event-emitter
+
+form event-emitter, name <EventEmitter>
+
+form event-emitter-constructor
+  link error-monitor, name <errorMonitor>
+    like native-symbol
+      cool true
+  link capture-rejection-symbol, name <captureRejectionSymbol>
+    like native-symbol
+      cool true
+  link capture-rejections, name <captureRejections>, like native-boolean
+  link default-max-listeners, name <defaultMaxListeners>, like native-number
+
+  hook make
+    take options, like event-emitter-options
+      void true
+
+  task once, name <once>
+    like promise
+      like array
+        like any
+
+    take emitter, like node-event-target
+    take event-name
+      like or
+        like native-string
+        like native-symbol
+    take options, like static-event-emitter-options
+      void true
+
+  task once, name <once>
+    like promise
+      like array
+        like any
+
+    take emitter, like dom-event-target
+    take event-name, like native-string
+    take options, like static-event-emitter-options
+      void true
+
+  task on, name <on>
+    like async-iterable-iterator
+      like any
+
+    take emitter, like node-js-event-emitter
+    take event-name, like native-string
+    take options, like static-event-emitter-options
+      void true
+
+  task listener-count, name <listenerCount>
+    like native-number
+
+    take emitter, like node-js-event-emitter
+    take event-name
+      like or
+        like native-string
+        like native-symbol
+
+  task get-event-listeners, name <getEventListeners>
+    like array
+      like function
+
+    take emitter
+      like or
+        like dom-event-target
+        like node-js-event-emitter
+    take name
+      like or
+        like native-string
+        like native-symbol
+
+  task set-max-listeners, name <setMaxListeners>
+    like native-void
+
+    take n, like native-number
+      void true
+    take event-targets
+      like array
+        like or
+          like dom-event-target
+          like node-js-event-emitter
+      rest true

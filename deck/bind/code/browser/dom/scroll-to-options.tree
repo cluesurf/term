@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/scroll-options
+  find scroll-options
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form scroll-to-options, name <ScrollToOptions>
+  base scroll-options
+
+  link left, name <left>
+    like native-number
+    lock false
+  link top, name <top>
+    like native-number
+    lock false

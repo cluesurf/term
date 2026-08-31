@@ -1,0 +1,11 @@
+
+load @term/bind/code/javascript/es2015/generator/generator-function
+  find generator-function
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form generator-function, name <GeneratorFunction>
+  link {symbol/to-string-tag}
+    like native-string
+    read true

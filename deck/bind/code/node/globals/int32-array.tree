@@ -1,0 +1,6 @@
+
+load @term/bind/code/node/globals
+  find relative-indexable
+
+form int32-array, name <Int32Array>
+  base relative-indexable

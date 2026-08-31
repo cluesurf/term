@@ -1,0 +1,24 @@
+
+load @term/bind/code/javascript/es2015/iterable/iterable
+  find iterable
+
+load @term/bind/code/javascript/es2021/promise/aggregate-error
+  find aggregate-error
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form aggregate-error-constructor, name <AggregateErrorConstructor>
+  link prototype, name <prototype>
+    like aggregate-error
+
+  hook make
+    take errors
+      like iterable
+        like native-any
+    take message, like maybe
+      like native-string
+    like aggregate-error

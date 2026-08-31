@@ -1,0 +1,28 @@
+
+load @term/bind
+  find and
+  find form
+  find or
+
+load @term/bind/code/javascript
+  find http-request-options
+  find native-boolean
+  find native-string
+  find native-undefined
+  find tls-secure-context-options
+
+form request-options, name <RequestOptions>
+  like and
+    like http-request-options
+    like tls-secure-context-options
+    like form
+      link reject-unauthorized, name <rejectUnauthorized>
+        like or
+          like native-boolean
+          like native-undefined
+        flex true
+      link servername, name <servername>
+        like or
+          like native-string
+          like native-undefined
+        flex true

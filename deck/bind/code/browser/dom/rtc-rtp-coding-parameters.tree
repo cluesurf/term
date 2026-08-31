@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form rtc-rtp-coding-parameters, name <RTCRtpCodingParameters>
+  link rid, name <rid>
+    like native-string
+    lock false

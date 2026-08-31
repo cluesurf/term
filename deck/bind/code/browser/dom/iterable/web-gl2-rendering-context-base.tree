@@ -1,0 +1,283 @@
+
+load @term/bind/code/browser/dom/g-lboolean
+  find g-lboolean
+
+load @term/bind/code/browser/dom/g-lenum
+  find g-lenum
+
+load @term/bind/code/browser/dom/g-lfloat
+  find g-lfloat
+
+load @term/bind/code/browser/dom/g-lint
+  find g-lint
+
+load @term/bind/code/browser/dom/g-lsizei
+  find g-lsizei
+
+load @term/bind/code/browser/dom/g-luint
+  find g-luint
+
+load @term/bind/code/browser/dom/web-gl-program
+  find web-gl-program
+
+load @term/bind/code/browser/dom/web-gl-uniform-location
+  find web-gl-uniform-location
+
+load @term/bind/code/browser/dom/web-gl2-rendering-context-base
+  find web-gl2-rendering-context-base
+
+load @term/bind/code/javascript/iterable
+  find iterable
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
+  task clear-bufferfv, name <clearBufferfv>
+    take buffer, like g-lenum
+    take drawbuffer, like g-lint
+    take values
+      like iterable
+        like g-lfloat
+    take src-offset, like maybe
+      like g-luint
+    like native-void
+
+  task clear-bufferiv, name <clearBufferiv>
+    take buffer, like g-lenum
+    take drawbuffer, like g-lint
+    take values
+      like iterable
+        like g-lint
+    take src-offset, like maybe
+      like g-luint
+    like native-void
+
+  task clear-bufferuiv, name <clearBufferuiv>
+    take buffer, like g-lenum
+    take drawbuffer, like g-lint
+    take values
+      like iterable
+        like g-luint
+    take src-offset, like maybe
+      like g-luint
+    like native-void
+
+  task draw-buffers, name <drawBuffers>
+    take buffers
+      like iterable
+        like g-lenum
+    like native-void
+
+  task get-active-uniforms, name <getActiveUniforms>
+    take program, like web-gl-program
+    take uniform-indices
+      like iterable
+        like g-luint
+    take pname, like g-lenum
+    like native-any
+
+  task get-uniform-indices, name <getUniformIndices>
+    take program, like web-gl-program
+    take uniform-names
+      like iterable
+        like native-string
+    like or
+      like iterable
+        like g-luint
+      like native-null
+
+  task invalidate-framebuffer, name <invalidateFramebuffer>
+    take target, like g-lenum
+    take attachments
+      like iterable
+        like g-lenum
+    like native-void
+
+  task invalidate-sub-framebuffer, name <invalidateSubFramebuffer>
+    take target, like g-lenum
+    take attachments
+      like iterable
+        like g-lenum
+    take x, like g-lint
+    take y, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    like native-void
+
+  task transform-feedback-varyings, name <transformFeedbackVaryings>
+    take program, like web-gl-program
+    take varyings
+      like iterable
+        like native-string
+    take buffer-mode, like g-lenum
+    like native-void
+
+  task uniform1uiv, name <uniform1uiv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take data
+      like iterable
+        like g-luint
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task uniform2uiv, name <uniform2uiv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take data
+      like iterable
+        like g-luint
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task uniform3uiv, name <uniform3uiv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take data
+      like iterable
+        like g-luint
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task uniform4uiv, name <uniform4uiv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take data
+      like iterable
+        like g-luint
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task uniform-matrix2x3fv, name <uniformMatrix2x3fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take transpose, like g-lboolean
+    take data
+      like iterable
+        like g-lfloat
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task uniform-matrix2x4fv, name <uniformMatrix2x4fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take transpose, like g-lboolean
+    take data
+      like iterable
+        like g-lfloat
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task uniform-matrix3x2fv, name <uniformMatrix3x2fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take transpose, like g-lboolean
+    take data
+      like iterable
+        like g-lfloat
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task uniform-matrix3x4fv, name <uniformMatrix3x4fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take transpose, like g-lboolean
+    take data
+      like iterable
+        like g-lfloat
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task uniform-matrix4x2fv, name <uniformMatrix4x2fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take transpose, like g-lboolean
+    take data
+      like iterable
+        like g-lfloat
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task uniform-matrix4x3fv, name <uniformMatrix4x3fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take transpose, like g-lboolean
+    take data
+      like iterable
+        like g-lfloat
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task vertex-attrib-i4iv, name <vertexAttribI4iv>
+    take index, like g-luint
+    take values
+      like iterable
+        like g-lint
+    like native-void
+
+  task vertex-attrib-i4uiv, name <vertexAttribI4uiv>
+    take index, like g-luint
+    take values
+      like iterable
+        like g-luint
+    like native-void

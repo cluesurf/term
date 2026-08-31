@@ -1,0 +1,7 @@
+
+form permission-name, name <PermissionName>
+  like or
+    text <geolocation>
+    text <notifications>
+    text <persistent-storage>
+    text <push>

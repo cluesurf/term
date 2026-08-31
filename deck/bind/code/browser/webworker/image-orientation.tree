@@ -1,0 +1,5 @@
+
+form image-orientation, name <ImageOrientation>
+  like or
+    text <flipY>
+    text <none>

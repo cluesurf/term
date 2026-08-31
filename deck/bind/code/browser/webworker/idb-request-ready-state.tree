@@ -1,0 +1,5 @@
+
+form idb-request-ready-state, name <IDBRequestReadyState>
+  like or
+    text <done>
+    text <pending>

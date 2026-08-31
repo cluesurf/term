@@ -1,0 +1,37 @@
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+  find stream-duplex
+  find url-url
+
+load @term/bind/code/node/http2
+  find session-options
+
+form client-session-options, name <ClientSessionOptions>
+  base session-options
+
+  link max-reserved-remote-streams, name <maxReservedRemoteStreams>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link create-connection, name <createConnection>
+    like or
+      like task
+        like stream-duplex
+
+        take authority, like url-url
+        take option, like session-options
+      like native-undefined
+    flex true
+  link protocol, name <protocol>
+    like or
+      text <http:>
+      text <https:>
+      like native-undefined
+    flex true

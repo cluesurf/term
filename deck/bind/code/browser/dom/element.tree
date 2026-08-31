@@ -1,0 +1,525 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/animatable
+  find animatable
+
+load @term/bind/code/browser/dom/aria-mixin
+  find aria-mixin
+
+load @term/bind/code/browser/dom/attr
+  find attr
+
+load @term/bind/code/browser/dom/child-node
+  find child-node
+
+load @term/bind/code/browser/dom/document
+  find document
+
+load @term/bind/code/browser/dom/dom-rect
+  find dom-rect
+
+load @term/bind/code/browser/dom/dom-rect-list
+  find dom-rect-list
+
+load @term/bind/code/browser/dom/dom-token-list
+  find dom-token-list
+
+load @term/bind/code/browser/dom/element-event-map
+  find element-event-map
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/fullscreen-options
+  find fullscreen-options
+
+load @term/bind/code/browser/dom/html-collection-of
+  find html-collection-of
+
+load @term/bind/code/browser/dom/html-element
+  find html-element
+
+load @term/bind/code/browser/dom/html-element-tag-name-map
+  find html-element-tag-name-map
+
+load @term/bind/code/browser/dom/inner-html
+  find inner-html
+
+load @term/bind/code/browser/dom/insert-position
+  find insert-position
+
+load @term/bind/code/browser/dom/named-node-map
+  find named-node-map
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/browser/dom/non-document-type-child-node
+  find non-document-type-child-node
+
+load @term/bind/code/browser/dom/parent-node
+  find parent-node
+
+load @term/bind/code/browser/dom/scroll-into-view-options
+  find scroll-into-view-options
+
+load @term/bind/code/browser/dom/scroll-to-options
+  find scroll-to-options
+
+load @term/bind/code/browser/dom/shadow-root
+  find shadow-root
+
+load @term/bind/code/browser/dom/shadow-root-init
+  find shadow-root-init
+
+load @term/bind/code/browser/dom/slottable
+  find slottable
+
+load @term/bind/code/browser/dom/svg-element
+  find svg-element
+
+load @term/bind/code/browser/dom/svg-element-tag-name-map
+  find svg-element-tag-name-map
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form element, name <Element>
+  base node
+  base aria-mixin
+  base animatable
+  base child-node
+  base inner-html
+  base non-document-type-child-node
+  base parent-node
+  base slottable
+
+  link attributes, name <attributes>
+    like named-node-map
+  link class-list, name <classList>
+    like dom-token-list
+  link class-name, name <className>
+    like native-string
+    lock false
+  link client-height, name <clientHeight>
+    like native-number
+  link client-left, name <clientLeft>
+    like native-number
+  link client-top, name <clientTop>
+    like native-number
+  link client-width, name <clientWidth>
+    like native-number
+  link id, name <id>
+    like native-string
+    lock false
+  link local-name, name <localName>
+    like native-string
+  link namespace-uri, name <namespaceURI>
+    like or
+      like native-string
+      like native-null
+  link onfullscreenchange, name <onfullscreenchange>
+    like or
+      like task
+        take this, like element
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link onfullscreenerror, name <onfullscreenerror>
+    like or
+      like task
+        take this, like element
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+  link outer-html, name <outerHTML>
+    like native-string
+    lock false
+  link owner-document, name <ownerDocument>
+    like document
+  link part, name <part>
+    like dom-token-list
+  link prefix, name <prefix>
+    like or
+      like native-string
+      like native-null
+  link scroll-height, name <scrollHeight>
+    like native-number
+  link scroll-left, name <scrollLeft>
+    like native-number
+    lock false
+  link scroll-top, name <scrollTop>
+    like native-number
+    lock false
+  link scroll-width, name <scrollWidth>
+    like native-number
+  link shadow-root, name <shadowRoot>
+    like or
+      like shadow-root
+      like native-null
+  link slot, name <slot>
+    like native-string
+    lock false
+  link tag-name, name <tagName>
+    like native-string
+
+  task attach-shadow, name <attachShadow>
+    take init, like shadow-root-init
+    like shadow-root
+
+  task closest, name <closest>
+    head k
+      base link-read
+        like html-element-tag-name-map
+    take selector, like k
+    like or
+      like index
+        like html-element-tag-name-map
+        like k
+      like native-null
+
+  task closest, name <closest>
+    head k
+      base link-read
+        like svg-element-tag-name-map
+    take selector, like k
+    like or
+      like index
+        like svg-element-tag-name-map
+        like k
+      like native-null
+
+  task closest, name <closest>
+    head e
+      base element
+      back element
+    take selectors, like native-string
+    like or
+      like e
+      like native-null
+
+  task get-attribute, name <getAttribute>
+    take qualified-name, like native-string
+    like or
+      like native-string
+      like native-null
+
+  task get-attribute-ns, name <getAttributeNS>
+    take namespace
+      like or
+        like native-string
+        like native-null
+    take local-name, like native-string
+    like or
+      like native-string
+      like native-null
+
+  task get-attribute-names, name <getAttributeNames>
+    like native-array
+      like native-string
+
+  task get-attribute-node, name <getAttributeNode>
+    take qualified-name, like native-string
+    like or
+      like attr
+      like native-null
+
+  task get-attribute-node-ns, name <getAttributeNodeNS>
+    take namespace
+      like or
+        like native-string
+        like native-null
+    take local-name, like native-string
+    like or
+      like attr
+      like native-null
+
+  task get-bounding-client-rect, name <getBoundingClientRect>
+    like dom-rect
+
+  task get-client-rects, name <getClientRects>
+    like dom-rect-list
+
+  task get-elements-by-class-name, name <getElementsByClassName>
+    take class-names, like native-string
+    like html-collection-of
+      like element
+
+  task get-elements-by-tag-name, name <getElementsByTagName>
+    head k
+      base link-read
+        like html-element-tag-name-map
+    take qualified-name, like k
+    like html-collection-of
+      like index
+        like html-element-tag-name-map
+        like k
+
+  task get-elements-by-tag-name, name <getElementsByTagName>
+    head k
+      base link-read
+        like svg-element-tag-name-map
+    take qualified-name, like k
+    like html-collection-of
+      like index
+        like svg-element-tag-name-map
+        like k
+
+  task get-elements-by-tag-name, name <getElementsByTagName>
+    take qualified-name, like native-string
+    like html-collection-of
+      like element
+
+  task get-elements-by-tag-name-ns, name <getElementsByTagNameNS>
+    take namespace-uri, text <http://www.w3.org/1999/xhtml>
+    take local-name, like native-string
+    like html-collection-of
+      like html-element
+
+  task get-elements-by-tag-name-ns, name <getElementsByTagNameNS>
+    take namespace-uri, text <http://www.w3.org/2000/svg>
+    take local-name, like native-string
+    like html-collection-of
+      like svg-element
+
+  task get-elements-by-tag-name-ns, name <getElementsByTagNameNS>
+    take namespace
+      like or
+        like native-string
+        like native-null
+    take local-name, like native-string
+    like html-collection-of
+      like element
+
+  task has-attribute, name <hasAttribute>
+    take qualified-name, like native-string
+    like native-boolean
+
+  task has-attribute-ns, name <hasAttributeNS>
+    take namespace
+      like or
+        like native-string
+        like native-null
+    take local-name, like native-string
+    like native-boolean
+
+  task has-attributes, name <hasAttributes>
+    like native-boolean
+
+  task has-pointer-capture, name <hasPointerCapture>
+    take pointer-id, like native-number
+    like native-boolean
+
+  task insert-adjacent-element, name <insertAdjacentElement>
+    take where, like insert-position
+    take element, like element
+    like or
+      like element
+      like native-null
+
+  task insert-adjacent-html, name <insertAdjacentHTML>
+    take position, like insert-position
+    take text, like native-string
+    like native-void
+
+  task insert-adjacent-text, name <insertAdjacentText>
+    take where, like insert-position
+    take data, like native-string
+    like native-void
+
+  task matches, name <matches>
+    take selectors, like native-string
+    like native-boolean
+
+  task release-pointer-capture, name <releasePointerCapture>
+    take pointer-id, like native-number
+    like native-void
+
+  task remove-attribute, name <removeAttribute>
+    take qualified-name, like native-string
+    like native-void
+
+  task remove-attribute-ns, name <removeAttributeNS>
+    take namespace
+      like or
+        like native-string
+        like native-null
+    take local-name, like native-string
+    like native-void
+
+  task remove-attribute-node, name <removeAttributeNode>
+    take attr, like attr
+    like attr
+
+  task request-fullscreen, name <requestFullscreen>
+    take options, like maybe
+      like fullscreen-options
+    like promise
+      like native-void
+
+  task request-pointer-lock, name <requestPointerLock>
+    like native-void
+
+  task scroll, name <scroll>
+    take options, like maybe
+      like scroll-to-options
+    like native-void
+
+  task scroll, name <scroll>
+    take x, like native-number
+    take y, like native-number
+    like native-void
+
+  task scroll-by, name <scrollBy>
+    take options, like maybe
+      like scroll-to-options
+    like native-void
+
+  task scroll-by, name <scrollBy>
+    take x, like native-number
+    take y, like native-number
+    like native-void
+
+  task scroll-into-view, name <scrollIntoView>
+    take arg, like maybe
+      like or
+        like native-boolean
+        like scroll-into-view-options
+    like native-void
+
+  task scroll-to, name <scrollTo>
+    take options, like maybe
+      like scroll-to-options
+    like native-void
+
+  task scroll-to, name <scrollTo>
+    take x, like native-number
+    take y, like native-number
+    like native-void
+
+  task set-attribute, name <setAttribute>
+    take qualified-name, like native-string
+    take value, like native-string
+    like native-void
+
+  task set-attribute-ns, name <setAttributeNS>
+    take namespace
+      like or
+        like native-string
+        like native-null
+    take qualified-name, like native-string
+    take value, like native-string
+    like native-void
+
+  task set-attribute-node, name <setAttributeNode>
+    take attr, like attr
+    like or
+      like attr
+      like native-null
+
+  task set-attribute-node-ns, name <setAttributeNodeNS>
+    take attr, like attr
+    like or
+      like attr
+      like native-null
+
+  task set-pointer-capture, name <setPointerCapture>
+    take pointer-id, like native-number
+    like native-void
+
+  task toggle-attribute, name <toggleAttribute>
+    take qualified-name, like native-string
+    take force, like maybe
+      like native-boolean
+    like native-boolean
+
+  task webkit-matches-selector, name <webkitMatchesSelector>
+    take selectors, like native-string
+    like native-boolean
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like element
+        take ev
+          like index
+            like element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like element
+        take ev
+          like index
+            like element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

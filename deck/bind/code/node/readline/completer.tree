@@ -1,0 +1,15 @@
+
+load @term/bind
+  find task
+
+load @term/bind/code/javascript
+  find native-string
+
+load @term/bind/code/node/readline
+  find completer-result
+
+form completer, name <Completer>
+  like task
+    like completer-result
+
+    take line, like native-string

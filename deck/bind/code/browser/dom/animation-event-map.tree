@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/animation-playback-event
+  find animation-playback-event
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form animation-event-map, name <AnimationEventMap>
+  link cancel, name <cancel>
+    like animation-playback-event
+    lock false
+  link finish, name <finish>
+    like animation-playback-event
+    lock false
+  link remove, name <remove>
+    like event
+    lock false

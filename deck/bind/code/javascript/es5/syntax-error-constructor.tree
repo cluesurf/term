@@ -1,0 +1,20 @@
+
+load @term/bind/code/javascript/es5/error-constructor
+  find error-constructor
+
+load @term/bind/code/javascript/es5/syntax-error
+  find syntax-error
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form syntax-error-constructor, name <SyntaxErrorConstructor>
+  base error-constructor
+
+  link prototype, name <prototype>
+    like syntax-error
+
+  hook make
+    take message, like maybe
+      like native-string
+    like syntax-error

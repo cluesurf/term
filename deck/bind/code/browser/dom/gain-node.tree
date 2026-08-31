@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/audio-node
+  find audio-node
+
+load @term/bind/code/browser/dom/audio-param
+  find audio-param
+
+form gain-node, name <GainNode>
+  base audio-node
+
+  link gain, name <gain>
+    like audio-param

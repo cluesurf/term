@@ -1,0 +1,24 @@
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form idb-object-store-parameters, name <IDBObjectStoreParameters>
+  link auto-increment, name <autoIncrement>
+    like native-boolean
+    lock false
+  link key-path, name <keyPath>
+    like or
+      like native-string
+      like native-array
+        like native-string
+      like native-null
+    lock false

@@ -1,0 +1,26 @@
+
+bear @term/bind/code/javascript/node/fs/symlink/type
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-null
+  find native-string
+  find native-void
+  find promise
+
+load @term/bind/code/node/fs
+  find path-like
+
+task promisify, name <__promisify__>
+  like promise
+    like native-void
+
+  take target, like path-like
+  take path, like path-like
+  take type
+    like or
+      like native-string
+      like native-null
+    void true

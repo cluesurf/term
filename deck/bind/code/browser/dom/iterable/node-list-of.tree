@@ -1,0 +1,34 @@
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/browser/dom/node-list-of
+  find node-list-of
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form node-list-of, name <NodeListOf>
+  head t-node
+    base node
+
+  task {symbol/iterator}
+    like iterable-iterator
+      like t-node
+
+  task entries, name <entries>
+    like iterable-iterator
+      like band
+        like native-number
+        like t-node
+
+  task keys, name <keys>
+    like iterable-iterator
+      like native-number
+
+  task values, name <values>
+    like iterable-iterator
+      like t-node

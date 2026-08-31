@@ -1,0 +1,41 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form svg-angle, name <SVGAngle>
+  link unit-type, name <unitType>
+    like native-number
+  link value, name <value>
+    like native-number
+    lock false
+  link value-as-string, name <valueAsString>
+    like native-string
+    lock false
+  link value-in-specified-units, name <valueInSpecifiedUnits>
+    like native-number
+    lock false
+  link svg-angletype-deg, name <SVG_ANGLETYPE_DEG>
+    like native-number
+  link svg-angletype-grad, name <SVG_ANGLETYPE_GRAD>
+    like native-number
+  link svg-angletype-rad, name <SVG_ANGLETYPE_RAD>
+    like native-number
+  link svg-angletype-unknown, name <SVG_ANGLETYPE_UNKNOWN>
+    like native-number
+  link svg-angletype-unspecified, name <SVG_ANGLETYPE_UNSPECIFIED>
+    like native-number
+
+  task convert-to-specified-units, name <convertToSpecifiedUnits>
+    take unit-type, like native-number
+    like native-void
+
+  task new-value-specified-units, name <newValueSpecifiedUnits>
+    take unit-type, like native-number
+    take value-in-specified-units, like native-number
+    like native-void

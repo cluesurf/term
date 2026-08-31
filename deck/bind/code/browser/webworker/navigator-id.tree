@@ -1,0 +1,20 @@
+
+load @term/bind/code/browser/dom/navigator-id
+  find navigator-id
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form navigator-id, name <NavigatorID>
+  link app-code-name, name <appCodeName>
+    like native-string
+  link app-name, name <appName>
+    like native-string
+  link app-version, name <appVersion>
+    like native-string
+  link platform, name <platform>
+    like native-string
+  link product, name <product>
+    like native-string
+  link user-agent, name <userAgent>
+    like native-string

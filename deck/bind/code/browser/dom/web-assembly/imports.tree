@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/module-imports
+  find module-imports
+
+load @term/bind/code/javascript/es5/record
+  find record
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form imports, name <Imports>
+  like record
+    like native-string
+    like module-imports

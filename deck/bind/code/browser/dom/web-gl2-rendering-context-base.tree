@@ -1,0 +1,1432 @@
+
+load @term/bind/code/browser/dom/float32-list
+  find float32-list
+
+load @term/bind/code/browser/dom/g-lbitfield
+  find g-lbitfield
+
+load @term/bind/code/browser/dom/g-lboolean
+  find g-lboolean
+
+load @term/bind/code/browser/dom/g-lenum
+  find g-lenum
+
+load @term/bind/code/browser/dom/g-lfloat
+  find g-lfloat
+
+load @term/bind/code/browser/dom/g-lint
+  find g-lint
+
+load @term/bind/code/browser/dom/g-lint64
+  find g-lint64
+
+load @term/bind/code/browser/dom/g-lintptr
+  find g-lintptr
+
+load @term/bind/code/browser/dom/g-lsizei
+  find g-lsizei
+
+load @term/bind/code/browser/dom/g-lsizeiptr
+  find g-lsizeiptr
+
+load @term/bind/code/browser/dom/g-luint
+  find g-luint
+
+load @term/bind/code/browser/dom/g-luint64
+  find g-luint64
+
+load @term/bind/code/browser/dom/int32-list
+  find int32-list
+
+load @term/bind/code/browser/dom/tex-image-source
+  find tex-image-source
+
+load @term/bind/code/browser/dom/uint32-list
+  find uint32-list
+
+load @term/bind/code/browser/dom/web-gl-active-info
+  find web-gl-active-info
+
+load @term/bind/code/browser/dom/web-gl-buffer
+  find web-gl-buffer
+
+load @term/bind/code/browser/dom/web-gl-program
+  find web-gl-program
+
+load @term/bind/code/browser/dom/web-gl-query
+  find web-gl-query
+
+load @term/bind/code/browser/dom/web-gl-sampler
+  find web-gl-sampler
+
+load @term/bind/code/browser/dom/web-gl-sync
+  find web-gl-sync
+
+load @term/bind/code/browser/dom/web-gl-texture
+  find web-gl-texture
+
+load @term/bind/code/browser/dom/web-gl-transform-feedback
+  find web-gl-transform-feedback
+
+load @term/bind/code/browser/dom/web-gl-uniform-location
+  find web-gl-uniform-location
+
+load @term/bind/code/browser/dom/web-gl-vertex-array-object
+  find web-gl-vertex-array-object
+
+load @term/bind/code/javascript/es5/array-buffer-view
+  find array-buffer-view
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>
+  link active-uniform-blocks, name <ACTIVE_UNIFORM_BLOCKS>
+    like g-lenum
+  link already-signaled, name <ALREADY_SIGNALED>
+    like g-lenum
+  link any-samples-passed, name <ANY_SAMPLES_PASSED>
+    like g-lenum
+  link any-samples-passed-conservative, name <ANY_SAMPLES_PASSED_CONSERVATIVE>
+    like g-lenum
+  link color, name <COLOR>
+    like g-lenum
+  link color-attachment1, name <COLOR_ATTACHMENT1>
+    like g-lenum
+  link color-attachment10, name <COLOR_ATTACHMENT10>
+    like g-lenum
+  link color-attachment11, name <COLOR_ATTACHMENT11>
+    like g-lenum
+  link color-attachment12, name <COLOR_ATTACHMENT12>
+    like g-lenum
+  link color-attachment13, name <COLOR_ATTACHMENT13>
+    like g-lenum
+  link color-attachment14, name <COLOR_ATTACHMENT14>
+    like g-lenum
+  link color-attachment15, name <COLOR_ATTACHMENT15>
+    like g-lenum
+  link color-attachment2, name <COLOR_ATTACHMENT2>
+    like g-lenum
+  link color-attachment3, name <COLOR_ATTACHMENT3>
+    like g-lenum
+  link color-attachment4, name <COLOR_ATTACHMENT4>
+    like g-lenum
+  link color-attachment5, name <COLOR_ATTACHMENT5>
+    like g-lenum
+  link color-attachment6, name <COLOR_ATTACHMENT6>
+    like g-lenum
+  link color-attachment7, name <COLOR_ATTACHMENT7>
+    like g-lenum
+  link color-attachment8, name <COLOR_ATTACHMENT8>
+    like g-lenum
+  link color-attachment9, name <COLOR_ATTACHMENT9>
+    like g-lenum
+  link compare-ref-to-texture, name <COMPARE_REF_TO_TEXTURE>
+    like g-lenum
+  link condition-satisfied, name <CONDITION_SATISFIED>
+    like g-lenum
+  link copy-read-buffer, name <COPY_READ_BUFFER>
+    like g-lenum
+  link copy-read-buffer-binding, name <COPY_READ_BUFFER_BINDING>
+    like g-lenum
+  link copy-write-buffer, name <COPY_WRITE_BUFFER>
+    like g-lenum
+  link copy-write-buffer-binding, name <COPY_WRITE_BUFFER_BINDING>
+    like g-lenum
+  link current-query, name <CURRENT_QUERY>
+    like g-lenum
+  link depth, name <DEPTH>
+    like g-lenum
+  link depth24-stencil8, name <DEPTH24_STENCIL8>
+    like g-lenum
+  link depth32-f-stencil8, name <DEPTH32F_STENCIL8>
+    like g-lenum
+  link depth-component24, name <DEPTH_COMPONENT24>
+    like g-lenum
+  link depth-component32-f, name <DEPTH_COMPONENT32F>
+    like g-lenum
+  link draw-buffer0, name <DRAW_BUFFER0>
+    like g-lenum
+  link draw-buffer1, name <DRAW_BUFFER1>
+    like g-lenum
+  link draw-buffer10, name <DRAW_BUFFER10>
+    like g-lenum
+  link draw-buffer11, name <DRAW_BUFFER11>
+    like g-lenum
+  link draw-buffer12, name <DRAW_BUFFER12>
+    like g-lenum
+  link draw-buffer13, name <DRAW_BUFFER13>
+    like g-lenum
+  link draw-buffer14, name <DRAW_BUFFER14>
+    like g-lenum
+  link draw-buffer15, name <DRAW_BUFFER15>
+    like g-lenum
+  link draw-buffer2, name <DRAW_BUFFER2>
+    like g-lenum
+  link draw-buffer3, name <DRAW_BUFFER3>
+    like g-lenum
+  link draw-buffer4, name <DRAW_BUFFER4>
+    like g-lenum
+  link draw-buffer5, name <DRAW_BUFFER5>
+    like g-lenum
+  link draw-buffer6, name <DRAW_BUFFER6>
+    like g-lenum
+  link draw-buffer7, name <DRAW_BUFFER7>
+    like g-lenum
+  link draw-buffer8, name <DRAW_BUFFER8>
+    like g-lenum
+  link draw-buffer9, name <DRAW_BUFFER9>
+    like g-lenum
+  link draw-framebuffer, name <DRAW_FRAMEBUFFER>
+    like g-lenum
+  link draw-framebuffer-binding, name <DRAW_FRAMEBUFFER_BINDING>
+    like g-lenum
+  link dynamic-copy, name <DYNAMIC_COPY>
+    like g-lenum
+  link dynamic-read, name <DYNAMIC_READ>
+    like g-lenum
+  link float-32-unsigned-int-24-8-rev, name <FLOAT_32_UNSIGNED_INT_24_8_REV>
+    like g-lenum
+  link float-mat2x3, name <FLOAT_MAT2x3>
+    like g-lenum
+  link float-mat2x4, name <FLOAT_MAT2x4>
+    like g-lenum
+  link float-mat3x2, name <FLOAT_MAT3x2>
+    like g-lenum
+  link float-mat3x4, name <FLOAT_MAT3x4>
+    like g-lenum
+  link float-mat4x2, name <FLOAT_MAT4x2>
+    like g-lenum
+  link float-mat4x3, name <FLOAT_MAT4x3>
+    like g-lenum
+  link fragment-shader-derivative-hint, name <FRAGMENT_SHADER_DERIVATIVE_HINT>
+    like g-lenum
+  link framebuffer-attachment-alpha-size, name <FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE>
+    like g-lenum
+  link framebuffer-attachment-blue-size, name <FRAMEBUFFER_ATTACHMENT_BLUE_SIZE>
+    like g-lenum
+  link framebuffer-attachment-color-encoding, name <FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING>
+    like g-lenum
+  link framebuffer-attachment-component-type, name <FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE>
+    like g-lenum
+  link framebuffer-attachment-depth-size, name <FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE>
+    like g-lenum
+  link framebuffer-attachment-green-size, name <FRAMEBUFFER_ATTACHMENT_GREEN_SIZE>
+    like g-lenum
+  link framebuffer-attachment-red-size, name <FRAMEBUFFER_ATTACHMENT_RED_SIZE>
+    like g-lenum
+  link framebuffer-attachment-stencil-size, name <FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE>
+    like g-lenum
+  link framebuffer-attachment-texture-layer, name <FRAMEBUFFER_ATTACHMENT_TEXTURE_LAYER>
+    like g-lenum
+  link framebuffer-default, name <FRAMEBUFFER_DEFAULT>
+    like g-lenum
+  link framebuffer-incomplete-multisample, name <FRAMEBUFFER_INCOMPLETE_MULTISAMPLE>
+    like g-lenum
+  link half-float, name <HALF_FLOAT>
+    like g-lenum
+  link interleaved-attribs, name <INTERLEAVED_ATTRIBS>
+    like g-lenum
+  link int-2-10-10-10-rev, name <INT_2_10_10_10_REV>
+    like g-lenum
+  link int-sampler-2-d, name <INT_SAMPLER_2D>
+    like g-lenum
+  link int-sampler-2-d-array, name <INT_SAMPLER_2D_ARRAY>
+    like g-lenum
+  link int-sampler-3-d, name <INT_SAMPLER_3D>
+    like g-lenum
+  link int-sampler-cube, name <INT_SAMPLER_CUBE>
+    like g-lenum
+  link invalid-index, name <INVALID_INDEX>
+    like g-lenum
+  link max, name <MAX>
+    like g-lenum
+  link max-3-d-texture-size, name <MAX_3D_TEXTURE_SIZE>
+    like g-lenum
+  link max-array-texture-layers, name <MAX_ARRAY_TEXTURE_LAYERS>
+    like g-lenum
+  link max-client-wait-timeout-webgl, name <MAX_CLIENT_WAIT_TIMEOUT_WEBGL>
+    like g-lenum
+  link max-color-attachments, name <MAX_COLOR_ATTACHMENTS>
+    like g-lenum
+  link max-combined-fragment-uniform-components, name <MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS>
+    like g-lenum
+  link max-combined-uniform-blocks, name <MAX_COMBINED_UNIFORM_BLOCKS>
+    like g-lenum
+  link max-combined-vertex-uniform-components, name <MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS>
+    like g-lenum
+  link max-draw-buffers, name <MAX_DRAW_BUFFERS>
+    like g-lenum
+  link max-elements-indices, name <MAX_ELEMENTS_INDICES>
+    like g-lenum
+  link max-elements-vertices, name <MAX_ELEMENTS_VERTICES>
+    like g-lenum
+  link max-element-index, name <MAX_ELEMENT_INDEX>
+    like g-lenum
+  link max-fragment-input-components, name <MAX_FRAGMENT_INPUT_COMPONENTS>
+    like g-lenum
+  link max-fragment-uniform-blocks, name <MAX_FRAGMENT_UNIFORM_BLOCKS>
+    like g-lenum
+  link max-fragment-uniform-components, name <MAX_FRAGMENT_UNIFORM_COMPONENTS>
+    like g-lenum
+  link max-program-texel-offset, name <MAX_PROGRAM_TEXEL_OFFSET>
+    like g-lenum
+  link max-samples, name <MAX_SAMPLES>
+    like g-lenum
+  link max-server-wait-timeout, name <MAX_SERVER_WAIT_TIMEOUT>
+    like g-lenum
+  link max-texture-lod-bias, name <MAX_TEXTURE_LOD_BIAS>
+    like g-lenum
+  link max-transform-feedback-interleaved-components
+    name <MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS>
+    like g-lenum
+  link max-transform-feedback-separate-attribs, name <MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS>
+    like g-lenum
+  link max-transform-feedback-separate-components
+    name <MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS>
+    like g-lenum
+  link max-uniform-block-size, name <MAX_UNIFORM_BLOCK_SIZE>
+    like g-lenum
+  link max-uniform-buffer-bindings, name <MAX_UNIFORM_BUFFER_BINDINGS>
+    like g-lenum
+  link max-varying-components, name <MAX_VARYING_COMPONENTS>
+    like g-lenum
+  link max-vertex-output-components, name <MAX_VERTEX_OUTPUT_COMPONENTS>
+    like g-lenum
+  link max-vertex-uniform-blocks, name <MAX_VERTEX_UNIFORM_BLOCKS>
+    like g-lenum
+  link max-vertex-uniform-components, name <MAX_VERTEX_UNIFORM_COMPONENTS>
+    like g-lenum
+  link min, name <MIN>
+    like g-lenum
+  link min-program-texel-offset, name <MIN_PROGRAM_TEXEL_OFFSET>
+    like g-lenum
+  link object-type, name <OBJECT_TYPE>
+    like g-lenum
+  link pack-row-length, name <PACK_ROW_LENGTH>
+    like g-lenum
+  link pack-skip-pixels, name <PACK_SKIP_PIXELS>
+    like g-lenum
+  link pack-skip-rows, name <PACK_SKIP_ROWS>
+    like g-lenum
+  link pixel-pack-buffer, name <PIXEL_PACK_BUFFER>
+    like g-lenum
+  link pixel-pack-buffer-binding, name <PIXEL_PACK_BUFFER_BINDING>
+    like g-lenum
+  link pixel-unpack-buffer, name <PIXEL_UNPACK_BUFFER>
+    like g-lenum
+  link pixel-unpack-buffer-binding, name <PIXEL_UNPACK_BUFFER_BINDING>
+    like g-lenum
+  link query-result, name <QUERY_RESULT>
+    like g-lenum
+  link query-result-available, name <QUERY_RESULT_AVAILABLE>
+    like g-lenum
+  link r11-f-g11-f-b10-f, name <R11F_G11F_B10F>
+    like g-lenum
+  link r16-f, name <R16F>
+    like g-lenum
+  link r16-i, name <R16I>
+    like g-lenum
+  link r16-ui, name <R16UI>
+    like g-lenum
+  link r32-f, name <R32F>
+    like g-lenum
+  link r32-i, name <R32I>
+    like g-lenum
+  link r32-ui, name <R32UI>
+    like g-lenum
+  link r8, name <R8>
+    like g-lenum
+  link r8-i, name <R8I>
+    like g-lenum
+  link r8-ui, name <R8UI>
+    like g-lenum
+  link r8-snorm, name <R8_SNORM>
+    like g-lenum
+  link rasterizer-discard, name <RASTERIZER_DISCARD>
+    like g-lenum
+  link read-buffer, name <READ_BUFFER>
+    like g-lenum
+  link read-framebuffer, name <READ_FRAMEBUFFER>
+    like g-lenum
+  link read-framebuffer-binding, name <READ_FRAMEBUFFER_BINDING>
+    like g-lenum
+  link red, name <RED>
+    like g-lenum
+  link red-integer, name <RED_INTEGER>
+    like g-lenum
+  link renderbuffer-samples, name <RENDERBUFFER_SAMPLES>
+    like g-lenum
+  link rg, name <RG>
+    like g-lenum
+  link rg16-f, name <RG16F>
+    like g-lenum
+  link rg16-i, name <RG16I>
+    like g-lenum
+  link rg16-ui, name <RG16UI>
+    like g-lenum
+  link rg32-f, name <RG32F>
+    like g-lenum
+  link rg32-i, name <RG32I>
+    like g-lenum
+  link rg32-ui, name <RG32UI>
+    like g-lenum
+  link rg8, name <RG8>
+    like g-lenum
+  link rg8-i, name <RG8I>
+    like g-lenum
+  link rg8-ui, name <RG8UI>
+    like g-lenum
+  link rg8-snorm, name <RG8_SNORM>
+    like g-lenum
+  link rgb10-a2, name <RGB10_A2>
+    like g-lenum
+  link rgb10-a2-ui, name <RGB10_A2UI>
+    like g-lenum
+  link rgb16-f, name <RGB16F>
+    like g-lenum
+  link rgb16-i, name <RGB16I>
+    like g-lenum
+  link rgb16-ui, name <RGB16UI>
+    like g-lenum
+  link rgb32-f, name <RGB32F>
+    like g-lenum
+  link rgb32-i, name <RGB32I>
+    like g-lenum
+  link rgb32-ui, name <RGB32UI>
+    like g-lenum
+  link rgb8, name <RGB8>
+    like g-lenum
+  link rgb8-i, name <RGB8I>
+    like g-lenum
+  link rgb8-ui, name <RGB8UI>
+    like g-lenum
+  link rgb8-snorm, name <RGB8_SNORM>
+    like g-lenum
+  link rgb9-e5, name <RGB9_E5>
+    like g-lenum
+  link rgba16-f, name <RGBA16F>
+    like g-lenum
+  link rgba16-i, name <RGBA16I>
+    like g-lenum
+  link rgba16-ui, name <RGBA16UI>
+    like g-lenum
+  link rgba32-f, name <RGBA32F>
+    like g-lenum
+  link rgba32-i, name <RGBA32I>
+    like g-lenum
+  link rgba32-ui, name <RGBA32UI>
+    like g-lenum
+  link rgba8, name <RGBA8>
+    like g-lenum
+  link rgba8-i, name <RGBA8I>
+    like g-lenum
+  link rgba8-ui, name <RGBA8UI>
+    like g-lenum
+  link rgba8-snorm, name <RGBA8_SNORM>
+    like g-lenum
+  link rgba-integer, name <RGBA_INTEGER>
+    like g-lenum
+  link rgb-integer, name <RGB_INTEGER>
+    like g-lenum
+  link rg-integer, name <RG_INTEGER>
+    like g-lenum
+  link sampler-2-d-array, name <SAMPLER_2D_ARRAY>
+    like g-lenum
+  link sampler-2-d-array-shadow, name <SAMPLER_2D_ARRAY_SHADOW>
+    like g-lenum
+  link sampler-2-d-shadow, name <SAMPLER_2D_SHADOW>
+    like g-lenum
+  link sampler-3-d, name <SAMPLER_3D>
+    like g-lenum
+  link sampler-binding, name <SAMPLER_BINDING>
+    like g-lenum
+  link sampler-cube-shadow, name <SAMPLER_CUBE_SHADOW>
+    like g-lenum
+  link separate-attribs, name <SEPARATE_ATTRIBS>
+    like g-lenum
+  link signaled, name <SIGNALED>
+    like g-lenum
+  link signed-normalized, name <SIGNED_NORMALIZED>
+    like g-lenum
+  link srgb, name <SRGB>
+    like g-lenum
+  link srgb8, name <SRGB8>
+    like g-lenum
+  link srgb8-alpha8, name <SRGB8_ALPHA8>
+    like g-lenum
+  link static-copy, name <STATIC_COPY>
+    like g-lenum
+  link static-read, name <STATIC_READ>
+    like g-lenum
+  link stencil, name <STENCIL>
+    like g-lenum
+  link stream-copy, name <STREAM_COPY>
+    like g-lenum
+  link stream-read, name <STREAM_READ>
+    like g-lenum
+  link sync-condition, name <SYNC_CONDITION>
+    like g-lenum
+  link sync-fence, name <SYNC_FENCE>
+    like g-lenum
+  link sync-flags, name <SYNC_FLAGS>
+    like g-lenum
+  link sync-flush-commands-bit, name <SYNC_FLUSH_COMMANDS_BIT>
+    like g-lenum
+  link sync-gpu-commands-complete, name <SYNC_GPU_COMMANDS_COMPLETE>
+    like g-lenum
+  link sync-status, name <SYNC_STATUS>
+    like g-lenum
+  link texture-2-d-array, name <TEXTURE_2D_ARRAY>
+    like g-lenum
+  link texture-3-d, name <TEXTURE_3D>
+    like g-lenum
+  link texture-base-level, name <TEXTURE_BASE_LEVEL>
+    like g-lenum
+  link texture-binding-2-d-array, name <TEXTURE_BINDING_2D_ARRAY>
+    like g-lenum
+  link texture-binding-3-d, name <TEXTURE_BINDING_3D>
+    like g-lenum
+  link texture-compare-func, name <TEXTURE_COMPARE_FUNC>
+    like g-lenum
+  link texture-compare-mode, name <TEXTURE_COMPARE_MODE>
+    like g-lenum
+  link texture-immutable-format, name <TEXTURE_IMMUTABLE_FORMAT>
+    like g-lenum
+  link texture-immutable-levels, name <TEXTURE_IMMUTABLE_LEVELS>
+    like g-lenum
+  link texture-max-level, name <TEXTURE_MAX_LEVEL>
+    like g-lenum
+  link texture-max-lod, name <TEXTURE_MAX_LOD>
+    like g-lenum
+  link texture-min-lod, name <TEXTURE_MIN_LOD>
+    like g-lenum
+  link texture-wrap-r, name <TEXTURE_WRAP_R>
+    like g-lenum
+  link timeout-expired, name <TIMEOUT_EXPIRED>
+    like g-lenum
+  link timeout-ignored, name <TIMEOUT_IGNORED>
+    like g-lint64
+  link transform-feedback, name <TRANSFORM_FEEDBACK>
+    like g-lenum
+  link transform-feedback-active, name <TRANSFORM_FEEDBACK_ACTIVE>
+    like g-lenum
+  link transform-feedback-binding, name <TRANSFORM_FEEDBACK_BINDING>
+    like g-lenum
+  link transform-feedback-buffer, name <TRANSFORM_FEEDBACK_BUFFER>
+    like g-lenum
+  link transform-feedback-buffer-binding, name <TRANSFORM_FEEDBACK_BUFFER_BINDING>
+    like g-lenum
+  link transform-feedback-buffer-mode, name <TRANSFORM_FEEDBACK_BUFFER_MODE>
+    like g-lenum
+  link transform-feedback-buffer-size, name <TRANSFORM_FEEDBACK_BUFFER_SIZE>
+    like g-lenum
+  link transform-feedback-buffer-start, name <TRANSFORM_FEEDBACK_BUFFER_START>
+    like g-lenum
+  link transform-feedback-paused, name <TRANSFORM_FEEDBACK_PAUSED>
+    like g-lenum
+  link transform-feedback-primitives-written, name <TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN>
+    like g-lenum
+  link transform-feedback-varyings, name <TRANSFORM_FEEDBACK_VARYINGS>
+    like g-lenum
+  link uniform-array-stride, name <UNIFORM_ARRAY_STRIDE>
+    like g-lenum
+  link uniform-block-active-uniforms, name <UNIFORM_BLOCK_ACTIVE_UNIFORMS>
+    like g-lenum
+  link uniform-block-active-uniform-indices, name <UNIFORM_BLOCK_ACTIVE_UNIFORM_INDICES>
+    like g-lenum
+  link uniform-block-binding, name <UNIFORM_BLOCK_BINDING>
+    like g-lenum
+  link uniform-block-data-size, name <UNIFORM_BLOCK_DATA_SIZE>
+    like g-lenum
+  link uniform-block-index, name <UNIFORM_BLOCK_INDEX>
+    like g-lenum
+  link uniform-block-referenced-by-fragment-shader
+    name <UNIFORM_BLOCK_REFERENCED_BY_FRAGMENT_SHADER>
+    like g-lenum
+  link uniform-block-referenced-by-vertex-shader
+    name <UNIFORM_BLOCK_REFERENCED_BY_VERTEX_SHADER>
+    like g-lenum
+  link uniform-buffer, name <UNIFORM_BUFFER>
+    like g-lenum
+  link uniform-buffer-binding, name <UNIFORM_BUFFER_BINDING>
+    like g-lenum
+  link uniform-buffer-offset-alignment, name <UNIFORM_BUFFER_OFFSET_ALIGNMENT>
+    like g-lenum
+  link uniform-buffer-size, name <UNIFORM_BUFFER_SIZE>
+    like g-lenum
+  link uniform-buffer-start, name <UNIFORM_BUFFER_START>
+    like g-lenum
+  link uniform-is-row-major, name <UNIFORM_IS_ROW_MAJOR>
+    like g-lenum
+  link uniform-matrix-stride, name <UNIFORM_MATRIX_STRIDE>
+    like g-lenum
+  link uniform-offset, name <UNIFORM_OFFSET>
+    like g-lenum
+  link uniform-size, name <UNIFORM_SIZE>
+    like g-lenum
+  link uniform-type, name <UNIFORM_TYPE>
+    like g-lenum
+  link unpack-image-height, name <UNPACK_IMAGE_HEIGHT>
+    like g-lenum
+  link unpack-row-length, name <UNPACK_ROW_LENGTH>
+    like g-lenum
+  link unpack-skip-images, name <UNPACK_SKIP_IMAGES>
+    like g-lenum
+  link unpack-skip-pixels, name <UNPACK_SKIP_PIXELS>
+    like g-lenum
+  link unpack-skip-rows, name <UNPACK_SKIP_ROWS>
+    like g-lenum
+  link unsignaled, name <UNSIGNALED>
+    like g-lenum
+  link unsigned-int-10-f-11-f-11-f-rev, name <UNSIGNED_INT_10F_11F_11F_REV>
+    like g-lenum
+  link unsigned-int-24-8, name <UNSIGNED_INT_24_8>
+    like g-lenum
+  link unsigned-int-2-10-10-10-rev, name <UNSIGNED_INT_2_10_10_10_REV>
+    like g-lenum
+  link unsigned-int-5-9-9-9-rev, name <UNSIGNED_INT_5_9_9_9_REV>
+    like g-lenum
+  link unsigned-int-sampler-2-d, name <UNSIGNED_INT_SAMPLER_2D>
+    like g-lenum
+  link unsigned-int-sampler-2-d-array, name <UNSIGNED_INT_SAMPLER_2D_ARRAY>
+    like g-lenum
+  link unsigned-int-sampler-3-d, name <UNSIGNED_INT_SAMPLER_3D>
+    like g-lenum
+  link unsigned-int-sampler-cube, name <UNSIGNED_INT_SAMPLER_CUBE>
+    like g-lenum
+  link unsigned-int-vec2, name <UNSIGNED_INT_VEC2>
+    like g-lenum
+  link unsigned-int-vec3, name <UNSIGNED_INT_VEC3>
+    like g-lenum
+  link unsigned-int-vec4, name <UNSIGNED_INT_VEC4>
+    like g-lenum
+  link unsigned-normalized, name <UNSIGNED_NORMALIZED>
+    like g-lenum
+  link vertex-array-binding, name <VERTEX_ARRAY_BINDING>
+    like g-lenum
+  link vertex-attrib-array-divisor, name <VERTEX_ATTRIB_ARRAY_DIVISOR>
+    like g-lenum
+  link vertex-attrib-array-integer, name <VERTEX_ATTRIB_ARRAY_INTEGER>
+    like g-lenum
+  link wait-failed, name <WAIT_FAILED>
+    like g-lenum
+
+  task begin-query, name <beginQuery>
+    take target, like g-lenum
+    take query, like web-gl-query
+    like native-void
+
+  task begin-transform-feedback, name <beginTransformFeedback>
+    take primitive-mode, like g-lenum
+    like native-void
+
+  task bind-buffer-base, name <bindBufferBase>
+    take target, like g-lenum
+    take index, like g-luint
+    take buffer
+      like or
+        like web-gl-buffer
+        like native-null
+    like native-void
+
+  task bind-buffer-range, name <bindBufferRange>
+    take target, like g-lenum
+    take index, like g-luint
+    take buffer
+      like or
+        like web-gl-buffer
+        like native-null
+    take offset, like g-lintptr
+    take size, like g-lsizeiptr
+    like native-void
+
+  task bind-sampler, name <bindSampler>
+    take unit, like g-luint
+    take sampler
+      like or
+        like web-gl-sampler
+        like native-null
+    like native-void
+
+  task bind-transform-feedback, name <bindTransformFeedback>
+    take target, like g-lenum
+    take tf
+      like or
+        like web-gl-transform-feedback
+        like native-null
+    like native-void
+
+  task bind-vertex-array, name <bindVertexArray>
+    take array
+      like or
+        like web-gl-vertex-array-object
+        like native-null
+    like native-void
+
+  task blit-framebuffer, name <blitFramebuffer>
+    take src-x0, like g-lint
+    take src-y0, like g-lint
+    take src-x1, like g-lint
+    take src-y1, like g-lint
+    take dst-x0, like g-lint
+    take dst-y0, like g-lint
+    take dst-x1, like g-lint
+    take dst-y1, like g-lint
+    take mask, like g-lbitfield
+    take filter, like g-lenum
+    like native-void
+
+  task clear-bufferfi, name <clearBufferfi>
+    take buffer, like g-lenum
+    take drawbuffer, like g-lint
+    take depth, like g-lfloat
+    take stencil, like g-lint
+    like native-void
+
+  task clear-bufferfv, name <clearBufferfv>
+    take buffer, like g-lenum
+    take drawbuffer, like g-lint
+    take values, like float32-list
+    take src-offset, like maybe
+      like g-luint
+    like native-void
+
+  task clear-bufferiv, name <clearBufferiv>
+    take buffer, like g-lenum
+    take drawbuffer, like g-lint
+    take values, like int32-list
+    take src-offset, like maybe
+      like g-luint
+    like native-void
+
+  task clear-bufferuiv, name <clearBufferuiv>
+    take buffer, like g-lenum
+    take drawbuffer, like g-lint
+    take values, like uint32-list
+    take src-offset, like maybe
+      like g-luint
+    like native-void
+
+  task client-wait-sync, name <clientWaitSync>
+    take sync, like web-gl-sync
+    take flags, like g-lbitfield
+    take timeout, like g-luint64
+    like g-lenum
+
+  task compressed-tex-image3-d, name <compressedTexImage3D>
+    take target, like g-lenum
+    take level, like g-lint
+    take internalformat, like g-lenum
+    take width, like g-lsizei
+    take height, like g-lsizei
+    take depth, like g-lsizei
+    take border, like g-lint
+    take image-size, like g-lsizei
+    take offset, like g-lintptr
+    like native-void
+
+  task compressed-tex-image3-d, name <compressedTexImage3D>
+    take target, like g-lenum
+    take level, like g-lint
+    take internalformat, like g-lenum
+    take width, like g-lsizei
+    take height, like g-lsizei
+    take depth, like g-lsizei
+    take border, like g-lint
+    take src-data, like array-buffer-view
+    take src-offset, like maybe
+      like g-luint
+    take src-length-override, like maybe
+      like g-luint
+    like native-void
+
+  task compressed-tex-sub-image3-d, name <compressedTexSubImage3D>
+    take target, like g-lenum
+    take level, like g-lint
+    take xoffset, like g-lint
+    take yoffset, like g-lint
+    take zoffset, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    take depth, like g-lsizei
+    take format, like g-lenum
+    take image-size, like g-lsizei
+    take offset, like g-lintptr
+    like native-void
+
+  task compressed-tex-sub-image3-d, name <compressedTexSubImage3D>
+    take target, like g-lenum
+    take level, like g-lint
+    take xoffset, like g-lint
+    take yoffset, like g-lint
+    take zoffset, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    take depth, like g-lsizei
+    take format, like g-lenum
+    take src-data, like array-buffer-view
+    take src-offset, like maybe
+      like g-luint
+    take src-length-override, like maybe
+      like g-luint
+    like native-void
+
+  task copy-buffer-sub-data, name <copyBufferSubData>
+    take read-target, like g-lenum
+    take write-target, like g-lenum
+    take read-offset, like g-lintptr
+    take write-offset, like g-lintptr
+    take size, like g-lsizeiptr
+    like native-void
+
+  task copy-tex-sub-image3-d, name <copyTexSubImage3D>
+    take target, like g-lenum
+    take level, like g-lint
+    take xoffset, like g-lint
+    take yoffset, like g-lint
+    take zoffset, like g-lint
+    take x, like g-lint
+    take y, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    like native-void
+
+  task create-query, name <createQuery>
+    like or
+      like web-gl-query
+      like native-null
+
+  task create-sampler, name <createSampler>
+    like or
+      like web-gl-sampler
+      like native-null
+
+  task create-transform-feedback, name <createTransformFeedback>
+    like or
+      like web-gl-transform-feedback
+      like native-null
+
+  task create-vertex-array, name <createVertexArray>
+    like or
+      like web-gl-vertex-array-object
+      like native-null
+
+  task delete-query, name <deleteQuery>
+    take query
+      like or
+        like web-gl-query
+        like native-null
+    like native-void
+
+  task delete-sampler, name <deleteSampler>
+    take sampler
+      like or
+        like web-gl-sampler
+        like native-null
+    like native-void
+
+  task delete-sync, name <deleteSync>
+    take sync
+      like or
+        like web-gl-sync
+        like native-null
+    like native-void
+
+  task delete-transform-feedback, name <deleteTransformFeedback>
+    take tf
+      like or
+        like web-gl-transform-feedback
+        like native-null
+    like native-void
+
+  task delete-vertex-array, name <deleteVertexArray>
+    take vertex-array
+      like or
+        like web-gl-vertex-array-object
+        like native-null
+    like native-void
+
+  task draw-arrays-instanced, name <drawArraysInstanced>
+    take mode, like g-lenum
+    take first, like g-lint
+    take count, like g-lsizei
+    take instance-count, like g-lsizei
+    like native-void
+
+  task draw-buffers, name <drawBuffers>
+    take buffers
+      like native-array
+        like g-lenum
+    like native-void
+
+  task draw-elements-instanced, name <drawElementsInstanced>
+    take mode, like g-lenum
+    take count, like g-lsizei
+    take type, like g-lenum
+    take offset, like g-lintptr
+    take instance-count, like g-lsizei
+    like native-void
+
+  task draw-range-elements, name <drawRangeElements>
+    take mode, like g-lenum
+    take start, like g-luint
+    take end, like g-luint
+    take count, like g-lsizei
+    take type, like g-lenum
+    take offset, like g-lintptr
+    like native-void
+
+  task end-query, name <endQuery>
+    take target, like g-lenum
+    like native-void
+
+  task end-transform-feedback, name <endTransformFeedback>
+    like native-void
+
+  task fence-sync, name <fenceSync>
+    take condition, like g-lenum
+    take flags, like g-lbitfield
+    like or
+      like web-gl-sync
+      like native-null
+
+  task framebuffer-texture-layer, name <framebufferTextureLayer>
+    take target, like g-lenum
+    take attachment, like g-lenum
+    take texture
+      like or
+        like web-gl-texture
+        like native-null
+    take level, like g-lint
+    take layer, like g-lint
+    like native-void
+
+  task get-active-uniform-block-name, name <getActiveUniformBlockName>
+    take program, like web-gl-program
+    take uniform-block-index, like g-luint
+    like or
+      like native-string
+      like native-null
+
+  task get-active-uniform-block-parameter, name <getActiveUniformBlockParameter>
+    take program, like web-gl-program
+    take uniform-block-index, like g-luint
+    take pname, like g-lenum
+    like native-any
+
+  task get-active-uniforms, name <getActiveUniforms>
+    take program, like web-gl-program
+    take uniform-indices
+      like native-array
+        like g-luint
+    take pname, like g-lenum
+    like native-any
+
+  task get-buffer-sub-data, name <getBufferSubData>
+    take target, like g-lenum
+    take src-byte-offset, like g-lintptr
+    take dst-buffer, like array-buffer-view
+    take dst-offset, like maybe
+      like g-luint
+    take length, like maybe
+      like g-luint
+    like native-void
+
+  task get-frag-data-location, name <getFragDataLocation>
+    take program, like web-gl-program
+    take name, like native-string
+    like g-lint
+
+  task get-indexed-parameter, name <getIndexedParameter>
+    take target, like g-lenum
+    take index, like g-luint
+    like native-any
+
+  task get-internalformat-parameter, name <getInternalformatParameter>
+    take target, like g-lenum
+    take internalformat, like g-lenum
+    take pname, like g-lenum
+    like native-any
+
+  task get-query, name <getQuery>
+    take target, like g-lenum
+    take pname, like g-lenum
+    like or
+      like web-gl-query
+      like native-null
+
+  task get-query-parameter, name <getQueryParameter>
+    take query, like web-gl-query
+    take pname, like g-lenum
+    like native-any
+
+  task get-sampler-parameter, name <getSamplerParameter>
+    take sampler, like web-gl-sampler
+    take pname, like g-lenum
+    like native-any
+
+  task get-sync-parameter, name <getSyncParameter>
+    take sync, like web-gl-sync
+    take pname, like g-lenum
+    like native-any
+
+  task get-transform-feedback-varying, name <getTransformFeedbackVarying>
+    take program, like web-gl-program
+    take index, like g-luint
+    like or
+      like web-gl-active-info
+      like native-null
+
+  task get-uniform-block-index, name <getUniformBlockIndex>
+    take program, like web-gl-program
+    take uniform-block-name, like native-string
+    like g-luint
+
+  task get-uniform-indices, name <getUniformIndices>
+    take program, like web-gl-program
+    take uniform-names
+      like native-array
+        like native-string
+    like or
+      like native-array
+        like g-luint
+      like native-null
+
+  task invalidate-framebuffer, name <invalidateFramebuffer>
+    take target, like g-lenum
+    take attachments
+      like native-array
+        like g-lenum
+    like native-void
+
+  task invalidate-sub-framebuffer, name <invalidateSubFramebuffer>
+    take target, like g-lenum
+    take attachments
+      like native-array
+        like g-lenum
+    take x, like g-lint
+    take y, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    like native-void
+
+  task is-query, name <isQuery>
+    take query
+      like or
+        like web-gl-query
+        like native-null
+    like g-lboolean
+
+  task is-sampler, name <isSampler>
+    take sampler
+      like or
+        like web-gl-sampler
+        like native-null
+    like g-lboolean
+
+  task is-sync, name <isSync>
+    take sync
+      like or
+        like web-gl-sync
+        like native-null
+    like g-lboolean
+
+  task is-transform-feedback, name <isTransformFeedback>
+    take tf
+      like or
+        like web-gl-transform-feedback
+        like native-null
+    like g-lboolean
+
+  task is-vertex-array, name <isVertexArray>
+    take vertex-array
+      like or
+        like web-gl-vertex-array-object
+        like native-null
+    like g-lboolean
+
+  task pause-transform-feedback, name <pauseTransformFeedback>
+    like native-void
+
+  task read-buffer, name <readBuffer>
+    take src, like g-lenum
+    like native-void
+
+  task renderbuffer-storage-multisample, name <renderbufferStorageMultisample>
+    take target, like g-lenum
+    take samples, like g-lsizei
+    take internalformat, like g-lenum
+    take width, like g-lsizei
+    take height, like g-lsizei
+    like native-void
+
+  task resume-transform-feedback, name <resumeTransformFeedback>
+    like native-void
+
+  task sampler-parameterf, name <samplerParameterf>
+    take sampler, like web-gl-sampler
+    take pname, like g-lenum
+    take param, like g-lfloat
+    like native-void
+
+  task sampler-parameteri, name <samplerParameteri>
+    take sampler, like web-gl-sampler
+    take pname, like g-lenum
+    take param, like g-lint
+    like native-void
+
+  task tex-image3-d, name <texImage3D>
+    take target, like g-lenum
+    take level, like g-lint
+    take internalformat, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    take depth, like g-lsizei
+    take border, like g-lint
+    take format, like g-lenum
+    take type, like g-lenum
+    take pbo-offset, like g-lintptr
+    like native-void
+
+  task tex-image3-d, name <texImage3D>
+    take target, like g-lenum
+    take level, like g-lint
+    take internalformat, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    take depth, like g-lsizei
+    take border, like g-lint
+    take format, like g-lenum
+    take type, like g-lenum
+    take source, like tex-image-source
+    like native-void
+
+  task tex-image3-d, name <texImage3D>
+    take target, like g-lenum
+    take level, like g-lint
+    take internalformat, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    take depth, like g-lsizei
+    take border, like g-lint
+    take format, like g-lenum
+    take type, like g-lenum
+    take src-data
+      like or
+        like array-buffer-view
+        like native-null
+    like native-void
+
+  task tex-image3-d, name <texImage3D>
+    take target, like g-lenum
+    take level, like g-lint
+    take internalformat, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    take depth, like g-lsizei
+    take border, like g-lint
+    take format, like g-lenum
+    take type, like g-lenum
+    take src-data, like array-buffer-view
+    take src-offset, like g-luint
+    like native-void
+
+  task tex-storage2-d, name <texStorage2D>
+    take target, like g-lenum
+    take levels, like g-lsizei
+    take internalformat, like g-lenum
+    take width, like g-lsizei
+    take height, like g-lsizei
+    like native-void
+
+  task tex-storage3-d, name <texStorage3D>
+    take target, like g-lenum
+    take levels, like g-lsizei
+    take internalformat, like g-lenum
+    take width, like g-lsizei
+    take height, like g-lsizei
+    take depth, like g-lsizei
+    like native-void
+
+  task tex-sub-image3-d, name <texSubImage3D>
+    take target, like g-lenum
+    take level, like g-lint
+    take xoffset, like g-lint
+    take yoffset, like g-lint
+    take zoffset, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    take depth, like g-lsizei
+    take format, like g-lenum
+    take type, like g-lenum
+    take pbo-offset, like g-lintptr
+    like native-void
+
+  task tex-sub-image3-d, name <texSubImage3D>
+    take target, like g-lenum
+    take level, like g-lint
+    take xoffset, like g-lint
+    take yoffset, like g-lint
+    take zoffset, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    take depth, like g-lsizei
+    take format, like g-lenum
+    take type, like g-lenum
+    take source, like tex-image-source
+    like native-void
+
+  task tex-sub-image3-d, name <texSubImage3D>
+    take target, like g-lenum
+    take level, like g-lint
+    take xoffset, like g-lint
+    take yoffset, like g-lint
+    take zoffset, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    take depth, like g-lsizei
+    take format, like g-lenum
+    take type, like g-lenum
+    take src-data
+      like or
+        like array-buffer-view
+        like native-null
+    take src-offset, like maybe
+      like g-luint
+    like native-void
+
+  task transform-feedback-varyings, name <transformFeedbackVaryings>
+    take program, like web-gl-program
+    take varyings
+      like native-array
+        like native-string
+    take buffer-mode, like g-lenum
+    like native-void
+
+  task uniform1ui, name <uniform1ui>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v0, like g-luint
+    like native-void
+
+  task uniform1uiv, name <uniform1uiv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take data, like uint32-list
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task uniform2ui, name <uniform2ui>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v0, like g-luint
+    take v1, like g-luint
+    like native-void
+
+  task uniform2uiv, name <uniform2uiv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take data, like uint32-list
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task uniform3ui, name <uniform3ui>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v0, like g-luint
+    take v1, like g-luint
+    take v2, like g-luint
+    like native-void
+
+  task uniform3uiv, name <uniform3uiv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take data, like uint32-list
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task uniform4ui, name <uniform4ui>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v0, like g-luint
+    take v1, like g-luint
+    take v2, like g-luint
+    take v3, like g-luint
+    like native-void
+
+  task uniform4uiv, name <uniform4uiv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take data, like uint32-list
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task uniform-block-binding, name <uniformBlockBinding>
+    take program, like web-gl-program
+    take uniform-block-index, like g-luint
+    take uniform-block-binding, like g-luint
+    like native-void
+
+  task uniform-matrix2x3fv, name <uniformMatrix2x3fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take transpose, like g-lboolean
+    take data, like float32-list
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task uniform-matrix2x4fv, name <uniformMatrix2x4fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take transpose, like g-lboolean
+    take data, like float32-list
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task uniform-matrix3x2fv, name <uniformMatrix3x2fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take transpose, like g-lboolean
+    take data, like float32-list
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task uniform-matrix3x4fv, name <uniformMatrix3x4fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take transpose, like g-lboolean
+    take data, like float32-list
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task uniform-matrix4x2fv, name <uniformMatrix4x2fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take transpose, like g-lboolean
+    take data, like float32-list
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task uniform-matrix4x3fv, name <uniformMatrix4x3fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take transpose, like g-lboolean
+    take data, like float32-list
+    take src-offset, like maybe
+      like g-luint
+    take src-length, like maybe
+      like g-luint
+    like native-void
+
+  task vertex-attrib-divisor, name <vertexAttribDivisor>
+    take index, like g-luint
+    take divisor, like g-luint
+    like native-void
+
+  task vertex-attrib-i4i, name <vertexAttribI4i>
+    take index, like g-luint
+    take x, like g-lint
+    take y, like g-lint
+    take z, like g-lint
+    take w, like g-lint
+    like native-void
+
+  task vertex-attrib-i4iv, name <vertexAttribI4iv>
+    take index, like g-luint
+    take values, like int32-list
+    like native-void
+
+  task vertex-attrib-i4ui, name <vertexAttribI4ui>
+    take index, like g-luint
+    take x, like g-luint
+    take y, like g-luint
+    take z, like g-luint
+    take w, like g-luint
+    like native-void
+
+  task vertex-attrib-i4uiv, name <vertexAttribI4uiv>
+    take index, like g-luint
+    take values, like uint32-list
+    like native-void
+
+  task vertex-attrib-i-pointer, name <vertexAttribIPointer>
+    take index, like g-luint
+    take size, like g-lint
+    take type, like g-lenum
+    take stride, like g-lsizei
+    take offset, like g-lintptr
+    like native-void
+
+  task wait-sync, name <waitSync>
+    take sync, like web-gl-sync
+    take flags, like g-lbitfield
+    take timeout, like g-lint64
+    like native-void

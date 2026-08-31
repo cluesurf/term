@@ -1,0 +1,62 @@
+
+load @term/bind/code/browser/dom/body
+  find body
+
+load @term/bind/code/browser/webworker/blob
+  find blob
+
+load @term/bind/code/browser/webworker/form-data
+  find form-data
+
+load @term/bind/code/browser/webworker/readable-stream
+  find readable-stream
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/es5/uint8-array
+  find uint8-array
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form body, name <Body>
+  link body, name <body>
+    like or
+      like readable-stream
+        like uint8-array
+      like native-null
+  link body-used, name <bodyUsed>
+    like native-boolean
+
+  task array-buffer, name <arrayBuffer>
+    like promise
+      like array-buffer
+
+  task blob, name <blob>
+    like promise
+      like blob
+
+  task form-data, name <formData>
+    like promise
+      like form-data
+
+  task json, name <json>
+    like promise
+      like native-any
+
+  task text, name <text>
+    like promise
+      like native-string

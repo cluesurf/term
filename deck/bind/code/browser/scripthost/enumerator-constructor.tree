@@ -1,0 +1,38 @@
+
+load @term/bind/code/browser/scripthost/enumerator
+  find enumerator
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/safe-array
+  find safe-array
+
+form enumerator-constructor, name <EnumeratorConstructor>
+  hook make
+    head t
+      back native-any
+    take safearray
+      like safe-array
+        like t
+    like enumerator
+      like t
+
+  hook make
+    head t
+      back native-any
+    take collection
+      like form
+        task item, name <Item>
+          take index, like native-any
+          like t
+
+    like enumerator
+      like t
+
+  hook make
+    head t
+      back native-any
+    take collection, like native-any
+    like enumerator
+      like t

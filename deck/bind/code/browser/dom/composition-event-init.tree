@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/ui-event-init
+  find ui-event-init
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form composition-event-init, name <CompositionEventInit>
+  base ui-event-init
+
+  link data, name <data>
+    like native-string
+    lock false

@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+  find native-string
+
+load @term/bind/code/javascript/scripthost/date
+  find date
+
+form date
+  hook self
+  hook make
+    like date
+
+    take value

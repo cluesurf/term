@@ -1,0 +1,20 @@
+
+load @term/bind/code/browser/dom/dom-rect-init
+  find dom-rect-init
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form dom-rect-init, name <DOMRectInit>
+  link height, name <height>
+    like native-number
+    lock false
+  link width, name <width>
+    like native-number
+    lock false
+  link x, name <x>
+    like native-number
+    lock false
+  link y, name <y>
+    like native-number
+    lock false

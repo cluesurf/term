@@ -1,0 +1,201 @@
+
+form condvar, name <std::sync::Condvar>
+  task new, name <new>
+    note <Creates a new condition variable which is ready to be waited on and notified.>
+
+    free seed
+      like condvar
+        cite free
+
+  task wait, name <wait>
+    note <Blocks the current thread until this condition variable receives a notification.>
+
+    time a
+
+    head t
+
+    take self
+      cite free
+    take guard
+      like mutex-guard
+        time a
+        like t
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like lock-result
+        like mutex-guard
+          time a
+          like t
+            cite free
+          cite free
+        cite free
+
+  task wait-while, name <wait_while>
+    note <Blocks the current thread until this condition variable receives a notification and the provided condition is false.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    time a
+
+    head t
+    head f
+
+    take self
+      cite free
+    take guard
+      like mutex-guard
+        time a
+        like t
+          cite free
+        cite free
+      cite free
+    take condition
+      like f
+        cite free
+      cite free
+
+    free seed
+      like lock-result
+        like mutex-guard
+          time a
+          like t
+            cite free
+          cite free
+        cite free
+
+  task wait-timeout-ms, name <wait_timeout_ms>
+    note <Waits on this condition variable for a notification, timing out after a specified duration.>
+
+    time a
+
+    head t
+
+    take self
+      cite free
+    take guard
+      like mutex-guard
+        time a
+        like t
+          cite free
+        cite free
+      cite free
+    take ms
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like lock-result
+        like form
+          take t-1, like mutex-guard
+          take t-2, like bool
+        cite free
+
+  task wait-timeout, name <wait_timeout>
+    note <Waits on this condition variable for a notification, timing out after a specified duration.>
+
+    time a
+
+    head t
+
+    take self
+      cite free
+    take guard
+      like mutex-guard
+        time a
+        like t
+          cite free
+        cite free
+      cite free
+    take dur
+      like duration
+        cite free
+      cite free
+
+    free seed
+      like lock-result
+        like form
+          take t-1, like mutex-guard
+          take t-2, like wait-timeout-result
+        cite free
+
+  task wait-timeout-while, name <wait_timeout_while>
+    note <Waits on this condition variable for a notification, timing out after a specified duration.>
+
+    lead f
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    time a
+
+    head t
+    head f
+
+    take self
+      cite free
+    take guard
+      like mutex-guard
+        time a
+        like t
+          cite free
+        cite free
+      cite free
+    take dur
+      like duration
+        cite free
+      cite free
+    take condition
+      like f
+        cite free
+      cite free
+
+    free seed
+      like lock-result
+        like form
+          take t-1, like mutex-guard
+          take t-2, like wait-timeout-result
+        cite free
+
+  task notify-one, name <notify_one>
+    note <Wakes up one blocked thread on this condvar.>
+
+    take self
+      cite free
+
+  task notify-all, name <notify_all>
+    note <Wakes up all blocked threads on this condvar.>
+
+    take self
+      cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task default, name <default>
+    note <Creates a Condvar which is ready to be waited on and notified.>
+
+    free seed
+      like condvar
+        cite free

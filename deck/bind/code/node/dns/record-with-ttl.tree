@@ -1,0 +1,12 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+
+form record-with-ttl, name <RecordWithTtl>
+  link address, name <address>
+    like native-string
+    flex true
+  link ttl, name <ttl>
+    like native-number
+    flex true

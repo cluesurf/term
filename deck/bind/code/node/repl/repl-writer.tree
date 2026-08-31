@@ -1,0 +1,15 @@
+
+load @term/bind
+  find any
+  find task
+
+load @term/bind/code/javascript
+  find native-string
+  find repl-server
+
+form repl-writer, name <REPLWriter>
+  like task
+    like native-string
+
+    take this, like repl-server
+    take obj, like any

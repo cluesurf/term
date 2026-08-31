@@ -1,0 +1,10 @@
+
+form iterator-yield-result, name <IteratorYieldResult>
+  head t-yield
+
+  link done, name <done>
+    text <false>
+    lock false
+  link value, name <value>
+    like t-yield
+    lock false

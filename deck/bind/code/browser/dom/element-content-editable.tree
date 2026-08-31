@@ -1,0 +1,19 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form element-content-editable, name <ElementContentEditable>
+  link content-editable, name <contentEditable>
+    like native-string
+    lock false
+  link enter-key-hint, name <enterKeyHint>
+    like native-string
+    lock false
+  link input-mode, name <inputMode>
+    like native-string
+    lock false
+  link is-content-editable, name <isContentEditable>
+    like native-boolean

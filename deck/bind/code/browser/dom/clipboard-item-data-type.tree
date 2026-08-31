@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/blob
+  find blob
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form clipboard-item-data-type, name <ClipboardItemDataType>
+  like or
+    like native-string
+    like blob

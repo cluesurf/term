@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript
+  find native-number
+
+form heap-code-statistics, name <HeapCodeStatistics>
+  link code-and-metadata-size, name <code_and_metadata_size>
+    like native-number
+    flex true
+  link bytecode-and-metadata-size, name <bytecode_and_metadata_size>
+    like native-number
+    flex true
+  link external-script-source-size, name <external_script_source_size>
+    like native-number
+    flex true

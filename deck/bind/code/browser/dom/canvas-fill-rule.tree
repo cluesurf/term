@@ -1,0 +1,5 @@
+
+form canvas-fill-rule, name <CanvasFillRule>
+  like or
+    text <evenodd>
+    text <nonzero>

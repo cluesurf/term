@@ -1,0 +1,17 @@
+
+load @term/bind/code/javascript/es2015/iterable/weak-set
+  find weak-set
+
+load @term/bind/code/javascript/native
+  find native-object
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form weak-set, name <WeakSet>
+  head t
+    base native-object
+
+  link {symbol/to-string-tag}
+    like native-string
+    read true

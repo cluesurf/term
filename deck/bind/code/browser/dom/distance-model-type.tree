@@ -1,0 +1,6 @@
+
+form distance-model-type, name <DistanceModelType>
+  like or
+    text <exponential>
+    text <inverse>
+    text <linear>

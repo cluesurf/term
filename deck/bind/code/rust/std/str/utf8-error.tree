@@ -1,0 +1,139 @@
+
+form utf8-error, name <std::str::Utf8Error>
+  task valid-up-to, name <valid_up_to>
+    note <Returns the index in the given string up to which valid UTF-8 was verified.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task error-len, name <error_len>
+    note <Provides more information about the failure:>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like usize
+          cite free
+        cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like utf8-error
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task description, name <description>
+    take self
+      cite free
+
+    free seed
+      like str
+
+  task source, name <source>
+    note <The lower-level source of this error, if any.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like error
+          cite free
+        cite free
+
+  task backtrace, name <backtrace>
+    note <Returns a stack backtrace, if available, of where this error occurred.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like backtrace
+        cite free
+
+  task cause, name <cause>
+    take self
+      cite free
+
+    free seed
+      like option
+        like error
+          cite free
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like utf8-error
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like utf8-error
+
+    free seed
+      like bool
+        cite free

@@ -1,0 +1,8 @@
+
+load @term/bind/code/node/inspector/heap-profiler
+  find sampling-heap-profile
+
+form stop-sampling-return-type, name <StopSamplingReturnType>
+  link profile, name <profile>
+    like sampling-heap-profile
+    flex true

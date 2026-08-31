@@ -1,0 +1,17 @@
+
+load @term/bind/code/javascript
+  find native-number
+  find native-void
+  find promise
+
+load @term/bind/code/node/fs
+  find path-like
+
+task promisify, name <__promisify__>
+  like promise
+    like native-void
+
+  take src, like path-like
+  take dst, like path-like
+  take mode, like native-number
+    void true

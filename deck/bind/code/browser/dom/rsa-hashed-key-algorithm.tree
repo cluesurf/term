@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/key-algorithm
+  find key-algorithm
+
+load @term/bind/code/browser/dom/rsa-key-algorithm
+  find rsa-key-algorithm
+
+form rsa-hashed-key-algorithm, name <RsaHashedKeyAlgorithm>
+  base rsa-key-algorithm
+
+  link hash, name <hash>
+    like key-algorithm
+    lock false

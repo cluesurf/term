@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+load @term/bind/code/browser/dom/media-stream-track
+  find media-stream-track
+
+form media-stream-track-event-init, name <MediaStreamTrackEventInit>
+  base event-init
+
+  link track, name <track>
+    like media-stream-track
+    lock false

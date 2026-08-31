@@ -1,0 +1,26 @@
+
+load @term/bind/code/browser/dom/buffer-source
+  find buffer-source
+
+load @term/bind/code/browser/dom/media-key-session
+  find media-key-session
+
+load @term/bind/code/browser/dom/media-key-session-type
+  find media-key-session-type
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form media-keys, name <MediaKeys>
+  task create-session, name <createSession>
+    take session-type, like maybe
+      like media-key-session-type
+    like media-key-session
+
+  task set-server-certificate, name <setServerCertificate>
+    take server-certificate, like buffer-source
+    like promise
+      like native-boolean

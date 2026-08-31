@@ -1,0 +1,6 @@
+
+form relative-time-format-style, name <RelativeTimeFormatStyle>
+  like or
+    text <long>
+    text <short>
+    text <narrow>

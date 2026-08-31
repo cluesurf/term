@@ -1,0 +1,16 @@
+
+load @term/bind/code/javascript
+  find native-void
+  find node-js-errno-exception
+
+load @term/bind/code/node/http2
+  find server-stream-file-response-options
+
+form server-stream-file-response-options-with-error
+  name <ServerStreamFileResponseOptionsWithError>
+  base server-stream-file-response-options
+
+  task on-error, name <onError>
+    like native-void
+
+    take err, like node-js-errno-exception

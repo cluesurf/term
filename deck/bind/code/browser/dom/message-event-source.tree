@@ -1,0 +1,15 @@
+
+load @term/bind/code/browser/dom/message-port
+  find message-port
+
+load @term/bind/code/browser/dom/service-worker
+  find service-worker
+
+load @term/bind/code/browser/dom/window-proxy
+  find window-proxy
+
+form message-event-source, name <MessageEventSource>
+  like or
+    like window-proxy
+    like message-port
+    like service-worker

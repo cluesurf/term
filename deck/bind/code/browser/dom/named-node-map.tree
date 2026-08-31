@@ -1,0 +1,65 @@
+
+load @term/bind/code/browser/dom/attr
+  find attr
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form named-node-map, name <NamedNodeMap>
+  link length, name <length>
+    like native-number
+
+  task get-named-item, name <getNamedItem>
+    take qualified-name, like native-string
+    like or
+      like attr
+      like native-null
+
+  task get-named-item-ns, name <getNamedItemNS>
+    take namespace
+      like or
+        like native-string
+        like native-null
+    take local-name, like native-string
+    like or
+      like attr
+      like native-null
+
+  task item, name <item>
+    take index, like native-number
+    like or
+      like attr
+      like native-null
+
+  task remove-named-item, name <removeNamedItem>
+    take qualified-name, like native-string
+    like attr
+
+  task remove-named-item-ns, name <removeNamedItemNS>
+    take namespace
+      like or
+        like native-string
+        like native-null
+    take local-name, like native-string
+    like attr
+
+  task set-named-item, name <setNamedItem>
+    take attr, like attr
+    like or
+      like attr
+      like native-null
+
+  task set-named-item-ns, name <setNamedItemNS>
+    take attr, like attr
+    like or
+      like attr
+      like native-null
+
+  mesh index, like native-number
+    like attr

@@ -1,0 +1,12 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find net-server
+  find net-socket
+
+form send-handle, name <SendHandle>
+  like or
+    like net-socket
+    like net-server

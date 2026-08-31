@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript/es2015/collection/weak-set
+  find weak-set
+
+load @term/bind/code/javascript/native
+  find native-object
+
+form weak-set, name <WeakSet>
+  head t
+    base native-object

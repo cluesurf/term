@@ -1,0 +1,7 @@
+
+load @term/bind/code/javascript
+  find node-js-process
+
+host process, name <process>
+  home true
+  like node-js-process

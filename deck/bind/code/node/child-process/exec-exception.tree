@@ -1,0 +1,35 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find error
+  find native-boolean
+  find native-number
+  find native-string
+  find native-undefined
+  find node-js-signals
+
+form exec-exception, name <ExecException>
+  base error
+
+  link cmd, name <cmd>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link killed, name <killed>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link code, name <code>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link signal, name <signal>
+    like or
+      like node-js-signals
+      like native-undefined
+    flex true

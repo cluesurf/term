@@ -1,0 +1,1208 @@
+
+form char, name <char>
+  task decode-utf16, name <decode_utf16>
+    note <Creates an iterator over the UTF-16 encoded code points in iter, returning unpaired surrogates as Errs.>
+
+    cast c-1
+      like i
+      like into-iterator
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like u16
+              cite free
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like decode-utf16
+        like c-1/into-iter
+        cite free
+
+  task from-u32, name <from_u32>
+    note <Converts a u32 to a char.>
+
+    take i
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like option
+        like char
+          cite free
+        cite free
+
+  task from-u32-unchecked, name <from_u32_unchecked>
+    note <Converts a u32 to a char, ignoring validity.>
+
+    take i
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like char
+        cite free
+
+  task from-digit, name <from_digit>
+    note <Converts a digit in the given radix to a char.>
+
+    take num
+      like u32
+        cite free
+      cite free
+    take radix
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like option
+        like char
+          cite free
+        cite free
+
+  task is-digit, name <is_digit>
+    note <Checks if a char is a digit in the given radix.>
+
+    take self
+      cite free
+    take radix
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task to-digit, name <to_digit>
+    note <Converts a char to a digit in the given radix.>
+
+    take self
+      cite free
+    take radix
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like option
+        like u32
+          cite free
+        cite free
+
+  task escape-unicode, name <escape_unicode>
+    note <Returns an iterator that yields the hexadecimal Unicode escape of a character as chars.>
+
+    take self
+      cite free
+
+    free seed
+      like escape-unicode
+        cite free
+
+  task escape-debug, name <escape_debug>
+    note <Returns an iterator that yields the literal escape code of a character as chars.>
+
+    take self
+      cite free
+
+    free seed
+      like escape-debug
+        cite free
+
+  task escape-default, name <escape_default>
+    note <Returns an iterator that yields the literal escape code of a character as chars.>
+
+    take self
+      cite free
+
+    free seed
+      like escape-default
+        cite free
+
+  task len-utf8, name <len_utf8>
+    note <Returns the number of bytes this char would need if encoded in UTF-8.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task len-utf16, name <len_utf16>
+    note <Returns the number of 16-bit code units this char would need if encoded in UTF-16.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task encode-utf8, name <encode_utf8>
+    note <Encodes this character as UTF-8 into the provided byte buffer, and then returns the subslice of the buffer that contains the encoded character.>
+
+    take self
+      cite free
+    take dst
+      list u8
+      cite free
+
+    free seed
+      like str
+
+  task encode-utf16, name <encode_utf16>
+    note <Encodes this character as UTF-16 into the provided u16 buffer, and then returns the subslice of the buffer that contains the encoded character.>
+
+    take self
+      cite free
+    take dst
+      list u16
+      cite free
+
+    free seed
+      list u16
+
+  task is-alphabetic, name <is_alphabetic>
+    note <Returns true if this char has the Alphabetic property.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-lowercase, name <is_lowercase>
+    note <Returns true if this char has the Lowercase property.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-uppercase, name <is_uppercase>
+    note <Returns true if this char has the Uppercase property.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-whitespace, name <is_whitespace>
+    note <Returns true if this char has the White_Space property.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-alphanumeric, name <is_alphanumeric>
+    note <Returns true if this char satisfies either is_alphabetic() or is_numeric().>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-control, name <is_control>
+    note <Returns true if this char has the general category for control codes.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-numeric, name <is_numeric>
+    note <Returns true if this char has one of the general categories for numbers.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task to-lowercase, name <to_lowercase>
+    note <Returns an iterator that yields the lowercase mapping of this char as one or more chars.>
+
+    take self
+      cite free
+
+    free seed
+      like to-lowercase
+        cite free
+
+  task to-uppercase, name <to_uppercase>
+    note <Returns an iterator that yields the uppercase mapping of this char as one or more chars.>
+
+    take self
+      cite free
+
+    free seed
+      like to-uppercase
+        cite free
+
+  task is-ascii, name <is_ascii>
+    note <Checks if the value is within the ASCII range.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task to-ascii-uppercase, name <to_ascii_uppercase>
+    note <Makes a copy of the value in its ASCII upper case equivalent.>
+
+    take self
+      cite free
+
+    free seed
+      like char
+        cite free
+
+  task to-ascii-lowercase, name <to_ascii_lowercase>
+    note <Makes a copy of the value in its ASCII lower case equivalent.>
+
+    take self
+      cite free
+
+    free seed
+      like char
+        cite free
+
+  task eq-ignore-ascii-case, name <eq_ignore_ascii_case>
+    note <Checks that two values are an ASCII case-insensitive match.>
+
+    take self
+      cite free
+    take other
+      like char
+
+    free seed
+      like bool
+        cite free
+
+  task make-ascii-uppercase, name <make_ascii_uppercase>
+    note <Converts this type to its ASCII upper case equivalent in-place.>
+
+    take self
+      cite free
+
+  task make-ascii-lowercase, name <make_ascii_lowercase>
+    note <Converts this type to its ASCII lower case equivalent in-place.>
+
+    take self
+      cite free
+
+  task is-ascii-alphabetic, name <is_ascii_alphabetic>
+    note <Checks if the value is an ASCII alphabetic character:>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-ascii-uppercase, name <is_ascii_uppercase>
+    note <Checks if the value is an ASCII uppercase character: U+0041 'A' ..= U+005A 'Z'.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-ascii-lowercase, name <is_ascii_lowercase>
+    note <Checks if the value is an ASCII lowercase character: U+0061 'a' ..= U+007A 'z'.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-ascii-alphanumeric, name <is_ascii_alphanumeric>
+    note <Checks if the value is an ASCII alphanumeric character:>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-ascii-digit, name <is_ascii_digit>
+    note <Checks if the value is an ASCII decimal digit: U+0030 '0' ..= U+0039 '9'.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-ascii-hexdigit, name <is_ascii_hexdigit>
+    note <Checks if the value is an ASCII hexadecimal digit:>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-ascii-punctuation, name <is_ascii_punctuation>
+    note <Checks if the value is an ASCII punctuation character:>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-ascii-graphic, name <is_ascii_graphic>
+    note <Checks if the value is an ASCII graphic character: U+0021 '!' ..= U+007E '~'.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-ascii-whitespace, name <is_ascii_whitespace>
+    note <Checks if the value is an ASCII whitespace character: U+0020 SPACE, U+0009 HORIZONTAL TAB, U+000A LINE FEED, U+000C FORM FEED, or U+000D CARRIAGE RETURN.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-ascii-control, name <is_ascii_control>
+    note <Checks if the value is an ASCII control character: U+0000 NUL ..= U+001F UNIT SEPARATOR, or U+007F DELETE. Note that most ASCII whitespace characters are control characters, but SPACE is not.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-ascii, name <is_ascii>
+    note <Checks if the value is within the ASCII range.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task to-ascii-uppercase, name <to_ascii_uppercase>
+    note <Makes a copy of the value in its ASCII upper case equivalent.>
+
+    take self
+      cite free
+
+    free seed
+      like self/owned
+
+  task to-ascii-lowercase, name <to_ascii_lowercase>
+    note <Makes a copy of the value in its ASCII lower case equivalent.>
+
+    take self
+      cite free
+
+    free seed
+      like self/owned
+
+  task eq-ignore-ascii-case, name <eq_ignore_ascii_case>
+    note <Checks that two values are an ASCII case-insensitive match.>
+
+    take self
+      cite free
+    take o
+      like self
+
+    free seed
+      like bool
+        cite free
+
+  task make-ascii-uppercase, name <make_ascii_uppercase>
+    note <Converts this type to its ASCII upper case equivalent in-place.>
+
+    take self
+      cite free
+
+  task make-ascii-lowercase, name <make_ascii_lowercase>
+    note <Converts this type to its ASCII lower case equivalent in-place.>
+
+    take self
+      cite free
+
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like char
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Returns the default value of \x00>
+
+    free seed
+      like char
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like char
+              time a
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take char
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task extend, name <extend>
+    note <Extends a collection with the contents of an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like char
+              cite free
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take iter
+      like i
+        cite free
+      cite free
+
+  task extend-one, name <extend_one>
+    note <Extends a collection with exactly one element.>
+
+    take self
+      cite free
+    take c
+      like char
+        cite free
+      cite free
+
+  task extend-reserve, name <extend_reserve>
+    note <Reserves capacity in a collection for the given number of additional elements.>
+
+    take self
+      cite free
+    take additional
+      like usize
+        cite free
+      cite free
+
+  task from, name <from>
+    note <Converts a char into a u128.>
+
+    take c
+      like char
+        cite free
+      cite free
+
+    free seed
+      like u128
+        cite free
+
+  task from, name <from>
+    note <Converts a char into a u64.>
+
+    take c
+      like char
+        cite free
+      cite free
+
+    free seed
+      like u64
+        cite free
+
+  task from, name <from>
+    note <Converts a char into a u32.>
+
+    take c
+      like char
+        cite free
+      cite free
+
+    free seed
+      like u32
+        cite free
+
+  task from, name <from>
+    note <Allocates an owned String from a single character.>
+
+    take c
+      like char
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task from, name <from>
+    note <Converts a u8 into a char.>
+
+    take i
+      like u8
+        cite free
+      cite free
+
+    free seed
+      like char
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like char
+              time a
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like char
+              cite free
+        cite free
+
+    head i
+
+    take it
+      like i
+        cite free
+      cite free
+
+    free seed
+      like cow
+        time a
+        like str
+          cite free
+        cite free
+
+  task from-iter, name <from_iter>
+    note <Creates a value from an iterator.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like char
+              cite free
+        cite free
+
+    head i
+
+    take iter
+      like i
+        cite free
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task from-str, name <from_str>
+    note <Parses a string s to return a value of this type.>
+
+    cast c-1
+      like char
+      like from-str
+
+    take s
+      like str
+
+    free seed
+      like result
+        like char
+          cite free
+        like c-1/err
+        cite free
+
+  task hash, name <hash>
+    note <Feeds this value into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take self
+      cite free
+    take state
+      like h
+      lock free
+
+  task hash-slice, name <hash_slice>
+    note <Feeds a slice of this type into the given Hasher.>
+
+    lead h
+      like hasher
+        cite free
+
+    head h
+
+    take data
+      list self
+      cite free
+    take state
+      like h
+      lock free
+
+  task cmp, name <cmp>
+    note <This method returns an Ordering between self and other.>
+
+    take self
+      cite free
+    take other
+      like char
+
+    free seed
+      like ordering
+        cite free
+
+  task max, name <max>
+    note <Compares and returns the maximum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task min, name <min>
+    note <Compares and returns the minimum of two values.>
+
+    take self
+      cite free
+    take other
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task clamp, name <clamp>
+    note <Restrict a value to a certain interval.>
+
+    take self
+      cite free
+    take min
+      like self
+        cite free
+      cite free
+    take max
+      like self
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task eq, name <eq>
+    note <This method tests for self and other values to be equal, and is used by ==.>
+
+    take self
+      cite free
+    take other
+      like char
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <This method tests for !=.>
+
+    take self
+      cite free
+    take other
+      like char
+
+    free seed
+      like bool
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <This method returns an ordering between self and other values if one exists.>
+
+    take self
+      cite free
+    take other
+      like char
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task lt, name <lt>
+    note <This method tests less than (for self and other) and is used by the &lt; operator.>
+
+    take self
+      cite free
+    take other
+      like char
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <This method tests less than or equal to (for self and other) and is used by the &lt;= operator.>
+
+    take self
+      cite free
+    take other
+      like char
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <This method tests greater than or equal to (for self and other) and is used by the &gt;= operator.>
+
+    take self
+      cite free
+    take other
+      like char
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <This method tests greater than (for self and other) and is used by the &gt; operator.>
+
+    take self
+      cite free
+    take other
+      like char
+
+    free seed
+      like bool
+        cite free
+
+  task into-searcher, name <into_searcher>
+    note <Constructs the associated searcher from self and the haystack to search in.>
+
+    cast c-1
+      like char
+      like pattern
+        time a
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like c-1/searcher
+
+  task is-contained-in, name <is_contained_in>
+    note <Checks whether the pattern matches anywhere in the haystack>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task is-prefix-of, name <is_prefix_of>
+    note <Checks whether the pattern matches at the front of the haystack>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task strip-prefix-of, name <strip_prefix_of>
+    note <Removes the pattern from the front of haystack, if it matches.>
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like option
+        like str
+          time a
+        cite free
+
+  task is-suffix-of, name <is_suffix_of>
+    note <Checks whether the pattern matches at the back of the haystack>
+
+    cast c-1
+      like char
+      like pattern
+        time a
+
+    lead c-1/searcher
+      like reverse-searcher
+        time a
+        cite free
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like bool
+        cite free
+
+  task strip-suffix-of, name <strip_suffix_of>
+    note <Removes the pattern from the back of haystack, if it matches.>
+
+    cast c-1
+      like char
+      like pattern
+        time a
+
+    lead c-1/searcher
+      like reverse-searcher
+        time a
+        cite free
+
+    take self
+      cite free
+    take haystack
+      like str
+        time a
+
+    free seed
+      like option
+        like str
+          time a
+        cite free
+
+  task steps-between, name <steps_between>
+    note <Returns the number of successor steps required to get from start to end.>
+
+    take char
+      cite free
+    take char
+      cite free
+
+    free seed
+      like option
+        like usize
+          cite free
+        cite free
+
+  task forward-checked, name <forward_checked>
+    note <Returns the value that would be obtained by taking the successor of self count times.>
+
+    take start
+      like char
+        cite free
+      cite free
+    take count
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like option
+        like char
+          cite free
+        cite free
+
+  task backward-checked, name <backward_checked>
+    note <Returns the value that would be obtained by taking the predecessor of self count times.>
+
+    take start
+      like char
+        cite free
+      cite free
+    take count
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like option
+        like char
+          cite free
+        cite free
+
+  task forward-unchecked, name <forward_unchecked>
+    note <Returns the value that would be obtained by taking the successor of self count times.>
+
+    take start
+      like char
+        cite free
+      cite free
+    take count
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like char
+        cite free
+
+  task backward-unchecked, name <backward_unchecked>
+    note <Returns the value that would be obtained by taking the predecessor of self count times.>
+
+    take start
+      like char
+        cite free
+      cite free
+    take count
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like char
+        cite free
+
+  task forward, name <forward>
+    note <Returns the value that would be obtained by taking the successor of self count times.>
+
+    take start
+      like self
+        cite free
+      cite free
+    take count
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task backward, name <backward>
+    note <Returns the value that would be obtained by taking the predecessor of self count times.>
+
+    take start
+      like self
+        cite free
+      cite free
+    take count
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like self
+        cite free
+
+  task to-string, name <to_string>
+    note <Converts the given value to a String.>
+
+    take self
+      cite free
+
+    free seed
+      like string
+        cite free
+
+  task try-from, name <try_from>
+    note <Performs the conversion.>
+
+    cast c-1
+      like u8
+      like try-from
+        like char
+          cite free
+
+    take c
+      like char
+        cite free
+      cite free
+
+    free seed
+      like result
+        like u8
+          cite free
+        like c-1/error
+        cite free
+
+  task try-from, name <try_from>
+    note <Performs the conversion.>
+
+    cast c-1
+      like char
+      like try-from
+        like u32
+          cite free
+
+    take i
+      like u32
+        cite free
+      cite free
+
+    free seed
+      like result
+        like char
+          cite free
+        like c-1/error
+        cite free

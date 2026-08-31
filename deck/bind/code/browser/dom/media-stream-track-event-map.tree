@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form media-stream-track-event-map, name <MediaStreamTrackEventMap>
+  link ended, name <ended>
+    like event
+    lock false
+  link mute, name <mute>
+    like event
+    lock false
+  link unmute, name <unmute>
+    like event
+    lock false

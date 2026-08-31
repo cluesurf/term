@@ -1,0 +1,8 @@
+
+load @term/bind/code/node/crypto
+  find public-key-input
+  find signing-options
+
+form verify-public-key-input, name <VerifyPublicKeyInput>
+  base public-key-input
+  base signing-options

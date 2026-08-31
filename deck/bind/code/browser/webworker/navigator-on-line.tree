@@ -1,0 +1,10 @@
+
+load @term/bind/code/browser/dom/navigator-on-line
+  find navigator-on-line
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form navigator-on-line, name <NavigatorOnLine>
+  link on-line, name <onLine>
+    like native-boolean

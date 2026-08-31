@@ -1,0 +1,52 @@
+
+load @term/bind/code/javascript/es2016/array/include/readonly-array
+  find readonly-array
+
+load @term/bind/code/javascript/es2019/array/flat-array
+  find flat-array
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+form readonly-array, name <ReadonlyArray>
+  head t
+
+  task flat-map, name <flatMap>
+    head u
+    head this
+      back native-undefined
+    take callback
+      like task
+        take this, like this
+        take value, like t
+        take index, like native-number
+        take array
+          like native-array
+            like t
+        like or
+          like u
+          like readonly-array
+            like u
+    take this-arg, like maybe
+      like this
+    like native-array
+      like u
+
+  task flat, name <flat>
+    head a
+    head d
+      base native-number
+      text <1>
+    take this, like a
+    take depth, like maybe
+      like d
+    like native-array
+      like flat-array
+        like a
+        like d

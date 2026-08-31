@@ -1,0 +1,85 @@
+
+bear @term/bind/code/javascript/node/worker-threads/message-channel
+bear @term/bind/code/javascript/node/worker-threads/worker-performance
+bear @term/bind/code/javascript/node/worker-threads/transfer-list-item
+bear @term/bind/code/javascript/node/worker-threads/message-port
+bear @term/bind/code/javascript/node/worker-threads/worker-options
+bear @term/bind/code/javascript/node/worker-threads/resource-limits
+bear @term/bind/code/javascript/node/worker-threads/worker
+bear @term/bind/code/javascript/node/worker-threads/broadcast-channel
+bear @term/bind/code/javascript/node/worker-threads/serializable
+
+load @term/bind
+  find any
+  find form
+  find or
+
+load @term/bind/code/javascript
+  find message-port
+  find native-boolean
+  find native-null
+  find native-number
+  find native-object
+  find native-symbol
+  find native-undefined
+  find native-void
+
+load @term/bind/code/node/vm
+  find context
+
+load @term/bind/code/node/worker-threads
+  find resource-limits
+  find serializable
+
+host is-main-thread, name <isMainThread>
+  like native-boolean
+
+host parent-port, name <parentPort>
+  like or
+    like native-null
+    like message-port
+
+host resource-limits, name <resourceLimits>
+  like resource-limits
+
+host share-env, name <SHARE_ENV>
+  like native-symbol
+    cool true
+
+host thread-id, name <threadId>
+  like native-number
+
+host worker-data, name <workerData>
+  like any
+
+task mark-as-untransferable, name <markAsUntransferable>
+  like native-void
+
+  take object, like native-object
+
+task move-message-port-to-context, name <moveMessagePortToContext>
+  like message-port
+
+  take port, like message-port
+  take contextified-sandbox, like context
+
+task receive-message-on-port, name <receiveMessageOnPort>
+  like or
+    like form
+      link message, name <message>
+        like any
+        flex true
+    like native-undefined
+
+  take port, like message-port
+
+task get-environment-data, name <getEnvironmentData>
+  like serializable
+
+  take key, like serializable
+
+task set-environment-data, name <setEnvironmentData>
+  like native-void
+
+  take key, like serializable
+  take value, like serializable

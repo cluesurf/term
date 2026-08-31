@@ -1,0 +1,25 @@
+
+load @term/bind/code/browser/dom/algorithm
+  find algorithm
+
+load @term/bind/code/browser/dom/buffer-source
+  find buffer-source
+
+load @term/bind/code/browser/dom/hash-algorithm-identifier
+  find hash-algorithm-identifier
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form pbkdf2-params, name <Pbkdf2Params>
+  base algorithm
+
+  link hash, name <hash>
+    like hash-algorithm-identifier
+    lock false
+  link iterations, name <iterations>
+    like native-number
+    lock false
+  link salt, name <salt>
+    like buffer-source
+    lock false

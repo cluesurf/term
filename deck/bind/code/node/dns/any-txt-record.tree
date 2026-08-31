@@ -1,0 +1,13 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-string
+
+form any-txt-record, name <AnyTxtRecord>
+  link type, name <type>
+    text <TXT>
+    flex true
+  link entries, name <entries>
+    like array
+      like native-string
+    flex true

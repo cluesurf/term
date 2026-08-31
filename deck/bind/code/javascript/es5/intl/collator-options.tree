@@ -1,0 +1,26 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form collator-options, name <CollatorOptions>
+  link usage, name <usage>
+    like native-string
+    lock false
+  link locale-matcher, name <localeMatcher>
+    like native-string
+    lock false
+  link numeric, name <numeric>
+    like native-boolean
+    lock false
+  link case-first, name <caseFirst>
+    like native-string
+    lock false
+  link sensitivity, name <sensitivity>
+    like native-string
+    lock false
+  link ignore-punctuation, name <ignorePunctuation>
+    like native-boolean
+    lock false

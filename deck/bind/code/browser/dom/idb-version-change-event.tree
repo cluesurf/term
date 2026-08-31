@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form idb-version-change-event, name <IDBVersionChangeEvent>
+  base event
+
+  link new-version, name <newVersion>
+    like or
+      like native-number
+      like native-null
+  link old-version, name <oldVersion>
+    like native-number

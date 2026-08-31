@@ -1,0 +1,71 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/storage
+  find storage
+
+load @term/bind/code/browser/dom/url
+  find url
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form storage-event, name <StorageEvent>
+  base event
+
+  link key, name <key>
+    like or
+      like native-string
+      like native-null
+  link new-value, name <newValue>
+    like or
+      like native-string
+      like native-null
+  link old-value, name <oldValue>
+    like or
+      like native-string
+      like native-null
+  link storage-area, name <storageArea>
+    like or
+      like storage
+      like native-null
+  link url, name <url>
+    like native-string
+
+  task init-storage-event, name <initStorageEvent>
+    take type, like native-string
+    take bubbles, like maybe
+      like native-boolean
+    take cancelable, like maybe
+      like native-boolean
+    take key, like maybe
+      like or
+        like native-string
+        like native-null
+    take old-value, like maybe
+      like or
+        like native-string
+        like native-null
+    take new-value, like maybe
+      like or
+        like native-string
+        like native-null
+    take url, like maybe
+      like or
+        like native-string
+        like url
+    take storage-area, like maybe
+      like or
+        like storage
+        like native-null
+    like native-void

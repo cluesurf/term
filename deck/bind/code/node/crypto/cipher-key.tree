@@ -1,0 +1,14 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find key-object
+
+load @term/bind/code/node/crypto
+  find binary-like
+
+form cipher-key, name <CipherKey>
+  like or
+    like binary-like
+    like key-object

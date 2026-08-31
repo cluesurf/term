@@ -1,0 +1,9 @@
+
+load @term/bind/code/browser/dom/rtc-stats-report
+  find rtc-stats-report
+
+load @term/bind/code/javascript/readonly-map
+  find readonly-map
+
+form rtc-stats-report, name <RTCStatsReport>
+  base readonly-map

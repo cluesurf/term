@@ -1,0 +1,7 @@
+
+load @term/bind/code/browser/dom/svg-animated-string
+  find svg-animated-string
+
+form svguri-reference, name <SVGURIReference>
+  link href, name <href>
+    like svg-animated-string

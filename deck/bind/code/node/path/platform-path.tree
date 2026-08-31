@@ -1,0 +1,83 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-boolean
+  find native-string
+
+load @term/bind/code/node/path
+  find format-input-path-object
+  find parsed-path
+
+form platform-path, name <PlatformPath>
+  link sep, name <sep>
+    like native-string
+  link delimiter, name <delimiter>
+    like native-string
+  link posix, name <posix>
+    like platform-path
+  link win32, name <win32>
+    like platform-path
+
+  task normalize, name <normalize>
+    like native-string
+
+    take p, like native-string
+
+  task join, name <join>
+    like native-string
+
+    take paths
+      like array
+        like native-string
+      rest true
+
+  task resolve, name <resolve>
+    like native-string
+
+    take path-segments
+      like array
+        like native-string
+      rest true
+
+  task is-absolute, name <isAbsolute>
+    like native-boolean
+
+    take p, like native-string
+
+  task relative, name <relative>
+    like native-string
+
+    take from, like native-string
+    take to, like native-string
+
+  task dirname, name <dirname>
+    like native-string
+
+    take p, like native-string
+
+  task basename, name <basename>
+    like native-string
+
+    take p, like native-string
+    take ext, like native-string
+      void true
+
+  task extname, name <extname>
+    like native-string
+
+    take p, like native-string
+
+  task parse, name <parse>
+    like parsed-path
+
+    take p, like native-string
+
+  task format, name <format>
+    like native-string
+
+    take p-p, like format-input-path-object
+
+  task to-namespaced-path, name <toNamespacedPath>
+    like native-string
+
+    take path, like native-string

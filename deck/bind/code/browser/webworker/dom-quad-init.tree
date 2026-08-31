@@ -1,0 +1,20 @@
+
+load @term/bind/code/browser/dom/dom-quad-init
+  find dom-quad-init
+
+load @term/bind/code/browser/webworker/dom-point-init
+  find dom-point-init
+
+form dom-quad-init, name <DOMQuadInit>
+  link p1, name <p1>
+    like dom-point-init
+    lock false
+  link p2, name <p2>
+    like dom-point-init
+    lock false
+  link p3, name <p3>
+    like dom-point-init
+    lock false
+  link p4, name <p4>
+    like dom-point-init
+    lock false

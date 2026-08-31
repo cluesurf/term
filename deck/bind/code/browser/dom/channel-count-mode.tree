@@ -1,0 +1,6 @@
+
+form channel-count-mode, name <ChannelCountMode>
+  like or
+    text <clamped-max>
+    text <explicit>
+    text <max>

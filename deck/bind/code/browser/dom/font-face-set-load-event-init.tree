@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+load @term/bind/code/browser/dom/font-face
+  find font-face
+
+load @term/bind/code/javascript/native
+  find native-array
+
+form font-face-set-load-event-init, name <FontFaceSetLoadEventInit>
+  base event-init
+
+  link fontfaces, name <fontfaces>
+    like native-array
+      like font-face
+    lock false

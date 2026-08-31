@@ -1,0 +1,337 @@
+
+load @term/bind/code/javascript
+  find native-number
+
+host brotli-decode, name <BROTLI_DECODE>
+  like native-number
+
+host brotli-decoder-error-alloc-block-type-trees
+  name <BROTLI_DECODER_ERROR_ALLOC_BLOCK_TYPE_TREES>
+  like native-number
+
+host brotli-decoder-error-alloc-context-map, name <BROTLI_DECODER_ERROR_ALLOC_CONTEXT_MAP>
+  like native-number
+
+host brotli-decoder-error-alloc-context-modes, name <BROTLI_DECODER_ERROR_ALLOC_CONTEXT_MODES>
+  like native-number
+
+host brotli-decoder-error-alloc-ring-buffer-1, name <BROTLI_DECODER_ERROR_ALLOC_RING_BUFFER_1>
+  like native-number
+
+host brotli-decoder-error-alloc-ring-buffer-2, name <BROTLI_DECODER_ERROR_ALLOC_RING_BUFFER_2>
+  like native-number
+
+host brotli-decoder-error-alloc-tree-groups, name <BROTLI_DECODER_ERROR_ALLOC_TREE_GROUPS>
+  like native-number
+
+host brotli-decoder-error-dictionary-not-set, name <BROTLI_DECODER_ERROR_DICTIONARY_NOT_SET>
+  like native-number
+
+host brotli-decoder-error-format-block-length-1
+  name <BROTLI_DECODER_ERROR_FORMAT_BLOCK_LENGTH_1>
+  like native-number
+
+host brotli-decoder-error-format-block-length-2
+  name <BROTLI_DECODER_ERROR_FORMAT_BLOCK_LENGTH_2>
+  like native-number
+
+host brotli-decoder-error-format-cl-space, name <BROTLI_DECODER_ERROR_FORMAT_CL_SPACE>
+  like native-number
+
+host brotli-decoder-error-format-context-map-repeat
+  name <BROTLI_DECODER_ERROR_FORMAT_CONTEXT_MAP_REPEAT>
+  like native-number
+
+host brotli-decoder-error-format-dictionary, name <BROTLI_DECODER_ERROR_FORMAT_DICTIONARY>
+  like native-number
+
+host brotli-decoder-error-format-distance, name <BROTLI_DECODER_ERROR_FORMAT_DISTANCE>
+  like native-number
+
+host brotli-decoder-error-format-exuberant-meta-nibble
+  name <BROTLI_DECODER_ERROR_FORMAT_EXUBERANT_META_NIBBLE>
+  like native-number
+
+host brotli-decoder-error-format-exuberant-nibble
+  name <BROTLI_DECODER_ERROR_FORMAT_EXUBERANT_NIBBLE>
+  like native-number
+
+host brotli-decoder-error-format-huffman-space, name <BROTLI_DECODER_ERROR_FORMAT_HUFFMAN_SPACE>
+  like native-number
+
+host brotli-decoder-error-format-padding-1, name <BROTLI_DECODER_ERROR_FORMAT_PADDING_1>
+  like native-number
+
+host brotli-decoder-error-format-padding-2, name <BROTLI_DECODER_ERROR_FORMAT_PADDING_2>
+  like native-number
+
+host brotli-decoder-error-format-reserved, name <BROTLI_DECODER_ERROR_FORMAT_RESERVED>
+  like native-number
+
+host brotli-decoder-error-format-simple-huffman-alphabet
+  name <BROTLI_DECODER_ERROR_FORMAT_SIMPLE_HUFFMAN_ALPHABET>
+  like native-number
+
+host brotli-decoder-error-format-simple-huffman-same
+  name <BROTLI_DECODER_ERROR_FORMAT_SIMPLE_HUFFMAN_SAME>
+  like native-number
+
+host brotli-decoder-error-format-transform, name <BROTLI_DECODER_ERROR_FORMAT_TRANSFORM>
+  like native-number
+
+host brotli-decoder-error-format-window-bits, name <BROTLI_DECODER_ERROR_FORMAT_WINDOW_BITS>
+  like native-number
+
+host brotli-decoder-error-invalid-arguments, name <BROTLI_DECODER_ERROR_INVALID_ARGUMENTS>
+  like native-number
+
+host brotli-decoder-error-unreachable, name <BROTLI_DECODER_ERROR_UNREACHABLE>
+  like native-number
+
+host brotli-decoder-needs-more-input, name <BROTLI_DECODER_NEEDS_MORE_INPUT>
+  like native-number
+
+host brotli-decoder-needs-more-output, name <BROTLI_DECODER_NEEDS_MORE_OUTPUT>
+  like native-number
+
+host brotli-decoder-no-error, name <BROTLI_DECODER_NO_ERROR>
+  like native-number
+
+host brotli-decoder-param-disable-ring-buffer-reallocation
+  name <BROTLI_DECODER_PARAM_DISABLE_RING_BUFFER_REALLOCATION>
+  like native-number
+
+host brotli-decoder-param-large-window, name <BROTLI_DECODER_PARAM_LARGE_WINDOW>
+  like native-number
+
+host brotli-decoder-result-error, name <BROTLI_DECODER_RESULT_ERROR>
+  like native-number
+
+host brotli-decoder-result-needs-more-input, name <BROTLI_DECODER_RESULT_NEEDS_MORE_INPUT>
+  like native-number
+
+host brotli-decoder-result-needs-more-output, name <BROTLI_DECODER_RESULT_NEEDS_MORE_OUTPUT>
+  like native-number
+
+host brotli-decoder-result-success, name <BROTLI_DECODER_RESULT_SUCCESS>
+  like native-number
+
+host brotli-decoder-success, name <BROTLI_DECODER_SUCCESS>
+  like native-number
+
+host brotli-default-mode, name <BROTLI_DEFAULT_MODE>
+  like native-number
+
+host brotli-default-quality, name <BROTLI_DEFAULT_QUALITY>
+  like native-number
+
+host brotli-default-window, name <BROTLI_DEFAULT_WINDOW>
+  like native-number
+
+host brotli-encode, name <BROTLI_ENCODE>
+  like native-number
+
+host brotli-large-max-window-bits, name <BROTLI_LARGE_MAX_WINDOW_BITS>
+  like native-number
+
+host brotli-max-input-block-bits, name <BROTLI_MAX_INPUT_BLOCK_BITS>
+  like native-number
+
+host brotli-max-quality, name <BROTLI_MAX_QUALITY>
+  like native-number
+
+host brotli-max-window-bits, name <BROTLI_MAX_WINDOW_BITS>
+  like native-number
+
+host brotli-min-input-block-bits, name <BROTLI_MIN_INPUT_BLOCK_BITS>
+  like native-number
+
+host brotli-min-quality, name <BROTLI_MIN_QUALITY>
+  like native-number
+
+host brotli-min-window-bits, name <BROTLI_MIN_WINDOW_BITS>
+  like native-number
+
+host brotli-mode-font, name <BROTLI_MODE_FONT>
+  like native-number
+
+host brotli-mode-generic, name <BROTLI_MODE_GENERIC>
+  like native-number
+
+host brotli-mode-text, name <BROTLI_MODE_TEXT>
+  like native-number
+
+host brotli-operation-emit-metadata, name <BROTLI_OPERATION_EMIT_METADATA>
+  like native-number
+
+host brotli-operation-finish, name <BROTLI_OPERATION_FINISH>
+  like native-number
+
+host brotli-operation-flush, name <BROTLI_OPERATION_FLUSH>
+  like native-number
+
+host brotli-operation-process, name <BROTLI_OPERATION_PROCESS>
+  like native-number
+
+host brotli-param-disable-literal-context-modeling
+  name <BROTLI_PARAM_DISABLE_LITERAL_CONTEXT_MODELING>
+  like native-number
+
+host brotli-param-large-window, name <BROTLI_PARAM_LARGE_WINDOW>
+  like native-number
+
+host brotli-param-lgblock, name <BROTLI_PARAM_LGBLOCK>
+  like native-number
+
+host brotli-param-lgwin, name <BROTLI_PARAM_LGWIN>
+  like native-number
+
+host brotli-param-mode, name <BROTLI_PARAM_MODE>
+  like native-number
+
+host brotli-param-ndirect, name <BROTLI_PARAM_NDIRECT>
+  like native-number
+
+host brotli-param-npostfix, name <BROTLI_PARAM_NPOSTFIX>
+  like native-number
+
+host brotli-param-quality, name <BROTLI_PARAM_QUALITY>
+  like native-number
+
+host brotli-param-size-hint, name <BROTLI_PARAM_SIZE_HINT>
+  like native-number
+
+host deflate, name <DEFLATE>
+  like native-number
+
+host deflateraw, name <DEFLATERAW>
+  like native-number
+
+host gunzip, name <GUNZIP>
+  like native-number
+
+host gzip, name <GZIP>
+  like native-number
+
+host inflate, name <INFLATE>
+  like native-number
+
+host inflateraw, name <INFLATERAW>
+  like native-number
+
+host unzip, name <UNZIP>
+  like native-number
+
+host z-no-flush, name <Z_NO_FLUSH>
+  like native-number
+
+host z-partial-flush, name <Z_PARTIAL_FLUSH>
+  like native-number
+
+host z-sync-flush, name <Z_SYNC_FLUSH>
+  like native-number
+
+host z-full-flush, name <Z_FULL_FLUSH>
+  like native-number
+
+host z-finish, name <Z_FINISH>
+  like native-number
+
+host z-block, name <Z_BLOCK>
+  like native-number
+
+host z-trees, name <Z_TREES>
+  like native-number
+
+host z-ok, name <Z_OK>
+  like native-number
+
+host z-stream-end, name <Z_STREAM_END>
+  like native-number
+
+host z-need-dict, name <Z_NEED_DICT>
+  like native-number
+
+host z-errno, name <Z_ERRNO>
+  like native-number
+
+host z-stream-error, name <Z_STREAM_ERROR>
+  like native-number
+
+host z-data-error, name <Z_DATA_ERROR>
+  like native-number
+
+host z-mem-error, name <Z_MEM_ERROR>
+  like native-number
+
+host z-buf-error, name <Z_BUF_ERROR>
+  like native-number
+
+host z-version-error, name <Z_VERSION_ERROR>
+  like native-number
+
+host z-no-compression, name <Z_NO_COMPRESSION>
+  like native-number
+
+host z-best-speed, name <Z_BEST_SPEED>
+  like native-number
+
+host z-best-compression, name <Z_BEST_COMPRESSION>
+  like native-number
+
+host z-default-compression, name <Z_DEFAULT_COMPRESSION>
+  like native-number
+
+host z-filtered, name <Z_FILTERED>
+  like native-number
+
+host z-huffman-only, name <Z_HUFFMAN_ONLY>
+  like native-number
+
+host z-rle, name <Z_RLE>
+  like native-number
+
+host z-fixed, name <Z_FIXED>
+  like native-number
+
+host z-default-strategy, name <Z_DEFAULT_STRATEGY>
+  like native-number
+
+host z-default-windowbits, name <Z_DEFAULT_WINDOWBITS>
+  like native-number
+
+host z-min-windowbits, name <Z_MIN_WINDOWBITS>
+  like native-number
+
+host z-max-windowbits, name <Z_MAX_WINDOWBITS>
+  like native-number
+
+host z-min-chunk, name <Z_MIN_CHUNK>
+  like native-number
+
+host z-max-chunk, name <Z_MAX_CHUNK>
+  like native-number
+
+host z-default-chunk, name <Z_DEFAULT_CHUNK>
+  like native-number
+
+host z-min-memlevel, name <Z_MIN_MEMLEVEL>
+  like native-number
+
+host z-max-memlevel, name <Z_MAX_MEMLEVEL>
+  like native-number
+
+host z-default-memlevel, name <Z_DEFAULT_MEMLEVEL>
+  like native-number
+
+host z-min-level, name <Z_MIN_LEVEL>
+  like native-number
+
+host z-max-level, name <Z_MAX_LEVEL>
+  like native-number
+
+host z-default-level, name <Z_DEFAULT_LEVEL>
+  like native-number
+
+host zlib-vernum, name <ZLIB_VERNUM>
+  like native-number

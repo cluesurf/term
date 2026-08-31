@@ -1,0 +1,31 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form typed-property-descriptor, name <TypedPropertyDescriptor>
+  head t
+
+  link enumerable, name <enumerable>
+    like native-boolean
+    lock false
+  link configurable, name <configurable>
+    like native-boolean
+    lock false
+  link writable, name <writable>
+    like native-boolean
+    lock false
+  link value, name <value>
+    like t
+    lock false
+  link get, name <get>
+    like task
+      like t
+    lock false
+  link set, name <set>
+    like task
+      take value, like t
+      like native-void
+    lock false

@@ -1,0 +1,48 @@
+
+load @term/bind
+  find form
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-undefined
+  find native-void
+  find readonly-array
+
+load @term/bind/code/node/perf-hooks
+  find entry-type
+  find performance-observer-callback
+
+form performance-observer, name <PerformanceObserver>
+  base async-resource
+  task disconnect, name <disconnect>
+    like native-void
+
+  task observe, name <observe>
+    like native-void
+
+    take options
+      like or
+        like form
+          link entry-types, name <entryTypes>
+            like readonly-array
+              like entry-type
+            flex true
+          link buffered, name <buffered>
+            like or
+              like native-boolean
+              like native-undefined
+            flex true
+        like form
+          link type, name <type>
+            like entry-type
+            flex true
+          link buffered, name <buffered>
+            like or
+              like native-boolean
+              like native-undefined
+            flex true
+
+form performance-observer-constructor
+  hook make
+    take callback, like performance-observer-callback

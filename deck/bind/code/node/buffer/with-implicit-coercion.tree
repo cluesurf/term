@@ -1,0 +1,15 @@
+
+load @term/bind
+  find form
+  find like
+  find or
+
+form with-implicit-coercion, name <WithImplicitCoercion>
+  home true
+  head t
+
+  like or
+    like t
+    like form
+      task value-of, name <valueOf>
+        like t

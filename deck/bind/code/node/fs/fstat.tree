@@ -1,0 +1,54 @@
+
+load @term/bind
+  find and
+  find form
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+  find promise
+
+load @term/bind/code/node/fs
+  find big-int-stats
+  find stat-options
+  find stats
+
+task promisify, name <__promisify__>
+  like promise
+    like stats
+
+  take fd, like native-number
+  take options
+    like and
+      like stat-options
+      like form
+        link bigint, name <bigint>
+          like or
+            text <false>
+            like native-undefined
+          flex true
+    void true
+
+task promisify, name <__promisify__>
+  like promise
+    like big-int-stats
+
+  take fd, like native-number
+  take options
+    like and
+      like stat-options
+      like form
+        link bigint, name <bigint>
+          text <true>
+          flex true
+
+task promisify, name <__promisify__>
+  like promise
+    like or
+      like stats
+      like big-int-stats
+
+  take fd, like native-number
+  take options, like stat-options
+    void true

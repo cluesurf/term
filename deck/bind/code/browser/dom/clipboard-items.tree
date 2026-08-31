@@ -1,0 +1,10 @@
+
+load @term/bind/code/browser/dom/clipboard-item
+  find clipboard-item
+
+load @term/bind/code/javascript/native
+  find native-array
+
+form clipboard-items, name <ClipboardItems>
+  like native-array
+    like clipboard-item

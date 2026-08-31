@@ -1,0 +1,15 @@
+
+load @term/bind/code/javascript/es5/boolean
+  find boolean
+
+load @term/bind/code/javascript/native
+  find native-any
+
+form boolean-constructor, name <BooleanConstructor>
+  link prototype, name <prototype>
+    like boolean
+
+  hook make
+    take value, like maybe
+      like native-any
+    like boolean

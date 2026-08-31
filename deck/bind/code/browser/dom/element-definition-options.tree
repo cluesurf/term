@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form element-definition-options, name <ElementDefinitionOptions>
+  link extends, name <extends>
+    like native-string
+    lock false

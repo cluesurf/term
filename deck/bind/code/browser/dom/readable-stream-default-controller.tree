@@ -1,0 +1,34 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form readable-stream-default-controller, name <ReadableStreamDefaultController>
+  head r
+    back native-any
+
+  link desired-size, name <desiredSize>
+    like or
+      like native-number
+      like native-null
+
+  task close, name <close>
+    like native-void
+
+  task enqueue, name <enqueue>
+    take chunk, like maybe
+      like r
+    like native-void
+
+  task error, name <error>
+    take e, like maybe
+      like native-any
+    like native-void

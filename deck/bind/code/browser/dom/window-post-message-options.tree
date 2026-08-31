@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/post-message-options
+  find post-message-options
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form window-post-message-options, name <WindowPostMessageOptions>
+  base post-message-options
+
+  link target-origin, name <targetOrigin>
+    like native-string
+    lock false

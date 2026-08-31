@@ -1,0 +1,83 @@
+
+load @term/bind/code/browser/dom/rtc-ice-candidate-init
+  find rtc-ice-candidate-init
+
+load @term/bind/code/browser/dom/rtc-ice-candidate-type
+  find rtc-ice-candidate-type
+
+load @term/bind/code/browser/dom/rtc-ice-component
+  find rtc-ice-component
+
+load @term/bind/code/browser/dom/rtc-ice-protocol
+  find rtc-ice-protocol
+
+load @term/bind/code/browser/dom/rtc-ice-tcp-candidate-type
+  find rtc-ice-tcp-candidate-type
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form rtc-ice-candidate, name <RTCIceCandidate>
+  link address, name <address>
+    like or
+      like native-string
+      like native-null
+  link candidate, name <candidate>
+    like native-string
+  link component, name <component>
+    like or
+      like rtc-ice-component
+      like native-null
+  link foundation, name <foundation>
+    like or
+      like native-string
+      like native-null
+  link port, name <port>
+    like or
+      like native-number
+      like native-null
+  link priority, name <priority>
+    like or
+      like native-number
+      like native-null
+  link protocol, name <protocol>
+    like or
+      like rtc-ice-protocol
+      like native-null
+  link related-address, name <relatedAddress>
+    like or
+      like native-string
+      like native-null
+  link related-port, name <relatedPort>
+    like or
+      like native-number
+      like native-null
+  link sdp-m-line-index, name <sdpMLineIndex>
+    like or
+      like native-number
+      like native-null
+  link sdp-mid, name <sdpMid>
+    like or
+      like native-string
+      like native-null
+  link tcp-type, name <tcpType>
+    like or
+      like rtc-ice-tcp-candidate-type
+      like native-null
+  link type, name <type>
+    like or
+      like rtc-ice-candidate-type
+      like native-null
+  link username-fragment, name <usernameFragment>
+    like or
+      like native-string
+      like native-null
+
+  task to-json, name <toJSON>
+    like rtc-ice-candidate-init

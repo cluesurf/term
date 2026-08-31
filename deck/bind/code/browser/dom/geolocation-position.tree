@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/dom-time-stamp
+  find dom-time-stamp
+
+load @term/bind/code/browser/dom/geolocation-coordinates
+  find geolocation-coordinates
+
+form geolocation-position, name <GeolocationPosition>
+  link coords, name <coords>
+    like geolocation-coordinates
+  link timestamp, name <timestamp>
+    like dom-time-stamp

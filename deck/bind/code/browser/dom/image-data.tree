@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/es5/uint8-clamped-array
+  find uint8-clamped-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form image-data, name <ImageData>
+  link data, name <data>
+    like uint8-clamped-array
+  link height, name <height>
+    like native-number
+  link width, name <width>
+    like native-number

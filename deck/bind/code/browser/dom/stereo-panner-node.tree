@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/audio-node
+  find audio-node
+
+load @term/bind/code/browser/dom/audio-param
+  find audio-param
+
+form stereo-panner-node, name <StereoPannerNode>
+  base audio-node
+
+  link pan, name <pan>
+    like audio-param

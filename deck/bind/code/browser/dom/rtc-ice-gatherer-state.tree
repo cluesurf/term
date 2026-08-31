@@ -1,0 +1,6 @@
+
+form rtc-ice-gatherer-state, name <RTCIceGathererState>
+  like or
+    text <complete>
+    text <gathering>
+    text <new>

@@ -1,0 +1,27 @@
+
+load @term/bind/code/browser/dom/dom-high-res-time-stamp
+  find dom-high-res-time-stamp
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form performance-measure-options, name <PerformanceMeasureOptions>
+  link detail, name <detail>
+    like native-any
+    lock false
+  link duration, name <duration>
+    like dom-high-res-time-stamp
+    lock false
+  link end, name <end>
+    like or
+      like native-string
+      like dom-high-res-time-stamp
+    lock false
+  link start, name <start>
+    like or
+      like native-string
+      like dom-high-res-time-stamp
+    lock false

@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/scripthost/date
+  find date
+
+load @term/bind/code/javascript/es5/date-constructor
+  find date-constructor
+
+load @term/bind/code/javascript/var-date
+  find var-date
+
+form date-constructor, name <DateConstructor>
+  hook make
+    take vd, like var-date
+    like date

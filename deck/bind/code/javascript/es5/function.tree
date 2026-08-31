@@ -1,0 +1,53 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form function, name <Function>
+  link prototype, name <prototype>
+    like native-any
+    lock false
+  link length, name <length>
+    like native-number
+  link arguments, name <arguments>
+    like native-any
+    lock false
+  link caller, name <caller>
+    like function
+    lock false
+
+  task apply, name <apply>
+    take this, like function
+    take this-arg, like native-any
+    take arg-array, like maybe
+      like native-any
+    like native-any
+
+  task call, name <call>
+    take this, like function
+    take this-arg, like native-any
+    take arg-array
+      like native-array
+        like native-any
+      rest true
+    like native-any
+
+  task bind, name <bind>
+    take this, like function
+    take this-arg, like native-any
+    take arg-array
+      like native-array
+        like native-any
+      rest true
+    like native-any
+
+  task to-string, name <toString>
+    like native-string

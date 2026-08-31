@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/keyframe-effect-options
+  find keyframe-effect-options
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form keyframe-animation-options, name <KeyframeAnimationOptions>
+  base keyframe-effect-options
+
+  link id, name <id>
+    like native-string
+    lock false

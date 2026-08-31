@@ -1,0 +1,35 @@
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form rtc-peer-connection-ice-error-event-init, name <RTCPeerConnectionIceErrorEventInit>
+  base event-init
+
+  link address, name <address>
+    like or
+      like native-string
+      like native-null
+    lock false
+  link error-code, name <errorCode>
+    like native-number
+    lock false
+  link error-text, name <errorText>
+    like native-string
+    lock false
+  link port, name <port>
+    like or
+      like native-number
+      like native-null
+    lock false
+  link url, name <url>
+    like native-string
+    lock false

@@ -1,0 +1,9 @@
+
+load @term/bind
+  find or
+
+form type, name <Type>
+  like or
+    text <dir>
+    text <file>
+    text <junction>

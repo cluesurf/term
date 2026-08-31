@@ -1,0 +1,38 @@
+
+load @term/bind/code/javascript/es5/function
+  find function
+
+load @term/bind/code/javascript/es5/property-key
+  find property-key
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form object, name <Object>
+  link constructor, name <constructor>
+    like function
+    lock false
+
+  task to-string, name <toString>
+    like native-string
+
+  task to-locale-string, name <toLocaleString>
+    like native-string
+
+  task value-of, name <valueOf>
+    like object
+
+  task has-own-property, name <hasOwnProperty>
+    take v, like property-key
+    like native-boolean
+
+  task is-prototype-of, name <isPrototypeOf>
+    take v, like object
+    like native-boolean
+
+  task property-is-enumerable, name <propertyIsEnumerable>
+    take v, like property-key
+    like native-boolean

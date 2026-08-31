@@ -1,0 +1,56 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/events/event-emitter
+  find abortable
+
+form listen-options, name <ListenOptions>
+  base abortable
+
+  link port, name <port>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link host, name <host>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link backlog, name <backlog>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link path, name <path>
+    like or
+      like native-string
+      like native-undefined
+    flex true
+  link exclusive, name <exclusive>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link readable-all, name <readableAll>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link writable-all, name <writableAll>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link ipv6-only, name <ipv6Only>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

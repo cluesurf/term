@@ -1,0 +1,104 @@
+
+load @term/bind/code/javascript
+  find array
+  find incoming-message
+  find native-boolean
+  find native-null
+  find native-number
+  find native-string
+  find native-this
+  find native-undefined
+  find native-void
+  find readonly-array
+  find socket
+
+load @term/bind
+  find or
+  find task
+  find tuple
+
+load @term/bind/code/node/http
+  find outgoing-http-headers
+
+form outgoing-message, name <OutgoingMessage>
+  base stream-writable
+  link req, name <req>, like incoming-message
+  link chunked-encoding, name <chunkedEncoding>, like native-boolean
+  link should-keep-alive, name <shouldKeepAlive>, like native-boolean
+  link use-chunked-encoding-by-default, name <useChunkedEncodingByDefault>, like native-boolean
+  link send-date, name <sendDate>, like native-boolean
+  link finished, name <finished>, like native-boolean
+  link headers-sent, name <headersSent>, like native-boolean
+  link connection, name <connection>
+    like or
+      like socket
+      like native-null
+  link socket, name <socket>
+    like or
+      like socket
+      like native-null
+
+  task set-timeout, name <setTimeout>
+    like native-this
+
+    take msecs, like native-number
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task set-header, name <setHeader>
+    like native-this
+
+    take name, like native-string
+    take value
+      like or
+        like native-number
+        like native-string
+        like readonly-array
+          like native-string
+
+  task get-header, name <getHeader>
+    like or
+      like native-number
+      like native-string
+      like array
+        like native-string
+      like native-undefined
+
+    take name, like native-string
+
+  task get-headers, name <getHeaders>
+    like outgoing-http-headers
+
+  task get-header-names, name <getHeaderNames>
+    like array
+      like native-string
+
+  task has-header, name <hasHeader>
+    like native-boolean
+
+    take name, like native-string
+
+  task remove-header, name <removeHeader>
+    like native-void
+
+    take name, like native-string
+
+  task add-trailers, name <addTrailers>
+    like native-void
+
+    take headers
+      like or
+        like outgoing-http-headers
+        like readonly-array
+          like tuple
+            like native-string
+            like native-string
+
+  task flush-headers, name <flushHeaders>
+    like native-void
+
+form outgoing-message-constructor
+  hook make

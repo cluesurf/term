@@ -1,0 +1,11 @@
+
+form connection-type, name <ConnectionType>
+  like or
+    text <bluetooth>
+    text <cellular>
+    text <ethernet>
+    text <mixed>
+    text <none>
+    text <other>
+    text <unknown>
+    text <wifi>

@@ -1,0 +1,24 @@
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+  find native-undefined
+
+form parse-options, name <ParseOptions>
+  link max-keys, name <maxKeys>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link decode-uri-component, name <decodeURIComponent>
+    like or
+      like task
+        like native-string
+
+        take str, like native-string
+      like native-undefined
+    flex true

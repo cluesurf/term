@@ -1,0 +1,26 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-undefined
+
+load @term/bind/code/node/http/agent-options
+  find agent-options
+
+form agent-options, name <AgentOptions>
+  base http-agent-options
+  base tls-connection-options
+
+  link reject-unauthorized, name <rejectUnauthorized>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link max-cached-sessions, name <maxCachedSessions>
+    like or
+      like native-number
+      like native-undefined
+    flex true

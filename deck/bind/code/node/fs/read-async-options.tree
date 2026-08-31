@@ -1,0 +1,19 @@
+
+load @term/bind
+  find like
+
+load @term/bind/code/javascript
+  find node-js-array-buffer-view
+
+load @term/bind/code/node/fs
+  find read-sync-options
+
+form read-async-options, name <ReadAsyncOptions>
+  base read-sync-options
+
+  head t-buffer
+    base node-js-array-buffer-view
+
+  link buffer, name <buffer>
+    like t-buffer
+    flex true

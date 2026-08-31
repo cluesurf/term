@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/es2015/iterable/map
+  find map
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form map, name <Map>
+  head k
+  head v
+
+  link {symbol/to-string-tag}
+    like native-string
+    read true

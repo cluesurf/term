@@ -1,0 +1,74 @@
+
+load @term/bind/code/browser/webworker/canvas-compositing
+  find canvas-compositing
+
+load @term/bind/code/browser/webworker/canvas-draw-image
+  find canvas-draw-image
+
+load @term/bind/code/browser/webworker/canvas-draw-path
+  find canvas-draw-path
+
+load @term/bind/code/browser/webworker/canvas-fill-stroke-styles
+  find canvas-fill-stroke-styles
+
+load @term/bind/code/browser/webworker/canvas-filters
+  find canvas-filters
+
+load @term/bind/code/browser/webworker/canvas-image-data
+  find canvas-image-data
+
+load @term/bind/code/browser/webworker/canvas-image-smoothing
+  find canvas-image-smoothing
+
+load @term/bind/code/browser/webworker/canvas-path
+  find canvas-path
+
+load @term/bind/code/browser/webworker/canvas-path-drawing-styles
+  find canvas-path-drawing-styles
+
+load @term/bind/code/browser/webworker/canvas-rect
+  find canvas-rect
+
+load @term/bind/code/browser/webworker/canvas-shadow-styles
+  find canvas-shadow-styles
+
+load @term/bind/code/browser/webworker/canvas-state
+  find canvas-state
+
+load @term/bind/code/browser/webworker/canvas-text
+  find canvas-text
+
+load @term/bind/code/browser/webworker/canvas-text-drawing-styles
+  find canvas-text-drawing-styles
+
+load @term/bind/code/browser/webworker/canvas-transform
+  find canvas-transform
+
+load @term/bind/code/browser/webworker/offscreen-canvas
+  find offscreen-canvas
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form offscreen-canvas-rendering-context2-d, name <OffscreenCanvasRenderingContext2D>
+  base canvas-compositing
+  base canvas-draw-image
+  base canvas-draw-path
+  base canvas-fill-stroke-styles
+  base canvas-filters
+  base canvas-image-data
+  base canvas-image-smoothing
+  base canvas-path
+  base canvas-path-drawing-styles
+  base canvas-rect
+  base canvas-shadow-styles
+  base canvas-state
+  base canvas-text
+  base canvas-text-drawing-styles
+  base canvas-transform
+
+  link canvas, name <canvas>
+    like offscreen-canvas
+
+  task commit, name <commit>
+    like native-void

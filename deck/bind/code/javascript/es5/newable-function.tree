@@ -1,0 +1,110 @@
+
+load @term/bind/code/javascript/es5/function
+  find function
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form newable-function, name <NewableFunction>
+  base function
+
+  task apply, name <apply>
+    head t
+    take this
+    take this-arg, like t
+    like native-void
+
+  task apply, name <apply>
+    head t
+    head a
+      base native-array
+        like native-any
+    take this
+    take this-arg, like t
+    take args, like a
+    like native-void
+
+  task call, name <call>
+    head t
+    head a
+      base native-array
+        like native-any
+    take this
+    take this-arg, like t
+    take args, like a
+      rest true
+    like native-void
+
+  task bind, name <bind>
+    head t
+    take this, like t
+    take this-arg, like native-any
+    like t
+
+  task bind, name <bind>
+    head a0
+    head a
+      base native-array
+        like native-any
+    head r
+    take this
+    take this-arg, like native-any
+    take arg0, like a0
+
+  task bind, name <bind>
+    head a0
+    head a1
+    head a
+      base native-array
+        like native-any
+    head r
+    take this
+    take this-arg, like native-any
+    take arg0, like a0
+    take arg1, like a1
+
+  task bind, name <bind>
+    head a0
+    head a1
+    head a2
+    head a
+      base native-array
+        like native-any
+    head r
+    take this
+    take this-arg, like native-any
+    take arg0, like a0
+    take arg1, like a1
+    take arg2, like a2
+
+  task bind, name <bind>
+    head a0
+    head a1
+    head a2
+    head a3
+    head a
+      base native-array
+        like native-any
+    head r
+    take this
+    take this-arg, like native-any
+    take arg0, like a0
+    take arg1, like a1
+    take arg2, like a2
+    take arg3, like a3
+
+  task bind, name <bind>
+    head ax
+    head r
+    take this
+    take this-arg, like native-any
+    take args
+      like native-array
+        like ax
+      rest true

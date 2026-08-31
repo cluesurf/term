@@ -1,0 +1,50 @@
+
+load @term/bind/code/javascript
+  find array
+
+load @term/bind/code/javascript/es2015/iterable
+  find iterable
+
+load @term/bind/code/javascript/es2020/promise
+  find promise-settled-result
+
+load @term/bind/code/javascript/es5
+  find promise-like
+
+load @term/bind/code/javascript/native
+  find u
+
+load @term/bind/code/javascript/es2018/promise/promise
+  find promise
+
+form promise
+  hook self
+    task all-settled, name <allSettled>
+      like promise
+        like any
+      head t
+        base or
+          like array
+            like unknown
+          like tuple
+            like unknown
+
+      take values
+
+    task all-settled, name <allSettled>
+      like promise
+        like array
+          like promise-settled-result
+            like test
+              fork roll
+                like t
+                like promise-like
+                  name u
+                hook true
+                  like u
+                hook false
+                  like t
+
+      head t
+
+      take values

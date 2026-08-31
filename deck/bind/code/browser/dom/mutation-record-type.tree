@@ -1,0 +1,6 @@
+
+form mutation-record-type, name <MutationRecordType>
+  like or
+    text <attributes>
+    text <characterData>
+    text <childList>

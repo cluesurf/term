@@ -1,0 +1,6 @@
+
+load @term/bind/code/node/globals
+  find relative-indexable
+
+form big-int64-array, name <BigInt64Array>
+  base relative-indexable

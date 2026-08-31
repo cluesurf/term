@@ -1,0 +1,155 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/html-element
+  find html-element
+
+load @term/bind/code/browser/dom/html-element-event-map
+  find html-element-event-map
+
+load @term/bind/code/browser/dom/html-form-controls-collection
+  find html-form-controls-collection
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form html-form-element, name <HTMLFormElement>
+  base html-element
+
+  link accept-charset, name <acceptCharset>
+    like native-string
+    lock false
+  link action, name <action>
+    like native-string
+    lock false
+  link autocomplete, name <autocomplete>
+    like native-string
+    lock false
+  link elements, name <elements>
+    like html-form-controls-collection
+  link encoding, name <encoding>
+    like native-string
+    lock false
+  link enctype, name <enctype>
+    like native-string
+    lock false
+  link length, name <length>
+    like native-number
+  link method, name <method>
+    like native-string
+    lock false
+  link name, name <name>
+    like native-string
+    lock false
+  link no-validate, name <noValidate>
+    like native-boolean
+    lock false
+  link target, name <target>
+    like native-string
+    lock false
+
+  task check-validity, name <checkValidity>
+    like native-boolean
+
+  task report-validity, name <reportValidity>
+    like native-boolean
+
+  task request-submit, name <requestSubmit>
+    take submitter, like maybe
+      like or
+        like html-element
+        like native-null
+    like native-void
+
+  task reset, name <reset>
+    like native-void
+
+  task submit, name <submit>
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like html-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like html-form-element
+        take ev
+          like index
+            like html-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like html-element-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like html-form-element
+        take ev
+          like index
+            like html-element-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  mesh index, like native-number
+    like element
+
+  mesh name, like native-string
+    like native-any

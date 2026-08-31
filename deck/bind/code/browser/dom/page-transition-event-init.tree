@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form page-transition-event-init, name <PageTransitionEventInit>
+  base event-init
+
+  link persisted, name <persisted>
+    like native-boolean
+    lock false

@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/webworker/permission-descriptor
+  find permission-descriptor
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form device-permission-descriptor, name <DevicePermissionDescriptor>
+  base permission-descriptor
+
+  link device-id, name <deviceId>
+    like native-string
+    lock false
+  link name, name <name>
+    like or
+      text <camera>
+      text <microphone>
+      text <speaker>
+    lock false

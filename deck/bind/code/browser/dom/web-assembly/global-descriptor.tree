@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/value-type
+  find value-type
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form global-descriptor, name <GlobalDescriptor>
+  link mutable, name <mutable>
+    like native-boolean
+    lock false
+  link value, name <value>
+    like value-type
+    lock false

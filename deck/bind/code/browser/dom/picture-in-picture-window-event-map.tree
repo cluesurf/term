@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form picture-in-picture-window-event-map, name <PictureInPictureWindowEventMap>
+  link resize, name <resize>
+    like event
+    lock false

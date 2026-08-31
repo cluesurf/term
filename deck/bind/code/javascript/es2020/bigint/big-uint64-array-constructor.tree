@@ -1,0 +1,76 @@
+
+load @term/bind/code/javascript/es2015/iterable/iterable
+  find iterable
+
+load @term/bind/code/javascript/es2020/bigint/big-uint64-array
+  find big-uint64-array
+
+load @term/bind/code/javascript/es5/array-buffer-like
+  find array-buffer-like
+
+load @term/bind/code/javascript/es5/array-like
+  find array-like
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-bigint
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form big-uint64-array-constructor, name <BigUint64ArrayConstructor>
+  link prototype, name <prototype>
+    like big-uint64-array
+  link bytes-per-element, name <BYTES_PER_ELEMENT>
+    like native-number
+
+  task of, name <of>
+    take items
+      like native-array
+        like native-bigint
+      rest true
+    like big-uint64-array
+
+  task from, name <from>
+    take array-like
+      like array-like
+        like native-bigint
+    like big-uint64-array
+
+  task from, name <from>
+    head u
+    take array-like
+      like array-like
+        like u
+    take mapfn
+      like task
+        take v, like u
+        take k, like native-number
+        like native-bigint
+    take this-arg, like maybe
+      like native-any
+    like big-uint64-array
+
+  hook make
+    take length, like maybe
+      like native-number
+    like big-uint64-array
+
+  hook make
+    take array
+      like iterable
+        like native-bigint
+    like big-uint64-array
+
+  hook make
+    take buffer, like array-buffer-like
+    take byte-offset, like maybe
+      like native-number
+    take length, like maybe
+      like native-number
+    like big-uint64-array

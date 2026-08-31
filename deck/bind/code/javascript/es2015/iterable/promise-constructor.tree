@@ -1,0 +1,55 @@
+
+load @term/bind/code/javascript/es2015/iterable/iterable
+  find iterable
+
+load @term/bind/code/javascript/es2015/iterable/promise
+  find promise
+
+load @term/bind/code/javascript/es5/promise-like
+  find promise-like
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/u
+  find u
+
+form promise-constructor, name <PromiseConstructor>
+  task all, name <all>
+    head t
+    take values
+      like iterable
+        like or
+          like t
+          like promise-like
+            like t
+    like promise
+      like native-array
+        like t
+
+  task race, name <race>
+    head t
+    take values
+      like iterable
+        like t
+    like promise
+      like test
+        stem roll
+          like t
+          like promise-like
+            name u
+          hook true
+            like u
+          hook false
+            like t
+
+  task race, name <race>
+    head t
+    take values
+      like iterable
+        like or
+          like t
+          like promise-like
+            like t
+    like promise
+      like t

@@ -1,0 +1,45 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-number
+  find native-void
+
+load @term/bind
+  find any
+  find like
+  find task
+
+load @term/bind/code/node/assert
+  find call-tracker-report-information
+
+form call-tracker, name <CallTracker>
+  task calls, name <calls>
+    like task
+      like native-void
+
+    take exact, like native-number
+      void true
+
+  task calls, name <calls>
+    like func
+
+    head func
+      base task
+        like any
+
+        take args
+          like array
+            like any
+          rest true
+
+    take fn, like func
+      void true
+    take exact, like native-number
+      void true
+
+  task report, name <report>
+    like array
+      like call-tracker-report-information
+
+  task verify, name <verify>
+    like native-void

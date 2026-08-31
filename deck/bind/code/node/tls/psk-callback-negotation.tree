@@ -1,0 +1,18 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find data-view
+  find native-string
+  find node-js-typed-array
+
+form psk-callback-negotation, name <PSKCallbackNegotation>
+  link psk, name <psk>
+    like or
+      like data-view
+      like node-js-typed-array
+    flex true
+  link identity, name <identity>
+    like native-string
+    flex true

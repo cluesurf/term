@@ -1,0 +1,35 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-number
+  find native-undefined
+
+load @term/bind
+  find or
+
+load @term/bind/code/node/inspector/profiler
+  find profile-node
+
+form profile, name <Profile>
+  link nodes, name <nodes>
+    like array
+      like profile-node
+    flex true
+  link start-time, name <startTime>
+    like native-number
+    flex true
+  link end-time, name <endTime>
+    like native-number
+    flex true
+  link samples, name <samples>
+    like or
+      like array
+        like native-number
+      like native-undefined
+    flex true
+  link time-deltas, name <timeDeltas>
+    like or
+      like array
+        like native-number
+      like native-undefined
+    flex true

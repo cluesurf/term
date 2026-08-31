@@ -1,0 +1,926 @@
+
+load @term/bind/code/javascript
+  find array
+  find error
+  find native-boolean
+  find native-number
+  find native-string
+  find native-symbol
+  find native-this
+  find native-undefined
+  find native-void
+  find stream-readable
+
+load @term/bind
+  find any
+  find or
+  find task
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/http
+  find outgoing-http-headers
+
+load @term/bind/code/node/http2
+  find http2-session
+  find incoming-http-headers
+  find stream-priority-options
+  find stream-state
+
+form http2-stream, name <Http2Stream>
+  base stream-duplex
+
+  link aborted, name <aborted>
+    like native-boolean
+  link buffer-size, name <bufferSize>
+    like native-number
+  link closed, name <closed>
+    like native-boolean
+  link destroyed, name <destroyed>
+    like native-boolean
+  link end-after-headers, name <endAfterHeaders>
+    like native-boolean
+  link id, name <id>
+    like or
+      like native-number
+      like native-undefined
+  link pending, name <pending>
+    like native-boolean
+  link rst-code, name <rstCode>
+    like native-number
+  link sent-headers, name <sentHeaders>
+    like outgoing-http-headers
+  link sent-info-headers, name <sentInfoHeaders>
+    like or
+      like array
+        like outgoing-http-headers
+      like native-undefined
+  link sent-trailers, name <sentTrailers>
+    like or
+      like outgoing-http-headers
+      like native-undefined
+  link session, name <session>
+    like http2-session
+  link state, name <state>
+    like stream-state
+
+  task close, name <close>
+    like native-void
+
+    take code, like native-number
+      void true
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task priority, name <priority>
+    like native-void
+
+    take options, like stream-priority-options
+
+  task set-timeout, name <setTimeout>
+    like native-void
+
+    take msecs, like native-number
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task send-trailers, name <sendTrailers>
+    like native-void
+
+    take headers, like outgoing-http-headers
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <aborted>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <data>
+    take listener
+      like task
+        like native-void
+
+        take chunk
+          like or
+            like buffer
+            like native-string
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <drain>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <end>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <finish>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <frameError>
+    take listener
+      like task
+        like native-void
+
+        take frame-type, like native-number
+        take error-code, like native-number
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <pipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <unpipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <streamClosed>
+    take listener
+      like task
+        like native-void
+
+        take code, like native-number
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <timeout>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <trailers>
+    take listener
+      like task
+        like native-void
+
+        take trailers, like incoming-http-headers
+        take flags, like native-number
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <wantTrailers>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <aborted>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <close>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <data>
+    take chunk
+      like or
+        like buffer
+        like native-string
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <drain>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <end>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <error>
+    take err, like error
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <finish>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <frameError>
+    take frame-type, like native-number
+    take error-code, like native-number
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <pipe>
+    take src, like stream-readable
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <unpipe>
+    take src, like stream-readable
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <streamClosed>
+    take code, like native-number
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <timeout>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <trailers>
+    take trailers, like incoming-http-headers
+    take flags, like native-number
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <wantTrailers>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take args
+      like array
+        like any
+      rest true
+
+  task on, name <on>
+    like native-this
+
+    take event, text <aborted>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <data>
+    take listener
+      like task
+        like native-void
+
+        take chunk
+          like or
+            like buffer
+            like native-string
+
+  task on, name <on>
+    like native-this
+
+    take event, text <drain>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <end>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task on, name <on>
+    like native-this
+
+    take event, text <finish>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <frameError>
+    take listener
+      like task
+        like native-void
+
+        take frame-type, like native-number
+        take error-code, like native-number
+
+  task on, name <on>
+    like native-this
+
+    take event, text <pipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task on, name <on>
+    like native-this
+
+    take event, text <unpipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task on, name <on>
+    like native-this
+
+    take event, text <streamClosed>
+    take listener
+      like task
+        like native-void
+
+        take code, like native-number
+
+  task on, name <on>
+    like native-this
+
+    take event, text <timeout>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <trailers>
+    take listener
+      like task
+        like native-void
+
+        take trailers, like incoming-http-headers
+        take flags, like native-number
+
+  task on, name <on>
+    like native-this
+
+    take event, text <wantTrailers>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task once, name <once>
+    like native-this
+
+    take event, text <aborted>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <data>
+    take listener
+      like task
+        like native-void
+
+        take chunk
+          like or
+            like buffer
+            like native-string
+
+  task once, name <once>
+    like native-this
+
+    take event, text <drain>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <end>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task once, name <once>
+    like native-this
+
+    take event, text <finish>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <frameError>
+    take listener
+      like task
+        like native-void
+
+        take frame-type, like native-number
+        take error-code, like native-number
+
+  task once, name <once>
+    like native-this
+
+    take event, text <pipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task once, name <once>
+    like native-this
+
+    take event, text <unpipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task once, name <once>
+    like native-this
+
+    take event, text <streamClosed>
+    take listener
+      like task
+        like native-void
+
+        take code, like native-number
+
+  task once, name <once>
+    like native-this
+
+    take event, text <timeout>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <trailers>
+    take listener
+      like task
+        like native-void
+
+        take trailers, like incoming-http-headers
+        take flags, like native-number
+
+  task once, name <once>
+    like native-this
+
+    take event, text <wantTrailers>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <aborted>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <data>
+    take listener
+      like task
+        like native-void
+
+        take chunk
+          like or
+            like buffer
+            like native-string
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <drain>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <end>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <finish>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <frameError>
+    take listener
+      like task
+        like native-void
+
+        take frame-type, like native-number
+        take error-code, like native-number
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <pipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <unpipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <streamClosed>
+    take listener
+      like task
+        like native-void
+
+        take code, like native-number
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <timeout>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <trailers>
+    take listener
+      like task
+        like native-void
+
+        take trailers, like incoming-http-headers
+        take flags, like native-number
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <wantTrailers>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <aborted>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <data>
+    take listener
+      like task
+        like native-void
+
+        take chunk
+          like or
+            like buffer
+            like native-string
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <drain>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <end>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <finish>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <frameError>
+    take listener
+      like task
+        like native-void
+
+        take frame-type, like native-number
+        take error-code, like native-number
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <pipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <unpipe>
+    take listener
+      like task
+        like native-void
+
+        take src, like stream-readable
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <streamClosed>
+    take listener
+      like task
+        like native-void
+
+        take code, like native-number
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <timeout>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <trailers>
+    take listener
+      like task
+        like native-void
+
+        take trailers, like incoming-http-headers
+        take flags, like native-number
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <wantTrailers>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true

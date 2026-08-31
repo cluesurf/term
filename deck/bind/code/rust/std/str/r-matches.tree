@@ -1,0 +1,1826 @@
+
+form r-matches, name <std::str::RMatches>
+  task clone, name <clone>
+    note <Returns a copy of the value.>
+
+    take self
+      cite free
+
+    free seed
+      like r-matches
+        time a
+        like p
+          cite free
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task next-back, name <next_back>
+    note <Removes and returns an element from the end of the iterator.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like str
+          time a
+        cite free
+
+  task advance-back-by, name <advance_back_by>
+    note <Advances the iterator from the back by n elements.>
+
+    take self
+      cite free
+    take n
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        like usize
+          cite free
+        cite free
+
+  task nth-back, name <nth_back>
+    note <Returns the nth element from the end of the iterator.>
+
+    take self
+      cite free
+    take n
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like option
+        like self/item
+        cite free
+
+  task try-rfold, name <try_rfold>
+    note <This is the reverse version of Iterator::try_fold(): it takes elements starting from the back of the iterator.>
+
+    lead f
+      like fn-mut
+        take f-1, like b
+        take f-2
+          like self/item
+        free seed
+          like r
+            cite free
+    lead r
+      like try
+        like output
+          cite free
+          fall back
+            like b
+              cite free
+        cite free
+
+    head b
+    head f
+    head r
+
+    take self
+      cite free
+    take init
+      like b
+        cite free
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like r
+        cite free
+
+  task rfold, name <rfold>
+    note <An iterator method that reduces the iterator's elements to a single, final value, starting from the back.>
+
+    lead f
+      like fn-mut
+        take f-1, like b
+        take f-2
+          like self/item
+        free seed
+          like b
+            cite free
+
+    head b
+    head f
+
+    take self
+      cite free
+    take init
+      like b
+        cite free
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like b
+        cite free
+
+  task rfind, name <rfind>
+    note <Searches for an element of an iterator from the back that satisfies a predicate.>
+
+    lead p
+      like fn-mut
+        take f-1
+          like self/item
+        free seed
+          like bool
+            cite free
+
+    head p
+
+    take self
+      cite free
+    take predicate
+      like p
+        cite free
+      cite free
+
+    free seed
+      like option
+        like self/item
+        cite free
+
+  task next, name <next>
+    note <Advances the iterator and returns the next value.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like str
+          time a
+        cite free
+
+  task size-hint, name <size_hint>
+    note <Returns the bounds on the remaining length of the iterator.>
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1, like usize
+        take t-2, like option
+
+  task count, name <count>
+    note <Consumes the iterator, counting the number of iterations and returning it.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task last, name <last>
+    note <Consumes the iterator, returning the last element.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like self/item
+        cite free
+
+  task advance-by, name <advance_by>
+    note <Advances the iterator by n elements.>
+
+    take self
+      cite free
+    take n
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        like usize
+          cite free
+        cite free
+
+  task nth, name <nth>
+    note <Returns the nth element of the iterator.>
+
+    take self
+      cite free
+    take n
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like option
+        like self/item
+        cite free
+
+  task step-by, name <step_by>
+    note <Creates an iterator starting at the same point, but stepping by the given amount at each iteration.>
+
+    take self
+      cite free
+    take step
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like step-by
+        like self
+          cite free
+        cite free
+
+  task chain, name <chain>
+    note <Takes two iterators and creates a new iterator over both in sequence.>
+
+    cast c-1
+      like u
+      like into-iterator
+
+    head u
+
+    take self
+      cite free
+    take other
+      like u
+        cite free
+      cite free
+
+    free seed
+      like chain
+        like self
+          cite free
+        like c-1/into-iter
+        cite free
+
+  task zip, name <zip>
+    note <'Zips up' two iterators into a single iterator of pairs.>
+
+    cast c-1
+      like u
+      like into-iterator
+
+    head u
+
+    take self
+      cite free
+    take other
+      like u
+        cite free
+      cite free
+
+    free seed
+      like zip
+        like self
+          cite free
+        like c-1/into-iter
+        cite free
+
+  task intersperse, name <intersperse>
+    note <Creates a new iterator which places a copy of separator between adjacent items of the original iterator.>
+
+    take self
+      cite free
+    take separator
+      like self/item
+      cite free
+
+    free seed
+      like intersperse
+        like self
+          cite free
+        cite free
+
+  task intersperse-with, name <intersperse_with>
+    note <Creates a new iterator which places an item generated by separator between adjacent items of the original iterator.>
+
+    head g
+
+    take self
+      cite free
+    take separator
+      like g
+        cite free
+      cite free
+
+    free seed
+      like intersperse-with
+        like self
+          cite free
+        like g
+          cite free
+        cite free
+
+  task map, name <map>
+    note <Takes a closure and creates an iterator which calls that closure on each element.>
+
+    head b
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like map
+        like self
+          cite free
+        like f
+          cite free
+        cite free
+
+  task for-each, name <for_each>
+    note <Calls a closure on each element of an iterator.>
+
+    lead f
+      like fn-mut
+        take f-1
+          like self/item
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+  task filter, name <filter>
+    note <Creates an iterator which uses a closure to determine if an element should be yielded.>
+
+    head p
+
+    take self
+      cite free
+    take predicate
+      like p
+        cite free
+      cite free
+
+    free seed
+      like filter
+        like self
+          cite free
+        like p
+          cite free
+        cite free
+
+  task filter-map, name <filter_map>
+    note <Creates an iterator that both filters and maps.>
+
+    head b
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like filter-map
+        like self
+          cite free
+        like f
+          cite free
+        cite free
+
+  task enumerate, name <enumerate>
+    note <Creates an iterator which gives the current iteration count as well as the next value.>
+
+    take self
+      cite free
+
+    free seed
+      like enumerate
+        like self
+          cite free
+        cite free
+
+  task peekable, name <peekable>
+    note <Creates an iterator which can use the peek and peek_mut methods to look at the next element of the iterator without consuming it. See their documentation for more information.>
+
+    take self
+      cite free
+
+    free seed
+      like peekable
+        like self
+          cite free
+        cite free
+
+  task skip-while, name <skip_while>
+    note <Creates an iterator that skips elements based on a predicate.>
+
+    head p
+
+    take self
+      cite free
+    take predicate
+      like p
+        cite free
+      cite free
+
+    free seed
+      like skip-while
+        like self
+          cite free
+        like p
+          cite free
+        cite free
+
+  task take-while, name <take_while>
+    note <Creates an iterator that yields elements based on a predicate.>
+
+    head p
+
+    take self
+      cite free
+    take predicate
+      like p
+        cite free
+      cite free
+
+    free seed
+      like take-while
+        like self
+          cite free
+        like p
+          cite free
+        cite free
+
+  task map-while, name <map_while>
+    note <Creates an iterator that both yields elements based on a predicate and maps.>
+
+    head b
+    head p
+
+    take self
+      cite free
+    take predicate
+      like p
+        cite free
+      cite free
+
+    free seed
+      like map-while
+        like self
+          cite free
+        like p
+          cite free
+        cite free
+
+  task skip, name <skip>
+    note <Creates an iterator that skips the first n elements.>
+
+    take self
+      cite free
+    take n
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like skip
+        like self
+          cite free
+        cite free
+
+  task take, name <take>
+    note <Creates an iterator that yields the first n elements, or fewer if the underlying iterator ends sooner.>
+
+    take self
+      cite free
+    take n
+      like usize
+        cite free
+      cite free
+
+    free seed
+      like take
+        like self
+          cite free
+        cite free
+
+  task scan, name <scan>
+    note <An iterator adapter similar to fold that holds internal state and produces a new iterator.>
+
+    head st
+    head b
+    head f
+
+    take self
+      cite free
+    take initial-state
+      like st
+        cite free
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like scan
+        like self
+          cite free
+        like st
+          cite free
+        like f
+          cite free
+        cite free
+
+  task flat-map, name <flat_map>
+    note <Creates an iterator that works like map, but flattens nested structure.>
+
+    head u
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like flat-map
+        like self
+          cite free
+        like u
+          cite free
+        like f
+          cite free
+        cite free
+
+  task flatten, name <flatten>
+    note <Creates an iterator that flattens nested structure.>
+
+    take self
+      cite free
+
+    free seed
+      like flatten
+        like self
+          cite free
+        cite free
+
+  task fuse, name <fuse>
+    note <Creates an iterator which ends after the first None.>
+
+    take self
+      cite free
+
+    free seed
+      like fuse
+        like self
+          cite free
+        cite free
+
+  task inspect, name <inspect>
+    note <Does something with each element of an iterator, passing the value on.>
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like inspect
+        like self
+          cite free
+        like f
+          cite free
+        cite free
+
+  task by-ref, name <by_ref>
+    note <Borrows an iterator, rather than consuming it.>
+
+    take self
+      cite free
+
+    free seed
+      like self
+
+  task collect, name <collect>
+    note <Transforms an iterator into a collection.>
+
+    lead b
+      like from-iterator
+        like self/item
+        cite free
+
+    head b
+
+    take self
+      cite free
+
+    free seed
+      like b
+        cite free
+
+  task partition, name <partition>
+    note <Consumes an iterator, creating two collections from it.>
+
+    lead b
+      like default
+        cite free
+    lead f
+      like fn-mut
+        take f-1
+          like self/item
+        free seed
+          like bool
+            cite free
+
+    head b
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like form
+        take t-1, like b
+        take t-2, like b
+
+  task partition-in-place, name <partition_in_place>
+    note <Reorders the elements of this iterator in-place according to the given predicate, such that all those that return true precede all those that return false. Returns the number of true elements found.>
+
+    lead t
+      time a
+    lead self
+      like double-ended-iterator
+        like item
+          cite free
+          fall back
+            like t
+              time a
+        cite free
+    lead p
+      like fn-mut
+        take f-1, like t
+        free seed
+          like bool
+            cite free
+
+    time a
+
+    head t
+    head p
+
+    take self
+      cite free
+    take predicate
+      like p
+        cite free
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task is-partitioned, name <is_partitioned>
+    note <Checks if the elements of this iterator are partitioned according to the given predicate, such that all those that return true precede all those that return false.>
+
+    lead p
+      like fn-mut
+        take f-1
+          like self/item
+        free seed
+          like bool
+            cite free
+
+    head p
+
+    take self
+      cite free
+    take predicate
+      like p
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task try-fold, name <try_fold>
+    note <An iterator method that applies a function as long as it returns successfully, producing a single, final value.>
+
+    lead f
+      like fn-mut
+        take f-1, like b
+        take f-2
+          like self/item
+        free seed
+          like r
+            cite free
+    lead r
+      like try
+        like output
+          cite free
+          fall back
+            like b
+              cite free
+        cite free
+
+    head b
+    head f
+    head r
+
+    take self
+      cite free
+    take init
+      like b
+        cite free
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like r
+        cite free
+
+  task try-for-each, name <try_for_each>
+    note <An iterator method that applies a fallible function to each item in the iterator, stopping at the first error and returning that error.>
+
+    lead f
+      like fn-mut
+        take f-1
+          like self/item
+        free seed
+          like r
+            cite free
+    lead r
+      like try
+        like output
+          cite free
+          fall back
+            like form
+        cite free
+
+    head f
+    head r
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like r
+        cite free
+
+  task fold, name <fold>
+    note <Folds every element into an accumulator by applying an operation, returning the final result.>
+
+    lead f
+      like fn-mut
+        take f-1, like b
+        take f-2
+          like self/item
+        free seed
+          like b
+            cite free
+
+    head b
+    head f
+
+    take self
+      cite free
+    take init
+      like b
+        cite free
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like b
+        cite free
+
+  task reduce, name <reduce>
+    note <Reduces the elements to a single one, by repeatedly applying a reducing operation.>
+
+    lead f
+      like fn-mut
+        take f-1
+          like self/item
+        take f-2
+          like self/item
+        free seed
+          like self/item
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like option
+        like self/item
+        cite free
+
+  task try-reduce, name <try_reduce>
+    note <Reduces the elements to a single one by repeatedly applying a reducing operation. If the closure returns a failure, the failure is propagated back to the caller immediately.>
+
+    cast c-1
+      like r
+      like try
+    cast c-3
+      like r
+      like try
+    cast c-4
+      like r
+      like try
+    cast c-2
+      like c-3/residual
+      like residual
+        like option
+          like c-4/output
+          cite free
+
+    lead f
+      like fn-mut
+        take f-1
+          like self/item
+        take f-2
+          like self/item
+        free seed
+          like r
+            cite free
+    lead r
+      like try
+        like output
+          cite free
+          fall back
+            like self/item
+        cite free
+    lead c-1/residual
+      like residual
+        like option
+          like self/item
+          cite free
+        cite free
+
+    head f
+    head r
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like c-2/try-type
+
+  task all, name <all>
+    note <Tests if every element of the iterator matches a predicate.>
+
+    lead f
+      like fn-mut
+        take f-1
+          like self/item
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task any, name <any>
+    note <Tests if any element of the iterator matches a predicate.>
+
+    lead f
+      like fn-mut
+        take f-1
+          like self/item
+        free seed
+          like bool
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task find, name <find>
+    note <Searches for an element of an iterator that satisfies a predicate.>
+
+    lead p
+      like fn-mut
+        take f-1
+          like self/item
+        free seed
+          like bool
+            cite free
+
+    head p
+
+    take self
+      cite free
+    take predicate
+      like p
+        cite free
+      cite free
+
+    free seed
+      like option
+        like self/item
+        cite free
+
+  task find-map, name <find_map>
+    note <Applies function to the elements of iterator and returns the first non-none result.>
+
+    lead f
+      like fn-mut
+        take f-1
+          like self/item
+        free seed
+          like option
+            like b
+              cite free
+            cite free
+
+    head b
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like option
+        like b
+          cite free
+        cite free
+
+  task try-find, name <try_find>
+    note <Applies function to the elements of iterator and returns the first true result or the first error.>
+
+    cast c-1
+      like r
+      like try
+    cast c-3
+      like r
+      like try
+    cast c-2
+      like c-3/residual
+      like residual
+        like option
+          like self/item
+          cite free
+
+    lead f
+      like fn-mut
+        take f-1
+          like self/item
+        free seed
+          like r
+            cite free
+    lead r
+      like try
+        like output
+          cite free
+          fall back
+            like bool
+              cite free
+        cite free
+    lead c-1/residual
+      like residual
+        like option
+          like self/item
+          cite free
+        cite free
+
+    head f
+    head r
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like c-2/try-type
+
+  task position, name <position>
+    note <Searches for an element in an iterator, returning its index.>
+
+    lead p
+      like fn-mut
+        take f-1
+          like self/item
+        free seed
+          like bool
+            cite free
+
+    head p
+
+    take self
+      cite free
+    take predicate
+      like p
+        cite free
+      cite free
+
+    free seed
+      like option
+        like usize
+          cite free
+        cite free
+
+  task rposition, name <rposition>
+    note <Searches for an element in an iterator from the right, returning its index.>
+
+    lead p
+      like fn-mut
+        take f-1
+          like self/item
+        free seed
+          like bool
+            cite free
+    lead self
+      like exact-size-iterator
+        cite free
+
+    head p
+
+    take self
+      cite free
+    take predicate
+      like p
+        cite free
+      cite free
+
+    free seed
+      like option
+        like usize
+          cite free
+        cite free
+
+  task max, name <max>
+    note <Returns the maximum element of an iterator.>
+
+    lead self/item
+      like ord
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like self/item
+        cite free
+
+  task min, name <min>
+    note <Returns the minimum element of an iterator.>
+
+    lead self/item
+      like ord
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like self/item
+        cite free
+
+  task max-by-key, name <max_by_key>
+    note <Returns the element that gives the maximum value from the specified function.>
+
+    lead b
+      like ord
+        cite free
+    lead f
+      like fn-mut
+        take f-1
+          like self/item
+        free seed
+          like b
+            cite free
+
+    head b
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like option
+        like self/item
+        cite free
+
+  task max-by, name <max_by>
+    note <Returns the element that gives the maximum value with respect to the specified comparison function.>
+
+    lead f
+      like fn-mut
+        take f-1
+          like self/item
+        take f-2
+          like self/item
+        free seed
+          like ordering
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take compare
+      like f
+        cite free
+      cite free
+
+    free seed
+      like option
+        like self/item
+        cite free
+
+  task min-by-key, name <min_by_key>
+    note <Returns the element that gives the minimum value from the specified function.>
+
+    lead b
+      like ord
+        cite free
+    lead f
+      like fn-mut
+        take f-1
+          like self/item
+        free seed
+          like b
+            cite free
+
+    head b
+    head f
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like option
+        like self/item
+        cite free
+
+  task min-by, name <min_by>
+    note <Returns the element that gives the minimum value with respect to the specified comparison function.>
+
+    lead f
+      like fn-mut
+        take f-1
+          like self/item
+        take f-2
+          like self/item
+        free seed
+          like ordering
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take compare
+      like f
+        cite free
+      cite free
+
+    free seed
+      like option
+        like self/item
+        cite free
+
+  task rev, name <rev>
+    note <Reverses an iterator's direction.>
+
+    take self
+      cite free
+
+    free seed
+      like rev
+        like self
+          cite free
+        cite free
+
+  task unzip, name <unzip>
+    note <Converts an iterator of pairs into a pair of containers.>
+
+    lead from-a
+      like default
+        cite free
+    lead from-b
+      like default
+        cite free
+    lead self
+      like iterator
+        like item
+          cite free
+          fall back
+            like form
+              take t-1, like a
+              take t-2, like b
+        cite free
+
+    head a
+    head b
+    head from-a
+    head from-b
+
+    take self
+      cite free
+
+    free seed
+      like form
+        take t-1, like from-a
+        take t-2, like from-b
+
+  task copied, name <copied>
+    note <Creates an iterator which copies all of its elements.>
+
+    time a
+
+    head t
+
+    take self
+      cite free
+
+    free seed
+      like copied
+        like self
+          cite free
+        cite free
+
+  task cloned, name <cloned>
+    note <Creates an iterator which clones all of its elements.>
+
+    time a
+
+    head t
+
+    take self
+      cite free
+
+    free seed
+      like cloned
+        like self
+          cite free
+        cite free
+
+  task cycle, name <cycle>
+    note <Repeats an iterator endlessly.>
+
+    take self
+      cite free
+
+    free seed
+      like cycle
+        like self
+          cite free
+        cite free
+
+  task sum, name <sum>
+    note <Sums the elements of an iterator.>
+
+    lead s
+      like sum
+        like self/item
+        cite free
+
+    head s
+
+    take self
+      cite free
+
+    free seed
+      like s
+        cite free
+
+  task product, name <product>
+    note <Iterates over the entire iterator, multiplying all the elements>
+
+    lead p
+      like product
+        like self/item
+        cite free
+
+    head p
+
+    take self
+      cite free
+
+    free seed
+      like p
+        cite free
+
+  task cmp, name <cmp>
+    note <Lexicographically compares the elements of this Iterator with those of another.>
+
+    lead i
+      like into-iterator
+        like item
+          cite free
+          fall back
+            like self/item
+        cite free
+    lead self/item
+      like ord
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take other
+      like i
+        cite free
+      cite free
+
+    free seed
+      like ordering
+        cite free
+
+  task cmp-by, name <cmp_by>
+    note <Lexicographically compares the elements of this Iterator with those of another with respect to the specified comparison function.>
+
+    cast c-1
+      like i
+      like into-iterator
+
+    lead i
+      like into-iterator
+        cite free
+    lead f
+      like fn-mut
+        take f-1
+          like self/item
+        take f-2
+          like c-1/item
+        free seed
+          like ordering
+            cite free
+
+    head i
+    head f
+
+    take self
+      cite free
+    take other
+      like i
+        cite free
+      cite free
+    take cmp
+      like f
+        cite free
+      cite free
+
+    free seed
+      like ordering
+        cite free
+
+  task partial-cmp, name <partial_cmp>
+    note <Lexicographically compares the elements of this Iterator with those of another.>
+
+    cast c-1
+      like i
+      like into-iterator
+
+    lead i
+      like into-iterator
+        cite free
+    lead self/item
+      like partial-ord
+        like c-1/item
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take other
+      like i
+        cite free
+      cite free
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task partial-cmp-by, name <partial_cmp_by>
+    note <Lexicographically compares the elements of this Iterator with those of another with respect to the specified comparison function.>
+
+    cast c-1
+      like i
+      like into-iterator
+
+    lead i
+      like into-iterator
+        cite free
+    lead f
+      like fn-mut
+        take f-1
+          like self/item
+        take f-2
+          like c-1/item
+        free seed
+          like option
+            like ordering
+              cite free
+            cite free
+
+    head i
+    head f
+
+    take self
+      cite free
+    take other
+      like i
+        cite free
+      cite free
+    take partial-cmp
+      like f
+        cite free
+      cite free
+
+    free seed
+      like option
+        like ordering
+          cite free
+        cite free
+
+  task eq, name <eq>
+    note <Determines if the elements of this Iterator are equal to those of another.>
+
+    cast c-1
+      like i
+      like into-iterator
+
+    lead i
+      like into-iterator
+        cite free
+    lead self/item
+      like partial-eq
+        like c-1/item
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take other
+      like i
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task eq-by, name <eq_by>
+    note <Determines if the elements of this Iterator are equal to those of another with respect to the specified equality function.>
+
+    cast c-1
+      like i
+      like into-iterator
+
+    lead i
+      like into-iterator
+        cite free
+    lead f
+      like fn-mut
+        take f-1
+          like self/item
+        take f-2
+          like c-1/item
+        free seed
+          like bool
+            cite free
+
+    head i
+    head f
+
+    take self
+      cite free
+    take other
+      like i
+        cite free
+      cite free
+    take eq
+      like f
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ne, name <ne>
+    note <Determines if the elements of this Iterator are unequal to those of another.>
+
+    cast c-1
+      like i
+      like into-iterator
+
+    lead i
+      like into-iterator
+        cite free
+    lead self/item
+      like partial-eq
+        like c-1/item
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take other
+      like i
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task lt, name <lt>
+    note <Determines if the elements of this Iterator are lexicographically less than those of another.>
+
+    cast c-1
+      like i
+      like into-iterator
+
+    lead i
+      like into-iterator
+        cite free
+    lead self/item
+      like partial-ord
+        like c-1/item
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take other
+      like i
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task le, name <le>
+    note <Determines if the elements of this Iterator are lexicographically less or equal to those of another.>
+
+    cast c-1
+      like i
+      like into-iterator
+
+    lead i
+      like into-iterator
+        cite free
+    lead self/item
+      like partial-ord
+        like c-1/item
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take other
+      like i
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task gt, name <gt>
+    note <Determines if the elements of this Iterator are lexicographically greater than those of another.>
+
+    cast c-1
+      like i
+      like into-iterator
+
+    lead i
+      like into-iterator
+        cite free
+    lead self/item
+      like partial-ord
+        like c-1/item
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take other
+      like i
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task ge, name <ge>
+    note <Determines if the elements of this Iterator are lexicographically greater than or equal to those of another.>
+
+    cast c-1
+      like i
+      like into-iterator
+
+    lead i
+      like into-iterator
+        cite free
+    lead self/item
+      like partial-ord
+        like c-1/item
+        cite free
+
+    head i
+
+    take self
+      cite free
+    take other
+      like i
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-sorted, name <is_sorted>
+    note <Checks if the elements of this iterator are sorted.>
+
+    lead self/item
+      like partial-ord
+        like self/item
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-sorted-by, name <is_sorted_by>
+    note <Checks if the elements of this iterator are sorted using the given comparator function.>
+
+    lead f
+      like fn-mut
+        take f-1
+          like self/item
+        take f-2
+          like self/item
+        free seed
+          like option
+            like ordering
+              cite free
+            cite free
+
+    head f
+
+    take self
+      cite free
+    take compare
+      like f
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task is-sorted-by-key, name <is_sorted_by_key>
+    note <Checks if the elements of this iterator are sorted using the given key extraction function.>
+
+    lead f
+      like fn-mut
+        take f-1
+          like self/item
+        free seed
+          like k
+            cite free
+    lead k
+      like partial-ord
+        like k
+          cite free
+        cite free
+
+    head f
+    head k
+
+    take self
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like bool
+        cite free

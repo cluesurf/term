@@ -1,0 +1,186 @@
+
+form ref, name <std::cell::Ref>
+  task clone, name <clone>
+    note <Copies a Ref.>
+
+    take orig
+      like ref
+        time b
+        like t
+          cite free
+
+    free seed
+      like ref
+        time b
+        like t
+          cite free
+        cite free
+
+  task map, name <map>
+    note <Makes a new Ref for a component of the borrowed data.>
+
+    lead f
+      like fn-once
+        take f-1, like t
+        free seed
+          like u
+    lead u
+      like dynamically-sized
+
+    head u
+    head f
+
+    take orig
+      like ref
+        time b
+        like t
+          cite free
+        cite free
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like ref
+        time b
+        like u
+          cite free
+        cite free
+
+  task filter-map, name <filter_map>
+    note <Makes a new Ref for an optional component of the borrowed data. The original guard is returned as an Err(..) if the closure returns None.>
+
+    lead f
+      like fn-once
+        take f-1, like t
+        free seed
+          like option
+            like u
+            cite free
+    lead u
+      like dynamically-sized
+
+    head u
+    head f
+
+    take orig
+      like ref
+        time b
+        like t
+          cite free
+        cite free
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like result
+        like ref
+          time b
+          like u
+            cite free
+          cite free
+        like ref
+          time b
+          like t
+            cite free
+          cite free
+        cite free
+
+  task map-split, name <map_split>
+    note <Splits a Ref into multiple Refs for different components of the borrowed data.>
+
+    lead f
+      like fn-once
+        take f-1, like t
+        free seed
+          like form
+            take t-1, like u
+            take t-2, like v
+    lead u
+      like dynamically-sized
+    lead v
+      like dynamically-sized
+
+    head u
+    head v
+    head f
+
+    take orig
+      like ref
+        time b
+        like t
+          cite free
+        cite free
+      cite free
+    take f
+      like f
+        cite free
+      cite free
+
+    free seed
+      like form
+        take t-1, like ref
+        take t-2, like ref
+
+  task leak, name <leak>
+    note <Convert into a reference to the underlying data.>
+
+    take orig
+      like ref
+        time b
+        like t
+          cite free
+        cite free
+      cite free
+
+    free seed
+      like t
+        time b
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task deref, name <deref>
+    note <Dereferences the value.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free

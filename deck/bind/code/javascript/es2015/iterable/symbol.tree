@@ -1,0 +1,12 @@
+
+load @term/bind/code/javascript/native
+  find native-symbol
+
+load @term/bind/code/javascript/es5/symbol
+  find symbol
+
+form symbol
+  hook self
+    link iterator, name <iterator>
+      like native-symbol
+        cool true

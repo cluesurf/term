@@ -1,0 +1,48 @@
+
+bear @term/bind/code/javascript/es2020/intl/unicode-bcp47-locale-identifier
+bear @term/bind/code/javascript/es2020/intl/relative-time-format-unit
+bear @term/bind/code/javascript/es2020/intl/relative-time-format-locale-matcher
+bear @term/bind/code/javascript/es2020/intl/relative-time-format-numeric
+bear @term/bind/code/javascript/es2020/intl/relative-time-format-style
+bear @term/bind/code/javascript/es2020/intl/relative-time-format-options
+bear @term/bind/code/javascript/es2020/intl/resolved-relative-time-format-options
+bear @term/bind/code/javascript/es2020/intl/relative-time-format-part
+bear @term/bind/code/javascript/es2020/intl/relative-time-format
+bear @term/bind/code/javascript/es2020/intl/number-format-options
+bear @term/bind/code/javascript/es2020/intl/resolved-number-format-options
+bear @term/bind/code/javascript/es2020/intl/date-time-format-options
+
+load @term/bind/code/javascript/es2020/intl/relative-time-format
+  find relative-time-format
+
+load @term/bind/code/javascript/es2020/intl/relative-time-format-options
+  find relative-time-format-options
+
+load @term/bind/code/javascript/es2020/intl/unicode-bcp47-locale-identifier
+  find unicode-bcp47-locale-identifier
+
+load @term/bind/code/javascript/native
+  find native-array
+
+host relative-time-format, name <RelativeTimeFormat>
+  like form
+    hook make
+      take locales, like maybe
+        like or
+          like unicode-bcp47-locale-identifier
+          like native-array
+            like unicode-bcp47-locale-identifier
+      take options, like maybe
+        like relative-time-format-options
+      like relative-time-format
+
+    task supported-locales-of, name <supportedLocalesOf>
+      take locales, like maybe
+        like or
+          like unicode-bcp47-locale-identifier
+          like native-array
+            like unicode-bcp47-locale-identifier
+      take options, like maybe
+        like relative-time-format-options
+      like native-array
+        like unicode-bcp47-locale-identifier

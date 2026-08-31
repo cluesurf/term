@@ -1,0 +1,24 @@
+
+load @term/bind/code/browser/dom/buffer-source
+  find buffer-source
+
+load @term/bind/code/javascript/es5/date
+  find date
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form idb-valid-key, name <IDBValidKey>
+  like or
+    like native-number
+    like native-string
+    like date
+    like buffer-source
+    like native-array
+      like idb-valid-key

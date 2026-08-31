@@ -1,0 +1,41 @@
+
+bear @term/bind/code/javascript/es2018/intl/ldml-plural-rule
+bear @term/bind/code/javascript/es2018/intl/plural-rule-type
+bear @term/bind/code/javascript/es2018/intl/plural-rules-options
+bear @term/bind/code/javascript/es2018/intl/resolved-plural-rules-options
+bear @term/bind/code/javascript/es2018/intl/plural-rules
+
+load @term/bind/code/javascript/es2018/intl/plural-rules
+  find plural-rules
+
+load @term/bind/code/javascript/es2018/intl/plural-rules-options
+  find plural-rules-options
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+host plural-rules, name <PluralRules>
+  like form
+    hook make
+      take locales, like maybe
+        like or
+          like native-string
+          like native-array
+            like native-string
+      take options, like maybe
+        like plural-rules-options
+      like plural-rules
+
+    task supported-locales-of, name <supportedLocalesOf>
+      take locales
+        like or
+          like native-string
+          like native-array
+            like native-string
+      take options, like maybe
+        like plural-rules-options
+      like native-array
+        like native-string

@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/browser/dom/html-all-collection
+  find html-all-collection
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+form html-all-collection, name <HTMLAllCollection>
+  task {symbol/iterator}
+    like iterable-iterator
+      like element

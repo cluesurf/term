@@ -1,0 +1,27 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find debugger-location
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/inspector/profiler
+  find profile
+
+form console-profile-finished-event-data-type, name <ConsoleProfileFinishedEventDataType>
+  link id, name <id>
+    like native-string
+    flex true
+  link location, name <location>
+    like debugger-location
+    flex true
+  link profile, name <profile>
+    like profile
+    flex true
+  link title, name <title>
+    like or
+      like native-string
+      like native-undefined
+    flex true

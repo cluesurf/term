@@ -1,0 +1,12 @@
+
+load @term/bind/code/javascript
+  find array
+
+load @term/bind/code/node/inspector/profiler
+  find script-coverage
+
+form take-precise-coverage-return-type, name <TakePreciseCoverageReturnType>
+  link result, name <result>
+    like array
+      like script-coverage
+    flex true

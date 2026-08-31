@@ -1,0 +1,15 @@
+
+load @term/bind/code/javascript
+  find native-this
+
+load @term/bind/code/node/events
+  find event-emitter
+
+form stat-watcher, name <StatWatcher>
+  base event-emitter
+
+  task ref, name <ref>
+    like native-this
+
+  task unref, name <unref>
+    like native-this

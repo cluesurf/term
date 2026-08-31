@@ -1,0 +1,46 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form storage, name <Storage>
+  link length, name <length>
+    like native-number
+
+  task clear, name <clear>
+    like native-void
+
+  task get-item, name <getItem>
+    take key, like native-string
+    like or
+      like native-string
+      like native-null
+
+  task key, name <key>
+    take index, like native-number
+    like or
+      like native-string
+      like native-null
+
+  task remove-item, name <removeItem>
+    take key, like native-string
+    like native-void
+
+  task set-item, name <setItem>
+    take key, like native-string
+    take value, like native-string
+    like native-void
+
+  mesh name, like native-string
+    like native-any

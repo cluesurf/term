@@ -1,0 +1,148 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/browser/dom/media-stream-event-map
+  find media-stream-event-map
+
+load @term/bind/code/browser/dom/media-stream-track
+  find media-stream-track
+
+load @term/bind/code/browser/dom/media-stream-track-event
+  find media-stream-track-event
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form media-stream, name <MediaStream>
+  base event-target
+
+  link active, name <active>
+    like native-boolean
+  link id, name <id>
+    like native-string
+  link onaddtrack, name <onaddtrack>
+    like or
+      like task
+        take this, like media-stream
+        take ev, like media-stream-track-event
+        like native-any
+      like native-null
+    lock false
+  link onremovetrack, name <onremovetrack>
+    like or
+      like task
+        take this, like media-stream
+        take ev, like media-stream-track-event
+        like native-any
+      like native-null
+    lock false
+
+  task add-track, name <addTrack>
+    take track, like media-stream-track
+    like native-void
+
+  task clone, name <clone>
+    like media-stream
+
+  task get-audio-tracks, name <getAudioTracks>
+    like native-array
+      like media-stream-track
+
+  task get-track-by-id, name <getTrackById>
+    take track-id, like native-string
+    like or
+      like media-stream-track
+      like native-null
+
+  task get-tracks, name <getTracks>
+    like native-array
+      like media-stream-track
+
+  task get-video-tracks, name <getVideoTracks>
+    like native-array
+      like media-stream-track
+
+  task remove-track, name <removeTrack>
+    take track, like media-stream-track
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like media-stream-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like media-stream
+        take ev
+          like index
+            like media-stream-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like media-stream-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like media-stream
+        take ev
+          like index
+            like media-stream-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

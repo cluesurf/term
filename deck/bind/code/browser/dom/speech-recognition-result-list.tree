@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/speech-recognition-result
+  find speech-recognition-result
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form speech-recognition-result-list, name <SpeechRecognitionResultList>
+  link length, name <length>
+    like native-number
+
+  task item, name <item>
+    take index, like native-number
+    like speech-recognition-result
+
+  mesh index, like native-number
+    like speech-recognition-result

@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript/es2015/iterable/int32-array-constructor
+  find int32-array-constructor
+
+load @term/bind/code/javascript/es2016/array/include/int32-array
+  find int32-array
+
+form int32-array-constructor, name <Int32ArrayConstructor>
+  hook make
+    like int32-array

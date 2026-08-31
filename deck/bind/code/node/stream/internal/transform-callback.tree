@@ -1,0 +1,22 @@
+
+load @term/bind
+  find any
+  find or
+  find task
+
+load @term/bind/code/javascript
+  find error
+  find native-null
+  find native-void
+
+form transform-callback, name <TransformCallback>
+  like task
+    like native-void
+
+    take error
+      like or
+        like error
+        like native-null
+      void true
+    take data, like any
+      void true

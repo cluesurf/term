@@ -1,0 +1,23 @@
+
+load @term/bind/code/browser/dom/buffer-source
+  find buffer-source
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form push-subscription-options-init, name <PushSubscriptionOptionsInit>
+  link application-server-key, name <applicationServerKey>
+    like or
+      like buffer-source
+      like native-string
+      like native-null
+    lock false
+  link user-visible-only, name <userVisibleOnly>
+    like native-boolean
+    lock false

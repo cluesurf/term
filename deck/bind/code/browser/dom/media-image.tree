@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form media-image, name <MediaImage>
+  link sizes, name <sizes>
+    like native-string
+    lock false
+  link src, name <src>
+    like native-string
+    lock false
+  link type, name <type>
+    like native-string
+    lock false

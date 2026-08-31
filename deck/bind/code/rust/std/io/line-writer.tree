@@ -1,0 +1,195 @@
+
+form line-writer, name <std::io::LineWriter>
+  task new, name <new>
+    note <Creates a new LineWriter.>
+
+    take inner
+      like w
+        cite free
+      cite free
+
+    free seed
+      like line-writer
+        like w
+          cite free
+        cite free
+
+  task with-capacity, name <with_capacity>
+    note <Creates a new LineWriter with a specified capacity for the internal buffer.>
+
+    take capacity
+      like usize
+        cite free
+      cite free
+    take inner
+      like w
+        cite free
+      cite free
+
+    free seed
+      like line-writer
+        like w
+          cite free
+        cite free
+
+  task get-ref, name <get_ref>
+    note <Gets a reference to the underlying writer.>
+
+    take self
+      cite free
+
+    free seed
+      like w
+
+  task get-mut, name <get_mut>
+    note <Gets a mutable reference to the underlying writer.>
+
+    take self
+      cite free
+
+    free seed
+      like w
+
+  task into-inner, name <into_inner>
+    note <Unwraps this LineWriter, returning the underlying writer.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like w
+          cite free
+        like into-inner-error
+          like line-writer
+            like w
+              cite free
+            cite free
+          cite free
+        cite free
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take fmt
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        cite free
+
+  task write, name <write>
+    note <Write a buffer into this writer, returning how many bytes were written.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task flush, name <flush>
+    note <Flush this output stream, ensuring that all intermediately buffered contents reach their destination.>
+
+    take self
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-vectored, name <write_vectored>
+    note <Like write, except that it writes from a slice of buffers.>
+
+    take self
+      cite free
+    take bufs
+      like list
+        like io-slice
+          time mask
+      cite free
+
+    free seed
+      like result
+        like usize
+          cite free
+        cite free
+
+  task is-write-vectored, name <is_write_vectored>
+    note <Determines if this Writer has an efficient write_vectored implementation.>
+
+    take self
+      cite free
+
+    free seed
+      like bool
+        cite free
+
+  task write-all, name <write_all>
+    note <Attempts to write an entire buffer into this writer.>
+
+    take self
+      cite free
+    take buf
+      list u8
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-all-vectored, name <write_all_vectored>
+    note <Attempts to write multiple buffers into this writer.>
+
+    take self
+      cite free
+    take bufs
+      like list
+        like io-slice
+          time mask
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task write-fmt, name <write_fmt>
+    note <Writes a formatted string into this writer, returning any error encountered.>
+
+    take self
+      cite free
+    take fmt
+      like arguments
+        time mask
+        cite free
+      cite free
+
+    free seed
+      like result
+        like form
+        cite free
+
+  task by-ref, name <by_ref>
+    note <Creates a “by reference” adapter for this instance of Write.>
+
+    lead self
+      like sized
+        cite free
+
+    take self
+      cite free
+
+    free seed
+      like self

@@ -1,0 +1,7 @@
+
+load @term/bind/code/javascript/es5/array-buffer
+  find array-buffer
+
+form authenticator-response, name <AuthenticatorResponse>
+  link client-data-json, name <clientDataJSON>
+    like array-buffer

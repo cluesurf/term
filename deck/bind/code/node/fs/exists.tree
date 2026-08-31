@@ -1,0 +1,13 @@
+
+load @term/bind/code/javascript
+  find native-boolean
+  find promise
+
+load @term/bind/code/node/fs
+  find path-like
+
+task promisify, name <__promisify__>
+  like promise
+    like native-boolean
+
+  take path, like path-like

@@ -1,0 +1,89 @@
+
+load @term/bind/code/browser/dom/dom-high-res-time-stamp
+  find dom-high-res-time-stamp
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form event, name <Event>
+  link bubbles, name <bubbles>
+    like native-boolean
+  link cancel-bubble, name <cancelBubble>
+    like native-boolean
+    lock false
+  link cancelable, name <cancelable>
+    like native-boolean
+  link composed, name <composed>
+    like native-boolean
+  link current-target, name <currentTarget>
+    like or
+      like event-target
+      like native-null
+  link default-prevented, name <defaultPrevented>
+    like native-boolean
+  link event-phase, name <eventPhase>
+    like native-number
+  link is-trusted, name <isTrusted>
+    like native-boolean
+  link return-value, name <returnValue>
+    like native-boolean
+    lock false
+  link src-element, name <srcElement>
+    like or
+      like event-target
+      like native-null
+  link target, name <target>
+    like or
+      like event-target
+      like native-null
+  link time-stamp, name <timeStamp>
+    like dom-high-res-time-stamp
+  link type, name <type>
+    like native-string
+  link at-target, name <AT_TARGET>
+    like native-number
+  link bubbling-phase, name <BUBBLING_PHASE>
+    like native-number
+  link capturing-phase, name <CAPTURING_PHASE>
+    like native-number
+  link none, name <NONE>
+    like native-number
+
+  task composed-path, name <composedPath>
+    like native-array
+      like event-target
+
+  task init-event, name <initEvent>
+    take type, like native-string
+    take bubbles, like maybe
+      like native-boolean
+    take cancelable, like maybe
+      like native-boolean
+    like native-void
+
+  task prevent-default, name <preventDefault>
+    like native-void
+
+  task stop-immediate-propagation, name <stopImmediatePropagation>
+    like native-void
+
+  task stop-propagation, name <stopPropagation>
+    like native-void

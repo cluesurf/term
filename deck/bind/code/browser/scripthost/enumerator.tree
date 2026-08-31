@@ -1,0 +1,25 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form enumerator, name <Enumerator>
+  head t
+    back native-any
+
+  task at-end, name <atEnd>
+    like native-boolean
+
+  task item, name <item>
+    like t
+
+  task move-first, name <moveFirst>
+    like native-void
+
+  task move-next, name <moveNext>
+    like native-void

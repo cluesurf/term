@@ -1,0 +1,19 @@
+
+load @term/bind/code/javascript/es5/array
+  find array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form reg-exp-match-array, name <RegExpMatchArray>
+  base array
+
+  link index, name <index>
+    like native-number
+    lock false
+  link input, name <input>
+    like native-string
+    lock false

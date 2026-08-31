@@ -1,0 +1,29 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-undefined
+
+form url-format-options, name <URLFormatOptions>
+  link auth, name <auth>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link fragment, name <fragment>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link search, name <search>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link unicode, name <unicode>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

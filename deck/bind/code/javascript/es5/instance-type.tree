@@ -1,0 +1,17 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/r
+  find r
+
+form instance-type, name <InstanceType>
+  head t
+
+  like test
+    stem roll
+      like t
+      hook true
+        like r
+      hook false
+        like native-any

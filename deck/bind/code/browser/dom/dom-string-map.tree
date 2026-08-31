@@ -1,0 +1,12 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+form dom-string-map, name <DOMStringMap>
+  mesh name, like native-string
+    like or
+      like native-string
+      like native-undefined

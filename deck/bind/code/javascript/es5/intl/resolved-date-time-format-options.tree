@@ -1,0 +1,50 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form resolved-date-time-format-options, name <ResolvedDateTimeFormatOptions>
+  link locale, name <locale>
+    like native-string
+    lock false
+  link calendar, name <calendar>
+    like native-string
+    lock false
+  link numbering-system, name <numberingSystem>
+    like native-string
+    lock false
+  link time-zone, name <timeZone>
+    like native-string
+    lock false
+  link hour12, name <hour12>
+    like native-boolean
+    lock false
+  link weekday, name <weekday>
+    like native-string
+    lock false
+  link era, name <era>
+    like native-string
+    lock false
+  link year, name <year>
+    like native-string
+    lock false
+  link month, name <month>
+    like native-string
+    lock false
+  link day, name <day>
+    like native-string
+    lock false
+  link hour, name <hour>
+    like native-string
+    lock false
+  link minute, name <minute>
+    like native-string
+    lock false
+  link second, name <second>
+    like native-string
+    lock false
+  link time-zone-name, name <timeZoneName>
+    like native-string
+    lock false

@@ -1,0 +1,13 @@
+
+load @term/bind/code/browser/dom/event-init
+  find event-init
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form rtcdtmf-tone-change-event-init, name <RTCDTMFToneChangeEventInit>
+  base event-init
+
+  link tone, name <tone>
+    like native-string
+    lock false

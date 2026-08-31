@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/blob
+  find blob
+
+load @term/bind/code/browser/dom/dom-high-res-time-stamp
+  find dom-high-res-time-stamp
+
+load @term/bind/code/browser/dom/event
+  find event
+
+form blob-event, name <BlobEvent>
+  base event
+
+  link data, name <data>
+    like blob
+  link timecode, name <timecode>
+    like dom-high-res-time-stamp

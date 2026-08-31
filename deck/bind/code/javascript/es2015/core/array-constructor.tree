@@ -1,0 +1,49 @@
+
+load @term/bind/code/javascript/es5/array-constructor
+  find array-constructor
+
+load @term/bind/code/javascript/es5/array-like
+  find array-like
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form array-constructor, name <ArrayConstructor>
+  task from, name <from>
+    head t
+    take array-like
+      like array-like
+        like t
+    like native-array
+      like t
+
+  task from, name <from>
+    head t
+    head u
+    take array-like
+      like array-like
+        like t
+    take mapfn
+      like task
+        take v, like t
+        take k, like native-number
+        like u
+    take this-arg, like maybe
+      like native-any
+    like native-array
+      like u
+
+  task of, name <of>
+    head t
+    take items
+      like native-array
+        like t
+      rest true
+    like native-array
+      like t

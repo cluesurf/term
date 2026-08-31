@@ -1,0 +1,15 @@
+
+load @term/bind/code/browser/webworker/image-bitmap
+  find image-bitmap
+
+load @term/bind/code/browser/webworker/image-data
+  find image-data
+
+load @term/bind/code/browser/webworker/offscreen-canvas
+  find offscreen-canvas
+
+form tex-image-source, name <TexImageSource>
+  like or
+    like image-bitmap
+    like image-data
+    like offscreen-canvas

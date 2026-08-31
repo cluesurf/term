@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/g-lenum
+  find g-lenum
+
+load @term/bind/code/browser/dom/g-lint
+  find g-lint
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form web-gl-active-info, name <WebGLActiveInfo>
+  link name, name <name>
+    like native-string
+  link size, name <size>
+    like g-lint
+  link type, name <type>
+    like g-lenum

@@ -1,0 +1,30 @@
+
+load @term/bind/code/browser/dom/composite-operation
+  find composite-operation
+
+load @term/bind/code/browser/dom/effect-timing
+  find effect-timing
+
+load @term/bind/code/browser/dom/iteration-composite-operation
+  find iteration-composite-operation
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form keyframe-effect-options, name <KeyframeEffectOptions>
+  base effect-timing
+
+  link composite, name <composite>
+    like composite-operation
+    lock false
+  link iteration-composite, name <iterationComposite>
+    like iteration-composite-operation
+    lock false
+  link pseudo-element, name <pseudoElement>
+    like or
+      like native-string
+      like native-null
+    lock false

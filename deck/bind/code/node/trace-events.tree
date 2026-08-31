@@ -1,0 +1,24 @@
+
+bear @term/bind/code/javascript/node/trace-events/tracing
+bear @term/bind/code/javascript/node/trace-events/create-tracing-options
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find native-undefined
+
+load @term/bind/code/node/trace-events
+  find create-tracing-options
+  find tracing
+
+task create-tracing, name <createTracing>
+  like tracing
+
+  take options, like create-tracing-options
+
+task get-enabled-categories, name <getEnabledCategories>
+  like or
+    like native-string
+    like native-undefined

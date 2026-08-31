@@ -1,0 +1,12 @@
+
+load @term/bind/code/javascript
+  find array
+
+load @term/bind/code/node/inspector/profiler
+  find script-coverage
+
+form get-best-effort-coverage-return-type, name <GetBestEffortCoverageReturnType>
+  link result, name <result>
+    like array
+      like script-coverage
+    flex true

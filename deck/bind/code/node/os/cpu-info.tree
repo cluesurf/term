@@ -1,0 +1,33 @@
+
+load @term/bind
+  find form
+
+load @term/bind/code/javascript
+  find native-number
+  find native-string
+
+form cpu-info, name <CpuInfo>
+  link model, name <model>
+    like native-string
+    flex true
+  link speed, name <speed>
+    like native-number
+    flex true
+  link times, name <times>
+    like form
+      link user, name <user>
+        like native-number
+        flex true
+      link nice, name <nice>
+        like native-number
+        flex true
+      link sys, name <sys>
+        like native-number
+        flex true
+      link idle, name <idle>
+        like native-number
+        flex true
+      link irq, name <irq>
+        like native-number
+        flex true
+    flex true

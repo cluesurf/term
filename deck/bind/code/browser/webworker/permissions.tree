@@ -1,0 +1,32 @@
+
+load @term/bind/code/browser/dom/permissions
+  find permissions
+
+load @term/bind/code/browser/webworker/device-permission-descriptor
+  find device-permission-descriptor
+
+load @term/bind/code/browser/webworker/midi-permission-descriptor
+  find midi-permission-descriptor
+
+load @term/bind/code/browser/webworker/permission-descriptor
+  find permission-descriptor
+
+load @term/bind/code/browser/webworker/permission-status
+  find permission-status
+
+load @term/bind/code/browser/webworker/push-permission-descriptor
+  find push-permission-descriptor
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+form permissions, name <Permissions>
+  task query, name <query>
+    take permission-desc
+      like or
+        like permission-descriptor
+        like device-permission-descriptor
+        like midi-permission-descriptor
+        like push-permission-descriptor
+    like promise
+      like permission-status

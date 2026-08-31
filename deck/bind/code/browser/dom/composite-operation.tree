@@ -1,0 +1,6 @@
+
+form composite-operation, name <CompositeOperation>
+  like or
+    text <accumulate>
+    text <add>
+    text <replace>

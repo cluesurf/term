@@ -1,0 +1,10 @@
+
+load @term/bind/code/node/dns
+  find mx-record
+
+form any-mx-record, name <AnyMxRecord>
+  base mx-record
+
+  link type, name <type>
+    text <MX>
+    flex true

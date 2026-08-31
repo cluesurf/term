@@ -1,0 +1,19 @@
+
+load @term/bind/code/javascript/es2015/core/reg-exp
+  find reg-exp
+
+load @term/bind/code/javascript/es5/reg-exp-constructor
+  find reg-exp-constructor
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form reg-exp-constructor, name <RegExpConstructor>
+  hook make
+    take pattern
+      like or
+        like reg-exp
+        like native-string
+    take flags, like maybe
+      like native-string
+    like reg-exp

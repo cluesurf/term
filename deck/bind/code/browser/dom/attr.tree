@@ -1,0 +1,45 @@
+
+load @term/bind/code/browser/dom/document
+  find document
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form attr, name <Attr>
+  base node
+
+  link local-name, name <localName>
+    like native-string
+  link name, name <name>
+    like native-string
+  link namespace-uri, name <namespaceURI>
+    like or
+      like native-string
+      like native-null
+  link owner-document, name <ownerDocument>
+    like document
+  link owner-element, name <ownerElement>
+    like or
+      like element
+      like native-null
+  link prefix, name <prefix>
+    like or
+      like native-string
+      like native-null
+  link specified, name <specified>
+    like native-boolean
+  link value, name <value>
+    like native-string
+    lock false

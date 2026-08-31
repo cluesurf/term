@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript
+  find native-this
+
+form async-hook, name <AsyncHook>
+  task enable, name <enable>
+    like native-this
+
+  task disable, name <disable>
+    like native-this

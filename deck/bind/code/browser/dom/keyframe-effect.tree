@@ -1,0 +1,66 @@
+
+load @term/bind/code/browser/dom/animation-effect
+  find animation-effect
+
+load @term/bind/code/browser/dom/composite-operation
+  find composite-operation
+
+load @term/bind/code/browser/dom/computed-keyframe
+  find computed-keyframe
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/browser/dom/iteration-composite-operation
+  find iteration-composite-operation
+
+load @term/bind/code/browser/dom/keyframe
+  find keyframe
+
+load @term/bind/code/browser/dom/property-indexed-keyframes
+  find property-indexed-keyframes
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form keyframe-effect, name <KeyframeEffect>
+  base animation-effect
+
+  link composite, name <composite>
+    like composite-operation
+    lock false
+  link iteration-composite, name <iterationComposite>
+    like iteration-composite-operation
+    lock false
+  link pseudo-element, name <pseudoElement>
+    like or
+      like native-string
+      like native-null
+    lock false
+  link target, name <target>
+    like or
+      like element
+      like native-null
+    lock false
+
+  task get-keyframes, name <getKeyframes>
+    like native-array
+      like computed-keyframe
+
+  task set-keyframes, name <setKeyframes>
+    take keyframes
+      like or
+        like native-array
+          like keyframe
+        like property-indexed-keyframes
+        like native-null
+    like native-void

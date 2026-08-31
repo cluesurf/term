@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/es2015/iterable/array-constructor
+  find array-constructor
+
+form array-constructor, name <ArrayConstructor>
+  link {symbol/species}
+    like array-constructor
+    read true

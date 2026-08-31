@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/css-rule
+  find css-rule
+
+load @term/bind/code/browser/dom/css-rule-list
+  find css-rule-list
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+form css-rule-list, name <CSSRuleList>
+  task {symbol/iterator}
+    like iterable-iterator
+      like css-rule

@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/es5/array-buffer-constructor
+  find array-buffer-constructor
+
+form array-buffer-constructor, name <ArrayBufferConstructor>
+  link {symbol/species}
+    like array-buffer-constructor
+    read true

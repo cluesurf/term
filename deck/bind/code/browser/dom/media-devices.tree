@@ -1,0 +1,142 @@
+
+load @term/bind/code/browser/dom/add-event-listener-options
+  find add-event-listener-options
+
+load @term/bind/code/browser/dom/display-media-stream-constraints
+  find display-media-stream-constraints
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/browser/dom/event-listener-options
+  find event-listener-options
+
+load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+  find event-listener-or-event-listener-object
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+load @term/bind/code/browser/dom/media-device-info
+  find media-device-info
+
+load @term/bind/code/browser/dom/media-devices-event-map
+  find media-devices-event-map
+
+load @term/bind/code/browser/dom/media-stream
+  find media-stream
+
+load @term/bind/code/browser/dom/media-stream-constraints
+  find media-stream-constraints
+
+load @term/bind/code/browser/dom/media-track-supported-constraints
+  find media-track-supported-constraints
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form media-devices, name <MediaDevices>
+  base event-target
+
+  link ondevicechange, name <ondevicechange>
+    like or
+      like task
+        take this, like media-devices
+        take ev, like event
+        like native-any
+      like native-null
+    lock false
+
+  task enumerate-devices, name <enumerateDevices>
+    like promise
+      like native-array
+        like media-device-info
+
+  task get-display-media, name <getDisplayMedia>
+    take constraints, like maybe
+      like display-media-stream-constraints
+    like promise
+      like media-stream
+
+  task get-supported-constraints, name <getSupportedConstraints>
+    like media-track-supported-constraints
+
+  task get-user-media, name <getUserMedia>
+    take constraints, like maybe
+      like media-stream-constraints
+    like promise
+      like media-stream
+
+  task add-event-listener, name <addEventListener>
+    head k
+      base link-read
+        like media-devices-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like media-devices
+        take ev
+          like index
+            like media-devices-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task add-event-listener, name <addEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like add-event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    head k
+      base link-read
+        like media-devices-event-map
+    take type, like k
+    take listener
+      like task
+        take this, like media-devices
+        take ev
+          like index
+            like media-devices-event-map
+            like k
+        like native-any
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void
+
+  task remove-event-listener, name <removeEventListener>
+    take type, like native-string
+    take listener, like event-listener-or-event-listener-object
+    take options, like maybe
+      like or
+        like native-boolean
+        like event-listener-options
+    like native-void

@@ -1,0 +1,59 @@
+
+load @term/bind/code/browser/dom/child-node
+  find child-node
+
+load @term/bind/code/browser/dom/document
+  find document
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/browser/dom/non-document-type-child-node
+  find non-document-type-child-node
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form character-data, name <CharacterData>
+  base node
+  base child-node
+  base non-document-type-child-node
+
+  link data, name <data>
+    like native-string
+    lock false
+  link length, name <length>
+    like native-number
+  link owner-document, name <ownerDocument>
+    like document
+
+  task append-data, name <appendData>
+    take data, like native-string
+    like native-void
+
+  task delete-data, name <deleteData>
+    take offset, like native-number
+    take count, like native-number
+    like native-void
+
+  task insert-data, name <insertData>
+    take offset, like native-number
+    take data, like native-string
+    like native-void
+
+  task replace-data, name <replaceData>
+    take offset, like native-number
+    take count, like native-number
+    take data, like native-string
+    like native-void
+
+  task substring-data, name <substringData>
+    take offset, like native-number
+    take count, like native-number
+    like native-string

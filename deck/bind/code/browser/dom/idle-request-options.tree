@@ -1,0 +1,8 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form idle-request-options, name <IdleRequestOptions>
+  link timeout, name <timeout>
+    like native-number
+    lock false

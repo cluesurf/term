@@ -1,0 +1,27 @@
+
+load @term/bind/code/javascript/es2015/collection/set
+  find set
+
+load @term/bind/code/javascript/es2015/iterable/iterable-iterator
+  find iterable-iterator
+
+form set, name <Set>
+  head t
+
+  task {symbol/iterator}
+    like iterable-iterator
+      like t
+
+  task entries, name <entries>
+    like iterable-iterator
+      like band
+        like t
+        like t
+
+  task keys, name <keys>
+    like iterable-iterator
+      like t
+
+  task values, name <values>
+    like iterable-iterator
+      like t

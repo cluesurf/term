@@ -1,0 +1,25 @@
+
+load @term/bind/code/browser/dom/document-fragment
+  find document-fragment
+
+load @term/bind/code/browser/dom/document-or-shadow-root
+  find document-or-shadow-root
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/browser/dom/inner-html
+  find inner-html
+
+load @term/bind/code/browser/dom/shadow-root-mode
+  find shadow-root-mode
+
+form shadow-root, name <ShadowRoot>
+  base document-fragment
+  base document-or-shadow-root
+  base inner-html
+
+  link host, name <host>
+    like element
+  link mode, name <mode>
+    like shadow-root-mode

@@ -1,0 +1,5 @@
+
+form binary-type, name <BinaryType>
+  like or
+    text <arraybuffer>
+    text <blob>

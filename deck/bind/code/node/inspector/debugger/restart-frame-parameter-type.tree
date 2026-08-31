@@ -1,0 +1,8 @@
+
+load @term/bind/code/node/inspector/debugger
+  find call-frame-id
+
+form restart-frame-parameter-type, name <RestartFrameParameterType>
+  link call-frame-id, name <callFrameId>
+    like call-frame-id
+    flex true

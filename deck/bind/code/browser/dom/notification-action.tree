@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form notification-action, name <NotificationAction>
+  link action, name <action>
+    like native-string
+    lock false
+  link icon, name <icon>
+    like native-string
+    lock false
+  link title, name <title>
+    like native-string
+    lock false

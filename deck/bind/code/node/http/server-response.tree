@@ -1,0 +1,72 @@
+
+load @term/bind/code/javascript
+  find array
+  find incoming-message
+  find native-number
+  find native-string
+  find native-this
+  find native-void
+  find socket
+
+load @term/bind
+  find or
+  find task
+
+load @term/bind/code/node/http
+  find outgoing-http-header
+  find outgoing-http-headers
+
+form server-response, name <ServerResponse>
+  base outgoing-message
+  link status-code, name <statusCode>, like native-number
+  link status-message, name <statusMessage>, like native-string
+
+  task assign-socket, name <assignSocket>
+    like native-void
+
+    take socket, like socket
+
+  task detach-socket, name <detachSocket>
+    like native-void
+
+    take socket, like socket
+
+  task write-continue, name <writeContinue>
+    like native-void
+
+    take callback
+      like task
+        like native-void
+
+      void true
+
+  task write-head, name <writeHead>
+    like native-this
+
+    take status-code, like native-number
+    take status-message, like native-string
+      void true
+    take headers
+      like or
+        like outgoing-http-headers
+        like array
+          like outgoing-http-header
+      void true
+
+  task write-head, name <writeHead>
+    like native-this
+
+    take status-code, like native-number
+    take headers
+      like or
+        like outgoing-http-headers
+        like array
+          like outgoing-http-header
+      void true
+
+  task write-processing, name <writeProcessing>
+    like native-void
+
+form server-response-constructor
+  hook make
+    take req, like incoming-message

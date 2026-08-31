@@ -1,0 +1,19 @@
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form shared-array-buffer, name <SharedArrayBuffer>
+  link byte-length, name <byteLength>
+    like native-number
+  link {symbol/species}
+    like shared-array-buffer
+    read true
+  link {symbol/to-string-tag}
+    text <SharedArrayBuffer>
+    read true
+
+  task slice, name <slice>
+    take begin, like native-number
+    take end, like maybe
+      like native-number
+    like shared-array-buffer

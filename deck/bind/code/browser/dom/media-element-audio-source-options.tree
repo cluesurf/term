@@ -1,0 +1,8 @@
+
+load @term/bind/code/browser/dom/html-media-element
+  find html-media-element
+
+form media-element-audio-source-options, name <MediaElementAudioSourceOptions>
+  link media-element, name <mediaElement>
+    like html-media-element
+    lock false

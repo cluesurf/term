@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/payment-request-update-event
+  find payment-request-update-event
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form payment-method-change-event, name <PaymentMethodChangeEvent>
+  base payment-request-update-event
+
+  link method-details, name <methodDetails>
+    like native-any
+  link method-name, name <methodName>
+    like native-string

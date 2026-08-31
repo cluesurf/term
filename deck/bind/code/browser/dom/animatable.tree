@@ -1,0 +1,44 @@
+
+load @term/bind/code/browser/dom/animation
+  find animation
+
+load @term/bind/code/browser/dom/get-animations-options
+  find get-animations-options
+
+load @term/bind/code/browser/dom/keyframe
+  find keyframe
+
+load @term/bind/code/browser/dom/keyframe-animation-options
+  find keyframe-animation-options
+
+load @term/bind/code/browser/dom/property-indexed-keyframes
+  find property-indexed-keyframes
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form animatable, name <Animatable>
+  task animate, name <animate>
+    take keyframes
+      like or
+        like native-array
+          like keyframe
+        like property-indexed-keyframes
+        like native-null
+    take options, like maybe
+      like or
+        like native-number
+        like keyframe-animation-options
+    like animation
+
+  task get-animations, name <getAnimations>
+    take options, like maybe
+      like get-animations-options
+    like native-array
+      like animation

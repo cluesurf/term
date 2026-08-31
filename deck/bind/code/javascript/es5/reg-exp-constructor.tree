@@ -1,0 +1,53 @@
+
+load @term/bind/code/javascript/es5/reg-exp
+  find reg-exp
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form reg-exp-constructor, name <RegExpConstructor>
+  link prototype, name <prototype>
+    like reg-exp
+  link 1, name <$1>
+    like native-string
+    lock false
+  link 2, name <$2>
+    like native-string
+    lock false
+  link 3, name <$3>
+    like native-string
+    lock false
+  link 4, name <$4>
+    like native-string
+    lock false
+  link 5, name <$5>
+    like native-string
+    lock false
+  link 6, name <$6>
+    like native-string
+    lock false
+  link 7, name <$7>
+    like native-string
+    lock false
+  link 8, name <$8>
+    like native-string
+    lock false
+  link 9, name <$9>
+    like native-string
+    lock false
+  link last-match, name <lastMatch>
+    like native-string
+    lock false
+
+  hook make
+    take pattern
+      like or
+        like reg-exp
+        like native-string
+    like reg-exp
+
+  hook make
+    take pattern, like native-string
+    take flags, like maybe
+      like native-string
+    like reg-exp

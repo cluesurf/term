@@ -1,0 +1,7 @@
+
+load @term/bind/code/browser/dom/exports
+  find exports
+
+form instance, name <Instance>
+  link exports, name <exports>
+    like exports

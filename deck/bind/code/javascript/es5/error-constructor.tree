@@ -1,0 +1,15 @@
+
+load @term/bind/code/javascript/es5/error
+  find error
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form error-constructor, name <ErrorConstructor>
+  link prototype, name <prototype>
+    like error
+
+  hook make
+    take message, like maybe
+      like native-string
+    like error

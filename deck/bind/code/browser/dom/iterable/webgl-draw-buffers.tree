@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/dom/g-lenum
+  find g-lenum
+
+load @term/bind/code/browser/dom/webgl-draw-buffers
+  find webgl-draw-buffers
+
+load @term/bind/code/javascript/iterable
+  find iterable
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form webgl-draw-buffers, name <WEBGL_draw_buffers>
+  task draw-buffers-webgl, name <drawBuffersWEBGL>
+    take buffers
+      like iterable
+        like g-lenum
+    like native-void

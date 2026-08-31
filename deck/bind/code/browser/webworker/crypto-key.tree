@@ -1,0 +1,29 @@
+
+load @term/bind/code/browser/dom/crypto-key
+  find crypto-key
+
+load @term/bind/code/browser/webworker/key-algorithm
+  find key-algorithm
+
+load @term/bind/code/browser/webworker/key-type
+  find key-type
+
+load @term/bind/code/browser/webworker/key-usage
+  find key-usage
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+form crypto-key, name <CryptoKey>
+  link algorithm, name <algorithm>
+    like key-algorithm
+  link extractable, name <extractable>
+    like native-boolean
+  link type, name <type>
+    like key-type
+  link usages, name <usages>
+    like native-array
+      like key-usage

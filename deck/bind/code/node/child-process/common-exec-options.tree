@@ -1,0 +1,51 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-null
+  find native-number
+  find native-string
+  find native-undefined
+  find node-js-array-buffer-view
+  find node-js-signals
+
+load @term/bind/code/node/buffer
+  find buffer-encoding
+
+load @term/bind/code/node/child-process
+  find common-options
+  find stdio-options
+
+form common-exec-options, name <CommonExecOptions>
+  base common-options
+
+  link input, name <input>
+    like or
+      like native-string
+      like node-js-array-buffer-view
+      like native-undefined
+    flex true
+  link stdio, name <stdio>
+    like or
+      like stdio-options
+      like native-undefined
+    flex true
+  link kill-signal, name <killSignal>
+    like or
+      like node-js-signals
+      like native-number
+      like native-undefined
+    flex true
+  link max-buffer, name <maxBuffer>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link encoding, name <encoding>
+    like or
+      like buffer-encoding
+      text <buffer>
+      like native-null
+      like native-undefined
+    flex true

@@ -1,0 +1,45 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form array-constructor, name <ArrayConstructor>
+  link prototype, name <prototype>
+    like native-array
+      like native-any
+
+  task is-array, name <isArray>
+    take arg, like native-any
+    like native-boolean
+    rank arg
+      like native-array
+        like native-any
+
+  hook make
+    take array-length, like maybe
+      like native-number
+    like native-array
+      like native-any
+
+  hook make
+    head t
+    take array-length, like native-number
+    like native-array
+      like t
+
+  hook make
+    head t
+    take items
+      like native-array
+        like t
+      rest true
+    like native-array
+      like t

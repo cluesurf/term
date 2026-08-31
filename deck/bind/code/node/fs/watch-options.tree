@@ -1,0 +1,33 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-undefined
+
+load @term/bind/code/node/buffer
+  find buffer-encoding
+
+load @term/bind/code/node/events/event-emitter
+  find abortable
+
+form watch-options, name <WatchOptions>
+  base abortable
+
+  link encoding, name <encoding>
+    like or
+      like buffer-encoding
+      text <buffer>
+      like native-undefined
+    flex true
+  link persistent, name <persistent>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link recursive, name <recursive>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

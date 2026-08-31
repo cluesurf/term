@@ -1,0 +1,19 @@
+
+load @term/bind/code/browser/dom/payment-details-modifier
+  find payment-details-modifier
+
+load @term/bind/code/browser/dom/payment-item
+  find payment-item
+
+load @term/bind/code/javascript/native
+  find native-array
+
+form payment-details-base, name <PaymentDetailsBase>
+  link display-items, name <displayItems>
+    like native-array
+      like payment-item
+    lock false
+  link modifiers, name <modifiers>
+    like native-array
+      like payment-details-modifier
+    lock false

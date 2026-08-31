@@ -1,0 +1,43 @@
+
+load @term/bind/code/browser/dom/rtc-bundle-policy
+  find rtc-bundle-policy
+
+load @term/bind/code/browser/dom/rtc-certificate
+  find rtc-certificate
+
+load @term/bind/code/browser/dom/rtc-ice-server
+  find rtc-ice-server
+
+load @term/bind/code/browser/dom/rtc-ice-transport-policy
+  find rtc-ice-transport-policy
+
+load @term/bind/code/browser/dom/rtc-rtcp-mux-policy
+  find rtc-rtcp-mux-policy
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form rtc-configuration, name <RTCConfiguration>
+  link bundle-policy, name <bundlePolicy>
+    like rtc-bundle-policy
+    lock false
+  link certificates, name <certificates>
+    like native-array
+      like rtc-certificate
+    lock false
+  link ice-candidate-pool-size, name <iceCandidatePoolSize>
+    like native-number
+    lock false
+  link ice-servers, name <iceServers>
+    like native-array
+      like rtc-ice-server
+    lock false
+  link ice-transport-policy, name <iceTransportPolicy>
+    like rtc-ice-transport-policy
+    lock false
+  link rtcp-mux-policy, name <rtcpMuxPolicy>
+    like rtc-rtcp-mux-policy
+    lock false

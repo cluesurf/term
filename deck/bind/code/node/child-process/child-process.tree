@@ -1,0 +1,636 @@
+
+load @term/bind/code/javascript
+  find array
+  find error
+  find native-boolean
+  find native-null
+  find native-number
+  find native-string
+  find native-symbol
+  find native-this
+  find native-undefined
+  find native-void
+  find node-js-signals
+  find pipe
+  find readable
+  find writable
+
+load @term/bind
+  find any
+  find or
+  find task
+  find tuple
+
+load @term/bind/code/node/child-process
+  find message-options
+  find send-handle
+  find serializable
+
+form child-process, name <ChildProcess>
+  base event-emitter
+  link stdin, name <stdin>
+    like or
+      like writable
+      like native-null
+  link stdout, name <stdout>
+    like or
+      like readable
+      like native-null
+  link stderr, name <stderr>
+    like or
+      like readable
+      like native-null
+  link channel, name <channel>
+    like or
+      like pipe
+      like native-null
+      like native-undefined
+  link stdio, name <stdio>
+    like tuple
+      like or
+        like writable
+        like native-null
+      like or
+        like readable
+        like native-null
+      like or
+        like readable
+        like native-null
+      like or
+        like readable
+        like writable
+        like native-null
+        like native-undefined
+      like or
+        like readable
+        like writable
+        like native-null
+        like native-undefined
+  link killed, name <killed>, like native-boolean
+  link pid, name <pid>
+    like or
+      like native-number
+      like native-undefined
+  link connected, name <connected>, like native-boolean
+  link exit-code, name <exitCode>
+    like or
+      like native-number
+      like native-null
+  link signal-code, name <signalCode>
+    like or
+      like node-js-signals
+      like native-null
+  link spawnargs, name <spawnargs>
+    like array
+      like native-string
+  link spawnfile, name <spawnfile>, like native-string
+
+  task kill, name <kill>
+    like native-boolean
+
+    take signal
+      like or
+        like node-js-signals
+        like native-number
+      void true
+
+  task send, name <send>
+    like native-boolean
+
+    take message, like serializable
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+      void true
+
+  task send, name <send>
+    like native-boolean
+
+    take message, like serializable
+    take send-handle, like send-handle
+      void true
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+      void true
+
+  task send, name <send>
+    like native-boolean
+
+    take message, like serializable
+    take send-handle, like send-handle
+      void true
+    take options, like message-options
+      void true
+    take callback
+      like task
+        like native-void
+
+        take error
+          like or
+            like error
+            like native-null
+      void true
+
+  task disconnect, name <disconnect>
+    like native-void
+
+  task unref, name <unref>
+    like native-void
+
+  task ref, name <ref>
+    like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+        take code
+          like or
+            like native-number
+            like native-null
+        take signal
+          like or
+            like node-js-signals
+            like native-null
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <disconnect>
+    take listener
+      like task
+        like native-void
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <exit>
+    take listener
+      like task
+        like native-void
+
+        take code
+          like or
+            like native-number
+            like native-null
+        take signal
+          like or
+            like node-js-signals
+            like native-null
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take message, like serializable
+        take send-handle, like send-handle
+
+  task add-listener, name <addListener>
+    like native-this
+
+    take event, text <spawn>
+    take listener
+      like task
+        like native-void
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event
+      like or
+        like native-string
+        like native-symbol
+    take args
+      like array
+        like any
+      rest true
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <close>
+    take code
+      like or
+        like native-number
+        like native-null
+    take signal
+      like or
+        like node-js-signals
+        like native-null
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <disconnect>
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <error>
+    take err, like error
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <exit>
+    take code
+      like or
+        like native-number
+        like native-null
+    take signal
+      like or
+        like node-js-signals
+        like native-null
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <message>
+    take message, like serializable
+    take send-handle, like send-handle
+
+  task emit, name <emit>
+    like native-boolean
+
+    take event, text <spawn>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task on, name <on>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+        take code
+          like or
+            like native-number
+            like native-null
+        take signal
+          like or
+            like node-js-signals
+            like native-null
+
+  task on, name <on>
+    like native-this
+
+    take event, text <disconnect>
+    take listener
+      like task
+        like native-void
+
+  task on, name <on>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task on, name <on>
+    like native-this
+
+    take event, text <exit>
+    take listener
+      like task
+        like native-void
+
+        take code
+          like or
+            like native-number
+            like native-null
+        take signal
+          like or
+            like node-js-signals
+            like native-null
+
+  task on, name <on>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take message, like serializable
+        take send-handle, like send-handle
+
+  task on, name <on>
+    like native-this
+
+    take event, text <spawn>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task once, name <once>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+        take code
+          like or
+            like native-number
+            like native-null
+        take signal
+          like or
+            like node-js-signals
+            like native-null
+
+  task once, name <once>
+    like native-this
+
+    take event, text <disconnect>
+    take listener
+      like task
+        like native-void
+
+  task once, name <once>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task once, name <once>
+    like native-this
+
+    take event, text <exit>
+    take listener
+      like task
+        like native-void
+
+        take code
+          like or
+            like native-number
+            like native-null
+        take signal
+          like or
+            like node-js-signals
+            like native-null
+
+  task once, name <once>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take message, like serializable
+        take send-handle, like send-handle
+
+  task once, name <once>
+    like native-this
+
+    take event, text <spawn>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+        take code
+          like or
+            like native-number
+            like native-null
+        take signal
+          like or
+            like node-js-signals
+            like native-null
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <disconnect>
+    take listener
+      like task
+        like native-void
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <exit>
+    take listener
+      like task
+        like native-void
+
+        take code
+          like or
+            like native-number
+            like native-null
+        take signal
+          like or
+            like node-js-signals
+            like native-null
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take message, like serializable
+        take send-handle, like send-handle
+
+  task prepend-listener, name <prependListener>
+    like native-this
+
+    take event, text <spawn>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <close>
+    take listener
+      like task
+        like native-void
+
+        take code
+          like or
+            like native-number
+            like native-null
+        take signal
+          like or
+            like node-js-signals
+            like native-null
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <disconnect>
+    take listener
+      like task
+        like native-void
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <error>
+    take listener
+      like task
+        like native-void
+
+        take err, like error
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <exit>
+    take listener
+      like task
+        like native-void
+
+        take code
+          like or
+            like native-number
+            like native-null
+        take signal
+          like or
+            like node-js-signals
+            like native-null
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <message>
+    take listener
+      like task
+        like native-void
+
+        take message, like serializable
+        take send-handle, like send-handle
+
+  task prepend-once-listener, name <prependOnceListener>
+    like native-this
+
+    take event, text <spawn>
+    take listener
+      like task
+        like native-void

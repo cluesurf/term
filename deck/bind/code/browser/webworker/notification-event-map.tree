@@ -1,0 +1,20 @@
+
+load @term/bind/code/browser/dom/notification-event-map
+  find notification-event-map
+
+load @term/bind/code/browser/webworker/event
+  find event
+
+form notification-event-map, name <NotificationEventMap>
+  link click, name <click>
+    like event
+    lock false
+  link close, name <close>
+    like event
+    lock false
+  link error, name <error>
+    like event
+    lock false
+  link show, name <show>
+    like event
+    lock false

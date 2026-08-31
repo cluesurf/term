@@ -1,0 +1,15 @@
+
+load @term/bind/code/browser/dom/blob
+  find blob
+
+load @term/bind/code/browser/dom/buffer-source
+  find buffer-source
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form blob-part, name <BlobPart>
+  like or
+    like buffer-source
+    like blob
+    like native-string

@@ -1,0 +1,11 @@
+
+form media-key-status, name <MediaKeyStatus>
+  like or
+    text <expired>
+    text <internal-error>
+    text <output-downscaled>
+    text <output-restricted>
+    text <released>
+    text <status-pending>
+    text <usable>
+    text <usable-in-future>

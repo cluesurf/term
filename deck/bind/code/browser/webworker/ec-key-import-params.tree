@@ -1,0 +1,16 @@
+
+load @term/bind/code/browser/dom/ec-key-import-params
+  find ec-key-import-params
+
+load @term/bind/code/browser/webworker/algorithm
+  find algorithm
+
+load @term/bind/code/browser/webworker/named-curve
+  find named-curve
+
+form ec-key-import-params, name <EcKeyImportParams>
+  base algorithm
+
+  link named-curve, name <namedCurve>
+    like named-curve
+    lock false

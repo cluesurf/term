@@ -1,0 +1,12 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/node/net
+  find ipc-socket-connect-opts
+  find tcp-socket-connect-opts
+
+form socket-connect-opts, name <SocketConnectOpts>
+  like or
+    like tcp-socket-connect-opts
+    like ipc-socket-connect-opts

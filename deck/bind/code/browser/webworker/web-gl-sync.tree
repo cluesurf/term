@@ -1,0 +1,5 @@
+
+load @term/bind/code/browser/dom/web-gl-sync
+  find web-gl-sync
+
+form web-gl-sync, name <WebGLSync>

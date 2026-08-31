@@ -1,0 +1,5 @@
+
+form shadow-root-mode, name <ShadowRootMode>
+  like or
+    text <closed>
+    text <open>

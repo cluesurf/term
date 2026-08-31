@@ -1,0 +1,17 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-number
+  find native-undefined
+
+form rsa-key-pair-key-object-options, name <RSAKeyPairKeyObjectOptions>
+  link modulus-length, name <modulusLength>
+    like native-number
+    flex true
+  link public-exponent, name <publicExponent>
+    like or
+      like native-number
+      like native-undefined
+    flex true

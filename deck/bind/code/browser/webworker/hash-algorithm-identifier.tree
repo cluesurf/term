@@ -1,0 +1,6 @@
+
+load @term/bind/code/browser/webworker/algorithm-identifier
+  find algorithm-identifier
+
+form hash-algorithm-identifier, name <HashAlgorithmIdentifier>
+  like algorithm-identifier

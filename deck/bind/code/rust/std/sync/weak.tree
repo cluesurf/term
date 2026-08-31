@@ -1,0 +1,148 @@
+
+form weak, name <std::sync::Weak>
+  task new, name <new>
+    note <Constructs a new Weak&lt;T&gt;, without allocating any memory. Calling upgrade on the return value always gives None.>
+
+    free seed
+      like weak
+        like t
+          cite free
+        cite free
+
+  task as-ptr, name <as_ptr>
+    note <Returns a raw pointer to the object T pointed to by this Weak&lt;T&gt;.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+      calm take
+
+  task into-raw, name <into_raw>
+    note <Consumes the Weak&lt;T&gt; and turns it into a raw pointer.>
+
+    take self
+      cite free
+
+    free seed
+      like t
+        cite free
+      calm take
+
+  task from-raw, name <from_raw>
+    note <Converts a raw pointer previously created by into_raw back into Weak&lt;T&gt;.>
+
+    take ptr
+      like t
+        cite free
+      calm take
+      cite free
+      dive take
+
+    free seed
+      like weak
+        like t
+          cite free
+        cite free
+
+  task upgrade, name <upgrade>
+    note <Attempts to upgrade the Weak pointer to an Arc, delaying dropping of the inner value if successful.>
+
+    take self
+      cite free
+
+    free seed
+      like option
+        like arc
+          like t
+            cite free
+          cite free
+        cite free
+
+  task strong-count, name <strong_count>
+    note <Gets the number of strong (Arc) pointers pointing to this allocation.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task weak-count, name <weak_count>
+    note <Gets an approximation of the number of Weak pointers pointing to this allocation.>
+
+    take self
+      cite free
+
+    free seed
+      like usize
+        cite free
+
+  task ptr-eq, name <ptr_eq>
+    note <Returns true if the two Weaks point to the same allocation (similar to ptr::eq), or if both don't point to any allocation (because they were created with Weak::new()).>
+
+    take self
+      cite free
+    take other
+      like weak
+        like t
+          cite free
+
+    free seed
+      like bool
+        cite free
+
+  task clone, name <clone>
+    note <Makes a clone of the Weak pointer that points to the same allocation.>
+
+    take self
+      cite free
+
+    free seed
+      like weak
+        like t
+          cite free
+        cite free
+
+  task clone-from, name <clone_from>
+    note <Performs copy-assignment from source.>
+
+    take self
+      cite free
+    take source
+      like self
+
+  task fmt, name <fmt>
+    note <Formats the value using the given formatter.>
+
+    take self
+      cite free
+    take f
+      like formatter
+        time mask
+      lock free
+
+    free seed
+      like result
+        like form
+        like error
+          cite free
+        cite free
+
+  task default, name <default>
+    note <Constructs a new Weak&lt;T&gt;, without allocating memory. Calling upgrade on the return value always gives None.>
+
+    free seed
+      like weak
+        like t
+          cite free
+        cite free
+
+  task drop, name <drop>
+    note <Drops the Weak pointer.>
+
+    take self
+      cite free

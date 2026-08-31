@@ -1,0 +1,25 @@
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-object
+
+load @term/bind/code/javascript/native
+  find native-this
+
+form weak-set, name <WeakSet>
+  head t
+    base native-object
+
+  task add, name <add>
+    take value, like t
+    like native-this
+
+  task delete, name <delete>
+    take value, like t
+    like native-boolean
+
+  task has, name <has>
+    take value, like t
+    like native-boolean

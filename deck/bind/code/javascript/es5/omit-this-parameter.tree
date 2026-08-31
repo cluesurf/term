@@ -1,0 +1,38 @@
+
+load @term/bind/code/javascript/a
+  find a
+
+load @term/bind/code/javascript/es5/this-parameter-type
+  find this-parameter-type
+
+load @term/bind/code/javascript/native
+  find native-unknown
+
+load @term/bind/code/javascript/r
+  find r
+
+form omit-this-parameter, name <OmitThisParameter>
+  head t
+
+  like test
+    stem roll
+      like native-unknown
+      like this-parameter-type
+        like t
+      hook true
+        like t
+      hook false
+        like test
+          stem roll
+            like t
+            like task
+              take args, name a
+                rest true
+              name r
+            hook true
+              like task
+                take args, like a
+                  rest true
+                like r
+            hook false
+              like t

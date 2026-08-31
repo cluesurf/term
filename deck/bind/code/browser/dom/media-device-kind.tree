@@ -1,0 +1,6 @@
+
+form media-device-kind, name <MediaDeviceKind>
+  like or
+    text <audioinput>
+    text <audiooutput>
+    text <videoinput>

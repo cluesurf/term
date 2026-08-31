@@ -1,0 +1,14 @@
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form payment-validation-errors, name <PaymentValidationErrors>
+  link error, name <error>
+    like native-string
+    lock false
+  link payment-method, name <paymentMethod>
+    like native-any
+    lock false

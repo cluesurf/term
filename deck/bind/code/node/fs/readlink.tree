@@ -1,0 +1,40 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-string
+  find promise
+
+load @term/bind/code/node/buffer
+  find buffer
+
+load @term/bind/code/node/fs
+  find buffer-encoding-option
+  find encoding-option
+  find path-like
+
+task promisify, name <__promisify__>
+  like promise
+    like native-string
+
+  take path, like path-like
+  take options, like encoding-option
+    void true
+
+task promisify, name <__promisify__>
+  like promise
+    like buffer
+
+  take path, like path-like
+  take options, like buffer-encoding-option
+
+task promisify, name <__promisify__>
+  like promise
+    like or
+      like native-string
+      like buffer
+
+  take path, like path-like
+  take options, like encoding-option
+    void true

@@ -1,0 +1,45 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-boolean
+  find native-number
+  find native-undefined
+
+form settings, name <Settings>
+  link header-table-size, name <headerTableSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link enable-push, name <enablePush>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true
+  link initial-window-size, name <initialWindowSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link max-frame-size, name <maxFrameSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link max-concurrent-streams, name <maxConcurrentStreams>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link max-header-list-size, name <maxHeaderListSize>
+    like or
+      like native-number
+      like native-undefined
+    flex true
+  link enable-connect-protocol, name <enableConnectProtocol>
+    like or
+      like native-boolean
+      like native-undefined
+    flex true

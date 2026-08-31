@@ -1,0 +1,23 @@
+
+form request-destination, name <RequestDestination>
+  like or
+    text <>
+    text <audio>
+    text <audioworklet>
+    text <document>
+    text <embed>
+    text <font>
+    text <frame>
+    text <iframe>
+    text <image>
+    text <manifest>
+    text <object>
+    text <paintworklet>
+    text <report>
+    text <script>
+    text <sharedworker>
+    text <style>
+    text <track>
+    text <video>
+    text <worker>
+    text <xslt>

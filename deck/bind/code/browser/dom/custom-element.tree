@@ -1,0 +1,16 @@
+
+load @term/bind/code/javascript
+  find array
+
+load @term/bind/code/browser/dom
+  find html-element
+
+form custom-element
+  hook self
+  hook make
+    like html-element
+
+    take params
+      like array
+        like any
+      rest true

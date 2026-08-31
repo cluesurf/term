@@ -1,0 +1,92 @@
+
+load @term/bind/code/javascript/es5/array
+  find array
+
+load @term/bind/code/javascript/native
+  find native-any
+
+load @term/bind/code/javascript/native
+  find native-array
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-this
+
+load @term/bind/code/javascript/native
+  find native-undefined
+
+load @term/bind/code/javascript/native
+  find native-unknown
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form array, name <Array>
+  head t
+
+  task find, name <find>
+    head s
+      base t
+    take predicate
+      like task
+        take this, like native-void
+        take value, like t
+        take index, like native-number
+        take obj
+          like native-array
+            like t
+        like native-boolean
+        rank value, like s
+    take this-arg, like maybe
+      like native-any
+    like or
+      like s
+      like native-undefined
+
+  task find, name <find>
+    take predicate
+      like task
+        take value, like t
+        take index, like native-number
+        take obj
+          like native-array
+            like t
+        like native-unknown
+    take this-arg, like maybe
+      like native-any
+    like or
+      like t
+      like native-undefined
+
+  task find-index, name <findIndex>
+    take predicate
+      like task
+        take value, like t
+        take index, like native-number
+        take obj
+          like native-array
+            like t
+        like native-unknown
+    take this-arg, like maybe
+      like native-any
+    like native-number
+
+  task fill, name <fill>
+    take value, like t
+    take start, like maybe
+      like native-number
+    take end, like maybe
+      like native-number
+    like native-this
+
+  task copy-within, name <copyWithin>
+    take target, like native-number
+    take start, like native-number
+    take end, like maybe
+      like native-number
+    like native-this

@@ -1,0 +1,18 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-null
+  find native-undefined
+
+load @term/bind/code/node/buffer
+  find buffer-encoding
+
+form object-encoding-options, name <ObjectEncodingOptions>
+  link encoding, name <encoding>
+    like or
+      like buffer-encoding
+      like native-null
+      like native-undefined
+    flex true

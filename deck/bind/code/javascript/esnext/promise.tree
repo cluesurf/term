@@ -1,0 +1,10 @@
+
+bear @term/bind/code/javascript/esnext/promise/aggregate-error
+bear @term/bind/code/javascript/esnext/promise/aggregate-error-constructor
+bear @term/bind/code/javascript/esnext/promise/promise-constructor
+
+load @term/bind/code/javascript/esnext/promise/aggregate-error-constructor
+  find aggregate-error-constructor
+
+host aggregate-error, name <AggregateError>
+  like aggregate-error-constructor

@@ -1,0 +1,6 @@
+
+load @term/bind/code/javascript/es5/promise
+  find promise
+
+form promise, name <Promise>
+  head t

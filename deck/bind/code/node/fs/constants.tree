@@ -1,0 +1,135 @@
+
+load @term/bind/code/javascript
+  find native-number
+
+host f-ok, name <F_OK>
+  like native-number
+
+host r-ok, name <R_OK>
+  like native-number
+
+host w-ok, name <W_OK>
+  like native-number
+
+host x-ok, name <X_OK>
+  like native-number
+
+host copyfile-excl, name <COPYFILE_EXCL>
+  like native-number
+
+host copyfile-ficlone, name <COPYFILE_FICLONE>
+  like native-number
+
+host copyfile-ficlone-force, name <COPYFILE_FICLONE_FORCE>
+  like native-number
+
+host o-rdonly, name <O_RDONLY>
+  like native-number
+
+host o-wronly, name <O_WRONLY>
+  like native-number
+
+host o-rdwr, name <O_RDWR>
+  like native-number
+
+host o-creat, name <O_CREAT>
+  like native-number
+
+host o-excl, name <O_EXCL>
+  like native-number
+
+host o-noctty, name <O_NOCTTY>
+  like native-number
+
+host o-trunc, name <O_TRUNC>
+  like native-number
+
+host o-append, name <O_APPEND>
+  like native-number
+
+host o-directory, name <O_DIRECTORY>
+  like native-number
+
+host o-noatime, name <O_NOATIME>
+  like native-number
+
+host o-nofollow, name <O_NOFOLLOW>
+  like native-number
+
+host o-sync, name <O_SYNC>
+  like native-number
+
+host o-dsync, name <O_DSYNC>
+  like native-number
+
+host o-symlink, name <O_SYMLINK>
+  like native-number
+
+host o-direct, name <O_DIRECT>
+  like native-number
+
+host o-nonblock, name <O_NONBLOCK>
+  like native-number
+
+host s-ifmt, name <S_IFMT>
+  like native-number
+
+host s-ifreg, name <S_IFREG>
+  like native-number
+
+host s-ifdir, name <S_IFDIR>
+  like native-number
+
+host s-ifchr, name <S_IFCHR>
+  like native-number
+
+host s-ifblk, name <S_IFBLK>
+  like native-number
+
+host s-ififo, name <S_IFIFO>
+  like native-number
+
+host s-iflnk, name <S_IFLNK>
+  like native-number
+
+host s-ifsock, name <S_IFSOCK>
+  like native-number
+
+host s-irwxu, name <S_IRWXU>
+  like native-number
+
+host s-irusr, name <S_IRUSR>
+  like native-number
+
+host s-iwusr, name <S_IWUSR>
+  like native-number
+
+host s-ixusr, name <S_IXUSR>
+  like native-number
+
+host s-irwxg, name <S_IRWXG>
+  like native-number
+
+host s-irgrp, name <S_IRGRP>
+  like native-number
+
+host s-iwgrp, name <S_IWGRP>
+  like native-number
+
+host s-ixgrp, name <S_IXGRP>
+  like native-number
+
+host s-irwxo, name <S_IRWXO>
+  like native-number
+
+host s-iroth, name <S_IROTH>
+  like native-number
+
+host s-iwoth, name <S_IWOTH>
+  like native-number
+
+host s-ixoth, name <S_IXOTH>
+  like native-number
+
+host uv-fs-o-filemap, name <UV_FS_O_FILEMAP>
+  like native-number

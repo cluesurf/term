@@ -1,0 +1,23 @@
+
+load @term/bind/code/browser/dom/response-init
+  find response-init
+
+load @term/bind/code/browser/webworker/headers-init
+  find headers-init
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form response-init, name <ResponseInit>
+  link headers, name <headers>
+    like headers-init
+    lock false
+  link status, name <status>
+    like native-number
+    lock false
+  link status-text, name <statusText>
+    like native-string
+    lock false

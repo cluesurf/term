@@ -1,0 +1,20 @@
+
+load @term/bind/code/browser/dom/dom-high-res-time-stamp
+  find dom-high-res-time-stamp
+
+load @term/bind/code/browser/dom/rtc-stats-type
+  find rtc-stats-type
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form rtc-stats, name <RTCStats>
+  link id, name <id>
+    like native-string
+    lock false
+  link timestamp, name <timestamp>
+    like dom-high-res-time-stamp
+    lock false
+  link type, name <type>
+    like rtc-stats-type
+    lock false

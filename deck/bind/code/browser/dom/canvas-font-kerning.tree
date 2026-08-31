@@ -1,0 +1,6 @@
+
+form canvas-font-kerning, name <CanvasFontKerning>
+  like or
+    text <auto>
+    text <none>
+    text <normal>

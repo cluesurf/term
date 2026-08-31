@@ -1,0 +1,16 @@
+
+load @term/bind
+  find or
+
+load @term/bind/code/javascript
+  find native-undefined
+
+load @term/bind/code/node/perf-hooks
+  find recordable-histogram
+
+form timerify-options, name <TimerifyOptions>
+  link histogram, name <histogram>
+    like or
+      like recordable-histogram
+      like native-undefined
+    flex true

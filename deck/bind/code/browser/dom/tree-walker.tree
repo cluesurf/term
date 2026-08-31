@@ -1,0 +1,60 @@
+
+load @term/bind/code/browser/dom/node
+  find node
+
+load @term/bind/code/browser/dom/node-filter
+  find node-filter
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form tree-walker, name <TreeWalker>
+  link current-node, name <currentNode>
+    like node
+    lock false
+  link filter, name <filter>
+    like or
+      like node-filter
+      like native-null
+  link root, name <root>
+    like node
+  link what-to-show, name <whatToShow>
+    like native-number
+
+  task first-child, name <firstChild>
+    like or
+      like node
+      like native-null
+
+  task last-child, name <lastChild>
+    like or
+      like node
+      like native-null
+
+  task next-node, name <nextNode>
+    like or
+      like node
+      like native-null
+
+  task next-sibling, name <nextSibling>
+    like or
+      like node
+      like native-null
+
+  task parent-node, name <parentNode>
+    like or
+      like node
+      like native-null
+
+  task previous-node, name <previousNode>
+    like or
+      like node
+      like native-null
+
+  task previous-sibling, name <previousSibling>
+    like or
+      like node
+      like native-null

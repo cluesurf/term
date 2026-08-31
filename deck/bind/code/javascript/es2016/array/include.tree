@@ -1,0 +1,12 @@
+
+bear @term/bind/code/javascript/es2016/array/include/array
+bear @term/bind/code/javascript/es2016/array/include/readonly-array
+bear @term/bind/code/javascript/es2016/array/include/int8-array
+bear @term/bind/code/javascript/es2016/array/include/uint8-array
+bear @term/bind/code/javascript/es2016/array/include/uint8-clamped-array
+bear @term/bind/code/javascript/es2016/array/include/int16-array
+bear @term/bind/code/javascript/es2016/array/include/uint16-array
+bear @term/bind/code/javascript/es2016/array/include/int32-array
+bear @term/bind/code/javascript/es2016/array/include/uint32-array
+bear @term/bind/code/javascript/es2016/array/include/float32-array
+bear @term/bind/code/javascript/es2016/array/include/float64-array

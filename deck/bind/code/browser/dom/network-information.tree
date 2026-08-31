@@ -1,0 +1,12 @@
+
+load @term/bind/code/browser/dom/connection-type
+  find connection-type
+
+load @term/bind/code/browser/dom/event-target
+  find event-target
+
+form network-information, name <NetworkInformation>
+  base event-target
+
+  link type, name <type>
+    like connection-type

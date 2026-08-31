@@ -1,0 +1,19 @@
+
+form relative-time-format-unit, name <RelativeTimeFormatUnit>
+  like or
+    text <year>
+    text <years>
+    text <quarter>
+    text <quarters>
+    text <month>
+    text <months>
+    text <week>
+    text <weeks>
+    text <day>
+    text <days>
+    text <hour>
+    text <hours>
+    text <minute>
+    text <minutes>
+    text <second>
+    text <seconds>

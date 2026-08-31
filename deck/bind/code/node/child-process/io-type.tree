@@ -1,0 +1,10 @@
+
+load @term/bind
+  find or
+
+form io-type, name <IOType>
+  like or
+    text <overlapped>
+    text <pipe>
+    text <ignore>
+    text <inherit>

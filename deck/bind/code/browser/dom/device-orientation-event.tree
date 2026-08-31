@@ -1,0 +1,30 @@
+
+load @term/bind/code/browser/dom/event
+  find event
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-number
+
+form device-orientation-event, name <DeviceOrientationEvent>
+  base event
+
+  link absolute, name <absolute>
+    like native-boolean
+  link alpha, name <alpha>
+    like or
+      like native-number
+      like native-null
+  link beta, name <beta>
+    like or
+      like native-number
+      like native-null
+  link gamma, name <gamma>
+    like or
+      like native-number
+      like native-null

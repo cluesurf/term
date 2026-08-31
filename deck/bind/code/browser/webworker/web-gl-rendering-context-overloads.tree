@@ -1,0 +1,241 @@
+
+load @term/bind/code/browser/dom/iterable/web-gl-rendering-context-overloads
+  find web-gl-rendering-context-overloads
+
+load @term/bind/code/browser/webworker/buffer-source
+  find buffer-source
+
+load @term/bind/code/browser/webworker/float32-list
+  find float32-list
+
+load @term/bind/code/browser/webworker/g-lboolean
+  find g-lboolean
+
+load @term/bind/code/browser/webworker/g-lenum
+  find g-lenum
+
+load @term/bind/code/browser/webworker/g-lint
+  find g-lint
+
+load @term/bind/code/browser/webworker/g-lintptr
+  find g-lintptr
+
+load @term/bind/code/browser/webworker/g-lsizei
+  find g-lsizei
+
+load @term/bind/code/browser/webworker/g-lsizeiptr
+  find g-lsizeiptr
+
+load @term/bind/code/browser/webworker/int32-list
+  find int32-list
+
+load @term/bind/code/browser/webworker/tex-image-source
+  find tex-image-source
+
+load @term/bind/code/browser/webworker/web-gl-uniform-location
+  find web-gl-uniform-location
+
+load @term/bind/code/javascript/es5/array-buffer-view
+  find array-buffer-view
+
+load @term/bind/code/javascript/native
+  find native-null
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form web-gl-rendering-context-overloads, name <WebGLRenderingContextOverloads>
+  task buffer-data, name <bufferData>
+    take target, like g-lenum
+    take size, like g-lsizeiptr
+    take usage, like g-lenum
+    like native-void
+
+  task buffer-data, name <bufferData>
+    take target, like g-lenum
+    take data
+      like or
+        like buffer-source
+        like native-null
+    take usage, like g-lenum
+    like native-void
+
+  task buffer-sub-data, name <bufferSubData>
+    take target, like g-lenum
+    take offset, like g-lintptr
+    take data, like buffer-source
+    like native-void
+
+  task compressed-tex-image2-d, name <compressedTexImage2D>
+    take target, like g-lenum
+    take level, like g-lint
+    take internalformat, like g-lenum
+    take width, like g-lsizei
+    take height, like g-lsizei
+    take border, like g-lint
+    take data, like array-buffer-view
+    like native-void
+
+  task compressed-tex-sub-image2-d, name <compressedTexSubImage2D>
+    take target, like g-lenum
+    take level, like g-lint
+    take xoffset, like g-lint
+    take yoffset, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    take format, like g-lenum
+    take data, like array-buffer-view
+    like native-void
+
+  task read-pixels, name <readPixels>
+    take x, like g-lint
+    take y, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    take format, like g-lenum
+    take type, like g-lenum
+    take pixels
+      like or
+        like array-buffer-view
+        like native-null
+    like native-void
+
+  task tex-image2-d, name <texImage2D>
+    take target, like g-lenum
+    take level, like g-lint
+    take internalformat, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    take border, like g-lint
+    take format, like g-lenum
+    take type, like g-lenum
+    take pixels
+      like or
+        like array-buffer-view
+        like native-null
+    like native-void
+
+  task tex-image2-d, name <texImage2D>
+    take target, like g-lenum
+    take level, like g-lint
+    take internalformat, like g-lint
+    take format, like g-lenum
+    take type, like g-lenum
+    take source, like tex-image-source
+    like native-void
+
+  task tex-sub-image2-d, name <texSubImage2D>
+    take target, like g-lenum
+    take level, like g-lint
+    take xoffset, like g-lint
+    take yoffset, like g-lint
+    take width, like g-lsizei
+    take height, like g-lsizei
+    take format, like g-lenum
+    take type, like g-lenum
+    take pixels
+      like or
+        like array-buffer-view
+        like native-null
+    like native-void
+
+  task tex-sub-image2-d, name <texSubImage2D>
+    take target, like g-lenum
+    take level, like g-lint
+    take xoffset, like g-lint
+    take yoffset, like g-lint
+    take format, like g-lenum
+    take type, like g-lenum
+    take source, like tex-image-source
+    like native-void
+
+  task uniform1fv, name <uniform1fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v, like float32-list
+    like native-void
+
+  task uniform1iv, name <uniform1iv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v, like int32-list
+    like native-void
+
+  task uniform2fv, name <uniform2fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v, like float32-list
+    like native-void
+
+  task uniform2iv, name <uniform2iv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v, like int32-list
+    like native-void
+
+  task uniform3fv, name <uniform3fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v, like float32-list
+    like native-void
+
+  task uniform3iv, name <uniform3iv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v, like int32-list
+    like native-void
+
+  task uniform4fv, name <uniform4fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v, like float32-list
+    like native-void
+
+  task uniform4iv, name <uniform4iv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take v, like int32-list
+    like native-void
+
+  task uniform-matrix2fv, name <uniformMatrix2fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take transpose, like g-lboolean
+    take value, like float32-list
+    like native-void
+
+  task uniform-matrix3fv, name <uniformMatrix3fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take transpose, like g-lboolean
+    take value, like float32-list
+    like native-void
+
+  task uniform-matrix4fv, name <uniformMatrix4fv>
+    take location
+      like or
+        like web-gl-uniform-location
+        like native-null
+    take transpose, like g-lboolean
+    take value, like float32-list
+    like native-void

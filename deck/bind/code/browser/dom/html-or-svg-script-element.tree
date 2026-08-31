@@ -1,0 +1,11 @@
+
+load @term/bind/code/browser/dom/html-script-element
+  find html-script-element
+
+load @term/bind/code/browser/dom/svg-script-element
+  find svg-script-element
+
+form html-or-svg-script-element, name <HTMLOrSVGScriptElement>
+  like or
+    like html-script-element
+    like svg-script-element

@@ -1,0 +1,14 @@
+
+load @term/bind/code/browser/dom/source-buffer
+  find source-buffer
+
+load @term/bind/code/browser/dom/source-buffer-list
+  find source-buffer-list
+
+load @term/bind/code/javascript/iterable-iterator
+  find iterable-iterator
+
+form source-buffer-list, name <SourceBufferList>
+  task {symbol/iterator}
+    like iterable-iterator
+      like source-buffer

@@ -1,0 +1,5 @@
+
+form channel-interpretation, name <ChannelInterpretation>
+  like or
+    text <discrete>
+    text <speakers>

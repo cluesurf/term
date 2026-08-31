@@ -1,0 +1,29 @@
+
+load @term/bind/code/javascript
+  find array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+load @term/bind/code/javascript/es2015/iterable
+  find iterable
+
+load @term/bind/code/javascript/es5
+  find property-key
+
+form object
+  hook self
+    task from-entries, name <fromEntries>
+      like form
+        mesh k
+          like t
+
+      head t
+        fall any
+
+      take entries
+
+    task from-entries, name <fromEntries>
+      like any
+
+      take entries

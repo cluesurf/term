@@ -1,0 +1,17 @@
+
+load @term/bind/code/browser/dom/ext-s-rgb
+  find ext-s-rgb
+
+load @term/bind/code/browser/webworker/g-lenum
+  find g-lenum
+
+form ext-s-rgb, name <EXT_sRGB>
+  link framebuffer-attachment-color-encoding-ext
+    name <FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT>
+    like g-lenum
+  link srgb8-alpha8-ext, name <SRGB8_ALPHA8_EXT>
+    like g-lenum
+  link srgb-alpha-ext, name <SRGB_ALPHA_EXT>
+    like g-lenum
+  link srgb-ext, name <SRGB_EXT>
+    like g-lenum

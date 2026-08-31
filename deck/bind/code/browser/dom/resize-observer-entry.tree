@@ -1,0 +1,24 @@
+
+load @term/bind/code/browser/dom/dom-rect-read-only
+  find dom-rect-read-only
+
+load @term/bind/code/browser/dom/element
+  find element
+
+load @term/bind/code/browser/dom/resize-observer-size
+  find resize-observer-size
+
+load @term/bind/code/javascript/es5/readonly-array
+  find readonly-array
+
+form resize-observer-entry, name <ResizeObserverEntry>
+  link border-box-size, name <borderBoxSize>
+    like readonly-array
+      like resize-observer-size
+  link content-box-size, name <contentBoxSize>
+    like readonly-array
+      like resize-observer-size
+  link content-rect, name <contentRect>
+    like dom-rect-read-only
+  link target, name <target>
+    like element

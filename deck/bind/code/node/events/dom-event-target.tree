@@ -1,0 +1,31 @@
+
+load @term/bind/code/javascript
+  find array
+  find native-boolean
+  find native-string
+  find native-void
+
+load @term/bind
+  find any
+  find form
+  find task
+
+form dom-event-target, name <DOMEventTarget>
+  task add-event-listener, name <addEventListener>
+    like any
+
+    take event-name, like native-string
+    take listener
+      like task
+        like native-void
+
+        take args
+          like array
+            like any
+          rest true
+    take opts
+      like form
+        link once, name <once>
+          like native-boolean
+          flex true
+      void true

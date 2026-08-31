@@ -1,0 +1,33 @@
+
+load @term/bind/code/browser/webworker/algorithm
+  find algorithm
+
+load @term/bind/code/javascript/es5/uint8-array
+  find uint8-array
+
+load @term/bind/code/javascript/native
+  find native-string
+
+form concat-params, name <ConcatParams>
+  base algorithm
+
+  link algorithm-id, name <algorithmId>
+    like uint8-array
+    lock false
+  link hash, name <hash>
+    like or
+      like native-string
+      like algorithm
+    lock false
+  link party-u-info, name <partyUInfo>
+    like uint8-array
+    lock false
+  link party-v-info, name <partyVInfo>
+    like uint8-array
+    lock false
+  link private-info, name <privateInfo>
+    like uint8-array
+    lock false
+  link public-info, name <publicInfo>
+    like uint8-array
+    lock false

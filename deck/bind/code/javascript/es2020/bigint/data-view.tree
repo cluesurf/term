@@ -1,0 +1,42 @@
+
+load @term/bind/code/javascript/es2015/symbol/wellknown/data-view
+  find data-view
+
+load @term/bind/code/javascript/native
+  find native-bigint
+
+load @term/bind/code/javascript/native
+  find native-boolean
+
+load @term/bind/code/javascript/native
+  find native-number
+
+load @term/bind/code/javascript/native
+  find native-void
+
+form data-view, name <DataView>
+  task get-big-int64, name <getBigInt64>
+    take byte-offset, like native-number
+    take little-endian, like maybe
+      like native-boolean
+    like native-bigint
+
+  task get-big-uint64, name <getBigUint64>
+    take byte-offset, like native-number
+    take little-endian, like maybe
+      like native-boolean
+    like native-bigint
+
+  task set-big-int64, name <setBigInt64>
+    take byte-offset, like native-number
+    take value, like native-bigint
+    take little-endian, like maybe
+      like native-boolean
+    like native-void
+
+  task set-big-uint64, name <setBigUint64>
+    take byte-offset, like native-number
+    take value, like native-bigint
+    take little-endian, like maybe
+      like native-boolean
+    like native-void

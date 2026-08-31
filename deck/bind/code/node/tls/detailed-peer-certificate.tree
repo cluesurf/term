@@ -1,0 +1,10 @@
+
+load @term/bind/code/node/tls
+  find peer-certificate
+
+form detailed-peer-certificate, name <DetailedPeerCertificate>
+  base peer-certificate
+
+  link issuer-certificate, name <issuerCertificate>
+    like detailed-peer-certificate
+    flex true

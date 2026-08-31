@@ -1,0 +1,10 @@
+
+load @term/bind/code/javascript/es2015/iterable/iterator
+  find iterator
+
+form iterable, name <Iterable>
+  head t
+
+  task {symbol/iterator}
+    like iterator
+      like t
