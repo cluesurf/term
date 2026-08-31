@@ -55,6 +55,47 @@ export interface CacheStore {
   save(kind: string, key: string, value: string): void
 }
 
+// Least-recently-used eviction over a Map, which already keeps insertion order: a hit re-inserts the key to make it
+// most-recent, and a set evicts from the front once the cap is passed.
+//
+// WHY THE CAPS EXIST. Both maps used to grow without limit for the life of a build, and `outputs` grows once PER
+// ENTRY FILE. Measured on @term/bind at 400 of its 3,091 files, retained heap after a forced GC:
+//
+//   both caches   172 MB          outputs cleared    29 MB
+//   mills cleared 178 MB          neither            23 MB
+//
+// So `outputs` was the whole retained heap, at roughly 370 KB an entry, and it is the term that scales with the
+// PROJECT rather than with the module graph: at 3,091 files it exhausted an 8 GB heap, and at a hundred thousand it
+// would want terabytes. Its hit rate in a project build is ZERO by construction, because compileProject visits each
+// entry exactly once and each entry has its own graph key (the 400 files produced 400 entries and no reuse). It pays
+// off only in watch mode and repeated compiles of the same entry, which a small cap serves just as well.
+//
+// `mills` is keyed by MODULE, so it is bounded by the graph rather than the project (1,694 entries for those same
+// 400 files) and costs about 3.5 KB an entry. Its cap is large enough to hold a realistic closure and exists only so
+// that nothing is unbounded.
+//
+// Neither cap can change a result. Everything either map holds is rebuildable, and the persistent store still
+// carries reuse across runs.
+function evictTo<K, V>(map: Map<K, V>, cap: number): void {
+  while (map.size > cap) {
+    const oldest = map.keys().next()
+
+    if (oldest.done) {
+      return
+    }
+
+    map.delete(oldest.value)
+  }
+}
+
+function touch<K, V>(map: Map<K, V>, key: K, value: V): void {
+  map.delete(key)
+  map.set(key, value)
+}
+
+export const MILL_CACHE_CAP = 8192
+export const OUTPUT_CACHE_CAP = 32
+
 export class CompileCache {
   private readonly mills = new Map<string, MilledUnit>()
   private readonly outputs = new Map<string, unknown>()
@@ -68,6 +109,9 @@ export class CompileCache {
   constructor(
     private readonly store?: CacheStore,
     private readonly version: string = CACHE_EPOCH,
+    // the LRU caps, overridable so a test can force eviction without building thousands of modules
+    private readonly millCap: number = MILL_CACHE_CAP,
+    private readonly outputCap: number = OUTPUT_CACHE_CAP,
   ) {}
 
   // the milled unit for (file, text). Looks in memory, then the persistent store, then builds. Stores on a build.
@@ -83,6 +127,7 @@ export class CompileCache {
 
     if (cached) {
       this.hits++
+      touch(this.mills, key, cached)
 
       return cloneUnit(cached)
     }
@@ -92,6 +137,7 @@ export class CompileCache {
     if (stored !== undefined) {
       const unit = JSON.parse(stored) as MilledUnit
       this.mills.set(key, unit)
+      evictTo(this.mills, this.millCap)
       this.diskHits++
 
       return cloneUnit(unit)
@@ -101,6 +147,7 @@ export class CompileCache {
 
     const fresh = build()
     this.mills.set(key, fresh)
+    evictTo(this.mills, this.millCap)
     this.store?.save('mill', key, JSON.stringify(fresh))
 
     return cloneUnit(fresh)
@@ -114,6 +161,7 @@ export class CompileCache {
 
     if (cached !== undefined) {
       this.hits++
+      touch(this.outputs, versioned, cached)
 
       return cached
     }
@@ -123,6 +171,7 @@ export class CompileCache {
     if (stored !== undefined) {
       const value = JSON.parse(stored) as T
       this.outputs.set(versioned, value)
+      evictTo(this.outputs, this.outputCap)
       this.diskHits++
 
       return value
@@ -132,6 +181,7 @@ export class CompileCache {
 
     const fresh = build()
     this.outputs.set(versioned, fresh)
+    evictTo(this.outputs, this.outputCap)
     this.store?.save('output', versioned, JSON.stringify(fresh))
 
     return fresh
