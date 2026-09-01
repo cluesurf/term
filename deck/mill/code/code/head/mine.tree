@@ -19,10 +19,14 @@ load @term/mill/code/code/like/mine
 load @term/mill/code/code/fall/mine
   find fall
 
+# `head <name>` is a type parameter, `head <name>, like <type>` a value INDEX, and a bare `head` with a value
+# under it (`head / make zero`) is the index's argument. The name is a childless word, so the value form does
+# not lose its argument to it.
 mine head
   mine term, term head
-    mine term
-      site name
+    mine maybe
+      mine word
+        site name
     mine maybe
       mine form, like like
         site like
@@ -35,9 +39,11 @@ mine head
     mine maybe
       mine term, term base
         mine any
-          mine form, like seed
+          # a bare word first: a `base` is usually one, and `mine seed` would wrap it in a form the reader
+          # never asked for. The value alternative stays for a `base` that carries one.
+          mine word
             site base
-          mine term
+          mine form, like seed
             site base
         # `head k / base link-read / like svg-element-event-map`: the bound the type parameter ranges over.
         # The reader treats a `head` with no `like` or `link` of its own as a plain type parameter and reads
@@ -58,3 +64,6 @@ mine head
         # `head`'s name and its `like`, and reads nothing else.
         mine form, like seed-text
           site drop
+        # LAST: the index argument, and the value fallback takes any head word
+        mine form, like seed
+          site seed

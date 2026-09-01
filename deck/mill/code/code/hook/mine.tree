@@ -61,11 +61,12 @@ mine hook
         # a URL route renders a component: `hook </users/:id>` over `view user-detail`
         mine form, like view-def
           site view
-        mine form, like flow
-          site flow
         mine form, like drop
           site drop
         # `hook make` in a binding form carries the constructor's result as a `like`. A route hook and a fork
         # arm never do, and the reader reads neither, so it is dropped.
         mine form, like like
           site drop
+        # LAST: `mine flow` ends in the value fallback, which takes any headed group
+        mine form, like flow
+          site flow

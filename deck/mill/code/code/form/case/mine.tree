@@ -1,3 +1,6 @@
+load @term/mill/code/code/head/mine
+  find head
+
 load @term/mill/code/code/like/mine
   find like
 
@@ -100,6 +103,8 @@ mine case
           site link
         mine form, like case-hold
           site hold
+        mine form, like head
+          site head
     mine maybe
       mine form, like seed
         site seed
@@ -109,6 +114,8 @@ mine case
           site link
         mine form, like case-hold
           site hold
+        mine form, like head
+          site head
 
 # `hold same` inside a proof case: a named witness with its type
 mine case-hold

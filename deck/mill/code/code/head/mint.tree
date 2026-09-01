@@ -26,6 +26,8 @@ mint head
     site base
   case drop
     site drop
+  case seed
+    site seed
   hook make
     make head
       bind name, read name
@@ -34,3 +36,4 @@ mint head
       bind fall, read fall
       bind base, read base
       bind drop, read drop
+      bind seed, read seed

@@ -1,3 +1,6 @@
+load @term/mill/code/code/proof/mine
+  find rule-step
+
 # The stdlib theorem form (`rule absurd` / `head a` / `take proof, like void` / `like a`, and form.tree's
 # `rule x` / `mark a, like tone` / claims) and the hive kind declaration (`roll test` / `like test-entry`).
 
@@ -16,24 +19,93 @@ load @term/mill/code/code/call/mine
 load @term/mill/code/code/seed/mine
   find seed
 
+# A `rule` is a named THEOREM or AXIOM, and it desugars to a function whose parameters are its universal
+# binders and whose body holds its goal. See note/library/seed/proof-checking/08-structured-rule-dsl.md.
+#
+#   rule reorder            the name, a word or a readable phrase in a text
+#     mark a, like integer  a universal binder, which becomes a parameter
+#     have h, <prop>        a hypothesis, which becomes a guard around the goal
+#     find x, like t        an existential witness, bound before the goal
+#     show hold <claim>     the goal; `show miss` proves it false
+#     base true             an AXIOM: postulated rather than proved
+#     melt both             a proof step, the same vocabulary `hold` takes
 mine rule-def
   mine term, term rule
-    mine term
-      site name
+    mine any
+      mine text
+        site name
+      mine word
+        site name
     mine list
       mine any
         mine form, like head
           site head
+        mine form, like rule-mark
+          site mark
+        mine form, like rule-have
+          site have
+        mine form, like rule-find
+          site find
+        mine form, like rule-show
+          site show
+        mine form, like rule-base
+          site base
         mine form, like take
           site take
         mine form, like like
           site like
-        mine form, like rule-mark
-          site mark
         mine form, like call
           site call
+        mine form, like rule-step
+          site step
+        # LAST: the value fallback takes any head word
         mine form, like seed
           site seed
+
+# `have h, <proposition>`, and `take` as its alias: an antecedent the goal is proved under. The name is a
+# label, not a universal variable, and the proposition is what follows it: one nested child is an expression,
+# several parts on a line are a relation applied to terms.
+mine rule-have
+  mine term, term have
+    mine word
+      site name
+    mine list
+      mine form, like seed
+        site seed
+
+# `find x, like t` with a witness: binds x to it, so the goal is checked at that concrete value. This is the
+# existential to `mark`'s universal.
+mine rule-find
+  mine term, term find
+    mine word
+      site name
+    mine maybe
+      mine form, like like
+        site like
+    mine list
+      mine form, like seed
+        site seed
+
+# `show hold <claim>` proves the claim, `show miss <claim>` proves its negation, and a bare `show <claim>`
+# proves it as written.
+mine rule-show
+  mine term, term show
+    mine maybe
+      mine any
+        mine term, term hold
+          site mode
+        mine term, term miss
+          site mode
+    mine list
+      mine form, like seed
+        site seed
+
+# `base true` marks the rule an AXIOM: postulated, with its hypotheses and claim kept in code and type checked
+# rather than proved.
+mine rule-base
+  mine term, term base
+    mine term, term true
+      site flag
 
 mine rule-mark
   mine term, term mark

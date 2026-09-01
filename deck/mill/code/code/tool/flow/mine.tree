@@ -1,3 +1,6 @@
+load @term/mill/code/code/proof/mine
+  find hold-claim
+
 load @term/mill/code/code/form/link/mine
   find link-list
 
@@ -52,6 +55,10 @@ load @term/mill/code/code/note/mine
 
 mine flow
   mine any
+    # before the value alternatives: a proof `hold` is a statement, and the fallback at the end of `mine seed`
+    # would otherwise read it as a call to `hold`
+    mine form, like hold-claim
+      site hold
     mine form, like call
       site call
     mine form, like save
@@ -84,12 +91,14 @@ mine flow
       site free
     mine form, like make
       site make
-    mine form, like seed
-      site seed
     mine form, like move
       site move
     mine form, like host
       site host
+    # LAST. `mine seed` ends in a fallback that takes any headed group, so every alternative listed after it
+    # is unreachable: `host m / call add ...` read as a call to `host`, `move x` as a call to `move`.
+    mine form, like seed
+      site seed
 
 # `move x` hands ownership of a binding on (an argument or a statement)
 mine move

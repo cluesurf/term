@@ -66,11 +66,13 @@ mine bind-def-case
       site platform
     mine list
       mine any
-        mine form, like seed
-          site seed
         mine form, like dock-bind-line
           site load
         mine text
           site text
         mine code
           site code
+        # LAST, so a `load` line and a bare literal are read as themselves rather than swallowed by the
+        # value fallback
+        mine form, like seed
+          site seed

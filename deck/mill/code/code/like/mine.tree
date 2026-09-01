@@ -77,6 +77,9 @@ mine like-bind
     mine maybe
       mine form, like seed
         site seed
+    # A raw text after the value, which is where the reader looks for it, even though `mine seed` reads a bare
+    # text as a value too and so gets there first. Left in that order deliberately: `bind note, <Invalid>`
+    # pins the field to the STRING, and reading it as a value builds the same string.
     mine maybe
       mine text
         site text

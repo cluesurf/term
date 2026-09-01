@@ -25,6 +25,7 @@ import { diagnose } from '@term/make/code/parser/diagnostic'
 import type {
   Expression,
   Program,
+  Proof,
   Statement,
   Type,
 } from '@term/make/code/compile/node'
@@ -1062,8 +1063,62 @@ function statementOf(
     case 'host':
       return constantOf(bridge, value)
 
+    case 'hold-claim':
+      return holdOf(bridge, value)
+
     default:
       return unhandled(bridge, value, `the ${value.form} statement`)
+  }
+}
+
+// A readable proof name (`hold <double is add>`) becomes an identifier. The reader's own slugify, so a name
+// written as a phrase reaches the kernel spelled the same way from either reader.
+function slugOf(phrase: string): string {
+  return (
+    phrase
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'hold'
+  )
+}
+
+// One step of a proof: a head word, an optional single-word argument, and nested steps.
+function proofOf(value: Minted): Proof {
+  const form = value.kind === 'form' ? value : undefined
+
+  return {
+    head: (form ? wordAt(form, 'head') : textOf(value)) ?? '',
+    ...(form && wordAt(form, 'arg') !== undefined
+      ? { arg: wordAt(form, 'arg') as string }
+      : {}),
+    children: form ? at(form, 'child').map(proofOf) : [],
+    span: spanOf(value),
+  }
+}
+
+// `hold <claim>` states something for the kernel to verify, `hold <name>, <claim>` names it so a later `cite`
+// can reuse it, and the steps under it are the proof.
+function holdOf(bridge: Bridge, value: Form): Statement | undefined {
+  const claim = expressionOf(bridge, firstAt(value, 'claim'))
+
+  if (!claim) {
+    return undefined
+  }
+
+  const named = firstAt(value, 'name')
+  const name = named
+    ? named.kind === 'text'
+      ? slugOf(named.value)
+      : textOf(named)
+    : undefined
+  const proof = at(value, 'step').map(proofOf)
+
+  return {
+    form: 'hold',
+    expr: claim,
+    ...(name ? { name } : {}),
+    ...(proof.length > 0 ? { proof } : {}),
+    span: spanOf(value),
   }
 }
 
@@ -1689,42 +1744,176 @@ function topLevelOf(bridge: Bridge, value: Minted): Statement[] {
         },
       ]
 
-    case 'rule-def': {
-      const name = wordAt(value, 'name')
-
-      if (name === undefined) {
-        return []
-      }
-
-      const params = formsAt(value, 'mark').map(mark => {
-        const type = typeOf(bridge, firstAt(mark, 'like'))
-
-        return {
-          name: wordAt(mark, 'name') ?? '',
-          ...(type ? { type } : {}),
-        }
-      })
-      const claim = expressionOf(bridge, firstAt(value, 'seed'))
-      const result = typeOf(bridge, firstAt(value, 'like'))
-
-      return [
-        {
-          form: 'function',
-          name,
-          params,
-          body: claim
-            ? [{ form: 'return' as const, value: claim, span: spanOf(value) }]
-            : [],
-          ...(result ? { result } : {}),
-          generics: [],
-          span: spanOf(value),
-        },
-      ]
-    }
+    case 'rule-def':
+      return ruleOf(bridge, value)
 
     default:
       return asStatements(statementOf(bridge, value))
   }
+}
+
+// A rule's goal: one nested expression, or a RELATION applied to terms written on one line
+// (`show hold, twin, bond a b, bond c d`), which is the same shape a `have` hypothesis takes.
+function claimOf(bridge: Bridge, shown: Form): Expression | undefined {
+  const seeds = at(shown, 'seed')
+
+  if (seeds.length <= 1) {
+    return expressionOf(bridge, seeds[0])
+  }
+
+  const span = spanOf(shown)
+  const callee = textOf(seeds[0]) ?? headWordOf(seeds[0]) ?? ''
+  const args = seeds
+    .slice(1)
+    .map(seed => expressionOf(bridge, seed))
+    .filter((one): one is Expression => one !== undefined)
+
+  return (
+    foldBuiltin(callee, args, span) ?? {
+      form: 'call',
+      callee: readPath(callee, span),
+      args,
+      span,
+    }
+  )
+}
+
+// the head word a minted value was built from, for a relation written as a bare name
+function headWordOf(value: Minted | undefined): string | undefined {
+  return value?.kind === 'form'
+    ? (wordAt(value, 'name') ?? wordAt(value, 'path'))
+    : undefined
+}
+
+// `show miss` proves the claim FALSE. An ORDER comparison flips to its complement, because `not (a > b)` and
+// `a <= b` are the same statement and the prover works with the second; anything else is logically negated.
+function negated(claim: Expression, span: Span): Expression {
+  if (claim.form === 'binary') {
+    const flip: Record<string, string> = {
+      '>': '<=',
+      '<': '>=',
+      '>=': '<',
+      '<=': '>',
+    }
+    const flipped = flip[claim.op]
+
+    if (flipped) {
+      return { ...claim, op: flipped as typeof claim.op }
+    }
+  }
+
+  return { form: 'unary', op: '!', operand: claim, span }
+}
+
+// A `rule` is a named THEOREM or AXIOM, and it desugars to a FUNCTION: its universal `mark` binders become the
+// parameters, so the goal is checked as a law over them by the same prover stack a `hold` uses. A theorem's body
+// is the goal held under its hypotheses; an axiom's is the hypotheses and the claim bound as values, postulated
+// rather than proved. See note/library/seed/proof-checking/08-structured-rule-dsl.md.
+function ruleOf(bridge: Bridge, value: Form): Statement[] {
+  const span = spanOf(value)
+  const named = firstAt(value, 'name')
+  const name =
+    (named?.kind === 'text' ? slugOf(named.value) : textOf(named)) ?? 'rule'
+
+  // `mark x, like natural-number` carries the n >= 0 bound the prover needs, and the refinement is read from
+  // the type's NAME: `typeOf` maps it to the plain number type and the name is gone by then.
+  const params = formsAt(value, 'mark').map(mark => {
+    const like = firstAt(mark, 'like')
+    const type = typeOf(bridge, like)
+    const written = wordAt(like, 'name')
+
+    return {
+      name: wordAt(mark, 'name') ?? '',
+      ...(type ? { type } : {}),
+      ...(written === 'natural-number' ? { refine: 'natural' as const } : {}),
+    }
+  })
+
+  const hypotheses = formsAt(value, 'have').map((have, at) => ({
+    name: wordAt(have, 'name') ?? `claim_${at}`,
+    expr: expressionOf(bridge, firstAt(have, 'seed')),
+  }))
+
+  const witnesses = formsAt(value, 'find').map(find => ({
+    name: wordAt(find, 'name') ?? '',
+    value: expressionOf(bridge, firstAt(find, 'seed')),
+  }))
+
+  const shown = formsAt(value, 'show')[0]
+  const claim = shown ? claimOf(bridge, shown) : undefined
+  // `show miss <claim>` proves the claim FALSE
+  const goal =
+    claim && wordAt(shown, 'mode') === 'miss'
+      ? negated(claim, span)
+      : claim
+  const axiom = formsAt(value, 'base').length > 0
+  const proof = at(value, 'step').map(proofOf)
+
+  const body: Statement[] = witnesses
+    .filter(w => w.value)
+    .map(w => ({
+      form: 'let' as const,
+      mutable: false,
+      name: w.name,
+      init: w.value as Expression,
+      span,
+    }))
+
+  if (goal) {
+    if (axiom) {
+      for (const hypothesis of hypotheses) {
+        if (hypothesis.expr) {
+          body.push({
+            form: 'let',
+            mutable: false,
+            name: hypothesis.name,
+            init: hypothesis.expr,
+            span,
+          })
+        }
+      }
+
+      body.push({
+        form: 'let',
+        mutable: false,
+        name: 'claim',
+        init: goal,
+        span,
+      })
+    } else {
+      // each hypothesis becomes a guard around the goal, innermost last, which is how an implication is proved:
+      // the prover assumes every antecedent while discharging the conclusion
+      let held: Statement[] = [
+        {
+          form: 'hold',
+          name,
+          expr: goal,
+          ...(proof.length > 0 ? { proof } : {}),
+          span,
+        },
+      ]
+
+      for (let at = hypotheses.length - 1; at >= 0; at--) {
+        const cond = hypotheses[at]?.expr
+
+        if (cond) {
+          held = [{ form: 'if', branches: [{ cond, body: held }], span }]
+        }
+      }
+
+      body.push(...held)
+    }
+  }
+
+  body.push({
+    form: 'return',
+    value: params[0]
+      ? readPath(params[0].name, span)
+      : { form: 'unit', span },
+    span,
+  })
+
+  return [{ form: 'function', name, params, body, generics: [], span }]
 }
 
 // a statement builder may answer with none, one, or several (a counted walk is a counter plus its loop)

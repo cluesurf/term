@@ -1,0 +1,119 @@
+# The kernel's PROOF vocabulary: `hold <claim>` with proof steps under it.
+#
+# A step is a head word, an optional single-word argument, and nested steps: `melt both`, `cite double-fact`,
+# `fold n`, `calm`. The shape is generic and recursive, so it is one rule that refers to itself rather than a
+# rule per tactic, which is also how `compile/mill.ts` reads it (`parseProof` takes the head, the first
+# childless part as the argument, and everything else as children).
+#
+# See note/library/seed/proof-checking/ and deck/make/code/check/kernel.ts.
+mine proof
+  mine open
+    site head
+    mine maybe
+      mine word
+        site arg
+    mine list
+      mine form, like proof
+        site child
+
+# `hold <claim>` states something the kernel must verify, and `hold <name>, <claim>` names it so a later `cite`
+# can reuse it. The name may be a word or a readable phrase in a text, which the reader slugifies.
+mine hold-claim
+  mine term, term hold
+    mine maybe
+      mine any
+        mine text
+          site name
+        mine word
+          site name
+    mine form, like seed
+      site claim
+    mine list
+      mine form, like proof
+        site step
+
+# One step of a proof INSIDE A RULE. Unlike the steps under a `hold`, which may be headed by anything, a rule
+# reads only these ten words as tactics and passes silently over any other child, so this rule is anchored on
+# them. Anchoring also keeps it from shadowing the value alternative that follows it, which an open head would.
+mine rule-step
+  mine any
+    mine term, term fold
+      site head
+      mine maybe
+        mine word
+          site arg
+      mine list
+        mine form, like proof
+          site child
+    mine term, term case
+      site head
+      mine maybe
+        mine word
+          site arg
+      mine list
+        mine form, like proof
+          site child
+    mine term, term calm
+      site head
+      mine maybe
+        mine word
+          site arg
+      mine list
+        mine form, like proof
+          site child
+    mine term, term melt
+      site head
+      mine maybe
+        mine word
+          site arg
+      mine list
+        mine form, like proof
+          site child
+    mine term, term cite
+      site head
+      mine maybe
+        mine word
+          site arg
+      mine list
+        mine form, like proof
+          site child
+    mine term, term meet
+      site head
+      mine maybe
+        mine word
+          site arg
+      mine list
+        mine form, like proof
+          site child
+    mine term, term fork
+      site head
+      mine maybe
+        mine word
+          site arg
+      mine list
+        mine form, like proof
+          site child
+    mine term, term hint
+      site head
+      mine maybe
+        mine word
+          site arg
+      mine list
+        mine form, like proof
+          site child
+    mine term, term turn
+      site head
+      mine maybe
+        mine word
+          site arg
+      mine list
+        mine form, like proof
+          site child
+    mine term, term auto
+      site head
+      mine maybe
+        mine word
+          site arg
+      mine list
+        mine form, like proof
+          site child

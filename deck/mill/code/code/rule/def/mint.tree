@@ -1,3 +1,6 @@
+load @term/mill/code/code/proof/mint
+  find rule-step
+
 load @term/mill/code/code/call/mint
   find call
 
@@ -27,6 +30,16 @@ mint rule-def
     site like
   case mark, mint rule-mark
     site mark
+  case have, mint rule-have
+    site have
+  case find, mint rule-find
+    site find
+  case show, mint rule-show
+    site show
+  case base, mint rule-base
+    site base
+  case step, mint rule-step
+    site step
   case call
     site call
   case seed
@@ -38,8 +51,53 @@ mint rule-def
       bind take, read take
       bind like, read like
       bind mark, read mark
+      bind have, read have
+      bind find, read find
+      bind show, read show
+      bind base, read base
+      bind step, read step
       bind call, read call
       bind seed, read seed
+
+mint rule-have
+  case name
+    site name
+  case seed
+    site seed
+  hook make
+    make rule-have
+      bind name, read name
+      bind seed, read seed
+
+mint rule-find
+  case name
+    site name
+  case like
+    site like
+  case seed
+    site seed
+  hook make
+    make rule-find
+      bind name, read name
+      bind like, read like
+      bind seed, read seed
+
+mint rule-show
+  case mode
+    site mode
+  case seed
+    site seed
+  hook make
+    make rule-show
+      bind mode, read mode
+      bind seed, read seed
+
+mint rule-base
+  case flag
+    site flag
+  hook make
+    make rule-base
+      bind flag, read flag
 
 mint roll-def
   case name

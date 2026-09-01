@@ -142,8 +142,6 @@ mine code
         site halt
       mine form, like save
         site save
-      mine form, like seed
-        site seed
       mine form, like lace
         site lace
       mine form, like cast
@@ -152,3 +150,7 @@ mine code
         site tune
       mine form, like view-def
         site view
+      # LAST. `mine seed` ends in a fallback that takes any headed group, so a `lace`, a `cast`, a `tune` or a
+      # `view` listed after it would never be tried.
+      mine form, like seed
+        site seed

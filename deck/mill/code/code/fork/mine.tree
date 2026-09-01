@@ -42,10 +42,11 @@ mine fork-test
       site arm
   mine maybe
     mine any
-      mine form, like seed
-        site condition
+      # `fork test, name all` is a compile-time flag, and the value fallback would read it as a call to `name`
       mine form, like fork-name
         site name
+      mine form, like seed
+        site condition
   mine list
     mine form, like fork-arm-hook
       site arm

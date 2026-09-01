@@ -7,19 +7,34 @@ load @term/mill/code/code/bind/mine
 load @term/mill/code/code/tool/hook
   find hook
 
+# `walk list, <seq>` / `walk size` with `bind` bounds / `walk test` with `hook test` and `hook step` arms.
+#
+# THE ARMS ARE MATCHED BEFORE THE SEQUENCE and again after it, the same way `mine fork-test` matches its own.
+# An arm is always headed `hook` and a sequence never is, but the value alternation ends in a fallback that
+# takes any headed group, so written sequence-first it swallows `hook test` as the sequence and the loop comes
+# out with a constant `true` for its condition.
 mine walk
   mine term, term walk
     mine maybe
       mine term
         site mode
+    # The arms and the bounds are matched before the sequence and again after it. `walk list, <seq>` writes
+    # its sequence first, `walk size` writes its `bind` bounds first, and both end in `hook` arms; the value
+    # fallback takes any headed group, so whichever of them is written first has to be matched first.
+    mine list
+      mine any
+        mine form, like hook
+          site hook
+        mine form, like bind
+          site bind
     mine maybe
       mine form, like seed
         site seed
     mine list
-      mine form, like bind
-        site bind
-    mine list
-      mine form, like hook
-        site hook
+      mine any
+        mine form, like hook
+          site hook
+        mine form, like bind
+          site bind
 
 fuse hook

@@ -49,9 +49,11 @@ mine take
     mine maybe
       mine term, term base
         mine any
-          mine form, like seed
+          # a bare word first: a `base` is usually one, and `mine seed` would wrap it in a form the reader
+          # never asked for. The value alternative stays for a `base` that carries one.
+          mine word
             site base
-          mine term
+          mine form, like seed
             site base
     mine maybe
       mine term, term void

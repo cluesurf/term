@@ -1,3 +1,6 @@
+load @term/mill/code/code/head/mint
+  find head
+
 load @term/mill/code/code/drop/mint
   find drop
 

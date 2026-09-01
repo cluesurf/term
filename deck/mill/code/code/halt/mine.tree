@@ -15,9 +15,16 @@ mine halt
     mine maybe
       mine term
         site mode
+    # THE VALUE IS A LITERAL, and only a literal. `halt <text>` raises a failure with that message, and
+    # `halt <form>` names the form, which the term above already took as the mode. Written as a general value
+    # this swallowed the first statement of every `halt take` handler body, because the value alternation ends
+    # in a fallback that takes any headed group.
     mine maybe
-      mine form, like seed
-        site seed
+      mine any
+        mine text
+          site seed
+        mine code
+          site seed
     mine list
       mine any
         mine form, like bind

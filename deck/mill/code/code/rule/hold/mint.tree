@@ -1,3 +1,6 @@
+load @term/mill/code/code/head/mint
+  find head
+
 load @term/mill/code/code/form/case/mint
   find case-hold
 
@@ -86,6 +89,8 @@ mint fold, like code-fold
       bind name, read name
 
 mint case, like code-case
+  case head
+    site head
   case name
     site name
   case like
@@ -98,6 +103,7 @@ mint case, like code-case
     site hold
   hook make
     make case
+      bind head, read head
       bind name, read name
       bind like, read like
       bind seed, read seed

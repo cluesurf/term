@@ -1,0 +1,42 @@
+load @term/mill/code/code/seed/mint
+  find seed
+
+mint proof
+  case head
+    site head
+  case arg
+    site arg
+  case child, mint proof
+    site child
+  hook make
+    make proof
+      bind head, read head
+      bind arg, read arg
+      bind child, read child
+
+mint hold-claim
+  case name
+    site name
+  case claim, mint seed
+    site claim
+  case step, mint proof
+    site step
+  hook make
+    make hold-claim
+      bind name, read name
+      bind claim, read claim
+      bind step, read step
+
+# a rule's tactic step, built exactly as a hold's is
+mint rule-step
+  case head
+    site head
+  case arg
+    site arg
+  case child, mint proof
+    site child
+  hook make
+    make rule-step
+      bind head, read head
+      bind arg, read arg
+      bind child, read child
