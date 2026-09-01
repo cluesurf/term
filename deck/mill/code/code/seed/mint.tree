@@ -1,4 +1,7 @@
 load @term/mill/code/code/call/mint
+  find call-link
+
+load @term/mill/code/code/call/mint
   find call
 
 load @term/mill/code/code/fork/mint
@@ -63,9 +66,12 @@ mint seed-def, like seed-def
 mint seed-read
   case path
     site path
+  case link, mint call-link
+    site link
   hook make
     make seed-read
       bind path, read path
+      bind link, read link
 
 # `loan x` is a read, and mints as one so the bridge has a single case to build
 mint seed-loan

@@ -1,3 +1,6 @@
+load @term/mill/code/code/wait/mint
+  find wait
+
 load @term/mill/code/code/head/mint
   find head
 
@@ -45,6 +48,8 @@ mint take
     site void
   case head
     site head
+  case wait
+    site wait
   case flex
     site flex
   case code
@@ -71,6 +76,7 @@ mint take
       bind base, read base
       bind void, read void
       bind head, read head
+      bind wait, read wait
       bind flex, read flex
       bind code, read code
       bind many, read many

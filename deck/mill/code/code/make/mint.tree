@@ -1,3 +1,6 @@
+load @term/mill/code/code/call/mint
+  find call-link
+
 load @term/mill/code/code/bind/mint
   find bind
 
@@ -16,9 +19,12 @@ mint make
     site save
   case seed
     site seed
+  case link, mint call-link
+    site link
   hook make
     make make
       bind name, read name
       bind bind, read bind
       bind save, read save
       bind seed, read seed
+      bind link, read link

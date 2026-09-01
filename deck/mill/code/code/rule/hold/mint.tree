@@ -76,10 +76,13 @@ mint rule-mark, like code-mark
     site name
   case like
     site like
+  case head
+    site head
   hook make
     make rule-mark
       bind name, read name
       bind like, read like
+      bind head, read head
 
 mint fold, like code-fold
   case name
@@ -150,9 +153,12 @@ mint find, like code-find
     site text
   case name
     site name
+  case stray
+    site stray
   hook make
     make find
       bind text, read text
+      bind stray, read stray
       bind name, read name
 
 mint self, like code-self

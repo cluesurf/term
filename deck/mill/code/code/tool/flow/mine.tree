@@ -21,6 +21,7 @@ load @term/mill/code/code/save/mine
 
 load @term/mill/code/code/send/mine
   find send
+  find back
   find send-kind
 
 load @term/mill/code/code/halt/mine
@@ -53,6 +54,9 @@ load @term/mill/code/code/fuse/mine
 load @term/mill/code/code/note/mine
   find note
 
+# `show <text>` is NOT listed. `compile/mill.ts` has no lowering for it, so it falls into the generic "an
+# unknown head is a call" path and becomes a call to something named `show`. Leaving it out here is what
+# reproduces that: the value alternation at the end takes it the same way.
 mine flow
   mine any
     # before the value alternatives: a proof `hold` is a statement, and the fallback at the end of `mine seed`
@@ -65,6 +69,8 @@ mine flow
       site save
     mine form, like send
       site send
+    mine form, like back
+      site back
     mine form, like send-kind
       site send-kind
     mine form, like fork
@@ -79,8 +85,6 @@ mine flow
       site turn
     mine form, like fuse
       site fuse
-    mine form, like show
-      site show
     mine form, like rest
       site rest
     mine form, like note

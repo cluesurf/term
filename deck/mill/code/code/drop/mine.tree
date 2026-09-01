@@ -59,10 +59,7 @@ mine drop
     mine term, term computed
       mine list
         mine node
-    # a constructor's result type, an owning module, an intrinsic marker, a forced coercion
-    mine term, term back
-      mine list
-        mine node
+    # an owning module, an intrinsic marker, a forced coercion
     mine term, term home
       mine list
         mine node

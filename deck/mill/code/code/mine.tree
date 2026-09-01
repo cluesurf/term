@@ -1,3 +1,9 @@
+load @term/mill/code/code/tell/mine
+  find tell-def
+
+load @term/mill/code/code/proof/mine
+  find hold-claim
+
 
 load @term/mill/code/code/form/mine
   find form
@@ -37,6 +43,7 @@ load @term/mill/code/code/wear/mine
 
 load @term/mill/code/code/bear/mine
   find bear
+  find deck-def
 
 load @term/mill/code/code/book/mine
   find book
@@ -87,6 +94,15 @@ load @term/mill/code/code/rule/def/mine
   find rule-def
   find roll-def
 
+# A TOP-LEVEL `tree`, `fuse` or `test` is NOT listed here on purpose.
+#
+# `tree` and `fuse` are template definitions and uses, and `compile.ts` expands them BEFORE the mill, so the
+# real compile path never hands one over. A caller that skips expansion does, and the reader lowers what
+# survives through its generic "an unknown head is a call" fallback into a call that references nothing. That
+# is not a program either way, and reproducing it means letting these fall through to the value alternation
+# rather than reading them as statements they are not.
+#
+# `test` is the same: the reader has no lowering for a top-level one and its fallback makes a call.
 mine code
   mine list
     mine any
@@ -110,10 +126,14 @@ mine code
         site rule
       mine form, like roll-def
         site roll
-      mine form, like dock
+      # `dock-def` directly, not the `dock` list wrapper: at the top level this matches ONE dock, and the
+      # wrapper would look for docks among its children instead
+      mine form, like dock-def
         site dock
-      mine form, like test
-        site test
+      # the kernel's proof `hold` FIRST: `mine hold` is the lock, a different construct that happens to share
+      # the word, and it would take the claim as the lock's name and then fail on the proof steps
+      mine form, like hold-claim
+        site hold-claim
       mine form, like hold
         site hold
       mine form, like suit
@@ -124,18 +144,18 @@ mine code
         site wear
       mine form, like bear
         site bear
+      mine form, like deck-def
+        site deck
       mine form, like book
         site book
-      mine form, like tree
-        site tree
       mine form, like kink
         site kink
-      mine form, like fuse
-        site fuse
       mine form, like beam
         site beam
       mine form, like slot
         site slot
+      mine form, like tell-def
+        site tell
       mine form, like note
         site note
       mine form, like halt

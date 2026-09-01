@@ -1,0 +1,51 @@
+# `tell @deck/form`: the app's decision about what a customer sees when an exception reaches them. Absent means
+# private, and a `tell` for an exception nothing can raise fails the build. See note/term/hive/.
+#
+#   tell @probe/tell/upload-excess
+#     note <That file is too large.>
+#     hint <Try one under 10MB.>
+#     link limit
+#     name too-large
+mine tell-def
+  mine term, term tell
+    mine path
+      site name
+    mine list
+      mine any
+        mine form, like tell-note
+          site note
+        mine form, like tell-hint
+          site hint
+        mine form, like tell-name
+          site alias
+        mine form, like tell-link
+          site link
+
+mine tell-note
+  mine term, term note
+    mine any
+      mine text
+        site value
+      mine term
+        site value
+
+mine tell-hint
+  mine term, term hint
+    mine any
+      mine text
+        site value
+      mine term
+        site value
+
+mine tell-name
+  mine term, term name
+    mine any
+      mine text
+        site value
+      mine term
+        site value
+
+mine tell-link
+  mine term, term link
+    mine term
+      site name

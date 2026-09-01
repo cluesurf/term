@@ -1,5 +1,12 @@
+load @term/mill/code/code/tell/mint
+  find tell-def
+
+load @term/mill/code/code/proof/mint
+  find hold-claim
+
 load @term/mill/code/code/bear/mint
   find bear
+  find deck-def
 
 load @term/mill/code/code/bind/mint
   find bind-def
@@ -118,10 +125,10 @@ mint code
     site rule
   case roll, mint roll-def
     site roll
-  case dock
+  case dock, mint dock-def
     site dock
-  case test
-    site test
+  case hold-claim, mint hold-claim
+    site hold-claim
   case hold
     site hold
   case suit
@@ -132,18 +139,18 @@ mint code
     site wear
   case bear
     site bear
+  case deck, mint deck-def
+    site deck
   case book
     site book
-  case tree
-    site tree
   case kink
     site kink
-  case fuse
-    site fuse
   case beam
     site beam
   case slot
     site slot
+  case tell, mint tell-def
+    site tell
   case note
     site note
   case halt

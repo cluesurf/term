@@ -1,3 +1,6 @@
+load @term/mill/code/code/form/link/mint
+  find link
+
 load @term/mill/code/code/drop/mint
   find drop
 
@@ -26,6 +29,8 @@ mint head
     site base
   case drop
     site drop
+  case link
+    site link
   case seed
     site seed
   hook make
@@ -36,4 +41,10 @@ mint head
       bind fall, read fall
       bind base, read base
       bind drop, read drop
+      bind link, read link
       bind seed, read seed
+
+# a constructor's result type beside a head, matched so the file reads and built into nothing
+mint head-back
+  hook make
+    make head-back

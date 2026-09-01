@@ -1,3 +1,6 @@
+load @term/mill/code/code/call/mine
+  find call-link
+
 # One VALUE expression (what a `bind`, a call argument, a `send back` or a `save` carries): a call, a
 # construction, a read, a literal. This is the `seed` every rule that says `mine form, like seed` means.
 
@@ -73,6 +76,10 @@ mine seed-read
     mine maybe
       mine term
         site path
+    # a read PIPES the same way a call does: `read b / link flip / link flip` is flip(flip(b))
+    mine list
+      mine form, like call-link
+        site link
 
 # `loan x` in value position is a READ. The reader lowers `read`, `loan` and `move` through one case, so all
 # three are the same expression, and only `move next` (the continue marker) is a statement of its own.

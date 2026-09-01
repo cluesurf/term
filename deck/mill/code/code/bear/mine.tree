@@ -5,3 +5,11 @@ mine bear
         site path
       mine text
         site text
+
+# `deck @scope/name` and the manifest keys under it. A `deck.tree` is read by the deck dialect, not this one,
+# but the code role is asked to mill one whenever a tool walks a project and hands over every `.tree` it finds.
+# `compile/mill.ts` treats it as a module directive and builds nothing from it, and so does this.
+mine deck-def
+  mine term, term deck
+    mine list
+      mine node

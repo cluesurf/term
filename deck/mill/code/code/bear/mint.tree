@@ -7,3 +7,9 @@ mint bear
     make bear
       bind path, read path
       bind text, read text
+
+# a package manifest, matched so a tool that mills one gets a program rather than an error, and built into
+# nothing because the manifest is not code
+mint deck-def
+  hook make
+    make deck-def

@@ -1,3 +1,6 @@
+load @term/mill/code/code/fall/mint
+  find fall
+
 load @term/mill/code/code/head/mint
   find head
 
@@ -63,6 +66,10 @@ mint link
     site nick
   case drop
     site drop
+  case result, mint like
+    site result
+  case fall
+    site fall
   case head
     site head
   hook make
@@ -70,6 +77,8 @@ mint link
       bind name, read name
       bind nick, read nick
       bind drop, read drop
+      bind result, read result
+      bind fall, read fall
       bind head, read head
       bind like, read like
       bind call, read call
@@ -95,12 +104,15 @@ mint link-take, like link-take
     site mark
   case like
     site like
+  case head
+    site head
   hook make
     make link-take
       bind term, read term
       bind text, read text
       bind mark, read mark
       bind like, read like
+      bind head, read head
 
 mint link-take-mark
   case value
@@ -217,6 +229,10 @@ mint link-slot
     site nick
   case drop
     site drop
+  case result, mint like
+    site result
+  case fall
+    site fall
   case head
     site head
   hook make
@@ -224,6 +240,8 @@ mint link-slot
       bind name, read name
       bind nick, read nick
       bind drop, read drop
+      bind result, read result
+      bind fall, read fall
       bind head, read head
       bind like, read like
       bind call, read call
@@ -276,6 +294,10 @@ mint link-free
     site nick
   case drop
     site drop
+  case result, mint like
+    site result
+  case fall
+    site fall
   case head
     site head
   hook make
@@ -283,6 +305,8 @@ mint link-free
       bind name, read name
       bind nick, read nick
       bind drop, read drop
+      bind result, read result
+      bind fall, read fall
       bind head, read head
       bind like, read like
       bind call, read call

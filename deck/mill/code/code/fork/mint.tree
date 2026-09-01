@@ -16,6 +16,8 @@ load @term/seed/code/lang
   find fork-tree
 
 mint fork
+  case lack, mint fork-lack
+    site lack
   case test, mint fork-test
     site test
   case case, mint fork-case
@@ -32,11 +34,14 @@ mint fork-test, like fork-test
     site name
   case arm, mint fork-arm-hook
     site arm
+  case drop, mint fork-arm-other
+    site drop
   hook make
     make fork-test
       bind condition, read condition
       bind name, read name
       bind arm, read arm
+      bind drop, read drop
 
 mint fork-test-pair, like fork-test-pair
   case test, mint flow
@@ -111,3 +116,18 @@ mint fork-arm-hook
     make fork-arm-hook
       bind kind, read kind
       bind flow, read flow
+
+mint fork-lack
+  case seed
+    site seed
+  hook make
+    make fork-lack
+      bind seed, read seed
+
+# an arm the fork does not know, matched so the file reads and built into nothing
+mint fork-arm-other
+  case kind
+    site kind
+  hook make
+    make fork-arm-other
+      bind kind, read kind

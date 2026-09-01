@@ -15,12 +15,14 @@ import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 // this on any change to the cached value shape or the mill/compile pipeline that the per-entry key does not capture.
 //
 // WHICH READER produced an entry is part of the epoch, because the mill cache is SHARED across projects and
-// processes (~/.base/@cluesurf/term/store/mill). Running one build under `TERM_MILL_GRAMMAR=1` used to write
-// the grammar reader's answers, diagnostics included, under keys the ordinary build then read back: a green
-// board turned into six broken packages that no source change explained, and the errors named a reader that
-// was not running. A cache key has to cover everything that changes the answer.
-export const CACHE_EPOCH =
-  process.env.TERM_MILL_GRAMMAR === '1' ? '6-grammar' : '6'
+// processes (~/.base/@cluesurf/term/store/mill). While the grammar reader was being brought up behind
+// `TERM_MILL_GRAMMAR=1`, a run under the flag wrote its answers, diagnostics included, under keys the ordinary
+// build then read back: a green board turned into six broken packages that no source change explained, and the
+// errors named a reader that was not running. A cache key has to cover everything that changes the answer.
+//
+// `7` is the grammar reader (mint-bridge-0004, 2026-09-01). There is one reader again, so the epoch is a plain
+// number again, and the bump is what retires every entry the hand-written one left behind.
+export const CACHE_EPOCH = '7'
 
 // A cached entry, or nothing. A CORRUPT ENTRY IS A MISS, never a crash: the store writes atomically, but a
 // full disk, a killed process on a filesystem that does not honour the rename, or a half-synced network share

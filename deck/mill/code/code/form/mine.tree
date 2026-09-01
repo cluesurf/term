@@ -1,3 +1,12 @@
+load @term/mill/code/code/walk/mine
+  find walk
+
+load @term/mill/code/code/take/mine
+  find take
+
+load @term/mill/code/code/mark/mine
+  find mark
+
 load @term/mill/code/code/seed/mine
   find seed-text
 
@@ -102,9 +111,21 @@ mine form
           site dock
         mine form, like form-accessor
           site accessor
+        # `mark prop` declares a PROPOSITIONAL TRUNCATION: any two inhabitants are equal, which is proof
+        # irrelevance, and the kernel gives `wrap 0 == wrap 1` in `||nat||` because of it.
+        mine form, like mark
+          site mark
         mine form, like form-nick
           site nick
         mine form, like form-base
+          site drop
+        # A `take` or a `walk` on a FORM. Templates expand into both: `fuse define-space` writes `take
+        # convert-to-a98-space` under the form, and a `fuse define-each` whose enumeration is not resolved
+        # leaves the `walk` it would have unrolled. The reader builds a record type from `link` children and
+        # reads nothing else, so both are dropped.
+        mine form, like take
+          site drop
+        mine form, like walk
           site drop
         mine form, like drop
           site drop

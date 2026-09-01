@@ -45,10 +45,15 @@ mine dock-bind-line
         mine term
           site name
 
+# RETIRED, and matched so the reader can say so. `dock` was a routing form as well as the native FFI binding,
+# and a URL route is `hook </path>` now. Its path is a text literal, which is what a route path needs.
 mine dock-def
   mine term, term dock
-    mine term
-      site path
+    mine any
+      mine text
+        site path
+      mine term
+        site path
     mine list
       mine form, like take
         site take
@@ -58,6 +63,11 @@ mine dock-def
     mine list
       mine form, like dock-call
         site call
+    # Whatever else it holds. The construct is REFUSED, so the rule only has to match it well enough to say
+    # so: a route written this way may carry a `view`, and reading it in detail would be work spent on a
+    # spelling that is not allowed.
+    mine list
+      mine node
     mine maybe
       mine form, like dock-zone
         site zone

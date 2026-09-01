@@ -1,3 +1,9 @@
+load @term/mill/code/code/halt/mine
+  find halt
+
+load @term/mill/code/code/wait/mine
+  find wait
+
 load @term/mill/code/code/drop/mine
   find drop
 
@@ -49,6 +55,12 @@ mine like
           site link
         mine form, like head
           site head
+        # EFFECT annotations on a callback type: `wait true` makes it async and a bare `halt` makes it one that
+        # may raise. They are part of the type, not of the value, so a `like task` that can throw says so.
+        mine form, like wait
+          site wait
+        mine form, like halt
+          site halt
         # the binding dialect's own words, matched here so a `like` that carries one still reads. See drop/mine.tree.
         mine form, like drop
           site drop

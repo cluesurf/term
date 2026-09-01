@@ -1,12 +1,13 @@
 // THE HAND-WRITTEN MILL, KEPT ONLY AS THE PARITY REFERENCE.
 //
-// This is the reader `compile/mill.ts` was until 2026-08-31: 5,300 lines that turned a parsed `.tree` into the
-// compiler's AST by hand. The compiler no longer calls it. What reads Term now is the code role's own grammar
-// (deck/mill/code/code) run by the mill executor and bridged in `compile/mint-bridge.ts`, which is what the
-// root CLAUDE.md rule has always required of every other dialect.
+// This is the reader `compile/mill.ts` was until 2026-09-01: 5,366 lines that turned a parsed `.tree` into the
+// compiler's AST by hand. The compiler no longer calls it, and nothing it ships imports it. What reads Term now
+// is the code role's own grammar (deck/mill/code/code) run by the mill executor and bridged in
+// `compile/mint-bridge.ts`, which is what the root CLAUDE.md rule has always required of every other dialect.
 //
-// It stays for one reason: `pnpm term:mint-parity` compares the two, file by file, and a reference you have
-// deleted proves nothing. It is dead code otherwise, and it goes when the gate's program half does.
+// It stays on disk for one reason: `pnpm term:mint-parity --reference` compares the two file by file, and a
+// reference you have deleted proves nothing about the reader that replaced it. That comparison is HISTORY, not
+// a gate. The default run does not load this file at all, so deleting it costs nothing but the history.
 //
 // Do not fix a bug here. Fix it in the grammar or the bridge, where the compiler will see it.
 

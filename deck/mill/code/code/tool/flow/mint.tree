@@ -39,6 +39,7 @@ load @term/mill/code/code/seed/seed/mint
 
 load @term/mill/code/code/send/mint
   find send
+  find back
   find send-kind
 
 load @term/mill/code/code/walk/mint
@@ -59,6 +60,8 @@ mint flow
     site save
   case send
     site send
+  case back
+    site back
   case send-kind
     site send-kind
   case fork
@@ -73,8 +76,6 @@ mint flow
     site turn
   case fuse
     site fuse
-  case show
-    site show
   case rest
     site rest
   case note

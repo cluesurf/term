@@ -10,3 +10,14 @@ mint note
     make note
       bind text, read text
       bind flow, read flow
+
+# a guarded block, built exactly as the annotation-shaped note it shares a head with
+mint note-guard
+  case text
+    site text
+  case flow
+    site flow
+  hook make
+    make note
+      bind text, read text
+      bind flow, read flow

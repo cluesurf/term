@@ -18,9 +18,13 @@ mint load, like code-import
     site find
   case load
     site load
+  case drop, mint load-take
+    site drop
   hook make
     make load
       bind path, read path
+      bind drop, read drop
+      bind drop, read drop
       bind name, read name
       bind host, read host
       bind find, read find
@@ -42,3 +46,8 @@ mint load-host
   hook make
     make load-host
       bind value, read value
+
+# a template import written with `take`, matched so the file reads and built into nothing
+mint load-take
+  hook make
+    make load-take

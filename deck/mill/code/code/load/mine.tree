@@ -10,6 +10,11 @@ mine load
     mine maybe
       mine form, like load-host
         site host
+    # `load ../n / take tree size-test`: a TEMPLATE import, written with `take` rather than `find`. The loader
+    # resolves it and the reader keeps nothing from it, so it is matched and dropped.
+    mine list
+      mine form, like load-take
+        site drop
     mine list
       mine form, like find
         site find
@@ -22,11 +27,64 @@ mine load-host
     mine term
       site value
 
+# `find get` imports a name, and `find tree server` imports one of a KIND: the thirteen words below name what
+# kind of thing is being imported, and the word after it is its name.
+#
+# `find get as list-get` is NEITHER. The words after the name nest under it, so the whole thing is one group,
+# the alias binds nothing, and the failure used to surface much later and in another file as an undefined name.
+# The stray phrase is captured LAST, after every legitimate shape, so the reader can say what to write instead.
 mine find
   mine term, term find
-    mine term
-      site text
+    mine any
+      mine word
+        site text
+      mine term, term tree
+        mine word
+          site text
+      mine term, term form
+        mine word
+          site text
+      mine term, term host
+        mine word
+          site text
+      mine term, term task
+        mine word
+          site text
+      mine term, term mask
+        mine word
+          site text
+      mine term, term bind
+        mine word
+          site text
+      mine term, term rule
+        mine word
+          site text
+      mine term, term mill
+        mine word
+          site text
+      mine term, term mine
+        mine word
+          site text
+      mine term, term mint
+        mine word
+          site text
+      mine term, term view
+        mine word
+          site text
+      mine term, term role
+        mine word
+          site text
+      mine term, term test
+        mine word
+          site text
+      mine path
+        site stray
     mine maybe
       mine term, term name
         mine term
           site name
+
+mine load-take
+  mine term, term take
+    mine list
+      mine node

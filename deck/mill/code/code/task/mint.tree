@@ -1,3 +1,6 @@
+load @term/mill/code/code/mark/mint
+  find mark
+
 load @term/mill/code/code/form/mint
   find form-nick
 
@@ -18,6 +21,7 @@ load @term/mill/code/code/like/mint
 
 load @term/mill/code/code/note/mint
   find note
+  find note-guard
 
 load @term/mill/code/code/rule/hold/mint
   find fold
@@ -78,6 +82,8 @@ mint task, like code-task
     site slot
   case flow
     site flow
+  case mark
+    site mark
   case nick, mint form-nick
     site nick
   case drop
@@ -98,5 +104,6 @@ mint task, like code-task
       bind link, read link
       bind slot, read slot
       bind flow, read flow
+      bind mark, read mark
       bind nick, read nick
       bind drop, read drop

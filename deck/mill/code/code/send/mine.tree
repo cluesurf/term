@@ -22,3 +22,12 @@ mine send-kind
     mine maybe
       mine form, like seed
         site seed
+
+# `back <value>` on its own: a RETURN. `send back` is the documented spelling and this is the shorter one the
+# reader still accepts, which is why a `back` in a task body is a return and not a call to something named
+# `back`.
+mine back
+  mine term, term back
+    mine maybe
+      mine form, like seed
+        site seed

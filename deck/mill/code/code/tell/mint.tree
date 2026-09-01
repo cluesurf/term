@@ -1,0 +1,46 @@
+mint tell-def
+  case name
+    site name
+  case note, mint tell-note
+    site note
+  case hint, mint tell-hint
+    site hint
+  case alias, mint tell-name
+    site alias
+  case link, mint tell-link
+    site link
+  hook make
+    make tell
+      bind name, read name
+      bind note, read note
+      bind hint, read hint
+      bind alias, read alias
+      bind link, read link
+
+mint tell-note
+  case value
+    site value
+  hook make
+    make tell-note
+      bind value, read value
+
+mint tell-hint
+  case value
+    site value
+  hook make
+    make tell-hint
+      bind value, read value
+
+mint tell-name
+  case value
+    site value
+  hook make
+    make tell-name
+      bind value, read value
+
+mint tell-link
+  case name
+    site name
+  hook make
+    make tell-link
+      bind name, read name

@@ -44,12 +44,15 @@ mint rule-def
     site call
   case seed
     site seed
+  case head
+    site head
   hook make
     make rule-def
       bind name, read name
       bind head, read head
       bind take, read take
       bind like, read like
+      bind head, read head
       bind mark, read mark
       bind have, read have
       bind find, read find

@@ -1,3 +1,6 @@
+load @term/mill/code/code/like/mint
+  find like
+
 load @term/mill/code/code/bind/mint
   find bind
 
@@ -30,6 +33,10 @@ mint call, like code-call
     site halt
   case note
     site note
+  case like
+    site like
+  case link, mint call-link
+    site link
   case seed
     site seed
   case name
@@ -41,6 +48,8 @@ mint call, like code-call
       bind hook, read hook
       bind halt, read halt
       bind note, read note
+      bind like, read like
+      bind link, read link
       bind seed, read seed
       bind name, read name
 
@@ -64,3 +73,13 @@ mint line
   hook make
     make line
       bind name, read name
+
+mint call-link
+  case name
+    site name
+  case seed
+    site seed
+  hook make
+    make call-link
+      bind name, read name
+      bind seed, read seed

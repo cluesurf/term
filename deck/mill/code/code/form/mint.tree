@@ -1,3 +1,12 @@
+load @term/mill/code/code/walk/mint
+  find walk
+
+load @term/mill/code/code/take/mint
+  find take
+
+load @term/mill/code/code/mark/mint
+  find mark
+
 load @term/mill/code/code/drop/mint
   find drop
 
@@ -90,6 +99,8 @@ mint form
     site dock
   case accessor, mint form-accessor
     site accessor
+  case mark
+    site mark
   case nick, mint form-nick
     site nick
   case drop
@@ -117,6 +128,7 @@ mint form
       bind wear, read wear
       bind dock, read dock
       bind accessor, read accessor
+      bind mark, read mark
       bind nick, read nick
       bind drop, read drop
 

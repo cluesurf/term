@@ -14,3 +14,17 @@ mine note
     mine list
       mine form, like flow
         site flow
+
+# `note unsafe` OVER STATEMENTS is a guarded block, not an annotation: the statements under it are tried and
+# the `halt take` beside it is the handler. It is a rule of its own so it can be matched in the STATEMENT
+# position rather than lifted out with the other metadata, because the pairing needs the two to stay adjacent
+# in the same list. A task with two guards in it has two, and only the list knows which handler is whose.
+mine note-guard
+  mine term, term note
+    mine term, term unsafe
+      site text
+    mine form, like flow
+      site flow
+    mine list
+      mine form, like flow
+        site flow

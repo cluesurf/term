@@ -1,3 +1,6 @@
+load @term/mill/code/code/mark/mine
+  find mark
+
 load @term/mill/code/code/drop/mine
   find drop
 
@@ -19,6 +22,7 @@ load @term/mill/code/code/fold/mine
 
 load @term/mill/code/code/note/mine
   find note
+  find note-guard
 
 load @term/mill/code/code/tag/mine
   find tag
@@ -59,6 +63,9 @@ mine task
           site take
         mine form, like like
           site like
+        # a guarded block goes into the STATEMENT stream, where its handler sits; a bare `note` is metadata
+        mine form, like note-guard
+          site flow
         mine form, like note
           site note
         mine form, like wait
@@ -77,6 +84,10 @@ mine task
           site link
         mine form, like slot
           site slot
+        # `mark private` / `mark async`: the older spelling of the metadata `note` carries, still live in about
+        # thirty files and read alongside it.
+        mine form, like mark
+          site mark
         mine form, like form-nick
           site nick
         mine form, like drop

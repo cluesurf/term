@@ -1,3 +1,6 @@
+load @term/mill/code/code/wait/mine
+  find wait
+
 load @term/mill/code/code/head/mine
   find head
 
@@ -112,6 +115,10 @@ mine take
         # rather than inside it. The reader folds it into the declared type, and so does the bridge.
         mine form, like head
           site head
+        # `take code / wait rise`: masked input, read without echoing. A CLI parameter's flag, not a call's
+        # await marker, but the same word carries it.
+        mine form, like wait
+          site wait
 
 mine take-value
   mine term, term take

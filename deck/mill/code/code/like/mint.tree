@@ -1,3 +1,9 @@
+load @term/mill/code/code/halt/mint
+  find halt
+
+load @term/mill/code/code/wait/mint
+  find wait
+
 load @term/mill/code/code/drop/mint
   find drop
 
@@ -74,6 +80,10 @@ mint like
     site head
   case arg
     site arg
+  case wait
+    site wait
+  case halt
+    site halt
   case drop
     site drop
   hook make
@@ -90,4 +100,6 @@ mint like
       bind link, read link
       bind head, read head
       bind arg, read arg
+      bind wait, read wait
+      bind halt, read halt
       bind drop, read drop

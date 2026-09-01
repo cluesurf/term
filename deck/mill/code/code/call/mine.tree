@@ -1,3 +1,6 @@
+load @term/mill/code/code/like/mine
+  find like
+
 load @term/mill/code/code/note/mine
   find note
 
@@ -39,6 +42,12 @@ mine call
             site halt
           mine form, like note
             site note
+          # `call fill / <data> / like <form>`: the form the data is filled into. It is not an argument, and
+          # the call carries it separately, so it is matched before the value alternative that would take it.
+          mine form, like like
+            site like
+          mine form, like call-link
+            site link
           mine form, like seed
             site seed
     mine list
@@ -53,6 +62,10 @@ mine call
           site halt
         mine form, like note
           site note
+        mine form, like like
+          site like
+        mine form, like call-link
+          site link
         mine form, like seed
           site seed
 
@@ -60,3 +73,17 @@ mine line
   mine term, term line
     mine term
       site name
+
+# `call f, x / link g / link h` pipes: the running value becomes the FIRST argument of `g`, and that of `h`, so
+# it reads top-down as h(g(f(x))). Extra parts after the function name are further arguments, positional or the
+# VALUE of a `bind` (the name is documentation there, and the call itself is positional).
+mine call-link
+  mine term, term link
+    mine term
+      site name
+    mine list
+      mine any
+        mine form, like seed-bind-arg
+          site seed
+        mine form, like seed
+          site seed

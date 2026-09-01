@@ -18,6 +18,16 @@ mine fork
         site tree
       mine form, like fork-roll
         site roll
+      mine form, like fork-lack
+        site lack
+
+# `fork lack` over a value: logical NOT. The value is a SIBLING of the marker under the fork, the way a
+# condition is, so `fork lack / fork lack / read x` is `!!x` and folds to `x`.
+mine fork-lack
+  mine term, term lack
+  mine maybe
+    mine form, like seed
+      site seed
 
 # `fork roll`: a chain of `hook test` arms, each a guard with its own body
 mine fork-roll
@@ -38,8 +48,11 @@ mine fork-roll
 mine fork-test
   mine term, term test
   mine list
-    mine form, like fork-arm-hook
-      site arm
+    mine any
+      mine form, like fork-arm-hook
+        site arm
+      mine form, like fork-arm-other
+        site drop
   mine maybe
     mine any
       # `fork test, name all` is a compile-time flag, and the value fallback would read it as a call to `name`
@@ -48,8 +61,11 @@ mine fork-test
       mine form, like seed
         site condition
   mine list
-    mine form, like fork-arm-hook
-      site arm
+    mine any
+      mine form, like fork-arm-hook
+        site arm
+      mine form, like fork-arm-other
+        site drop
 
 # `fork test, name all`: dispatch on a named boolean parameter at compile time
 mine fork-name
@@ -126,3 +142,13 @@ mine fork-tree
   mine list
     mine form, like flow
       site flow
+
+# An arm the fork does not know. `compile/mill.ts` reads only `hook test`, `hook hold` and `hook miss` and
+# passes over anything else in silence, which is how `hook true` in the stdlib's own tests compiles to a fork
+# with no branches. Matched here so the file still reads, and dropped, which is what happens to it.
+mine fork-arm-other
+  mine term, term hook
+    mine term
+      site kind
+    mine list
+      mine node

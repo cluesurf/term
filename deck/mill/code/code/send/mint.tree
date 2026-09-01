@@ -17,3 +17,10 @@ mint send-kind
     make send-kind
       bind kind, read kind
       bind seed, read seed
+
+mint back
+  case seed
+    site seed
+  hook make
+    make back
+      bind seed, read seed

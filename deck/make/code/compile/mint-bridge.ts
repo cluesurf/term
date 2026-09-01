@@ -60,6 +60,7 @@ import {
 import {
   TYPE_NAME,
   BINARY_BUILTIN,
+  HALT_WORDS,
   unescapeText,
 } from '@term/make/code/compile/surface'
 import {
@@ -206,6 +207,20 @@ function expressionFromNode(
   return undefined
 }
 
+// A construct the reader REFUSES, with the reason. Distinct from `unhandled`, which says the bridge has not
+// been taught something: this says the language has, and the answer is no.
+function refuse(bridge: Bridge, value: Minted, message: string): undefined {
+  bridge.diagnostics.push(
+    diagnose('unexpected-node', {
+      file: bridge.file,
+      span: spanOf(value),
+      message,
+    }),
+  )
+
+  return undefined
+}
+
 function unhandled(bridge: Bridge, value: Minted, what: string): undefined {
   bridge.diagnostics.push(
     diagnose('unexpected-node', {
@@ -216,6 +231,14 @@ function unhandled(bridge: Bridge, value: Minted, what: string): undefined {
   )
 
   return undefined
+}
+
+// An identifier with its `{...}` TEMPLATE PARAMETERS dropped. A `{name}` in a name is filled when a `tree`
+// expands, and one that survived expansion was never in a template, so the reader takes the name without it:
+// `convert-to-{name}-space` is `convert-to--space`. Only a name; a `read x/{key}` member is a different thing
+// and is built from the token's own interpolation part.
+function plainName(name: string): string {
+  return name.includes('{') ? name.replace(/\{[^}]*\}/g, '') : name
 }
 
 // A text literal, which is a STRING unless it carries `{{...}}`, and then it is a TEMPLATE: the chunks and the
@@ -234,6 +257,22 @@ function textExpression(
 
   if (node?.kind !== 'text') {
     return { form: 'string', value: textOf(value) ?? '', span }
+  }
+
+  const single = node.parts.find(
+    part => part.kind === 'interpolation' && part.depth < 2,
+  )
+
+  // A `{x}` is a TEMPLATE PARAMETER, filled when a `tree` expands, so one that survived expansion was never in
+  // a template. It used to compile to an empty string in silence, which is why it is refused by name.
+  if (single && single.kind === 'interpolation') {
+    const inner = single.group ? (headWord(single.group) ?? 'x') : 'x'
+
+    refuse(
+      bridge,
+      value,
+      `"{${inner}}" in a text literal is a template parameter, and this text is not in a template: interpolate at run time with {{${inner}}}, or write \\{${inner}\\} for the literal braces`,
+    )
   }
 
   const braced = node.parts.find(
@@ -279,7 +318,14 @@ const named = (name: string): Type =>
 // A `like` names a type and carries its parts: applied arguments ride in the name as a phrase
 // (`like stack number`), an element or key/value rides as a nested `like`, and a task type carries its
 // parameters as `take` lines plus its result as the nested `like`.
-function typeOf(bridge: Bridge, value: Minted | undefined): Type | undefined {
+function typeOf(
+  bridge: Bridge,
+  value: Minted | undefined,
+  // POSITIONAL ARGUMENTS ONLY. A `head` that carries a `like` or a `link` of its own is a NAMED type argument
+  // and belongs to the extension, not to the base type: `form example / like foo / head a / link x, like text`
+  // extends `foo`, it is not `foo` applied to an anonymous record.
+  positionalOnly = false,
+): Type | undefined {
   if (!value) {
     return undefined
   }
@@ -323,8 +369,23 @@ function typeOf(bridge: Bridge, value: Minted | undefined): Type | undefined {
     const paramNames: (string | undefined)[] = []
 
     for (const take of formsAt(value, 'take')) {
-      params.push(typeOf(bridge, firstAt(take, 'like')) ?? UNKNOWN)
+      params.push(
+        withHeadArgs(bridge, typeOf(bridge, firstAt(take, 'like')), take) ??
+          UNKNOWN,
+      )
       paramNames.push(wordAt(take, 'name'))
+    }
+
+    // EFFECTS on a callback type: `wait true` makes it async, and a bare `halt` makes it one that may raise.
+    // They belong to the type, so a caller knows what the callback it is handed can do.
+    const effects: string[] = []
+
+    if (formsAt(value, 'wait').some(wait => wordAt(wait, 'seed') === 'true')) {
+      effects.push('async')
+    }
+
+    if (at(value, 'halt').length > 0) {
+      effects.push('throw')
     }
 
     return {
@@ -332,6 +393,7 @@ function typeOf(bridge: Bridge, value: Minted | undefined): Type | undefined {
       params,
       result: children[0] ?? UNIT,
       ...(paramNames.some(n => n !== undefined) ? { paramNames } : {}),
+      ...(effects.length > 0 ? { effects } : {}),
     }
   }
 
@@ -345,7 +407,11 @@ function typeOf(bridge: Bridge, value: Minted | undefined): Type | undefined {
   // apart: a type is written as a name or a nested `like` and lands at those sites, a value is an expression
   // and lands at `seed`. `like vec / head a / head / read count` is `vec a count`, a vector of `a`s whose
   // LENGTH is `count`, and the two arguments are not the same kind of thing.
-  const heads = formsAt(value, 'head')
+  const heads = formsAt(value, 'head').filter(
+    head =>
+      !positionalOnly ||
+      !(firstAt(head, 'like') || at(head, 'link').length > 0),
+  )
   const valueHeads = heads.filter(head => firstAt(head, 'seed'))
   const args = [
     ...applied.map(phraseType),
@@ -429,13 +495,25 @@ function withOuterTakes(
     return declared
   }
 
+  // NO head folding here. When the parameters are written as `take` lines beside the `like` rather than inside
+  // it, the reader takes each one's `like` and nothing else, so a `head` sibling of one of THOSE is not part of
+  // its type. The nested spelling does fold them, and `typeOf` does that.
   const params = takes.map(
     take => typeOf(bridge, firstAt(take, 'like')) ?? UNKNOWN,
   )
 
+  // The RESULT comes with them. A SECOND `like` beside the first is the function's return type
+  // (`take f, like task / take x, like nat / like nat` is `(nat) -> nat`), and without it the type says the
+  // function returns nothing, which is a different function. On a `take` the second one lands at the same
+  // site; on a `link` it has its own, because there the trailing `like` is sometimes ignored instead.
+  const likes = at(owner, 'like')
+  const result =
+    typeOf(bridge, firstAt(owner, 'result')) ??
+    (likes.length > 1 ? typeOf(bridge, likes[1]) : undefined)
+
   // no `paramNames`: the mill records those only when the takes are nested inside the `like` group, and this
   // is the other spelling
-  return { ...declared, params }
+  return { ...declared, params, ...(result ? { result } : {}) }
 }
 
 // a type written as one phrase: `stack number` is `stack` applied to `number`
@@ -475,7 +553,7 @@ function expressionOf(
         return { form: 'boolean', value: value.value === 'true', span }
       }
 
-      return { form: 'variable', name: value.value, span }
+      return { form: 'variable', name: plainName(value.value), span }
     case 'form':
       break
   }
@@ -488,7 +566,7 @@ function expressionOf(
 
       if (path === undefined) {
         // a bare `read` names the empty path, which is what the reader answers for one
-        return readPath('', span)
+        return withLinks(bridge, readPath('', span), value)
       }
 
       // `read x/{key}` reads the member NAMED BY evaluating `key`. The braces are part of one name token, so
@@ -498,11 +576,11 @@ function expressionOf(
         const dynamic = dynamicPath(value, span)
 
         if (dynamic) {
-          return dynamic
+          return withLinks(bridge, dynamic, value)
         }
       }
 
-      return readPath(path, span)
+      return withLinks(bridge, readPath(path, span), value)
     }
 
     case 'seed-text': {
@@ -549,6 +627,20 @@ function expressionOf(
 
     case 'task':
       return closureOf(bridge, value)
+
+    // `fork lack` over a value: logical NOT. Its operand is a sibling of the marker, and an absent one is
+    // false, which is what the reader answers.
+    case 'fork-lack':
+      return {
+        form: 'unary',
+        op: '!',
+        operand: expressionOf(bridge, firstAt(value, 'seed')) ?? {
+          form: 'boolean',
+          value: false,
+          span,
+        },
+        span,
+      }
 
     case 'fork-test': {
       const built = conditionOf(bridge, value)
@@ -627,7 +719,7 @@ function expressionOf(
 
       return {
         form: 'call',
-        callee: readPath(callee, span),
+        callee: readPath(plainName(callee), span),
         args,
         span,
       }
@@ -703,20 +795,29 @@ function recordOf(bridge: Bridge, value: Form): Expression | undefined {
 
   const functionFree = fields.every(f => f.value.form !== 'closure')
 
-  return {
-    form: 'record',
-    name,
-    fields,
-    ...(positional.length > 0 ? { positional } : {}),
-    functionFree,
-    span: spanOf(value),
-  }
+  return withLinks(
+    bridge,
+    {
+      form: 'record',
+      name,
+      fields,
+      ...(positional.length > 0 ? { positional } : {}),
+      functionFree,
+      span: spanOf(value),
+    },
+    value,
+  )
 }
 
 // a task written in value position is a closure: the same shape, carried as an expression
 function closureOf(bridge: Bridge, value: Form): Expression | undefined {
   const params = formsAt(value, 'take').map(take => {
-    const type = typeOf(bridge, firstAt(take, 'like'))
+    // a closure's parameter folds the `head` arguments written beside its `like`, the way a task's does
+    const type = withHeadArgs(
+      bridge,
+      typeOf(bridge, firstAt(take, 'like')),
+      take,
+    )
 
     return {
       name: wordAt(take, 'name') ?? '',
@@ -730,7 +831,8 @@ function closureOf(bridge: Bridge, value: Form): Expression | undefined {
     params,
     body: flowOf(bridge, at(value, 'flow')),
     ...(result ? { result } : {}),
-    ...(hasWord(value, 'note', 'async') ? { async: true } : {}),
+    // a closure is async the same two ways a task is: `note async`, or a `wait true` on the definition
+    ...(marked(value, 'async') || waitsTrue(value) ? { async: true } : {}),
     span: spanOf(value),
   }
 }
@@ -959,20 +1061,75 @@ function callOf(bridge: Bridge, value: Form): Expression | undefined {
   const propagate = formsAt(value, 'halt').some(
     halt => wordAt(halt, 'mode') === 'kink',
   )
+  // `wait false` on a call is FIRE AND FORGET: the call is started and not awaited, which is a different
+  // thing from `wait true` and from no marker at all.
+  const background = formsAt(value, 'wait').some(
+    wait => wordAt(wait, 'seed') === 'false',
+  )
+  // `call fill / <data> / like <form>` fills a form from data, with the compiler walking the form's fields,
+  // and `call melt` is the reverse. The `like` names the FORM and is not an argument, so the call carries it as
+  // `into` and its callee becomes `fill-form` / `melt-form`, which is what the emitter and the checker look for.
+  const into =
+    name === 'fill' || name === 'melt'
+      ? typeOf(bridge, firstAt(value, 'like'))
+      : undefined
   const call: Expression =
     folded ??
-    ({
-      form: 'call',
-      callee: readPath(name, span),
-      args,
-      span,
-      ...(names.some(Boolean) ? { names } : {}),
-      ...(propagate ? { propagate: true } : {}),
-    } as Expression)
+    (into
+      ? ({
+          form: 'call',
+          callee: readPath(`${name}-form`, span),
+          args,
+          into,
+          span,
+        } as Expression)
+      : ({
+          form: 'call',
+          callee: readPath(name, span),
+          args,
+          span,
+          ...(names.some(Boolean) ? { names } : {}),
+          ...(propagate ? { propagate: true } : {}),
+          ...(background ? { background: true } : {}),
+        } as Expression))
 
-  return at(value, 'wait').length > 0
-    ? { form: 'await', expr: call, span }
-    : call
+  const awaited = formsAt(value, 'wait').some(
+    wait => wordAt(wait, 'seed') === 'true',
+  )
+
+  return withLinks(bridge, awaited ? { form: 'await', expr: call, span } : call, value)
+}
+
+// `call f, x / link g / link h` PIPES: each `link` takes the running value as its first argument, so the whole
+// thing reads top-down as h(g(f(x))). Anything after the function's name is a further argument, positional or
+// the value of a `bind`, because the call itself is positional and the name there is documentation.
+function withLinks(
+  bridge: Bridge,
+  value: Expression,
+  owner: Form,
+): Expression {
+  let piped = value
+
+  for (const link of formsAt(owner, 'link')) {
+    const name = wordAt(link, 'name')
+
+    if (name === undefined) {
+      continue
+    }
+
+    const extra = at(link, 'seed')
+      .map(seed => expressionOf(bridge, seed))
+      .filter((one): one is Expression => one !== undefined)
+
+    piped = {
+      form: 'call',
+      callee: { form: 'variable', name, span: spanOf(link) },
+      args: [piped, ...extra],
+      span: spanOf(link),
+    }
+  }
+
+  return piped
 }
 
 function foldBuiltin(
@@ -1016,6 +1173,23 @@ function flowOf(bridge: Bridge, values: Minted[]): Statement[] {
 
   for (let i = 0; i < values.length; i++) {
     const value = values[i]!
+
+    // A `halt take` that was NOT consumed as a handler above is a handler for nothing. The check lives here
+    // rather than in `haltOf`, because only the statement list knows whether the `note unsafe` it belongs to
+    // came before it.
+    if (
+      isForm(value) &&
+      value.form === 'halt' &&
+      wordAt(value, 'mode') === 'take'
+    ) {
+      refuse(
+        bridge,
+        value,
+        'halt take is the handler of a note unsafe body and must follow one',
+      )
+
+      continue
+    }
 
     // `note unsafe` over a body, with the `halt take` beside it, is ONE guarded block: the note carries the
     // statements to try and the halt carries the handler and the name it binds the caught exception to.
@@ -1094,6 +1268,16 @@ function statementOf(
   switch (value.form) {
     case 'task':
       return functionOf(bridge, value)
+
+    // `back <value>` is the shorter spelling of `send back` and returns the same way
+    case 'back':
+      return {
+        form: 'return',
+        ...(firstAt(value, 'seed')
+          ? { value: expressionOf(bridge, firstAt(value, 'seed')) }
+          : {}),
+        span,
+      }
 
     case 'send': {
       const built = expressionOf(bridge, firstAt(value, 'seed'))
@@ -1195,8 +1379,23 @@ function statementOf(
       const name = wordAt(value, 'name')
       const like = wordAt(firstAt(value, 'like'), 'name') ?? wordAt(value, 'like')
 
-      if (name === undefined || like === undefined) {
-        return unhandled(bridge, value, 'a roll with no name or kind')
+      // Both halves are REQUIRED and each has its own message, because they are different mistakes: a `roll`
+      // with no name does not say what kind it declares, and one with no `like` does not say what its entries
+      // are. The reader names which is missing, and so does this.
+      if (name === undefined) {
+        return refuse(
+          bridge,
+          value,
+          'roll needs the name of the kind it declares (`roll metric`)',
+        )
+      }
+
+      if (like === undefined) {
+        return refuse(
+          bridge,
+          value,
+          `roll ${name} needs the form of its entries (\`like <form>\`)`,
+        )
       }
 
       return { form: 'roll', name, like, span }
@@ -1232,6 +1431,24 @@ function statementOf(
 
     case 'hold-claim':
       return holdOf(bridge, value)
+
+    // RETIRED SPELLINGS. The grammar still matches them so the reader can say what to write instead: a word
+    // that used to mean something deserves an answer, not "unexpected node".
+    case 'bust':
+      return refuse(
+        bridge,
+        value,
+        '`bust` is retired. Write `halt <form>` with `bind` children to raise an exception, `halt <text>` to fail with a message, or `halt` to break out of a loop',
+      )
+
+    case 'send-kind':
+      return wordAt(value, 'kind') === 'kink'
+        ? refuse(
+            bridge,
+            value,
+            "`send kink` is retired. Raise with `halt <form>`; pass a callee's exception on with `halt kink` under the call",
+          )
+        : unhandled(bridge, value, `the ${value.form} statement`)
 
     default:
       return unhandled(bridge, value, `the ${value.form} statement`)
@@ -1294,6 +1511,7 @@ function holdOf(bridge: Bridge, value: Form): Statement | undefined {
 function haltOf(bridge: Bridge, value: Form): Statement | undefined {
   const span = spanOf(value)
   const mode = wordAt(value, 'mode')
+
 
   if (mode === undefined) {
     const raised = expressionOf(bridge, firstAt(value, 'seed'))
@@ -1754,12 +1972,7 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
   bridge.declared = new Set(params.map(p => p.name))
   // `task read-synchronously, name <read-file>` annotates the task with the host name it maps to. The comma
   // leaves it where a body statement would sit, and it is not one: the mill emits an empty body here.
-  // `note unsafe` over a body is captured at the task's own `note` site, not in its flow, while the `halt take`
-  // that handles it IS in the flow. Put the note back in front of the flow so the two pair into one guard.
-  const guardNote = formsAt(value, 'note').find(
-    note => wordAt(note, 'text') === 'unsafe' && at(note, 'flow').length > 0,
-  )
-  const steps = at(value, 'flow').filter(
+  const written = at(value, 'flow').filter(
     step =>
       !(
         isForm(step) &&
@@ -1767,10 +1980,37 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
         wordAt(step, 'name') === 'name'
       ),
   )
-  const body = flowOf(
-    bridge,
-    guardNote ? [guardNote, ...steps] : steps,
-  )
+
+  // A LEADING RUN of childless `halt <form>` lines is a BOUND on what the task may raise, not a raise: it is a
+  // contract the checker holds the body to. Only the leading run, and only a form the halt vocabulary does not
+  // already claim, because `halt flow` and `halt kink` mean their own things.
+  const raises: string[] = []
+  let at_ = 0
+
+  while (at_ < written.length) {
+    const step = written[at_]
+    const mode = isForm(step) && step.form === 'halt'
+      ? wordAt(step, 'mode')
+      : undefined
+
+    if (
+      mode === undefined ||
+      HALT_WORDS.has(mode) ||
+      !isForm(step) ||
+      at(step, 'seed').length > 0 ||
+      at(step, 'bind').length > 0 ||
+      at(step, 'take').length > 0 ||
+      at(step, 'flow').length > 0
+    ) {
+      break
+    }
+
+    raises.push(mode)
+    at_ += 1
+  }
+
+  const steps = written.slice(at_)
+  const body = flowOf(bridge, steps)
   bridge.declared = enclosing
 
   const generics = [
@@ -1794,12 +2034,12 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
     body,
     ...(result ? { result } : {}),
     generics,
+    // the bound on what this task may raise, from the leading `halt <form>` lines
+    ...(raises.length > 0 ? { raises } : {}),
     // `wait true` on a DEFINITION marks it async, the same as `note async`. The two are not alternatives in
     // the reader, they are two spellings of one fact, and a task that says only `wait true` is async too.
-    ...(hasWord(value, 'note', 'async') || waitsTrue(value)
-      ? { async: true }
-      : {}),
-    ...(hasWord(value, 'note', 'private') ? { private: true } : {}),
+    ...(marked(value, 'async') || waitsTrue(value) ? { async: true } : {}),
+    ...(marked(value, 'private') ? { private: true } : {}),
     ...(owner ? { method: { form: owner, name: bare } } : {}),
     span: spanOf(value),
   }
@@ -1825,6 +2065,29 @@ function topLevelOf(bridge: Bridge, value: Minted): Statement[] {
         }
       }
 
+      // `find get as list-get` BINDS NOTHING: the words after the imported name nest under it, so the alias is
+      // not an alias and the failure used to surface much later, in another file, as an undefined name. The
+      // grammar captures the whole phrase so the reader can say what to write instead.
+      for (const found of formsAt(value, 'find')) {
+        const stray = wordAt(found, 'stray')
+
+        if (stray === undefined) {
+          continue
+        }
+
+        const words = stray.split(' ')
+
+        refuse(
+          bridge,
+          found,
+          `"find ${stray}" binds nothing: an import alias is written "find ${words[0] ?? ''}, name ${words[words.length - 1] ?? 'y'}"`,
+        )
+      }
+
+      return []
+
+    // a package manifest read by the code role, which is not code: the deck dialect owns it
+    case 'deck-def':
       return []
 
     case 'bear':
@@ -1841,6 +2104,18 @@ function topLevelOf(bridge: Bridge, value: Minted): Statement[] {
 
     case 'dock-bind':
       return nativeOf(bridge, value)
+
+    // RETIRED. `dock` was also a routing form, an alias for `hook`, so one word meant both the native FFI
+    // binding and a URL route. Four uses existed and all were ported; refusing it is what stops it coming
+    // back, because a second spelling nobody removes is a second spelling somebody writes.
+    case 'dock-def':
+      refuse(
+        bridge,
+        value,
+        '`dock` is the native FFI binding (`dock load`, `dock type`). A URL route is `hook </path>`',
+      )
+
+      return []
 
     case 'mask': {
       const name = wordAt(value, 'name')
@@ -1929,6 +2204,47 @@ function topLevelOf(bridge: Bridge, value: Minted): Statement[] {
     case 'view-def':
       return viewOf(bridge, value)
 
+    // `tell @deck/form`: what a customer sees when this exception reaches them. Absent means private, so the
+    // statement is the app's decision and the compiler holds it to one.
+    case 'tell': {
+      const named = wordAt(value, 'name')
+
+      if (named === undefined) {
+        refuse(
+          bridge,
+          value,
+          'tell needs the full name of an exception (@deck/form)',
+        )
+
+        return []
+      }
+
+      const said = (site: string): string | undefined =>
+        wordAt(firstAt(value, site), 'value')
+
+      const note = said('note')
+      const hint = said('hint')
+      const alias = said('alias')
+
+      return [
+        {
+          form: 'tell',
+          name: named,
+          ...(note !== undefined ? { note } : {}),
+          ...(hint !== undefined ? { hint } : {}),
+          links: formsAt(value, 'link')
+            .map(link => wordAt(link, 'name') ?? '')
+            .filter(one => one.length > 0),
+          ...(alias !== undefined ? { alias } : {}),
+          span: spanOf(value),
+        },
+      ]
+    }
+
+    // a proof `hold` written at the top level rather than inside a task body
+    case 'hold-claim':
+      return asStatements(holdOf(bridge, value))
+
     default:
       return asStatements(statementOf(bridge, value))
   }
@@ -1961,6 +2277,16 @@ function claimOf(bridge: Bridge, shown: Form): Expression | undefined {
 }
 
 // the head word a minted value was built from, for a relation written as a bare name
+// Metadata written as `note <word>` or as `mark <word>`. The documented spelling is `note`, and `mark` is
+// accepted alongside it because it is live in about thirty files: `mark private` on a record field, `mark
+// async` in the stdlib's async tasks, and several fixtures. Refusing it was tried and reverted.
+function marked(value: Form, word: string): boolean {
+  return (
+    hasWord(value, 'note', word) ||
+    formsAt(value, 'mark').some(mark => wordAt(mark, 'kind') === word)
+  )
+}
+
 // `wait true` written on the definition itself. `wait false` is fire-and-forget and is not this: the marker's
 // value is a `seed`, and only the boolean true means await.
 function waitsTrue(value: Form): boolean {
@@ -2011,7 +2337,7 @@ function viewNodeOf(bridge: Bridge, value: Minted): ViewNode | undefined {
     return undefined
   }
 
-  const element = firstAt(value, 'element')
+  const element = formsAt(value, 'element')[0]
 
   if (element) {
     return viewElementOf(bridge, element, span)
@@ -2046,7 +2372,7 @@ function viewNodeOf(bridge: Bridge, value: Minted): ViewNode | undefined {
     const cond = test
       ? expressionOf(bridge, firstAt(test, 'seed'))
       : undefined
-    const miss = firstAt(fork, 'miss')
+    const miss = formsAt(fork, 'miss')[0]
 
     return {
       form: 'fork',
@@ -2054,7 +2380,7 @@ function viewNodeOf(bridge: Bridge, value: Minted): ViewNode | undefined {
         {
           // no `hook test` at all is a branch that never runs, which is what the reader answers too
           cond: cond ?? { form: 'boolean', value: false, span },
-          body: viewBodyOf(bridge, firstAt(fork, 'hold')),
+          body: viewBodyOf(bridge, formsAt(fork, 'hold')[0]),
         },
       ],
       ...(miss ? { otherwise: viewBodyOf(bridge, miss) } : {}),
@@ -2291,7 +2617,9 @@ function ruleOf(bridge: Bridge, value: Form): Statement[] {
   // the type's NAME: `typeOf` maps it to the plain number type and the name is gone by then.
   const params = formsAt(value, 'mark').map(mark => {
     const like = firstAt(mark, 'like')
-    const type = typeOf(bridge, like)
+    // `mark s, like stack / head nat` quantifies over a stack OF NATS, and the argument is a sibling of the
+    // `like`, the same way a task parameter's is
+    const type = withHeadArgs(bridge, typeOf(bridge, like), mark)
     const written = wordAt(like, 'name')
 
     return {
@@ -2430,6 +2758,10 @@ function routeOf(
     const type = typeOf(bridge, firstAt(take, 'like'))
     const note = leadingNote(take) ?? wordAt(firstAt(take, 'note'), 'text')
     const short = wordAt(take, 'code')
+    // `take code / wait rise` reads a secret without echoing it back
+    const masked = formsAt(take, 'wait').some(
+      wait => wordAt(wait, 'seed') === 'rise',
+    )
     const fallbackValue = firstAt(
       formsAt(take, 'bind')[0],
       'seed',
@@ -2451,6 +2783,7 @@ function routeOf(
       ...(type ? { type } : {}),
       required: needWord(take) === 'true',
       ...(short !== undefined ? { short } : {}),
+      ...(masked ? { masked: true } : {}),
       ...(note !== undefined ? { note } : {}),
       ...(fallback !== undefined ? { fallback } : {}),
       ...(at(take, 'many').length > 0 ? { variadic: true } : {}),
@@ -2572,7 +2905,9 @@ function routeOf(
     takes,
     methods,
     calls,
-    ...(component ? { component } : {}),
+    // The KEY is what tells a route from a command downstream, so a route writes it whether or not it has a
+    // component to put in it: `hook /users / task get` is a route with no view, not a CLI command.
+    ...(isRoute ? { component } : {}),
     directives: [],
     sends: [],
     hooks: [],
@@ -2712,7 +3047,10 @@ function fieldOf(
     type,
     identity: false,
     ...(nick !== undefined ? { nick } : {}),
-    ...(need === 'false' || fallback ? { optional: true } : {}),
+    // A DEFAULT does not make a field optional. `need false` does, and only that: `link actual, like number,
+    // fall 0` is a required field that has a value when none is given, which is a different thing from one the
+    // constructor may leave out.
+    ...(need === 'false' ? { optional: true } : {}),
     ...(fallback ? { fallback } : {}),
   }
 }
@@ -2771,7 +3109,7 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
     // `like <base>` on a form: with children it EXTENDS the base (`bind` pins one of its fields, `link` adds a
     // prop, `head` names a type argument), and with none it is a transparent ALIAS of it
     const like = firstAt(value, 'like')
-    const base = typeOf(bridge, like)
+    const base = typeOf(bridge, like, true)
     const pins = formsAt(like, 'bind').map(pin => ({
       name: wordAt(pin, 'name') ?? '',
       value:
@@ -2792,10 +3130,17 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
       .filter(head => firstAt(head, 'like') || at(head, 'link').length > 0)
       .map(head => {
         const type = typeOf(bridge, firstAt(head, 'like'))
+        // `head a / link x, like text`: an anonymous record as the argument, its fields written inline
+        const links = formsAt(head, 'link').map(link => {
+          const field = fieldOf(bridge, link)
+
+          return { name: field.name, type: field.type }
+        })
 
         return {
           name: wordAt(head, 'name') ?? '',
           ...(type ? { type } : {}),
+          ...(links.length > 0 ? { links } : {}),
           span: spanOf(head),
         }
       })
@@ -2835,6 +3180,11 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
       fields,
       variants,
       ...(indices.length > 0 ? { indices } : {}),
+      // `mark prop`: a propositional truncation, where any two inhabitants are equal. Always written, true or
+      // false, because the reader always writes it and a missing field is a different program from a false one.
+      truncation: formsAt(value, 'mark').some(
+        mark => wordAt(mark, 'kind') === 'prop',
+      ),
       ...(alias ? { alias } : {}),
       ...(extend ? { extend } : {}),
       functionFree:
@@ -2842,7 +3192,6 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
         variants.every(v =>
           v.fields.every(f => f.type.kind !== 'function'),
         ),
-      truncation: false,
       span: spanOf(value),
     })
   }
@@ -2872,6 +3221,17 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
           .filter(Boolean),
         span: spanOf(worn),
       })
+
+      // AND ITS IMPLEMENTATIONS. The instance says which methods the form wears; the methods themselves are
+      // lifted out as functions over the form, dispatched exactly like its own. Without them the instance
+      // named methods that nothing defined.
+      for (const task of formsAt(worn, 'task')) {
+        const built = functionOf(bridge, task)
+
+        if (built) {
+          out.push(built)
+        }
+      }
     }
   }
 
@@ -3074,6 +3434,9 @@ export function millByGrammar(
       capture.match,
       capture.node,
     )) {
+      // EACH TOP-LEVEL STATEMENT GETS A FRESH SCOPE. The reader lowers one at a time with an empty one, so a
+      // second `save a` at the top level is a fresh binding rather than an assignment to the first.
+      bridge.declared = new Set()
       program.push(...topLevelOf(bridge, value))
     }
   }

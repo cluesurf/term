@@ -220,7 +220,10 @@ mine view-slot
 # places, and then the condition arrives wrapped in a markup node that has no expression to give.
 mine view-fork
   mine term, term fork
-    mine term, term test
+    # `fork` on its own, or `fork test`. In markup the arms carry the whole meaning, so the marker word is
+    # optional the way the reader treats it.
+    mine maybe
+      mine term, term test
     mine list
       mine any
         mine form, like view-arm-test

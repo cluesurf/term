@@ -1,3 +1,6 @@
+load @term/mill/code/code/fall/mine
+  find fall
+
 load @term/mill/code/code/head/mine
   find head
 
@@ -85,8 +88,12 @@ mine link
         site take
     mine list
       mine any
+        # A `like` that arrives after the field's type. For a field declared `like task` it is the function's
+        # RESULT (`link step, like task / take m, like nat / like acc`), and for a field whose type slot was
+        # taken by a native `name <X>` the reader ignores it, which quirk 6 is about. It gets its own site so
+        # the bridge can tell those apart: a result is only read when the declared type is a function.
         mine form, like like
-          site drop
+          site result
         mine form, like link-lock
           site drop
         mine form, like drop
@@ -102,6 +109,10 @@ mine link
         # and a word that means two things cannot be ignored globally without eating one of them.
         mine form, like link-read
           site drop
+        # `link actual, like(number), fall 0`: the field's default. The reader looks for it among the link's
+        # own children as well as inside the `like` group, so it may sit either side of the type.
+        mine form, like fall
+          site fall
 
 # `lock false` beside a field, and a `like` that arrives after the field's native `name <X>`.
 #
@@ -135,6 +146,11 @@ mine link-take
     mine maybe
       mine form, like like
         site like
+    # `take pf, like lt / head / read m`: the type's index, written beside the `like` the way a task
+    # parameter's is, and folded into the declared type the same way
+    mine list
+      mine form, like head
+        site head
 
 mine link-take-mark
   mine term, term mark
@@ -263,8 +279,12 @@ mine link-slot
         site take
     mine list
       mine any
+        # A `like` that arrives after the field's type. For a field declared `like task` it is the function's
+        # RESULT (`link step, like task / take m, like nat / like acc`), and for a field whose type slot was
+        # taken by a native `name <X>` the reader ignores it, which quirk 6 is about. It gets its own site so
+        # the bridge can tell those apart: a result is only read when the declared type is a function.
         mine form, like like
-          site drop
+          site result
         mine form, like link-lock
           site drop
         mine form, like drop
@@ -280,6 +300,10 @@ mine link-slot
         # and a word that means two things cannot be ignored globally without eating one of them.
         mine form, like link-read
           site drop
+        # `link actual, like(number), fall 0`: the field's default. The reader looks for it among the link's
+        # own children as well as inside the `like` group, so it may sit either side of the type.
+        mine form, like fall
+          site fall
 
 # `free x`: a field whose name is released. The reader builds it exactly as a `link`.
 #
@@ -344,8 +368,12 @@ mine link-free
         site take
     mine list
       mine any
+        # A `like` that arrives after the field's type. For a field declared `like task` it is the function's
+        # RESULT (`link step, like task / take m, like nat / like acc`), and for a field whose type slot was
+        # taken by a native `name <X>` the reader ignores it, which quirk 6 is about. It gets its own site so
+        # the bridge can tell those apart: a result is only read when the declared type is a function.
         mine form, like like
-          site drop
+          site result
         mine form, like link-lock
           site drop
         mine form, like drop
@@ -361,3 +389,7 @@ mine link-free
         # and a word that means two things cannot be ignored globally without eating one of them.
         mine form, like link-read
           site drop
+        # `link actual, like(number), fall 0`: the field's default. The reader looks for it among the link's
+        # own children as well as inside the `like` group, so it may sit either side of the type.
+        mine form, like fall
+          site fall

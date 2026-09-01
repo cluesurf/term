@@ -1,3 +1,6 @@
+load @term/mill/code/code/form/link/mine
+  find link
+
 load @term/mill/code/code/take/mine
   find take
 
@@ -56,9 +59,20 @@ mine head
               site drop
             mine form, like drop
               site drop
+    # `head a / link x, like text`: an ANONYMOUS record as the type argument, its fields written inline. A head
+    # that carries a `like` or a `link` is a NAMED type argument, which is what makes a `like` an extension of
+    # its base rather than an alias for it.
+    mine list
+      mine form, like link
+        site link
     mine list
       mine any
         mine form, like drop
+          site drop
+        # `head make / back native-any`: a constructor's result type in the binding files. It lives HERE
+        # rather than in the shared ignored vocabulary because `back n` is also the RETIRED spelling of a
+        # return, and a word that means two things cannot be ignored globally without eating one of them.
+        mine form, like head-back
           site drop
         # `head d / base native-number / text <1>`: a default for the type parameter. The reader takes a
         # `head`'s name and its `like`, and reads nothing else.
@@ -68,3 +82,8 @@ mine head
         # in a fallback that takes any headed group
         mine form, like seed
           site seed
+
+mine head-back
+  mine term, term back
+    mine list
+      mine node
