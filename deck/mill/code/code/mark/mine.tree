@@ -11,13 +11,15 @@ mine mark-bind
   mine term, term bind
     mine term
       site key
+    # ONE SITE, three ways to write the value. The mint reads it by the mine rule that filled it, so a text and
+    # a number ride out as literals and a `term x` is minted through mark-bind-term.
     mine any
       mine text
-        site text-value
+        site value
       mine number
-        site number-value
+        site value
       mine form, like mark-bind-term
-        site term-value
+        site value
 
 mine mark-bind-term
   mine term, term term

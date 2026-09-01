@@ -11,11 +11,7 @@ mint mark
 mint mark-bind
   case key
     site key
-  case text-value
-    site value
-  case number-value
-    site value
-  case term-value, mint mark-bind-term
+  case value
     site value
   hook make
     make mark-bind

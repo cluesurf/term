@@ -24,31 +24,280 @@ load @term/mill/code/code/tune/mine
 load @term/mill/code/code/note/mine
   find note
 
+load @term/mill/code/code/like/mine
+  find like
+
+load @term/mill/code/code/head/mine
+  find head
+
+load @term/mill/code/code/mark/mine
+  find mark
+
+load @term/mill/code/code/seed/mine
+  find seed
+
+load @term/mill/code/code/call/mine
+  find call
+
+load @term/mill/code/code/fork/mine
+  find fork
+
+load @term/mill/code/code/walk/mine
+  find walk
+
+load @term/mill/code/code/save/mine
+  find save
+
 mine view
   mine list
     mine form, like view-def
       site view
 
+# ONE RULE FOR TWO PLACES, because the surface is one shape. At the top level a `view` DEFINES a component: its
+# `take` lines are its parameters and everything else is its markup. Under a `hook` it PLACES one, and its `bind`
+# children are the props the route passes. The bridge tells them apart by where it is building, which is the only
+# thing that knows.
+#
+# The SIGNATURE heads (`take`, `like`, `head`, `note`, `mark`) are matched separately from the body for the same
+# reason `compile/mill.ts` filters them out of it: a component's parameters are not markup.
 mine view-def
   mine term, term view
     mine term
       site name
-    # a route's component carries its props: `view counter` over `bind label, text <hits>`
     mine list
-      mine form, like bind
-        site bind
+      mine any
+        # a route's component carries its props: `view counter` over `bind label, text <hits>`
+        mine form, like bind
+          site bind
+        mine form, like take
+          site take
+        mine form, like like
+          site like
+        mine form, like head
+          site head
+        mine form, like mark
+          site mark
+        mine form, like note
+          site note
+        mine form, like tune
+          site tune
+        mine form, like hook
+          site hook
+        # the BODY, last, because a markup node may be headed anything an element is named
+        mine form, like view-node
+          site node
+        mine text
+          site node
+
+# One node of a component's markup.
+mine view-node
+  mine any
+    mine form, like view-element
+      site element
+    mine form, like view-slot
+      site slot
+    mine form, like view-text
+      site text
+    mine form, like view-read
+      site read
+    mine form, like view-fork
+      site fork
+    mine form, like view-walk
+      site walk
+    mine form, like view-save
+      site save
+    mine form, like call
+      site call
+
+# `view <tag>` is an html element or a nested component, and `node <tag>` forces the element even when `<tag>`
+# is also a component name: the escape hatch for a real `<select>` inside a component called select.
+#
+# Its children sort four ways. `name <ref>` binds the built element to a local. `seed <attr>, <value>` is an
+# attribute, and an event when its value is a call or a multi-statement body. `bind <prop>, <value>` is a
+# component input. `hook <event>, <handler>` is an event handler. Anything else is a child node.
+mine view-element
+  mine any
+    mine term, term view
+      site kind
+      mine term
+        site name
+      mine list
+        mine any
+          mine form, like view-ref
+            site ref
+          mine form, like view-attribute
+            site attribute
+          mine form, like view-prop
+            site prop
+          mine form, like view-event
+            site event
+          mine form, like view-node
+            site child
+          mine text
+            site child
+    mine term, term node
+      site kind
+      mine term
+        site name
+      mine list
+        mine any
+          mine form, like view-ref
+            site ref
+          mine form, like view-attribute
+            site attribute
+          mine form, like view-prop
+            site prop
+          mine form, like view-event
+            site event
+          mine form, like view-node
+            site child
+          mine text
+            site child
+
+# `name <ref>`: bind this element to a local the rest of the component can read
+mine view-ref
+  mine term, term name
+    mine term
+      site name
+
+# `seed <attr>, <value>`: an attribute. More than one value is a handler BODY and becomes a closure.
+mine view-attribute
+  mine term, term seed
+    mine term
+      site name
     mine list
-      mine form, like take
-        site take
-    mine list
-      mine form, like hook
-        site hook
-    mine list
-      mine form, like tune
-        site tune
-    mine list
-      mine form, like view-def
-        site view
+      mine form, like seed
+        site seed
+
+# `bind <prop>, <value>`: a component input
+mine view-prop
+  mine term, term bind
+    mine term
+      site name
     mine maybe
-      mine form, like note
-        site note
+      mine form, like seed
+        site seed
+
+# `hook <event>, <handler>`: an event handler. More than one node is a statement body.
+mine view-event
+  mine term, term hook
+    mine term
+      site name
+    mine list
+      mine form, like seed
+        site seed
+
+# `text <hello>`: a literal text node
+mine view-text
+  mine term, term text
+    mine maybe
+      mine text
+        site value
+
+# `read <expr>`: a dynamic text node. Its value is the read's CHILD, not the read group.
+mine view-read
+  mine term, term read
+    mine form, like seed
+      site seed
+
+# `site` is the outlet where a caller's children render. `slot` is the older spelling, still accepted while the
+# face components are migrated by their owner. The AST keeps the form name `slot` for both.
+mine view-slot
+  mine any
+    mine term, term site
+      mine maybe
+        mine term
+          site name
+    mine term, term slot
+      mine maybe
+        mine term
+          site name
+
+# A conditional render: `fork test` with `hook test` / `hook hold` / `hook miss`.
+#
+# THE THREE ARMS ARE THREE RULES, because they hold different things. `hook test` holds a CONDITION, which is a
+# value; `hook hold` and `hook miss` hold MARKUP. One rule for all three would have to accept either in both
+# places, and then the condition arrives wrapped in a markup node that has no expression to give.
+mine view-fork
+  mine term, term fork
+    mine term, term test
+    mine list
+      mine any
+        mine form, like view-arm-test
+          site test
+        mine form, like view-arm-hold
+          site hold
+        mine form, like view-arm-miss
+          site miss
+
+mine view-arm-test
+  mine term, term hook
+    mine term, term test
+    mine list
+      mine form, like seed
+        site seed
+
+mine view-arm-hold
+  mine term, term hook
+    mine term, term hold
+    mine list
+      mine any
+        mine form, like view-node
+          site node
+        mine text
+          site node
+
+mine view-arm-miss
+  mine term, term hook
+    mine term, term miss
+    mine list
+      mine any
+        mine form, like view-node
+          site node
+        mine text
+          site node
+
+# a list render: `walk list, <items>` with `hook next` and an optional `take site, name <item>`
+# The `hook next` arm is matched BEFORE the list expression and again after it, the way `mine walk` does: an
+# arm is always headed `hook` and a sequence never is, and the value fallback takes any headed group.
+mine view-walk
+  mine term, term walk
+    mine term, term list
+    mine list
+      mine form, like view-next
+        site next
+    mine maybe
+      mine form, like seed
+        site seed
+    mine list
+      mine form, like view-next
+        site next
+
+mine view-next
+  mine term, term hook
+    mine term, term next
+    mine list
+      mine any
+        mine form, like view-item
+          site item
+        mine form, like view-node
+          site node
+        mine text
+          site node
+
+# `take site, name <item>`: the loop variable's name
+mine view-item
+  mine term, term take
+    mine term
+      site slot
+    mine form, like view-ref
+      site name
+
+# a computed local: `save total, <value>`
+mine view-save
+  mine term, term save
+    mine term
+      site name
+    mine maybe
+      mine form, like seed
+        site seed

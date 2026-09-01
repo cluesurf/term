@@ -1,3 +1,6 @@
+load @term/mill/code/code/head/mint
+  find head
+
 load @term/mill/code/code/drop/mint
   find drop
 
@@ -60,11 +63,14 @@ mint link
     site nick
   case drop
     site drop
+  case head
+    site head
   hook make
     make link
       bind name, read name
       bind nick, read nick
       bind drop, read drop
+      bind head, read head
       bind like, read like
       bind call, read call
       bind list, read list
@@ -169,3 +175,126 @@ mint link-number
   hook make
     make link-number
       bind value, read value
+
+# a borrow written as a read beside a field, matched so the file reads and built into nothing
+mint link-read
+  hook make
+    make link-read
+
+# a positional field, built exactly as a named one
+mint link-slot
+  case name
+    site name
+  case like
+    site like
+  case call, mint link-call
+    site call
+  case list, mint link-list
+    site list
+  case hash, mint link-hash
+    site hash
+  case mesh, mint link-mesh
+    site mesh
+  case void, mint link-void
+    site void
+  case form, mint link-form
+    site form
+  case hide
+    site hide
+  case need
+    site need
+  case base, mint seed
+    site base
+  case task
+    site task
+  case note
+    site note
+  case tag
+    site tag
+  case take, mint link-take
+    site take
+  case nick
+    site nick
+  case drop
+    site drop
+  case head
+    site head
+  hook make
+    make link
+      bind name, read name
+      bind nick, read nick
+      bind drop, read drop
+      bind head, read head
+      bind like, read like
+      bind call, read call
+      bind list, read list
+      bind hash, read hash
+      bind mesh, read mesh
+      bind void, read void
+      bind form, read form
+      bind hide, read hide
+      bind need, read need
+      bind base, read base
+      bind task, read task
+      bind note, read note
+      bind tag, read tag
+      bind take, read take
+
+# a released field, built exactly as a named one
+mint link-free
+  case name
+    site name
+  case like
+    site like
+  case call, mint link-call
+    site call
+  case list, mint link-list
+    site list
+  case hash, mint link-hash
+    site hash
+  case mesh, mint link-mesh
+    site mesh
+  case void, mint link-void
+    site void
+  case form, mint link-form
+    site form
+  case hide
+    site hide
+  case need
+    site need
+  case base, mint seed
+    site base
+  case task
+    site task
+  case note
+    site note
+  case tag
+    site tag
+  case take, mint link-take
+    site take
+  case nick
+    site nick
+  case drop
+    site drop
+  case head
+    site head
+  hook make
+    make link
+      bind name, read name
+      bind nick, read nick
+      bind drop, read drop
+      bind head, read head
+      bind like, read like
+      bind call, read call
+      bind list, read list
+      bind hash, read hash
+      bind mesh, read mesh
+      bind void, read void
+      bind form, read form
+      bind hide, read hide
+      bind need, read need
+      bind base, read base
+      bind task, read task
+      bind note, read note
+      bind tag, read tag
+      bind take, read take

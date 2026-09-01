@@ -1,3 +1,6 @@
+load @term/mill/code/code/head/mint
+  find head
+
 load @term/mill/code/code/drop/mint
   find drop
 
@@ -40,6 +43,8 @@ mint take
     site base
   case void
     site void
+  case head
+    site head
   case flex
     site flex
   case code
@@ -65,6 +70,7 @@ mint take
       bind need, read need
       bind base, read base
       bind void, read void
+      bind head, read head
       bind flex, read flex
       bind code, read code
       bind many, read many
@@ -93,3 +99,11 @@ mint take-value-mark
   hook make
     make take-value-mark
       bind value, read value
+
+# the nullable marker written after a literal type, built into the same site the leading one fills
+mint take-void
+  case name
+    site name
+  hook make
+    make take-void
+      bind name, read name

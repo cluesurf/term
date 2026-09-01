@@ -64,6 +64,7 @@ mine head
         # `head`'s name and its `like`, and reads nothing else.
         mine form, like seed-text
           site drop
-        # LAST: the index argument, and the value fallback takes any head word
+        # LAST: the VALUE INDEX (`head / read count`, `head / make succ ...`), and the value alternation ends
+        # in a fallback that takes any headed group
         mine form, like seed
           site seed

@@ -66,6 +66,10 @@ mine form
           site drop
         mine form, like link
           site link
+        mine form, like link-slot
+          site slot
+        mine form, like link-free
+          site link
         mine form, like case
           site case
         mine form, like bond

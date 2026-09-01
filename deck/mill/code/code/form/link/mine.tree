@@ -1,3 +1,6 @@
+load @term/mill/code/code/head/mine
+  find head
+
 load @term/mill/code/code/seed/mine
   find seed-text
 
@@ -90,6 +93,15 @@ mine link
           site drop
         mine form, like seed-text
           site drop
+        # `link rest, like vecnat / head / read count`: the type's argument, written beside the `like`. Folded
+        # into the field's type, the way a `take`'s is.
+        mine form, like head
+          site head
+        # `link x / read free`: a borrow written as a read, in the Rust bindings. It lives HERE rather than in
+        # the shared ignored vocabulary because `read` is also how a value index is written (`head / read n`),
+        # and a word that means two things cannot be ignored globally without eating one of them.
+        mine form, like link-read
+          site drop
 
 # `lock false` beside a field, and a `like` that arrives after the field's native `name <X>`.
 #
@@ -181,3 +193,171 @@ mine link-number
       site value
     mine list
       mine node
+
+mine link-read
+  mine term, term read
+    mine list
+      mine node
+
+# `slot x, like number`: a POSITIONAL field. A form with slots takes bare values in order, and a task with slot
+# parameters refuses a named argument.
+#
+# The body mirrors `mine link` because `compile/mill.ts` runs ONE field reader over all three heads: whatever a
+# `link` may carry, a `slot` may carry. It is a rule of its own rather than an alternation on the head,
+# because `mine term, term <word>` consumes the group it matches, so the head cannot be chosen apart from the
+# body it opens.
+mine link-slot
+  mine term, term slot
+    mine term
+      site name
+    mine maybe
+      mine any
+        mine form, like like
+          site like
+        mine form, like link-call
+          site call
+        mine form, like link-list
+          site list
+        mine form, like link-hash
+          site hash
+        mine form, like link-mesh
+          site mesh
+        mine form, like link-void
+          site void
+        mine form, like link-form
+          site form
+    mine maybe
+      mine term, term name
+        mine text
+          site nick
+    mine maybe
+      mine term, term mark
+        mine term, term private
+          site hide
+    mine maybe
+      mine term, term need
+        mine maybe
+          mine term, term true
+            site need
+        mine maybe
+          mine term, term false
+            site need
+    mine maybe
+      mine term, term base
+        mine form, like seed
+          site base
+    mine list
+      mine form, like hide
+        site hide
+    mine list
+      mine form, like task
+        site task
+    mine list
+      mine form, like note
+        site note
+    mine list
+      mine form, like tag
+        site tag
+    mine list
+      mine form, like link-take
+        site take
+    mine list
+      mine any
+        mine form, like like
+          site drop
+        mine form, like link-lock
+          site drop
+        mine form, like drop
+          site drop
+        mine form, like seed-text
+          site drop
+        # `link rest, like vecnat / head / read count`: the type's argument, written beside the `like`. Folded
+        # into the field's type, the way a `take`'s is.
+        mine form, like head
+          site head
+        # `link x / read free`: a borrow written as a read, in the Rust bindings. It lives HERE rather than in
+        # the shared ignored vocabulary because `read` is also how a value index is written (`head / read n`),
+        # and a word that means two things cannot be ignored globally without eating one of them.
+        mine form, like link-read
+          site drop
+
+# `free x`: a field whose name is released. The reader builds it exactly as a `link`.
+#
+# The body mirrors `mine link` because `compile/mill.ts` runs ONE field reader over all three heads: whatever a
+# `link` may carry, a `free` may carry. It is a rule of its own rather than an alternation on the head,
+# because `mine term, term <word>` consumes the group it matches, so the head cannot be chosen apart from the
+# body it opens.
+mine link-free
+  mine term, term free
+    mine term
+      site name
+    mine maybe
+      mine any
+        mine form, like like
+          site like
+        mine form, like link-call
+          site call
+        mine form, like link-list
+          site list
+        mine form, like link-hash
+          site hash
+        mine form, like link-mesh
+          site mesh
+        mine form, like link-void
+          site void
+        mine form, like link-form
+          site form
+    mine maybe
+      mine term, term name
+        mine text
+          site nick
+    mine maybe
+      mine term, term mark
+        mine term, term private
+          site hide
+    mine maybe
+      mine term, term need
+        mine maybe
+          mine term, term true
+            site need
+        mine maybe
+          mine term, term false
+            site need
+    mine maybe
+      mine term, term base
+        mine form, like seed
+          site base
+    mine list
+      mine form, like hide
+        site hide
+    mine list
+      mine form, like task
+        site task
+    mine list
+      mine form, like note
+        site note
+    mine list
+      mine form, like tag
+        site tag
+    mine list
+      mine form, like link-take
+        site take
+    mine list
+      mine any
+        mine form, like like
+          site drop
+        mine form, like link-lock
+          site drop
+        mine form, like drop
+          site drop
+        mine form, like seed-text
+          site drop
+        # `link rest, like vecnat / head / read count`: the type's argument, written beside the `like`. Folded
+        # into the field's type, the way a `take`'s is.
+        mine form, like head
+          site head
+        # `link x / read free`: a borrow written as a read, in the Rust bindings. It lives HERE rather than in
+        # the shared ignored vocabulary because `read` is also how a value index is written (`head / read n`),
+        # and a word that means two things cannot be ignored globally without eating one of them.
+        mine form, like link-read
+          site drop

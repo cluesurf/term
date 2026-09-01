@@ -1,3 +1,6 @@
+load @term/mill/code/code/head/mine
+  find head
+
 load @term/mill/code/code/form/link/mine
   find link-list
 
@@ -101,6 +104,14 @@ mine take
           site drop
         mine form, like link-list
           site drop
+        # `take detailed, text <false>` over `void true`: the nullable marker written AFTER the literal type, so
+        # the leading maybe for it has already gone past by the time this is reached
+        mine form, like take-void
+          site void
+        # `take v, like vecnat / head / make succ ...`: the type's argument, written as a SIBLING of the `like`
+        # rather than inside it. The reader folds it into the declared type, and so does the bridge.
+        mine form, like head
+          site head
 
 mine take-value
   mine term, term take
@@ -116,3 +127,8 @@ mine take-value-mark
   mine term, term mark
     mine term
       site value
+
+mine take-void
+  mine term, term void
+    mine term
+      site name

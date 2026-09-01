@@ -76,10 +76,7 @@ mine drop
     mine term, term stem
       mine list
         mine node
-    # a borrow written as a read, and an index signature
-    mine term, term read
-      mine list
-        mine node
+    # an index signature
     mine term, term mesh
       mine list
         mine node

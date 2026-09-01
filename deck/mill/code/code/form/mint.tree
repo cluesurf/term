@@ -56,6 +56,8 @@ mint form
     site like
   case link
     site link
+  case slot, mint link-slot
+    site slot
   case case
     site case
   case bond
@@ -98,6 +100,7 @@ mint form
       bind head, read head
       bind like, read like
       bind link, read link
+      bind slot, read slot
       bind case, read case
       bind bond, read bond
       bind rein, read rein

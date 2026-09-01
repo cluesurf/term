@@ -13,41 +13,249 @@ load @term/mill/code/code/take/mint
 load @term/mill/code/code/tune/mint
   find tune
 
+load @term/mill/code/code/like/mint
+  find like
 
-# Targets `code-view-def` in @term/seed/code/lang, which is what this grammar has always built. That form is the
-# flat one (every field `like text`), not the component AST in @term/seed/code/view. The two were both called
-# `zone-def` until 2026-08-30, in one package where names are global, which is the collision the naming rule warns
-# corrupts types. Renaming them apart ended it. Pointing this mint at the real AST instead is a separate change
-# and belongs with the other code-role grammar problems (mill-self-hosting).
+load @term/mill/code/code/head/mint
+  find head
 
-load @term/seed/code/lang
-  find code-view-def
+load @term/mill/code/code/mark/mint
+  find mark
+
+load @term/mill/code/code/seed/mint
+  find seed
+
+load @term/mill/code/code/call/mint
+  find call
+
+load @term/mill/code/code/fork/mint
+  find fork
+
+load @term/mill/code/code/walk/mint
+  find walk
+
+load @term/mill/code/code/save/mint
+  find save
 
 mint view
   case view, mint view-def
     site view
 
-mint view-def, like code-view-def
+mint view-def
   case name
     site name
   case bind
     site bind
   case take
     site take
+  case like
+    site like
+  case head
+    site head
+  case mark
+    site mark
   case hook
     site hook
   case tune
     site tune
-  case view, mint view-def
-    site view
   case note
     site note
+  case node, mint view-node
+    site node
   hook make
     make view-def
       bind name, read name
       bind bind, read bind
       bind take, read take
+      bind like, read like
+      bind head, read head
+      bind mark, read mark
       bind hook, read hook
       bind tune, read tune
-      bind view, read view
       bind note, read note
+      bind node, read node
+
+mint view-node
+  case element, mint view-element
+    site element
+  case slot, mint view-slot
+    site slot
+  case text, mint view-text
+    site text
+  case read, mint view-read
+    site read
+  case fork, mint view-fork
+    site fork
+  case walk, mint view-walk
+    site walk
+  case save, mint view-save
+    site save
+  case call
+    site call
+  hook make
+    make view-node
+      bind element, read element
+      bind slot, read slot
+      bind text, read text
+      bind read, read read
+      bind fork, read fork
+      bind walk, read walk
+      bind save, read save
+      bind call, read call
+
+mint view-element
+  case kind
+    site kind
+  case name
+    site name
+  case ref, mint view-ref
+    site ref
+  case attribute, mint view-attribute
+    site attribute
+  case prop, mint view-prop
+    site prop
+  case event, mint view-event
+    site event
+  case child, mint view-node
+    site child
+  hook make
+    make view-element
+      bind kind, read kind
+      bind name, read name
+      bind ref, read ref
+      bind attribute, read attribute
+      bind prop, read prop
+      bind event, read event
+      bind child, read child
+
+mint view-ref
+  case name
+    site name
+  hook make
+    make view-ref
+      bind name, read name
+
+mint view-attribute
+  case name
+    site name
+  case seed
+    site seed
+  hook make
+    make view-attribute
+      bind name, read name
+      bind seed, read seed
+
+mint view-prop
+  case name
+    site name
+  case seed
+    site seed
+  hook make
+    make view-prop
+      bind name, read name
+      bind seed, read seed
+
+mint view-event
+  case name
+    site name
+  case seed
+    site seed
+  hook make
+    make view-event
+      bind name, read name
+      bind seed, read seed
+
+mint view-text
+  case value
+    site value
+  hook make
+    make view-text
+      bind value, read value
+
+mint view-read
+  case seed
+    site seed
+  hook make
+    make view-read
+      bind seed, read seed
+
+mint view-slot
+  case name
+    site name
+  hook make
+    make view-slot
+      bind name, read name
+
+mint view-fork
+  case test, mint view-arm-test
+    site test
+  case hold, mint view-arm-hold
+    site hold
+  case miss, mint view-arm-miss
+    site miss
+  hook make
+    make view-fork
+      bind test, read test
+      bind hold, read hold
+      bind miss, read miss
+
+mint view-arm-test
+  case seed
+    site seed
+  hook make
+    make view-arm-test
+      bind seed, read seed
+
+mint view-arm-hold
+  case node, mint view-node
+    site node
+  hook make
+    make view-arm-hold
+      bind node, read node
+
+mint view-arm-miss
+  case node, mint view-node
+    site node
+  hook make
+    make view-arm-miss
+      bind node, read node
+
+mint view-walk
+  case seed
+    site seed
+  case next, mint view-next
+    site next
+  hook make
+    make view-walk
+      bind seed, read seed
+      bind next, read next
+
+mint view-next
+  case item, mint view-item
+    site item
+  case node, mint view-node
+    site node
+  hook make
+    make view-next
+      bind item, read item
+      bind node, read node
+
+mint view-item
+  case slot
+    site slot
+  case name, mint view-ref
+    site name
+  hook make
+    make view-item
+      bind slot, read slot
+      bind name, read name
+
+mint view-save
+  case name
+    site name
+  case seed
+    site seed
+  hook make
+    make view-save
+      bind name, read name
+      bind seed, read seed
