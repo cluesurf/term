@@ -1501,7 +1501,9 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
   const bare = wordAt(value, 'name')
 
   if (bare === undefined) {
-    return unhandled(bridge, value, 'a task with no name')
+    // a top-level `task` with no name builds nothing: the reader's `buildFunction` answers undefined for one,
+    // and the program gets no statement rather than a diagnostic
+    return undefined
   }
 
   const owner = bridge.owner
@@ -1597,6 +1599,11 @@ function topLevelOf(bridge: Bridge, value: Minted): Statement[] {
 
     case 'form':
       return formOf(bridge, value)
+
+    // a top-level `note` is documentation, and `note draft` shelves the file. Neither is a statement, and the
+    // reader drops both.
+    case 'note':
+      return []
 
     case 'dock-bind':
       return nativeOf(bridge, value)

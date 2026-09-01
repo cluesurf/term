@@ -43,10 +43,14 @@ load @term/mill/code/code/form/mine
 
 # a task's parts come in ANY order in real source (`note async` before the takes, `like` between takes and
 # body), so the rule is one list of alternatives, not a fixed sequence
+# The NAME is optional. The reader's value case for a `task` head builds a closure whether or not a name
+# followed, so a bare `task` in the generic fallback is a closure with no parameters and an empty body; and a
+# top-level `task` with no name builds nothing at all rather than failing.
 mine task
   mine term, term task
-    mine term
-      site name
+    mine maybe
+      mine term
+        site name
     mine list
       mine any
         mine form, like head

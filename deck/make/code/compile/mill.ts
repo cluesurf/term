@@ -26,6 +26,9 @@
 // runs the SWITCH, without switching: every caller reads through the grammar path, and the gate says what
 // breaks. The first attempt flipped the line and read 107 failures at once with no way to take them one at a
 // time. This is that way. The line flips when this run is green and the parity gate is clean, and not before.
+//
+// The reader is folded into `CACHE_EPOCH`, so a run under either flag cannot leave its answers in the shared
+// mill cache for an ordinary build to read back. See compile/cache.ts.
 
 import { appendFileSync } from 'node:fs'
 import type { RootNode } from '@term/make/code/parser/tree'

@@ -7,6 +7,11 @@ load @term/mill/code/code/like/mine
 load @term/mill/code/code/seed/mine
   find seed
 
+# `host <name>` with a value, a type, or a list of entries under it.
+#
+# The list comes BEFORE the inline value for the same reason the fork's arms do: the value alternation ends in
+# a fallback that takes any headed group, so a leading `mine maybe` for the value swallows the first nested
+# `host` entry and a 237-entry table comes out with 236.
 mine host
   mine term, term host
     mine term
@@ -14,9 +19,6 @@ mine host
     mine maybe
       mine form, like like
         site like
-    mine maybe
-      mine form, like seed
-        site seed
     mine list
       mine any
         mine form, like host-item
@@ -29,6 +31,9 @@ mine host
           site like
         mine form, like seed
           site seed
+    mine maybe
+      mine form, like seed
+        site seed
 
 # one entry of a host data list: `term a98`, a bare word, a text, a number
 mine host-item

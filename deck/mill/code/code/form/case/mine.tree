@@ -81,6 +81,12 @@ mine case-free
     mine term
       site term
 
+# `case <name>` with `link` fields under it, or `case <name>, <payload>` with the payload written inline.
+#
+# THE FIELDS ARE MATCHED TWICE, before the payload and after it, for the same reason `mine fork-test` matches
+# its arms twice: a field is always headed `link` and a payload never is, but the value alternation ends in a
+# fallback that takes any headed group at all, so written payload-first it swallows the first `link` as the
+# payload and the variant loses a field.
 mine case
   mine term, term case
     mine term
@@ -88,6 +94,12 @@ mine case
     mine maybe
       mine form, like like
         site like
+    mine list
+      mine any
+        mine form, like link
+          site link
+        mine form, like case-hold
+          site hold
     mine maybe
       mine form, like seed
         site seed

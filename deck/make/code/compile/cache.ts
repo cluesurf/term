@@ -13,7 +13,31 @@ import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 
 // the cache format epoch. Bump to invalidate every persisted entry at once (turborepo's `global_cache_key`). Change
 // this on any change to the cached value shape or the mill/compile pipeline that the per-entry key does not capture.
-export const CACHE_EPOCH = '6'
+//
+// WHICH READER produced an entry is part of the epoch, because the mill cache is SHARED across projects and
+// processes (~/.base/@cluesurf/term/store/mill). Running one build under `TERM_MILL_GRAMMAR=1` used to write
+// the grammar reader's answers, diagnostics included, under keys the ordinary build then read back: a green
+// board turned into six broken packages that no source change explained, and the errors named a reader that
+// was not running. A cache key has to cover everything that changes the answer.
+export const CACHE_EPOCH =
+  process.env.TERM_MILL_GRAMMAR === '1' ? '6-grammar' : '6'
+
+// A cached entry, or nothing. A CORRUPT ENTRY IS A MISS, never a crash: the store writes atomically, but a
+// full disk, a killed process on a filesystem that does not honour the rename, or a half-synced network share
+// can still leave a truncated file, and `JSON.parse` on one throws `Unexpected end of JSON input` out of the
+// middle of a build. That is what a cache is least allowed to do, because the build was going to recompute the
+// value anyway and the error names the cache rather than anything the author wrote.
+function readEntry<T>(stored: string | undefined): T | undefined {
+  if (stored === undefined) {
+    return undefined
+  }
+
+  try {
+    return JSON.parse(stored) as T
+  } catch {
+    return undefined
+  }
+}
 
 // cyrb53: a fast, well-distributed 53-bit string hash. A collision only ever causes a stale reuse (never a crash),
 // and at 53 bits that is astronomically unlikely for a source tree.
@@ -132,10 +156,9 @@ export class CompileCache {
       return cloneUnit(cached)
     }
 
-    const stored = this.store?.load('mill', key)
+    const unit = readEntry<MilledUnit>(this.store?.load('mill', key))
 
-    if (stored !== undefined) {
-      const unit = JSON.parse(stored) as MilledUnit
+    if (unit !== undefined) {
       this.mills.set(key, unit)
       evictTo(this.mills, this.millCap)
       this.diskHits++
@@ -166,10 +189,9 @@ export class CompileCache {
       return cached
     }
 
-    const stored = this.store?.load('output', versioned)
+    const value = readEntry<T>(this.store?.load('output', versioned))
 
-    if (stored !== undefined) {
-      const value = JSON.parse(stored) as T
+    if (value !== undefined) {
       this.outputs.set(versioned, value)
       evictTo(this.outputs, this.outputCap)
       this.diskHits++
