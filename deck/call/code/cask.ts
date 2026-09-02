@@ -512,10 +512,12 @@ export function simulator(): { udid: string } | { missing: string } {
   return { udid: booted.udid }
 }
 
-// install the app on a simulator and launch it headless, streaming its console. Returns when the app exits
+// install the app on a simulator and launch it. Returns at once; the app keeps running on the simulator. The smoke
+// test attaches the console itself (`simctl launch --console`), which returns only when the app exits, and an app
+// that never exits would hold `term make` forever
 export function launchOnSimulator({ udid, app, identifier }: { udid: string; app: string; identifier: string }): void {
   execFileSync('xcrun', ['simctl', 'install', udid, app], { stdio: 'inherit' })
-  execFileSync('xcrun', ['simctl', 'launch', '--console', udid, identifier], { stdio: 'inherit' })
+  execFileSync('xcrun', ['simctl', 'launch', udid, identifier], { stdio: 'inherit' })
 }
 
 // the `.app` layout AppKit expects, so the process gets a Dock icon and a menu bar of its own

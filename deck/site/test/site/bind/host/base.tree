@@ -1,9 +1,0 @@
-
-# Host environment for local development. `seed boot` loads this, so a bare `seed boot` needs no inline env vars.
-# Each kebab key becomes a SCREAMING_SNAKE environment variable (`database-url` -> `DATABASE_URL`). A value already set
-# in the shell wins over the file. In a real app this folder is gitignored (it holds secrets). committed here so the
-# example runs out of the box.
-
-host
-  database-url <postgresql://lancepollard@localhost:5432/postgres>
-  port <8787>
