@@ -92,8 +92,15 @@ mine fork-arm-hook
       mine term, term else
         site kind
     mine list
-      mine form, like flow
-        site flow
+      mine any
+        # A NESTED ARM. `fork roll` writes its arms as `hook test` with the condition under it and the body under
+        # a `hook hold` INSIDE that arm, rather than as siblings the way `fork test` does. Without this the nested
+        # `hook hold` matches nothing (`mine flow` has no `hook`), so it was dropped at mine time and every guard
+        # in every `fork roll` compiled to an empty branch: `if (n == 1) {} else if (n == 2) {}`, no diagnostic.
+        mine form, like fork-arm-hook
+          site arm
+        mine form, like flow
+          site flow
 
 mine fork-test-pair
   mine term, term hook

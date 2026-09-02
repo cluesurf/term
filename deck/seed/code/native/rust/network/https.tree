@@ -1,0 +1,63 @@
+# rust HTTPS: the TLS half of the server, over the same hyper shim with rustls underneath (tokio-rustls). Internal:
+# reached only through the public network/https API.
+#
+# Not a module of its own library: HTTPS is HTTP with a TLS acceptor in front, and giving it a second server
+# implementation is how the two drift. See note/term/stdlib/native-async-file-and-server.md.
+
+dock load
+  load <global:server>, name runtime
+
+load @term/seed/code/network/server/request
+  find request
+
+load @term/seed/code/network/server/response
+  find response
+
+load @term/seed/code/network/server
+  find server
+
+# serve HTTPS on (host, port) from a PEM certificate and key, blocking for the life of the process
+task do-serve-secure
+  take port, like size
+  take host, like text
+  take handler
+    like task
+      take request, like request
+      like response
+  take certificate, like text
+  take key, like text
+  like void
+  call runtime/serve
+    read port
+    read host
+    read handler
+    true
+    read certificate
+    read key
+
+# bind and answer over TLS, without blocking. `stop` on network/server shuts it down.
+task do-start-secure
+  note async
+  take port, like size
+  take host, like text
+  take handler
+    like task
+      take request, like request
+      like response
+  take certificate, like text
+  take key, like text
+  like server
+  save raw
+    call runtime/start
+      read port
+      read host
+      read handler
+      true
+      read certificate
+      read key
+      wait true
+  send back
+    make server
+      bind dock, read raw
+      bind host, read host
+      bind port, read port

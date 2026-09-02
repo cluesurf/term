@@ -1,6 +1,12 @@
-# rust HTTP server: forwards to the linked server runtime shim (a blocking std::net accept loop, no async runtime). The
-# shim reads each request, hands a normalized request to the seed handler, and writes the response. Internal: reached
-# only through the public network/server API.
+# rust HTTP server: forwards to the linked `server` runtime shim, which is hyper on tokio. Internal: reached only
+# through the public network/server API.
+#
+# `serve` builds its own current-thread runtime and blocks, so a Term rust binary needs no `#[tokio::main]`.
+# `start` binds and answers without blocking, and must be called from inside a LocalSet: the handler a Term
+# program hands in is an `Rc`, which cannot cross a thread. See note/term/stdlib/native-async-file-and-server.md.
+
+dock type
+  load <runtime::Server>, name server-dock
 
 dock load
   load <global:server>, name runtime
@@ -22,14 +28,19 @@ task do-serve
     like task
       take request, like request
       like response
+  take secure, like boolean
+  take certificate, like text
+  take key, like text
   like void
   call runtime/serve
     read port
     read host
     read handler
+    read secure
+    read certificate
+    read key
 
-# the start / stop pair maps onto the same blocking accept loop: `start` serves (and so does not return on this backend,
-# unlike node's event-loop server), `stop` is a no-op. Most rust server binaries use `serve` directly.
+# bind the port and answer, without blocking. The returned server is what `do-stop` shuts down.
 task do-start
   note async
   take port, like size
@@ -42,13 +53,18 @@ task do-start
   take certificate, like text
   take key, like text
   like server
-  call runtime/serve
-    read port
-    read host
-    read handler
+  save raw
+    call runtime/start
+      read port
+      read host
+      read handler
+      read secure
+      read certificate
+      read key
+      wait true
   send back
     make server
-      bind dock, code 0
+      bind dock, read raw
       bind host, read host
       bind port, read port
 
@@ -56,3 +72,6 @@ task do-stop
   note async
   take server, like server
   like void
+  call runtime/stop
+    read server/dock
+    wait true

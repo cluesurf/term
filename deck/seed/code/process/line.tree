@@ -1,0 +1,60 @@
+# Reading a line the person typed, with a prompt. The clean uniform interface, the per-env native implementation
+# selected at build time and hidden. This is what a command-line tool asks a question with.
+#
+#   save tool, call open()
+#   save name, call ask(read tool, text <what is your name? >)
+#   call close(read tool)
+#
+# It is a TOOL rather than a bare task because a line reader owns state on every platform: node's readline holds
+# the terminal, and the compiled backends hold a buffered reader over standard input. Reading a line through two
+# of them at once loses characters to whichever buffer got them first.
+
+load @term/seed/code/native/{platform}/process/line
+  find line-open
+  find line-ask
+  find line-read
+  find line-close
+
+# a line reader over standard input and standard output
+form tool
+  link dock
+    like line-dock
+    note private
+
+task open
+  note async
+  like tool
+  send back
+    call line-open
+      wait true
+
+# write `prompt`, then answer with the line that comes back, without its newline. The empty text means the input
+# ended (the person pressed ctrl-d, or standard input was a file that ran out).
+task ask
+  note async
+  take tool, like tool
+  take prompt, like text
+  like text
+  send back
+    call line-ask
+      read tool
+      read prompt
+      wait true
+
+# the next line, with no prompt written first
+task read
+  note async
+  take tool, like tool
+  like text
+  send back
+    call line-read
+      read tool
+      wait true
+
+task close
+  note async
+  take tool, like tool
+  like void
+  call line-close
+    read tool
+    wait true

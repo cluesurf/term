@@ -1,0 +1,24 @@
+# The rust smoke suite: it compiles and RUNS the shipped runtime shims against the real libraries, which the
+# native gate cannot do (the gate is `cargo check`, so nothing it builds is ever executed).
+#
+# The dependency list mirrors deck/seed/code/native/rust/Cargo.toml. Run it with `pnpm term:rust test`.
+[package]
+name = "term-native-rust-suite"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+hyper = { version = "1", features = ["server", "client", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto", "service"] }
+http-body-util = "0.1"
+bytes = "1"
+tokio-rustls = "0.26"
+rustls-pemfile = "2"
+notify = "7"
+libc = "0.2"
+uuid = { version = "1", features = ["v4"] }
+
+[[bin]]
+name = "suite"
+path = "src/main.rs"

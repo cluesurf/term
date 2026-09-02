@@ -1,162 +1,155 @@
+# `read-path`, not `get`. The public wrapper (code/environment/path.tree) declares `get`, and names are
+# PACKAGE-GLOBAL in Term, so a public task and its native implementation sharing a name unify into one symbol:
+# wiring them emitted `function get1(kind) { return get1(kind) }`, an infinite recursion. That is why this module
+# and twelve like it declared an API and bound nothing for six months. The convention that works is the one
+# code/environment.tree already uses, where the native names are `current-directory` and `get-variable` and cannot
+# collide with the `directory` and `variable` they implement.
+#
+# THE ARMS WERE MALFORMED TOO, and that is the reason the first fix was not enough. Every arm was written
+#
+#     hook
+#       test
+#       call is-equal ...
+#       send back ...
+#
+# with a bare `hook` and `test` as a child. An arm is `hook test` with the condition under it and the body under a
+# nested `hook hold` (deck/mill/code/code/fork/mine.tree), so the grammar matched no arm kind and the whole chain
+# emitted `if (kind == "home") {} else if (kind == "temporary") {}` -- every branch empty, every body dropped, no
+# diagnostic. The module compiled, shipped, and returned nothing for six months.
+#
+# THERE IS NO FINAL ARM. A `fork roll` is a chain of GUARDS: each arm is `hook test` with its condition, and its
+# body under a nested `hook hold`. Neither `hook else` nor `hook miss` builds at the top of a roll -- both fail with
+# `the mint bridge does not build the send expression yet`, pointing at the body, because the arm's first child is
+# read as a condition. The fallthrough is a statement AFTER the fork, which is what the shape means anyway: the
+# guards return, and what follows is the default. The original wrote `hook else`, which is one more reason this
+# module never ran.
 
-load @term/seed/code/void
-  find void
+load @term/seed/code/path
+  find join
 
-load @term/bind/code/node/os
-  find platform
-  find homedir
-  find tmpdir
+# `dock load`, not a `load` of @term/bind. The bind package declares the SHAPE of node's `os` (`task homedir,
+# name <homedir>`) and imports nothing, so calling through it emits `throw new Error("stub: homedir")`. The import
+# is a dock, which is what code/native/node/environment/language.tree already does.
+dock load
+  load <node:os>, name os
+  load <node:process>, name node-process
 
-load @term/bind/code/node/process
-  find process
-
-task get
+# One well-known directory of this environment, by name. `home` and `temporary` come straight from the platform;
+# the other three follow the XDG base directory specification on Linux and the platform convention elsewhere.
+task read-path
   take kind, like text
+  like text
   fork roll
-    hook
-      test
+    hook test
       call is-equal
         read kind
         text <home>
-      send back
-        call homedir
-    hook
-      test
+      hook hold
+        send back
+          call os/homedir
+    hook test
       call is-equal
         read kind
         text <temporary>
-      send back
-        call tmpdir
-    hook
-      test
+      hook hold
+        send back
+          call os/tmpdir
+    hook test
       call is-equal
         read kind
         text <data>
-      save system
-        call platform
-      fork roll
-        hook
-          test
-          call is-equal
-            read system
-            text <darwin>
-          save home
-            call homedir
-          send back
-            call concat
-              read home
-              text </Library/Application Support>
-        hook
-          test
-          call is-equal
-            read system
-            text <win32>
-          send back
-            read process/env/APPDATA
-        hook else
-          save xdg
-            read process/env/XDG_DATA_HOME
-          fork
-            test
-            call is-unequal
-              read xdg
-              make void
-            hook hold
-              send back, read xdg
-            hook miss
-              save home
-                call homedir
-              send back
-                call concat
-                  read home
-                  text </.local/share>
-    hook
-      test
+      hook hold
+        send back
+          call read-kind
+            read kind
+            text <Library/Application Support>
+            text <APPDATA>
+            text <XDG_DATA_HOME>
+            text <.local/share>
+    hook test
       call is-equal
         read kind
         text <configuration>
-      save system
-        call platform
-      fork roll
-        hook
-          test
-          call is-equal
-            read system
-            text <darwin>
-          save home
-            call homedir
-          send back
-            call concat
-              read home
-              text </Library/Preferences>
-        hook
-          test
-          call is-equal
-            read system
-            text <win32>
-          send back
-            read process/env/APPDATA
-        hook else
-          save xdg
-            read process/env/XDG_CONFIG_HOME
-          fork
-            test
-            call is-unequal
-              read xdg
-              make void
-            hook hold
-              send back, read xdg
-            hook miss
-              save home
-                call homedir
-              send back
-                call concat
-                  read home
-                  text </.config>
-    hook
-      test
+      hook hold
+        send back
+          call read-kind
+            read kind
+            text <Library/Preferences>
+            text <APPDATA>
+            text <XDG_CONFIG_HOME>
+            text <.config>
+    hook test
       call is-equal
         read kind
         text <cache>
-      save system
-        call platform
-      fork roll
-        hook
-          test
-          call is-equal
-            read system
-            text <darwin>
-          save home
-            call homedir
-          send back
-            call concat
-              read home
-              text </Library/Caches>
-        hook
-          test
-          call is-equal
-            read system
-            text <win32>
-          save local
-            read process/env/LOCALAPPDATA
-          send back
-            call concat
-              read local
-              text <\Temp>
-        hook else
-          save xdg
-            read process/env/XDG_CACHE_HOME
-          fork
-            test
-            call is-unequal
-              read xdg
-              make void
-            hook hold
-              send back, read xdg
-            hook miss
-              save home
-                call homedir
-              send back
-                call concat
-                  read home
-                  text </.cache>
+      hook hold
+        send back
+          call read-kind
+            read kind
+            text <Library/Caches>
+            text <LOCALAPPDATA>
+            text <XDG_CACHE_HOME>
+            text <.cache>
+
+  # every other name: the home directory, which is always a real path
+  send back
+    call os/homedir
+
+# The three directories that differ by platform, in one place rather than three copies of the same fork. `mac` is
+# the suffix under the user's home on darwin, `windows` the environment variable to read there, `slot` the XDG
+# variable on everything else and `fall` the path under the home when that variable is unset.
+task read-kind
+  take kind, like text
+  take mac, like text
+  take windows, like text
+  take slot, like text
+  take fall, like text
+  like text
+  save system
+    call os/platform
+  fork roll
+    hook test
+      call is-equal
+        read system
+        text <darwin>
+      hook hold
+        save home
+          call os/homedir
+        send back
+          call join
+            read home
+            read mac
+    hook test
+      call is-equal
+        read system
+        text <win32>
+      hook hold
+        send back
+          call read-slot
+            read windows
+
+  # everything else follows the XDG base directory specification: the variable when it is set, the documented
+  # path under the home directory when it is not
+  save xdg
+    call read-slot
+      read slot
+  # an unset variable reads as the empty text, not as void: `read-slot` answers `like text` either way
+  fork test
+    call is-unequal
+      read xdg
+      text <>
+    hook hold
+      send back, read xdg
+  save home
+    call os/homedir
+  send back
+    call join
+      read home
+      read fall
+
+# One environment variable, by name
+task read-slot
+  take name, like text
+  like text
+  send back
+    read node-process/env/{name}

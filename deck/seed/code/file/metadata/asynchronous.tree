@@ -1,0 +1,28 @@
+# The whole metadata record in ONE call, without blocking. The clean uniform interface, the per-env native
+# implementation selected at build time and hidden.
+#
+# Beside [../metadata.tree](../metadata.tree), which is the synchronous surface and answers one field at a time.
+# A separate module rather than a task in that one, because a dock is paid for by whoever imports the module: a
+# program asking `is-directory` should not link swift-nio for it.
+
+load @term/seed/code/native/{platform}/file/asynchronous/metadata
+  find meta-read
+
+load @term/seed/code/file/metadata
+  find file-metadata
+
+# With `follow`, a symbolic link is followed and the record describes what it points at; without it, the link
+# itself. One stat, rather than the three the synchronous module would take.
+task read
+  note async
+  take path, like text
+  take
+    follow
+    like boolean
+    fall true
+  like file-metadata
+  send back
+    call meta-read
+      read path
+      read follow
+      wait true

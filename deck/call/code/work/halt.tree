@@ -1,0 +1,175 @@
+# `term halt` -- stop running `term boot` servers.
+#
+#   term halt <port>   stop the app serving on that port
+#   term halt          stop every term boot instance on the machine
+#
+# A boot server is easy to find without a registry: each runs `node <project>/.base/@cluesurf/term/boot/<hash>/run.mjs`,
+# a path unique to `term boot`. Matching that in the process table is machine-wide and cross-process, so `term halt`
+# works from anywhere with no shared state to go stale. `term halt <port>` asks the operating system who is
+# listening on the port instead.
+#
+# Ported from deck/call/code/halt.ts (cli-in-term-0004).
+
+load @term/seed/code/text
+  find split
+  find contains
+  find trim
+
+dock load
+  load <node:child_process>, name child
+  load <node:process>, name node-process
+  load <@term/make/code/tint>, name tint
+  load <global:console>, name console
+  load <global:Number>, name number
+
+# the marker that identifies a boot server in the process table
+host boot-marker, text <.base/@cluesurf/term/boot/>
+
+form run-ask
+  link encoding, like text
+
+# every process id whose command line names a boot server
+task boot-ids
+  like list
+    like number
+  save found
+    make list
+  note unsafe
+    save out
+      call child/execSync
+        text <ps -ax -o pid=,command=>
+        make run-ask
+          bind encoding, text <utf8>
+    walk list
+      call split
+        read out
+        text <\n>
+      hook next
+        take site, name line
+        fork test
+          call contains
+            read line
+            read boot-marker
+          hook hold
+            fork test
+              call contains
+                read line
+                text <run.mjs>
+              hook hold
+                save id
+                  call first-number
+                    read line
+                fork test
+                  call is-above
+                    read id
+                    code 0
+                  hook hold
+                    call found/push
+                      read id
+  halt take
+    take error
+    send back, read found
+  send back, read found
+
+# the process ids listening on one TCP port
+task ids-on-port
+  take port, like number
+  like list
+    like number
+  save found
+    make list
+  note unsafe
+    save out
+      call child/execSync
+        text <lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t>
+        make run-ask
+          bind encoding, text <utf8>
+    walk list
+      call split
+        read out
+        text <\n>
+      hook next
+        take site, name line
+        save id
+          call number/parseInt
+            call trim
+              read line
+            code 10
+        fork test
+          call is-above
+            read id
+            code 0
+          hook hold
+            call found/push
+              read id
+  halt take
+    # lsof exits non-zero when nothing is listening, which is an answer and not a failure
+    take error
+    send back, read found
+  send back, read found
+
+# the first whitespace-separated number on a line, which is where `ps` puts the process id
+task first-number
+  take line, like text
+  like number
+  save parts
+    call split
+      call trim
+        read line
+      text < >
+  send back
+    call number/parseInt
+      read parts/0
+      code 10
+
+# ask one process to stop, and say whether it was still there to ask
+task stop-one
+  take id, like number
+  like boolean
+  note unsafe
+    call node-process/kill
+      read id
+      text <SIGTERM>
+    send back, true
+  halt take
+    take error
+    send back, false
+
+task halt
+  take port, like number
+  like void
+  save ids
+    fork test
+      call is-above
+        read port
+        code 0
+      hook hold
+        call ids-on-port
+          read port
+      hook miss
+        call boot-ids
+  fork test
+    call is-equal
+      read ids/length
+      code 0
+    hook hold
+      call tint/logGood
+        text <Nothing to stop>
+      send back
+  call tint/logStep
+    text <Stopping {{ids}}...>
+  save stopped
+    code 0
+  walk list, read ids
+    hook next
+      take site, name id
+      fork test
+        call stop-one
+          read id
+        hook hold
+          save stopped
+            call add
+              read stopped
+              code 1
+  call tint/logGood
+    text <Stopped {{stopped}}>

@@ -113,10 +113,13 @@ task file-test
 # underneath is the ecosystem-standard watcher (FSEvents on macOS, inotify on Linux), not a polling loop.
 
 dock type
-  load <watch::Watcher>, name watch-dock
+  load <watch_file::Watcher>, name watch-dock
 
+# The dock ALIAS is `watch-file`, not `watch`: the alias is what the emitted namespace is called, and `watch` is
+# already a stdlib task name. Both in one emitted file is `invalid redeclaration of 'watch'` from a line that
+# mentions neither. The GLOBAL stays `watch`, so the shim file is still runtime/watch.<ext>.
 dock load
-  load <global:watch>, name watch
+  load <global:watch>, name watch-file
 
 load @term/seed/code/file/watch
   find watch-event
@@ -128,7 +131,7 @@ task watch-open
   take deep, like boolean
   like watcher
   save raw
-    call watch/watch-open
+    call watch-file/watch-open
       read path
       read deep
       wait true
@@ -142,7 +145,7 @@ task watch-next
   take watcher, like watcher
   like watch-event
   send back
-    call watch/watch-next
+    call watch-file/watch-next
       read watcher/dock
       wait true
 
@@ -150,6 +153,6 @@ task watch-close
   note async
   take watcher, like watcher
   like void
-  call watch/watch-close
+  call watch-file/watch-close
     read watcher/dock
     wait true

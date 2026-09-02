@@ -1,195 +1,47 @@
+# node asynchronous directory reading. Forwards to the linked `walk` runtime shim, which is `fs.promises.readdir`.
+# Internal: reached only through the public file/directory API.
 
 dock load
-  load <node:fs/promises>, name fs-promise
-  load <node:path>, name path
+  load <global:walk>, name walk-file
 
-# One entry from `walk`: the path, what it is, and how deep below the walk root it sits. Declared here because
-# this module is the only thing that constructs it. Nothing imports this module yet — the live node
-# implementation is ../directory.tree, which delegates to `io/dir-walk` — which is why its two loops sat with
-# `hook tick` (not a hook `walk` knows) and compiled to empty bodies for as long as the file has existed.
-form walk-entry
-  link path, like text
-  link kind, like text
-  link depth, like size
+load @term/seed/code/file/directory
+  find walk-entry
 
-task list
+task folder-list
   note async
   take path, like text
   take
     deep
     like boolean
     fall false
-
-  fork test, name deep
-    hook hold
-      send back
-        call list-deep
-          read path
-          text <>
-    hook miss
-      send back
-        call fs-promise/readdir
-          wait true
-          read path
-          halt kink
-
-task list-deep
-  note async
-  note private
-  take base, like text
-  take prefix, like text
-
-  save entries
-    call fs-promise/readdir
+  like list
+    like text
+  send back
+    call walk-file/dir-list
+      read path
+      read deep
       wait true
-      read base
-      make options
-        bind with-file-types, true
-      halt kink
 
-  save result, make list
-
-  walk list
-    read entries
-    hook next
-      take site, name entry
-      save full-path
-        call path/join
-          read base
-          read entry/name
-      save relative
-        call path/join
-          read prefix
-          read entry/name
-
-      fork test
-        hook test
-          call entry/is-directory
-        hook hold
-          call result/push
-            read relative
-          save sub
-            call list-deep
-              read full-path
-              read relative
-          # each entry pushed in, not `result/concat`: concat returns a NEW list and discards it, so every nested
-          # directory's entries were computed and thrown away.
-          walk list
-            read sub
-            hook next
-              take site, name item
-              call result/push
-                read item
-        hook miss
-          call result/push
-            read relative
-
-  send back, read result
-
-task make
+task folder-make
   note async
   take path, like text
-
-  call fs-promise/mkdir
-    wait true
+  like void
+  call walk-file/dir-make
     read path
-    make options
-      bind recursive, true
-    halt kink
+    wait true
 
-task walk
+# every entry beneath `path`, with what it is and how far down it sits. `depth` 0 walks all the way down.
+task folder-walk
   note async
   take path, like text
   take
     depth
     like size
     fall code 0
-
-  save result, make list
-
-  call walk-step
-    read path
-    read path
-    code 0
-    read depth
-    read result
-
-  send back, read result
-
-task walk-step
-  note async
-  note private
-  take base, like text
-  take current, like text
-  take level, like size
-  take max-depth, like size
-  take result, like list
-
-  save entries
-    call fs-promise/readdir
+  like list
+    like walk-entry
+  send back
+    call walk-file/dir-walk
+      read path
+      read depth
       wait true
-      read current
-      make options
-        bind with-file-types, true
-      halt kink
-
-  walk list
-    read entries
-    hook next
-      take site, name entry
-      save full-path
-        call path/join
-          read current
-          read entry/name
-
-      save kind, text <file>
-      fork test
-        hook test
-          call entry/is-directory
-        hook hold
-          save kind, text <directory>
-      fork test
-        hook test
-          call entry/is-symbolic-link
-        hook hold
-          save kind, text <link>
-
-      call result/push
-        make walk-entry
-          bind path, read full-path
-          bind kind, read kind
-          bind depth, read level
-
-      fork test
-        hook test
-          call entry/is-directory
-        hook hold
-          fork test
-            hook test
-              call is-above
-                bind a, read max-depth
-                bind b, code 0
-            hook hold
-              fork test
-                hook test
-                  call is-below
-                    bind a, read level
-                    bind b, read max-depth
-                hook hold
-                  call walk-step
-                    read base
-                    read full-path
-                    call add
-                      bind a, read level
-                      bind b, code 1
-                    read max-depth
-                    read result
-            hook miss
-              call walk-step
-                read base
-                read full-path
-                call add
-                  bind a, read level
-                  bind b, code 1
-                read max-depth
-                read result

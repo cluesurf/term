@@ -1,0 +1,102 @@
+# `term work` -- the long-lived compiler worker, and the shared diagnostic printer.
+#
+# `work` hosts the warm incremental analyzer over HTTP so the language server, `term feed` and the CLI share one warm
+# compiler instead of each cold-starting. It stays alive until interrupted.
+#
+# The printer renders a diagnostic in the KINK style: a red `kink <message>` header, gray `code` / `name` / `host` /
+# `site` keyword lines with their values in `<...>`, and the offending source line with a caret. The CLI printed a
+# flat one-liner for years instead.
+#
+# Ported from deck/call/code/{work,report}.ts (cli-in-term-0004). Both dock the compiler, which is TypeScript, so
+# both are complete on the TypeScript target and neither is native until the compiler is Term.
+
+load @term/seed/code/file
+  find read, name read-file
+
+load @term/seed/code/text
+  find split
+
+dock load
+  load <@term/make/code/dev/daemon>, name daemon-module
+  load <@term/make/code/parser/diagnostic>, name diagnostic-module
+  load <@term/make/code/tint>, name tint
+  load <node:process>, name node-process
+
+# the port the worker listens on when none is given
+host default-port, code 5179
+
+form daemon-ask
+  link root, like text
+  link port, like number
+  link env, like text
+
+# `term work`: start the worker and stay up
+task work
+  note async
+  take root, like text
+  take port, like number
+  take env, like text
+  like void
+  call tint/logStep
+    text <Starting compiler worker...>
+  save chosen
+    fork test
+      call is-above
+        read port
+        code 0
+      hook hold
+        read port
+      hook miss
+        read default-port
+  note unsafe
+    save daemon
+      call daemon-module/startDaemon
+        make daemon-ask
+          bind root, read root
+          bind port, read chosen
+          bind env, read env
+    call tint/logGood
+      text <compiler worker on http://localhost:{{chosen}}>
+    call tint/logStep
+      call tint/fade
+        text <  POST /analyze with a file and its text, for diagnostics. ctrl-c to stop.>
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1
+
+# the source lines of a diagnostic's file, for the frame's context. An empty list when the file cannot be read,
+# because a diagnostic that cannot show its line is still worth printing.
+task source-lines
+  note async
+  take file, like text
+  like list
+    like text
+  note unsafe
+    save text
+      call read-file
+        read file
+        wait true
+    send back
+      call split
+        read text
+        text <\n>
+  halt take
+    take error
+    send back
+      make list
+
+# render ONE diagnostic into its kink-style frame, with no trailing newline
+task render-diagnostic
+  note async
+  take diagnostic, like unknown
+  like text
+  send back
+    call diagnostic-module/renderKink
+      read diagnostic
+      call source-lines
+        read diagnostic/file
+        wait true

@@ -1,24 +1,48 @@
-dock load
-  load <node:readline>, name readline
+# node line reading, over node:readline. Internal: reached only through the public process/line API.
 
 dock type
-  load <any>, name readline-interface
+  load <any>, name line-dock
 
-form tool
-  link dock, like readline-interface
+dock load
+  load <global:prompt>, name prompt
 
-  hook make
-    take i
-    take o
+load @term/seed/code/process/line
+  find tool
 
-    bind dock
-      call readline/create-interface
-        move i
-        move o
+task line-open
+  note async
+  like tool
+  save raw
+    call prompt/line-open
+      wait true
+  send back
+    make tool
+      bind dock, read raw
 
-  task ask
-    take self
-    take text
-    note async
-    call self/dock/question
-      move text
+task line-ask
+  note async
+  take tool, like tool
+  take prompt, like text
+  like text
+  send back
+    call prompt/line-ask
+      read tool/dock
+      read prompt
+      wait true
+
+task line-read
+  note async
+  take tool, like tool
+  like text
+  send back
+    call prompt/line-read
+      read tool/dock
+      wait true
+
+task line-close
+  note async
+  take tool, like tool
+  like void
+  call prompt/line-close
+    read tool/dock
+    wait true

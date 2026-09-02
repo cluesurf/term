@@ -1,12 +1,20 @@
+# node asynchronous file handles, over `fs/promises`. An open file is the node FileHandle plus the cursor, which
+# is what sits in the private `dock` of the public `file` record.
+#
+# Internal: reached only through the public file/handle API.
 
-load @term/seed/code/native/node/file/shared
-  find file
+dock type
+  load <any>, name file-dock
 
 dock load
-  load <node:buffer>, name buffer
-  load <node:fs/promises>, name fs-promise
+  load <global:aio>, name aio
 
-task open
+load @term/seed/code/file/handle
+  find file
+
+# `read` / `write` / `create` / `append` / `clear` are the five independent bits every platform's open flags are
+# built from, rather than a mode string one backend happens to spell "w+"
+task handle-open
   note async
   take path, like text
   take
@@ -29,82 +37,53 @@ task open
     clear
     like boolean
     fall false
-
-  save flags, text <r>
-
-  fork test, name append
-    hook hold
-      fork test, name read
-        hook hold
-          save flags, text <a+>
-        hook miss
-          save flags, text <a>
-
-  fork test, name write
-    hook hold
-      fork test, name read
-        hook hold
-          fork test, name create
-            hook hold
-              save flags, text <w+>
-            hook miss
-              save flags, text <r+>
-        hook miss
-          save flags, text <w>
-
-  save handle
-    call fs-promise/open
-      wait true
+  like file
+  save raw
+    call aio/handle-open
       read path
-      read flags
-      halt kink
-
+      read read
+      read write
+      read create
+      read append
+      read clear
+      wait true
   send back
     make file
-      bind dock, read handle
+      bind dock, read raw
       bind path, read path
 
-task close
+task handle-close
   note async
   take file, like file
-
-  call file/dock/close
+  like void
+  call aio/handle-close
+    read file/dock
     wait true
-    halt kink
 
-task read
+task handle-read
   note async
   take file, like file
   take size, like size
-
-  save data
-    call buffer/alloc
+  like text
+  send back
+    call aio/handle-read
+      read file/dock
       read size
-
-  save result
-    call file/dock/read
       wait true
-      read data
-      code 0
-      read size
-      halt kink
 
-  send back, read result/buffer
-
-task write
+task handle-write
   note async
   take file, like file
-  take data
-
-  save result
-    call file/dock/write
-      wait true
+  take data, like text
+  like size
+  send back
+    call aio/handle-write
+      read file/dock
       read data
-      halt kink
+      wait true
 
-  send back, read result/bytes-written
-
-task seek
+# `frame` is <start> (absolute), <relative> (from the cursor) or <end> (back from the end)
+task handle-seek
   note async
   take file, like file
   take offset, like size
@@ -112,69 +91,30 @@ task seek
     frame
     like text
     fall text <start>
+  like void
+  call aio/handle-seek
+    read file/dock
+    read offset
+    read frame
+    wait true
 
-  fork
-    test
-    call is-equal
-      read frame
-      text <start>
-    hook hold
-      call file/dock/seek
-        wait true
-        read offset
-        halt kink
-
-  fork
-    test
-    call is-equal
-      read frame
-      text <relative>
-    hook hold
-      save current
-        call file/dock/stat
-          wait true
-          halt kink
-      call file/dock/seek
-        wait true
-        call add
-          bind a, read current/size
-          bind b, read offset
-        halt kink
-
-  fork
-    test
-    call is-equal
-      read frame
-      text <end>
-    hook hold
-      save stats
-        call file/dock/stat
-          wait true
-          halt kink
-      call file/dock/seek
-        wait true
-        call subtract
-          bind a, read stats/size
-          bind b, read offset
-        halt kink
-
-task flush
+task handle-flush
   note async
   take file, like file
-
-  call file/dock/datasync
+  like void
+  call aio/handle-flush
+    read file/dock
     wait true
-    halt kink
 
-task clear
+task handle-clear
   note async
   take file, like file
   take
     size
     like size
     fall code 0
-
-  call file/dock/truncate
-    wait true
+  like void
+  call aio/handle-clear
+    read file/dock
     read size
-    halt kink
+    wait true

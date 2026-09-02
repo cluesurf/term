@@ -1,0 +1,81 @@
+# `term hunt` -- the automated bug hunt.
+#
+# Points the verification package's multi-oracle engine at the compiler, or at any directory of `.tree` files:
+# metamorphic oracles (a parse round trip is a fixpoint), differential oracles (recompile determinism, cross-backend
+# totality), the editor-robustness oracle (the tolerant parser never throws), a performance budget, and hang-safe
+# structure-aware fuzzing with a child-process watchdog for non-terminating inputs. It exits non-zero on any
+# finding, so it can gate a build.
+#
+# The engine is `@term/test`; this verb owns the project resolver and the process glue and delegates, which is the
+# same discipline `term hold` follows.
+#
+# Ported from deck/call/code/hunt.ts (cli-in-term-0004).
+
+dock load
+  load <@term/call/code/make>, name make-module
+  load <@term/test/code/seed-hunt>, name hunt-module
+  load <@term/make/code/tint>, name tint
+  load <node:process>, name node-process
+  load <global:console>, name console
+  load <global:JSON>, name json
+
+form hunt-ask
+  link root, like text
+  link resolve, like unknown
+  link glob, like text
+  link runs, like number
+  link seeds, like number
+  link fuzzTimeoutSec, like number
+
+task hunt
+  take root, like text
+  take glob, like text
+  take runs, like number
+  take seeds, like number
+  take fuzz-timeout, like number
+  take json-out, like boolean
+  like void
+  save result
+    call hunt-module/huntSeedCompiler
+      make hunt-ask
+        bind root, read root
+        bind resolve
+          call make-module/projectResolver
+            read root
+            text <node>
+            read root
+        bind glob, read glob
+        bind runs, read runs
+        bind seeds, read seeds
+        bind fuzzTimeoutSec, read fuzz-timeout
+  fork test
+    read json-out
+    hook hold
+      call console/log
+        call json/stringify
+          read result
+          make void
+          code 2
+    hook miss
+      call console/log
+        call hunt-module/renderHunt
+          read result
+      fork test
+        call is-equal
+          read result/findings
+          code 0
+        hook hold
+          call tint/logGood
+            text <No issues found>
+        hook miss
+          call tint/logFail
+            text <Found {{result/findings}} issue(s)>
+  fork test
+    call is-equal
+      read result/findings
+      code 0
+    hook hold
+      call node-process/exit
+        code 0
+  call node-process/exit
+    code 1

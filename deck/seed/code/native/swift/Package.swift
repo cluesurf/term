@@ -12,6 +12,9 @@
 //   Hummingbird                the HTTP server. Foundation has no server either, and hand-rolling one over
 //                              POSIX sockets is how the previous shim worked: no keep-alive, no chunked bodies,
 //                              no TLS, one request per connection.
+//   HummingbirdHTTP2           HTTP/2. h2 is negotiated by ALPN, which is why it arrives with NIOSSL.
+//   HummingbirdTLS             TLS for the HTTP/1.1 server. Adding these two is what lets `network/https` stop
+//                              serving plaintext and apologising for it.
 //
 // This target exists so `swift build` resolves and builds that graph. It is NOT where the shims live: a shim is a
 // source fragment the compiler prepends to an emitted module, not a module of its own. `task/term/native/swift.sh`
@@ -39,6 +42,8 @@ let package = Package(
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "_NIOFileSystem", package: "swift-nio"),
                 .product(name: "Hummingbird", package: "hummingbird"),
+                .product(name: "HummingbirdHTTP2", package: "hummingbird"),
+                .product(name: "HummingbirdTLS", package: "hummingbird"),
             ],
             path: "Sources/SeedSwiftRuntime"
         )

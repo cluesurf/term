@@ -2,6 +2,10 @@
 # hands a normalized request to the seed handler, and writes the handler's response. The opaque handle a seed `server`
 # holds is the node `http.Server`. Internal: reached only through the public network/server API.
 
+dock type
+  # the node http.Server / https.Server the shim returns
+  load <any>, name server-dock
+
 dock load
   load <global:server>, name runtime
 
@@ -23,11 +27,17 @@ task do-serve
     like task
       take request, like request
       like response
+  take secure, like boolean
+  take certificate, like text
+  take key, like text
   like void
   call runtime/serve
     read port
     read host
     read handler
+    read secure
+    read certificate
+    read key
 
 task do-start
   note async

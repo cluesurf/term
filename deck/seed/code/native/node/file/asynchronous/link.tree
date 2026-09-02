@@ -1,8 +1,10 @@
+# node asynchronous symbolic and hard links, over `fs/promises`. Internal: reached only through the public
+# file/link API.
 
 dock load
-  load <node:fs/promises>, name fs-promise
+  load <global:aio>, name aio
 
-task make
+task link-make
   note async
   take from, like text
   take to, like text
@@ -10,27 +12,18 @@ task make
     hard
     like boolean
     fall false
+  like void
+  call aio/link-make
+    read from
+    read to
+    read hard
+    wait true
 
-  fork test, name hard
-    hook hold
-      call fs-promise/link
-        wait true
-        read from
-        read to
-        halt kink
-    hook miss
-      call fs-promise/symlink
-        wait true
-        read from
-        read to
-        halt kink
-
-task read
+task link-read
   note async
   take path, like text
-
+  like text
   send back
-    call fs-promise/readlink
-      wait true
+    call aio/link-read
       read path
-      halt kink
+      wait true

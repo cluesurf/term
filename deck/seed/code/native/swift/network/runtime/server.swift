@@ -1,67 +1,205 @@
-// swift HTTP server runtime over POSIX sockets (Foundation / Darwin -- no SwiftNIO or external package). It binds a
-// listening socket, accepts connections, parses each request line into a normalized Request, calls the seed handler, and
-// writes the response. `serve` blocks for the life of the process -- the entry point of a server binary. Reached only
-// through the public network/server API.
+// HTTP server runtime for the swift target, over Hummingbird on swift-nio -- the server-side swift ecosystem's
+// stack, not an accept loop of our own.
+//
+// WHAT THE POSIX LOOP DID NOT DO. The previous shim did one `read` of 8192 bytes per connection, took whatever
+// came as the whole request, never parsed a header into the request record at all (it passed an empty map), and
+// closed after answering. So: no keep-alive, no header the handler could read, a body larger than one packet
+// silently truncated, and no TLS. Hummingbird and NIO do all of it.
+//
+// Hummingbird rather than Vapor: Vapor is batteries-included and brings a router, an ORM boundary and a
+// templating story the Term API already has its own answers for. Hummingbird is the thin one, which is the layer
+// this belongs at.
+//
+// Reached only through the public network/server API. See note/term/stdlib/native-async-file-and-server.md.
 import Foundation
+import HTTPTypes
+import Hummingbird
+import HummingbirdCore
+import HummingbirdHTTP2
+import HummingbirdTLS
+import NIOCore
+import NIOPosix
+import NIOSSL
 
 enum runtime {
-  static func serve(_ port: Int, _ host: String, _ handler: (Request) -> Response) {
-    let listenFd = socket(AF_INET, SOCK_STREAM, 0)
-    var yes: Int32 = 1
-    setsockopt(listenFd, SOL_SOCKET, SO_REUSEADDR, &yes, socklen_t(MemoryLayout<Int32>.size))
+  // a running server: how to tell it to stop, and the port it bound
+  final class Running: @unchecked Sendable {
+    var stop: (() -> Void)?
+    let port: Int
+    init(stop: (() -> Void)?, port: Int) {
+      self.stop = stop
+      self.port = port
+    }
+  }
 
-    var addr = sockaddr_in()
-    addr.sin_family = sa_family_t(AF_INET)
-    addr.sin_port = in_port_t(UInt16(port)).bigEndian
-    addr.sin_addr.s_addr = inet_addr(host)
+  // The handler a Term program hands in is a plain closure and Hummingbird runs requests on a concurrent
+  // executor, so it is boxed here rather than captured directly. It is not Sendable, which is the same
+  // single-thread constraint the rust target has for the same reason.
+  private final class Held: @unchecked Sendable {
+    let call: (Request) -> Response
+    init(_ call: @escaping (Request) -> Response) {
+      self.call = call
+    }
+  }
 
-    _ = withUnsafePointer(to: &addr) { pointer in
-      pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
-        bind(listenFd, sa, socklen_t(MemoryLayout<sockaddr_in>.size))
+  // Run the server and block for the life of the process: the entry point of a server binary.
+  static func serve(
+    _ port: Int,
+    _ host: String,
+    _ handler: @escaping (Request) -> Response,
+    _ secure: Bool,
+    _ certificate: String,
+    _ key: String
+  ) {
+    let waiting = DispatchSemaphore(value: 0)
+
+    Task {
+      await run(port, host, Held(handler), secure, certificate, key, nil)
+      waiting.signal()
+    }
+
+    waiting.wait()
+  }
+
+  // Bind the port and answer, without blocking.
+  static func start(
+    _ port: Int,
+    _ host: String,
+    _ handler: @escaping (Request) -> Response,
+    _ secure: Bool,
+    _ certificate: String,
+    _ key: String
+  ) async -> Running {
+    let running = Running(stop: nil, port: port)
+    let held = Held(handler)
+    let task = Task {
+      await run(port, host, held, secure, certificate, key, nil)
+    }
+
+    running.stop = { task.cancel() }
+
+    // give the listener a moment to bind, so the port is taken by the time this answers
+    try? await Task.sleep(nanoseconds: 50_000_000)
+
+    return running
+  }
+
+  static func stop(_ server: Running) async {
+    server.stop?()
+    server.stop = nil
+  }
+
+  private static func run(
+    _ port: Int,
+    _ host: String,
+    _ handler: Held,
+    _ secure: Bool,
+    _ certificate: String,
+    _ key: String,
+    _ unused: Int?
+  ) async {
+    let router = Router()
+
+    // ONE catch-all route per method. The Term API routes inside the handler (network/server/route, and the
+    // `dock` routing DSL that lowers to a dispatcher), so Hummingbird's router is deliberately not used for
+    // dispatch: two routers in one stack is how a request ends up matched twice and answered once.
+    let every: [HTTPRequest.Method] = [
+      .get, .post, .put, .patch, .delete, .head, .options,
+    ]
+
+    for method in every {
+      router.on("/**", method: method) {
+        (request: Hummingbird.Request, _: BasicRequestContext) async throws
+          -> Hummingbird.Response in
+        try await answer(request, handler)
       }
     }
-    listen(listenFd, 16)
 
-    while true {
-      let client = accept(listenFd, nil, nil)
-      if client < 0 { continue }
+    // TLS now works here. It used to be a named gap ("serving plaintext on <port>" to standard error), because
+    // Hummingbird's TLS lives in a separate product. HTTP/2 is negotiated by ALPN, so adding HummingbirdHTTP2
+    // for network/http2 brought NIOSSL with it, and the gap closed as a side effect.
+    var builder = HTTPServerBuilder.http1()
 
-      var buffer = [UInt8](repeating: 0, count: 8192)
-      let count = read(client, &buffer, 8192)
-      let text = count > 0 ? String(decoding: buffer[0..<count], as: UTF8.self) : ""
+    if secure {
+      guard let tls = http2.tlsConfiguration(certificate, key) else {
+        FileHandle.standardError.write(
+          Data("server tls: certificate or key did not parse\n".utf8)
+        )
 
-      let firstLine = text.components(separatedBy: "\r\n").first ?? ""
-      let parts = firstLine.split(separator: " ").map(String.init)
-      let method = parts.count > 0 ? parts[0] : "GET"
-      let target = parts.count > 1 ? parts[1] : "/"
-      let pathQuery = target.split(separator: "?", maxSplits: 1).map(String.init)
-      let path = pathQuery.count > 0 ? pathQuery[0] : "/"
-      let query = pathQuery.count > 1 ? pathQuery[1] : ""
-      var body = ""
-      if let range = text.range(of: "\r\n\r\n") {
-        body = String(text[range.upperBound...])
+        return
       }
 
-      let request = Request(
-        method: method,
+      do {
+        builder = try .tls(.http1(), tlsConfiguration: tls)
+      } catch {
+        FileHandle.standardError.write(Data("server tls: \(error)\n".utf8))
+
+        return
+      }
+    }
+
+    let app = Application(
+      router: router,
+      server: builder,
+      configuration: ApplicationConfiguration(
+        address: .hostname(host, port: port)
+      )
+    )
+
+    do {
+      try await app.runService()
+    } catch {
+      FileHandle.standardError.write(
+        Data("server: \(error)\n".utf8)
+      )
+    }
+  }
+
+  private static func answer(
+    _ request: Hummingbird.Request,
+    _ handler: Held
+  ) async throws -> Hummingbird.Response {
+    var headers = SeedMap<String, String>([:])
+
+    for field in request.headers {
+      headers.data[field.name.canonicalName] = field.value
+    }
+
+    // the WHOLE body, however many chunks it arrived in. The old shim took the first read and called it the body.
+    var whole = ByteBuffer()
+
+    for try await chunk in request.body {
+      var chunk = chunk
+      whole.writeBuffer(&chunk)
+    }
+
+    let target = request.uri.string
+    let answered = handler.call(
+      Request(
+        method: request.method.rawValue,
         url: target,
-        path: path,
-        query: query,
-        headers: SeedMap<String, String>([:]),
-        body: body,
+        path: request.uri.path,
+        query: request.uri.query ?? "",
+        headers: headers,
+        body: String(buffer: whole),
         dock: 0
       )
-      let response = handler(request)
-      var headerBlock = ""
-      for header in response.headers.data {
-        headerBlock += "\(header.name): \(header.value)\r\n"
+    )
+
+    var out = HTTPFields()
+
+    // appended, not set, so repeats survive: several set-cookie headers is the ordinary case and the reason the
+    // Term response holds a LIST of headers rather than a map
+    for header in answered.headers.data {
+      if let name = HTTPField.Name(header.name) {
+        out.append(HTTPField(name: name, value: header.value))
       }
-      let payload = "HTTP/1.1 \(response.status) OK\r\nContent-Length: \(response.body.utf8.count)\r\n\(headerBlock)Connection: close\r\n\r\n\(response.body)"
-      let bytes = Array(payload.utf8)
-      _ = bytes.withUnsafeBytes { raw in
-        write(client, raw.baseAddress, bytes.count)
-      }
-      close(client)
     }
+
+    return Hummingbird.Response(
+      status: HTTPResponse.Status(code: answered.status),
+      headers: out,
+      body: ResponseBody(byteBuffer: ByteBuffer(string: answered.body))
+    )
   }
 }

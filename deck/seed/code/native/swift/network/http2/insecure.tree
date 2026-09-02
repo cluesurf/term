@@ -1,0 +1,55 @@
+# HTTP/2 cleartext (h2c), with prior knowledge: no TLS, no ALPN, no upgrade dance. The client opens the
+# connection and starts speaking h2 immediately.
+#
+# This is what a reverse proxy or a service mesh does when it already knows what is on the other end. A BROWSER
+# will not: every browser requires TLS for h2, so a public-facing server wants [secure.tree](secure.tree).
+#
+# Internal: reached only through the public network/http2 API.
+
+load @term/seed/code/native/swift/network/http2
+  find do-serve-http2
+  find do-start-http2
+
+load @term/seed/code/network/server/request
+  find request
+
+load @term/seed/code/network/server/response
+  find response
+
+load @term/seed/code/network/http2
+  find http2-server
+
+task http2-serve-clear
+  take port, like size
+  take host, like text
+  take handler
+    like task
+      take request, like request
+      like response
+  like void
+  call do-serve-http2
+    read port
+    read host
+    read handler
+    false
+    text <>
+    text <>
+
+task http2-start-clear
+  note async
+  take port, like size
+  take host, like text
+  take handler
+    like task
+      take request, like request
+      like response
+  like http2-server
+  send back
+    call do-start-http2
+      read port
+      read host
+      read handler
+      false
+      text <>
+      text <>
+      wait true

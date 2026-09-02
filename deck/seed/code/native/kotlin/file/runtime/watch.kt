@@ -15,7 +15,7 @@ import java.nio.file.WatchService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-object watch {
+object watchFile {
   // the running watch: the service, the directories registered with it (so a key can be turned back into a path),
   // and whether it has been closed
   class Watcher(val service: WatchService?, val roots: MutableMap<Any, Path>) {

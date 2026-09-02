@@ -1,0 +1,104 @@
+# `term move code [1|2|3]` -- bump the package version.
+#
+# The level names which part moves: 3 the patch, 2 the minor, 1 the major, and 3 when none is given. It is the
+# ONE target the verb takes, so anything else is a mistake worth naming rather than ignoring.
+#
+# Ported from deck/call/code/move.ts (cli-in-term-0004).
+
+load @term/seed/code/path
+  find join
+
+load @term/seed/code/file
+  find write, name write-file
+
+dock load
+  load <@cluesurf/deck.tree>, name deck-tree
+  load <@term/make/code/tint>, name tint
+  load <node:process>, name node-process
+
+form manifest-ask
+  link dir, like text
+
+form bump-ask
+  link code, like unknown
+  link level, like number
+
+form write-ask
+  link manifest, like unknown
+
+# The level a `term move code <n>` names. Anything but `1` or `2` is the patch, which is what an omitted level
+# means too, so a typo bumps the smallest part rather than failing.
+task parse-level
+  take level, like text
+  like number
+  fork test
+    call is-equal
+      read level
+      text <2>
+    hook hold
+      send back
+        code 2
+  fork test
+    call is-equal
+      read level
+      text <1>
+    hook hold
+      send back
+        code 1
+  send back
+    code 3
+
+task move
+  note async
+  take root, like text
+  take target, like text
+  take level, like text
+  like void
+  fork test
+    call is-unequal
+      read target
+      text <code>
+    hook hold
+      call tint/logFail
+        text <Unknown move target: {{target}}. Use: term move code [1|2|3]>
+      call node-process/exit
+        code 1
+  save chosen
+    call parse-level
+      read level
+  call tint/logStep
+    text <Bumping version...>
+  note unsafe
+    save manifest
+      call deck-tree/loadManifest
+        make manifest-ask
+          bind dir, read root
+        wait true
+    save before
+      call deck-tree/showCode
+        read manifest/code
+    save after
+      call deck-tree/bumpCode
+        make bump-ask
+          bind code, read manifest/code
+          bind level, read chosen
+    save shown
+      call deck-tree/showCode
+        read after
+    call write-file
+      call join
+        read root
+        text <deck.tree>
+      call deck-tree/writeManifest
+        make write-ask
+          bind manifest, read manifest
+      wait true
+    call tint/logGood
+      text <Version bumped: {{before}} to {{shown}}>
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1

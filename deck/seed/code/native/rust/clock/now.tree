@@ -1,0 +1,20 @@
+
+# The current time. Forwards to the linked clock runtime shim. Internal: reached only through the public clock API.
+
+dock load
+  load <global:clock>, name clock
+
+task get
+  take
+    precise
+    like boolean
+    fall false
+  like size
+
+  fork test, read precise
+    hook hold
+      send back
+        call clock/precise
+    hook miss
+      send back
+        call clock/now

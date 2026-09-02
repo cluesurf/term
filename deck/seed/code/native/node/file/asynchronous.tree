@@ -1,63 +1,60 @@
+# node asynchronous filesystem. Forwards to the linked `aio` runtime shim, which is `fs/promises` -- libuv's
+# threadpool behind a promise.
+#
+# Internal: reached only through the public file API.
 
 dock load
-  load <global:shape>, name shape
+  load <global:aio>, name aio
 
-dock load
-  load <node:fs/promises>, name fs-promise
-  load <node:fs>, name fs
-
-task read
+task file-read
   note async
   take path, like text
-  take
-    format
-    like text
-    fall text <text>
+  like text
+  send back
+    call aio/file-read
+      read path
+      wait true
 
-  fork
-    test
-    call is-equal
-      read format
-      text <bytes>
-    hook hold
-      save result
-        call fs-promise/read-file
-          wait true
-          read path
-          halt kink
-      send back, read result
-    hook miss
-      save result
-        call fs-promise/read-file
-          wait true
-          read path
-          text <utf8>
-          halt kink
-      send back, read result
+task file-read-bytes
+  note async
+  take path, like text
+  like bytes
+  send back
+    call aio/file-read-bytes
+      read path
+      wait true
 
-task write
+task file-write
   note async
   take path, like text
   take data, like text
-
-  call fs-promise/write-file
-    wait true
+  like void
+  call aio/file-write
     read path
     read data
-    halt kink
+    wait true
 
-task append
+task file-write-bytes
+  note async
+  take path, like text
+  take data, like bytes
+  like void
+  call aio/file-write-bytes
+    read path
+    read data
+    wait true
+
+task file-append
   note async
   take path, like text
   take data, like text
-
-  call fs-promise/append-file
-    wait true
+  like void
+  call aio/file-append
     read path
     read data
-    halt kink
+    wait true
 
-task copy
+task file-copy
   note async
   take from, like text
   take to, like text
@@ -65,111 +62,97 @@ task copy
     deep
     like boolean
     fall false
-
-  fork test, name deep
-    hook hold
-      call fs-promise/cp
-        wait true
-        read from
-        read to
-        make options
-          bind recursive, true
-        halt kink
-    hook miss
-      call fs-promise/copy-file
-        wait true
-        read from
-        read to
-        halt kink
-
-task move
-  note async
-  take from, like text
-  take to, like text
-
-  call fs-promise/rename
-    wait true
+  like void
+  call aio/file-copy
     read from
     read to
-    halt kink
+    read deep
+    wait true
 
-task remove
+task file-move
+  note async
+  take from, like text
+  take to, like text
+  like void
+  call aio/file-move
+    read from
+    read to
+    wait true
+
+task file-remove
   note async
   take path, like text
   take
     deep
     like boolean
     fall false
-
-  call fs-promise/rm
-    wait true
+  like void
+  call aio/file-remove
     read path
-    make options
-      bind recursive, read deep
-      bind force, true
-    halt kink
+    read deep
+    wait true
 
-task test
+# an empty `kind` asks only whether the path exists; <file>, <directory> and <link> ask what it is
+task file-test
   note async
   take path, like text
   take
     kind
     like text
-    need false
-
-  call fs-promise/access
-    wait true
-    read path
-    halt kink
-
-  fork test, call shape/is-null(read kind)
-    hook hold
-      send back, true
-
-  save stats
-    call fs-promise/stat
-      wait true
+    fall text <>
+  like boolean
+  send back
+    call aio/file-test
       read path
-      halt kink
-
-  fork
-    test
-    call is-equal
       read kind
-      text <file>
-    hook hold
-      send back
-        call stats/is-file
+      wait true
 
-  fork
-    test
-    call is-equal
-      read kind
-      text <directory>
-    hook hold
-      send back
-        call stats/is-directory
+# ---- watching ----
+#
+# The pull shape the public file/watch API documents: open, await the next change, close. The `notify` crate
+# underneath is the ecosystem-standard watcher (FSEvents on macOS, inotify on Linux), not a polling loop.
 
-  fork
-    test
-    call is-equal
-      read kind
-      text <link>
-    hook hold
-      send back
-        call stats/is-symbolic-link
+dock type
+  load <any>, name watch-dock
 
-  send back, true
+# The dock ALIAS is `watch-file`, not `watch`: the alias is what the emitted namespace is called, and `watch` is
+# already a stdlib task name. Both in one emitted file is `invalid redeclaration of 'watch'` from a line that
+# mentions neither. The GLOBAL stays `watch`, so the shim file is still runtime/watch.<ext>.
+dock load
+  load <global:watch>, name watch-file
 
-task watch
+load @term/seed/code/file/watch
+  find watch-event
+  find watcher
+
+task watch-open
   note async
   take path, like text
-  take
-    deep
-    like boolean
-    fall false
+  take deep, like boolean
+  like watcher
+  save raw
+    call watch-file/watch-open
+      read path
+      read deep
+      wait true
+  send back
+    make watcher
+      bind dock, read raw
+      bind path, read path
 
-  call fs/watch
-    read path
-    make options
-      bind recursive, read deep
+task watch-next
+  note async
+  take watcher, like watcher
+  like watch-event
+  send back
+    call watch-file/watch-next
+      read watcher/dock
+      wait true
+
+task watch-close
+  note async
+  take watcher, like watcher
+  like void
+  call watch-file/watch-close
+    read watcher/dock
+    wait true

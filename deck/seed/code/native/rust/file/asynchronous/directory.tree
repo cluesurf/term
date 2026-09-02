@@ -1,8 +1,11 @@
 # rust asynchronous directory reading. Forwards to the linked `walk` runtime shim, which is `tokio::fs::read_dir`.
 # Internal: reached only through the public file/directory API.
 
+# The dock ALIAS is `walk-file`, not `walk`: the alias is what the emitted namespace is called, and `walk` is
+# already a stdlib task name. Both in one emitted file is `invalid redeclaration of 'walk'` from a line that
+# mentions neither. The GLOBAL stays `walk`, so the shim file is still runtime/walk.<ext>.
 dock load
-  load <global:walk>, name walk
+  load <global:walk>, name walk-file
 
 load @term/seed/code/file/directory
   find walk-entry
@@ -17,7 +20,7 @@ task folder-list
   like list
     like text
   send back
-    call walk/dir-list
+    call walk-file/dir-list
       read path
       read deep
       wait true
@@ -26,7 +29,7 @@ task folder-make
   note async
   take path, like text
   like void
-  call walk/dir-make
+  call walk-file/dir-make
     read path
     wait true
 
@@ -41,7 +44,7 @@ task folder-walk
   like list
     like walk-entry
   send back
-    call walk/dir-walk
+    call walk-file/dir-walk
       read path
       read depth
       wait true

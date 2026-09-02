@@ -2,14 +2,14 @@
 //
 // This is the Gradle face of the same dependency list, for an app built the ordinary Kotlin way. The native gate
 // does not read it: the gate needs a classpath string, and maven answers that in one command.
-plugins { kotlin("jvm") version "2.0.0" }
+plugins { kotlin("jvm") version "2.3.10" }
 repositories { mavenCentral() }
 kotlin { jvmToolchain(17) }
 
 dependencies {
-  implementation("org.jetbrains.kotlin:kotlin-stdlib:2.0.0")
-  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.9.0")
-  implementation("io.ktor:ktor-server-core-jvm:3.0.3")
-  implementation("io.ktor:ktor-server-cio-jvm:3.0.3")
-  implementation("io.ktor:ktor-network-tls-certificates-jvm:3.0.3")
+  implementation("org.jetbrains.kotlin:kotlin-stdlib:2.3.10")
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.10.2")
+  implementation("io.ktor:ktor-server-core-jvm:3.4.0")
+  implementation("io.ktor:ktor-server-cio-jvm:3.4.0")
+  implementation("io.ktor:ktor-network-tls-certificates-jvm:3.4.0")
 }

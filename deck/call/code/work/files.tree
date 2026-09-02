@@ -1,0 +1,171 @@
+# Which `.tree` files a command should act on.
+#
+# A path may be a FILE, taken as it is, or a DIRECTORY, walked for everything under it. With no paths at all the
+# project root is walked.
+#
+# A SHELVED FILE IS SKIPPED WHEN WALKING, the same two ways the build shelves one: `note draft` on its own line
+# near the top of a file, and a `draft.tree` in a directory, which shelves that directory and everything under it.
+# Without this, `term form deck --check` could never reach zero: it reported 33 files it could not parse and 32 of
+# them were deliberately shelved drafts, several not written in Term at all. A check that cannot reach zero is a
+# check nobody can put in a gate.
+#
+# A FILE NAMED EXPLICITLY IS ALWAYS TAKEN. Walking a directory is "everything here that counts"; naming a file is a
+# direct request, and refusing to format a draft somebody pointed at would answer a question they did not ask.
+#
+# This is the Term port of deck/call/code/files.ts (cli-in-term-0003).
+
+load @term/seed/code/path
+  find join
+
+load @term/seed/code/file
+  find read, name read-file
+
+load @term/seed/code/file/directory
+  find walk, name walk-directory
+  find exists, name directory-exists
+
+load @term/seed/code/file/metadata
+  find is-directory
+  find is-file
+
+load @term/seed/code/text
+  find contains
+  find ends-with
+  find substring
+  find char-count
+  find split
+  find trim
+
+# `link` is where `term link` puts a DEPENDENCY's source. Walking into it means formatting, linting and timing
+# another package's files, which is never what a command run in this project was asked to do: the three
+# `deck/zone/link/@term/seed/...` entries in `term form deck --check` were @term/seed's own files reported twice.
+task is-skipped
+  take name, like text
+  like boolean
+  fork test
+    call contains
+      read name
+      text </node_modules/>
+    hook hold
+      send back, true
+  fork test
+    call contains
+      read name
+      text </host/>
+    hook hold
+      send back, true
+  fork test
+    call contains
+      read name
+      text </tail/>
+    hook hold
+      send back, true
+  fork test
+    call contains
+      read name
+      text </link/>
+    hook hold
+      send back, true
+  fork test
+    call contains
+      read name
+      text </.git/>
+    hook hold
+      send back, true
+  send back, false
+
+# does this file declare itself unfinished? `note draft` on its own line NEAR THE TOP, which is how the build walk
+# reads it (deck/call/code/make.ts) and how the TypeScript this ports did.
+#
+# THE HEAD LIMIT IS LOAD-BEARING, not an optimization. Without it this file excluded ITSELF: the marker below is a
+# real `note draft` line in this source, so a whole-file search matches it and `files.tree` disappeared from its own
+# walk. The first version did exactly that and the comparison against the TypeScript caught it, 2 files against 3.
+task is-draft
+  note async
+  take file, like text
+  like boolean
+  save text
+    call read-file
+      read file
+      wait true
+  save size
+    call char-count
+      read text
+  save end
+    fork test
+      call is-below
+        read size
+        code 2000
+      hook hold
+        read size
+      hook miss
+        code 2000
+  save head
+    call substring
+      read text
+      code 0
+      read end
+  # ON ITS OWN LINE, which is why this splits rather than searching. A `contains` over the head matches the phrase
+  # wherever it appears, including inside a comment that MENTIONS the marker -- and this file has one, so the first
+  # version excluded itself from its own walk. A multi-line text literal does not help: `text <` newline `note
+  # draft` newline `>` collapses to `"note draft"`, so it reads as the same substring search.
+  save lines
+    call split
+      read head
+      text <\n>
+  walk list, read lines
+    hook next
+      take site, name line
+      fork test
+        call is-equal
+          call trim
+            read line
+          text <note draft>
+        hook hold
+          send back, true
+  send back, false
+
+# a `draft.tree` beside a file shelves its whole directory. Synchronous: `file/directory`'s `exists` and `walk`
+# are, and only `file/read` carries `note async`, so awaiting them is itself an effect error.
+task is-shelved
+  take directory, like text
+  like boolean
+  send back
+    call directory-exists
+      call join
+        read directory
+        text <draft.tree>
+
+# every `.tree` file under one directory that is not shelved
+task walk-trees
+  note async
+  take root, like text
+  like list
+    like text
+  save found
+    make list
+  save every
+    call walk-directory
+      read root
+  walk list, read every
+    hook next
+      take site, name item
+      fork test
+        call ends-with
+          read item
+          text <.tree>
+        hook hold
+          fork test
+            call is-skipped
+              read item
+            hook hold
+              turn next
+          fork test
+            call is-draft
+              read item
+              wait true
+            hook hold
+              turn next
+          call found/push
+            read item
+  send back, read found

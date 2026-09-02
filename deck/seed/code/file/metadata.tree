@@ -6,9 +6,6 @@ load @term/seed/code/native/{platform}/file/metadata
   find metadata-is-directory
   find metadata-is-file
 
-load @term/seed/code/native/{platform}/file/asynchronous/metadata
-  find meta-read
-
 # the whole metadata record the asynchronous API returns
 form file-metadata
   link size, like size
@@ -40,18 +37,3 @@ task is-file
     call metadata-is-file
       read path
 
-# The WHOLE record in one call, which is one stat rather than the three above. With `follow`, a symbolic link is
-# followed and the record describes what it points at; without it, the link itself.
-task read
-  note async
-  take path, like text
-  take
-    follow
-    like boolean
-    fall true
-  like file-metadata
-  send back
-    call meta-read
-      read path
-      read follow
-      wait true

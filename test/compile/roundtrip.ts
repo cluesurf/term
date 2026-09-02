@@ -7,6 +7,7 @@ import { execFileSync, spawnSync, spawn } from 'node:child_process'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { cpus, tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { nativeFlags } from './native-flags'
 import { parse } from '@term/make/code/parser/tree'
 import { mill } from '@term/make/code/compile/mill'
 import { resolve as resolveNames } from '@term/make/code/check/resolve'
@@ -187,7 +188,7 @@ function runSwift(
   const exe = file.replace(/\.swift$/, '')
 
   deferNative(name, async () => {
-    const built = await run('swiftc', ['-o', exe, file])
+    const built = await run('swiftc', [...nativeFlags('swift'), '-o', exe, file])
 
     if (built.status !== 0) {
       nativeFailure(name, 'swiftc', built.stderr)
@@ -379,7 +380,7 @@ function flushKotlin(): void {
     jar = join(dir, `kotlin-batch-${round}.jar`)
 
     try {
-      execFileSync('kotlinc', [...batch.map(b => b.job.file), '-include-runtime', '-d', jar], { stdio: 'pipe' })
+      execFileSync('kotlinc', [...batch.map(b => b.job.file), ...nativeFlags('kotlin'), '-include-runtime', '-d', jar], { stdio: 'pipe' })
       break
     } catch (e) {
       const text = String((e as { stderr?: Buffer }).stderr ?? e)
@@ -419,7 +420,7 @@ function flushKotlin(): void {
     const own = join(dir, `kotlin-single-${at}.jar`)
 
     try {
-      execFileSync('kotlinc', [job.file, '-include-runtime', '-d', own], { stdio: 'pipe' })
+      execFileSync('kotlinc', [job.file, ...nativeFlags('kotlin'), '-include-runtime', '-d', own], { stdio: 'pipe' })
     } catch (e) {
       kotlinFailure(job, e)
       continue
@@ -582,7 +583,7 @@ function runSwiftAsync(
   const exe = file.replace(/\.swift$/, '')
 
   deferNative(name, async () => {
-    const built = await run('swiftc', ['-o', exe, file])
+    const built = await run('swiftc', [...nativeFlags('swift'), '-o', exe, file])
 
     if (built.status !== 0) {
       nativeFailure(name, 'swiftc', built.stderr)
@@ -684,7 +685,7 @@ function runSwiftIo(
   const exe = file.replace(/\.swift$/, '')
 
   deferNative(name, async () => {
-    const built = await run('swiftc', ['-o', exe, file])
+    const built = await run('swiftc', [...nativeFlags('swift'), '-o', exe, file])
 
     if (built.status !== 0) {
       nativeFailure(name, 'swiftc', built.stderr)
@@ -783,7 +784,7 @@ function runSwiftMath(
   const exe = file.replace(/\.swift$/, '')
 
   deferNative(name, async () => {
-    const built = await run('swiftc', ['-o', exe, file])
+    const built = await run('swiftc', [...nativeFlags('swift'), '-o', exe, file])
 
     if (built.status !== 0) {
       nativeFailure(name, 'swiftc', built.stderr)
@@ -842,7 +843,7 @@ function runSwiftCrypto(
   const exe = file.replace(/\.swift$/, '')
 
   deferNative(name, async () => {
-    const built = await run('swiftc', ['-o', exe, file])
+    const built = await run('swiftc', [...nativeFlags('swift'), '-o', exe, file])
 
     if (built.status !== 0) {
       skipped(name, `swiftc could not build (CryptoKit unavailable?): ${built.stderr.slice(0, 120)}`)
@@ -934,7 +935,7 @@ function runSwiftText(
   const exe = file.replace(/\.swift$/, '')
 
   deferNative(name, async () => {
-    const built = await run('swiftc', ['-o', exe, file])
+    const built = await run('swiftc', [...nativeFlags('swift'), '-o', exe, file])
 
     if (built.status !== 0) {
       nativeFailure(name, 'swiftc', built.stderr)
@@ -1094,7 +1095,7 @@ function runSwiftConsole(
   const exe = file.replace(/\.swift$/, '')
 
   deferNative(name, async () => {
-    const built = await run('swiftc', ['-o', exe, file])
+    const built = await run('swiftc', [...nativeFlags('swift'), '-o', exe, file])
 
     if (built.status !== 0) {
       nativeFailure(name, 'swiftc', built.stderr)

@@ -1,190 +1,81 @@
+# node synchronous file handles, over fs's *Sync calls. A node descriptor carries no cursor of its own, so the
+# cursor lives in the shim, the same way it does on swift and kotlin. Internal: reached only through the public
+# file/synchronous API.
 
-load @term/seed/code/node/file
-  find tree open-head
-  find tree open-result
-  find host fs
-  find form file
+dock type
+  load <any>, name grip-dock
 
-form file
-  task read-synchronously, name <read-file>
-  task write-synchronously, name <file-write>
-  task clear-synchronously, name <clear-file>
+dock load
+  load <global:grip>, name grip
 
-task open
-  fuse open-head, text <Synchronous open read only>
-  take can-read, like boolean
-  fuse open-body, text <r>
+load @term/seed/code/file/synchronous
+  find synchronous-file
 
-task open
-  fuse open-head, text <Synchronous open read and write>
-  take can-read, like boolean
-  take can-write, like boolean
-  fuse open-body, text <r+>
-
-task open
-  fuse open-head, text <Synchronous open create, clear, write>
-  take can-create, like boolean
-  take can-clear, like boolean
-  take can-write, like boolean
-  fuse open-body, text <w>
-
-task open
-  fuse open-head, text <Synchronous open create, write>
-  take can-create, like boolean
-  take can-write, like boolean
-  fuse open-body, text <wx>
-
-task open
-  fuse open-head, text <Synchronous open create, clear, read, write>
-  take can-create, like boolean
-  take can-clear, like boolean
-  take can-read, like boolean
-  take can-write, like boolean
-  fuse open-body, text <w+>
-
-task open
-  fuse open-head, text <Synchronous open create, read, write>
-  take can-create, like boolean
-  take can-read, like boolean
-  take can-write, like boolean
-  fuse open-body, text <wx+>
-
-task open
-  fuse open-head, text <Synchronous open create, clear, append>
-  take can-create, like boolean
-  take can-clear, like boolean
-  take can-append, like boolean
-  fuse open-body, text <a>
-
-task open
-  fuse open-head, text <Synchronous open create, append>
-  take can-create, like boolean
-  take can-append, like boolean
-  fuse open-body, text <ax>
-
-task open
-  fuse open-head, text <Synchronous open create, clear, read, append>
-  take can-create, like boolean
-  take can-clear, like boolean
-  take can-read, like boolean
-  take can-append, like boolean
-  fuse open-body, text <a+>
-
-task open
-  fuse open-head, text <Synchronous open create, clear, read, append>
-  take can-create, like boolean
-  take can-read, like boolean
-  take can-append, like boolean
-  fuse open-body, text <ax+>
-
-task read
-  take path
-  fuse try, read read-call
-
-task write
-  take path
-  take content
-  fuse try, read write-call
-
-task remove
-  take path
-  fuse try, read remove-call
-
-task save-file
-  take file, like file
-  take buffer
-  take buffer-start-position
-  take byte-count
-  take file-start-position
-  free number-of-bytes-written, like size
-  fuse try, read save-file-call
-
-task read-file
-  take file, like file
-  take buffer
-  take buffer-start-position
-  take byte-count
-  take file-start-position
-  free number-of-bytes-read, like size
-  fuse try, read read-file-call
-
-task clear-file
-  take file, like file
-  fuse try, read clear-file-call-1
-
-task clear-file
-  take file, like file
-  take leave-bytes, like size
-  fuse try, read clear-file-call-2
-
-tree open-body
-  take node-flag
-  hook fuse
-    fuse open-result
-    save flag, text <{node-flag}>
-    fuse open-body-call
-
-tree open-body-call
-  hook fuse
-    fuse try, read open-call
-
-tree open-call
-  hook fuse
-    make file
+task grip-open
+  take path, like text
+  take read, like boolean
+  take write, like boolean
+  take create, like boolean
+  take append, like boolean
+  take clear, like boolean
+  like synchronous-file
+  save raw
+    call grip/grip-open
       read path
-      call fs/open-sync
-        read path
-        read flag
+      read read
+      read write
+      read create
+      read append
+      read clear
+  send back
+    make synchronous-file
+      bind dock, read raw
+      bind path, read path
 
-tree read-call
-  hook fuse
-    call fs/read-file-sync
-      read path
+task grip-close
+  take file, like synchronous-file
+  like void
+  call grip/grip-close
+    read file/dock
 
-tree write-call
-  hook fuse
-    call fs/write-file-sync
-      read path
-      read content
-
-tree remove-call
-  call fs/unlink-sync
-    read path
-
-tree file-write-call
-  hook fuse
-    call fs/write-sync
+task grip-read
+  take file, like synchronous-file
+  take size, like size
+  like text
+  send back
+    call grip/grip-read
       read file/dock
-      read buffer
-      read buffer-start-position
-      read byte-count
-      read file-start-position
+      read size
 
-tree read-file-call
-  hook fuse
-    call fs/read-sync
+task grip-write
+  take file, like synchronous-file
+  take data, like text
+  like size
+  send back
+    call grip/grip-write
       read file/dock
-      read buffer
-      read buffer-start-position
-      read byte-count
-      read file-start-position
+      read data
 
-tree clear-file-call-1
-  hook fuse
-    call fs/ftruncate
-      read file
+task grip-seek
+  take file, like synchronous-file
+  take offset, like size
+  take frame, like text
+  like void
+  call grip/grip-seek
+    read file/dock
+    read offset
+    read frame
 
-tree clear-file-call-2
-  hook fuse
-    call fs/ftruncate
-      read file
-      read leave-bytes
+task grip-flush
+  take file, like synchronous-file
+  like void
+  call grip/grip-flush
+    read file/dock
 
-tree try
-  take call
-
-  # `call try` / `hook fault` were a catch-and-return form that the language does not have. Errors propagate to the
-  # caller instead, which is what `halt kink` means.
-  hook fuse
-    fuse call
-      halt kink
+task grip-clear
+  take file, like synchronous-file
+  take size, like size
+  like void
+  call grip/grip-clear
+    read file/dock
+    read size

@@ -1,0 +1,22 @@
+
+# The spike app of cask-0003: open one window, load the page bundle the driver built, hand the process to the
+# platform. No bridge traffic yet. `boot` is what the driver calls with the bundle directory.
+
+load @term/cask/code/cask
+  find window
+  find open-window
+  find load-bundle
+  find run
+
+task boot
+  take bundle, like text
+  like void
+  save made
+    call open-window
+      text <Term blog>
+      code 960
+      code 720
+  call load-bundle
+    read made
+    read bundle
+  call run

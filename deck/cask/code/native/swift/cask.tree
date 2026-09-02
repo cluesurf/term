@@ -1,0 +1,77 @@
+
+# The cask on macOS and iOS. Forwards to the linked cask runtime shim (runtime/cask.swift), which holds the AppKit
+# window, the WKWebView, the WKScriptMessageHandler that receives `window.term.post`, and the run loop. Every task
+# here is total: the shim absorbs the optionals. Internal: reached only through the public cask API in ../../cask.
+
+dock load
+  load <global:cask>, name cask
+
+# the opaque handle to one window and the WebView inside it
+dock type
+  load <CaskWindow>, name window
+
+task open-window
+  take title, like text
+  take width, like number
+  take height, like number
+  like window
+  send back
+    call cask/open-window
+      read title
+      read width
+      read height
+
+task load-bundle
+  take self, like window
+  take path, like text
+  like void
+  call cask/load-bundle
+    read self
+    read path
+
+task load-url
+  take self, like window
+  take url, like text
+  like void
+  call cask/load-url
+    read self
+    read url
+
+task eval
+  take self, like window
+  take script, like text
+  like void
+  call cask/eval
+    read self
+    read script
+
+task on-message
+  take self, like window
+  take handler
+    like task
+      take message, like text
+      like void
+  like void
+  call cask/on-message
+    read self
+    read handler
+
+task run
+  like void
+  call cask/run
+
+task quit
+  like void
+  call cask/quit
+
+task bundle-path
+  like text
+  send back
+    call cask/bundle-path
+
+task data-path
+  take name, like text
+  like text
+  send back
+    call cask/data-path
+      read name

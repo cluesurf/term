@@ -1,18 +1,23 @@
-# swift HTTP server: forwards to the linked server runtime shim (a POSIX-socket accept loop, no SwiftNIO). The shim reads
-# each request, hands a normalized request to the seed handler, and writes the response. Internal: reached only through
-# the public network/server API.
+# swift HTTP server: forwards to the linked `server` runtime shim, which is Hummingbird on swift-nio. Internal:
+# reached only through the public network/server API.
+#
+# `serve` blocks for the life of the process; `start` binds and answers without blocking, and `stop` shuts the
+# Hummingbird service down. See note/term/stdlib/native-async-file-and-server.md.
+
+dock type
+  load <runtime.Running>, name server-dock
 
 dock load
   load <global:server>, name runtime
-
-load @term/seed/code/network/server
-  find server
 
 load @term/seed/code/network/server/request
   find request
 
 load @term/seed/code/network/server/response
   find response
+
+load @term/seed/code/network/server
+  find server
 
 # run the server on (host, port), blocking for the life of the process (the entry point of a server binary)
 task do-serve
@@ -22,14 +27,19 @@ task do-serve
     like task
       take request, like request
       like response
+  take secure, like boolean
+  take certificate, like text
+  take key, like text
   like void
   call runtime/serve
     read port
     read host
     read handler
+    read secure
+    read certificate
+    read key
 
-# start / stop map onto the same server: start serves (and so blocks on this backend), stop is a no-op. Most swift
-# server binaries use `serve` directly.
+# bind the port and answer, without blocking. The returned server is what `do-stop` shuts down.
 task do-start
   note async
   take port, like size
@@ -42,13 +52,18 @@ task do-start
   take certificate, like text
   take key, like text
   like server
-  call runtime/serve
-    read port
-    read host
-    read handler
+  save raw
+    call runtime/start
+      read port
+      read host
+      read handler
+      read secure
+      read certificate
+      read key
+      wait true
   send back
     make server
-      bind dock, code 0
+      bind dock, read raw
       bind host, read host
       bind port, read port
 
@@ -56,3 +71,6 @@ task do-stop
   note async
   take server, like server
   like void
+  call runtime/stop
+    read server/dock
+    wait true

@@ -10,12 +10,21 @@
   no dispatcher, so Dispatchers.IO, which is what makes a blocking java.nio.file call asynchronous rather than a
   stalled thread, lives here.
 
-  ktor-server-cio is the HTTP server. com.sun.net.httpserver is in the JDK but is thread per request with no TLS
-  story worth shipping; ktor is the kotlin ecosystem's server and is coroutine native, which is the same
+  ktor-server-cio is the HTTP/1.1 server. com.sun.net.httpserver is in the JDK but is thread per request with no
+  TLS story worth shipping; ktor is the kotlin ecosystem's server and is coroutine native, which is the same
   concurrency model the rest of this target uses.
+
+  ktor-server-netty is the HTTP/2 server, and it is a SECOND engine rather than a setting. Ktor's CIO engine has
+  no HTTP/2 support at all, so h2 on this target means Netty, which negotiates it by ALPN over TLS. That is why
+  two engines are on this classpath: CIO answers network/server, Netty answers network/http2.
 
   task/term/native/kotlin.sh resolves this into the classpath the native gate compiles against, and mirrors the
   version list into build.gradle.kts so the two manifests cannot drift.
+
+  kotlin.version must MATCH the installed kotlinc. A stdlib older than the compiler is missing the internals the
+  compiler emits calls to, and that does not fail at compile time: it fails at run time with a
+  NoClassDefFoundError on something like kotlin.coroutines.jvm.internal.SpillingKt, from a line of code that
+  mentions no such thing. `kotlinc -version` says which.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
@@ -25,9 +34,9 @@
   <packaging>jar</packaging>
 
   <properties>
-    <kotlin.version>2.0.0</kotlin.version>
-    <coroutines.version>1.9.0</coroutines.version>
-    <ktor.version>3.0.3</ktor.version>
+    <kotlin.version>2.3.10</kotlin.version>
+    <coroutines.version>1.10.2</coroutines.version>
+    <ktor.version>3.4.0</ktor.version>
   </properties>
 
   <dependencies>
@@ -49,6 +58,11 @@
     <dependency>
       <groupId>io.ktor</groupId>
       <artifactId>ktor-server-cio-jvm</artifactId>
+      <version>${ktor.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.ktor</groupId>
+      <artifactId>ktor-server-netty-jvm</artifactId>
       <version>${ktor.version}</version>
     </dependency>
     <dependency>

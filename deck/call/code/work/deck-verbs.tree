@@ -1,0 +1,123 @@
+# The package verbs: `term load`, `term save`, `term toss`.
+#
+# Each is the same three steps -- say what is starting, do it, say whether it held -- so they sit together rather
+# than in three files of thirty lines that differ by one call.
+#
+# THEY DOCK TWO TYPESCRIPT MODULES. `@cluesurf/deck.tree` is the package manager and `@term/make/code/tint` is the
+# CLI's colour, and neither is Term yet. A `dock load` takes a package path as readily as a `<node:fs>`, so a Term
+# module reaches both and loses nothing on the TypeScript target. On a native target the docks resolve to modules
+# that are not there, which is the honest state of the conversion: the source is `.tree` first, and each dock is
+# then one named thing to replace rather than a TypeScript file nobody is looking at.
+#
+# Ported from deck/call/code/{load,save,toss}.ts (cli-in-term-0004).
+
+# THE ARGUMENT IS AN OBJECT, and it has to be built as one. A `bind <name>, <value>` under a `call` is a NAMED
+# argument that the checker places by the callee's declared position -- and a DOCKED function has no declared
+# positions, so the binds emit positionally: `install(root, clean, offline)` where the TypeScript expects
+# `install({ root, clean, offline })`. That compiles, runs, and passes the wrong thing. A `form` gives the object
+# a shape and `make` builds a real object literal.
+form install-ask
+  link root, like text
+  link clean, like boolean
+  link offline, like boolean
+
+form deck-ask
+  link root, like text
+  link name, like text
+
+dock load
+  load <@cluesurf/deck.tree>, name deck-tree
+  load <@term/make/code/tint>, name tint
+  load <node:process>, name node-process
+
+# `term load`: install every dependency the manifest names
+task load
+  note async
+  take root, like text
+  take clean, like boolean
+  take offline, like boolean
+  like void
+  call tint/logStep
+    text <Installing dependencies...>
+  note unsafe
+    call deck-tree/install
+      make install-ask
+        bind root, read root
+        bind clean, read clean
+        bind offline, read offline
+      wait true
+    call tint/logGood
+      text <Dependencies installed>
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1
+
+# `term save <deck>`: add a dependency
+task save
+  note async
+  take root, like text
+  take deck, like text
+  like void
+  fork test
+    call is-equal
+      read deck
+      text <>
+    hook hold
+      call tint/logFail
+        text <Missing deck name. Usage: term save <deck>>
+      call node-process/exit
+        code 1
+  call tint/logStep
+    text <Adding {{deck}}...>
+  note unsafe
+    call deck-tree/addDependency
+      make deck-ask
+        bind root, read root
+        bind name, read deck
+      wait true
+    call tint/logGood
+      text <Added {{deck}}>
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1
+
+# `term toss <deck>`: remove a dependency
+task toss
+  note async
+  take root, like text
+  take deck, like text
+  like void
+  fork test
+    call is-equal
+      read deck
+      text <>
+    hook hold
+      call tint/logFail
+        text <Missing deck name. Usage: term toss <deck>>
+      call node-process/exit
+        code 1
+  call tint/logStep
+    text <Removing {{deck}}...>
+  note unsafe
+    call deck-tree/removeDependency
+      make deck-ask
+        bind root, read root
+        bind name, read deck
+      wait true
+    call tint/logGood
+      text <Removed {{deck}}>
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1

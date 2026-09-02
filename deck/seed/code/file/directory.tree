@@ -8,10 +8,6 @@ load @term/seed/code/native/{platform}/file/directory
   find directory-list
   find directory-walk
 
-load @term/seed/code/native/{platform}/file/asynchronous/directory
-  find folder-make
-  find folder-list
-  find folder-walk
 
 task make
   take path, like text
@@ -59,51 +55,3 @@ form walk-entry
   link kind, like text
   link depth, like size
 
-
-# ---- the asynchronous three ----
-#
-# `make` / `list` / `walk` above are synchronous, because the natives behind them are. These three are the
-# asynchronous surface, on tokio::fs, NIOFileSystem and java.nio.file, and they take the arguments the
-# synchronous ones cannot: a depth bound, and entries that say what they are. They are named apart rather than
-# overloaded because a caller has to know which one it is waiting on.
-
-# make the directory and every missing directory above it
-task build
-  note async
-  take path, like text
-  like void
-  call folder-make
-    read path
-    wait true
-
-# the names in the directory. With `deep`, every path below it too, relative to `path`.
-task scan
-  note async
-  take path, like text
-  take
-    deep
-    like boolean
-    fall false
-  like list
-    like text
-  send back
-    call folder-list
-      read path
-      read deep
-      wait true
-
-# every entry beneath `path` with what it is and how far down it sits. `depth` 0 walks all the way down.
-task crawl
-  note async
-  take path, like text
-  take
-    depth
-    like size
-    fall code 0
-  like list
-    like walk-entry
-  send back
-    call folder-walk
-      read path
-      read depth
-      wait true

@@ -1,0 +1,179 @@
+# The value a `deck.tree` declares for one head, read WITH THE REAL PARSER.
+#
+# There is ONE parser for `.tree` in this codebase. This used to be a regex anchored on a `deck` line, in two
+# places, which is a second and worse implementation of the grammar: it reads a `deck` line inside a comment or a
+# text literal as the declaration, it cannot see a name written with an interpolation, and it silently disagrees
+# with the compiler about what the file says.
+#
+# A MANIFEST HEAD SITS IN ONE OF TWO PLACES, which is the whole reason this is not a one-liner: at the top level,
+# or as a CHILD of the `deck` statement, which is where `head`, `code`, `lock`, `bear` and `role` are written. The
+# regex this replaced was anchored `^\s*` and happened to find both, so nobody had to think about it; a reader that
+# walked only the top level silently stopped finding `role ./roles` and a project's role file went unread.
+#
+# Ported from deck/call/code/manifest-name.ts (cli-in-term-0004). It docks the parser, which is the compiler's, so
+# there is still exactly one implementation of the grammar and this is not a second reader.
+
+load @term/seed/code/file
+  find read, name read-file
+
+dock load
+  load <@term/make/code/parser/tree>, name parser
+  load <global:console>, name console
+
+form parse-ask
+  link file, like text
+  link text, like text
+
+# the head word of a group, or nothing when its first node is not a name
+task head-name
+  take group, like unknown
+  like text
+  save first
+    read group/nodes/0
+  fork test
+    call is-equal
+      read first/kind
+      text <name>
+    hook hold
+      send back
+        call parser/renderHead
+          read first
+  send back
+    text <>
+
+# the first ARGUMENT of a group: `deck @term/site` gives `@term/site`
+task argument-of
+  take group, like unknown
+  like text
+  save second
+    read group/nodes/1
+  fork test
+    call is-equal
+      read second/kind
+      text <group>
+    hook hold
+      send back
+        call head-name
+          read second
+  send back
+    text <>
+
+# the groups of a node list, dropping anything that is not one
+task groups-of
+  take nodes, like list
+    like unknown
+  like list
+    like unknown
+  save found
+    make list
+  walk list, read nodes
+    hook next
+      take site, name one
+      fork test
+        call is-equal
+          read one/kind
+          text <group>
+        hook hold
+          call found/push
+            read one
+  send back, read found
+
+# The value a manifest gives one head. The `deck` statement's CHILDREN are searched first and the top level second,
+# so the manifest's own block wins when both spell the same head.
+task manifest-value
+  take text, like text
+  take file, like text
+  take head, like text
+  like text
+  save parsed
+    call parser/parse
+      make parse-ask
+        bind file, read file
+        bind text, read text
+  fork test
+    read parsed/ok
+    hook miss
+      send back
+        text <>
+  save groups
+    call groups-of
+      read parsed/tree/nodes
+  save nested
+    make list
+  walk list, read groups
+    hook next
+      take site, name group
+      fork test
+        call is-equal
+          call head-name
+            read group
+          text <deck>
+        hook hold
+          save kids
+            call groups-of
+              read group/nodes
+          walk list, read kids
+            hook next
+              take site, name kid
+              call nested/push
+                read kid
+  save found
+    call first-value
+      read nested
+      read head
+  fork test
+    call is-unequal
+      read found
+      text <>
+    hook hold
+      send back, read found
+  send back
+    call first-value
+      read groups
+      read head
+
+# the argument of the first group with this head, or the empty text
+task first-value
+  take groups, like list
+    like unknown
+  take head, like text
+  like text
+  walk list, read groups
+    hook next
+      take site, name group
+      fork test
+        call is-equal
+          call head-name
+            read group
+          read head
+        hook hold
+          save value
+            call argument-of
+              read group
+          fork test
+            call is-unequal
+              read value
+              text <>
+            hook hold
+              send back, read value
+  send back
+    text <>
+
+# the same, read from a file. Unreadable or unparseable answers the empty text, the way a missing manifest does.
+task manifest-value-of
+  note async
+  take file, like text
+  take head, like text
+  like text
+  note unsafe
+    send back
+      call manifest-value
+        call read-file
+          read file
+          wait true
+        read file
+        read head
+  halt take
+    take error
+    send back
+      text <>

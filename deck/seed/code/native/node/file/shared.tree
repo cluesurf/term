@@ -1,19 +1,23 @@
+# What the synchronous and asynchronous node file modules agree on: the open-mode bits, spelled once.
+#
+# Every backend's `open` takes the same five independent booleans (read, write, create, append, clear) rather than
+# a mode string, because "w+" is a node spelling and means nothing to tokio, NIOFileSystem or java.nio. This is
+# where those five turn into the one thing a platform actually wants. On node that IS a mode string, folded inside
+# the `grip` shim, which is the only place in the stdlib one appears.
+#
+# This module used to declare a SECOND `form file` beside the public one in file/handle.tree, and the two mill
+# trees the ten mode-string `open` overloads were generated from. Both are superseded.
+#
+# Internal: reached only through the public file API.
 
-form file
-  link dock
-    # File descriptor
-    note private
-  link path
+# the open modes, as the names the public API and the tests use for them
+host mode-read, text <read>
+host mode-write, text <write>
+host mode-create, text <create>
+host mode-append, text <append>
+host mode-clear, text <clear>
 
-tree open-head
-  take note
-  hook bind
-    note note
-    take path, like text
-
-tree open-result
-  hook bind
-    free seed
-      like result
-        like u32
-        like error
+# where `seek` counts from: the start of the file, the cursor, or back from the end
+host frame-start, text <start>
+host frame-relative, text <relative>
+host frame-end, text <end>

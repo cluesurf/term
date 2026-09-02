@@ -1,0 +1,73 @@
+# node HTTP/2: forwards to the linked `http2` runtime shim, which is `node:http2`. Internal: reached only
+# through the public network/http2 API.
+
+dock type
+  load <any>, name http2-dock
+
+dock load
+  load <global:http2>, name http2
+
+load @term/seed/code/network/server/request
+  find request
+
+load @term/seed/code/network/server/response
+  find response
+
+load @term/seed/code/network/http2
+  find http2-server
+
+# run an HTTP/2 server on (host, port), blocking for the life of the process. Without `secure` this is h2c.
+task do-serve-http2
+  take port, like size
+  take host, like text
+  take handler
+    like task
+      take request, like request
+      like response
+  take secure, like boolean
+  take certificate, like text
+  take key, like text
+  like void
+  call http2/serve
+    read port
+    read host
+    read handler
+    read secure
+    read certificate
+    read key
+
+# bind and answer over HTTP/2 without blocking. The returned server is what `do-stop-http2` shuts down.
+task do-start-http2
+  note async
+  take port, like size
+  take host, like text
+  take handler
+    like task
+      take request, like request
+      like response
+  take secure, like boolean
+  take certificate, like text
+  take key, like text
+  like http2-server
+  save raw
+    call http2/start
+      read port
+      read host
+      read handler
+      read secure
+      read certificate
+      read key
+      wait true
+  send back
+    make http2-server
+      bind dock, read raw
+      bind host, read host
+      bind port, read port
+
+task do-stop-http2
+  note async
+  take server, like http2-server
+  like void
+  call http2/stop
+    read server/dock
+    wait true

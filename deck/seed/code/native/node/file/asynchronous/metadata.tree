@@ -1,58 +1,22 @@
+# node asynchronous file metadata. Forwards to the linked `stat` runtime shim (`fs.promises.stat`), which builds
+# the record in one call rather than one call per field. Internal: reached only through the public file/metadata API.
+
+dock load
+  load <global:stat>, name stat
 
 load @term/seed/code/file/metadata
   find file-metadata
 
-dock load
-  load <node:fs/promises>, name fs-promise
-
-task read
+task meta-read
   note async
   take path, like text
   take
     follow
     like boolean
     fall true
-
-  save stats
-    fork test, name follow
-      hook hold
-        call fs-promise/stat
-          wait true
-          read path
-          halt kink
-      hook miss
-        call fs-promise/lstat
-          wait true
-          read path
-          halt kink
-
-  save kind, text <other>
-  fork test
-    hook test
-      call stats/is-directory
-    hook hold
-      save kind, text <directory>
-  fork test
-    hook test
-      call stats/is-symbolic-link
-    hook hold
-      save kind, text <link>
-  fork test
-    hook test
-      call stats/is-file
-    hook hold
-      save kind, text <file>
-
+  like file-metadata
   send back
-    make file-metadata
-      bind size, read stats/size
-      bind kind, read kind
-      bind made
-        call stats/birth-time/get-time
-      bind changed
-        call stats/mtime/get-time
-      bind opened
-        call stats/atime/get-time
-      bind mode, read stats/mode
-      bind link
-        call stats/is-symbolic-link
+    call stat/meta-read
+      read path
+      read follow
+      wait true

@@ -1,7 +1,7 @@
 // Directory reading for the rust target, over `tokio::fs::read_dir`. `dir_list` is one level or every level as a
 // list of relative paths; `dir_walk` is every level as `WalkEntry` records (path, kind, depth), which is the form
 // the module that docks this declares. Reached only through the public file/directory API.
-mod walk {
+mod walk_file {
     use super::WalkEntry;
 
     // an async fn that calls itself needs a boxed future, or its size is infinite

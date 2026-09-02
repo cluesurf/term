@@ -1,0 +1,81 @@
+# kotlin synchronous file handles, over java.io.RandomAccessFile, which is the JDK type that has a cursor. The
+# asynchronous side of this API is java.nio on Dispatchers.IO. Internal: reached only through the public
+# file/synchronous API.
+
+dock type
+  load <grip.Grip>, name grip-dock
+
+dock load
+  load <global:grip>, name grip
+
+load @term/seed/code/file/synchronous
+  find synchronous-file
+
+task grip-open
+  take path, like text
+  take read, like boolean
+  take write, like boolean
+  take create, like boolean
+  take append, like boolean
+  take clear, like boolean
+  like synchronous-file
+  save raw
+    call grip/grip-open
+      read path
+      read read
+      read write
+      read create
+      read append
+      read clear
+  send back
+    make synchronous-file
+      bind dock, read raw
+      bind path, read path
+
+task grip-close
+  take file, like synchronous-file
+  like void
+  call grip/grip-close
+    read file/dock
+
+task grip-read
+  take file, like synchronous-file
+  take size, like size
+  like text
+  send back
+    call grip/grip-read
+      read file/dock
+      read size
+
+task grip-write
+  take file, like synchronous-file
+  take data, like text
+  like size
+  send back
+    call grip/grip-write
+      read file/dock
+      read data
+
+task grip-seek
+  take file, like synchronous-file
+  take offset, like size
+  take frame, like text
+  like void
+  call grip/grip-seek
+    read file/dock
+    read offset
+    read frame
+
+task grip-flush
+  take file, like synchronous-file
+  like void
+  call grip/grip-flush
+    read file/dock
+
+task grip-clear
+  take file, like synchronous-file
+  take size, like size
+  like void
+  call grip/grip-clear
+    read file/dock
+    read size

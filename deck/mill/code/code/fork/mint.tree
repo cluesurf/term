@@ -110,11 +110,15 @@ mint fork-name
 mint fork-arm-hook
   case kind
     site kind
+  # a nested arm: `fork roll` puts the body of a `hook test` under a `hook hold` INSIDE it
+  case arm, mint fork-arm-hook
+    site arm
   case flow
     site flow
   hook make
     make fork-arm-hook
       bind kind, read kind
+      bind arm, read arm
       bind flow, read flow
 
 mint fork-lack

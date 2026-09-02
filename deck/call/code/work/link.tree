@@ -1,0 +1,147 @@
+# `term link` -- use a working copy of a package instead of an installed one.
+#
+# With NO argument it registers the current package in the global link registry (`~/.base/@cluesurf/term/link`), so
+# any project can later `term link <name>` and get this working copy. With an argument it consumes that
+# registration by name, and failing that treats the argument as a path to a local package.
+#
+# Ported from deck/call/code/link.ts (cli-in-term-0004).
+
+load @term/seed/code/path
+  find join
+
+load @term/seed/code/file
+  find test, name file-test
+
+dock load
+  load <@cluesurf/deck.tree>, name deck-tree
+  load <@term/make/code/tint>, name tint
+  load <node:path>, name node-path
+  load <node:process>, name node-process
+  load <global:console>, name console
+
+form register-ask
+  link packageDir, like text
+
+form consume-ask
+  link root, like text
+  link name, like text
+
+form dev-link-ask
+  link root, like text
+  link packageDir, like text
+
+form unlink-ask
+  link root, like text
+  link name, like text
+
+# no argument: register this package globally
+task link-register
+  note async
+  take root, like text
+  like void
+  call tint/logStep
+    text <Registering current package globally...>
+  note unsafe
+    save shown
+      call deck-tree/registerGlobalLink
+        make register-ask
+          bind packageDir, read root
+        wait true
+    call tint/logGood
+      text <Registered {{shown}}>
+    call console/log
+      call tint/fade
+        text <  use it elsewhere with: term link {{shown}}>
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1
+
+task link
+  note async
+  take root, like text
+  take deck, like text
+  like void
+  fork test
+    call is-equal
+      read deck
+      text <>
+    hook hold
+      call link-register
+        read root
+        wait true
+      send back
+  call tint/logStep
+    text <Linking {{deck}}...>
+  note unsafe
+    save consumed
+      call deck-tree/consumeGlobalLink
+        make consume-ask
+          bind root, read root
+          bind name, read deck
+        wait true
+    fork test
+      read consumed
+      hook hold
+        call tint/logGood
+          text <Linked {{deck}}>
+        send back
+    # not registered: treat the argument as a path to a local package
+    save directory
+      call node-path/resolve
+        read deck
+    save manifest
+      call join
+        read directory
+        text <deck.tree>
+    save there
+      call file-test
+        read manifest
+        wait true
+    fork test
+      read there
+      hook miss
+        call tint/logFail
+          text <"{{deck}}" is not in the global link registry and is not a local package (no deck.tree at {{directory}})>
+        call node-process/exit
+          code 1
+    call deck-tree/devLink
+      make dev-link-ask
+        bind root, read root
+        bind packageDir, read directory
+      wait true
+    call tint/logGood
+      text <Linked {{deck}}>
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1
+
+task unlink
+  note async
+  take root, like text
+  take deck, like text
+  like void
+  call tint/logStep
+    text <Unlinking {{deck}}...>
+  note unsafe
+    call deck-tree/devUnlink
+      make unlink-ask
+        bind root, read root
+        bind name, read deck
+      wait true
+    call tint/logGood
+      text <Unlinked {{deck}}>
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1

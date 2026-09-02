@@ -1,0 +1,17 @@
+# kotlin process piping. Forwards to the linked pipe runtime shim, which streams one child's standard output into
+# another's standard input on Dispatchers.IO. Internal: reached only through the public process API.
+dock load
+  load <global:pipe>, name pipe-runtime
+
+load @term/seed/code/process
+  find child
+
+task connect
+  note async
+  take from, like child
+  take to, like child
+
+  call pipe-runtime/connect
+    read from/dock
+    read to/dock
+    wait true

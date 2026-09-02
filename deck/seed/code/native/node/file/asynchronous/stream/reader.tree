@@ -1,17 +1,17 @@
+# node asynchronous file read stream: an open FileHandle plus how much of the window is left, pulled a chunk at a
+# time. Internal: reached only through the public file/stream/reader API.
 
-load @term/seed/code/json
-  find make-object
-  find set-field
-  find from-number
+dock type
+  load <any>, name reader-dock
 
 dock load
-  load <node:fs>, name fs
+  load <global:aio>, name aio
 
-form reader
-  link dock, mark private
-  link path, like text
+load @term/seed/code/file/stream/reader
+  find reader
 
-task create
+# `start` is where to begin, `size` how many bytes to read from there. `size` 0 reads to the end.
+task reader-create
   note async
   take path, like text
   take
@@ -22,60 +22,32 @@ task create
     size
     like size
     fall code 0
-
-  save options, call make-object
-
-  fork test
-    hook test
-      call is-above
-        bind a, read start
-        bind b, code 0
-    hook hold
-      save options
-        call set-field
-          read options
-          text <start>
-          call from-number
-            read start
-
-  fork test
-    hook test
-      call is-above
-        bind a, read size
-        bind b, code 0
-    hook hold
-      save options
-        call set-field
-          read options
-          text <end>
-          call from-number
-            call add
-              bind a, read start
-              bind b, read size
-
-  save handle
-    call fs/create-read-stream
+  like reader
+  save raw
+    call aio/reader-open
       read path
-      read options
-
+      read start
+      read size
+      wait true
   send back
     make reader
-      bind dock, read handle
+      bind dock, read raw
       bind path, read path
 
-task read
+# the next chunk, or the empty text at the end of the stream
+task reader-read
   note async
   take stream, like reader
-
-  save chunk
-    call stream/dock/read
+  like text
+  send back
+    call aio/reader-next
+      read stream/dock
       wait true
 
-  send back, read chunk
-
-task close
+task reader-close
   note async
   take stream, like reader
-
-  call stream/dock/destroy
+  like void
+  call aio/reader-close
+    read stream/dock
     wait true

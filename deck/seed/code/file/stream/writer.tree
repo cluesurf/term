@@ -7,7 +7,9 @@ load @term/seed/code/native/{platform}/file/asynchronous/stream/writer
   find writer-close
 
 form writer
-  link dock, mark private
+  link dock
+    like writer-dock
+    note private
   link path, like text
 
 # with `append`, writes go after what is already there; without it the file starts empty

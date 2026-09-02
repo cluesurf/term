@@ -1,47 +1,47 @@
+# node asynchronous file write stream, over `fs/promises`. Internal: reached only through the public
+# file/stream/writer API.
+
+dock type
+  load <any>, name writer-dock
 
 dock load
-  load <node:fs>, name fs
+  load <global:aio>, name aio
 
-form writer
-  link dock, mark private
-  link path, like text
+load @term/seed/code/file/stream/writer
+  find writer
 
-task create
+task writer-create
   note async
   take path, like text
   take
     append
     like boolean
     fall false
-
-  save flags
-    fork test, name append
-      hook hold, text <a>
-      hook miss, text <w>
-
-  save handle
-    call fs/create-write-stream
+  like writer
+  save raw
+    call aio/writer-open
       read path
-      make options
-        bind flags, read flags
-
+      read append
+      wait true
   send back
     make writer
-      bind dock, read handle
+      bind dock, read raw
       bind path, read path
 
-task write
+task writer-write
   note async
   take stream, like writer
   take data, like text
-
-  call stream/dock/write
-    wait true
+  like void
+  call aio/writer-push
+    read stream/dock
     read data
+    wait true
 
-task close
+task writer-close
   note async
   take stream, like writer
-
-  call stream/dock/end
+  like void
+  call aio/writer-close
+    read stream/dock
     wait true

@@ -45,13 +45,18 @@ export const RUNTIME_EXTENSION: Record<NativeEnv, string> = {
 // can be found next to that module). The candidates for a runtime-shim prelude.
 export function globalDocks(
   program: Program,
-): { name: string; file?: string }[] {
-  const docks: { name: string; file?: string }[] = []
+): { name: string; alias: string; file?: string }[] {
+  const docks: { name: string; alias: string; file?: string }[] = []
 
   for (const node of program) {
     if (node.form === 'native' && node.module.startsWith('global:')) {
       docks.push({
         name: node.module.slice('global:'.length),
+        // THE ALIAS IS WHAT THE EMITTED CODE SAYS. `load <global:walk>, name walk-file` puts the shim in
+        // `runtime/walk.<ext>` (the global names the FILE) and every call reads `walkFile::...` (the alias names
+        // the NAMESPACE). The two are the same word most of the time, which is why nothing noticed until a dock
+        // had to be aliased away from a stdlib name it collided with.
+        alias: node.alias,
         file: node.file,
       })
     }
@@ -92,6 +97,26 @@ export function runtimePath(env: NativeEnv, name: string): string {
   return `@cluesurf/seed/code/native/${env}/runtime/${name}.${RUNTIME_EXTENSION[env]}`
 }
 
+// does the emitted source mention this dock's namespace, under any of the spellings a backend gives it? A kebab
+// alias is emitted camelCase on swift / kotlin / typescript and snake_case on rust, and the raw kebab is never an
+// identifier, so all three are tried rather than the one the caller happened to write.
+function mentions(source: string, alias: string): boolean {
+  const camel = alias.replace(/-([a-z0-9])/g, (_, c: string) =>
+    c.toUpperCase(),
+  )
+  const snake = alias.replace(/-/g, '_')
+
+  for (const spelling of new Set([alias, camel, snake])) {
+    const word = spelling.replace(/[^\w]/g, '\\$&')
+
+    if (new RegExp(`\\b${word}\\b`).test(source)) {
+      return true
+    }
+  }
+
+  return false
+}
+
 // build the native prelude for a target: the concatenation of every runtime-shim file the program's global docks
 // reference and that actually exists. Each shim is looked up next to the module that docks it (its origin file), with
 // the base.tree path as a fallback. `readRuntime(path)` returns the raw source for a runtime path, or undefined.
@@ -107,14 +132,15 @@ export function nativePrelude(
   const parts: string[] = []
   const added = new Set<string>()
 
-  for (const { name, file } of globalDocks(program)) {
-    // skip a dock whose global is unreferenced in the emitted code (keeps unused native deps out of the bundle)
-    if (
-      usedIn !== undefined &&
-      !new RegExp(`\\b${name.replace(/[^\w]/g, '\\$&')}\\b`).test(
-        usedIn,
-      )
-    ) {
+  for (const { name, alias, file } of globalDocks(program)) {
+    // Skip a dock whose namespace is unreferenced in the emitted code (keeps unused native deps out of the
+    // bundle). TESTED AGAINST THE ALIAS, not the global: the alias is the identifier the emitted code actually
+    // holds. Testing the global drops the shim of any dock that was renamed, the bundle builds clean, and the
+    // first call dies with `ReferenceError: <alias> is not defined`.
+    //
+    // The alias is spelled in the emitted code the way that backend spells an identifier (`walk-file` is
+    // `walkFile` on swift and kotlin, `walk_file` on rust), so all three spellings are tried.
+    if (usedIn !== undefined && !mentions(usedIn, alias)) {
       continue
     }
 

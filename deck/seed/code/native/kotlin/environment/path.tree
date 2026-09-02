@@ -1,3 +1,9 @@
+# `read-path`, not `get`. The public wrapper (code/environment/path.tree) declares `get`, and names are
+# PACKAGE-GLOBAL in Term, so a public task and its native implementation sharing a name unify into one
+# symbol: wiring them emitted `function get1(kind) { return get1(kind) }`, an infinite recursion. That is
+# why this module and twelve like it declared an API and bound nothing for six months. The convention that
+# works is the one code/environment.tree already uses, where the native names are `current-directory` and
+# `get-variable` and cannot collide with the `directory` and `variable` they implement.
 
 # Standard user folders. Forwards to the linked folder runtime shim, which holds the per-host layout rules.
 # Internal: reached only through the public environment API.
@@ -5,7 +11,7 @@
 dock load
   load <global:folder>, name folder
 
-task get
+task read-path
   take kind, like text
   like text
 

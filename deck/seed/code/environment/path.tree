@@ -1,4 +1,25 @@
 
+# Well-known directories of the running environment: the user's home, the system temporary directory, and the
+# others each platform names. `get <home>` rather than a task per directory, because the set differs by platform
+# and a name is data.
+#
+# WIRED 2026-09-02. This module DECLARED `get` and loaded nothing from 2026-03-05 until then, while all five
+# platforms implemented it, so every call emitted `throw new Error("stub: get")` on TypeScript and
+# `unimplemented!()` on the natives. A public module that binds nothing is worse than an absent one: it type
+# checks, it builds, it ships, and it fails at the one moment it is used. Found writing the CLI's `home` module
+# in Term, which cannot ask for a home directory any other way.
+#
+# IT COULD NOT BE WIRED AS NAMED. The native's task was also called `get`, and names are PACKAGE-GLOBAL, so the
+# two unified and the delegation emitted `function get1(kind) { return get1(kind) }`. The native is `read-path`
+# now, which is the convention code/environment.tree already follows for `current-directory` and `get-variable`.
+# Twelve more public modules are in the same state for the same reason: see note/term/stdlib-gaps.md.
+
+load @term/seed/code/native/{platform}/environment/path
+  find read-path
+
 task get
   take kind, like text
   like text
+  send back
+    call read-path
+      read kind

@@ -1,0 +1,7 @@
+
+deck @term/cask
+  head <The native app cask: a window, the platform WebView, and a bridge, written in Term per platform>
+  code <0.0.2>
+  lock mit
+  link @term/base, code <0.0.x>
+  link @term/site, code <0.0.x>

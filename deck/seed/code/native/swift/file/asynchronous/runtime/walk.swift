@@ -4,7 +4,7 @@
 import Foundation
 import _NIOFileSystem
 
-enum walk {
+enum walkFile {
   private static var shared: FileSystem { FileSystem.shared }
 
   static func dirMake(_ path: String) async {

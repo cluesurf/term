@@ -1,26 +1,24 @@
+# node asynchronous file permissions, over `fs/promises`. The mode is the raw unix mode, the same number chmod
+# takes. Internal: reached only through the public file/permission API.
 
 dock load
-  load <node:fs/promises>, name fs-promise
+  load <global:aio>, name aio
 
-task read
+task permission-read
   note async
   take path, like text
-
-  save stats
-    call fs-promise/stat
-      wait true
+  like size
+  send back
+    call aio/permission-read
       read path
-      halt kink
+      wait true
 
-  send back, read stats/mode
-
-task write
+task permission-write
   note async
   take path, like text
   take mode, like size
-
-  call fs-promise/chmod
-    wait true
+  like void
+  call aio/permission-write
     read path
     read mode
-    halt kink
+    wait true

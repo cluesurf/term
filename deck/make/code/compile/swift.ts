@@ -758,11 +758,19 @@ export function emitSwift(
   let currentResult: Type | undefined
 
   const isNativeCall = (node: Expression): boolean => {
-    if (node.form !== 'call' || node.callee.form !== 'member') {
+    // SEE THROUGH AN AWAIT. `send back / call shim/list-them / wait true` is an `await` node wrapping the call,
+    // and it is the same call: an asynchronous shim returns a plain `[T]` exactly as a synchronous one does. Not
+    // looking through it meant a list-returning `note async` task emitted `return await shim.listThem(..)` with
+    // no `SeedList(..)` around it, which swiftc rejects with `cannot convert return expression of type '[String]'
+    // to return type 'SeedList<String>'`. The synchronous form of the very same task compiled clean, which is
+    // what made it look like a shim problem rather than an emitter one.
+    const call = node.form === 'await' ? node.expr : node
+
+    if (call.form !== 'call' || call.callee.form !== 'member') {
       return false
     }
 
-    const root = rootName(node.callee)
+    const root = rootName(call.callee)
 
     return root !== undefined && aliases.has(root)
   }
@@ -1903,10 +1911,31 @@ export function emitSwift(
     .map(n => `import ${n.module.replace(/^[a-z]+:/, '')}`)
 
   // a DOTTED opaque handle type (`dock type / load <SwiftUI.AnyView>`) names its module, which must be
-  // imported for the type to resolve
+  // imported for the type to resolve.
+  //
+  // UNLESS the first segment is a SHIM NAMESPACE. `dock type / load <runtime.Running>` beside
+  // `dock load / load <global:server>, name runtime` names a type inside the prepended shim's `enum runtime`,
+  // which is already in scope and is not a module: importing it is `no such module 'runtime'` on a file whose
+  // prelude defines it 190 lines above. Every handle type a runtime shim owns is dotted this way, so the whole
+  // asynchronous file and server surface tripped it at once.
+  const shimNames = new Set(
+    program
+      .filter(
+        (n): n is Extract<Statement, { form: 'native' }> =>
+          n.form === 'native' && n.module.startsWith('global:'),
+      )
+      .map(n => n.alias),
+  )
+
   for (const n of program) {
     if (n.form === 'native' && n.kind === 'type' && n.module.includes('.')) {
-      const importLine = `import ${n.module.split('.')[0]}`
+      const head = n.module.split('.')[0]!
+
+      if (shimNames.has(head)) {
+        continue
+      }
+
+      const importLine = `import ${head}`
 
       if (!imports.includes(importLine)) {
         imports.push(importLine)

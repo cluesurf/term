@@ -1,0 +1,64 @@
+# HTTPS: the server, with TLS. The clean uniform interface over each backend's server library, selected at build
+# time and hidden.
+#
+# This is `network/server` with a certificate, not a second server: HTTPS is HTTP with TLS in front, and a
+# separate implementation is how the two drift apart. `stop` on network/server shuts one of these down.
+
+load @term/seed/code/native/{platform}/network/https
+  find do-serve-secure
+  find do-start-secure
+
+load @term/seed/code/network/server/request
+  find request
+
+load @term/seed/code/network/server/response
+  find response
+
+load @term/seed/code/network/server
+  find server
+
+# run an HTTPS server on `port`, blocking for the life of the process: the entry point of a server binary.
+# `certificate` and `key` are PEM text.
+task serve
+  take port, like size
+  take
+    host
+    like text
+    fall text <0.0.0.0>
+  take handler
+    like task
+      take request, like request
+      like response
+  take certificate, like text
+  take key, like text
+  like void
+  call do-serve-secure
+    read port
+    read host
+    read handler
+    read certificate
+    read key
+
+# bind and answer over TLS without blocking. Shut it down with `stop` from network/server.
+task start
+  note async
+  take port, like size
+  take
+    host
+    like text
+    fall text <0.0.0.0>
+  take handler
+    like task
+      take request, like request
+      like response
+  take certificate, like text
+  take key, like text
+  like server
+  send back
+    call do-start-secure
+      read port
+      read host
+      read handler
+      read certificate
+      read key
+      wait true

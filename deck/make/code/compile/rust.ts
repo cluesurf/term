@@ -737,11 +737,18 @@ export function emitRust(
         } = ${expr(node.init)}; }`
 
   const isNativeCall = (node: Expression): boolean => {
-    if (node.form !== 'call' || node.callee.form !== 'member') {
+    // SEE THROUGH AN AWAIT. `send back / call shim/list-them / wait true` is an `await` node wrapping the call,
+    // and it is the same call: an asynchronous shim returns a plain `Vec<T>` exactly as a synchronous one does.
+    // Not looking through it meant a list-returning `note async` task emitted the bare `Vec` where the signature
+    // says `Rc<RefCell<Vec<T>>>`, while the SYNCHRONOUS form of the same task compiled clean. The swift emitter
+    // had the identical blind spot.
+    const call = node.form === 'await' ? node.expr : node
+
+    if (call.form !== 'call' || call.callee.form !== 'member') {
       return false
     }
 
-    const root = rootVariable(node.callee)
+    const root = rootVariable(call.callee)
 
     return root !== undefined && aliases.has(root)
   }

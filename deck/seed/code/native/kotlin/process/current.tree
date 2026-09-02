@@ -1,0 +1,40 @@
+
+# The current process. Forwards to the linked current runtime shim, which owns the Optional unwraps and the
+# shutdown-hook signal registration that cannot be written here. Internal: reached only through the public process API.
+
+dock load
+  load <global:current>, name current
+
+load @term/seed/code/process/current
+  find process-info
+
+task read
+  like process-info
+
+  send back
+    make process-info
+      bind id
+        call current/id
+      bind arguments
+        call current/arguments
+      bind directory
+        call current/directory
+      bind executable
+        call current/executable
+
+task exit
+  take
+    code
+    like size
+    fall 0
+
+  call current/exit
+    read code
+
+task listen
+  take signal, like text
+  take handler, like task
+
+  call current/listen
+    read signal
+    read handler

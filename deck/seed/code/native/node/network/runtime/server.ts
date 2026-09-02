@@ -77,7 +77,16 @@ const server = {
 
   // start a server and keep the process alive (node's http.Server holds the event loop open while listening). The
   // portable `serve` entry point: fire-and-forget on node, a blocking accept loop on the compiled backends.
-  serve: (port: number, host: string, handler: Handler): void => {
-    void server.start(port, host, handler, false, '', '')
+  // With secure, serves HTTPS from the PEM cert/key, the same three arguments `start` takes: the two entry points
+  // differ in whether they hold the process, not in what they can serve.
+  serve: (
+    port: number,
+    host: string,
+    handler: Handler,
+    secure: boolean,
+    certificate: string,
+    key: string,
+  ): void => {
+    void server.start(port, host, handler, secure, certificate, key)
   },
 }

@@ -8,7 +8,7 @@ import java.nio.file.Paths
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-object walk {
+object walkFile {
   suspend fun dirMake(path: String) {
     withContext(Dispatchers.IO) {
       try {

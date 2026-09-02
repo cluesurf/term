@@ -7,7 +7,7 @@
 // shape is not: it would need a `task` value crossing into a platform thread on three of the four.
 //
 // Reached only through the public file/watch API.
-mod watch {
+mod watch_file {
     use super::WatchEvent;
     use std::sync::Arc;
     use tokio::sync::Mutex;
@@ -17,6 +17,10 @@ mod watch {
     pub struct WatchState {
         pub keep: Option<notify::RecommendedWatcher>,
         pub take: tokio::sync::mpsc::UnboundedReceiver<WatchEvent>,
+        // Closing the channel is not enough. `recv` drains what is already BUFFERED before it answers None, so a
+        // change that landed just before `watch_close` is still delivered afterwards, and a caller looping until
+        // the empty event gets one more change than the watcher was open for. This flag is the actual close.
+        pub shut: bool,
     }
 
     pub type Watcher = Arc<Mutex<WatchState>>;
@@ -64,13 +68,26 @@ mod watch {
             Err(_) => None,
         };
 
-        Arc::new(Mutex::new(WatchState { keep, take }))
+        Arc::new(Mutex::new(WatchState {
+            keep,
+            take,
+            shut: false,
+        }))
     }
 
     // the next change. A closed watcher answers with the empty event rather than blocking forever, so a caller
     // that loops on `watch_next` terminates after `watch_close`.
     pub async fn watch_next(watcher: Watcher) -> WatchEvent {
-        match watcher.lock().await.take.recv().await {
+        let mut state = watcher.lock().await;
+
+        if state.shut {
+            return WatchEvent {
+                kind: String::new(),
+                path: String::new(),
+            };
+        }
+
+        match state.take.recv().await {
             Some(event) => event,
             None => WatchEvent {
                 kind: String::new(),
@@ -81,6 +98,7 @@ mod watch {
 
     pub async fn watch_close(watcher: Watcher) {
         let mut state = watcher.lock().await;
+        state.shut = true;
         state.keep = None;
         state.take.close();
     }

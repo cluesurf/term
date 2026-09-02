@@ -16,7 +16,9 @@ load @term/seed/code/native/{platform}/file/asynchronous/handle
 
 # an open file: the platform handle, private, plus the path it was opened from
 form file
-  link dock, mark private
+  link dock
+    like file-dock
+    note private
   link path, like text
 
 task open

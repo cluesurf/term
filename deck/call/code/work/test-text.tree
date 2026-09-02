@@ -1,0 +1,148 @@
+# The `test` preprocessor's text helpers, in Term.
+#
+# A test file is ordinary Term plus `test <phrase>` blocks, and `term test` rewrites each block into a top-level
+# async task before the compiler sees it: every assertion (`want hold` / `want miss`) becomes a fail-fast guard and
+# the task ends `send back, true`. This module is the text half of that, ported from deck/call/code/test-preprocess.ts
+# (cli-in-term-0003).
+#
+# IT IS THE LAST OF THE NINE COMPILER-FREE CLI FILES THAT COULD BE PORTED TODAY. The other seven need something the
+# stdlib does not reach yet: `base`, `base-import` and `base-engine` need @term/base (214 TypeScript files),
+# `remote-cache` needs an HTTP server, `role-of` needs a glob matcher, and `zone` needs the module's own URL.
+#
+# When the self-hosting mill consumes the `test` grammar (deck/mill/code/code/test) this whole step folds into the
+# mint and none of it is needed. It is ported anyway because the CLI has to run in Term before that lands.
+
+load @term/seed/code/text
+  find char-count
+  find substring
+  find trim
+  find split
+  find to-lower-case
+  find starts-with
+
+load @term/seed/code/regex
+  find replace, name replace-pattern
+
+# how many spaces a line is indented by
+task indent-of
+  take line, like text
+  like number
+  save trimmed
+    call trim-start-of
+      read line
+  send back
+    call subtract
+      call char-count
+        read line
+      call char-count
+        read trimmed
+
+# the line with its leading spaces removed. `text/trim` takes both ends, and an indent count needs only the front.
+task trim-start-of
+  take line, like text
+  like text
+  send back
+    call replace-pattern
+      text <^\s+>
+      read line
+      text <>
+
+# is there nothing on this line but space?
+task is-blank
+  take line, like text
+  like boolean
+  send back
+    call is-equal
+      call trim
+        read line
+      text <>
+
+# A phrase to the task name it becomes: lower case, every run of non-alphanumerics to one dash, no dash at either
+# end. An empty result is `case`, so a phrase of pure punctuation still names something.
+task slugify
+  take phrase, like text
+  like text
+  save lower
+    call to-lower-case
+      read phrase
+  save dashed
+    call replace-pattern
+      text <[^a-z0-9]+>
+      read lower
+      text <->
+  save trimmed
+    call replace-pattern
+      text <^-+|-+$>
+      read dashed
+      text <>
+  fork test
+    call is-equal
+      read trimmed
+      text <>
+    hook hold
+      send back
+        text <case>
+  send back, read trimmed
+
+# The name a `test` header declares: a `<free text>` phrase, or a bare slug. This is the slug half, which is the
+# task's name.
+task name-slug
+  take rest, like text
+  like text
+  save bare
+    call trim
+      read rest
+  fork test
+    call is-wrapped
+      read bare
+    hook hold
+      send back
+        call slugify
+          call unwrap
+            read bare
+  send back, read bare
+
+# and the label half: the phrase as written, or the slug with its dashes shown as spaces
+task name-label
+  take rest, like text
+  like text
+  save bare
+    call trim
+      read rest
+  fork test
+    call is-wrapped
+      read bare
+    hook hold
+      send back
+        call unwrap
+          read bare
+  send back
+    call replace-pattern
+      text <->
+      read bare
+      text < >
+
+# is this a `<...>` phrase rather than a bare slug?
+task is-wrapped
+  take value, like text
+  like boolean
+  send back
+    call is-equal
+      call replace-pattern
+        text <^<.+>$>
+        read value
+        text <>
+      text <>
+
+# the text inside a `<...>` phrase
+task unwrap
+  take value, like text
+  like text
+  send back
+    call substring
+      read value
+      code 1
+      call subtract
+        call char-count
+          read value
+        code 1

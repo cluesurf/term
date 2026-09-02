@@ -1,3 +1,60 @@
+# node HTTPS: the TLS half of the server, over the same node shim (which reaches for node:https rather than
+# node:http when a certificate is given). Internal: reached only through the public network/https API.
 
 dock load
-  load <node:https>, name https
+  load <global:server>, name runtime
+
+load @term/seed/code/network/server/request
+  find request
+
+load @term/seed/code/network/server/response
+  find response
+
+load @term/seed/code/network/server
+  find server
+
+# serve HTTPS on (host, port) from a PEM certificate and key, blocking for the life of the process
+task do-serve-secure
+  take port, like size
+  take host, like text
+  take handler
+    like task
+      take request, like request
+      like response
+  take certificate, like text
+  take key, like text
+  like void
+  call runtime/serve
+    read port
+    read host
+    read handler
+    true
+    read certificate
+    read key
+
+# bind and answer over TLS, without blocking. `stop` on network/server shuts it down.
+task do-start-secure
+  note async
+  take port, like size
+  take host, like text
+  take handler
+    like task
+      take request, like request
+      like response
+  take certificate, like text
+  take key, like text
+  like server
+  save raw
+    call runtime/start
+      read port
+      read host
+      read handler
+      true
+      read certificate
+      read key
+      wait true
+  send back
+    make server
+      bind dock, read raw
+      bind host, read host
+      bind port, read port

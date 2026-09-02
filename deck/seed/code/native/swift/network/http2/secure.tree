@@ -1,0 +1,58 @@
+# HTTP/2 over TLS, negotiated by ALPN. The ordinary way, and the only way a browser speaks h2.
+#
+# `certificate` and `key` are PEM text. This is `network/http2` with `secure` already decided, so a caller that
+# only ever serves h2 over TLS does not carry the argument.
+#
+# Internal: reached only through the public network/http2 API.
+
+load @term/seed/code/native/swift/network/http2
+  find do-serve-http2
+  find do-start-http2
+
+load @term/seed/code/network/server/request
+  find request
+
+load @term/seed/code/network/server/response
+  find response
+
+load @term/seed/code/network/http2
+  find http2-server
+
+task http2-serve-secure
+  take port, like size
+  take host, like text
+  take handler
+    like task
+      take request, like request
+      like response
+  take certificate, like text
+  take key, like text
+  like void
+  call do-serve-http2
+    read port
+    read host
+    read handler
+    true
+    read certificate
+    read key
+
+task http2-start-secure
+  note async
+  take port, like size
+  take host, like text
+  take handler
+    like task
+      take request, like request
+      like response
+  take certificate, like text
+  take key, like text
+  like http2-server
+  send back
+    call do-start-http2
+      read port
+      read host
+      read handler
+      true
+      read certificate
+      read key
+      wait true

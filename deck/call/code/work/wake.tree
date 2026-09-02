@@ -1,0 +1,198 @@
+# `term wake [name]` -- scaffold a new Term project: a manifest, a starter entry module, a readme and a gitignore.
+# With a name it makes a directory; without one it scaffolds where you are.
+#
+# WHAT IT SCAFFOLDS HAS TO BE CLEAN, because it is the first Term anyone reads. It once said `seed` throughout (the
+# language was renamed), imported `@cluesurf/seed` (the legacy prefix, which resolves but is not the name any more),
+# and wrote an 87-character comment, so a new project failed `term lint` on a line the scaffold itself wrote.
+# test/call/lifecycle.ts runs `wake` then `lint` and holds it.
+#
+# Ported from deck/call/code/wake.ts (cli-in-term-0004).
+
+load @term/seed/code/path
+  find join
+
+load @term/seed/code/file
+  find write, name write-file
+
+load @term/seed/code/file/directory
+  find make, name make-directory
+  find exists, name directory-exists
+
+load @term/seed/code/text
+  find trim
+
+dock load
+  load <@term/make/code/tint>, name tint
+  load <node:path>, name node-path
+  load <node:process>, name node-process
+  load <global:console>, name console
+
+# the manifest a new project starts from
+task deck-text
+  take project, like text
+  like text
+  send back
+    text <deck {{project}}
+  bear ./code
+  test ./test
+  code <0.0.1>
+  boot ./code/boot
+>
+
+# the entry module `term boot` runs
+task boot-text
+  like text
+  send back
+    text <# The application entry point. `term boot` compiles and runs
+# this module's `boot` task.
+
+load @term/seed/code/console
+  find log
+
+task boot
+  note async
+  call log
+    text <hello from term>
+>
+
+task readme-text
+  take project, like text
+  like text
+  send back
+    text <# {{project}}
+
+A Term project.
+
+## Develop
+
+    term boot     # compile and run
+    term feed     # dev server with hot reload
+    term test     # run tests
+    term make     # build
+>
+
+task ignore-text
+  like text
+  send back
+    text <host
+link
+.base/
+node_modules
+>
+
+task wake
+  note async
+  take root, like text
+  take name, like text
+  like void
+  save project
+    call trim
+      read name
+  save named
+    call is-real-name
+      read project
+  save target
+    fork test
+      read named
+      hook hold
+        call node-path/resolve
+          read root
+          read project
+      hook miss
+        read root
+  save label
+    fork test
+      read named
+      hook hold
+        read project
+      hook miss
+        call node-path/basename
+          read target
+  call tint/logStep
+    text <Waking {{label}}...>
+  note unsafe
+    call make-directory
+      read target
+    fork test
+      call directory-exists
+        call join
+          read target
+          text <deck.tree>
+      hook hold
+        call tint/logFail
+          text <A deck.tree already exists in {{target}}>
+        call node-process/exit
+          code 1
+    call make-directory
+      call join
+        read target
+        text <code>
+    call make-directory
+      call join
+        read target
+        text <test>
+    call write-file
+      call join
+        read target
+        text <deck.tree>
+      call deck-text
+        read label
+      wait true
+    call write-file
+      call join
+        call join
+          read target
+          text <code>
+        text <boot.tree>
+      call boot-text
+      wait true
+    call write-file
+      call join
+        read target
+        text <readme.md>
+      call readme-text
+        read label
+      wait true
+    call write-file
+      call join
+        read target
+        text <.gitignore>
+      call ignore-text
+      wait true
+    call tint/logGood
+      text <Woke {{label}}>
+    fork test
+      read named
+      hook hold
+        call console/log
+          call tint/fade
+            text <  cd {{project}} && term boot>
+      hook miss
+        call console/log
+          call tint/fade
+            text <  term boot>
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1
+
+# a name that means "make a directory", as opposed to none or `.`, which both mean "here"
+task is-real-name
+  take project, like text
+  like boolean
+  fork test
+    call is-equal
+      read project
+      text <>
+    hook hold
+      send back, false
+  fork test
+    call is-equal
+      read project
+      text <.>
+    hook hold
+      send back, false
+  send back, true

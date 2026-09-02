@@ -1,0 +1,172 @@
+# `term form` -- format `.tree` files into canonical layout.
+#
+# By default it rewrites them in place. `--check` only reports which files would change, which is what a gate runs;
+# `--list` prints the formatted source and writes nothing.
+#
+# A FILE WITH A PARSE ERROR IS REPORTED AND LEFT ALONE. Overwriting a file the formatter could not read would
+# replace something broken with something worse, and the author would have no way back.
+#
+# Ported from deck/call/code/form.ts (cli-in-term-0004).
+
+load @term/call/code/work/files
+  find walk-trees
+
+load @term/seed/code/file
+  find read, name read-file
+  find write, name write-file
+
+dock load
+  load <@term/make/code/analyze>, name analyze-module
+  load <@term/make/code/parser/diagnostic>, name diagnostic-module
+  load <@term/make/code/tint>, name tint
+  load <node:path>, name node-path
+  load <node:process>, name node-process
+  load <global:console>, name console
+
+form analyze-ask
+  link file, like text
+  link text, like text
+
+task form
+  note async
+  take root, like text
+  take check, like boolean
+  take list, like boolean
+  like void
+  save files
+    call walk-trees
+      read root
+      wait true
+  fork test
+    call is-equal
+      read files/length
+      code 0
+    hook hold
+      call tint/logFail
+        text <No .tree files found>
+      call node-process/exit
+        code 1
+  fork test
+    read check
+    hook hold
+      call tint/logStep
+        text <Checking formatting...>
+    hook miss
+      call tint/logStep
+        text <Formatting...>
+  save changed
+    code 0
+  save broken
+    code 0
+  walk list, read files
+    hook next
+      take site, name file
+      save text
+        call read-file
+          read file
+          wait true
+      save shown
+        call node-path/relative
+          read root
+          read file
+      save analysis
+        call analyze-module/analyze
+          make analyze-ask
+            bind file, read shown
+            bind text, read text
+      save errors
+        call only-errors
+          read analysis/diagnostics
+      fork test
+        call is-above
+          read errors/length
+          code 0
+        hook hold
+          save broken
+            call add
+              read broken
+              code 1
+          call tint/logFail
+            text <{{shown}} could not be parsed>
+          turn next
+      save formatted
+        call analysis/format
+      fork test
+        call is-equal
+          read formatted
+          read text
+        hook hold
+          turn next
+      save changed
+        call add
+          read changed
+          code 1
+      fork test
+        read list
+        hook hold
+          call console/log
+            read formatted
+          turn next
+      fork test
+        read check
+        hook hold
+          call console/log
+            call tint/fade
+              text <  would reformat {{shown}}>
+          turn next
+      call write-file
+        read file
+        read formatted
+        wait true
+      call console/log
+        call tint/fade
+          text <  formatted {{shown}}>
+  fork test
+    call is-above
+      read broken
+      code 0
+    hook hold
+      call node-process/exit
+        code 1
+  fork test
+    read check
+    hook hold
+      fork test
+        call is-above
+          read changed
+          code 0
+        hook hold
+          call tint/logFail
+            text <{{changed}} file(s) need formatting>
+          call node-process/exit
+            code 1
+  fork test
+    call is-equal
+      read changed
+      code 0
+    hook hold
+      call tint/logGood
+        text <All files already formatted>
+      send back
+  call tint/logGood
+    text <Formatted {{changed}} file(s)>
+
+# the error-severity diagnostics of an analysis, which are the ones that stop a file being written
+task only-errors
+  take diagnostics, like list
+    like unknown
+  like list
+    like unknown
+  save found
+    make list
+  walk list, read diagnostics
+    hook next
+      take site, name one
+      fork test
+        call is-equal
+          read one/severity
+          text <error>
+        hook hold
+          call found/push
+            read one
+  send back, read found

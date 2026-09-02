@@ -1,13 +1,18 @@
 // Compiled-server round trip: compile a real Seed `network/server` program to a NATIVE backend (rust / kotlin / swift),
 // build it with the real toolchain into a server binary, SPAWN it, make actual HTTP requests against it from node, and
 // assert the responses -- then kill it. This is the inverse of the network/http test (which spawns a node peer and runs
-// the Seed CLIENT): here the compiled Seed code is the SERVER. The servers are blocking and std-only (no async runtime /
-// external crate), so only the base compilers are needed. A missing toolchain is reported as skipped, never a failure.
+// the Seed CLIENT): here the compiled Seed code is the SERVER.
+//
+// THE SERVERS ARE NO LONGER std-only. They used to be hand-rolled accept loops, which is why this harness used to
+// build rust with a bare `rustc` and kotlin and swift with bare compilers. They are hyper, Ktor and Hummingbird
+// now, so rust builds as a cargo project and the other two take the dependency flags the per-language scripts
+// resolve (task/term/native/{swift,kotlin}.sh). A missing toolchain is reported as skipped, never a failure.
 // Run: npx tsx test/compile/server-roundtrip.ts
 
 import { execFileSync, spawn } from 'node:child_process'
 import {
   mkdtempSync,
+  mkdirSync,
   writeFileSync,
   readFileSync,
   existsSync,
@@ -16,6 +21,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as net from 'node:net'
 import * as http from 'node:http'
+import { nativeFlags } from './native-flags'
 import { parse } from '@term/make/code/parser/tree'
 import { mill } from '@term/make/code/compile/mill'
 import { expandTemplates } from '@term/make/code/compile/template'
@@ -199,6 +205,28 @@ function get(
 }
 
 // the Seed server program: serve on PORT, echoing the request path (so a fetch proves method/path parsing + the handler)
+// Spawn the built server and KEEP its stderr. With `stdio: 'ignore'` a server that panicked on startup and a
+// server that was merely slow produced the identical message, which is the least useful failure a round trip can
+// report.
+function spawnServer(
+  command: string,
+  args: string[] = [],
+): { proc: ReturnType<typeof spawn>; said: () => string } {
+  const proc = spawn(command, args, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  let heard = ''
+
+  proc.stdout?.on('data', (chunk: Buffer) => {
+    heard += chunk.toString()
+  })
+  proc.stderr?.on('data', (chunk: Buffer) => {
+    heard += chunk.toString()
+  })
+
+  return { proc, said: () => heard.trim().slice(0, 600) }
+}
+
 const SERVER = (port: number): string => `load @cluesurf/seed/code/network/server
   find serve
 
@@ -226,9 +254,9 @@ task boot
 async function rustServer(): Promise<void> {
   const name = 'rust: compiled HTTP server echoes the request path'
 
-  if (!have('rustc')) {
+  if (!have('cargo')) {
     skip++
-    console.log(`skip  ${name}  (rustc not installed)`)
+    console.log(`skip  ${name}  (cargo not installed)`)
 
     return
   }
@@ -237,26 +265,55 @@ async function rustServer(): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), 'seed-server-rs-'))
   const program = frontEnd(SERVER(port), 'rust')
   const main = `\nfn main() { boot(); }\n`
-  const file = join(dir, 'server.rs')
+  mkdirSync(join(dir, 'src'), { recursive: true })
+  const file = join(dir, 'src', 'main.rs')
   writeFileSync(
     file,
-    `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(
+    `#![allow(warnings)]\n${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(
       program,
     )}${main}`,
   )
 
-  const exe = join(dir, 'server')
+  // the crates the server shim wraps, mirroring deck/seed/code/native/rust/Cargo.toml. `rustc` alone cannot build
+  // this any more: the shim is hyper, not a std::net accept loop.
+  writeFileSync(
+    join(dir, 'Cargo.toml'),
+    `[package]
+name = "seed-server-roundtrip"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+hyper = { version = "1", features = ["server", "client", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto", "service"] }
+http-body-util = "0.1"
+bytes = "1"
+tokio-rustls = "0.26"
+rustls-pemfile = "2"
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
+`,
+  )
+
+  // the shared target directory the gate and task/term/native/rust.sh use, so the crate graph is already built
+  const cargoEnv = {
+    ...process.env,
+    CARGO_TARGET_DIR: join(tmpdir(), 'seed-rust-runtime', 'target'),
+  }
 
   try {
-    execFileSync(
-      'rustc',
-      ['-A', 'warnings', '--edition', '2021', file, '-o', exe],
-      { stdio: 'pipe' },
-    )
+    execFileSync('cargo', ['build', '--quiet', '--bin', 'server'], {
+      cwd: dir,
+      stdio: 'pipe',
+      env: cargoEnv,
+    })
   } catch (e) {
     fail++
     console.log(
-      `FAIL  ${name}  (rustc error: ${String(
+      `FAIL  ${name}  (cargo error: ${String(
         (e as { stderr?: Buffer }).stderr ?? e,
       ).slice(0, 600)})`,
     )
@@ -264,7 +321,8 @@ async function rustServer(): Promise<void> {
     return
   }
 
-  const proc = spawn(exe, { stdio: 'ignore' })
+  const exe = join(cargoEnv.CARGO_TARGET_DIR, 'debug', 'server')
+  const { proc, said } = spawnServer(exe)
 
   try {
     await waitForPort(port)
@@ -278,7 +336,11 @@ async function rustServer(): Promise<void> {
     )
   } catch (e) {
     fail++
-    console.log(`FAIL  ${name}  (request error: ${String(e)})`)
+    console.log(
+      `FAIL  ${name}  (request error: ${String(e)})${
+        said() ? `\n      the server said: ${said()}` : ''
+      }`,
+    )
   } finally {
     proc.kill('SIGKILL')
   }
@@ -310,7 +372,7 @@ async function kotlinServer(): Promise<void> {
   const jar = join(dir, 'server.jar')
 
   try {
-    execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], {
+    execFileSync('kotlinc', [file, ...nativeFlags('kotlin'), '-include-runtime', '-d', jar], {
       stdio: 'pipe',
     })
   } catch (e) {
@@ -324,7 +386,15 @@ async function kotlinServer(): Promise<void> {
     return
   }
 
-  const proc = spawn('java', ['-jar', jar], { stdio: 'ignore' })
+  // the ktor classes have to be on the RUN classpath too, not just the compile one: `-include-runtime` bundles
+  // kotlin-stdlib and nothing else, so `java -jar` alone is `NoClassDefFoundError: io/ktor/server/cio/CIO` at the
+  // first line of the server
+  const classpath = nativeFlags('kotlin')[1] ?? ''
+  const { proc, said } = spawnServer('java', [
+    '-classpath',
+    classpath ? `${jar}:${classpath}` : jar,
+    'ServerKt',
+  ])
 
   try {
     await waitForPort(port)
@@ -338,7 +408,11 @@ async function kotlinServer(): Promise<void> {
     )
   } catch (e) {
     fail++
-    console.log(`FAIL  ${name}  (request error: ${String(e)})`)
+    console.log(
+      `FAIL  ${name}  (request error: ${String(e)})${
+        said() ? `\n      the server said: ${said()}` : ''
+      }`,
+    )
   } finally {
     proc.kill('SIGKILL')
   }
@@ -347,9 +421,9 @@ async function kotlinServer(): Promise<void> {
 async function swiftServer(): Promise<void> {
   const name = 'swift: compiled HTTP server echoes the request path'
 
-  if (!have('swiftc')) {
+  if (!have('swift')) {
     skip++
-    console.log(`skip  ${name}  (swiftc not installed)`)
+    console.log(`skip  ${name}  (swift not installed)`)
 
     return
   }
@@ -357,30 +431,80 @@ async function swiftServer(): Promise<void> {
   const port = 8773
   const dir = mkdtempSync(join(tmpdir(), 'seed-server-sw-'))
   const program = frontEnd(SERVER(port), 'swift')
-  const file = join(dir, 'server.swift')
+  // A SwiftPM PACKAGE, not a bare `swiftc -o`. The server shim is Hummingbird now, and a bare swiftc can be given
+  // the module search paths (that is what nativeFlags does, and it is enough to TYPECHECK) but not the libraries:
+  // producing an executable then fails at the link step with no useful message. SwiftPM does both.
+  mkdirSync(join(dir, 'Sources', 'server'), { recursive: true })
+  const file = join(dir, 'Sources', 'server', 'main.swift')
   writeFileSync(
     file,
     `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(
       program,
     )}\nboot()\n`,
   )
+  writeFileSync(
+    join(dir, 'Package.swift'),
+    `// swift-tools-version:5.9
+// GENERATED by test/compile/server-roundtrip.ts. Mirrors deck/seed/code/native/swift/Package.swift.
+import PackageDescription
 
-  const exe = join(dir, 'server')
+let package = Package(
+    name: "server",
+    platforms: [.macOS(.v14)],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
+        .package(
+            url: "https://github.com/hummingbird-project/hummingbird.git",
+            from: "2.0.0"
+        ),
+    ],
+    targets: [
+        .executableTarget(
+            name: "server",
+            dependencies: [
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio"),
+                .product(name: "_NIOFileSystem", package: "swift-nio"),
+                .product(name: "Hummingbird", package: "hummingbird"),
+            ],
+            path: "Sources/server"
+        )
+    ]
+)
+`,
+  )
+
+  // the SwiftPM scratch directory is SHARED between runs, so the swift-nio and Hummingbird graph is resolved and
+  // built once rather than once per run (a cold resolve is minutes)
+  const scratch = join(tmpdir(), 'term-native', 'swift', 'server-roundtrip')
+  const exe = join(scratch, 'debug', 'server')
 
   try {
-    execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
+    execFileSync(
+      'swift',
+      [
+        'build',
+        '--package-path',
+        dir,
+        '--scratch-path',
+        scratch,
+        '--product',
+        'server',
+      ],
+      { stdio: 'pipe' },
+    )
   } catch (e) {
     fail++
     console.log(
-      `FAIL  ${name}  (swiftc error: ${String(
+      `FAIL  ${name}  (swift build error: ${String(
         (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(0, 600)})`,
+      ).slice(-900)})`,
     )
 
     return
   }
 
-  const proc = spawn(exe, { stdio: 'ignore' })
+  const { proc, said } = spawnServer(exe)
 
   try {
     await waitForPort(port)
@@ -394,7 +518,11 @@ async function swiftServer(): Promise<void> {
     )
   } catch (e) {
     fail++
-    console.log(`FAIL  ${name}  (request error: ${String(e)})`)
+    console.log(
+      `FAIL  ${name}  (request error: ${String(e)})${
+        said() ? `\n      the server said: ${said()}` : ''
+      }`,
+    )
   } finally {
     proc.kill('SIGKILL')
   }

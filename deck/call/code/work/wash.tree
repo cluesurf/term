@@ -1,0 +1,105 @@
+# `term wash` -- remove a project's build artifacts.
+#
+# `.base/term/cache` is the PRE-RENAME path, kept here on purpose. `.base/term/` became `.base/@cluesurf/term/` on
+# 2026-08-30, and a cache deliberately does not travel through `kept-at` on a rename because the next build
+# regenerates it. Nothing said what happens to the old copy, so it was left behind whole and nothing ever looked at
+# it again: 13 GB of it in `deck/bind` alone by 2026-09-01. A clean means both.
+#
+# THE FIRST COMPILER-COUPLED CLI MODULE IN TERM, and the point it proves. `wash.ts` imports its colours from
+# `@term/make/code/tint`, a TypeScript module, and that looked like a reason it could not be ported. It is not: a
+# `dock load` takes a PACKAGE PATH as readily as a `<node:fs>`, which `@cluesurf/seed/word` in the stdlib already
+# relies on. So a Term module can reach the existing toolchain on the TypeScript target and lose nothing.
+#
+# WHAT THAT DOES AND DOES NOT BUY. On TypeScript this is complete. On Rust the dock resolves to a module that does
+# not exist, so the verb is not native until whatever it docks is Term too. That is the honest shape of the
+# conversion: the source becomes `.tree` first, and each dock is then a named thing to replace, in one place, rather
+# than a TypeScript file nobody is looking at. See note/term/project/cli-in-term.md.
+
+load @term/seed/code/path
+  find join
+
+load @term/seed/code/file/directory
+  find remove, name remove-directory
+  find exists, name directory-exists
+
+dock load
+  load <@term/make/code/tint>, name tint
+
+# The directories a build writes and a clean removes. Both cache paths, for the reason above.
+task build-directories
+  like list
+    like text
+  send back
+    make list
+      text <host>
+      text <make>
+      text <hold>
+      text <.base/@cluesurf/term/cache>
+      text <.base/term/cache>
+
+# `term wash tail` clears the logs and nothing else
+task wash-logs
+  take root, like text
+  like void
+  call tint/logStep
+    text <Clearing logs...>
+  save log-directory
+    call join
+      call join
+        read root
+        text <.base/@cluesurf/term>
+      text <log>
+  fork test
+    call directory-exists
+      read log-directory
+    hook hold
+      call remove-directory
+        read log-directory
+  call tint/logGood
+    text <Logs cleared>
+
+# `term wash` with no target removes every build directory that is there
+task wash-build
+  take root, like text
+  like void
+  call tint/logStep
+    text <Cleaning build artifacts...>
+  save cleaned
+    code 0
+  walk list, call build-directories
+    hook next
+      take site, name directory
+      save full
+        call join
+          read root
+          read directory
+      fork test
+        call directory-exists
+          read full
+        hook hold
+          call remove-directory
+            read full
+          call show-removed
+            read directory
+          save cleaned
+            call add
+              read cleaned
+              code 1
+  fork test
+    call is-above
+      read cleaned
+      code 0
+    hook hold
+      call tint/logGood
+        text <Cleaned {{cleaned}} directories>
+      send back
+  call tint/logGood
+    text <Nothing to clean>
+
+# one removed directory, in the faded colour the rest of the CLI uses for detail
+task show-removed
+  take directory, like text
+  like void
+  call tint/logStep
+    call tint/fade
+      text <    removed {{directory}}/>

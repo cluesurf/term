@@ -1,0 +1,62 @@
+# The parts of a request that only HTTP/2 has: the pseudo-headers, and the stream it arrived on.
+#
+# These read the ordinary header map, because each shim puts the pseudo-headers there rather than inventing a
+# second request record. That is deliberate: the handler is the SAME `(request) -> response` an HTTP/1.1 server
+# takes, so a service gains h2 without being rewritten, and these are here for the handler that wants to know.
+#
+# Internal: reached only through the public network/http2 API.
+
+load @term/seed/code/network/server/request
+  find request
+
+load @term/seed/code/native/node/network/http2/shared
+  find head-scheme
+  find head-authority
+  find head-stream
+
+load @term/seed/code/hash
+  find hash
+
+# <https> or <http>. On HTTP/1.1 there is no such header and this answers the empty text.
+task http2-scheme
+  take request, like request
+  like text
+  send back
+    call read-head
+      read request
+      read head-scheme
+
+# the host and port the client asked for, which is h2's replacement for the Host header
+task http2-authority
+  take request, like request
+  like text
+  send back
+    call read-head
+      read request
+      read head-authority
+
+# the stream the request arrived on. Odd-numbered and client-initiated, and 0 on a backend or a connection with
+# no stream to report.
+task http2-stream
+  take request, like request
+  like text
+  send back
+    call read-head
+      read request
+      read head-stream
+
+# one header, or the empty text. Private: the public way to read a header is the request's own header map.
+task read-head
+  note private
+  take request, like request
+  take name, like text
+  like text
+  save found
+    call hash-get
+      read request/headers
+      read name
+  fork case, read found
+    case some
+      send back, read value
+    case none
+      send back, text <>

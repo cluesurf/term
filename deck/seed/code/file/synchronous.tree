@@ -1,0 +1,119 @@
+# An open file, read and written WITHOUT waiting. The clean uniform interface, the per-env native implementation
+# selected at build time and hidden.
+#
+# This is [handle.tree](handle.tree) with the awaits taken out, task for task and argument for argument, which is
+# what "synchronous" should mean beside an asynchronous handle. Use it where waiting is not available or not
+# wanted: reading a configuration file before the runtime is up, or a small read inside a hot loop where the cost
+# of a task switch is larger than the read.
+#
+# NOT the default. A synchronous read blocks the thread, which on node blocks the event loop and on the compiled
+# backends blocks whatever else that thread was going to run. Reach for `file/handle` unless you have a reason.
+#
+# The open modes are the same five independent booleans the asynchronous side uses, for the same reason: "w+" is a
+# node spelling. See note/term/stdlib/native-async-file-and-server.md.
+
+load @term/seed/code/native/{platform}/file/synchronous
+  find grip-open
+  find grip-close
+  find grip-read
+  find grip-write
+  find grip-seek
+  find grip-flush
+  find grip-clear
+
+# an open file: the platform handle, private, plus the path it was opened from
+form synchronous-file
+  link dock
+    like grip-dock
+    note private
+  link path, like text
+
+task open
+  take path, like text
+  take
+    read
+    like boolean
+    fall true
+  take
+    write
+    like boolean
+    fall false
+  take
+    create
+    like boolean
+    fall false
+  take
+    append
+    like boolean
+    fall false
+  take
+    clear
+    like boolean
+    fall false
+  like synchronous-file
+  send back
+    call grip-open
+      read path
+      read read
+      read write
+      read create
+      read append
+      read clear
+
+task close
+  take file, like synchronous-file
+  like void
+  call grip-close
+    read file
+
+# the next `size` bytes from the cursor, as text. The cursor moves by what was read.
+task read
+  take file, like synchronous-file
+  take size, like size
+  like text
+  send back
+    call grip-read
+      read file
+      read size
+
+# write at the cursor, and answer how many bytes went in
+task write
+  take file, like synchronous-file
+  take data, like text
+  like size
+  send back
+    call grip-write
+      read file
+      read data
+
+# move the cursor. `frame` is <start>, <relative> or <end>, the same three SEEK_SET / SEEK_CUR / SEEK_END mean.
+task seek
+  take file, like synchronous-file
+  take offset, like size
+  take
+    frame
+    like text
+    fall text <start>
+  like void
+  call grip-seek
+    read file
+    read offset
+    read frame
+
+task flush
+  take file, like synchronous-file
+  like void
+  call grip-flush
+    read file
+
+# cut the file to `size` bytes, 0 for empty
+task clear
+  take file, like synchronous-file
+  take
+    size
+    like size
+    fall code 0
+  like void
+  call grip-clear
+    read file
+    read size

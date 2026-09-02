@@ -24,7 +24,9 @@ form watch-event
 
 # a running watcher: the platform watch handle, private, plus the path it was opened on
 form watcher
-  link dock, mark private
+  link dock
+    like watch-dock
+    note private
   link path, like text
 
 # start watching `path`. With `deep`, everything beneath it too.

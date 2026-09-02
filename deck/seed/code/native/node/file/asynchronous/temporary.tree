@@ -1,13 +1,10 @@
-
-load @term/seed/code/text/string
-  find concat
+# node temporary files and directories, under the system temp directory. The name is a uuid, so no retry loop and
+# no mkdtemp. Internal: reached only through the public file/temporary API.
 
 dock load
-  load <node:fs/promises>, name fs-promise
-  load <node:path>, name path
-  load <node:os>, name os
+  load <global:aio>, name aio
 
-task make
+task temporary-make
   note async
   take
     kind
@@ -21,41 +18,10 @@ task make
     suffix
     like text
     fall text <>
-
-  save base
-    call path/join
-      call os/tmpdir
-      read prefix
-
-  fork
-    test
-    call is-equal
+  like text
+  send back
+    call aio/temporary-make
       read kind
-      text <directory>
-    hook hold
-      send back
-        call fs-promise/mkdtemp
-          wait true
-          read base
-          halt kink
-
-  save dir
-    call fs-promise/mkdtemp
+      read prefix
+      read suffix
       wait true
-      read base
-      halt kink
-
-  save file-path
-    call path/join
-      read dir
-      call concat
-        text <file>
-        read suffix
-
-  call fs-promise/write-file
-    wait true
-    read file-path
-    text <>
-    halt kink
-
-  send back, read file-path

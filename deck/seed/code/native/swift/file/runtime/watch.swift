@@ -14,7 +14,7 @@
 import Dispatch
 import Foundation
 
-enum watch {
+enum watchFile {
   // the running watch: the descriptor and its dispatch source, plus a queue of changes the source has posted and
   // nobody has taken yet, and whoever is waiting for one
   final class Watcher: @unchecked Sendable {

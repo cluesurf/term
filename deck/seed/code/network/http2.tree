@@ -1,0 +1,110 @@
+# HTTP/2. The clean uniform interface over each backend's HTTP/2 server, selected at build time and hidden.
+#
+# HTTP/2 IS A TRANSPORT, NOT A DIFFERENT APPLICATION API. The handler is the same `(request) -> response` that
+# `network/server` takes, so one handler serves both and a service is not rewritten to gain h2. What changes is
+# how the connection is set up, and that is all this module is:
+#
+#   secure    h2 over TLS, negotiated by ALPN. The ordinary way, and the only way a browser speaks h2.
+#   clear     h2c, cleartext with prior knowledge. For a proxy or a service mesh that already knows.
+#
+# Shape it after [server.tree](server.tree) deliberately: `serve` blocks, `start` returns a running server and
+# `stop` shuts it down, with the same argument order. A program that wants BOTH an h1 and an h2 server imports one
+# of them under a name (`find serve, name serve-http2`), because the verbs are the same on purpose.
+#
+# See note/term/stdlib/native-async-file-and-server.md for what each backend runs underneath, and for the two
+# named gaps (h2c, and server push).
+
+load @term/seed/code/native/{platform}/network/http2
+  find do-serve-http2
+  find do-start-http2
+  find do-stop-http2
+
+load @term/seed/code/network/server/request
+  find request
+
+load @term/seed/code/network/server/response
+  find response
+
+# a running HTTP/2 server: the platform server object in the opaque `dock`, plus the bound host and port
+form http2-server
+  link dock
+    like http2-dock
+    note private
+  link host, like text
+  link port, like number
+
+# Run an HTTP/2 server on `port`, blocking for the life of the process: the entry point of a server binary.
+# `certificate` and `key` are PEM text. Without `secure` this is h2c, and the certificate and key are ignored.
+task serve
+  take port, like size
+  take
+    host
+    like text
+    fall text <0.0.0.0>
+  take handler
+    like task
+      take request, like request
+      like response
+  take
+    secure
+    like boolean
+    fall true
+  take
+    certificate
+    like text
+    fall text <>
+  take
+    key
+    like text
+    fall text <>
+  like void
+  call do-serve-http2
+    read port
+    read host
+    read handler
+    read secure
+    read certificate
+    read key
+
+# bind and answer over HTTP/2 without blocking. `stop` shuts it down.
+task start
+  note async
+  take port, like size
+  take
+    host
+    like text
+    fall text <0.0.0.0>
+  take handler
+    like task
+      take request, like request
+      like response
+  take
+    secure
+    like boolean
+    fall true
+  take
+    certificate
+    like text
+    fall text <>
+  take
+    key
+    like text
+    fall text <>
+  like http2-server
+  send back
+    call do-start-http2
+      read port
+      read host
+      read handler
+      read secure
+      read certificate
+      read key
+      wait true
+
+task stop
+  note async
+  take server, like http2-server
+  like void
+  call do-stop-http2
+    read server
+    wait true

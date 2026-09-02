@@ -1,0 +1,49 @@
+# rust line reading, over tokio's asynchronous standard input. Internal: reached only through the public
+# process/line API.
+
+dock type
+  load <prompt::Tool>, name line-dock
+
+dock load
+  load <global:prompt>, name prompt
+
+load @term/seed/code/process/line
+  find tool
+
+task line-open
+  note async
+  like tool
+  save raw
+    call prompt/line-open
+      wait true
+  send back
+    make tool
+      bind dock, read raw
+
+task line-ask
+  note async
+  take tool, like tool
+  take prompt, like text
+  like text
+  send back
+    call prompt/line-ask
+      read tool/dock
+      read prompt
+      wait true
+
+task line-read
+  note async
+  take tool, like tool
+  like text
+  send back
+    call prompt/line-read
+      read tool/dock
+      wait true
+
+task line-close
+  note async
+  take tool, like tool
+  like void
+  call prompt/line-close
+    read tool/dock
+    wait true

@@ -1,5 +1,5 @@
-# HTTP/HTTPS server: the clean uniform interface over each backend's server library (node http/https, rust hyper, swift
-# NIO, kotlin ktor), selected at build time and hidden. `start` binds a port and runs `handler` for every request (a
+# HTTP/HTTPS server: the clean uniform interface over each backend's server library (node http/https, rust hyper,
+# swift Hummingbird, kotlin Ktor), selected at build time and hidden. `start` binds a port and runs `handler` for every request (a
 # `request` in, a `response` out); `stop` shuts it down. Async on every target. For declarative routing, the `dock`
 # routing DSL (`hook </path>`) lowers to a `route(host, path)` dispatcher you hand to `start` as the handler.
 
@@ -16,7 +16,9 @@ load @term/seed/code/network/server/response
 
 # a running server: the platform server object lives in the opaque `dock` handle, plus the bound host and port
 form server
-  link dock, mark private
+  link dock
+    like server-dock
+    note private
   link host, like text
   link port, like number
 
@@ -36,7 +38,7 @@ task start
   take
     secure
     like boolean
-    fall wave false
+    fall false
   take
     certificate
     like text
@@ -78,8 +80,23 @@ task serve
     like task
       take request, like request
       like response
+  take
+    secure
+    like boolean
+    fall false
+  take
+    certificate
+    like text
+    fall text <>
+  take
+    key
+    like text
+    fall text <>
   like void
   call do-serve
     read port
     read host
     read handler
+    read secure
+    read certificate
+    read key

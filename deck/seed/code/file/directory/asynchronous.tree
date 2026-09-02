@@ -1,0 +1,59 @@
+# Reading a directory WITHOUT blocking. The clean uniform interface, the per-env native implementation selected at
+# build time and hidden.
+#
+# Beside [../directory.tree](../directory.tree), which is the synchronous surface, the way
+# [../synchronous.tree](../synchronous.tree) sits beside [../handle.tree](../handle.tree). They are separate
+# MODULES rather than separate tasks in one, because a dock is paid for by whoever imports the module: putting
+# these three in the synchronous module made every program that lists a directory link swift-nio, tokio or
+# kotlinx-coroutines, whether it waited on anything or not.
+#
+# These take what the synchronous three cannot: a depth bound, and entries that say what they are.
+
+load @term/seed/code/native/{platform}/file/asynchronous/directory
+  find folder-make
+  find folder-list
+  find folder-walk
+
+load @term/seed/code/file/directory
+  find walk-entry
+
+# make the directory, and every missing directory above it
+task make
+  note async
+  take path, like text
+  like void
+  call folder-make
+    read path
+    wait true
+
+# the names in the directory. With `deep`, every path below it too, relative to `path`.
+task list
+  note async
+  take path, like text
+  take
+    deep
+    like boolean
+    fall false
+  like list
+    like text
+  send back
+    call folder-list
+      read path
+      read deep
+      wait true
+
+# every entry beneath `path` with what it is and how far down it sits. `depth` 0 walks all the way down.
+task walk
+  note async
+  take path, like text
+  take
+    depth
+    like size
+    fall code 0
+  like list
+    like walk-entry
+  send back
+    call folder-walk
+      read path
+      read depth
+      wait true

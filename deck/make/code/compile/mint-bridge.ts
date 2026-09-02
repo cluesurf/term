@@ -1365,11 +1365,32 @@ function statementOf(
     }
 
     case 'fork-roll': {
-      // `fork roll`: a chain of guards, each `hook test` its own branch with an empty body
+      // `fork roll`: a chain of guards. Each arm is `hook test` with its condition as the first flow, and its
+      // body under a `hook hold` NESTED INSIDE that arm rather than beside it, which is what makes a roll a
+      // different shape from a `fork test`.
+      //
+      // THE BODY USED TO BE HARDCODED EMPTY here, with a comment asserting that a roll's arms have none. They do
+      // not, and the result was that every guard chain in the tree compiled to `if (a) {} else if (b) {}` with
+      // every body discarded and no diagnostic: a function that silently returned nothing. The grammar dropped
+      // the nested arm too (`mine flow` matches no `hook`), so both halves had to be fixed to see it at all.
       const branches = formsAt(value, 'arm').flatMap(arm => {
         const cond = expressionOf(bridge, firstAt(arm, 'flow'))
 
-        return cond ? [{ cond, body: [] as Statement[] }] : []
+        if (!cond) {
+          return []
+        }
+
+        // the body is the nested `hook hold`'s flow; an arm with no nested hold is a bare guard and has none
+        const held = formsAt(arm, 'arm').find(
+          nested => wordAt(nested, 'kind') === 'hold',
+        )
+
+        return [
+          {
+            cond,
+            body: held ? scopedFlow(bridge, at(held, 'flow')) : [],
+          },
+        ]
       })
 
       return { form: 'if', branches, span }
