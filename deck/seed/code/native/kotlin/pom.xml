@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The libraries the Seed stdlib's kotlin target wraps, and the ONE place their versions are written.
+
+  Most of the kotlin runtime shims (native/kotlin/runtime/*.kt) need nothing external: java.security, java.net.http,
+  java.nio.file and kotlin.text.Regex are all JDK or kotlin-stdlib. The two that need more are the two with no
+  standard answer.
+
+  kotlinx-coroutines-core is what `suspend` is actually run on. The kotlin stdlib has the coroutine primitives and
+  no dispatcher, so Dispatchers.IO, which is what makes a blocking java.nio.file call asynchronous rather than a
+  stalled thread, lives here.
+
+  ktor-server-cio is the HTTP server. com.sun.net.httpserver is in the JDK but is thread per request with no TLS
+  story worth shipping; ktor is the kotlin ecosystem's server and is coroutine native, which is the same
+  concurrency model the rest of this target uses.
+
+  task/term/native/kotlin.sh resolves this into the classpath the native gate compiles against, and mirrors the
+  version list into build.gradle.kts so the two manifests cannot drift.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>surf.clue.term</groupId>
+  <artifactId>seed-kotlin-runtime</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+
+  <properties>
+    <kotlin.version>2.0.0</kotlin.version>
+    <coroutines.version>1.9.0</coroutines.version>
+    <ktor.version>3.0.3</ktor.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.jetbrains.kotlin</groupId>
+      <artifactId>kotlin-stdlib</artifactId>
+      <version>${kotlin.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains.kotlinx</groupId>
+      <artifactId>kotlinx-coroutines-core-jvm</artifactId>
+      <version>${coroutines.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.ktor</groupId>
+      <artifactId>ktor-server-core-jvm</artifactId>
+      <version>${ktor.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.ktor</groupId>
+      <artifactId>ktor-server-cio-jvm</artifactId>
+      <version>${ktor.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.ktor</groupId>
+      <artifactId>ktor-network-tls-certificates-jvm</artifactId>
+      <version>${ktor.version}</version>
+    </dependency>
+  </dependencies>
+</project>

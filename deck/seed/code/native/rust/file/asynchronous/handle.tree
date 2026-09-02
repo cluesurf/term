@@ -1,0 +1,120 @@
+# rust asynchronous file handles, over `tokio::fs::File`. An open file is the tokio handle behind an Arc / Mutex,
+# which is what sits in the private `dock` of the public `file` record.
+#
+# Internal: reached only through the public file/handle API.
+
+dock type
+  load <aio::Handle>, name file-dock
+
+dock load
+  load <global:aio>, name aio
+
+load @term/seed/code/file/handle
+  find file
+
+# `read` / `write` / `create` / `append` / `clear` are the five independent bits every platform's open flags are
+# built from, rather than a mode string one backend happens to spell "w+"
+task handle-open
+  note async
+  take path, like text
+  take
+    read
+    like boolean
+    fall true
+  take
+    write
+    like boolean
+    fall false
+  take
+    create
+    like boolean
+    fall false
+  take
+    append
+    like boolean
+    fall false
+  take
+    clear
+    like boolean
+    fall false
+  like file
+  save raw
+    call aio/handle-open
+      read path
+      read read
+      read write
+      read create
+      read append
+      read clear
+      wait true
+  send back
+    make file
+      bind dock, read raw
+      bind path, read path
+
+task handle-close
+  note async
+  take file, like file
+  like void
+  call aio/handle-close
+    read file/dock
+    wait true
+
+task handle-read
+  note async
+  take file, like file
+  take size, like size
+  like text
+  send back
+    call aio/handle-read
+      read file/dock
+      read size
+      wait true
+
+task handle-write
+  note async
+  take file, like file
+  take data, like text
+  like size
+  send back
+    call aio/handle-write
+      read file/dock
+      read data
+      wait true
+
+# `frame` is <start> (absolute), <relative> (from the cursor) or <end> (back from the end)
+task handle-seek
+  note async
+  take file, like file
+  take offset, like size
+  take
+    frame
+    like text
+    fall text <start>
+  like void
+  call aio/handle-seek
+    read file/dock
+    read offset
+    read frame
+    wait true
+
+task handle-flush
+  note async
+  take file, like file
+  like void
+  call aio/handle-flush
+    read file/dock
+    wait true
+
+task handle-clear
+  note async
+  take file, like file
+  take
+    size
+    like size
+    fall code 0
+  like void
+  call aio/handle-clear
+    read file/dock
+    read size
+    wait true

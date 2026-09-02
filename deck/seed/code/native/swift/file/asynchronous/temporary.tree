@@ -1,0 +1,27 @@
+# swift temporary files and directories, under the system temp directory. The name is a uuid, so no retry loop and
+# no mkdtemp. Internal: reached only through the public file/temporary API.
+
+dock load
+  load <global:aio>, name aio
+
+task temporary-make
+  note async
+  take
+    kind
+    like text
+    fall text <file>
+  take
+    prefix
+    like text
+    fall text <tmp->
+  take
+    suffix
+    like text
+    fall text <>
+  like text
+  send back
+    call aio/temporary-make
+      read kind
+      read prefix
+      read suffix
+      wait true

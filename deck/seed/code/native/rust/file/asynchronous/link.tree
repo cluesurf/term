@@ -1,0 +1,28 @@
+# rust asynchronous symbolic and hard links, over `tokio::fs`. Internal: reached only through the public file/link API.
+
+dock load
+  load <global:aio>, name aio
+
+task link-make
+  note async
+  take from, like text
+  take to, like text
+  take
+    hard
+    like boolean
+    fall false
+  like void
+  call aio/link-make
+    read from
+    read to
+    read hard
+    wait true
+
+task link-read
+  note async
+  take path, like text
+  like text
+  send back
+    call aio/link-read
+      read path
+      wait true

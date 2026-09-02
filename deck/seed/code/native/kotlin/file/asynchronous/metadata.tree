@@ -1,0 +1,22 @@
+# kotlin asynchronous file metadata. Forwards to the linked `stat` runtime shim (java.nio.file attribute views),
+# which builds the record in one call rather than one call per field. Internal: reached only through the public file/metadata API.
+
+dock load
+  load <global:stat>, name stat
+
+load @term/seed/code/file/metadata
+  find file-metadata
+
+task meta-read
+  note async
+  take path, like text
+  take
+    follow
+    like boolean
+    fall true
+  like file-metadata
+  send back
+    call stat/meta-read
+      read path
+      read follow
+      wait true

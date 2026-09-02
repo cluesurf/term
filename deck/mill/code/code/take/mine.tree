@@ -115,6 +115,21 @@ mine take
         # rather than inside it. The reader folds it into the declared type, and so does the bridge.
         mine form, like head
           site head
+        # `take format / pick <human> / pick <json>`: the allowed-value set of a CLI parameter, one `pick` per
+        # value, which is how every other repeated thing in this dialect is written. The value is matched into
+        # this rule's own site rather than through a rule of its own, because a `pick` carries nothing but the
+        # value and a rule would buy a lang form for it and nothing else.
+        #
+        # The hand-written reader read these (mill-legacy.ts) and the grammar did not, so `choices` went silently
+        # missing in the switch on 2026-09-01 and no gate caught it: the dispatcher still VALIDATES choices, and
+        # no `.tree` in the tree wrote a `pick`, so the feature was dead on both sides at once. Found writing the
+        # CLI's own command tree, where `--back` and `--format` need it.
+        mine term, term pick
+          mine any
+            mine text
+              site pick
+            mine term
+              site pick
         # `take code / wait rise`: masked input, read without echoing. A CLI parameter's flag, not a call's
         # await marker, but the same word carries it.
         mine form, like wait

@@ -1,0 +1,47 @@
+# kotlin asynchronous file write stream, over java.nio.channels.FileChannel. Internal: reached only through the public
+# file/stream/writer API.
+
+dock type
+  load <aio.Writer>, name writer-dock
+
+dock load
+  load <global:aio>, name aio
+
+load @term/seed/code/file/stream/writer
+  find writer
+
+task writer-create
+  note async
+  take path, like text
+  take
+    append
+    like boolean
+    fall false
+  like writer
+  save raw
+    call aio/writer-open
+      read path
+      read append
+      wait true
+  send back
+    make writer
+      bind dock, read raw
+      bind path, read path
+
+task writer-write
+  note async
+  take stream, like writer
+  take data, like text
+  like void
+  call aio/writer-push
+    read stream/dock
+    read data
+    wait true
+
+task writer-close
+  note async
+  take stream, like writer
+  like void
+  call aio/writer-close
+    read stream/dock
+    wait true

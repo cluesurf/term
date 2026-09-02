@@ -1,3 +1,9 @@
+# Who owns a file. The clean uniform interface, the per-env native implementation selected at build time and
+# hidden. A missing path reads as user 0 and group 0, so the API stays total.
+
+load @term/seed/code/native/{platform}/file/asynchronous/owner
+  find owner-read
+  find owner-write
 
 form file-owner
   link user, like size
@@ -7,9 +13,19 @@ task read
   note async
   take path, like text
   like file-owner
+  send back
+    call owner-read
+      read path
+      wait true
 
 task write
   note async
   take path, like text
   take user, like size
   take group, like size
+  like void
+  call owner-write
+    read path
+    read user
+    read group
+    wait true

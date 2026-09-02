@@ -56,6 +56,8 @@ mint take
     site code
   case many
     site many
+  case pick
+    site pick
   case bind
     site bind
   case take
@@ -80,6 +82,7 @@ mint take
       bind flex, read flex
       bind code, read code
       bind many, read many
+      bind pick, read pick
       bind bind, read bind
       bind take, read take
       bind call, read call

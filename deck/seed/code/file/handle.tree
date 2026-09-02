@@ -1,4 +1,20 @@
+# An open file, and the reads and writes that move through it. The clean uniform interface, the per-env native
+# implementation selected at build time and hidden.
+#
+# The open modes are five INDEPENDENT booleans rather than a mode string: `read`, `write`, `create`, `append`,
+# `clear`. "w+" is a node spelling and means nothing to tokio's OpenOptions, NIOFileSystem's, or a set of
+# java.nio.file.StandardOpenOption. See note/term/stdlib/native-async-file-and-server.md.
 
+load @term/seed/code/native/{platform}/file/asynchronous/handle
+  find handle-open
+  find handle-close
+  find handle-read
+  find handle-write
+  find handle-seek
+  find handle-flush
+  find handle-clear
+
+# an open file: the platform handle, private, plus the path it was opened from
 form file
   link dock, mark private
   link path, like text
@@ -27,23 +43,50 @@ task open
     like boolean
     fall false
   like file
+  send back
+    call handle-open
+      read path
+      read read
+      read write
+      read create
+      read append
+      read clear
+      wait true
 
 task close
   note async
   take file, like file
+  like void
+  call handle-close
+    read file
+    wait true
 
+# the next `size` bytes from the cursor, as text. The cursor moves by what was read.
 task read
   note async
   take file, like file
   take size, like size
   like text
+  send back
+    call handle-read
+      read file
+      read size
+      wait true
 
+# write at the cursor, and answer how many bytes went in
 task write
   note async
   take file, like file
-  take data
+  take data, like text
   like size
+  send back
+    call handle-write
+      read file
+      read data
+      wait true
 
+# move the cursor. `frame` is <start> (absolute), <relative> (from where the cursor is) or <end> (back from the
+# end), the same three SEEK_SET / SEEK_CUR / SEEK_END mean.
 task seek
   note async
   take file, like file
@@ -52,15 +95,31 @@ task seek
     frame
     like text
     fall text <start>
+  like void
+  call handle-seek
+    read file
+    read offset
+    read frame
+    wait true
 
 task flush
   note async
   take file, like file
+  like void
+  call handle-flush
+    read file
+    wait true
 
+# cut the file to `size` bytes, 0 for empty
 task clear
   note async
   take file, like file
   take
     size
     like size
-    fall 0
+    fall code 0
+  like void
+  call handle-clear
+    read file
+    read size
+    wait true

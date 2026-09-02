@@ -1,10 +1,25 @@
+# File permissions, as the raw unix mode: the same number chmod takes. The clean uniform interface, the per-env
+# native implementation selected at build time and hidden. A missing path reads as 0, so the API stays total.
+
+load @term/seed/code/native/{platform}/file/asynchronous/permission
+  find permission-read
+  find permission-write
 
 task read
   note async
   take path, like text
   like size
+  send back
+    call permission-read
+      read path
+      wait true
 
 task write
   note async
   take path, like text
   take mode, like size
+  like void
+  call permission-write
+    read path
+    read mode
+    wait true

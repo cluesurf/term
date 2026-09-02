@@ -1,5 +1,9 @@
 # Base libraries the Seed stdlib's rust target wraps. The framework logic is ours and uniform; these are the
 # production crates the native shims (native/rust/runtime/*.rs) delegate to. An app compiled for rust depends on these.
+#
+# The async surface is the ecosystem-standard stack and not a hand-rolled one: tokio for the runtime, `tokio::fs`
+# for asynchronous filesystem work, hyper (over hyper-util / http-body-util) for the HTTP server, and
+# tokio-rustls for its TLS. See note/term/stdlib/native-async-file-and-server.md.
 [package]
 name = "seed-rust-runtime"
 version = "0.1.0"
@@ -24,6 +28,16 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = "0.4"
+
+# the asynchronous filesystem and HTTP server stack
+hyper = { version = "1", features = ["server", "client", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto", "service"] }
+http-body-util = "0.1"
+bytes = "1"
+tokio-rustls = "0.26"
+rustls-pemfile = "2"
+notify = "7"
+libc = "0.2"
 
 [lib]
 path = "lib.rs"

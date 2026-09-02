@@ -1,0 +1,566 @@
+# The term console: every command the CLI answers, written in the `hook` dialect.
+#
+# WHAT THIS IS FOR. `deck/call/code/line.ts` is 1,251 lines of yargs describing the same 33 commands. This file is
+# the replacement (cli-in-term-0002), and while the conversion runs the two are held identical by
+# `pnpm term:cli-drift`, which reads the shipped surface from the CLI's own `--help` and this side through the
+# mill. Nothing here is bound to a running task yet: the `task` line names the handler each command WILL call, and
+# the CLI still dispatches through yargs until cli-in-term-0004 moves a verb across.
+#
+# HOW A COMMAND IS WRITTEN. Each `hook` is one command and nested `hook`s are its subcommands. A `take` is a
+# parameter: `like text` / `like boolean` / `like number` is its type, `need true` makes it required, `code t`
+# gives it a short `-t`, `bind <value>` a default, `many` collects the rest, and one `pick <value>` per allowed
+# value is its enum. The `#` comment above a hook or a take is its `--help` text. `task <name>` names the
+# implementation.
+#
+# ONE CONSTRAINT NOTHING CHECKS. Arguments reach the implementation IN `take` ORDER, so every hook must list its
+# takes in the same order as the task it binds. Reorder one without the other and the arguments arrive shifted,
+# with no error. See note/term/cli-hook-dsl-gaps.md.
+#
+# `pick` WAS DEAD WHEN THIS WAS WRITTEN. The hand-written reader read it into `DockTake.choices` and the grammar
+# that replaced it on 2026-09-01 did not, so the dispatcher's choice validation had nothing to validate. No gate
+# caught it because no `.tree` in the tree wrote a `pick`. It was found writing this file, where `--format` and
+# `--back` need it, and fixed in deck/mill/code/code/take/.
+#
+# The worked example this follows is deck/zone/code/line/base.tree, the zone console.
+
+# The base record system
+hook base
+  # STATED, not inferred. The file header above would otherwise become this command's help text: comments attach
+  # to the next node and a blank line does not break the run, so the first statement in a file inherits whatever
+  # is written above it. An explicit `note` wins, which is why this one command has one.
+  note <The base record system>
+  # Create a repository here
+  hook init
+    task base-init
+  # Commits per branch, newest first
+  hook log
+    take branch
+      like text
+    task base-log
+  # Field-level changes between two commits
+  hook diff
+    take to
+      like text
+    take from
+      like text
+    task base-diff
+  # One record in canonical form, which is what is hashed
+  hook show
+    take commit
+      like text
+    take mark
+      like text
+    task base-show
+  # Every record at a commit
+  hook list
+    take commit
+      like text
+    task base-list
+  # Whether the repository is coherent
+  hook check
+    task base-check
+  # What the working files would change
+  hook status
+    take branch
+      like text
+    task base-status
+  # Commit the working files onto a branch
+  hook commit
+    take message
+      like text
+    take branch
+      like text
+      bind <main>
+    take author
+      like text
+      bind <anonymous>
+    task base-commit
+  # Write a commit back out as .tree files
+  hook checkout
+    take commit
+      like text
+    task base-checkout
+  # Merge a branch into another
+  hook merge
+    take from
+      like text
+    take into
+      like text
+      bind <main>
+    take author
+      like text
+      bind <anonymous>
+    task base-merge
+  # Write the working tree at a commit as .tree files
+  hook export
+    take commit
+      like text
+    take out
+      like text
+    task base-export
+  # Bring a csv, tsv, json or jsonl file, or a directory of them, in as records
+  hook import
+    take source
+      like text
+    # the record form these rows are instances of
+    take form
+      like text
+    # a column that identifies a row in the source. The mark is found or created against it, so a
+    # re-import updates rather than duplicates
+    take key
+      like text
+    # a column that already holds a uuid version 4, used as the mark
+    take mark
+      like text
+    take branch
+      like text
+      bind <main>
+    take author
+      like text
+      bind <import>
+    take message
+      like text
+    task base-import
+  # What a projection would write, and with --into --write, write it
+  hook project
+    take commit
+      like text
+    # a mapping file, for an existing schema. Left out, the schema is worked out from the records and
+    # the tables are created
+    take mapping
+      like text
+    # a Postgres connection url to write the projection into
+    take into
+      like text
+    # actually write. Without it nothing is touched
+    take write
+      like boolean
+      bind false
+    # the name this projection is bookkept under. Defaults to the directory name
+    take repository
+      like text
+    task base-project
+  # Name a commit, so it can be cited
+  hook tag
+    take name
+      like text
+    take commit
+      like text
+    take branch
+      like text
+      bind <main>
+    task base-tag
+
+# Scaffold a new Seed project
+hook wake
+  # Project name (a new directory); omit for current directory
+  take name
+    like text
+  task wake
+
+# Install all dependencies
+hook load
+  # Clean install from scratch
+  take clean
+    like boolean
+  # Install without network
+  take offline
+    like boolean
+  # Install subset (e.g. "base")
+  take like
+    like text
+  task load
+
+# Add a dependency
+hook save
+  # Package name to add
+  take deck
+    like text
+  task save
+
+# Remove a dependency
+hook toss
+  # Package name to remove
+  take deck
+    like text
+  task toss
+
+# Link a local package for development
+hook link
+  # Path to local package
+  take deck
+    like text
+  task link
+
+# Check if packages are installed correctly (--audit for the security scan)
+hook seek
+  # Security scan: audit dependencies against the advisory database
+  take audit
+    like boolean
+  # Also run the static code scan (dangerous native imports, taint) over the project
+  take code
+    like boolean
+  # Write a SARIF 2.1.0 report to this path (for GitHub code scanning)
+  take sarif
+    like text
+  # Console output format (default human)
+  take format
+    like text
+    pick <human>
+    pick <json>
+    pick <sarif>
+  # Rewrite deck.tree to the safe dependency versions
+  take fix
+    like boolean
+  task seek
+
+# Publish package to registry
+hook host
+  # Dry run (no upload)
+  take dry
+    like boolean
+  # Registry host to publish to
+  take registry
+    like text
+  task host
+
+# Build/compile the project
+hook make
+  # Watch files and recompile incrementally on every change
+  take ride
+    like boolean
+  # Separate compilation: per-module artifacts, dependents check against interfaces (early cutoff)
+  take separate
+    like boolean
+  # Compile .tree files even when package.json owns `make` (which otherwise runs that script instead)
+  take trees
+    like boolean
+  task make
+
+# Type-check a file and report diagnostics (the verifier)
+hook scan
+  # The .tree file to check
+  take file
+    like text
+  task scan
+
+# Project memory: remember a fact, or recall facts
+hook mind
+  # A fact to remember (omit to recall)
+  take fact
+    like text
+  # A short name for the fact
+  take name
+    like text
+  # The kind of fact
+  take kind
+    like text
+    pick <decision>
+    pick <convention>
+    pick <constraint>
+    pick <reference>
+    pick <note>
+  # Recall only facts matching this query
+  take find
+    like text
+  task mind
+
+# Run tests
+hook test
+  # Filter tests
+  take filter
+    like text
+  task test
+
+# Run benchmarks, or profile a file with --cpu / --memory
+hook time
+  # Filter benchmarks by name
+  take filter
+    like text
+  # Run benchmarks in a specific file
+  take file
+    like text
+  # Profile CPU hotspots of a .tree file
+  take cpu
+    like text
+  # Profile memory use of a .tree file
+  take memory
+    like text
+  # Show the top-N hottest functions (with --cpu)
+  take top
+    like number
+  # Output JSON instead of table
+  take json
+    like boolean
+  # Save results as a named baseline
+  take save
+    like text
+  # Compare against a saved baseline
+  take compare
+    like text
+  # Fail if any benchmark regresses by more than N%
+  take fail-on-regression
+    like number
+  # Output comparison as markdown
+  take markdown
+    like boolean
+  # Show history for a specific benchmark
+  take history
+    like text
+  task time
+
+# Compile and run an app (entry, or the deck.tree boot entry)
+hook boot
+  # Entry .tree module (defaults to deck.tree boot)
+  take entry
+    like text
+  # Port to serve on
+  take port
+    code p
+    like number
+  # Target env (node, browser)
+  take env
+    like text
+  # Remote cache endpoint (pull before, push after)
+  take remote
+    like text
+  # Bearer token for the remote cache
+  take remote-token
+    like text
+  task boot
+
+# Build an SSR app into a deployable Cloudflare Worker (work/index.ts + build/)
+hook cast
+  # Entry .tree module (defaults to deck.tree boot)
+  take entry
+    like text
+  # Deploy target (cloudflare)
+  take target
+    like text
+    bind <cloudflare>
+  task cast
+
+# Stop running term boot servers (all, or specific --port list)
+hook halt
+  # Comma-separated ports to stop (default: all)
+  take port
+    code p
+    like text
+  task halt
+
+# Start the dev server (lazy ESM + hot reload)
+hook feed
+  # Entry .tree module (defaults to deck.tree boot)
+  take entry
+    like text
+  # Port to serve on
+  take port
+    code p
+    like number
+  # Target env
+  take env
+    like text
+  task feed
+
+# Run the long-lived compiler worker (shared warm analyzer)
+hook work
+  # Port to serve on
+  take port
+    code p
+    like number
+  # Target env
+  take env
+    like text
+  task work
+
+# Clean build artifacts
+hook wash
+  # What to clean (deck, tail)
+  take target
+    like text
+  task wash
+
+# Start REPL
+hook walk
+  task walk
+
+# Version management
+hook move
+  # What to move (code)
+  take target
+    like text
+  # Bump level: 1=major, 2=minor, 3=patch
+  take level
+    like text
+  task move
+
+# Show package info
+hook note
+  # Package to inspect
+  take deck
+    like text
+  task note
+
+# Format .tree files into canonical layout
+hook form
+  # Files or directories to format (default: current directory)
+  take paths
+    like text
+    many
+  # Report which files would change without writing (for CI)
+  take check
+    like boolean
+  # Print formatted source to stdout instead of writing
+  take list
+    like boolean
+  task form
+
+# Inspect what a module exposes (forms + tasks), following its load/bear graph
+hook look
+  # A package path (@cluesurf/bind/code/browser/dom) or a .tree file
+  take target
+    like text
+  # Output JSON
+  take json
+    like boolean
+  # Output CSV
+  take csv
+    like boolean
+  # Only forms or only tasks
+  take kind
+    like text
+    pick <form>
+    pick <task>
+  task look
+
+# The roll of this project: every deck, exception, task, route and tell in the build
+hook roll
+  # One kind of entry, in full: deck, exception, task, dock, tell, kind, or a kind a deck declares
+  # with `roll <name>` (default: every deck with counts)
+  take kind
+    like text
+  # Output the roll as JSON
+  take json
+    like boolean
+  # Only the exceptions no tell covers
+  take private
+    like boolean
+  # Only the entries of one deck (@term/site)
+  take host
+    like text
+  # Under each exception, one call path from every task that can raise it to the raise site
+  take path
+    like boolean
+  task roll
+
+# Shape Term data: a data file (long or compact) or JSON, printed as long form, compact (--pack) or
+# JSON (--json)
+hook mold
+  # A data .tree file, a .line stream, or a .json file (stdin when absent)
+  take file
+    like text
+  # Compact form, one entry per line
+  take pack
+    like boolean
+  # JSON, keys in snake case
+  take json
+    like boolean
+  # With --json: leave keys as written
+  take keep
+    like boolean
+  # The input is JSON
+  take tree
+    like boolean
+  # Keep tree anchors instead of expanding them
+  take trees
+    like boolean
+  # The input is a compact stream: one form per line, anchors re-declarable
+  take lines
+    like boolean
+  # Only report problems, exit 1 on any
+  take check
+    like boolean
+  task mold
+
+# Check a document in the view role and print what it uses
+hook view
+  # A .tree document, or a directory of them (the project root when absent)
+  take path
+    like text
+  # Print the query manifest instead
+  take find
+    like boolean
+  task view
+
+# Lint .tree files for style and correctness
+hook lint
+  # Files or directories to lint (default: current directory)
+  take paths
+    like text
+    many
+  # Apply autofixes in place
+  take fix
+    like boolean
+  task lint
+
+# Verify .tree files hold: report gaps, run the cross-backend differential, gate CI (incremental)
+hook hold
+  # Files or directories to verify (default: current directory)
+  take paths
+    like text
+    many
+  # Run the cross-backend differential
+  take cross
+    like boolean
+    bind true
+  # Skip files unchanged since they last held
+  take cache
+    like boolean
+    bind true
+  # Re-check everything, ignoring the cache
+  take force
+    like boolean
+  # Machine-readable output
+  take json
+    like boolean
+  task hold
+
+# Automated bug-hunt: oracles + fuzzing over .tree files (crashes, hangs, round-trip, determinism,
+# cross-backend, perf)
+hook hunt
+  # Directory of .tree files to hunt (default: deck/base/code)
+  take glob
+    like text
+  # Fuzz inputs per term
+  take runs
+    like number
+  # Distinct fuzz seeds
+  take seeds
+    like number
+  # Watchdog seconds per fuzz term
+  take fuzz-timeout
+    like number
+  # Machine-readable output
+  take json
+    like boolean
+  task hunt
+
+# Display information
+hook show
+  # What to show (code, deck, self)
+  take what
+    like text
+  task show
+
+# Secrets and environment: run a command with a zone's values, and manage them
+hook zone
+  # The zone verb and its arguments
+  take rest
+    like text
+    many
+  task zone
+
+
+# Print the shell completion script (add to your shell rc file)
+hook fill
+  task fill

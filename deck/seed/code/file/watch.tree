@@ -1,6 +1,59 @@
+# Watching a path for changes. The clean uniform interface, the per-env native implementation selected at build
+# time and hidden.
+#
+# THE SHAPE IS PULL, NOT CALLBACK. `watch` starts the watcher, `next` awaits the next change, `close` stops it:
+#
+#   save eye, call watch(read path, true)
+#   save change, call next(read eye)
+#
+# A callback shape reads better on node and cannot be written on the other three: it would need a `task` value to
+# cross into a platform thread on rust, swift and kotlin alike. Pull is the shape all four hold, so the API is the
+# same everywhere rather than nearly the same. `next` on a closed watcher answers with the empty event, so a loop
+# over it ends instead of hanging.
 
-# Moved to file/base.tree as task watch
+load @term/seed/code/native/{platform}/file/asynchronous
+  find watch-open
+  find watch-next
+  find watch-close
 
+# one change: what happened (<create>, <remove>, <change>, or <other> for a platform event with no equivalent),
+# and the path it happened to. An empty `kind` means the watcher is closed and nothing more is coming.
 form watch-event
   link kind, like text
   link path, like text
+
+# a running watcher: the platform watch handle, private, plus the path it was opened on
+form watcher
+  link dock, mark private
+  link path, like text
+
+# start watching `path`. With `deep`, everything beneath it too.
+task watch
+  note async
+  take path, like text
+  take
+    deep
+    like boolean
+    fall false
+  like watcher
+  send back
+    call watch-open
+      read path
+      read deep
+
+# the next change. Waits until one happens, or answers with the empty event once the watcher is closed.
+task next
+  note async
+  take watcher, like watcher
+  like watch-event
+  send back
+    call watch-next
+      read watcher
+
+# stop watching, releasing the platform handle
+task close
+  note async
+  take watcher, like watcher
+  like void
+  call watch-close
+    read watcher

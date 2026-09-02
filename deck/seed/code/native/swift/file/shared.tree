@@ -1,0 +1,20 @@
+# What the synchronous and asynchronous swift file modules agree on: the open-mode bits, spelled once.
+#
+# Every backend's `open` takes the same five independent booleans (read, write, create, append, clear) rather than
+# a mode string, because "w+" is a node spelling and means nothing to tokio, FileSystem or java.nio. This is where
+# those five turn into the one thing a platform actually wants. On swift that is a NIOFileSystem `OpenOptions`, built
+# inside the `aio` shim, so what is left here is the naming of the bits themselves.
+#
+# Internal: reached only through the public file API.
+
+# the open modes, as the names the public API and the tests use for them
+host mode-read, text <read>
+host mode-write, text <write>
+host mode-create, text <create>
+host mode-append, text <append>
+host mode-clear, text <clear>
+
+# where `seek` counts from: the start of the file, the cursor, or back from the end
+host frame-start, text <start>
+host frame-relative, text <relative>
+host frame-end, text <end>

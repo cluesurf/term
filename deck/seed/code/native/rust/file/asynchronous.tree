@@ -1,0 +1,155 @@
+# rust asynchronous filesystem. Forwards to the linked `aio` runtime shim, which is `tokio::fs` -- the standard
+# asynchronous filesystem API of the rust ecosystem, on the same runtime the network stack uses.
+#
+# Internal: reached only through the public file API.
+
+dock load
+  load <global:aio>, name aio
+
+task file-read
+  note async
+  take path, like text
+  like text
+  send back
+    call aio/file-read
+      read path
+      wait true
+
+task file-read-bytes
+  note async
+  take path, like text
+  like bytes
+  send back
+    call aio/file-read-bytes
+      read path
+      wait true
+
+task file-write
+  note async
+  take path, like text
+  take data, like text
+  like void
+  call aio/file-write
+    read path
+    read data
+    wait true
+
+task file-write-bytes
+  note async
+  take path, like text
+  take data, like bytes
+  like void
+  call aio/file-write-bytes
+    read path
+    read data
+    wait true
+
+task file-append
+  note async
+  take path, like text
+  take data, like text
+  like void
+  call aio/file-append
+    read path
+    read data
+    wait true
+
+task file-copy
+  note async
+  take from, like text
+  take to, like text
+  take
+    deep
+    like boolean
+    fall false
+  like void
+  call aio/file-copy
+    read from
+    read to
+    read deep
+    wait true
+
+task file-move
+  note async
+  take from, like text
+  take to, like text
+  like void
+  call aio/file-move
+    read from
+    read to
+    wait true
+
+task file-remove
+  note async
+  take path, like text
+  take
+    deep
+    like boolean
+    fall false
+  like void
+  call aio/file-remove
+    read path
+    read deep
+    wait true
+
+# an empty `kind` asks only whether the path exists; <file>, <directory> and <link> ask what it is
+task file-test
+  note async
+  take path, like text
+  take
+    kind
+    like text
+    fall text <>
+  like boolean
+  send back
+    call aio/file-test
+      read path
+      read kind
+      wait true
+
+# ---- watching ----
+#
+# The pull shape the public file/watch API documents: open, await the next change, close. The `notify` crate
+# underneath is the ecosystem-standard watcher (FSEvents on macOS, inotify on Linux), not a polling loop.
+
+dock type
+  load <watch::Watcher>, name watch-dock
+
+dock load
+  load <global:watch>, name watch
+
+load @term/seed/code/file/watch
+  find watch-event
+  find watcher
+
+task watch-open
+  note async
+  take path, like text
+  take deep, like boolean
+  like watcher
+  save raw
+    call watch/watch-open
+      read path
+      read deep
+      wait true
+  send back
+    make watcher
+      bind dock, read raw
+      bind path, read path
+
+task watch-next
+  note async
+  take watcher, like watcher
+  like watch-event
+  send back
+    call watch/watch-next
+      read watcher/dock
+      wait true
+
+task watch-close
+  note async
+  take watcher, like watcher
+  like void
+  call watch/watch-close
+    read watcher/dock
+    wait true

@@ -2748,11 +2748,30 @@ function routeOf(
   bridge: Bridge,
   value: Form,
 ): Extract<Statement, { form: 'dock' }>['route'] {
-  // `take path` / `take query` / `take body` / `take head` are SECTIONS, not parameters: they group the
-  // route's real takes by where they come from, and the takes are the ones nested inside them.
+  // `hook` spells two things. A ROUTE (role `site`, or a path, or a component) carries a component and no help
+  // text; a CLI COMMAND carries help text and the task it runs. Telling them apart from content alone was the
+  // guess role.tree exists to end, so the role decides first.
+  //
+  // THIS HAS TO BE DECIDED BEFORE THE TAKES ARE READ, because a route reads four of its take names as sections
+  // and a command must not.
+  const path = wordAt(value, 'name') ?? ''
+  const isRoute =
+    bridge.role === 'site' ||
+    (bridge.role !== 'call' &&
+      (path.startsWith('/') || formsAt(value, 'view').length > 0))
+
+  // `take path` / `take query` / `take body` / `take head` are SECTIONS ON A ROUTE, not parameters: they group
+  // the route's real takes by where they come from, and the takes are the ones nested inside them.
+  //
+  // ON A CLI COMMAND THEY ARE ORDINARY PARAMETERS. `term roll --path` and `term view <path>` are both real, and
+  // both silently vanished while this applied to every hook: the section rule lifted the nested takes of a
+  // `take path` that had none, so the parameter was replaced by nothing at all, with no diagnostic. Found writing
+  // deck/call/code/line/base.tree, which is the first `.tree` file to describe those two commands.
   const SECTION = new Set(['path', 'query', 'body', 'head'])
   const takeList = formsAt(value, 'take').flatMap(take =>
-    SECTION.has(wordAt(take, 'name') ?? '') ? formsAt(take, 'take') : [take],
+    isRoute && SECTION.has(wordAt(take, 'name') ?? '')
+      ? formsAt(take, 'take')
+      : [take],
   )
   const takes = takeList.map(take => {
     const type = typeOf(bridge, firstAt(take, 'like'))
@@ -2762,6 +2781,11 @@ function routeOf(
     const masked = formsAt(take, 'wait').some(
       wait => wordAt(wait, 'seed') === 'rise',
     )
+    // `take format / pick <human> / pick <json>`: the allowed-value set. One `pick` per value, so the site holds
+    // them in order. `textOf` takes both spellings, a text literal and a bare word.
+    const choices = at(take, 'pick')
+      .map(textOf)
+      .filter((value): value is string => value !== undefined)
     const fallbackValue = firstAt(
       formsAt(take, 'bind')[0],
       'seed',
@@ -2787,21 +2811,24 @@ function routeOf(
       ...(note !== undefined ? { note } : {}),
       ...(fallback !== undefined ? { fallback } : {}),
       ...(at(take, 'many').length > 0 ? { variadic: true } : {}),
+      ...(choices.length > 0 ? { choices } : {}),
       span: spanOf(take),
     }
   })
 
-  // `hook` spells two things. A ROUTE (role `site`, or a path, or a component) carries a component and no help
-  // text; a CLI COMMAND carries help text and the task it runs. Telling them apart from content alone was the
-  // guess role.tree exists to end, so the role decides first.
-  const path = wordAt(value, 'name') ?? ''
-  const isRoute =
-    bridge.role === 'site' ||
-    (bridge.role !== 'call' &&
-      (path.startsWith('/') || formsAt(value, 'view').length > 0))
+  // AN EXPLICIT `note` WINS over the `#` comment above the hook. It reads the other way round at first glance,
+  // since the comment is the ordinary way to write help text, but a comment is INFERRED and a `note` is stated,
+  // and the stated one has to be able to correct the inference.
+  //
+  // The case that needs it: a file-header comment attaches to the first definition under it, because comments
+  // attach to the next node and a blank line does not break the run. `deck/zone/code/line/base.tree` gets away
+  // with it only because its `load` statements sit between its header and its first `hook`. A file whose first
+  // statement IS a hook has no way to carry a header without it becoming that command's help, and
+  // `deck/call/code/line/base.tree` is exactly that file. Nothing in the tree sets both, so this cannot change
+  // any existing help text.
   const help = isRoute
     ? undefined
-    : (leadingNote(value) ?? wordAt(firstAt(value, 'note'), 'text'))
+    : (wordAt(firstAt(value, 'note'), 'text') ?? leadingNote(value))
 
   // the implementation, in either spelling: `task <impl>` names the handler and passes the takes in order,
   // `call <impl>` names it with its arguments written out

@@ -1,0 +1,47 @@
+# rust asynchronous directory reading. Forwards to the linked `walk` runtime shim, which is `tokio::fs::read_dir`.
+# Internal: reached only through the public file/directory API.
+
+dock load
+  load <global:walk>, name walk
+
+load @term/seed/code/file/directory
+  find walk-entry
+
+task folder-list
+  note async
+  take path, like text
+  take
+    deep
+    like boolean
+    fall false
+  like list
+    like text
+  send back
+    call walk/dir-list
+      read path
+      read deep
+      wait true
+
+task folder-make
+  note async
+  take path, like text
+  like void
+  call walk/dir-make
+    read path
+    wait true
+
+# every entry beneath `path`, with what it is and how far down it sits. `depth` 0 walks all the way down.
+task folder-walk
+  note async
+  take path, like text
+  take
+    depth
+    like size
+    fall code 0
+  like list
+    like walk-entry
+  send back
+    call walk/dir-walk
+      read path
+      read depth
+      wait true

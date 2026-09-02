@@ -1,0 +1,53 @@
+# kotlin asynchronous file read stream: an open FileChannel plus how much of the window is left, pulled a chunk
+# at a time. Internal: reached only through the public file/stream/reader API.
+
+dock type
+  load <aio.Reader>, name reader-dock
+
+dock load
+  load <global:aio>, name aio
+
+load @term/seed/code/file/stream/reader
+  find reader
+
+# `start` is where to begin, `size` how many bytes to read from there. `size` 0 reads to the end.
+task reader-create
+  note async
+  take path, like text
+  take
+    start
+    like size
+    fall code 0
+  take
+    size
+    like size
+    fall code 0
+  like reader
+  save raw
+    call aio/reader-open
+      read path
+      read start
+      read size
+      wait true
+  send back
+    make reader
+      bind dock, read raw
+      bind path, read path
+
+# the next chunk, or the empty text at the end of the stream
+task reader-read
+  note async
+  take stream, like reader
+  like text
+  send back
+    call aio/reader-next
+      read stream/dock
+      wait true
+
+task reader-close
+  note async
+  take stream, like reader
+  like void
+  call aio/reader-close
+    read stream/dock
+    wait true

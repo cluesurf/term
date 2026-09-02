@@ -1,4 +1,10 @@
+# A temporary file or directory under the system temporary directory. The clean uniform interface, the per-env
+# native implementation selected at build time and hidden. Answers the path it made.
 
+load @term/seed/code/native/{platform}/file/asynchronous/temporary
+  find temporary-make
+
+# `kind` is <file> or <directory>. The name is unique, so two calls never collide.
 task make
   note async
   take
@@ -14,3 +20,9 @@ task make
     like text
     fall text <>
   like text
+  send back
+    call temporary-make
+      read kind
+      read prefix
+      read suffix
+      wait true

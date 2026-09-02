@@ -1,0 +1,37 @@
+# swift asynchronous file ownership, over NIOFileSystem for the read and chown(2) for the write (NIOFileSystem
+# has no owner write). Internal: reached only through the public file/owner API.
+
+dock load
+  load <global:aio>, name aio
+
+load @term/seed/code/file/owner
+  find file-owner
+
+task owner-read
+  note async
+  take path, like text
+  like file-owner
+  save user
+    call aio/owner-user
+      read path
+      wait true
+  save group
+    call aio/owner-group
+      read path
+      wait true
+  send back
+    make file-owner
+      bind user, read user
+      bind group, read group
+
+task owner-write
+  note async
+  take path, like text
+  take user, like size
+  take group, like size
+  like void
+  call aio/owner-write
+    read path
+    read user
+    read group
+    wait true
