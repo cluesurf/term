@@ -1,3 +1,6 @@
+load @term/call/code/work/home
+  find root, name project-root
+
 load @term/call/code/work/tint
   find log-good
   find log-fail
@@ -46,9 +49,11 @@ form host-ask
 # `term test [filter]`: run the project's tests, or the ones whose name matches
 task test
   note async
-  take root, like text
   take filter, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call test-module/callTest
       make test-ask
@@ -66,8 +71,10 @@ task test
 # `term walk`: the REPL
 task walk
   note async
-  take root, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call walk-module/callWalk
       make root-ask
@@ -85,10 +92,12 @@ task walk
 # anything else is named rather than ignored.
 task cast
   note async
-  take root, like text
   take entry, like text
   take target, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   save chosen
     fork test
       call is-equal
@@ -125,10 +134,12 @@ task cast
 # `term host`: publish this package to the registry
 task host
   note async
-  take root, like text
   take dry, like boolean
   take registry, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call host-module/callHost
       make host-ask
@@ -147,9 +158,11 @@ task host
 # `term show`: what this toolchain is -- its version and where it is installed
 task show
   note async
-  take root, like text
   take what, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call line-module/callShow
       make root-ask
@@ -166,8 +179,10 @@ task show
 # `term fill`: print the shell completion script
 task fill
   note async
-  take root, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call line-module/callFill
       make root-ask

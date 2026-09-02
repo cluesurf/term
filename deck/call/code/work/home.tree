@@ -23,6 +23,7 @@ load @term/seed/code/file
 
 load @term/seed/code/environment
   find variable
+  find directory, name working-directory
 
 load @term/seed/code/environment/path
   find get
@@ -138,3 +139,14 @@ task join-name
   like text
   send back
     text <{{head}}{{tail}}>
+
+# THE PROJECT ROOT, READ RATHER THAN PASSED. A `hook` command's takes are its ARGUMENTS, and no command takes a
+# root: in the shipped CLI it comes from the process, not from argv. Arguments reach an implementation in `take`
+# order, so a verb that declared `root` as its first parameter could never match the hook that binds it -- binding
+# all 45 verbs at once failed on exactly that, with `hook form` handing its variadic `paths` to a `root: text`.
+#
+# So a verb asks for the root instead of being handed it, and its parameters are the command's and nothing else.
+task root
+  like text
+  send back
+    call working-directory

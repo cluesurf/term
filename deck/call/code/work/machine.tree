@@ -1,3 +1,6 @@
+load @term/call/code/work/home
+  find root, name project-root
+
 load @term/call/code/work/tint
   find log-good
   find log-fail
@@ -52,7 +55,6 @@ form parallel-ask
 # `term base import <source>`: read records in and commit them
 task base-import
   note async
-  take root, like text
   take source, like text
   take form, like text
   take key, like text
@@ -61,6 +63,9 @@ task base-import
   take author, like text
   take message, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call base-import-module/callBaseImport
       make import-ask

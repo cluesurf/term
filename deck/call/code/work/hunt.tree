@@ -1,3 +1,6 @@
+load @term/call/code/work/home
+  find root, name project-root
+
 load @term/call/code/work/tint
   find log-good
   find log-fail
@@ -38,13 +41,15 @@ form hunt-ask
   link fuzzTimeoutSec, like number
 
 task hunt
-  take root, like text
   take glob, like text
   take runs, like number
   take seeds, like number
   take fuzz-timeout, like number
   take json-out, like boolean
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   save result
     call hunt-module/huntSeedCompiler
       make hunt-ask

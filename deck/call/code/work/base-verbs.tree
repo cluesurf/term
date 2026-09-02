@@ -1,3 +1,6 @@
+load @term/call/code/work/home
+  find root, name project-root
+
 load @term/call/code/work/tint
   find log-good
   find log-fail
@@ -81,8 +84,10 @@ task fail-with
 # create a repository here
 task base-init
   note async
-  take root, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call base-module/callBaseInit
       make root-ask
@@ -96,8 +101,10 @@ task base-init
 # whether the repository is coherent
 task base-check
   note async
-  take root, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call base-module/callBaseCheck
       make root-ask
@@ -111,9 +118,11 @@ task base-check
 # commits per branch, newest first
 task base-log
   note async
-  take root, like text
   take branch, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call base-module/callBaseLog
       make branch-ask
@@ -128,9 +137,11 @@ task base-log
 # what is uncommitted on a branch
 task base-status
   note async
-  take root, like text
   take branch, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call base-module/callBaseStatus
       make branch-ask
@@ -145,10 +156,12 @@ task base-status
 # field-level changes between two commits
 task base-diff
   note async
-  take root, like text
   take to, like text
   take from, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call base-module/callBaseDiff
       make diff-ask
@@ -164,10 +177,12 @@ task base-diff
 # one record in canonical form, which is what is hashed
 task base-show
   note async
-  take root, like text
   take commit, like text
   take mark, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call base-module/callBaseShow
       make show-ask
@@ -183,9 +198,11 @@ task base-show
 # every record at a commit
 task base-list
   note async
-  take root, like text
   take commit, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call base-module/callBaseList
       make commit-ask
@@ -200,11 +217,13 @@ task base-list
 # commit the working files onto a branch
 task base-commit
   note async
-  take root, like text
   take message, like text
   take branch, like text
   take author, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call base-module/callBaseCommit
       make make-ask
@@ -221,9 +240,11 @@ task base-commit
 # write a commit back out as `.tree` files
 task base-checkout
   note async
-  take root, like text
   take commit, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call base-module/callBaseCheckout
       make commit-ask
@@ -238,11 +259,13 @@ task base-checkout
 # merge one branch into another
 task base-merge
   note async
-  take root, like text
   take from, like text
   take into, like text
   take author, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call base-module/callBaseMerge
       make merge-ask
@@ -259,10 +282,12 @@ task base-merge
 # write a commit out as one file
 task base-export
   note async
-  take root, like text
   take commit, like text
   take out, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call base-module/callBaseExport
       make export-ask
@@ -278,11 +303,13 @@ task base-export
 # name a commit
 task base-tag
   note async
-  take root, like text
   take name, like text
   take commit, like text
   take branch, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call base-module/callBaseTag
       make tag-ask

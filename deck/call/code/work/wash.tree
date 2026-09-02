@@ -1,3 +1,6 @@
+load @term/call/code/work/home
+  find root, name project-root
+
 load @term/call/code/work/tint
   find log-good
   find log-fail
@@ -48,6 +51,7 @@ task build-directories
 
 # `term wash tail` clears the logs and nothing else
 task wash-logs
+  note async
   take root, like text
   like void
   call log-step
@@ -64,11 +68,13 @@ task wash-logs
     hook hold
       call remove-directory
         read log-directory
+        wait true
   call log-good
     text <Logs cleared>
 
 # `term wash` with no target removes every build directory that is there
 task wash-build
+  note async
   take root, like text
   like void
   call log-step
@@ -88,6 +94,7 @@ task wash-build
         hook hold
           call remove-directory
             read full
+            wait true
           call show-removed
             read directory
           save cleaned
@@ -115,9 +122,11 @@ task show-removed
 
 # `term wash [target]`: the verb the command tree binds. `tail` clears the logs; anything else cleans the build.
 task wash
-  take root, like text
   take target, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   fork test
     call is-equal
       read target

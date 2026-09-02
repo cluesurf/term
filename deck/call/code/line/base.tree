@@ -24,8 +24,13 @@
 # The worked example this follows is deck/zone/code/line/base.tree, the zone console.
 
 # THE VERBS ARE BOUND HERE. Each `task <name>` under a `hook` names an implementation, and these `load`
-# statements are what make those names resolve: without them the tree describes 47 commands bound to
-# nothing, which is what it did while the conversion was in flight.
+# statements make those names resolve.
+#
+# A VERB'S PARAMETERS ARE ITS COMMAND'S TAKES AND NOTHING ELSE. Arguments reach an implementation in
+# `take` ORDER, and no hook declares a `root`, because the project root comes from the process rather than
+# from argv. Every verb used to take one as its first parameter, so binding them all at once failed on
+# `hook form` handing its variadic `paths` to a `root: text`. A verb reads the root now (`work/home`'s
+# `root`, over `environment/directory`) instead of being handed it.
 
 load @term/call/code/work/app-verbs
   find cast

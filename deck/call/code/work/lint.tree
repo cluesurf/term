@@ -1,3 +1,6 @@
+load @term/call/code/work/home
+  find root, name project-root
+
 load @term/call/code/work/tint
   find log-good
   find log-fail
@@ -44,9 +47,11 @@ form lint-ask
 
 task lint
   note async
-  take root, like text
   take fix, like boolean
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   # the fix path splices by byte offset, which the stdlib cannot do yet: hand the whole verb over rather than
   # half-implement it
   fork test

@@ -1,3 +1,6 @@
+load @term/call/code/work/home
+  find root, name project-root
+
 load @term/call/code/work/tint
   find log-good
   find log-fail
@@ -56,7 +59,6 @@ form zone-ask
 # `term time [filter]`: run the benchmarks, or profile one file with --cpu / --memory
 task time
   note async
-  take root, like text
   take filter, like text
   take file, like text
   take json, like boolean
@@ -69,6 +71,9 @@ task time
   take memory, like text
   take top, like number
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call time-module/callTime
       make time-ask
@@ -96,12 +101,14 @@ task time
 # `term hold`: verify that the `.tree` files hold -- report gaps, run the cross checks
 task hold
   note async
-  take root, like text
   take cross, like boolean
   take cache, like boolean
   take force, like boolean
   take json, like boolean
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call hold-module/callHold
       make hold-ask
@@ -123,10 +130,12 @@ task hold
 # `term zone ...`: the whole zone console, under one command, with its arguments handed over untouched
 task zone
   note async
-  take root, like text
   take rest, like list
     like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call zone-module/callZone
       make zone-ask

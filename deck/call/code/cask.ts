@@ -169,7 +169,7 @@ export async function buildPage({
     path.join(into, 'index.html'),
     [
       '<!doctype html>',
-      `<html><head><meta charset="utf-8"><title>${title}</title>`,
+      `<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>`,
       '<style>body{font:16px system-ui;margin:24px}input,textarea,button{font:inherit;display:block;margin:8px 0}</style>',
       '</head><body><script type="module" src="./app.js"></script></body></html>',
     ].join('\n'),
@@ -375,7 +375,8 @@ export function assembleApk({
       `<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${identifier}" android:versionCode="1" android:versionName="${version}">`,
       `  <uses-sdk android:minSdkVersion="${ANDROID_MINIMUM}" android:targetSdkVersion="${ANDROID_PLATFORM}" />`,
       '  <uses-permission android:name="android.permission.INTERNET" />',
-      `  <application android:label="${name}" android:usesCleartextTraffic="true">`,
+      // no action bar: the page owns the whole screen, the way it does on every other platform
+      `  <application android:label="${name}" android:usesCleartextTraffic="true" android:theme="@android:style/Theme.DeviceDefault.NoActionBar">`,
       '    <activity android:name=".TermActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden">',
       '      <intent-filter>',
       '        <action android:name="android.intent.action.MAIN" />',
@@ -391,6 +392,7 @@ export function assembleApk({
   const unsigned = path.join(work, `${name}-unsigned.apk`)
   const aligned = path.join(work, `${name}-aligned.apk`)
   const apk = path.join(out, `${name}.apk`)
+  mkdirSync(out, { recursive: true })
   rmSync(unsigned, { force: true })
   rmSync(aligned, { force: true })
   rmSync(apk, { force: true })
@@ -484,6 +486,9 @@ export function assembleIosBundle({
       '<key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>',
       '<key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>',
       '<key>UIRequiresFullScreen</key><true/>',
+      // an empty launch screen dictionary is what tells iOS the app is built for the full display; without it the
+      // app runs letterboxed in a compatibility window
+      '<key>UILaunchScreen</key><dict/>',
       '</dict></plist>',
       '',
     ].join('\n'),

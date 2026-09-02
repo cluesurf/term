@@ -1,3 +1,6 @@
+load @term/call/code/work/home
+  find root, name project-root
+
 load @term/call/code/work/tint
   find log-good
   find log-fail
@@ -43,10 +46,12 @@ form daemon-ask
 # `term work`: start the worker and stay up
 task work
   note async
-  take root, like text
   take port, like number
   take env, like text
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   call log-step
     text <Starting compiler worker...>
   save chosen

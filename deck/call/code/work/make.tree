@@ -1,3 +1,6 @@
+load @term/call/code/work/home
+  find root, name project-root
+
 load @term/call/code/work/tint
   find log-good
   find log-fail
@@ -39,11 +42,13 @@ form remote-ask
 # `term make`: compile every `.tree` in the project
 task make
   note async
-  take root, like text
   take ride, like boolean
   take separate, like boolean
   take trees, like boolean
   like void
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root
+    call project-root
   note unsafe
     call make-module/callMake
       make make-ask
