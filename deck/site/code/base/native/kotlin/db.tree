@@ -1,9 +1,9 @@
 
-# Swift database impl: SQLite-backed, conforming to the abstract API in ../../db. Docks the `<global:sqlite>` runtime
-# shim over the system SQLite3 library, so a Term app on macOS or iOS keeps its data in a file of its own with no
-# server anywhere. `connect` takes the file path (an empty text is an in-memory database). Parameters are `?`
-# placeholders, and the node impl's `$1` spelling is rewritten to them by the shim so one query text serves both.
-# Internal: reached only through the public `base/db` API.
+# Kotlin database impl: SQLite-backed through Android's own `android.database.sqlite`, conforming to the abstract API
+# in ../../db. Docks the `<global:sqlite>` runtime shim, so a Term app on Android keeps its data in a file of its
+# own. `connect` takes the file path (an empty text is an in-memory database). Parameters are `?` placeholders, and
+# the node impl's `$1` spelling is rewritten to them by the shim so one query text serves both. Internal: reached
+# only through the public `base/db` API.
 
 dock load
   load <global:sqlite>, name sqlite

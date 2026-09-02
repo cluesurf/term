@@ -880,8 +880,28 @@ const cli = yargs(hideBin(process.argv))
           type: 'number',
           description: 'Port to serve on',
         })
-        .option('env', { type: 'string', description: 'Target env' }),
+        .option('env', { type: 'string', description: 'Target env' })
+        .option('target', {
+          type: 'string',
+          description: 'Develop a native app cask: the page on a dev server with hot swaps, the app pointed at it',
+        })
+        .option('page', { type: 'string', description: 'The page entry of the cask app (default face/base.tree)' })
+        .option('entry', { type: 'string', description: 'The cask entry of the app (default cask.tree)' }),
     async argv => {
+      if (argv.target) {
+        const { workCask } = await import('@term/call/code/cask')
+
+        await workCask({
+          root,
+          target: argv.target as never,
+          page: argv.page,
+          entry: argv.entry,
+          port: argv.port,
+        })
+
+        return
+      }
+
       await callWork({
         root,
         port: argv.port,

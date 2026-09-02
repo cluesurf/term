@@ -759,3 +759,39 @@ async function makeAndroidCask({
 
   return { app: apk }
 }
+
+// `term work --target <platform>`: the page served by the dev server with hot swaps, the cask built once with
+// `load-url` at it and launched, so a view edit lands inside the WebView with its signals kept. Returns when the app
+// is closed; the server lives as long as this process
+export async function workCask(input: { root: string; target: CaskTarget; page?: string; entry?: string; port?: number }): Promise<void> {
+  const root = path.resolve(input.root)
+  const page = path.resolve(root, input.page ?? DEFAULT_PAGE)
+  const port = input.port ?? 5179
+  const { startDevServer } = await import('@term/make/code/dev/server')
+  const server = startDevServer({ root, entry: page, port, env: 'webview', boot: true })
+  const url = `http://localhost:${server.port}/`
+  logStep(`Dev server for ${path.relative(root, page)} at ${url}`)
+
+  const watch = (await import('node:fs')).watch(root, { recursive: true }, (_event, name) => {
+    const file = typeof name === 'string' ? name : ''
+    if (file.endsWith('.tree') && !file.includes('/host/')) {
+      server.update(path.join(root, file))
+    }
+  })
+
+  try {
+    const { app } = await makeCask({ root, target: input.target, page: input.page, entry: input.entry, url })
+
+    if (input.target === 'macos') {
+      const { name } = appIdentity(root)
+      console.log(fade('  the app is up. Edit a .tree file and the page swaps in place; close the window to stop'))
+      execFileSync(path.join(app, 'Contents/MacOS', name), [], { stdio: 'inherit' })
+    } else {
+      console.log(fade('  the app is up on the device, loading the dev server. Ctrl-C stops the server'))
+      await new Promise(() => {})
+    }
+  } finally {
+    watch.close()
+    server.close()
+  }
+}

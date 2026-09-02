@@ -39,6 +39,9 @@ export interface DevOptions {
   entry: string
   port?: number
   env?: NativeEnv
+  // a page entry that exports a `boot` task and nothing calls: the shell calls it once the module is loaded. A cask
+  // app's page is one; a `hook` route table boots itself and leaves this unset
+  boot?: boolean
 }
 
 // start the dev server. Returns a handle with the port, a manual `update` (what the watcher calls), and `close`.
@@ -204,7 +207,7 @@ export function startDevServer(options: DevOptions): DevServer {
   // the app shell: load the client + the entry module
   app.get('/', context =>
     context.html(
-      `<!doctype html>\n<html>\n  <head><meta charset="utf-8" /><title>seed dev</title></head>\n  <body>\n    <script type="module" src="${CLIENT_URL}"></script>\n    <script type="module" src="${entryUrl}"></script>\n  </body>\n</html>\n`,
+      `<!doctype html>\n<html>\n  <head><meta charset="utf-8" /><title>seed dev</title></head>\n  <body>\n    <script type="module" src="${CLIENT_URL}"></script>\n    <script type="module" src="${entryUrl}"></script>\n${options.boot ? `    <script type="module">import { boot } from "${entryUrl}"; boot()</script>\n` : ''}  </body>\n</html>\n`,
     ),
   )
 
