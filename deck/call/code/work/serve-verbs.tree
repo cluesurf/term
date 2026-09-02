@@ -36,7 +36,9 @@ dock load
   load <node:process>, name node-process
 
 # the port the worker listens on when none is given
-host default-port, code 5179
+# `worker-port`, not `default-port`: `feed` declares the dev server's default under that name, and a package
+# has one namespace for both.
+host worker-port, code 5179
 
 form daemon-ask
   link root, like text
@@ -62,7 +64,7 @@ task work
       hook hold
         read port
       hook miss
-        read default-port
+        read worker-port
   note unsafe
     save daemon
       call daemon-module/startDaemon

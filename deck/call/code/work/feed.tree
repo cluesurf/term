@@ -37,7 +37,10 @@ form feed-ask
   link env, like text
 
 # the port the dev server listens on when none is given
-host default-port, code 5173
+# `feed-port`, not `default-port`: names are PACKAGE-GLOBAL, and `serve-verbs` declares the worker's default
+# too. Two modules spelling the same host name compile fine on their own and collide the moment the program is
+# merged, which is at `term boot` and nowhere earlier.
+host feed-port, code 5173
 
 task feed
   note async
@@ -80,7 +83,7 @@ task feed
       hook hold
         read port
       hook miss
-        read default-port
+        read feed-port
   save chosen-env
     fork test
       call is-equal

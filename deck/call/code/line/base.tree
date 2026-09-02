@@ -99,7 +99,7 @@ load @term/call/code/work/move
   find bump-code
 
 load @term/call/code/work/note
-  find note
+  find note-deck
 
 load @term/call/code/work/roll
   find roll
@@ -515,7 +515,7 @@ hook note
   # Package to inspect
   take deck
     like text
-  task note
+  task note-deck
 
 # Format .tree files into canonical layout
 hook form

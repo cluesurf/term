@@ -9,7 +9,7 @@
 // An app is a directory with a `deck.tree` naming it, a page entry (`face/base.tree`, a module exporting a `boot`
 // task that mounts the page) and a cask entry (`cask.tree`, a module exporting `boot(bundle)` that opens the window
 // and hands the process to the platform). Output goes under `host/<target>/`. Design: note/term/cask/readme.md.
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -521,6 +521,10 @@ export function simulator(): { udid: string } | { missing: string } {
 // test attaches the console itself (`simctl launch --console`), which returns only when the app exits, and an app
 // that never exits would hold `term make` forever
 export function launchOnSimulator({ udid, app, identifier }: { udid: string; app: string; identifier: string }): void {
+  // a clean install: the simulator keeps an earlier install's Info.plist decisions (the launch screen, the display
+  // mode) across an install over it, so a rebuilt app kept running letterboxed until it was removed first
+  spawnSync('xcrun', ['simctl', 'terminate', udid, identifier], { stdio: 'ignore' })
+  spawnSync('xcrun', ['simctl', 'uninstall', udid, identifier], { stdio: 'ignore' })
   execFileSync('xcrun', ['simctl', 'install', udid, app], { stdio: 'inherit' })
   execFileSync('xcrun', ['simctl', 'launch', udid, identifier], { stdio: 'inherit' })
 }

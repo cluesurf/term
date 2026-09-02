@@ -43,7 +43,7 @@ task full-name
   send back
     read manifest/name
 
-task note
+task note-deck
   note async
   like void
   # the project root is READ, not taken: a hook has no `root` argument to pass
