@@ -4,6 +4,9 @@
 # second request record. That is deliberate: the handler is the SAME `(request) -> response` an HTTP/1.1 server
 # takes, so a service gains h2 without being rewritten, and these are here for the handler that wants to know.
 #
+# Each answers the empty text when the header is absent, which is what a request that arrived over HTTP/1.1 will
+# do, so a handler shared between the two does not have to ask which transport it is on.
+#
 # Internal: reached only through the public network/http2 API.
 
 load @term/seed/code/network/server/request
@@ -14,49 +17,30 @@ load @term/seed/code/native/swift/network/http2/shared
   find head-authority
   find head-stream
 
-load @term/seed/code/hash
-  find hash
-
-# <https> or <http>. On HTTP/1.1 there is no such header and this answers the empty text.
+# <https> or <http>
 task http2-scheme
   take request, like request
   like text
   send back
-    call read-head
-      read request
+    call request/headers/get-or-default
       read head-scheme
+      text <>
 
 # the host and port the client asked for, which is h2's replacement for the Host header
 task http2-authority
   take request, like request
   like text
   send back
-    call read-head
-      read request
+    call request/headers/get-or-default
       read head-authority
+      text <>
 
-# the stream the request arrived on. Odd-numbered and client-initiated, and 0 on a backend or a connection with
-# no stream to report.
+# the stream the request arrived on. Odd-numbered and client-initiated, and 0 on a backend that does not report
+# one to a handler (hyper, Hummingbird and Ktor do not; node does).
 task http2-stream
   take request, like request
   like text
   send back
-    call read-head
-      read request
+    call request/headers/get-or-default
       read head-stream
-
-# one header, or the empty text. Private: the public way to read a header is the request's own header map.
-task read-head
-  note private
-  take request, like request
-  take name, like text
-  like text
-  save found
-    call hash-get
-      read request/headers
-      read name
-  fork case, read found
-    case some
-      send back, read value
-    case none
-      send back, text <>
+      text <>

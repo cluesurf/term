@@ -1,0 +1,93 @@
+# `term feed [entry]` -- the dev server. Compiles the app in per-module mode, serves each module lazily over native
+# ESM, and hot-reloads on change over server-sent events, which is what it "feeds" the browser. The entry is an
+# argument or the `boot <path>` the manifest names. It stays alive until interrupted.
+#
+# THE FILE WATCH IS NOT PORTED and delegates, deliberately. It needs a recursive filesystem watcher with debounce,
+# and the stdlib has no watch at all; writing one here would be a worse copy of something the TypeScript already
+# does. What is Term is the verb: finding the entry, choosing the port, starting the server and reporting.
+#
+# Ported from deck/call/code/feed.ts (cli-in-term-0004).
+
+load @term/seed/code/file
+  find test, name file-test
+
+dock load
+  load <@term/call/code/feed>, name feed-module
+  load <@term/call/code/boot>, name boot-module
+  load <@term/make/code/tint>, name tint
+  load <node:process>, name node-process
+
+form feed-ask
+  link root, like text
+  link entry, like text
+  link port, like number
+  link env, like text
+
+# the port the dev server listens on when none is given
+host default-port, code 5173
+
+task feed
+  note async
+  take root, like text
+  take entry, like text
+  take port, like number
+  take env, like text
+  like void
+  call tint/logStep
+    text <Starting dev server...>
+  save found
+    call boot-module/findEntry
+      read root
+      read entry
+  save there
+    fork test
+      call is-equal
+        read found
+        text <>
+      hook hold
+        false
+      hook miss
+        call file-test
+          read found
+          wait true
+  fork test
+    read there
+    hook miss
+      call tint/logFail
+        text <No entry to serve: pass one, or name it with a boot path in deck.tree>
+      call node-process/exit
+        code 1
+  save chosen
+    fork test
+      call is-above
+        read port
+        code 0
+      hook hold
+        read port
+      hook miss
+        read default-port
+  save chosen-env
+    fork test
+      call is-equal
+        read env
+        text <>
+      hook hold
+        text <browser>
+      hook miss
+        read env
+  note unsafe
+    # the watcher is the TypeScript's, for the reason in the header
+    call feed-module/callFeed
+      make feed-ask
+        bind root, read root
+        bind entry, read found
+        bind port, read chosen
+        bind env, read chosen-env
+      wait true
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1

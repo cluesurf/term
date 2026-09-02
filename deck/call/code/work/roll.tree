@@ -1,0 +1,155 @@
+# `term roll [kind]` -- the roll of this project: every deck in the build, every exception with who can raise it,
+# every public task with what it raises, every route, every tell.
+#
+# RECOMPUTED FROM SOURCE, so it is never stale. It prints as a tree; `--json` prints the same shape `term make`
+# writes to host/roll.json.
+#
+# The roll is BUILT by the compiler, which is TypeScript, so this verb docks `projectRoll` rather than rebuilding
+# the walk in Term: the walk is the compiler's own and a second one would drift from it. What is Term here is the
+# verb -- the filtering, the cross-referencing of tells to exceptions, and the output.
+#
+# Ported from deck/call/code/roll.ts (cli-in-term-0004).
+
+load @term/seed/code/text
+  find contains
+
+dock load
+  load <@term/call/code/roll>, name roll-module
+  load <@term/make/code/compile/roll>, name roll-show
+  load <@term/make/code/tint>, name tint
+  load <node:process>, name node-process
+  load <global:console>, name console
+  load <global:JSON>, name json-global
+
+form show-ask
+  link path, like boolean
+
+# the kinds a roll always has, before any a deck declares with `roll <name>`
+task built-in-kinds
+  like list
+    like text
+  send back
+    make list
+      text <deck>
+      text <exception>
+      text <task>
+      text <dock>
+      text <tell>
+      text <kind>
+
+task is-known-kind
+  take kind, like text
+  take declared, like list
+    like unknown
+  like boolean
+  walk list, call built-in-kinds
+    hook next
+      take site, name one
+      fork test
+        call is-equal
+          read one
+          read kind
+        hook hold
+          send back, true
+  walk list, read declared
+    hook next
+      take site, name one
+      fork test
+        call is-equal
+          read one/name
+          read kind
+        hook hold
+          send back, true
+  send back, false
+
+task roll
+  note async
+  take root, like text
+  take kind, like text
+  take json-out, like boolean
+  take show-path, like boolean
+  like void
+  fork test
+    read json-out
+    hook miss
+      call tint/logStep
+        text <Rolling...>
+  save answer
+    call roll-module/projectRoll
+      read root
+  save roll
+    read answer/roll
+  save failed
+    read answer/failed
+  fork test
+    call is-unequal
+      read kind
+      text <>
+    hook hold
+      fork test
+        call is-known-kind
+          read kind
+          read roll/kind
+        hook miss
+          call tint/logFail
+            text <Unknown kind "{{kind}}">
+          call node-process/exit
+            code 1
+  # which tell covers each exception, so a reader sees what a customer would be told
+  walk list, read roll/exception
+    hook next
+      take site, name one
+      save full
+        text <{{one/host}}/{{one/name}}>
+      save note
+        call tell-for
+          read roll/tell
+          read full
+      save one/tell
+        read note
+  fork test
+    read json-out
+    hook hold
+      call console/log
+        call json-global/stringify
+          read roll
+          make void
+          code 2
+      send back
+  call console/log
+    text <>
+  call console/log
+    call roll-show/showRoll
+      read roll
+      read kind
+      make show-ask
+        bind path, read show-path
+  call console/log
+    text <>
+  fork test
+    call is-above
+      read failed/length
+      code 0
+    hook hold
+      call console/log
+        call tint/fade
+          text <  {{failed}} file(s) did not compile and are not on the roll>
+
+# the note of the tell that covers one exception, or `private` when none does
+task tell-for
+  take tells, like list
+    like unknown
+  take full, like text
+  like text
+  walk list, read tells
+    hook next
+      take site, name one
+      fork test
+        call is-equal
+          read one/name
+          read full
+        hook hold
+          send back
+            read one/note
+  send back
+    text <private>

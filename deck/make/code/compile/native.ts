@@ -12,6 +12,9 @@ export const NATIVE_ENVS = [
   'node',
   'browser',
   'cloudflare',
+  // the page inside a native app cask: TypeScript in the platform WebView, reaching every native through the
+  // cask's bridge. Borrows the browser natives for everything that is pure page work. See note/term/cask/readme.md
+  'webview',
   'rust',
   'swift',
   'javascript',
@@ -27,6 +30,7 @@ export const RUNTIME_EXTENSION: Record<NativeEnv, string> = {
   // the Cloudflare Workers target: TypeScript like node/browser, but its native runtime
   // shims speak the Web platform (a Fetch handler + the ASSETS binding, no node http socket)
   cloudflare: 'ts',
+  webview: 'ts',
   javascript: 'ts',
   rust: 'rs',
   swift: 'swift',
@@ -242,8 +246,11 @@ export function nativePrelude(
 // SSR seams that genuinely differ (the in-memory DOM, the fetch-handler transport + host) ship a `native/cloudflare`
 // file, which still wins because it is tried first. Without this every pure-JS stdlib module (text, list, ...) would
 // need a hand-written `native/cloudflare` re-export.
-const NATIVE_ENV_FALLBACK: Partial<Record<NativeEnv, NativeEnv>> = {
+export const NATIVE_ENV_FALLBACK: Partial<Record<NativeEnv, NativeEnv>> = {
   cloudflare: 'browser',
+  // the page in a cask is a browser page whose natives go over the bridge; the DOM, text, list and the rest are the
+  // browser's own
+  webview: 'browser',
 }
 
 // wrap a resolver so that abstract native imports resolve to the chosen platform's implementation. The env-specific

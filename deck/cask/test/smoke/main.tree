@@ -1,0 +1,30 @@
+
+# The cask side of the smoke test of cask-0004 and cask-0005: open a window, load the smoke page, and answer what it
+# posts through the GENERATED dispatcher in ./dispatch.tree, which `pnpm term:cask-generate --app deck/cask/test/smoke`
+# writes from the page's own docks. No window is shown: a test only talks over the bridge.
+
+load @term/cask/code/cask
+  find window
+  find open-window
+  find load-bundle
+  find on-message
+  find run
+
+load ./dispatch
+  find dispatch
+
+task boot
+  take bundle, like text
+  like void
+  save made
+    call open-window
+      text <Term smoke>
+      code 640
+      code 480
+  call on-message
+    read made
+    read dispatch
+  call load-bundle
+    read made
+    read bundle
+  call run

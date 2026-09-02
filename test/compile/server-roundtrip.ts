@@ -466,6 +466,8 @@ let package = Package(
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "_NIOFileSystem", package: "swift-nio"),
                 .product(name: "Hummingbird", package: "hummingbird"),
+                .product(name: "HummingbirdHTTP2", package: "hummingbird"),
+                .product(name: "HummingbirdTLS", package: "hummingbird"),
             ],
             path: "Sources/server"
         )

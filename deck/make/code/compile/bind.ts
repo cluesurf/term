@@ -4,6 +4,7 @@
 // leaving a direct bind call. See note/research/vibe/computation/plans/20-specialization-and-bind.md. Pure and
 // browser-safe.
 
+import { NATIVE_ENV_FALLBACK, type NativeEnv } from '@term/make/code/compile/native'
 import type {
   Expression,
   Statement,
@@ -174,12 +175,28 @@ export function referencedBinds(
 
 // render a bind's native expression for one environment: substitute each `$param` placeholder with the already-emitted
 // argument string. Returns undefined when the bind declares no target for this environment (the backend emits a gap).
+// the case a bind emits for an env: the env's own, or the env it borrows from when it has none. The `webview` env is
+// a browser page whose natives go over the cask bridge, so a bind with a `browser` case and no `webview` case is
+// right for it, the way `withNativeEnv` borrows the browser natives for it. Without this every inline bind (float's
+// `to-decimal`, and the rest) emitted the SEED_UNSUPPORTED sentinel into a cask page.
+export function bindTarget(bind: Bind, env: string): Bind['targets'][number] | undefined {
+  const own = bind.targets.find(candidate => candidate.env === env)
+
+  if (own) {
+    return own
+  }
+
+  const borrowed = NATIVE_ENV_FALLBACK[env as NativeEnv]
+
+  return borrowed ? bind.targets.find(candidate => candidate.env === borrowed) : undefined
+}
+
 export function renderBind(
   bind: Bind,
   env: string,
   args: string[],
 ): string | undefined {
-  const target = bind.targets.find(candidate => candidate.env === env)
+  const target = bindTarget(bind, env)
 
   if (!target) {
     return undefined
@@ -203,7 +220,7 @@ export function bindImports(
   const out: { module: string; alias?: string }[] = []
 
   for (const bind of binds.values()) {
-    const target = bind.targets.find(candidate => candidate.env === env)
+    const target = bindTarget(bind, env)
 
     for (const need of target?.imports ?? []) {
       const key = `${need.module}|${need.alias ?? ''}`

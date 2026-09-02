@@ -8,9 +8,15 @@
 #   load-bundle   window, path to a built page    the page shipped inside the app
 #   load-url      window, url                    the dev loop, pointed at the Term dev server
 #   eval          window, script                 run a script in the page, on the UI thread
-#   on-message    window, handler                receive what the page posts through `window.term.post`
+#   on-message    window, handler                answer what the page posts through `window.term.post`. The handler
+#                                                is asynchronous and returns the reply text
+#   on-ready      window, handler                the page has finished loading
+#   snapshot      window, path, done             write a PNG of the page as drawn, then call done
+#   show          window                         put the window on screen, behind everything. A window opens off screen
+#   activate      window                         bring the window to the front with focus
 #   run                                          hand the process to the platform's event loop. Does not return
 #   quit                                         leave it
+#   exit          status                        leave it with a status
 #   bundle-path                                  where the app's own files are
 #   data-path     name                           where the app may write
 

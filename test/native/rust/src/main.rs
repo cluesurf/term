@@ -86,6 +86,10 @@ include!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../deck/seed/code/native/rust/network/runtime/server.rs"
 ));
+include!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../deck/seed/code/native/rust/network/runtime/http2.rs"
+));
 
 // ---- the harness ----
 
@@ -440,6 +444,85 @@ async fn fetch(port: i64, payload: &str) -> (i64, Vec<String>, String) {
     (status, headers, body.to_string())
 }
 
+// HTTP/2 cleartext, checked with curl rather than a client of our own: curl links nghttp2 and
+// `--http2-prior-knowledge` speaks h2c, so this proves the server against an INDEPENDENT implementation. The
+// `%{http_version}` write-out is the part that matters -- a server that quietly answered HTTP/1.1 would pass
+// every other assertion here.
+async fn http2_server() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("suite bind");
+    let port = listener.local_addr().expect("suite port").port() as i64;
+    drop(listener);
+
+    let handler: http2::Handler = std::rc::Rc::new(move |request: Request| Response {
+        status: 200,
+        headers: std::rc::Rc::new(std::cell::RefCell::new(vec![Header {
+            name: "content-type".to_string(),
+            value: "text/plain".to_string(),
+        }])),
+        body: format!(
+            "{} scheme={} stream={}",
+            request.path,
+            request
+                .headers
+                .borrow()
+                .get(":scheme")
+                .cloned()
+                .unwrap_or_default(),
+            request
+                .headers
+                .borrow()
+                .get("x-term-stream")
+                .cloned()
+                .unwrap_or_default(),
+        ),
+    });
+
+    let server = http2::start(
+        port,
+        "127.0.0.1".to_string(),
+        handler,
+        false,
+        String::new(),
+        String::new(),
+    )
+    .await;
+
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    let out = tokio::process::Command::new("curl")
+        .args([
+            "--http2-prior-knowledge",
+            "--silent",
+            "--max-time",
+            "10",
+            "--write-out",
+            "|version=%{http_version}",
+            &format!("http://127.0.0.1:{}/h2/path", port),
+        ])
+        .output()
+        .await;
+
+    match out {
+        Ok(out) => {
+            let said = String::from_utf8_lossy(&out.stdout).to_string();
+            check(
+                &format!("http2 answered over h2c ({})", said.trim()),
+                said.contains("/h2/path"),
+            );
+            check(
+                "http2 negotiated HTTP/2, not 1.1",
+                said.contains("|version=2"),
+            );
+            check("http2 filled the :scheme pseudo-header", said.contains("scheme=http"));
+        }
+        Err(error) => check(&format!("http2 curl ran ({})", error), false),
+    }
+
+    http2::stop(server).await;
+}
+
 fn main() {
     // the same runtime shape `runtime::serve` builds: current thread plus a LocalSet, because a Term task value
     // is an Rc and cannot leave its thread
@@ -454,6 +537,8 @@ fn main() {
         files().await;
         println!("-- http server (hyper)");
         server().await;
+        println!("-- http2 server (hyper h2c)");
+        http2_server().await;
     });
 
     unsafe {

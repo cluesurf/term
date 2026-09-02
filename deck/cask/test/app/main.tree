@@ -6,17 +6,45 @@ load @term/cask/code/cask
   find window
   find open-window
   find load-bundle
+  find on-ready
+  find show
+  find activate
+  find snapshot
+  find quit
   find run
 
+# `shoot` true: once the page has loaded, write a PNG of it to `shot` and quit. That is the proof a build leaves behind
 task boot
   take bundle, like text
+  take shoot, like boolean
+  take shot, like text
   like void
   save made
     call open-window
       text <Term blog>
       code 960
       code 720
+  call on-ready
+    read made
+    task ready
+      like void
+      fork test
+        hook test, read shoot
+        hook hold
+          call show
+            read made
+          call snapshot
+            read made
+            read shot
+            task done
+              like void
+              call quit
   call load-bundle
     read made
     read bundle
+  fork test
+    hook test, read shoot
+    hook miss
+      call activate
+        read made
   call run

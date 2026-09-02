@@ -1,0 +1,274 @@
+# `term mind` -- the project's durable memory: one fact per file under `.base/@cluesurf/term/memory/`, with an
+# index.
+#
+#   term mind <fact>            remember a fact
+#   term mind                   list every remembered fact
+#   term mind --find <query>    recall the facts matching a query
+#
+# This is what lets an unattended session start cold and still know a project's decisions and conventions. The
+# store is plain markdown, so a person or any agent can read it, and `--back json` returns structured records.
+#
+# THE MEMORY IS THE ONE THING HERE A PERSON WROTE, so it reads through `kept-at`: a project whose facts are still
+# at the pre-2026-08-30 path keeps them rather than starting empty.
+#
+# Ported from deck/call/code/mind.ts (cli-in-term-0004).
+
+load @term/call/code/work/home
+  find project-home
+  find legacy-project-home
+  find kept-at
+
+load @term/seed/code/path
+  find join
+
+load @term/seed/code/file
+  find read, name read-file
+  find write, name write-file
+
+load @term/seed/code/file/directory
+  find make, name make-directory
+  find list, name list-directory
+  find exists, name directory-exists
+
+load @term/seed/code/text
+  find split
+  find trim
+  find contains
+  find to-lower-case
+  find substring
+  find char-count
+  find ends-with
+
+load @term/seed/code/regex
+  find replace, name replace-pattern
+
+dock load
+  load <@term/make/code/tint>, name tint
+  load <global:console>, name console
+
+# the kinds a fact may carry. Anything else is a note, which is the kind that makes no claim.
+task is-kind
+  take kind, like text
+  like boolean
+  fork test
+    call is-equal
+      read kind
+      text <decision>
+    hook hold
+      send back, true
+  fork test
+    call is-equal
+      read kind
+      text <convention>
+    hook hold
+      send back, true
+  fork test
+    call is-equal
+      read kind
+      text <constraint>
+    hook hold
+      send back, true
+  fork test
+    call is-equal
+      read kind
+      text <reference>
+    hook hold
+      send back, true
+  fork test
+    call is-equal
+      read kind
+      text <note>
+    hook hold
+      send back, true
+  send back, false
+
+# a phrase to a file name: lower case, non-alphanumerics to dashes, no dash at either end, at most 48 characters
+task slug
+  take text, like text
+  like text
+  save lower
+    call to-lower-case
+      read text
+  save dashed
+    call replace-pattern
+      text <[^a-z0-9]+>
+      read lower
+      text <->
+  save trimmed
+    call replace-pattern
+      text <^-+|-+$>
+      read dashed
+      text <>
+  save size
+    call char-count
+      read trimmed
+  save cut
+    fork test
+      call is-below
+        read size
+        code 48
+      hook hold
+        read trimmed
+      hook miss
+        call substring
+          read trimmed
+          code 0
+          code 48
+  fork test
+    call is-equal
+      read cut
+      text <>
+    hook hold
+      send back
+        text <fact>
+  send back, read cut
+
+# where a project keeps its memory, old location included
+task memory-directory
+  note async
+  take root, like text
+  like text
+  send back
+    call kept-at
+      call join
+        call project-home
+          read root
+        text <memory>
+      call join
+        call legacy-project-home
+          read root
+        text <memory>
+      wait true
+
+# remember one fact, and keep the one-line index it is listed in
+task remember
+  note async
+  take root, like text
+  take fact, like text
+  take name, like text
+  take kind, like text
+  like text
+  save directory
+    call memory-directory
+      read root
+      wait true
+  call make-directory
+    read directory
+  save chosen-kind
+    fork test
+      call is-kind
+        read kind
+      hook hold
+        read kind
+      hook miss
+        text <note>
+  save chosen-name
+    fork test
+      call is-equal
+        read name
+        text <>
+      hook hold
+        call slug
+          read fact
+      hook miss
+        call slug
+          read name
+  save lines
+    call split
+      read fact
+      text <\n>
+  save description
+    call trim
+      read lines/0
+  save file
+    call join
+      read directory
+      text <{{chosen-name}}.md>
+  call write-file
+    read file
+    text <---
+name: {{chosen-name}}
+kind: {{chosen-kind}}
+description: {{description}}
+---
+
+{{fact}}
+>
+    wait true
+  call write-index
+    read directory
+    read chosen-name
+    read description
+    wait true
+  send back, read chosen-name
+
+# the index a session loads up front: one line per fact, deduped by name
+task write-index
+  note async
+  take directory, like text
+  take name, like text
+  take description, like text
+  like void
+  save path
+    call join
+      read directory
+      text <index.md>
+  save existing
+    call read-index
+      read path
+      wait true
+  save kept
+    make list
+  walk list
+    call split
+      read existing
+      text <\n>
+    hook next
+      take site, name line
+      save clean
+        call trim
+          read line
+      fork test
+        call is-equal
+          read clean
+          text <>
+        hook hold
+          turn next
+      fork test
+        call is-equal
+          read clean
+          text <# Memory>
+        hook hold
+          turn next
+      fork test
+        call contains
+          read line
+          text <- [{{name}}]>
+        hook hold
+          turn next
+      call kept/push
+        read line
+  call kept/push
+    text <- [{{name}}]({{name}}.md) - {{description}}>
+  call write-file
+    read path
+    text <# Memory
+
+{{kept}}
+>
+    wait true
+
+# the index as it stands, or an empty one
+task read-index
+  note async
+  take path, like text
+  like text
+  note unsafe
+    send back
+      call read-file
+        read path
+        wait true
+  halt take
+    take error
+    send back
+      text <>

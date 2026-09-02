@@ -1,0 +1,39 @@
+
+# The cask side of the bench app. Prints `ready` on the cask's stdout when the page has finished loading, which is
+# what the harness reads as time to first paint, and answers the page through the generated dispatcher.
+
+load @term/cask/code/cask
+  find window
+  find open-window
+  find load-bundle
+  find on-message
+  find on-ready
+  find run
+
+load @term/seed/code/console
+  find log
+
+load ./dispatch
+  find dispatch
+
+task boot
+  take bundle, like text
+  like void
+  save made
+    call open-window
+      text <Term bench>
+      code 640
+      code 480
+  call on-message
+    read made
+    read dispatch
+  call on-ready
+    read made
+    task ready
+      like void
+      call log
+        text <ready>
+  call load-bundle
+    read made
+    read bundle
+  call run

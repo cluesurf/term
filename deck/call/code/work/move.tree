@@ -48,7 +48,7 @@ task parse-level
   send back
     code 3
 
-task move
+task bump-code
   note async
   take root, like text
   take target, like text
@@ -74,17 +74,17 @@ task move
         make manifest-ask
           bind dir, read root
         wait true
-    save before
+    save old-code
       call deck-tree/showCode
         read manifest/code
-    save after
+    save new-code
       call deck-tree/bumpCode
         make bump-ask
           bind code, read manifest/code
           bind level, read chosen
     save shown
       call deck-tree/showCode
-        read after
+        read new-code
     call write-file
       call join
         read root
@@ -94,7 +94,7 @@ task move
           bind manifest, read manifest
       wait true
     call tint/logGood
-      text <Version bumped: {{before}} to {{shown}}>
+      text <Version bumped: {{old-code}} -\> {{shown}}>
   halt take
     take error
     call tint/logFail

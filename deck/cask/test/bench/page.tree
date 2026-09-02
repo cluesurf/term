@@ -1,0 +1,14 @@
+
+# The page of the bench app: leave through the bridge the moment the page runs. What the harness times from process
+# start to exit is the whole path: the executable, the window, the WebView, the page's JavaScript, one message over
+# the bridge, the cask's dispatcher, and the native exit. The same measure Tauri's own bench takes.
+
+load @term/cask/code/cask
+  find exit
+
+task boot
+  note async
+  like void
+  call exit
+    wait true
+    code 0

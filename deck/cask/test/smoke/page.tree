@@ -1,0 +1,42 @@
+
+# The page side of the smoke test of cask-0004. Built for the `webview` env, so `file/read` and `cask/bundle-path`
+# each go over the bridge to the cask and come back. Asks the cask where the bundle is, reads the file the driver
+# put there, and leaves with 0 when it holds the expected line and 1 when it does not. The driver reads that status.
+
+load @term/cask/code/cask
+  find bundle-path
+  find exit
+
+load @term/seed/code/file
+  find read
+
+load @term/seed/code/text
+  find trim
+
+# what the driver writes into <bundle>/smoke.txt
+host expected, text <cask-smoke-ok>
+
+task boot
+  note async
+  like void
+  save bundle
+    call bundle-path
+      wait true
+  save content
+    call read
+      wait true
+      text <{{bundle}}/smoke.txt>
+  fork test
+    hook test
+      call is-equal
+        call trim
+          read content
+        read expected
+    hook hold
+      call exit
+        wait true
+        code 0
+    hook miss
+      call exit
+        wait true
+        code 1

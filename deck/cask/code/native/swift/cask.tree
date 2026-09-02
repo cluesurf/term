@@ -45,16 +45,53 @@ task eval
     read self
     read script
 
+# the handler receives what the page posted and answers with the reply text, which the runtime hands back to the
+# page as `window.term.reply(text)`. Asynchronous, because the reply usually waits on a native call
 task on-message
   take self, like window
   take handler
     like task
+      wait true
       take message, like text
-      like void
+      like text
   like void
   call cask/on-message
     read self
     read handler
+
+task on-ready
+  take self, like window
+  take handler
+    like task
+      like void
+  like void
+  call cask/on-ready
+    read self
+    read handler
+
+task snapshot
+  take self, like window
+  take path, like text
+  take done
+    like task
+      like void
+  like void
+  call cask/snapshot
+    read self
+    read path
+    read done
+
+task show
+  take self, like window
+  like void
+  call cask/show
+    read self
+
+task activate
+  take self, like window
+  like void
+  call cask/activate
+    read self
 
 task run
   like void
@@ -63,6 +100,12 @@ task run
 task quit
   like void
   call cask/quit
+
+task exit
+  take status, like number
+  like void
+  call cask/exit
+    read status
 
 task bundle-path
   like text

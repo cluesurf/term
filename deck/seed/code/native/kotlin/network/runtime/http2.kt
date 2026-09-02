@@ -25,6 +25,7 @@ import io.ktor.server.response.header
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
+import kotlinx.coroutines.withTimeoutOrNull
 
 object http2 {
   class Running(
@@ -101,7 +102,21 @@ object http2 {
         // ONE catch-all route: the Term API routes inside the handler, so Ktor's router is not used for dispatch
         route("{...}") {
           handle {
-            val body = call.receiveText()
+            // DO NOT ask for a body that was never announced. `call.receiveText()` HANGS on Ktor's Netty engine
+            // over h2c when the request has no body: curl sends the headers with END_STREAM, the server never
+            // completes the body channel, and the request times out with the connection still open. The same
+            // handler over HTTP/1.1 answers instantly, which is what makes it look like an h2 problem rather
+            // than a body-reading one.
+            //
+            // So the content-length decides. Absent, it is read under a bounded wait rather than forever, so a
+            // streaming upload still works and a body-less GET still answers.
+            val declared = call.request.headers["content-length"]?.toLongOrNull()
+            val body =
+              when {
+                declared == 0L -> ""
+                declared != null -> call.receiveText()
+                else -> withTimeoutOrNull(500L) { call.receiveText() } ?: ""
+              }
             val headers = mutableMapOf<String, String>()
 
             for (name in call.request.headers.names()) {

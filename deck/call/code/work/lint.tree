@@ -1,0 +1,124 @@
+# `term lint` -- lint `.tree` files. Findings are reported; `--fix` applies the autofixes in place. It exits
+# non-zero when any error-severity finding remains, so it can gate a build.
+#
+# THE FIX PATH IS NOT PORTED YET and says so rather than pretending. Applying edits means splicing text by byte
+# offset right to left, and the stdlib has no offset-based splice; doing it with `substring` would be a second,
+# worse implementation of something the TypeScript already does correctly. `--fix` delegates to it until the
+# stdlib grows the operation.
+#
+# Ported from deck/call/code/lint.ts (cli-in-term-0004).
+
+load @term/call/code/work/files
+  find walk-trees
+
+load @term/seed/code/file
+  find read, name read-file
+
+dock load
+  load <@term/make/code/analyze>, name analyze-module
+  load <@term/make/code/tint>, name tint
+  load <@term/call/code/lint>, name lint-module
+  load <node:path>, name node-path
+  load <node:process>, name node-process
+  load <global:console>, name console
+
+form analyze-ask
+  link file, like text
+  link text, like text
+
+form lint-ask
+  link root, like text
+  link paths, like list
+    like text
+  link fix, like boolean
+
+task lint
+  note async
+  take root, like text
+  take fix, like boolean
+  like void
+  # the fix path splices by byte offset, which the stdlib cannot do yet: hand the whole verb over rather than
+  # half-implement it
+  fork test
+    read fix
+    hook hold
+      call lint-module/callLint
+        make lint-ask
+          bind root, read root
+          bind paths, make list
+          bind fix, true
+        wait true
+      send back
+  save files
+    call walk-trees
+      read root
+      wait true
+  fork test
+    call is-equal
+      read files/length
+      code 0
+    hook hold
+      call tint/logFail
+        text <No .tree files found>
+      call node-process/exit
+        code 1
+  call tint/logStep
+    text <Linting...>
+  save findings
+    code 0
+  save errors
+    code 0
+  walk list, read files
+    hook next
+      take site, name file
+      save text
+        call read-file
+          read file
+          wait true
+      save shown
+        call node-path/relative
+          read root
+          read file
+      save found
+        call analyze-module/analyze
+          make analyze-ask
+            bind file, read shown
+            bind text, read text
+      save each
+        call found/lint
+      walk list, read each
+        hook next
+          take site, name one
+          save findings
+            call add
+              read findings
+              code 1
+          fork test
+            call is-equal
+              read one/severity
+              text <error>
+            hook hold
+              save errors
+                call add
+                  read errors
+                  code 1
+          call console/log
+            call tint/fade
+              text <  {{shown}}: {{one/message}}>
+  fork test
+    call is-equal
+      read findings
+      code 0
+    hook hold
+      call tint/logGood
+        text <No lint findings>
+      send back
+  call tint/logFail
+    text <{{findings}} finding(s), {{errors}} error(s)>
+  fork test
+    call is-above
+      read errors
+      code 0
+    hook hold
+      call node-process/exit
+        code 1

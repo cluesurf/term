@@ -1,0 +1,132 @@
+# The remaining verbs: `term time`, `term hold` and `term zone`.
+#
+# `zone` is the one that CANNOT be more than this. It slices the argument vector at `zone` and hands everything
+# after it to the zone console untouched, because a zone invocation carries a `--` separating the zone path from
+# the command to run, plus flags that mean something to that console and nothing here. Re-parsing them would
+# swallow the wrong ones. Term cannot read the process argument vector or find the console beside the running
+# binary, so the verb docks the module that can.
+#
+# Ported from deck/call/code/{time,hold,zone}.ts (cli-in-term-0004).
+
+dock load
+  load <@term/call/code/time>, name time-module
+  load <@term/call/code/hold>, name hold-module
+  load <@term/call/code/zone>, name zone-module
+  load <@term/make/code/tint>, name tint
+  load <node:process>, name node-process
+
+form time-ask
+  link root, like text
+  link filter, like text
+  link file, like text
+  link json, like boolean
+  link save, like text
+  link compare, like text
+  link failOnRegression, like number
+  link markdown, like boolean
+  link history, like text
+  link cpu, like text
+  link memory, like text
+  link top, like number
+
+form hold-ask
+  link root, like text
+  link paths, like list
+    like text
+  link cross, like boolean
+  link cache, like boolean
+  link force, like boolean
+  link json, like boolean
+
+form zone-ask
+  link root, like text
+  link argv, like list
+    like text
+
+# `term time [filter]`: run the benchmarks, or profile one file with --cpu / --memory
+task time
+  note async
+  take root, like text
+  take filter, like text
+  take file, like text
+  take json, like boolean
+  take save, like text
+  take compare, like text
+  take fail-on-regression, like number
+  take markdown, like boolean
+  take history, like text
+  take cpu, like text
+  take memory, like text
+  take top, like number
+  like void
+  note unsafe
+    call time-module/callTime
+      make time-ask
+        bind root, read root
+        bind filter, read filter
+        bind file, read file
+        bind json, read json
+        bind save, read save
+        bind compare, read compare
+        bind failOnRegression, read fail-on-regression
+        bind markdown, read markdown
+        bind history, read history
+        bind cpu, read cpu
+        bind memory, read memory
+        bind top, read top
+      wait true
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1
+
+# `term hold`: verify that the `.tree` files hold -- report gaps, run the cross checks
+task hold
+  note async
+  take root, like text
+  take cross, like boolean
+  take cache, like boolean
+  take force, like boolean
+  take json, like boolean
+  like void
+  note unsafe
+    call hold-module/callHold
+      make hold-ask
+        bind root, read root
+        bind paths, make list
+        bind cross, read cross
+        bind cache, read cache
+        bind force, read force
+        bind json, read json
+      wait true
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1
+
+# `term zone ...`: the whole zone console, under one command, with its arguments handed over untouched
+task zone
+  note async
+  take root, like text
+  take rest, like list
+    like text
+  like void
+  note unsafe
+    call zone-module/callZone
+      make zone-ask
+        bind root, read root
+        bind argv, read rest
+      wait true
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1

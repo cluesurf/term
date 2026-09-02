@@ -1,0 +1,168 @@
+# `term look <module>` -- what a module exposes: its forms and tasks with their signatures, following its load and
+# bear graph.
+#
+# The target is a package path (`@term/bind/code/browser/dom`) or a `.tree` file on disk. Output is a table by
+# default, or `--json` / `--csv`.
+#
+# A DATA FILE HAS NO FORMS OR TASKS, so it lists its keys instead, one path per row. That is not a special case
+# bolted on: a `.tree` of `host` / `list` / `mesh` is data, and asking what it exposes is asking what is in it.
+#
+# Ported from deck/call/code/look.ts (cli-in-term-0004).
+
+load @term/seed/code/file
+  find read, name read-file
+  find test, name file-test
+
+load @term/seed/code/text
+  find starts-with
+
+dock load
+  load <@term/make/code/inspect>, name inspect-module
+  load <@term/make/code/compile/host>, name host-module
+  load <@term/call/code/make>, name make-module
+  load <@term/call/code/deck-of>, name deck-of-module
+  load <@term/make/code/tint>, name tint
+  load <node:path>, name node-path
+  load <node:process>, name node-process
+  load <global:console>, name console
+
+form source-ask
+  link file, like text
+  link text, like text
+
+# the entry a target names: a package path through the project resolver, or a file on disk
+task entry-of
+  note async
+  take root, like text
+  take target, like text
+  like unknown
+  fork test
+    call starts-with
+      read target
+      text <@>
+    hook hold
+      save found
+        call make-module/projectResolver
+          read root
+      send back
+        call found
+          read target
+          read root
+  save file
+    call node-path/resolve
+      read root
+      read target
+  save there
+    call file-test
+      read file
+      wait true
+  fork test
+    read there
+    hook miss
+      call tint/logFail
+        text <File not found: {{target}}>
+      call node-process/exit
+        code 1
+  send back
+    make source-ask
+      bind file, read file
+      bind text
+        call read-file
+          read file
+          wait true
+
+task look
+  note async
+  take root, like text
+  take target, like text
+  take json-out, like boolean
+  take csv-out, like boolean
+  take kind, like text
+  like void
+  fork test
+    call is-equal
+      read target
+      text <>
+    hook hold
+      call tint/logFail
+        text <Usage: term look MODULE, with --json or --csv, and --kind form or task>
+      call node-process/exit
+        code 1
+  save entry
+    call entry-of
+      read root
+      read target
+      wait true
+  save quiet
+    fork test
+      read json-out
+      hook hold
+        true
+      hook miss
+        read csv-out
+  fork test
+    read quiet
+    hook miss
+      call tint/logStep
+        text <Inspecting {{target}}...>
+  save answer
+    call inspect-module/inspectModule
+      read entry
+      call make-module/projectResolver
+        read root
+      call deck-of-module/projectDeckOf
+  save symbols
+    call only-kind
+      read answer/symbols
+      read kind
+  fork test
+    read json-out
+    hook hold
+      call console/log
+        call inspect-module/toJson
+          read symbols
+      send back
+  fork test
+    read csv-out
+    hook hold
+      call console/log
+        call inspect-module/toCsv
+          read symbols
+      send back
+  call console/log
+    text <>
+  call console/log
+    call inspect-module/toTable
+      read symbols
+  call console/log
+    text <>
+  call console/log
+    call tint/fade
+      text <  {{answer/modules}} module(s), {{symbols}} symbol(s)>
+
+# the symbols of one kind, or all of them when no kind is asked for
+task only-kind
+  take symbols, like list
+    like unknown
+  take kind, like text
+  like list
+    like unknown
+  fork test
+    call is-equal
+      read kind
+      text <>
+    hook hold
+      send back, read symbols
+  save found
+    make list
+  walk list, read symbols
+    hook next
+      take site, name one
+      fork test
+        call is-equal
+          read one/kind
+          read kind
+        hook hold
+          call found/push
+            read one
+  send back, read found

@@ -209,11 +209,60 @@ fun fetch(port: Int, payload: String): Triple<Int, List<String>, String> {
   }
 }
 
+// HTTP/2 cleartext, checked with curl rather than a client of our own: curl links nghttp2 and
+// `--http2-prior-knowledge` speaks h2c, so this proves the server against an INDEPENDENT implementation. The
+// `%{http_version}` write-out is the part that matters: a server that quietly answered HTTP/1.1 would pass every
+// other assertion here.
+suspend fun http2Server() {
+  val port = 18532L
+
+  val handler: (Request) -> Response = { request ->
+    Response(
+      200L,
+      mutableListOf(Header("content-type", "text/plain")),
+      "${request.path} scheme=${request.headers[":scheme"] ?: ""} stream=${request.headers["x-term-stream"] ?: ""}",
+    )
+  }
+
+  val running = http2.start(port, "127.0.0.1", handler, false, "", "")
+  // Netty's first boot in a JVM is class-loading heavy and takes seconds, not milliseconds. CIO above needs
+  // 1.5s; this one needs more, and a short wait here reads as `version=0`, which is curl saying it never
+  // connected rather than the server answering the wrong protocol.
+  delay(6000L)
+
+  val said =
+    ProcessBuilder(
+        "curl",
+        "--http2-prior-knowledge",
+        "--silent",
+        "--max-time",
+        "10",
+        "--write-out",
+        "|version=%{http_version}",
+        "http://127.0.0.1:$port/h2/path",
+      )
+      .redirectErrorStream(false)
+      .start()
+      .let { proc ->
+        val out = proc.inputStream.readBytes().toString(Charsets.UTF_8)
+        proc.waitFor()
+        out
+      }
+
+  check("http2 answered over h2c (${said.trim()})", said.contains("/h2/path"))
+  check("http2 negotiated HTTP/2, not 1.1", said.contains("|version=2"))
+  check("http2 filled the :scheme pseudo-header", said.contains("scheme=http"))
+
+  http2.stop(running)
+}
+
 fun main() = runBlocking {
   println("-- asynchronous files (java.nio on Dispatchers.IO)")
   files()
   println("-- http server (Ktor CIO)")
   server()
+  println("-- http2 server (Ktor Netty, h2c)")
+  http2Server()
 
   println("\nkotlin native suite: $ran checks, $failed failed")
 

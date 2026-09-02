@@ -20,6 +20,7 @@ import {
   renderBind,
   bindGap,
   referencedBinds,
+  bindTarget,
 } from '@term/make/code/compile/bind'
 import type { Bind } from '@term/make/code/compile/bind'
 import { armLocals } from '@term/make/code/check/arm'
@@ -1612,7 +1613,7 @@ export function emitTypeScript(
   // binds actually called contribute, so an unused alternative does not pull in an import the program never references.
   for (const bind of referencedBinds(program, binds).values()) {
     const target =
-      bind.targets.find(t => t.env === env) ??
+      bindTarget(bind, env) ??
       bind.targets.find(t => t.env === 'javascript')
 
     for (const need of target?.imports ?? []) {

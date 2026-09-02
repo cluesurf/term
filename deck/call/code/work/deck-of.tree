@@ -1,0 +1,91 @@
+# The deck a source file belongs to: the nearest `deck.tree` above it, and the `deck <name>` inside it.
+#
+# This names the `host` of every raise and every roll entry, so the build, the roll and the tests must all agree on
+# it, or the same exception is `@local/x` in one place and `@term/site/x` in another.
+#
+# A `deck.tree` is a MANIFEST when its `deck` head carries an `@scope/name`. The stdlib also has a code module
+# called deck.tree (`form deck`, the manifest's own shape), which has no such line and is correctly skipped.
+#
+# Ported from deck/call/code/deck-of.ts (cli-in-term-0004).
+
+load @term/call/code/work/manifest
+  find manifest-value-of
+
+load @term/seed/code/path
+  find join
+
+load @term/seed/code/file
+  find test, name file-test
+
+load @term/seed/code/text
+  find starts-with
+
+dock load
+  load <node:path>, name node-path
+
+# the package root of a file: the nearest directory above it holding a manifest, or the project root
+task deck-root-of
+  note async
+  take file, like text
+  take root, like text
+  like text
+  save at
+    call node-path/dirname
+      read file
+  walk test
+    hook test
+      true
+    hook hold
+      save manifest
+        call join
+          read at
+          text <deck.tree>
+      save there
+        call file-test
+          read manifest
+          wait true
+      fork test
+        read there
+        hook hold
+          save name
+            call manifest-value-of
+              read manifest
+              text <deck>
+              wait true
+          fork test
+            call starts-with
+              read name
+              text <@>
+            hook hold
+              send back, read at
+      save up
+        call node-path/dirname
+          read at
+      fork test
+        call is-equal
+          read up
+          read at
+        hook hold
+          send back, read root
+      save at
+        read up
+  send back, read root
+
+# the deck NAME a file belongs to, or the empty text when nothing above it is a manifest
+task deck-name-of
+  note async
+  take file, like text
+  take root, like text
+  like text
+  save at
+    call deck-root-of
+      read file
+      read root
+      wait true
+  send back
+    call manifest-value-of
+      call join
+        read at
+        text <deck.tree>
+      text <deck>
+      wait true

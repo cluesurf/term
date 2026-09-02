@@ -252,10 +252,64 @@ func fetch(
   return (status, lines.map { $0.lowercased() }, body)
 }
 
+// HTTP/2 cleartext, checked with curl rather than a client of our own: curl links nghttp2 and
+// `--http2-prior-knowledge` speaks h2c, so this proves the server against an INDEPENDENT implementation. The
+// `%{http_version}` write-out is the part that matters: a server that quietly answered HTTP/1.1 would pass every
+// other assertion here.
+func http2Server() async {
+  let port = 18_531
+
+  let handler: (Request) -> Response = { request in
+    Response(
+      status: 200,
+      headers: SeedList([Header(name: "content-type", value: "text/plain")]),
+      body:
+        "\(request.path) scheme=\(request.headers.data[":scheme"] ?? "") stream=\(request.headers.data["x-term-stream"] ?? "")"
+    )
+  }
+
+  let running = await http2.start(port, "127.0.0.1", handler, false, "", "")
+  try? await Task.sleep(nanoseconds: 900_000_000)
+
+  let said = shell([
+    "--http2-prior-knowledge", "--silent", "--max-time", "10",
+    "--write-out", "|version=%{http_version}",
+    "http://127.0.0.1:\(port)/h2/path",
+  ])
+
+  check("http2 answered over h2c (\(said.trimmingCharacters(in: .whitespacesAndNewlines)))", said.contains("/h2/path"))
+  check("http2 negotiated HTTP/2, not 1.1", said.contains("|version=2"))
+  check("http2 filled the :scheme pseudo-header", said.contains("scheme=http"))
+
+  await http2.stop(running)
+}
+
+func shell(_ args: [String]) -> String {
+  let task = Process()
+  task.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+  task.arguments = args
+  let pipe = Pipe()
+  task.standardOutput = pipe
+  task.standardError = Pipe()
+
+  do {
+    try task.run()
+  } catch {
+    return ""
+  }
+
+  let data = pipe.fileHandleForReading.readDataToEndOfFile()
+  task.waitUntilExit()
+
+  return String(decoding: data, as: UTF8.self)
+}
+
 print("-- asynchronous files (NIOFileSystem)")
 await files()
 print("-- http server (Hummingbird)")
 await server()
+print("-- http2 server (HummingbirdHTTP2, h2c)")
+await http2Server()
 
 print("\nswift native suite: \(ran) checks, \(failed) failed")
 

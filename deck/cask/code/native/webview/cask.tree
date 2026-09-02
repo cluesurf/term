@@ -1,0 +1,121 @@
+
+# The cask as the page sees it. A page cannot open a window or run an event loop, so those tasks are signature-only
+# here and emit the backend's stub. What a page can do is ask its cask where things are, and leave. Each is one
+# command over the bridge, answered by the cask's dispatcher. Internal: reached only through the public cask API.
+
+dock load
+  load <global:bridge>, name bridge
+
+load @term/seed/code/json
+  find make-object
+  find set-field
+  find from-text
+  find from-number
+
+load @term/seed/code/float
+  find to-decimal
+
+# the opaque handle a page never holds; declared so the contract's signatures spell the same on every env
+dock type
+  load <any>, name window
+
+task open-window
+  take title, like text
+  take width, like number
+  take height, like number
+  like window
+
+task load-bundle
+  take self, like window
+  take path, like text
+  like void
+
+task load-url
+  take self, like window
+  take url, like text
+  like void
+
+task eval
+  take self, like window
+  take script, like text
+  like void
+
+task on-message
+  take self, like window
+  take handler
+    like task
+      wait true
+      take message, like text
+      like text
+  like void
+
+task on-ready
+  take self, like window
+  take handler
+    like task
+      like void
+  like void
+
+task snapshot
+  take self, like window
+  take path, like text
+  take done
+    like task
+      like void
+  like void
+
+task show
+  take self, like window
+  like void
+
+task activate
+  take self, like window
+  like void
+
+task run
+  like void
+
+task quit
+  note async
+  like void
+  call bridge/invoke-void
+    wait true
+    text <cask_quit>
+    call make-object
+
+task exit
+  note async
+  take status, like number
+  like void
+  call bridge/invoke-void
+    wait true
+    text <cask_exit>
+    call set-field
+      call make-object
+      text <status>
+      call from-number
+        call to-decimal
+          read status
+
+task bundle-path
+  note async
+  like text
+  send back
+    call bridge/invoke-text
+      wait true
+      text <cask_bundle_path>
+      call make-object
+
+task data-path
+  note async
+  take name, like text
+  like text
+  send back
+    call bridge/invoke-text
+      wait true
+      text <cask_data_path>
+      call set-field
+        call make-object
+        text <name>
+        call from-text
+          read name

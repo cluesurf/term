@@ -52,6 +52,7 @@ const NATIVE_PLATFORMS = [
   'node',
   'browser',
   'cloudflare',
+  'webview',
   'rust',
   'swift',
   'javascript',

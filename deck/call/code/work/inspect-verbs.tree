@@ -1,0 +1,164 @@
+# The verbs that read something and report on it: `term view`, `term seek`, `term mold` and `term boot`.
+#
+# Each is a thin verb over machinery that lives elsewhere -- the view reader, the install verifier and security
+# scan, the data shaper, and the app booter. What is Term here is the command's shape: its arguments, its checks,
+# its messages and its exit code.
+#
+# `mold` and `boot` KEEP THEIR MACHINERY IN TYPESCRIPT for a reason worth naming. `mold` reads standard input,
+# which the stdlib cannot do (there is no stdin), and `boot` compiles and then runs a program in a child process
+# with a prepared prelude. Neither is a thin thing to reproduce, and a second copy would drift from the one that
+# runs.
+#
+# Ported from deck/call/code/{view,seek,mold,boot}.ts (cli-in-term-0004).
+
+dock load
+  load <@term/call/code/view>, name view-module
+  load <@term/call/code/seek>, name seek-module
+  load <@term/call/code/mold>, name mold-module
+  load <@term/call/code/boot>, name boot-module
+  load <@term/make/code/tint>, name tint
+  load <node:process>, name node-process
+
+form view-ask
+  link root, like text
+  link path, like text
+  link find, like boolean
+
+form seek-ask
+  link root, like text
+  link audit, like boolean
+  link code, like boolean
+  link sarif, like text
+  link format, like text
+  link fix, like boolean
+
+form mold-ask
+  link root, like text
+  link file, like text
+  link pack, like boolean
+  link json, like boolean
+  link keep, like boolean
+  link tree, like boolean
+  link check, like boolean
+  link trees, like boolean
+  link lines, like boolean
+
+form boot-ask
+  link root, like text
+  link entry, like text
+  link env, like text
+  link port, like number
+  link remote, like text
+  link remoteToken, like text
+
+# `term view [path]`: check a document in the view role and print what it uses
+task view
+  note async
+  take root, like text
+  take path, like text
+  take find, like boolean
+  like void
+  note unsafe
+    call view-module/callView
+      make view-ask
+        bind root, read root
+        bind path, read path
+        bind find, read find
+      wait true
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1
+
+# `term seek`: are the packages installed correctly, and with `--audit` are they safe
+task seek
+  note async
+  take root, like text
+  take audit, like boolean
+  take code, like boolean
+  take sarif, like text
+  take format, like text
+  take fix, like boolean
+  like void
+  note unsafe
+    call seek-module/callSeek
+      make seek-ask
+        bind root, read root
+        bind audit, read audit
+        bind code, read code
+        bind sarif, read sarif
+        bind format, read format
+        bind fix, read fix
+      wait true
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1
+
+# `term mold [file]`: shape Term data, long or compact or JSON
+task mold
+  note async
+  take root, like text
+  take file, like text
+  take pack, like boolean
+  take json, like boolean
+  take keep, like boolean
+  take tree, like boolean
+  take check, like boolean
+  take trees, like boolean
+  take lines, like boolean
+  like void
+  note unsafe
+    call mold-module/callMold
+      make mold-ask
+        bind root, read root
+        bind file, read file
+        bind pack, read pack
+        bind json, read json
+        bind keep, read keep
+        bind tree, read tree
+        bind check, read check
+        bind trees, read trees
+        bind lines, read lines
+      wait true
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1
+
+# `term boot [entry]`: compile and run the app
+task boot
+  note async
+  take root, like text
+  take entry, like text
+  take env, like text
+  take port, like number
+  take remote, like text
+  take remote-token, like text
+  like void
+  note unsafe
+    call boot-module/callBoot
+      make boot-ask
+        bind root, read root
+        bind entry, read entry
+        bind env, read env
+        bind port, read port
+        bind remote, read remote
+        bind remoteToken, read remote-token
+      wait true
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1

@@ -1,0 +1,134 @@
+# The verbs that build, run and publish an application: `term test`, `term walk`, `term cast` and `term host`.
+#
+# Each is a thin verb over machinery that lives elsewhere -- the test runner, the REPL, the Cloudflare bundler and
+# the registry client -- so what is Term here is the shape of the command: its arguments, its checks, its messages
+# and its exit code. The machinery is docked because it is the compiler's or the package manager's, and a second
+# copy in Term would drift from the one that runs.
+#
+# Ported from deck/call/code/{test,walk,cast,host}.ts (cli-in-term-0004).
+
+dock load
+  load <@term/call/code/test>, name test-module
+  load <@term/call/code/walk>, name walk-module
+  load <@term/call/code/cast>, name cast-module
+  load <@term/call/code/host>, name host-module
+  load <@term/make/code/tint>, name tint
+  load <node:process>, name node-process
+
+form root-ask
+  link root, like text
+
+form test-ask
+  link root, like text
+  link filter, like text
+
+form cast-ask
+  link root, like text
+  link entry, like text
+  link target, like text
+
+form host-ask
+  link root, like text
+  link dryRun, like boolean
+  link registry, like text
+
+# `term test [filter]`: run the project's tests, or the ones whose name matches
+task test
+  note async
+  take root, like text
+  take filter, like text
+  like void
+  note unsafe
+    call test-module/callTest
+      make test-ask
+        bind root, read root
+        bind filter, read filter
+      wait true
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1
+
+# `term walk`: the REPL
+task walk
+  note async
+  take root, like text
+  like void
+  note unsafe
+    call walk-module/callWalk
+      make root-ask
+        bind root, read root
+      wait true
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1
+
+# `term cast [entry]`: build a server-rendered app into something deployable. Cloudflare is the one target, and
+# anything else is named rather than ignored.
+task cast
+  note async
+  take root, like text
+  take entry, like text
+  take target, like text
+  like void
+  save chosen
+    fork test
+      call is-equal
+        read target
+        text <>
+      hook hold
+        text <cloudflare>
+      hook miss
+        read target
+  fork test
+    call is-unequal
+      read chosen
+      text <cloudflare>
+    hook hold
+      call tint/logFail
+        text <Unknown cast target: {{chosen}}. The one target is cloudflare.>
+      call node-process/exit
+        code 1
+  note unsafe
+    call cast-module/callCast
+      make cast-ask
+        bind root, read root
+        bind entry, read entry
+        bind target, read chosen
+      wait true
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1
+
+# `term host`: publish this package to the registry
+task host
+  note async
+  take root, like text
+  take dry, like boolean
+  take registry, like text
+  like void
+  note unsafe
+    call host-module/callHost
+      make host-ask
+        bind root, read root
+        bind dryRun, read dry
+        bind registry, read registry
+      wait true
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1

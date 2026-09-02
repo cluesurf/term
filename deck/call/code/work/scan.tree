@@ -1,0 +1,124 @@
+# `term scan <file>` -- type check one file with its project's imports resolved, and report what it finds.
+#
+# This is the fast inner-loop verifier. `--back json` returns `{ ok, diagnostics }` with codes and spans so a loop
+# or a skill can decide "done" mechanically, and the process exits non-zero on any error so a plain shell check
+# works too.
+#
+# ERRORS WHEN IT FAILED, WARNINGS WHEN IT COMPILED, and `ok` is the gate. A file that compiles with warnings is a
+# file that compiles.
+#
+# Ported from deck/call/code/scan.ts (cli-in-term-0004).
+
+load @term/seed/code/file
+  find read, name read-file
+  find test, name file-test
+
+dock load
+  load <@term/make/code/compile/compile>, name compile-module
+  load <@term/make/code/resolve>, name resolve-module
+  load <@term/make/code/tint>, name tint
+  load <@term/call/code/report>, name report-module
+  load <node:path>, name node-path
+  load <node:process>, name node-process
+  load <global:console>, name console
+  load <global:JSON>, name json-global
+
+form source-ask
+  link file, like text
+  link text, like text
+
+form compile-ask
+  link resolve, like unknown
+
+form missing-answer
+  link ok, like boolean
+  link error, like text
+  link file, like text
+
+task scan
+  note async
+  take root, like text
+  take file, like text
+  take back, like text
+  like void
+  save want-json
+    call is-equal
+      read back
+      text <json>
+  save full
+    call node-path/resolve
+      read root
+      read file
+  save there
+    call file-test
+      read full
+      wait true
+  fork test
+    read there
+    hook miss
+      fork test
+        read want-json
+        hook hold
+          call console/log
+            call json-global/stringify
+              make missing-answer
+                bind ok, false
+                bind error, text <not-found>
+                bind file, read file
+        hook miss
+          call tint/logFail
+            text <File not found: {{file}}>
+      call node-process/exit
+        code 1
+  save text
+    call read-file
+      read full
+      wait true
+  save result
+    call compile-module/compile
+      make source-ask
+        bind file, read full
+        bind text, read text
+      make compile-ask
+        bind resolve
+          call resolve-module/editorResolver
+            read full
+  save found
+    fork test
+      read result/ok
+      hook hold
+        read result/warnings
+      hook miss
+        read result/diagnostics
+  fork test
+    read want-json
+    hook hold
+      call console/log
+        call json-global/stringify
+          read result
+      fork test
+        read result/ok
+        hook miss
+          call node-process/exit
+            code 1
+      send back
+  walk list, read found
+    hook next
+      take site, name one
+      call report-module/printDiagnostic
+        read one
+  fork test
+    read result/ok
+    hook miss
+      call node-process/exit
+        code 1
+  fork test
+    call is-above
+      read found/length
+      code 0
+    hook hold
+      call tint/logGood
+        text <{{file}} ok ({{found}} warnings)>
+      send back
+  call tint/logGood
+    text <{{file}} ok>
