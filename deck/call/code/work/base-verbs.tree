@@ -1,0 +1,287 @@
+# `term base ...` -- the base record system's fourteen subcommands.
+#
+#   init  log  diff  show  list  check  status  commit  checkout  merge  export  import  project  tag
+#
+# The record system itself is `@term/base`, 214 TypeScript files, and it is a LIBRARY rather than a tool: it is
+# transport-free and driver-free on purpose, which is why the Postgres driver for `project` is loaded lazily by
+# `base-engine.ts` and stays TypeScript. So what is Term here is the fourteen verbs -- their arguments, their
+# defaults, their error handling and their exit codes -- over a docked library.
+#
+# Ported from deck/call/code/base.ts (cli-in-term-0004).
+
+dock load
+  load <@term/call/code/base>, name base-module
+  load <@term/make/code/tint>, name tint
+  load <node:process>, name node-process
+
+form root-ask
+  link root, like text
+
+form branch-ask
+  link root, like text
+  link branch, like text
+
+form commit-ask
+  link root, like text
+  link commit, like text
+
+form diff-ask
+  link root, like text
+  link to, like text
+  link from, like text
+
+form show-ask
+  link root, like text
+  link commit, like text
+  link mark, like text
+
+form make-ask
+  link root, like text
+  link branch, like text
+  link author, like text
+  link message, like text
+
+form merge-ask
+  link root, like text
+  link from, like text
+  link into, like text
+  link author, like text
+
+form export-ask
+  link root, like text
+  link commit, like text
+  link out, like text
+
+form tag-ask
+  link root, like text
+  link name, like text
+  link commit, like text
+  link branch, like text
+
+# every verb ends the same way, so the guard is written once
+task fail-with
+  take error, like unknown
+  like void
+  call tint/logFail
+    call tint/formatError
+      read error
+  call node-process/exit
+    code 1
+
+# create a repository here
+task base-init
+  note async
+  take root, like text
+  like void
+  note unsafe
+    call base-module/callBaseInit
+      make root-ask
+        bind root, read root
+      wait true
+  halt take
+    take error
+    call fail-with
+      read error
+
+# whether the repository is coherent
+task base-check
+  note async
+  take root, like text
+  like void
+  note unsafe
+    call base-module/callBaseCheck
+      make root-ask
+        bind root, read root
+      wait true
+  halt take
+    take error
+    call fail-with
+      read error
+
+# commits per branch, newest first
+task base-log
+  note async
+  take root, like text
+  take branch, like text
+  like void
+  note unsafe
+    call base-module/callBaseLog
+      make branch-ask
+        bind root, read root
+        bind branch, read branch
+      wait true
+  halt take
+    take error
+    call fail-with
+      read error
+
+# what is uncommitted on a branch
+task base-status
+  note async
+  take root, like text
+  take branch, like text
+  like void
+  note unsafe
+    call base-module/callBaseStatus
+      make branch-ask
+        bind root, read root
+        bind branch, read branch
+      wait true
+  halt take
+    take error
+    call fail-with
+      read error
+
+# field-level changes between two commits
+task base-diff
+  note async
+  take root, like text
+  take to, like text
+  take from, like text
+  like void
+  note unsafe
+    call base-module/callBaseDiff
+      make diff-ask
+        bind root, read root
+        bind to, read to
+        bind from, read from
+      wait true
+  halt take
+    take error
+    call fail-with
+      read error
+
+# one record in canonical form, which is what is hashed
+task base-show
+  note async
+  take root, like text
+  take commit, like text
+  take mark, like text
+  like void
+  note unsafe
+    call base-module/callBaseShow
+      make show-ask
+        bind root, read root
+        bind commit, read commit
+        bind mark, read mark
+      wait true
+  halt take
+    take error
+    call fail-with
+      read error
+
+# every record at a commit
+task base-list
+  note async
+  take root, like text
+  take commit, like text
+  like void
+  note unsafe
+    call base-module/callBaseList
+      make commit-ask
+        bind root, read root
+        bind commit, read commit
+      wait true
+  halt take
+    take error
+    call fail-with
+      read error
+
+# commit the working files onto a branch
+task base-commit
+  note async
+  take root, like text
+  take message, like text
+  take branch, like text
+  take author, like text
+  like void
+  note unsafe
+    call base-module/callBaseCommit
+      make make-ask
+        bind root, read root
+        bind branch, read branch
+        bind author, read author
+        bind message, read message
+      wait true
+  halt take
+    take error
+    call fail-with
+      read error
+
+# write a commit back out as `.tree` files
+task base-checkout
+  note async
+  take root, like text
+  take commit, like text
+  like void
+  note unsafe
+    call base-module/callBaseCheckout
+      make commit-ask
+        bind root, read root
+        bind commit, read commit
+      wait true
+  halt take
+    take error
+    call fail-with
+      read error
+
+# merge one branch into another
+task base-merge
+  note async
+  take root, like text
+  take from, like text
+  take into, like text
+  take author, like text
+  like void
+  note unsafe
+    call base-module/callBaseMerge
+      make merge-ask
+        bind root, read root
+        bind from, read from
+        bind into, read into
+        bind author, read author
+      wait true
+  halt take
+    take error
+    call fail-with
+      read error
+
+# write a commit out as one file
+task base-export
+  note async
+  take root, like text
+  take commit, like text
+  take out, like text
+  like void
+  note unsafe
+    call base-module/callBaseExport
+      make export-ask
+        bind root, read root
+        bind commit, read commit
+        bind out, read out
+      wait true
+  halt take
+    take error
+    call fail-with
+      read error
+
+# name a commit
+task base-tag
+  note async
+  take root, like text
+  take name, like text
+  take commit, like text
+  take branch, like text
+  like void
+  note unsafe
+    call base-module/callBaseTag
+      make tag-ask
+        bind root, read root
+        bind name, read name
+        bind commit, read commit
+        bind branch, read branch
+      wait true
+  halt take
+    take error
+    call fail-with
+      read error

@@ -13,7 +13,7 @@ import { Worker } from 'node:worker_threads'
 import { cpus, tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { buildSync } from 'esbuild'
-import { compilerVersion } from '@term/call/code/cache-store'
+import { compilerVersions } from '@term/call/code/cache-store'
 import { findTreeFiles } from '@term/call/code/make'
 import { stdlibBase } from '@term/make/code/resolve'
 
@@ -138,7 +138,7 @@ export function compileProjectParallel(
   // of the bundle and never read a single entry its parent wrote. See projectCache in cache-store.ts.
   const workers = Array.from(
     { length: size },
-    () => new Worker(bundle, { workerData: { version: compilerVersion() } }),
+    () => new Worker(bundle, { workerData: { version: compilerVersions() } }),
   )
 
   let compiled = 0

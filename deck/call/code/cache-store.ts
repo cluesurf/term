@@ -53,6 +53,7 @@ import {
   CompileCache,
   hashText,
 } from '@term/make/code/compile/cache'
+import { CACHE_SCOPE } from '@term/make/code/compile/cache-scope.generated'
 
 // How many compiler versions keep their entries. The current one plus one, so alternating between two binaries (a
 // rebuilt `host/line.js` and the one before it, or two branches) does not cold-start either. A third is already
@@ -327,8 +328,29 @@ function removeQuietly(target: string): boolean {
 
 // a disk-backed cache store rooted at `dir` (e.g. `<project>/.base/@cluesurf/term/cache`), namespaced by the
 // compiler `version` so a stale namespace can be reclaimed whole. Entries are gzipped.
-export function diskCacheStore(dir: string, version: string): CacheStore {
-  const slug = versionSlug(version)
+// `version` is a string for one namespace across every kind, or a function for a namespace PER KIND. The per-kind
+// form is what the compiler uses: see compilerSourceHash for why one namespace for everything strands the whole
+// cache on any compiler change.
+export function diskCacheStore(
+  dir: string,
+  version: string | ((kind: string) => string),
+): CacheStore {
+  const slugs = new Map<string, string>()
+  const slugFor = (kind: string): string => {
+    const already = slugs.get(kind)
+
+    if (already !== undefined) {
+      return already
+    }
+
+    const slug = versionSlug(
+      typeof version === 'string' ? version : version(kind),
+    )
+    slugs.set(kind, slug)
+
+    return slug
+  }
+
   const ensured = new Set<string>()
   // reclamation and the budget sweep are per (dir, kind) and cost a directory walk, so each runs once per process
   const swept = new Set<string>()
@@ -341,15 +363,15 @@ export function diskCacheStore(dir: string, version: string): CacheStore {
     swept.add(kind)
 
     try {
-      reclaimStaleVersions(dir, kind, slug)
-      enforceBudget(dir, kind, slug)
+      reclaimStaleVersions(dir, kind, slugFor(kind))
+      enforceBudget(dir, kind, slugFor(kind))
     } catch {
       // housekeeping must never fail a build
     }
   }
 
   const dirFor = (kind: string, key: string): string => {
-    const sub = path.join(dir, kind, slug, shardOf(key))
+    const sub = path.join(dir, kind, slugFor(kind), shardOf(key))
 
     if (!ensured.has(sub)) {
       mkdirSync(sub, { recursive: true })
@@ -365,7 +387,7 @@ export function diskCacheStore(dir: string, version: string): CacheStore {
 
       try {
         return gunzipSync(
-          readFileSync(entryPathBySlug(dir, kind, slug, key)),
+          readFileSync(entryPathBySlug(dir, kind, slugFor(kind), key)),
         ).toString('utf8')
       } catch {
         // absent, unreadable, or written by an older layout: all of them are a miss, never a crash
@@ -400,7 +422,6 @@ let tempCounter = 0
 // version, AND a content fingerprint of the actual compiler -- so ANY change to the compiler invalidates the cache
 // automatically, with no manual epoch bump. This is what makes a stale hit impossible: the key tracks the code that
 // produced the value, not just a hand-maintained version string. Memoized, so it costs one walk per process.
-let cachedVersion: string | undefined
 
 // The directories that ARE the compiler, relative to the PACKAGE ROOT. A change to any `.ts` under them changes what
 // a compile produces.
@@ -470,7 +491,7 @@ function packageRoot(): string | null {
 // The source tree answers both: it is the same fingerprint from the CLI, from `tsx`, and from inside a worker.
 // Path + size + mtime rather than content, because it runs once per process and a stat is a thousand times cheaper
 // than a read. A touched-but-unchanged file costs one needless rebuild, which is the safe direction.
-function compilerSourceHash(): string {
+function compilerSourceHash(kind?: string): string {
   const root = packageRoot()
 
   if (!root) {
@@ -478,6 +499,30 @@ function compilerSourceHash(): string {
   }
 
   const parts: string[] = []
+
+  // A KIND IS FINGERPRINTED AGAINST ONLY THE CODE THAT CAN REACH IT. Walking all 220 compiler files means a change
+  // to the Swift emitter opens a new namespace for every kind, every env and every project, and strands the lot.
+  // Measured 2026-09-02 after a day of compiler work: `total 143 MB: 396 B live, 143 MB stale`. Every cache in the
+  // tree dead, at 78x per file to rebuild (see projectCache below).
+  //
+  // The file list per kind is GENERATED from the import graph by task/term/cache-scope.ts and held by
+  // `pnpm term:cache-scope`, so it cannot drift into a wrong second answer. mill is 14 files, output 61.
+  const scoped = kind ? CACHE_SCOPE[kind] : undefined
+
+  if (scoped) {
+    for (const file of scoped) {
+      const full = path.join(root, file)
+
+      try {
+        const stat = lstatSync(full)
+        parts.push(`${full}:${stat.size}:${Math.floor(stat.mtimeMs)}`)
+      } catch {
+        // a listed file that is gone is itself a change, and contributes nothing rather than throwing
+      }
+    }
+
+    return parts.length > 0 ? hashText(parts.join('\n')) : ''
+  }
 
   const walk = (at: string): void => {
     let names: string[]
@@ -542,32 +587,58 @@ function runningFileHash(): string {
   return ''
 }
 
-function compilerCodeHash(): string {
-  return compilerSourceHash() || runningFileHash()
+function compilerCodeHash(kind?: string): string {
+  return compilerSourceHash(kind) || runningFileHash()
 }
 
-export function compilerVersion(): string {
-  if (cachedVersion !== undefined) {
-    return cachedVersion
-  }
-
-  let version = '0'
+// the package version, read once
+function packageVersion(): string {
   const root = packageRoot()
 
-  if (root) {
-    try {
-      const pkg = JSON.parse(
-        readFileSync(path.join(root, 'package.json'), 'utf8'),
-      ) as { version?: string }
-      version = pkg.version ?? '0'
-    } catch {
-      // an unreadable manifest leaves the '0' default, and the code hash still separates compilers
-    }
+  if (!root) {
+    return '0'
   }
 
-  cachedVersion = `${CACHE_EPOCH}:${version}:${compilerCodeHash()}`
+  try {
+    const pkg = JSON.parse(
+      readFileSync(path.join(root, 'package.json'), 'utf8'),
+    ) as { version?: string }
 
-  return cachedVersion
+    return pkg.version ?? '0'
+  } catch {
+    // an unreadable manifest leaves the '0' default, and the code hash still separates compilers
+    return '0'
+  }
+}
+
+// The fingerprint of the running compiler FOR ONE CACHE KIND. Two kinds now have two namespaces, and a change that
+// only one of them can see strands only that one. Memoized per kind: it is a stat walk of a few dozen files, and
+// it runs on every cache access.
+const cachedVersions = new Map<string, string>()
+
+export function compilerVersion(kind?: string): string {
+  const at = kind ?? '*'
+  const already = cachedVersions.get(at)
+
+  if (already !== undefined) {
+    return already
+  }
+
+  const version = `${CACHE_EPOCH}:${packageVersion()}:${compilerCodeHash(kind)}`
+  cachedVersions.set(at, version)
+
+  return version
+}
+
+// every kind's version, for handing to a build worker in one object (see projectCache)
+export function compilerVersions(): Record<string, string> {
+  const out: Record<string, string> = {}
+
+  for (const kind of Object.keys(CACHE_SCOPE)) {
+    out[kind] = compilerVersion(kind)
+  }
+
+  return out
 }
 
 // the machine-wide shared cache home (Tier 5). Mill entries are content + path addressed, and linked stdlib files
@@ -587,7 +658,7 @@ export function projectCacheDir(projectRoot: string): string {
 export function sharedCacheStore(
   localDir: string,
   sharedDir: string,
-  version: string,
+  version: string | ((kind: string) => string),
 ): CacheStore {
   const local = diskCacheStore(localDir, version)
   const shared = diskCacheStore(sharedDir, version)
@@ -612,12 +683,19 @@ export function sharedCacheStore(
 //
 // The parent passes `compilerVersion()` down (`build-parallel.ts` -> `workerData`), so a build has ONE version by
 // construction rather than by two computations agreeing.
+//
+// `version` is now per KIND. A build worker is handed the whole map (`compilerVersions()`), because it cannot work
+// any of them out for itself, and because a parent and a worker that computed them separately could disagree.
 export function projectCache(
   projectRoot: string,
-  version: string = compilerVersion(),
+  version: Record<string, string> = compilerVersions(),
 ): CompileCache {
+  const forKind = (kind: string): string =>
+    version[kind] ?? compilerVersion(kind)
+
   return new CompileCache(
-    sharedCacheStore(projectCacheDir(projectRoot), cacheHome(), version),
-    version,
+    sharedCacheStore(projectCacheDir(projectRoot), cacheHome(), forKind),
+    // the in-memory maps key on one version; the output kind's is the stricter of the two
+    forKind('output'),
   )
 }

@@ -5,6 +5,7 @@
 
 load @term/cask/code/cask
   find bundle-path
+  find listen
   find exit
 
 load @term/seed/code/file
@@ -13,12 +14,31 @@ load @term/seed/code/file
 load @term/seed/code/text
   find trim
 
+load @term/seed/code/list
+  find list
+  find push
+  find count
+
 # what the driver writes into <bundle>/smoke.txt
 host expected, text <cask-smoke-ok>
 
 task boot
   note async
   like void
+  # the cask pushes `smoke` after every reply; the verdict requires having heard it, so a bridge that only answers
+  # and never pushes fails here
+  # a list rather than a boolean: a local a closure reassigns is folded to its literal by the TypeScript path today
+  # (filed in note/workflow/learnings.md), and a list is pushed into rather than reassigned
+  save heard
+    make list
+  call listen
+    text <smoke>
+    task hear
+      take text, like text
+      like void
+      call push
+        bind list, read heard
+        bind item, read text
   save bundle
     call bundle-path
       wait true
@@ -33,9 +53,20 @@ task boot
           read content
         read expected
     hook hold
-      call exit
-        wait true
-        code 0
+      fork test
+        hook test
+          call is-above
+            call count
+              read heard
+            code 0
+        hook hold
+          call exit
+            wait true
+            code 0
+        hook miss
+          call exit
+            wait true
+            code 2
     hook miss
       call exit
         wait true

@@ -1,0 +1,127 @@
+# The machinery verbs: the parts of the CLI that are not commands but the things commands stand on.
+#
+# WHAT THIS FILE IS HONEST ABOUT. Each of these docks a TypeScript module that CANNOT be Term today, and the
+# reason is different for each, so each is named rather than lumped under "not ported yet":
+#
+#   base-import     `@term/base`'s import machinery, 214 TypeScript files below it
+#   base-engine     a Postgres driver loaded lazily at the moment a projection is written. The driver is `pg`,
+#                   an npm package, and the laziness is a dynamic `import()`. Term has neither.
+#   build-parallel  a pool of `worker_threads`, each running an esbuild-bundled worker from the temp directory
+#   cache-store     the compiler's own disk cache: gzip, atomic rename, an LRU sweep over a directory tree
+#   test-run        transforms an emitted module with esbuild and imports it by URL to run its test tasks
+#
+# So the Term side is the SHAPE -- the arguments each takes and what it answers -- and the dock is one named thing
+# to replace when the compiler and the runtime are Term. That is the whole conversion in one file: nothing here
+# pretends to be native, and nothing here hides which line stops it being native.
+#
+# Ported from deck/call/code/{base-import,base-engine,build-parallel,cache-store,test-run}.ts (cli-in-term-0004).
+
+dock load
+  load <@term/call/code/base-import>, name base-import-module
+  load <@term/call/code/build-parallel>, name parallel-module
+  load <@term/call/code/cache-store>, name cache-module
+  load <@term/call/code/test-run>, name test-run-module
+  load <@term/make/code/tint>, name tint
+  load <node:process>, name node-process
+
+form import-ask
+  link root, like text
+  link source, like text
+  link form, like text
+  link key, like text
+  link mark, like text
+  link branch, like text
+  link author, like text
+  link message, like text
+
+form parallel-ask
+  link concurrency, like number
+  link env, like text
+  link platform, like text
+
+# `term base import <source>`: read records in and commit them
+task base-import
+  note async
+  take root, like text
+  take source, like text
+  take form, like text
+  take key, like text
+  take mark, like text
+  take branch, like text
+  take author, like text
+  take message, like text
+  like void
+  note unsafe
+    call base-import-module/callBaseImport
+      make import-ask
+        bind root, read root
+        bind source, read source
+        bind form, read form
+        bind key, read key
+        bind mark, read mark
+        bind branch, read branch
+        bind author, read author
+        bind message, read message
+      wait true
+  halt take
+    take error
+    call tint/logFail
+      call tint/formatError
+        read error
+    call node-process/exit
+      code 1
+
+# a project built across a pool of workers, which is what a big package takes
+task build-parallel
+  note async
+  take root, like text
+  take concurrency, like number
+  take env, like text
+  take platform, like text
+  like unknown
+  send back
+    call parallel-module/compileProjectParallel
+      read root
+      make parallel-ask
+        bind concurrency, read concurrency
+        bind env, read env
+        bind platform, read platform
+      wait true
+
+# the compiler's cache for one project: per-module mills shared machine-wide, the compiled output local
+task project-cache
+  take root, like text
+  like unknown
+  send back
+    call cache-module/projectCache
+      read root
+
+# where that cache lives, which is the one place the path is written
+task cache-directory
+  take root, like text
+  like text
+  send back
+    call cache-module/projectCacheDir
+      read root
+
+# the running compiler's fingerprint, folded into every cache key so a toolchain change cannot serve a stale hit
+task compiler-version
+  like text
+  send back
+    call cache-module/compilerVersion
+
+# run one test file and answer what held
+task run-test-file
+  note async
+  take file, like text
+  take text, like text
+  take resolve, like unknown
+  take env, like text
+  like unknown
+  send back
+    call test-run-module/runTestFile
+      read file
+      read text
+      read resolve
+      read env
+      wait true

@@ -71,6 +71,14 @@ export function buildGlobalScope(program: Program): Scope {
     } else if (statement.form === 'native') {
       // a native module alias (from `dock load`) is a defined name; member calls on it are the FFI
       global.set(statement.alias, { kind: 'deferred' })
+    } else if (statement.form === 'view') {
+      // a view component is callable by name from another module: a page entry mounts `call blog / <host>`.
+      // Every backend already emits it as a function of its params, and without this line the call was
+      // "not defined" while the definition sat one import away
+      global.set(statement.name, {
+        kind: 'function',
+        arity: statement.params.length,
+      })
     }
   }
 

@@ -1,0 +1,210 @@
+# The CLI dispatcher: an argument vector resolved against the command tree.
+#
+# `deck/call/code/line/base.tree` describes the 47 commands; this walks that description against a real argv. It
+# descends matching subcommands, parses `--flag value`, `--flag=value`, `-f value`, bare boolean flags and
+# `--no-flag` negation, binds the remaining positionals to the command's takes in order, coerces by declared type,
+# validates a `pick` set, applies defaults, and answers the task to run with the arguments to run it on.
+#
+# THIS IS THE KEYSTONE OF THE CONVERSION. Everything else that has been ported is a verb; this is what turns the
+# command tree from a description into a program. It is pure and reads nothing from the environment, which is why
+# it can be Term: the argv comes in as a list.
+#
+# THREE THINGS ARE NOT OBVIOUS AND ARE WHY THIS IS NOT SHORTER.
+#
+# A VARIADIC COMMAND CARRIES A CHILD COMMAND LINE. `term zone call npm run dev` has `npm run dev` in its trailing
+# take, and `npm`'s own flags must not be read as this command's. So for a variadic route, flag parsing stops at
+# the first bare token, and everything after it is raw.
+#
+# A TAKE ALREADY FILLED BY A FLAG DOES NOT CONSUME A POSITIONAL. Otherwise `zone call --sort dev node script.js`
+# spends `node` on the already-set `sort` slot and mis-binds the command name. The cursor only advances when a
+# positional is actually taken.
+#
+# A LITERAL `--` ENDS OPTION PARSING, and the rest is verbatim.
+#
+# Ported from deck/call/code/hook-dispatch.ts (cli-in-term-0004).
+
+load @term/seed/code/text
+  find starts-with
+  find substring
+  find char-count
+  find index-of
+  find contains
+
+# One resolved command: the path walked, the task to run, and the arguments it takes.
+form dispatch-answer
+  link ok, like boolean
+  link error, like text
+  link command, like list
+    like text
+  link task, like text
+
+# the route whose path is this token, among the ones at this level
+task route-named
+  take routes, like list
+    like unknown
+  take token, like text
+  like unknown
+  walk list, read routes
+    hook next
+      take site, name one
+      fork test
+        call is-equal
+          read one/path
+          read token
+        hook hold
+          send back, read one
+  send back
+    make void
+
+# the full name a short letter stands for, so `-t` resolves to `--title`
+task name-for-short
+  take takes, like list
+    like unknown
+  take letter, like text
+  like text
+  walk list, read takes
+    hook next
+      take site, name one
+      fork test
+        call is-equal
+          read one/short
+          read letter
+        hook hold
+          send back
+            read one/name
+  send back, read letter
+
+# does any take of this route collect the rest?
+task is-variadic
+  take takes, like list
+    like unknown
+  like boolean
+  walk list, read takes
+    hook next
+      take site, name one
+      fork test
+        read one/variadic
+        hook hold
+          send back, true
+  send back, false
+
+# is this value one the take allows? A take with no `pick` allows anything.
+task is-allowed
+  take take, like unknown
+  take value, like text
+  like boolean
+  save choices
+    read take/choices
+  fork test
+    call is-equal
+      read choices
+      make void
+    hook hold
+      send back, true
+  fork test
+    call is-equal
+      read choices/length
+      code 0
+    hook hold
+      send back, true
+  walk list, read choices
+    hook next
+      take site, name one
+      fork test
+        call is-equal
+          read one
+          read value
+        hook hold
+          send back, true
+  send back, false
+
+# the command path an argv names, descending while the next bare token is a subcommand
+task command-path
+  take routes, like list
+    like unknown
+  take argv, like list
+    like text
+  like list
+    like text
+  save found
+    make list
+  save level
+    read routes
+  walk list, read argv
+    hook next
+      take site, name token
+      fork test
+        call starts-with
+          read token
+          text <->
+        hook hold
+          send back, read found
+      save next
+        call route-named
+          read level
+          read token
+      fork test
+        call is-equal
+          read next
+          make void
+        hook hold
+          send back, read found
+      call found/push
+        read token
+      save level
+        read next/children
+  send back, read found
+
+# The route an argv resolves to, or nothing when the first token names no command. The caller reports the error,
+# because it knows whether an empty argv means "no command" or "show the help".
+task route-for
+  take routes, like list
+    like unknown
+  take argv, like list
+    like text
+  like unknown
+  save level
+    read routes
+  save current
+    make void
+  walk list, read argv
+    hook next
+      take site, name token
+      fork test
+        call starts-with
+          read token
+          text <->
+        hook hold
+          send back, read current
+      save next
+        call route-named
+          read level
+          read token
+      fork test
+        call is-equal
+          read next
+          make void
+        hook hold
+          send back, read current
+      save current
+        read next
+      save level
+        read next/children
+  send back, read current
+
+# The task a resolved command runs: the first `call` its route carries, which is what `task <name>` under a `hook`
+# becomes.
+task task-for
+  take route, like unknown
+  like text
+  save calls
+    read route/calls
+  fork test
+    call is-above
+      read calls/length
+      code 0
+    hook hold
+      send back
+        read calls/0/name
+  send back
+    text <>

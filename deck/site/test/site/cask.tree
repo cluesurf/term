@@ -1,0 +1,42 @@
+
+# The cask entry of the blog app: one window, the page inside it, the generated dispatcher answering it, the process
+# handed to the platform. `term make --target macos` calls `boot` with the page directory, or with the dev server's
+# URL and `remote` true for `term make --target macos --url`.
+
+load @term/cask/code/cask
+  find window
+  find open-window
+  find load-bundle
+  find load-url
+  find on-message
+  find activate
+  find run
+
+load ./dispatch
+  find dispatch
+
+task boot
+  take place, like text
+  take remote, like boolean
+  like void
+  save made
+    call open-window
+      text <Blog>
+      code 960
+      code 720
+  call on-message
+    read made
+    read dispatch
+  fork test
+    hook test, read remote
+    hook hold
+      call load-url
+        read made
+        read place
+    hook miss
+      call load-bundle
+        read made
+        read place
+  call activate
+    read made
+  call run

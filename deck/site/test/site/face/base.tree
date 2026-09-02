@@ -1,0 +1,14 @@
+
+# The page entry of the blog app inside a cask: mount the blog view on the document body. `term make --target`
+# calls `boot` when the page loads.
+
+load ./blog
+  find blog
+
+load @term/site/code/dom/dom
+  find page-body
+
+task boot
+  like void
+  call blog
+    call page-body

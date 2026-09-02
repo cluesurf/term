@@ -235,6 +235,24 @@ hook make
   # Compile .tree files even when package.json owns `make` (which otherwise runs that script instead)
   take trees
     like boolean
+  # Build a native app cask for a platform (macos)
+  take target
+    like text
+  # The page entry of the cask app (default face/base.tree)
+  take page
+    like text
+  # The cask entry of the app (default cask.tree)
+  take entry
+    like text
+  # Dev loop: the cask loads this URL instead of the bundled page
+  take url
+    like text
+  # A Developer ID identity for codesign (ad hoc when absent)
+  take sign
+    like text
+  # Also make a .dmg beside the .app
+  take dmg
+    like boolean
   task make
 
 # Type-check a file and report diagnostics (the verifier)

@@ -10,6 +10,8 @@
 #   eval          window, script                 run a script in the page, on the UI thread
 #   on-message    window, handler                answer what the page posts through `window.term.post`. The handler
 #                                                is asynchronous and returns the reply text
+#   emit          window, name, text             push an event into the page
+#   listen        name, handler                  receive an event, on the page side
 #   on-ready      window, handler                the page has finished loading
 #   snapshot      window, path, done             write a PNG of the page as drawn, then call done
 #   show          window                         put the window on screen, behind everything. A window opens off screen

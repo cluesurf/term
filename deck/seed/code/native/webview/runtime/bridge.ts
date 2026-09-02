@@ -17,7 +17,9 @@ type Pending = { resolve: (value: unknown) => void; reject: (reason: unknown) =>
 type TermBridge = {
   post: (text: string) => void
   reply: (message: Reply) => void
+  push: (name: string, text: string) => void
   onReply: ((message: Reply) => void) | null
+  onPush: ((name: string, text: string) => void) | null
 }
 
 declare global {
@@ -27,6 +29,15 @@ declare global {
 }
 
 const pending = new Map<string, Pending>()
+
+// what the page listens for, by event name. The cask pushes through `window.term.push(name, text)`
+const listeners = new Map<string, ((text: string) => void)[]>()
+
+function pushed(name: string, text: string): void {
+  for (const handler of listeners.get(name) ?? []) {
+    handler(text)
+  }
+}
 
 let counter = 0
 
@@ -75,6 +86,7 @@ function install(): TermBridge {
   if (!installed) {
     installed = true
     term.onReply = settle
+    term.onPush = pushed
     // a page that throws inside a WebView is invisible from outside it. Every uncaught error and every rejected
     // promise nobody caught goes to the cask's log, where CASK_TRACE and the test runner can read it
     window.addEventListener('error', event => {
@@ -90,6 +102,12 @@ function install(): TermBridge {
 
 export const bridge = {
   log,
+
+  // receive every event the cask pushes under `name`
+  listen(name: string, handler: (text: string) => void): void {
+    install()
+    listeners.set(name, [...(listeners.get(name) ?? []), handler])
+  },
 
   // send a command to the cask and wait for its reply. Rejects with the cask's exception carrier when the command
   // raised, or when the cask refused a command its allowlist does not hold

@@ -8,6 +8,7 @@ load @term/cask/code/cask
   find open-window
   find load-bundle
   find on-message
+  find emit
   find run
 
 load ./dispatch
@@ -21,9 +22,22 @@ task boot
       text <Term smoke>
       code 640
       code 480
+  # every reply is followed by an event, so the page can require the other direction of the bridge too
   call on-message
     read made
-    read dispatch
+    task answer
+      note async
+      take message, like text
+      like text
+      save reply
+        call dispatch
+          wait true
+          read message
+      call emit
+        read made
+        text <smoke>
+        text <after-reply>
+      send back, read reply
   call load-bundle
     read made
     read bundle

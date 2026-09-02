@@ -561,8 +561,48 @@ const cli = yargs(hideBin(process.argv))
           type: 'boolean',
           description:
             'Compile .tree files even when package.json owns `make` (which otherwise runs that script instead)',
+        })
+        .option('target', {
+          type: 'string',
+          description: 'Build a native app cask for a platform (macos)',
+        })
+        .option('page', {
+          type: 'string',
+          description: 'The page entry of the cask app (default face/base.tree)',
+        })
+        .option('entry', {
+          type: 'string',
+          description: 'The cask entry of the app (default cask.tree)',
+        })
+        .option('url', {
+          type: 'string',
+          description: 'Dev loop: the cask loads this URL instead of the bundled page',
+        })
+        .option('sign', {
+          type: 'string',
+          description: 'A Developer ID identity for codesign (ad hoc when absent)',
+        })
+        .option('dmg', {
+          type: 'boolean',
+          description: 'Also make a .dmg beside the .app',
         }),
     async argv => {
+      if (argv.target) {
+        const { makeCask } = await import('@term/call/code/cask')
+
+        await makeCask({
+          root,
+          target: argv.target as never,
+          page: argv.page,
+          entry: argv.entry,
+          url: argv.url,
+          sign: argv.sign,
+          dmg: argv.dmg,
+        })
+
+        return
+      }
+
       await callMake({
         root,
         ride: argv.ride,

@@ -59,6 +59,24 @@ task on-message
     read self
     read handler
 
+task emit
+  take self, like window
+  take name, like text
+  take text, like text
+  like void
+  call cask/emit
+    read self
+    read name
+    read text
+
+task listen
+  take name, like text
+  take handler
+    like task
+      take text, like text
+      like void
+  like void
+
 task on-ready
   take self, like window
   take handler

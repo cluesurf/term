@@ -1,3 +1,4 @@
+import Foundation
 // The cask runtime on Apple: one window holding one WKWebView, a script message handler that receives what the page
 // posts through `window.term.post(text)`, and `eval` to answer it. Reached only through the public cask API in
 // ../cask.tree, whose tasks map to `cask.openWindow`, `cask.loadBundle`, `cask.loadUrl`, `cask.eval`,
@@ -33,9 +34,7 @@ private let BRIDGE_SHIM = """
 Object.defineProperty(window, 'term', { value: {
   post: function (text) { window.webkit.messageHandlers.term.postMessage(String(text)) },
   reply: function (message) { if (window.term.onReply) { window.term.onReply(message) } },
-  push: function (name, text) { if (window.term.onPush) { window.term.onPush(name, text) } },
-  onReply: null,
-  onPush: null
+  onReply: null
 } });
 Object.freeze(window.term.post);
 """
@@ -247,16 +246,6 @@ enum cask {
         }
     }
 
-    // push an event into the page: `listen` on the page side receives it by name. The other direction of the
-    // bridge, for what a cask has to say unasked: progress, a file changed, a window event
-    static func emit(_ handle: CaskWindow, _ name: String, _ text: String) {
-        let encoded = try? JSONSerialization.data(withJSONObject: [name, text], options: [])
-        guard let json = encoded.flatMap({ String(data: $0, encoding: .utf8) }) else { return }
-        DispatchQueue.main.async {
-            handle.webview.evaluateJavaScript("window.term.push.apply(null, \(json))", completionHandler: nil)
-        }
-    }
-
     static func onMessage(_ handle: CaskWindow, _ handler: @escaping (String) async -> String) {
         handle.bridge.onMessage = handler
     }
@@ -363,3 +352,170 @@ enum cask {
         return directory.path
     }
 }
+
+
+import Foundation
+
+enum console {
+    static func writeLine(_ message: String) { print(message) }
+    static func writeError(_ message: String) { FileHandle.standardError.write((message + "\n").data(using: .utf8)!) }
+}
+
+
+import Foundation
+
+enum json {
+    static func parse(_ text: String) -> Any {
+        guard let data = text.data(using: .utf8),
+              let value = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) else { return NSNull() }
+        return value
+    }
+    static func stringify(_ value: Any) -> String {
+        // a bare number spells the way JSON does everywhere else: the shortest digits that read back to the same
+        // value (`6.8`, not the seventeen digits JSONSerialization writes), a whole one without a point
+        if let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() {
+            let double = number.doubleValue
+            if double == double.rounded(), abs(double) < 1e15 { return String(Int(double)) }
+            return String(double)
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]) else { return "" }
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+    static func getField(_ value: Any, _ key: String) -> Any { return (value as? [String: Any])?[key] ?? NSNull() }
+    static func getItem(_ value: Any, _ index: Int) -> Any {
+        guard let array = value as? [Any], index >= 0, index < array.count else { return NSNull() }
+        return array[index]
+    }
+    static func asNumber(_ value: Any) -> Double { return (value as? NSNumber)?.doubleValue ?? 0 }
+    static func asText(_ value: Any) -> String { return value as? String ?? "" }
+    static func asBoolean(_ value: Any) -> Bool { return (value as? NSNumber)?.boolValue ?? false }
+    static func isNull(_ value: Any) -> Bool { return value is NSNull }
+    static func makeObject() -> Any { return [String: Any]() }
+    static func setField(_ value: Any, _ key: String, _ field: Any) -> Any {
+        var dict = (value as? [String: Any]) ?? [:]
+        dict[key] = field
+        return dict
+    }
+    static func makeArray() -> Any { return [Any]() }
+    static func pushItem(_ value: Any, _ item: Any) -> Any {
+        var items = (value as? [Any]) ?? []
+        items.append(item)
+        return items
+    }
+    static func fromText(_ value: String) -> Any { return value }
+    static func fromNumber(_ value: Double) -> Any { return value }
+    static func fromBoolean(_ value: Bool) -> Any { return value }
+    static func makeNull() -> Any { return NSNull() }
+    // the shape questions: what a parsed value is, so a reader can walk it without guessing
+    static func isArray(_ value: Any) -> Bool { return value is [Any] }
+    static func isObject(_ value: Any) -> Bool { return value is [String: Any] }
+    static func isText(_ value: Any) -> Bool { return value is String }
+    static func isBoolean(_ value: Any) -> Bool {
+        guard let number = value as? NSNumber else { return false }
+        return CFGetTypeID(number) == CFBooleanGetTypeID()
+    }
+    static func arraySize(_ value: Any) -> Int { return (value as? [Any])?.count ?? 0 }
+    static func arrayItem(_ value: Any, _ index: Int) -> Any { return getItem(value, index) }
+    static func objectKeys(_ value: Any) -> [String] { return (value as? [String: Any]).map { Array($0.keys) } ?? [] }
+}
+
+import Foundation
+
+func loadBundle(_ slf: CaskWindow, _ path: String) -> Void {
+  _ = cask.loadBundle(slf, path)
+}
+
+func loadUrl(_ slf: CaskWindow, _ url: String) -> Void {
+  _ = cask.loadUrl(slf, url)
+}
+
+func onMessage(_ slf: CaskWindow, _ handler: @escaping (String) async -> String) -> Void {
+  _ = cask.onMessage(slf, handler)
+}
+
+func activate(_ slf: CaskWindow) -> Void {
+  _ = cask.activate(slf)
+}
+
+func run() -> Void {
+  _ = cask.run()
+}
+
+func quit() -> Void {
+  _ = cask.quit()
+}
+
+func exit(_ status: Int) -> Void {
+  _ = cask.exit(status)
+}
+
+func writeLine(_ message: String) -> Void {
+  _ = console.writeLine(message)
+}
+
+func log(_ message: String) -> Void {
+  writeLine(message)
+}
+
+func isAllowed(_ command: String) -> Bool {
+  if (command == "cask_bundle_path") {
+    return true
+  } else if (command == "cask_data_path") {
+    return true
+  } else if (command == "cask_exit") {
+    return true
+  } else if (command == "cask_quit") {
+    return true
+  } else if (command == "cask_log") {
+    return true
+  } else {
+    return false
+  }
+  fatalError("unreachable")
+}
+
+func runCommand(_ command: String, _ arguments: Any) async -> Any {
+  var line = json.asText(json.getField(arguments, "text"))
+  if (command == "cask_bundle_path") {
+    return json.fromText(cask.bundlePath())
+  } else if (command == "cask_data_path") {
+    return json.fromText(cask.dataPath(json.asText(json.getField(arguments, "name"))))
+  } else if (command == "cask_exit") {
+    exit(Int(json.asNumber(json.getField(arguments, "status"))))
+    return json.makeNull()
+  } else if (command == "cask_quit") {
+    quit()
+    return json.makeNull()
+  } else {
+    log("page: \(line)")
+    return json.makeNull()
+  }
+  fatalError("unreachable")
+}
+
+func dispatch(_ message: String) async -> String {
+  var request = json.parse(message)
+  var id = json.asText(json.getField(request, "id"))
+  var command = json.asText(json.getField(request, "command"))
+  var reply = json.setField(json.makeObject(), "id", json.fromText(id))
+  if isAllowed(command) {
+    reply = json.setField(reply, "value", await runCommand(command, json.getField(request, "arguments")))
+  } else {
+    reply = json.setField(reply, "exception", json.fromText("command-not-allowed"))
+  }
+  return json.stringify(reply)
+}
+
+func boot(_ place: String, _ remote: Bool) -> Void {
+  var made = cask.openWindow("Blog", 960, 720)
+  onMessage(made, dispatch)
+  if remote {
+    loadUrl(made, place)
+  } else {
+    loadBundle(made, place)
+  }
+  activate(made)
+  run()
+}
+
+boot(cask.bundlePath() + "/webview", false)
