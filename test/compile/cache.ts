@@ -9,7 +9,21 @@ import {
   hashFields,
 } from '@term/make/code/compile/cache'
 import type { CacheStore } from '@term/make/code/compile/cache'
-import { diskCacheStore } from '@term/call/code/cache-store'
+import {
+  diskCacheStore,
+  versionSlug,
+  enforceBudget,
+  cacheEntries,
+  KEEP_VERSIONS,
+} from '@term/call/code/cache-store'
+
+// every FILE under a directory, used by the layout checks below
+function walkFiles(dir: string): string[] {
+  return fs
+    .readdirSync(dir, { withFileTypes: true, recursive: true })
+    .filter(e => e.isFile())
+    .map(e => nodePath.join(e.parentPath ?? e.path, e.name))
+}
 import type { Source } from '@term/make/code/compile/load'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
@@ -179,7 +193,7 @@ expect('persist: edited source misses', edited.misses > 0, true)
 
 // 7. the real on-disk store round-trips (atomic writes), giving a cold hit
 const dir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'seed-cache-'))
-const disk = diskCacheStore(dir)
+const disk = diskCacheStore(dir, 'v1')
 compile(
   { file: 'd.tree', text: DOUBLE },
   { cache: new CompileCache(disk, 'v1') },
@@ -193,6 +207,107 @@ expect(
   true,
 )
 fs.rmSync(dir, { recursive: true, force: true })
+
+// 8. THE LAYOUT AND ITS HOUSEKEEPING (build-cache-size). Every one of these guards a specific way the cache grew to
+// 101 GB on a laptop before 2026-09-01, so each is stated as the thing that went wrong.
+
+// entries are gzipped on disk, not stored as the raw JSON they used to be (13.1x on real entries)
+const gzDir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'seed-cache-gz-'))
+const gzStore = diskCacheStore(gzDir, 'v1')
+gzStore.save('output', 'aabbcc', JSON.stringify({ padding: 'x'.repeat(20000) }))
+
+const written = walkFiles(gzDir)
+expect('layout: an entry is written gzipped', written.every(f => f.endsWith('.json.gz')), true)
+expect(
+  'layout: gzip actually shrinks the entry',
+  written.reduce((n, f) => n + fs.statSync(f).size, 0) < 2000,
+  true,
+)
+expect('layout: a gzipped entry reads back', gzStore.load('output', 'aabbcc') !== undefined, true)
+
+// the version is a DIRECTORY, so a stale namespace is a directory to remove rather than keys nobody can find
+expect(
+  'layout: the version is a path segment',
+  written.every(f => f.includes(nodePath.join('output', versionSlug('v1')))),
+  true,
+)
+
+// the key is sharded, so no cache is a hundred thousand files in one directory
+expect(
+  'layout: the key is sharded',
+  written.every(f => nodePath.basename(nodePath.dirname(f)) === 'aa'),
+  true,
+)
+
+// A COMPILER CHANGE STRANDS A NAMESPACE, and the strand is what has to be reclaimed. This is the whole 73 GB:
+// `deck/seed` held 20,216 output entries for a 532-file package, 38 stranded copies of every file.
+for (const version of ['v2', 'v3', 'v4']) {
+  diskCacheStore(gzDir, version).save('output', 'aabbcc', '{}')
+}
+
+const kept = fs.readdirSync(nodePath.join(gzDir, 'output'))
+expect(
+  `reclaim: only ${KEEP_VERSIONS} version namespaces survive`,
+  kept.length === KEEP_VERSIONS,
+  true,
+)
+expect(
+  'reclaim: the newest namespace is one of them',
+  kept.includes(versionSlug('v4')),
+  true,
+)
+expect(
+  'reclaim: the oldest namespace is gone',
+  !kept.includes(versionSlug('v1')),
+  true,
+)
+
+// A BUDGET BOUNDS WHAT IS LEFT, dropping least-recently-used first. Nothing a cache holds can change a result, so
+// the worst case of over-eviction is a slower build.
+const budgetDir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'seed-cache-budget-'))
+const budgetStore = diskCacheStore(budgetDir, 'v1')
+
+for (let n = 0; n < 40; n++) {
+  budgetStore.save('output', `k${String(n).padStart(4, '0')}`, JSON.stringify({ n, pad: String(n).repeat(4000) }))
+}
+
+const before = walkFiles(budgetDir)
+// half of what is actually on disk, measured rather than guessed: the entries are gzipped, and a guessed byte
+// budget over compressible padding is met before a single entry has to go, so the check passes without evicting
+const budget = Math.floor(
+  before.reduce((n, f) => n + fs.statSync(f).size, 0) / 2,
+)
+const swept = enforceBudget(budgetDir, 'output', versionSlug('v1'), budget)
+const after = walkFiles(budgetDir)
+
+expect(
+  'budget: over-budget entries are dropped',
+  swept.removed > 0 && after.length < before.length,
+  true,
+)
+expect(
+  'budget: the sweep stops at the budget',
+  after.reduce((n, f) => n + fs.statSync(f).size, 0) <= budget,
+  true,
+)
+expect('budget: the sweep keeps the rest', after.length > 0, true)
+
+// A SWEEP MUST NOT FOLLOW A SYMLINK. Following them made the first cache report claim 1,557,034 files under
+// `deck/zone`, which holds 40,725: the 56 symlinks in there point at package trees, and a sweep that deletes by
+// that measurement deletes the wrong thing.
+const linkDir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'seed-cache-link-'))
+const outside = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'seed-cache-outside-'))
+fs.writeFileSync(nodePath.join(outside, 'big.bin'), 'y'.repeat(50000))
+fs.mkdirSync(nodePath.join(linkDir, 'output'), { recursive: true })
+fs.symlinkSync(outside, nodePath.join(linkDir, 'output', 'linked'))
+
+const seen = cacheEntries(linkDir)
+expect('walk: a symlink is never followed', seen.length === 0, true)
+expect('walk: the linked tree is untouched', fs.existsSync(nodePath.join(outside, 'big.bin')), true)
+
+for (const temp of [gzDir, budgetDir, linkDir, outside]) {
+  fs.rmSync(temp, { recursive: true, force: true })
+}
 
 console.log(`\ncache: ${pass} pass, ${fail} fail`)
 

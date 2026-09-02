@@ -98,8 +98,17 @@ function flatten(node: Node, nested = false): string {
       )
       let at = 0
 
+      // the SAME depth rule as the `name` case above, for the same reason: `{x}` is a compile-time template
+      // (and the view dialect's field interpolation), `{{x}}` is runtime interpolation, and hardcoding two
+      // braces here turned a document's `text <{sound/symbol}>` into `text <{{sound/symbol}}>` — a different
+      // construct — the moment anyone canonicalized a guide. Found by the guide round-trip test, which requires
+      // format(x) to PARSE, let alone mean the same thing.
       return `<${node.parts
-        .map(p => (p.kind === 'chunk' ? escaped[at++]! : `{{${p.group ? flatten(p.group) : ''}}}`))
+        .map(p =>
+          p.kind === 'chunk'
+            ? escaped[at++]!
+            : `${'{'.repeat(p.depth)}${p.group ? flatten(p.group) : ''}${'}'.repeat(p.depth)}`,
+        )
         .join('')}>`
     }
     case 'integer':

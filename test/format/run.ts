@@ -186,6 +186,34 @@ function main(): void {
     )
   }
 
+  // ---- an interpolation's brace depth survives, in a TEXT literal too ----
+  //
+  // `{x}` is compile-time substitution (and the view dialect's field interpolation); `{{x}}` is runtime
+  // interpolation. The NAME case was fixed to re-emit each part at its own depth after `{platform}` import paths
+  // doubled; the TEXT case still hardcoded two braces, so canonicalizing a guide turned `text <{sound/symbol}>`
+  // into `text <{{sound/symbol}}>` — a different construct, silently. Found by the word.surf guide round-trip
+  // test, which requires format(x) to parse and mean the same thing.
+  {
+    const doc = 'view page\n  view text\n    text <{sound/symbol}>\n'
+    const formatted = format({ file: 'doc.tree', text: doc })
+
+    ok(
+      'a single-brace text interpolation stays single-brace',
+      formatted.includes('<{sound/symbol}>'),
+      formatted,
+    )
+
+    // and a genuine runtime interpolation stays double
+    const runtime = 'task t\n  take x, like text\n  like text\n  send back, text <a {{x}} b>\n'
+    const runtimeOut = format({ file: 'r.tree', text: runtime })
+
+    ok(
+      'a double-brace runtime interpolation stays double-brace',
+      runtimeOut.includes('{{x}}'),
+      runtimeOut,
+    )
+  }
+
   console.log(`\nformat: ${pass} pass, ${fail} fail`)
 }
 

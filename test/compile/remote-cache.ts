@@ -49,7 +49,7 @@ async function main(): Promise<void> {
   await new Promise(r => setTimeout(r, 200))
 
   // project A: compile (populates A's local disk cache), then push to the remote
-  const cacheA = new CompileCache(diskCacheStore(projectA), 'v1')
+  const cacheA = new CompileCache(diskCacheStore(projectA, 'v1'), 'v1')
   const built = compile(
     { file: 'a.tree', text: SOURCE },
     { cache: cacheA },
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
   )
 
   // a cold compile in B (fresh in-memory cache, same disk dir) now hits the pulled artifacts, rebuilding nothing
-  const cacheB = new CompileCache(diskCacheStore(projectB), 'v1')
+  const cacheB = new CompileCache(diskCacheStore(projectB, 'v1'), 'v1')
   const coldB = compile(
     { file: 'a.tree', text: SOURCE },
     { cache: cacheB },

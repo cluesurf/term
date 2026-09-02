@@ -263,6 +263,28 @@ term(root, 'wash')
 
 ok('`wash` removes host/', !existsSync(join(root, 'host/code/boot.ts')))
 
+// ---- `term view` takes an absolute path ----
+//
+// The verb joined its path argument onto the project root (join('/a', '/b') is '/a/b'), so an absolute path —
+// which is what a temp file is — was reported `no such path` while sitting right there. Found by word.surf's
+// guide save gate, the first caller to hand the verb one.
+{
+  const absDir = mkdtempSync(join(tmpdir(), 'term-view-abs-'))
+
+  writeFileSync(
+    join(absDir, 'doc.tree'),
+    'view page\n  view text\n    text <hi>\n',
+  )
+
+  const viewed = term(absDir, 'view', join(absDir, 'doc.tree'))
+
+  ok(
+    '`term view </absolute/path>` reads the file',
+    /view\s+text/.test(viewed) && !/no such path/.test(viewed),
+    viewed,
+  )
+}
+
 console.log(`\nlifecycle: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

@@ -17,6 +17,7 @@ import {
 } from '@term/make/code/compile/compile'
 import { compileSeparate } from '@term/make/code/compile/separate'
 import { CompileCache } from '@term/make/code/compile/cache'
+import { makeParseMemo } from '@term/make/code/compile/load'
 import { projectCache } from '@term/call/code/cache-store'
 import { preprocessTests } from '@term/call/code/test-preprocess'
 import { isLockfileAt, isRoleFileAt, manifestNameOf } from '@term/call/code/manifest-name'
@@ -526,6 +527,10 @@ export function compileProject(
   const resolve = projectResolver(root)
   const deckOf = projectDeckOf()
   const roleOf = projectRoleOf(root)
+  // ONE PARSE MEMO FOR THE WHOLE PROJECT, not one per file. Every entry walks its import closure to work out its
+  // cache key, and that walk runs before the cache can be asked, so a memo per entry re-parses the stdlib for every
+  // file in the project. See makeParseMemo in compile/load.ts.
+  const parsed = makeParseMemo()
 
   let compiled = 0
   let written = 0
@@ -578,7 +583,10 @@ export function compileProject(
       text = preprocessTests(source).text
     }
 
-    const result = compile({ file, text }, { resolve, cache, deckOf, roleOf })
+    const result = compile(
+      { file, text },
+      { resolve, cache, parsed, deckOf, roleOf },
+    )
 
     if (!result.ok) {
       failed++

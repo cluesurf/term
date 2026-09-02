@@ -38,19 +38,47 @@ function headName(group: GroupNode): string | undefined {
 // a changed file re-parses rather than serving a stale tree.
 export type ParseMemo = (source: Source) => ParseResult
 
-export function makeParseMemo(): ParseMemo {
+// The default cap. A memo is a pure function of (file, text), so eviction can only ever cost a re-parse, never a
+// wrong answer; the cap exists so a memo SHARED ACROSS A WHOLE BUILD cannot grow without bound.
+export const PARSE_MEMO_CAP = 2048
+
+// SHARE ONE ACROSS THE BUILD, not one per entry.
+//
+// `compile()` makes its own when it is not given one, which is right for a single compile and wrong for a batch: a
+// project build calls `compile()` once per file, and the dependency walk in `collectModules` runs BEFORE the output
+// cache can be consulted (the cache key is the content of every module in the graph, so the graph has to be walked
+// to know it). With a memo per entry, every one of `@term/bind`'s 3,091 files re-parses its whole stdlib closure,
+// and no cache hit can save it because the parsing happens on the way to asking.
+//
+// That is most of what a bind build costs. Serving one of its cached entries takes 2.1 ms against the 165 ms it
+// takes to compile the file, so a warm build ought to be nearly free, and it was not: 771s then 549s.
+export function makeParseMemo(cap: number = PARSE_MEMO_CAP): ParseMemo {
   const seen = new Map<string, { text: string; result: ParseResult }>()
 
   return source => {
     const hit = seen.get(source.file)
 
     if (hit && hit.text === source.text) {
+      // least-recently-used: re-insert so the hot closure survives eviction
+      seen.delete(source.file)
+      seen.set(source.file, hit)
+
       return hit.result
     }
 
     const result = parse(source)
 
     seen.set(source.file, { text: source.text, result })
+
+    while (seen.size > cap) {
+      const oldest = seen.keys().next()
+
+      if (oldest.done) {
+        break
+      }
+
+      seen.delete(oldest.value)
+    }
 
     return result
   }

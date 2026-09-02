@@ -8,7 +8,7 @@
 // pipes into `term mold --json` for a route loader that wants it that way. See note/term/view/08-package-and-cli.md.
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { resolve, join, relative } from 'node:path'
 import {
   checkView,
   viewManifest,
@@ -37,7 +37,12 @@ type Look = {
 }
 
 export async function callView(input: ViewCall): Promise<void> {
-  const target = input.path ? join(input.root, input.path) : input.root
+  // `resolve`, not `join`: join APPENDS an absolute path to the root (join('/a', '/b') is '/a/b'), so
+  // `term view /tmp/x/guide.tree` looked for `<project>/tmp/x/guide.tree` and reported the file the caller
+  // could see with their own eyes as `no such path`. resolve restarts at an absolute segment, which is what a
+  // path argument means. Found by word.surf's guide save gate, the first caller to hand this verb an absolute
+  // temp file.
+  const target = input.path ? resolve(input.root, input.path) : input.root
 
   if (!existsSync(target)) {
     console.error(`no such path: ${input.path ?? '.'}`)

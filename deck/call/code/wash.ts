@@ -8,7 +8,17 @@ import {
   fade,
 } from '@term/make/code/tint'
 
-const BUILD_DIRS = ['host', 'make', 'hold', '.base/@cluesurf/term/cache']
+// `.base/term/cache` is the PRE-RENAME path, kept here on purpose. `.base/term/` became
+// `.base/@cluesurf/term/` on 2026-08-30, and a cache deliberately does not travel through `keptAt` on a rename
+// because the next build regenerates it. Nothing said what happens to the old copy, so it was left behind whole and
+// nothing ever looked at it again: 13 GB of it in `deck/bind` alone by 2026-09-01. A clean means both.
+const BUILD_DIRS = [
+  'host',
+  'make',
+  'hold',
+  '.base/@cluesurf/term/cache',
+  '.base/term/cache',
+]
 
 export async function callWash(input: {
   root: string

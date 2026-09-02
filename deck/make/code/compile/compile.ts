@@ -131,6 +131,10 @@ export function compile(
   options?: {
     resolve?: Resolver
     cache?: CompileCache
+    // a parse memo shared across a batch build, so the stdlib closure is parsed once for the whole run rather than
+    // once per entry. The dependency walk runs before the output cache can be asked, so without this a warm build
+    // still re-parses everything on its way to the hit. See makeParseMemo in compile/load.ts.
+    parsed?: ParseMemo
     // per-module mode: when set, emit one ESM module per source file (file -> URL) instead of one merged blob. Used by
     // the dev server for lazy native-ESM serving + fine-grained HMR. See code/compile/modules.ts.
     modules?: (file: string) => string
@@ -186,7 +190,10 @@ export function compile(
   // collect the entry plus every module it loads (so the stdlib supplies the form definitions), dependencies
   // first, then mill each and merge into one program. Without a resolver this is just the single entry file.
   // one parse per module for the whole build: the dependency walk, the template scan and the mill all read from it.
-  const parsed = makeParseMemo()
+  //
+  // A BATCH DRIVER PASSES ITS OWN, shared across every entry it builds. Made here per compile otherwise, which is
+  // right for one compile and ruinous for three thousand: see makeParseMemo in compile/load.ts.
+  const parsed = options?.parsed ?? makeParseMemo()
 
   const sources = options?.resolve
     ? collectModules(source, options.resolve, parsed).sources
