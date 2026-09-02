@@ -23,6 +23,99 @@
 #
 # The worked example this follows is deck/zone/code/line/base.tree, the zone console.
 
+# THE VERBS ARE BOUND HERE. Each `task <name>` under a `hook` names an implementation, and these `load`
+# statements are what make those names resolve: without them the tree describes 47 commands bound to
+# nothing, which is what it did while the conversion was in flight.
+
+load @term/call/code/work/app-verbs
+  find cast
+  find fill
+  find host
+  find show
+  find test
+  find walk
+
+load @term/call/code/work/base-verbs
+  find base-check
+  find base-checkout
+  find base-commit
+  find base-diff
+  find base-export
+  find base-init
+  find base-list
+  find base-log
+  find base-merge
+  find base-show
+  find base-status
+  find base-tag
+
+load @term/call/code/work/deck-verbs
+  find load
+  find save
+  find toss
+
+load @term/call/code/work/feed
+  find feed
+
+load @term/call/code/work/form
+  find form
+
+load @term/call/code/work/halt
+  find halt
+
+load @term/call/code/work/hunt
+  find hunt
+
+load @term/call/code/work/inspect-verbs
+  find boot
+  find mold
+  find seek
+  find view
+
+load @term/call/code/work/link
+  find link
+
+load @term/call/code/work/lint
+  find lint
+
+load @term/call/code/work/look
+  find look
+
+load @term/call/code/work/machine
+  find base-import
+
+load @term/call/code/work/make
+  find make
+
+load @term/call/code/work/mind
+  find mind
+
+load @term/call/code/work/move
+  find bump-code
+
+load @term/call/code/work/note
+  find note
+
+load @term/call/code/work/roll
+  find roll
+
+load @term/call/code/work/scan
+  find scan
+
+load @term/call/code/work/serve-verbs
+  find work
+
+load @term/call/code/work/tool-verbs
+  find hold
+  find time
+  find zone
+
+load @term/call/code/work/wake
+  find wake
+
+load @term/call/code/work/wash
+  find wash
+
 # The base record system
 hook base
   # STATED, not inferred. The file header above would otherwise become this command's help text: comments attach

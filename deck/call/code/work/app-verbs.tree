@@ -19,6 +19,7 @@ load @term/call/code/work/tint
 # Ported from deck/call/code/{test,walk,cast,host}.ts (cli-in-term-0004).
 
 dock load
+  load <@term/call/code/line>, name line-module
   load <@term/call/code/test>, name test-module
   load <@term/call/code/walk>, name walk-module
   load <@term/call/code/cast>, name cast-module
@@ -134,6 +135,43 @@ task host
         bind root, read root
         bind dryRun, read dry
         bind registry, read registry
+      wait true
+  halt take
+    take error
+    call log-fail
+      call format-error
+        read error
+    call node-process/exit
+      code 1
+
+# `term show`: what this toolchain is -- its version and where it is installed
+task show
+  note async
+  take root, like text
+  take what, like text
+  like void
+  note unsafe
+    call line-module/callShow
+      make root-ask
+        bind root, read root
+      wait true
+  halt take
+    take error
+    call log-fail
+      call format-error
+        read error
+    call node-process/exit
+      code 1
+
+# `term fill`: print the shell completion script
+task fill
+  note async
+  take root, like text
+  like void
+  note unsafe
+    call line-module/callFill
+      make root-ask
+        bind root, read root
       wait true
   halt take
     take error

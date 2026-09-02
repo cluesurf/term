@@ -282,3 +282,48 @@ task read-index
     take error
     send back
       text <>
+
+# `term mind [fact]`: the verb the command tree binds. With a fact it remembers one; without, it lists what is
+# remembered.
+task mind
+  note async
+  take root, like text
+  take fact, like text
+  take name, like text
+  take kind, like text
+  take find, like text
+  like void
+  fork test
+    call is-unequal
+      read fact
+      text <>
+    hook hold
+      save saved
+        call remember
+          read root
+          read fact
+          read name
+          read kind
+          wait true
+      call log-good
+        text <remembered {{saved}}>
+      send back
+  save directory
+    call memory-directory
+      read root
+      wait true
+  save there
+    call directory-exists
+      read directory
+  fork test
+    read there
+    hook miss
+      call log-step
+        text <no memories yet>
+      send back
+  call log-step
+    call read-index
+      call join
+        read directory
+        text <index.md>
+      wait true

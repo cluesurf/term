@@ -112,3 +112,19 @@ task show-removed
   call log-step
     call fade
       text <    removed {{directory}}/>
+
+# `term wash [target]`: the verb the command tree binds. `tail` clears the logs; anything else cleans the build.
+task wash
+  take root, like text
+  take target, like text
+  like void
+  fork test
+    call is-equal
+      read target
+      text <tail>
+    hook hold
+      call wash-logs
+        read root
+      send back
+  call wash-build
+    read root
