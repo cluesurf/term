@@ -134,7 +134,11 @@ export class CompileCache {
   // epoch), so an upgraded toolchain invalidates everything without a manual wipe.
   constructor(
     private readonly store?: CacheStore,
-    private readonly version: string = CACHE_EPOCH,
+    // The compiler fingerprint, PER KIND. A string versions every kind alike; a function gives each its own, which
+    // is what stops a change only the output level can see from also changing every mill KEY. The store namespaces
+    // by kind directory and the key folds the version in as well, so BOTH have to be per kind or the split is
+    // half done: the directory says mill is still valid and the key says it is not.
+    private readonly version: string | ((kind: string) => string) = CACHE_EPOCH,
     // the LRU caps, overridable so a test can force eviction without building thousands of modules
     private readonly millCap: number = MILL_CACHE_CAP,
     private readonly outputCap: number = OUTPUT_CACHE_CAP,
@@ -143,12 +147,18 @@ export class CompileCache {
   // the milled unit for (file, text). Looks in memory, then the persistent store, then builds. Stores on a build.
   // Returns a fresh clone of the program so the caller may annotate / rewrite the AST (the checker does) without
   // corrupting the cached copy.
+  private versionFor(kind: string): string {
+    return typeof this.version === 'string'
+      ? this.version
+      : this.version(kind)
+  }
+
   milledUnit(
     file: string,
     text: string,
     build: () => MilledUnit,
   ): MilledUnit {
-    const key = hashFields([this.version, file, hashText(text)])
+    const key = hashFields([this.versionFor('mill'), file, hashText(text)])
     const cached = this.mills.get(key)
 
     if (cached) {
@@ -181,7 +191,7 @@ export class CompileCache {
   // the whole compiled output for a graph key. Looks in memory, then the store, then builds. The value must be
   // JSON-serializable (the compile result is: program AST + emitted text + diagnostics).
   output<T>(key: string, build: () => T): T {
-    const versioned = hashFields([this.version, key])
+    const versioned = hashFields([this.versionFor('output'), key])
     const cached = this.outputs.get(versioned) as T | undefined
 
     if (cached !== undefined) {

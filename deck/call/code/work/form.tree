@@ -1,3 +1,14 @@
+load @term/call/code/work/tint
+  find log-good
+  find log-fail
+  find log-step
+  find log-warn
+  find fade
+  find name, name tint-name
+  find bold
+  find mark
+  find format-error
+
 # `term form` -- format `.tree` files into canonical layout.
 #
 # By default it rewrites them in place. `--check` only reports which files would change, which is what a gate runs;
@@ -18,7 +29,6 @@ load @term/seed/code/file
 dock load
   load <@term/make/code/analyze>, name analyze-module
   load <@term/make/code/parser/diagnostic>, name diagnostic-module
-  load <@term/make/code/tint>, name tint
   load <node:path>, name node-path
   load <node:process>, name node-process
   load <global:console>, name console
@@ -42,17 +52,17 @@ task form
       read files/length
       code 0
     hook hold
-      call tint/logFail
+      call log-fail
         text <No .tree files found>
       call node-process/exit
         code 1
   fork test
     read check
     hook hold
-      call tint/logStep
+      call log-step
         text <Checking formatting...>
     hook miss
-      call tint/logStep
+      call log-step
         text <Formatting...>
   save changed
     code 0
@@ -86,7 +96,7 @@ task form
             call add
               read broken
               code 1
-          call tint/logFail
+          call log-fail
             text <{{shown}} could not be parsed>
           turn next
       save formatted
@@ -111,7 +121,7 @@ task form
         read check
         hook hold
           call console/log
-            call tint/fade
+            call fade
               text <  would reformat {{shown}}>
           turn next
       call write-file
@@ -119,7 +129,7 @@ task form
         read formatted
         wait true
       call console/log
-        call tint/fade
+        call fade
           text <  formatted {{shown}}>
   fork test
     call is-above
@@ -136,7 +146,7 @@ task form
           read changed
           code 0
         hook hold
-          call tint/logFail
+          call log-fail
             text <{{changed}} file(s) need formatting>
           call node-process/exit
             code 1
@@ -145,10 +155,10 @@ task form
       read changed
       code 0
     hook hold
-      call tint/logGood
+      call log-good
         text <All files already formatted>
       send back
-  call tint/logGood
+  call log-good
     text <Formatted {{changed}} file(s)>
 
 # the error-severity diagnostics of an analysis, which are the ones that stop a file being written

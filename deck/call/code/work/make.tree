@@ -1,3 +1,14 @@
+load @term/call/code/work/tint
+  find log-good
+  find log-fail
+  find log-step
+  find log-warn
+  find fade
+  find name, name tint-name
+  find bold
+  find mark
+  find format-error
+
 # `term make` -- build the project, and the remaining machinery verbs.
 #
 # `make` is the verb the whole toolchain exists for, and it is the one whose machinery cannot move to Term yet:
@@ -12,7 +23,6 @@ dock load
   load <@term/call/code/make>, name make-module
   load <@term/call/code/role-of>, name role-module
   load <@term/call/code/remote-cache>, name remote-module
-  load <@term/make/code/tint>, name tint
   load <node:process>, name node-process
 
 form make-ask
@@ -44,8 +54,8 @@ task make
       wait true
   halt take
     take error
-    call tint/logFail
-      call tint/formatError
+    call log-fail
+      call format-error
         read error
     call node-process/exit
       code 1

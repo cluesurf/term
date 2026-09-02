@@ -1,3 +1,14 @@
+load @term/call/code/work/tint
+  find log-good
+  find log-fail
+  find log-step
+  find log-warn
+  find fade
+  find name, name tint-name
+  find bold
+  find mark
+  find format-error
+
 # `term scan <file>` -- type check one file with its project's imports resolved, and report what it finds.
 #
 # This is the fast inner-loop verifier. `--back json` returns `{ ok, diagnostics }` with codes and spans so a loop
@@ -16,7 +27,6 @@ load @term/seed/code/file
 dock load
   load <@term/make/code/compile/compile>, name compile-module
   load <@term/make/code/resolve>, name resolve-module
-  load <@term/make/code/tint>, name tint
   load <@term/call/code/report>, name report-module
   load <node:path>, name node-path
   load <node:process>, name node-process
@@ -66,7 +76,7 @@ task scan
                 bind error, text <not-found>
                 bind file, read file
         hook miss
-          call tint/logFail
+          call log-fail
             text <File not found: {{file}}>
       call node-process/exit
         code 1
@@ -117,8 +127,8 @@ task scan
       read found/length
       code 0
     hook hold
-      call tint/logGood
+      call log-good
         text <{{file}} ok ({{found}} warnings)>
       send back
-  call tint/logGood
+  call log-good
     text <{{file}} ok>

@@ -695,7 +695,8 @@ export function projectCache(
 
   return new CompileCache(
     sharedCacheStore(projectCacheDir(projectRoot), cacheHome(), forKind),
-    // the in-memory maps key on one version; the output kind's is the stricter of the two
-    forKind('output'),
+    // per kind here too: the key folds the version in, so passing one version would put the output fingerprint
+    // into every mill key and undo the split the store directory just made
+    forKind,
   )
 }

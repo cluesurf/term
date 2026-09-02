@@ -1,3 +1,14 @@
+load @term/call/code/work/tint
+  find log-good
+  find log-fail
+  find log-step
+  find log-warn
+  find fade
+  find name, name tint-name
+  find bold
+  find mark
+  find format-error
+
 # `term move code [1|2|3]` -- bump the package version.
 #
 # The level names which part moves: 3 the patch, 2 the minor, 1 the major, and 3 when none is given. It is the
@@ -13,7 +24,6 @@ load @term/seed/code/file
 
 dock load
   load <@cluesurf/deck.tree>, name deck-tree
-  load <@term/make/code/tint>, name tint
   load <node:process>, name node-process
 
 form manifest-ask
@@ -59,14 +69,14 @@ task bump-code
       read target
       text <code>
     hook hold
-      call tint/logFail
+      call log-fail
         text <Unknown move target: {{target}}. Use: term move code [1|2|3]>
       call node-process/exit
         code 1
   save chosen
     call parse-level
       read level
-  call tint/logStep
+  call log-step
     text <Bumping version...>
   note unsafe
     save manifest
@@ -93,12 +103,12 @@ task bump-code
         make write-ask
           bind manifest, read manifest
       wait true
-    call tint/logGood
+    call log-good
       text <Version bumped: {{old-code}} -\> {{shown}}>
   halt take
     take error
-    call tint/logFail
-      call tint/formatError
+    call log-fail
+      call format-error
         read error
     call node-process/exit
       code 1

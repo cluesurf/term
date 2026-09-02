@@ -98,10 +98,23 @@ export const HALT_WORDS = new Set(['fork', 'flow', 'code', 'kink', 'take'])
 // bind expression carry an arrow (`=>`) or a stray `>` without closing the `text <...>` literal, and lets a plain
 // program build newlines and tabs with no native helper.
 //
+// `\e` IS THE ESCAPE CHARACTER (0x1B). Every ANSI colour sequence opens with it, and without it a Term program
+// could not write a terminal colour at all: `tint`, the CLI's colour and the single most-docked TypeScript module
+// in the converted CLI, could only call chalk, which is an npm package a native binary cannot have. One escape in
+// the lexer is what lets that module be Term, and what `terminal` support needs on every backend.
+//
 // A text literal's VALUE is the unescaped one, everywhere, so this belongs beside the rest of the surface
 // vocabulary rather than inside one of the two readers.
 export function unescapeText(text: string): string {
-  return text.replace(/\\([<>{}nrt\\])/g, (_, ch: string) =>
-    ch === 'n' ? '\n' : ch === 'r' ? '\r' : ch === 't' ? '\t' : ch,
+  return text.replace(/\\([<>{}nrte\\])/g, (_, ch: string) =>
+    ch === 'n'
+      ? '\n'
+      : ch === 'r'
+        ? '\r'
+        : ch === 't'
+          ? '\t'
+          : ch === 'e'
+            ? '\u001b'
+            : ch,
   )
 }

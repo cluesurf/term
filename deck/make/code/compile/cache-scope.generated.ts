@@ -11,6 +11,7 @@ export const CACHE_SCOPE: Record<string, string[]> = {
   mill: [
     'deck/call/code/cache-store.ts',
     'deck/call/code/home.ts',
+    'deck/make/code/compile/cache-scope.generated.ts',
     'deck/make/code/compile/cache.ts',
     'deck/make/code/compile/mill-grammar.generated.ts',
     'deck/make/code/compile/mill-run.ts',
@@ -55,6 +56,7 @@ export const CACHE_SCOPE: Record<string, string[]> = {
     'deck/make/code/check/zonk.ts',
     'deck/make/code/compile/backend.ts',
     'deck/make/code/compile/bind.ts',
+    'deck/make/code/compile/cache-scope.generated.ts',
     'deck/make/code/compile/cache.ts',
     'deck/make/code/compile/compile.ts',
     'deck/make/code/compile/expr-equal.ts',

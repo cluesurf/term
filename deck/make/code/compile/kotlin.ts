@@ -177,6 +177,11 @@ export function emitKotlin(
       .map(n => [n.name, n.params.map(p => p.type)]),
   )
 
+  // the names bound locally in the function being emitted: its parameters, its lets, its closures' parameters.
+  // A top-level task named as a VALUE (`call on-message / read made / read dispatch`) is a function reference in
+  // Kotlin, `::dispatch`, and a bare name only when a local shadows the task
+  const localNames = new Set<string>()
+
   // declarative native bindings render their `case kotlin` template at call sites
   const binds = collectBinds(program)
 
@@ -585,6 +590,11 @@ export function emitKotlin(
       case 'null':
         return 'null'
       case 'variable':
+        if (functionParams.has(node.name) && !localNames.has(node.name)) {
+          return `::${camel(node.name)}`
+        }
+
+        return camel(node.name)
       case 'hole':
         return camel(node.name)
       case 'unary':
@@ -671,7 +681,10 @@ export function emitKotlin(
           }
         }
 
-        return `${expr(node.callee)}(${rendered.join(', ')})`
+        // a callee is called, never referenced: a bare name here, whatever `expr` would make of it as a value
+        const callee = node.callee.form === 'variable' ? camel(node.callee.name) : expr(node.callee)
+
+        return `${callee}(${rendered.join(', ')})`
       }
 
       case 'array': {
@@ -833,6 +846,7 @@ export function emitKotlin(
         return expr(node.expr)
 
       case 'closure': {
+        node.params.forEach(p => localNames.add(p.name))
         // a function literal as a Kotlin lambda. A lambda's value is its last expression, so the trailing `send back X`
         // becomes a bare `X` (an explicit `return` inside a lambda would non-locally return from the enclosing function).
         // A body with a return anywhere ELSE (inside a when arm, a loop) cannot be a lambda at all: Kotlin
@@ -1055,6 +1069,7 @@ export function emitKotlin(
   const stmt = (node: Statement, d: number): string => {
     switch (node.form) {
       case 'let': {
+        localNames.add(node.name)
         // a lambda binding is annotated with its full function type: Kotlin cannot infer a lambda's parameter types
         // without an expected type, and a suspend lambda only becomes suspend when the expected type says so.
         const ann =
@@ -1277,6 +1292,8 @@ export function emitKotlin(
 
       case 'function': {
         const generics = genericClause(node)
+        localNames.clear()
+        node.params.forEach(p => localNames.add(p.name))
         const params = node.params
           .map(p => `${camel(p.name)}: ${kotlinType(p.type)}`)
           .join(', ')

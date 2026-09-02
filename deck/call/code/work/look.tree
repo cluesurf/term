@@ -1,3 +1,14 @@
+load @term/call/code/work/tint
+  find log-good
+  find log-fail
+  find log-step
+  find log-warn
+  find fade
+  find name, name tint-name
+  find bold
+  find mark
+  find format-error
+
 # `term look <module>` -- what a module exposes: its forms and tasks with their signatures, following its load and
 # bear graph.
 #
@@ -21,7 +32,6 @@ dock load
   load <@term/make/code/compile/host>, name host-module
   load <@term/call/code/make>, name make-module
   load <@term/call/code/deck-of>, name deck-of-module
-  load <@term/make/code/tint>, name tint
   load <node:path>, name node-path
   load <node:process>, name node-process
   load <global:console>, name console
@@ -59,7 +69,7 @@ task entry-of
   fork test
     read there
     hook miss
-      call tint/logFail
+      call log-fail
         text <File not found: {{target}}>
       call node-process/exit
         code 1
@@ -84,7 +94,7 @@ task look
       read target
       text <>
     hook hold
-      call tint/logFail
+      call log-fail
         text <Usage: term look MODULE, with --json or --csv, and --kind form or task>
       call node-process/exit
         code 1
@@ -103,7 +113,7 @@ task look
   fork test
     read quiet
     hook miss
-      call tint/logStep
+      call log-step
         text <Inspecting {{target}}...>
   save answer
     call inspect-module/inspectModule
@@ -137,7 +147,7 @@ task look
   call console/log
     text <>
   call console/log
-    call tint/fade
+    call fade
       text <  {{answer/modules}} module(s), {{symbols}} symbol(s)>
 
 # the symbols of one kind, or all of them when no kind is asked for

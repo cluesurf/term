@@ -1,3 +1,14 @@
+load @term/call/code/work/tint
+  find log-good
+  find log-fail
+  find log-step
+  find log-warn
+  find fade
+  find name, name tint-name
+  find bold
+  find mark
+  find format-error
+
 # The package verbs: `term load`, `term save`, `term toss`.
 #
 # Each is the same three steps -- say what is starting, do it, say whether it held -- so they sit together rather
@@ -27,7 +38,6 @@ form deck-ask
 
 dock load
   load <@cluesurf/deck.tree>, name deck-tree
-  load <@term/make/code/tint>, name tint
   load <node:process>, name node-process
 
 # `term load`: install every dependency the manifest names
@@ -37,7 +47,7 @@ task load
   take clean, like boolean
   take offline, like boolean
   like void
-  call tint/logStep
+  call log-step
     text <Installing dependencies...>
   note unsafe
     call deck-tree/install
@@ -46,12 +56,12 @@ task load
         bind clean, read clean
         bind offline, read offline
       wait true
-    call tint/logGood
+    call log-good
       text <Dependencies installed>
   halt take
     take error
-    call tint/logFail
-      call tint/formatError
+    call log-fail
+      call format-error
         read error
     call node-process/exit
       code 1
@@ -67,11 +77,11 @@ task save
       read deck
       text <>
     hook hold
-      call tint/logFail
+      call log-fail
         text <Missing deck name. Usage: term save <deck>>
       call node-process/exit
         code 1
-  call tint/logStep
+  call log-step
     text <Adding {{deck}}...>
   note unsafe
     call deck-tree/addDependency
@@ -79,12 +89,12 @@ task save
         bind root, read root
         bind name, read deck
       wait true
-    call tint/logGood
+    call log-good
       text <Added {{deck}}>
   halt take
     take error
-    call tint/logFail
-      call tint/formatError
+    call log-fail
+      call format-error
         read error
     call node-process/exit
       code 1
@@ -100,11 +110,11 @@ task toss
       read deck
       text <>
     hook hold
-      call tint/logFail
+      call log-fail
         text <Missing deck name. Usage: term toss <deck>>
       call node-process/exit
         code 1
-  call tint/logStep
+  call log-step
     text <Removing {{deck}}...>
   note unsafe
     call deck-tree/removeDependency
@@ -112,12 +122,12 @@ task toss
         bind root, read root
         bind name, read deck
       wait true
-    call tint/logGood
+    call log-good
       text <Removed {{deck}}>
   halt take
     take error
-    call tint/logFail
-      call tint/formatError
+    call log-fail
+      call format-error
         read error
     call node-process/exit
       code 1

@@ -242,6 +242,7 @@ task run-command
       send back
         call from-text
           call bundle-path
+            wait true
     hook test
       call is-equal
         read command
@@ -250,6 +251,7 @@ task run-command
       send back
         call from-text
           call data-path
+            wait true
             call field-text
               read arguments
               text <name>
@@ -259,6 +261,7 @@ task run-command
         text <cask_exit>
     hook hold
       call exit
+        wait true
         call to-number
           call field-number
             read arguments
@@ -271,6 +274,7 @@ task run-command
         text <cask_quit>
     hook hold
       call quit
+        wait true
       send back
         call make-null
     hook miss

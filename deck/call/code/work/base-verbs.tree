@@ -1,3 +1,14 @@
+load @term/call/code/work/tint
+  find log-good
+  find log-fail
+  find log-step
+  find log-warn
+  find fade
+  find name, name tint-name
+  find bold
+  find mark
+  find format-error
+
 # `term base ...` -- the base record system's fourteen subcommands.
 #
 #   init  log  diff  show  list  check  status  commit  checkout  merge  export  import  project  tag
@@ -11,7 +22,6 @@
 
 dock load
   load <@term/call/code/base>, name base-module
-  load <@term/make/code/tint>, name tint
   load <node:process>, name node-process
 
 form root-ask
@@ -62,8 +72,8 @@ form tag-ask
 task fail-with
   take error, like unknown
   like void
-  call tint/logFail
-    call tint/formatError
+  call log-fail
+    call format-error
       read error
   call node-process/exit
     code 1

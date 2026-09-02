@@ -1,3 +1,14 @@
+load @term/call/code/work/tint
+  find log-good
+  find log-fail
+  find log-step
+  find log-warn
+  find fade
+  find name, name tint-name
+  find bold
+  find mark
+  find format-error
+
 # The machinery verbs: the parts of the CLI that are not commands but the things commands stand on.
 #
 # WHAT THIS FILE IS HONEST ABOUT. Each of these docks a TypeScript module that CANNOT be Term today, and the
@@ -21,7 +32,6 @@ dock load
   load <@term/call/code/build-parallel>, name parallel-module
   load <@term/call/code/cache-store>, name cache-module
   load <@term/call/code/test-run>, name test-run-module
-  load <@term/make/code/tint>, name tint
   load <node:process>, name node-process
 
 form import-ask
@@ -65,8 +75,8 @@ task base-import
       wait true
   halt take
     take error
-    call tint/logFail
-      call tint/formatError
+    call log-fail
+      call format-error
         read error
     call node-process/exit
       code 1

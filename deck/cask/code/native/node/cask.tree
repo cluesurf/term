@@ -1,0 +1,96 @@
+
+# The cask as node sees it: nothing. A cask is a native window on a phone or a desktop, and node has neither, so every
+# task is signature-only and emits the backend's stub. This file exists so `@term/cask/code/cask` resolves when a
+# package is built for node, which is what `term make` and the build-all gate do, and so the contract has one
+# spelling on every env. The real implementations are ../swift (macOS, iOS) and ../webview (the page).
+
+dock type
+  load <any>, name window
+
+task open-window
+  take title, like text
+  take width, like number
+  take height, like number
+  like window
+
+task load-bundle
+  take self, like window
+  take path, like text
+  like void
+
+task load-url
+  take self, like window
+  take url, like text
+  like void
+
+task eval
+  take self, like window
+  take script, like text
+  like void
+
+task on-message
+  take self, like window
+  take handler
+    like task
+      wait true
+      take message, like text
+      like text
+  like void
+
+task emit
+  take self, like window
+  take name, like text
+  take text, like text
+  like void
+
+task listen
+  take name, like text
+  take handler
+    like task
+      take text, like text
+      like void
+  like void
+
+task on-ready
+  take self, like window
+  take handler
+    like task
+      like void
+  like void
+
+task snapshot
+  take self, like window
+  take path, like text
+  take done
+    like task
+      like void
+  like void
+
+task show
+  take self, like window
+  like void
+
+task activate
+  take self, like window
+  like void
+
+task run
+  like void
+
+task quit
+  note async
+  like void
+
+task exit
+  note async
+  take status, like number
+  like void
+
+task bundle-path
+  note async
+  like text
+
+task data-path
+  note async
+  take name, like text
+  like text

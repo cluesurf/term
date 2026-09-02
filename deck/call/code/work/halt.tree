@@ -1,3 +1,14 @@
+load @term/call/code/work/tint
+  find log-good
+  find log-fail
+  find log-step
+  find log-warn
+  find fade
+  find name, name tint-name
+  find bold
+  find mark
+  find format-error
+
 # `term halt` -- stop running `term boot` servers.
 #
 #   term halt <port>   stop the app serving on that port
@@ -18,7 +29,6 @@ load @term/seed/code/text
 dock load
   load <node:child_process>, name child
   load <node:process>, name node-process
-  load <@term/make/code/tint>, name tint
   load <global:console>, name console
   load <global:Number>, name number
 
@@ -153,10 +163,10 @@ task halt
       read ids/length
       code 0
     hook hold
-      call tint/logGood
+      call log-good
         text <Nothing to stop>
       send back
-  call tint/logStep
+  call log-step
     text <Stopping {{ids}}...>
   save stopped
     code 0
@@ -171,5 +181,5 @@ task halt
             call add
               read stopped
               code 1
-  call tint/logGood
+  call log-good
     text <Stopped {{stopped}}>

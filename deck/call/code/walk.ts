@@ -218,6 +218,21 @@ export async function callWalk(_input: {
     work = work.then(job)
   }
 
+  // Once the interface is closed, `prompt` throws (`readline was closed`, Node's ERR_USE_AFTER_CLOSE). A closed
+  // interface is normal here: `exit`, or piped input ending while a definition is still compiling. Track it and
+  // prompt only while it is open, so a queued job finishing late does not fail the REPL on its way out
+  let closed = false
+
+  rl.on('close', () => {
+    closed = true
+  })
+
+  const promptAgain = (): void => {
+    if (!closed) {
+      rl.prompt()
+    }
+  }
+
   rl.prompt()
   rl.on('line', line => {
     if (line.trim() === 'exit') {
@@ -241,7 +256,7 @@ export async function callWalk(_input: {
         }
       }
 
-      rl.prompt()
+      promptAgain()
     })
   })
   rl.on('close', () => {

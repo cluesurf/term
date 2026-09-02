@@ -1,0 +1,146 @@
+# The CLI's colour, in Term.
+#
+# ANSI escapes rather than a `chalk` call, because chalk is an npm package and a native binary cannot have one. The
+# codes are the eight the CLI already used, so the output is byte-identical to what shipped.
+#
+# THIS IS THE DOCK THAT BLOCKED THE MOST. Nearly every verb reaches for colour, so `@term/make/code/tint` was the
+# single most-docked TypeScript module in the converted CLI, and every module that docked it emitted Rust naming a
+# `tint::` crate that does not exist. In Term it emits alongside them.
+#
+# IT NEEDED A COMPILER CHANGE TO EXIST AT ALL. A text literal had no way to write the escape character, so no Term
+# program could write a terminal colour: the escapes were `\<` `\>` `\{` `\}` `\n` `\r` `\t` `\\` and nothing else.
+# `\e` (0x1B) was added to the lexer and to `unescapeText` for this, and `terminal` support needs it on every
+# backend too.
+#
+# NO COLOUR DETECTION YET. chalk turns itself off when stdout is not a terminal; this does not, because Term has no
+# way to ask whether it is. That is a real difference, written here rather than discovered in a log file full of
+# escape codes, and it is the next thing this module needs.
+
+load @term/seed/code/console
+  find log
+  find error, name log-error
+
+# one span of coloured text, closed again so nothing leaks into the next line
+task colour
+  take code, like text
+  take text, like text
+  like text
+  send back
+    text <\e[{{code}}m{{text}}\e[0m>
+
+task good
+  take text, like text
+  like text
+  send back
+    call colour
+      text <32>
+      read text
+
+task warn
+  take text, like text
+  like text
+  send back
+    call colour
+      text <33>
+      read text
+
+task fail
+  take text, like text
+  like text
+  send back
+    call colour
+      text <31>
+      read text
+
+task fade
+  take text, like text
+  like text
+  send back
+    call colour
+      text <90>
+      read text
+
+task bold
+  take text, like text
+  like text
+  send back
+    call colour
+      text <1>
+      read text
+
+task name
+  take text, like text
+  like text
+  send back
+    call colour
+      text <36>
+      read text
+
+task mark
+  take text, like text
+  like text
+  send back
+    call colour
+      text <35>
+      read text
+
+task log-good
+  take text, like text
+  like void
+  save marker
+    call good
+      text <  ok >
+  call log
+    text <{{marker}}{{text}}>
+
+task log-warn
+  take text, like text
+  like void
+  save marker
+    call warn
+      text <  warn >
+  call log
+    text <{{marker}}{{text}}>
+
+task log-fail
+  take text, like text
+  like void
+  save marker
+    call fail
+      text <  fail >
+  call log-error
+    text <{{marker}}{{text}}>
+
+task log-step
+  take text, like text
+  like void
+  save marker
+    call name
+      text <  -\> >
+  call log
+    text <{{marker}}{{text}}>
+
+task log-head
+  take text, like text
+  like void
+  call log
+    text <>
+  call log
+    call bold
+      read text
+
+# What a caught error says. An exception carries a `message`; anything else is shown as it is, because a CLI that
+# prints `[object Object]` has told the reader nothing.
+task format-error
+  take error, like unknown
+  like text
+  save message
+    read error/message
+  fork test
+    call is-unequal
+      read message
+      make void
+    hook hold
+      send back, read message
+  send back
+    text <{{error}}>

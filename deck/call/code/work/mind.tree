@@ -1,3 +1,14 @@
+load @term/call/code/work/tint
+  find log-good
+  find log-fail
+  find log-step
+  find log-warn
+  find fade
+  find name, name tint-name
+  find bold
+  find mark
+  find format-error
+
 # `term mind` -- the project's durable memory: one fact per file under `.base/@cluesurf/term/memory/`, with an
 # index.
 #
@@ -43,7 +54,6 @@ load @term/seed/code/regex
   find replace, name replace-pattern
 
 dock load
-  load <@term/make/code/tint>, name tint
   load <global:console>, name console
 
 # the kinds a fact may carry. Anything else is a note, which is the kind that makes no claim.

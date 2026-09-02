@@ -1,3 +1,14 @@
+load @term/call/code/work/tint
+  find log-good
+  find log-fail
+  find log-step
+  find log-warn
+  find fade
+  find name, name tint-name
+  find bold
+  find mark
+  find format-error
+
 # `term wash` -- remove a project's build artifacts.
 #
 # `.base/term/cache` is the PRE-RENAME path, kept here on purpose. `.base/term/` became `.base/@cluesurf/term/` on
@@ -22,8 +33,6 @@ load @term/seed/code/file/directory
   find remove, name remove-directory
   find exists, name directory-exists
 
-dock load
-  load <@term/make/code/tint>, name tint
 
 # The directories a build writes and a clean removes. Both cache paths, for the reason above.
 task build-directories
@@ -41,7 +50,7 @@ task build-directories
 task wash-logs
   take root, like text
   like void
-  call tint/logStep
+  call log-step
     text <Clearing logs...>
   save log-directory
     call join
@@ -55,14 +64,14 @@ task wash-logs
     hook hold
       call remove-directory
         read log-directory
-  call tint/logGood
+  call log-good
     text <Logs cleared>
 
 # `term wash` with no target removes every build directory that is there
 task wash-build
   take root, like text
   like void
-  call tint/logStep
+  call log-step
     text <Cleaning build artifacts...>
   save cleaned
     code 0
@@ -90,16 +99,16 @@ task wash-build
       read cleaned
       code 0
     hook hold
-      call tint/logGood
+      call log-good
         text <Cleaned {{cleaned}} directories>
       send back
-  call tint/logGood
+  call log-good
     text <Nothing to clean>
 
 # one removed directory, in the faded colour the rest of the CLI uses for detail
 task show-removed
   take directory, like text
   like void
-  call tint/logStep
-    call tint/fade
+  call log-step
+    call fade
       text <    removed {{directory}}/>

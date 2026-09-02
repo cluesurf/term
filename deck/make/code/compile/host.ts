@@ -1215,8 +1215,16 @@ export function literalText(node: NameNode | TextNode): string {
   return node.kind === 'text' ? unescapeText(out) : out
 }
 
+// The escapes a text literal understands. `<` `>` `{` `}` are the delimiters, so they escape themselves; `\n`
+// `\r` `\t` are the usual three.
+//
+// `\e` IS THE ESCAPE CHARACTER (0x1B), and it was added because without it a Term program cannot write a terminal
+// colour. Every ANSI sequence begins with it, so `tint` -- the CLI's colour, and the single most-docked TypeScript
+// module in the converted CLI -- could not be written in Term at all: it could only call chalk, which is an npm
+// package a native binary cannot have. One escape in the lexer is what lets that module be Term and lets every
+// module that uses it emit Rust that builds. It is also what `terminal` support needs on every backend.
 function unescapeText(value: string): string {
-  return value.replace(/\\([<>{}nrt\\])/g, (_, c: string) => {
+  return value.replace(/\\([<>{}nrte\\])/g, (_, c: string) => {
     switch (c) {
       case 'n':
         return '\n'
@@ -1224,6 +1232,8 @@ function unescapeText(value: string): string {
         return '\r'
       case 't':
         return '\t'
+      case 'e':
+        return '\u001b'
       default:
         return c
     }

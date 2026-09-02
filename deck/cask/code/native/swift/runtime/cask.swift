@@ -337,8 +337,10 @@ enum cask {
         }
     }
 
-    // leave with a status the caller of the process can read. The smoke test's verdict
+    // leave with a status the caller of the process can read, said out loud first for a simulator's console, where
+    // no caller reads a status. The smoke test's verdict
     static func exit(_ status: Int) {
+        print("cask exit \(status)")
         Foundation.exit(Int32(status))
     }
 

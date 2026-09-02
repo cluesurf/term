@@ -34,7 +34,9 @@ private let BRIDGE_SHIM = """
 Object.defineProperty(window, 'term', { value: {
   post: function (text) { window.webkit.messageHandlers.term.postMessage(String(text)) },
   reply: function (message) { if (window.term.onReply) { window.term.onReply(message) } },
-  onReply: null
+  push: function (name, text) { if (window.term.onPush) { window.term.onPush(name, text) } },
+  onReply: null,
+  onPush: null
 } });
 Object.freeze(window.term.post);
 """
@@ -246,6 +248,16 @@ enum cask {
         }
     }
 
+    // push an event into the page: `listen` on the page side receives it by name. The other direction of the
+    // bridge, for what a cask has to say unasked: progress, a file changed, a window event
+    static func emit(_ handle: CaskWindow, _ name: String, _ text: String) {
+        let encoded = try? JSONSerialization.data(withJSONObject: [name, text], options: [])
+        guard let json = encoded.flatMap({ String(data: $0, encoding: .utf8) }) else { return }
+        DispatchQueue.main.async {
+            handle.webview.evaluateJavaScript("window.term.push.apply(null, \(json))", completionHandler: nil)
+        }
+    }
+
     static func onMessage(_ handle: CaskWindow, _ handler: @escaping (String) async -> String) {
         handle.bridge.onMessage = handler
     }
@@ -326,8 +338,10 @@ enum cask {
         }
     }
 
-    // leave with a status the caller of the process can read. The smoke test's verdict
+    // leave with a status the caller of the process can read, said out loud first for a simulator's console, where
+    // no caller reads a status. The smoke test's verdict
     static func exit(_ status: Int) {
+        print("cask exit \(status)")
         Foundation.exit(Int32(status))
     }
 
@@ -441,12 +455,20 @@ func run() -> Void {
   _ = cask.run()
 }
 
-func quit() -> Void {
+func quit() async -> Void {
   _ = cask.quit()
 }
 
-func exit(_ status: Int) -> Void {
+func exit(_ status: Int) async -> Void {
   _ = cask.exit(status)
+}
+
+func bundlePath() async -> String {
+  return cask.bundlePath()
+}
+
+func dataPath(_ name: String) async -> String {
+  return cask.dataPath(name)
 }
 
 func writeLine(_ message: String) -> Void {
@@ -455,6 +477,14 @@ func writeLine(_ message: String) -> Void {
 
 func log(_ message: String) -> Void {
   writeLine(message)
+}
+
+func fieldText(_ value: Any, _ key: String) -> String {
+  return json.asText(json.getField(value, key))
+}
+
+func fieldNumber(_ value: Any, _ key: String) -> Double {
+  return json.asNumber(json.getField(value, key))
 }
 
 func isAllowed(_ command: String) -> Bool {
@@ -477,14 +507,14 @@ func isAllowed(_ command: String) -> Bool {
 func runCommand(_ command: String, _ arguments: Any) async -> Any {
   var line = json.asText(json.getField(arguments, "text"))
   if (command == "cask_bundle_path") {
-    return json.fromText(cask.bundlePath())
+    return json.fromText(await bundlePath())
   } else if (command == "cask_data_path") {
-    return json.fromText(cask.dataPath(json.asText(json.getField(arguments, "name"))))
+    return json.fromText(await dataPath(fieldText(arguments, "name")))
   } else if (command == "cask_exit") {
-    exit(Int(json.asNumber(json.getField(arguments, "status"))))
+    await exit(Int(fieldNumber(arguments, "status")))
     return json.makeNull()
   } else if (command == "cask_quit") {
-    quit()
+    await quit()
     return json.makeNull()
   } else {
     log("page: \(line)")

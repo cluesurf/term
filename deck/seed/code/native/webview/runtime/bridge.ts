@@ -78,8 +78,34 @@ function log(text: string): void {
 
 let installed = false
 
+// the Android cask cannot inject `window.term` before the page runs without a library, so it exposes the native
+// half as `__term_native` through addJavascriptInterface, and the page builds the same `window.term` over it
+type NativeHalf = { post: (text: string) => void }
+
+declare global {
+  interface Window {
+    __term_native?: NativeHalf
+  }
+}
+
+function adopt(): TermBridge | undefined {
+  const native = window.__term_native
+  if (!native) {
+    return undefined
+  }
+  const term: TermBridge = {
+    post: text => native.post(String(text)),
+    reply: message => term.onReply?.(message),
+    push: (name, text) => term.onPush?.(name, text),
+    onReply: null,
+    onPush: null,
+  }
+  Object.defineProperty(window, 'term', { value: term })
+  return term
+}
+
 function install(): TermBridge {
-  const term = window.term
+  const term = window.term ?? adopt()
   if (!term) {
     throw new Error('This page is not inside a cask: window.term is missing')
   }

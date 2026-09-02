@@ -10,20 +10,25 @@
 // task that mounts the page) and a cask entry (`cask.tree`, a module exporting `boot(bundle)` that opens the window
 // and hands the process to the platform). Output goes under `host/<target>/`. Design: note/term/cask/readme.md.
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { emitSwift } from '@term/make/code/compile/swift'
+import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
 import { manifestNameOf } from '@term/call/code/manifest-name'
 import { projectResolver } from '@term/call/code/make'
 import { generateBridge } from '@term/call/code/cask-generate'
 import { logGood, logStep, fade } from '@term/make/code/tint'
 
-export type CaskTarget = 'macos' | 'ios'
+export type CaskTarget = 'macos' | 'ios' | 'android'
 
-export const CASK_TARGETS: CaskTarget[] = ['macos', 'ios']
+export const CASK_TARGETS: CaskTarget[] = ['macos', 'ios', 'android']
+
+// the Android platform the cask is built against and the lowest it runs on
+const ANDROID_PLATFORM = 36
+const ANDROID_MINIMUM = 26
 
 // the lowest iOS the cask runs on, and the simulator slice it is built for
 const IOS_MINIMUM = '17.0'
@@ -230,6 +235,219 @@ export function buildProgram({
   return { source: file }
 }
 
+// ---- android ----
+
+// where the Android SDK and the Kotlin standard library are on this machine, or why the build cannot go on
+export function androidTools(): {
+  sdk: string
+  platform: string
+  buildTools: string
+  stdlib: string
+  adb: string
+} {
+  const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT ?? path.join(process.env.HOME ?? '', 'Library/Android/sdk')
+  const platform = path.join(sdk, 'platforms', `android-${ANDROID_PLATFORM}`, 'android.jar')
+
+  if (!existsSync(platform)) {
+    throw new Error(`no Android platform ${ANDROID_PLATFORM} at ${platform}. Run task/android/install-android-cli.sh`)
+  }
+
+  const buildToolsRoot = path.join(sdk, 'build-tools')
+  const versions = existsSync(buildToolsRoot)
+    ? readdirSync(buildToolsRoot).filter(name => existsSync(path.join(buildToolsRoot, name, 'aapt2'))).sort()
+    : []
+
+  if (versions.length === 0) {
+    throw new Error(`no Android build tools with aapt2 under ${buildToolsRoot}. The SDK install may still be running`)
+  }
+
+  const kotlinc = execFileSync('which', ['kotlinc'], { encoding: 'utf8' }).trim()
+  const stdlib = [
+    path.join(path.dirname(realpathSync(kotlinc)), '..', 'lib', 'kotlin-stdlib.jar'),
+    path.join(path.dirname(realpathSync(kotlinc)), '..', 'libexec', 'lib', 'kotlin-stdlib.jar'),
+  ].find(candidate => existsSync(candidate))
+
+  if (!stdlib) {
+    throw new Error('kotlin-stdlib.jar was not found beside kotlinc')
+  }
+
+  return {
+    sdk,
+    platform,
+    buildTools: path.join(buildToolsRoot, versions[versions.length - 1]),
+    stdlib,
+    adb: path.join(sdk, 'platform-tools', 'adb'),
+  }
+}
+
+// the cask program compiled to Kotlin with the cask runtime prepended, an Activity the build writes calling the
+// program's `boot`, compiled against android.jar and dexed
+export function buildAndroidProgram({
+  root,
+  entry,
+  identifier,
+  driver,
+  work,
+}: {
+  root: string
+  entry: string
+  identifier: string
+  driver: string
+  work: string
+}): { dex: string } {
+  const tools = androidTools()
+  const result = compile(
+    { file: entry, text: readFileSync(entry, 'utf8') },
+    { resolve: projectResolver(root, 'kotlin'), env: 'kotlin' },
+  )
+
+  if (!result.ok) {
+    throw new Error(
+      `the cask program failed to compile: ${result.diagnostics
+        .slice(0, 3)
+        .map(d => d.message)
+        .join('; ')}`,
+    )
+  }
+
+  const kotlin = emitKotlin(result.program)
+  const prelude = nativePrelude(result.program, 'kotlin', readRuntime, kotlin)
+  // one package, the app's identifier, so the manifest's `.TermActivity` resolves; imports hoisted above everything
+  const source = `package ${identifier}\n\n${hoistKotlinImports([prelude, kotlin, driver].join('\n'))}\n`
+  const file = path.join(work, 'app.kt')
+  const classes = path.join(work, 'classes')
+  const dexDir = path.join(work, 'dex')
+  rmSync(classes, { recursive: true, force: true })
+  rmSync(dexDir, { recursive: true, force: true })
+  mkdirSync(classes, { recursive: true })
+  mkdirSync(dexDir, { recursive: true })
+  writeFileSync(file, source)
+
+  execFileSync('kotlinc', ['-cp', tools.platform, '-d', classes, '-nowarn', file], { stdio: 'inherit' })
+
+  const classFiles: string[] = []
+  const walk = (dir: string): void => {
+    for (const name of readdirSync(dir)) {
+      const full = path.join(dir, name)
+      if (statSync(full).isDirectory()) {
+        walk(full)
+      } else if (name.endsWith('.class')) {
+        classFiles.push(full)
+      }
+    }
+  }
+  walk(classes)
+
+  execFileSync(
+    path.join(tools.buildTools, 'd8'),
+    ['--lib', tools.platform, '--min-api', String(ANDROID_MINIMUM), '--output', dexDir, ...classFiles, tools.stdlib],
+    { stdio: 'inherit' },
+  )
+
+  return { dex: path.join(dexDir, 'classes.dex') }
+}
+
+// the APK: a manifest linked by aapt2 with the page and the app's files as assets, the dex added, aligned, and signed
+// with a debug key made on first use
+export function assembleApk({
+  out,
+  name,
+  identifier,
+  version,
+  dex,
+  assets,
+  work,
+}: {
+  out: string
+  name: string
+  identifier: string
+  version: string
+  dex: string
+  assets: string
+  work: string
+}): string {
+  const tools = androidTools()
+  const manifest = path.join(work, 'AndroidManifest.xml')
+  writeFileSync(
+    manifest,
+    [
+      '<?xml version="1.0" encoding="utf-8"?>',
+      `<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${identifier}" android:versionCode="1" android:versionName="${version}">`,
+      `  <uses-sdk android:minSdkVersion="${ANDROID_MINIMUM}" android:targetSdkVersion="${ANDROID_PLATFORM}" />`,
+      '  <uses-permission android:name="android.permission.INTERNET" />',
+      `  <application android:label="${name}" android:usesCleartextTraffic="true">`,
+      '    <activity android:name=".TermActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden">',
+      '      <intent-filter>',
+      '        <action android:name="android.intent.action.MAIN" />',
+      '        <category android:name="android.intent.category.LAUNCHER" />',
+      '      </intent-filter>',
+      '    </activity>',
+      '  </application>',
+      '</manifest>',
+      '',
+    ].join('\n'),
+  )
+
+  const unsigned = path.join(work, `${name}-unsigned.apk`)
+  const aligned = path.join(work, `${name}-aligned.apk`)
+  const apk = path.join(out, `${name}.apk`)
+  rmSync(unsigned, { force: true })
+  rmSync(aligned, { force: true })
+  rmSync(apk, { force: true })
+
+  execFileSync(
+    path.join(tools.buildTools, 'aapt2'),
+    ['link', '-o', unsigned, '-I', tools.platform, '--manifest', manifest, '-A', assets],
+    { stdio: 'inherit' },
+  )
+  // classes.dex at the top of the archive. `zip` stores the path as given, so it is added from its own directory
+  execFileSync('zip', ['-q', '-j', unsigned, dex], { stdio: 'inherit' })
+  execFileSync(path.join(tools.buildTools, 'zipalign'), ['-f', '-p', '4', unsigned, aligned], { stdio: 'inherit' })
+
+  const keystore = path.join(process.env.HOME ?? '', '.android', 'debug.keystore')
+
+  if (!existsSync(keystore)) {
+    mkdirSync(path.dirname(keystore), { recursive: true })
+    execFileSync(
+      'keytool',
+      ['-genkeypair', '-v', '-keystore', keystore, '-storepass', 'android', '-alias', 'androiddebugkey', '-keypass', 'android', '-keyalg', 'RSA', '-keysize', '2048', '-validity', '10000', '-dname', 'CN=Android Debug,O=Android,C=US'],
+      { stdio: 'ignore' },
+    )
+  }
+
+  execFileSync(
+    path.join(tools.buildTools, 'apksigner'),
+    ['sign', '--ks', keystore, '--ks-pass', 'pass:android', '--ks-key-alias', 'androiddebugkey', '--key-pass', 'pass:android', '--out', apk, aligned],
+    { stdio: 'inherit' },
+  )
+
+  return apk
+}
+
+// an Android device or emulator adb can see, or the reason there is none
+export function androidDevice(): { serial: string } | { missing: string } {
+  const tools = androidTools()
+  const list = execFileSync(tools.adb, ['devices'], { encoding: 'utf8' })
+  const ready = list
+    .split('\n')
+    .slice(1)
+    .map(line => line.trim().split(/\s+/))
+    .filter(parts => parts.length === 2 && parts[1] === 'device')
+
+  if (ready.length === 0) {
+    return { missing: 'no Android device is online. Start the emulator: `emulator -avd pixel_api_36`, then `adb devices`' }
+  }
+
+  return { serial: ready[0][0] }
+}
+
+// install the APK and launch its Activity. Returns at once; the app's lines are in `adb logcat -s cask`
+export function launchOnAndroid({ serial, apk, identifier }: { serial: string; apk: string; identifier: string }): void {
+  const tools = androidTools()
+  execFileSync(tools.adb, ['-s', serial, 'install', '-r', apk], { stdio: 'inherit' })
+  execFileSync(tools.adb, ['-s', serial, 'shell', 'am', 'start', '-n', `${identifier}/.TermActivity`], { stdio: 'inherit' })
+}
+
 // ---- the bundle ----
 
 // the flat `.app` iOS expects: Info.plist, the executable and the resources all at the top. Installed on a simulator
@@ -383,7 +601,7 @@ export async function makeCask(input: {
     throw new Error(`target ${input.target} is not built yet. Today: ${CASK_TARGETS.join(', ')}`)
   }
 
-  if (process.platform !== 'darwin') {
+  if (input.target !== 'android' && process.platform !== 'darwin') {
     throw new Error('an Apple cask builds on macOS, where swiftc, codesign and the simulator are')
   }
 
@@ -407,6 +625,10 @@ export async function makeCask(input: {
   // 1. the bridge, from the page's docks
   const generated = generateBridge({ page, out: path.dirname(entry), commit: true })
   console.log(fade(`  bridge: ${generated.carried} commands, ${generated.refused.length} refused, ${generated.written} files written`))
+
+  if (input.target === 'android') {
+    return makeAndroidCask({ root, page, entry, name, identifier, out, work, version, url: input.url })
+  }
 
   // 4 first, because the page and the program land inside the bundle
   const bundle =
@@ -466,4 +688,63 @@ export async function makeCask(input: {
   logGood(`${path.relative(root, bundle.app)}`)
 
   return { app: bundle.app }
+}
+
+// the Android build: the page and the app's files as assets, the program as a dex, one signed APK, installed and
+// launched when a device is online
+async function makeAndroidCask({
+  root,
+  page,
+  entry,
+  name,
+  identifier,
+  out,
+  work,
+  version,
+  url,
+}: {
+  root: string
+  page: string
+  entry: string
+  name: string
+  identifier: string
+  out: string
+  work: string
+  version: string
+  url?: string
+}): Promise<{ app: string }> {
+  const generated = generateBridge({ page, out: path.dirname(entry), commit: true })
+  console.log(fade(`  bridge: ${generated.carried} commands, ${generated.refused.length} refused, ${generated.written} files written`))
+
+  const assets = path.join(work, 'assets')
+  rmSync(assets, { recursive: true, force: true })
+  mkdirSync(assets, { recursive: true })
+  const built = await buildPage({ root, page, entry: `import { boot } from './app'\nboot()\n`, into: path.join(assets, 'webview'), title: name, work: path.join(work, 'page') })
+  console.log(fade(`  page: ${built.bytes} bytes of JavaScript`))
+
+  const { dex } = buildAndroidProgram({
+    root,
+    entry,
+    identifier,
+    // the Activity the system starts: it runs the program's `boot`, which opens the window the Activity then shows
+    driver: [
+      'class TermActivity : CaskActivity() {',
+      `  override fun program() { boot(${JSON.stringify(url ?? 'webview')}, ${url ? 'true' : 'false'}) }`,
+      '}',
+    ].join('\n'),
+    work,
+  })
+
+  const apk = assembleApk({ out, name, identifier, version, dex, assets, work })
+  logGood(`${path.relative(root, apk)} (debug signed)`)
+
+  const found = androidDevice()
+
+  if ('missing' in found) {
+    console.log(fade(`  not launched: ${found.missing}`))
+  } else {
+    launchOnAndroid({ serial: found.serial, apk, identifier })
+  }
+
+  return { app: apk }
 }

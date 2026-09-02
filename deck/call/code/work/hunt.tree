@@ -1,3 +1,14 @@
+load @term/call/code/work/tint
+  find log-good
+  find log-fail
+  find log-step
+  find log-warn
+  find fade
+  find name, name tint-name
+  find bold
+  find mark
+  find format-error
+
 # `term hunt` -- the automated bug hunt.
 #
 # Points the verification package's multi-oracle engine at the compiler, or at any directory of `.tree` files:
@@ -14,7 +25,6 @@
 dock load
   load <@term/call/code/make>, name make-module
   load <@term/test/code/seed-hunt>, name hunt-module
-  load <@term/make/code/tint>, name tint
   load <node:process>, name node-process
   load <global:console>, name console
   load <global:JSON>, name json
@@ -65,10 +75,10 @@ task hunt
           read result/findings
           code 0
         hook hold
-          call tint/logGood
+          call log-good
             text <No issues found>
         hook miss
-          call tint/logFail
+          call log-fail
             text <Found {{result/findings}} issue(s)>
   fork test
     call is-equal

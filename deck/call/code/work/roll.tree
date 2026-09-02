@@ -1,3 +1,14 @@
+load @term/call/code/work/tint
+  find log-good
+  find log-fail
+  find log-step
+  find log-warn
+  find fade
+  find name, name tint-name
+  find bold
+  find mark
+  find format-error
+
 # `term roll [kind]` -- the roll of this project: every deck in the build, every exception with who can raise it,
 # every public task with what it raises, every route, every tell.
 #
@@ -16,7 +27,6 @@ load @term/seed/code/text
 dock load
   load <@term/call/code/roll>, name roll-module
   load <@term/make/code/compile/roll>, name roll-show
-  load <@term/make/code/tint>, name tint
   load <node:process>, name node-process
   load <global:console>, name console
   load <global:JSON>, name json-global
@@ -72,7 +82,7 @@ task roll
   fork test
     read json-out
     hook miss
-      call tint/logStep
+      call log-step
         text <Rolling...>
   save answer
     call roll-module/projectRoll
@@ -91,7 +101,7 @@ task roll
           read kind
           read roll/kind
         hook miss
-          call tint/logFail
+          call log-fail
             text <Unknown kind "{{kind}}">
           call node-process/exit
             code 1
@@ -132,7 +142,7 @@ task roll
       code 0
     hook hold
       call console/log
-        call tint/fade
+        call fade
           text <  {{failed}} file(s) did not compile and are not on the roll>
 
 # the note of the tell that covers one exception, or `private` when none does

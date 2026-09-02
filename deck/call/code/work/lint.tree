@@ -1,3 +1,14 @@
+load @term/call/code/work/tint
+  find log-good
+  find log-fail
+  find log-step
+  find log-warn
+  find fade
+  find name, name tint-name
+  find bold
+  find mark
+  find format-error
+
 # `term lint` -- lint `.tree` files. Findings are reported; `--fix` applies the autofixes in place. It exits
 # non-zero when any error-severity finding remains, so it can gate a build.
 #
@@ -16,7 +27,6 @@ load @term/seed/code/file
 
 dock load
   load <@term/make/code/analyze>, name analyze-module
-  load <@term/make/code/tint>, name tint
   load <@term/call/code/lint>, name lint-module
   load <node:path>, name node-path
   load <node:process>, name node-process
@@ -58,11 +68,11 @@ task lint
       read files/length
       code 0
     hook hold
-      call tint/logFail
+      call log-fail
         text <No .tree files found>
       call node-process/exit
         code 1
-  call tint/logStep
+  call log-step
     text <Linting...>
   save findings
     code 0
@@ -103,17 +113,17 @@ task lint
                   read errors
                   code 1
           call console/log
-            call tint/fade
+            call fade
               text <  {{shown}}: {{one/message}}>
   fork test
     call is-equal
       read findings
       code 0
     hook hold
-      call tint/logGood
+      call log-good
         text <No lint findings>
       send back
-  call tint/logFail
+  call log-fail
     text <{{findings}} finding(s), {{errors}} error(s)>
   fork test
     call is-above

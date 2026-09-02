@@ -155,7 +155,9 @@ const PATTERN: Record<TokenKind, RegExp> = {
   // a run of braces followed by a letter opens an interpolation whole (`{x}` is depth one, `{{x}}` depth two, the
   // runtime interpolation), so the chunk matcher stops before a brace run that a letter follows
   [TokenKind.Chunk]:
-    /(?:\\[<>{}nrt\\]|\\(?![<>{}nrt\\])|\{+(?!\s*(?:[a-zA-Z_{]|$))|[^>{\\])+/y,
+    // `e` alongside `nrt`: `\e` is the escape character (0x1B), which is what every ANSI colour sequence opens
+    // with and the one thing a Term program needed to write terminal output without an npm package.
+    /(?:\\[<>{}nrte\\]|\\(?![<>{}nrte\\])|\{+(?!\s*(?:[a-zA-Z_{]|$))|[^>{\\])+/y,
 }
 
 /**

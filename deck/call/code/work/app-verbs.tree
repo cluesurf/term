@@ -1,3 +1,14 @@
+load @term/call/code/work/tint
+  find log-good
+  find log-fail
+  find log-step
+  find log-warn
+  find fade
+  find name, name tint-name
+  find bold
+  find mark
+  find format-error
+
 # The verbs that build, run and publish an application: `term test`, `term walk`, `term cast` and `term host`.
 #
 # Each is a thin verb over machinery that lives elsewhere -- the test runner, the REPL, the Cloudflare bundler and
@@ -12,7 +23,6 @@ dock load
   load <@term/call/code/walk>, name walk-module
   load <@term/call/code/cast>, name cast-module
   load <@term/call/code/host>, name host-module
-  load <@term/make/code/tint>, name tint
   load <node:process>, name node-process
 
 form root-ask
@@ -46,8 +56,8 @@ task test
       wait true
   halt take
     take error
-    call tint/logFail
-      call tint/formatError
+    call log-fail
+      call format-error
         read error
     call node-process/exit
       code 1
@@ -64,8 +74,8 @@ task walk
       wait true
   halt take
     take error
-    call tint/logFail
-      call tint/formatError
+    call log-fail
+      call format-error
         read error
     call node-process/exit
       code 1
@@ -92,7 +102,7 @@ task cast
       read chosen
       text <cloudflare>
     hook hold
-      call tint/logFail
+      call log-fail
         text <Unknown cast target: {{chosen}}. The one target is cloudflare.>
       call node-process/exit
         code 1
@@ -105,8 +115,8 @@ task cast
       wait true
   halt take
     take error
-    call tint/logFail
-      call tint/formatError
+    call log-fail
+      call format-error
         read error
     call node-process/exit
       code 1
@@ -127,8 +137,8 @@ task host
       wait true
   halt take
     take error
-    call tint/logFail
-      call tint/formatError
+    call log-fail
+      call format-error
         read error
     call node-process/exit
       code 1

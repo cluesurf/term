@@ -1,10 +1,20 @@
+load @term/call/code/work/tint
+  find log-good
+  find log-fail
+  find log-step
+  find log-warn
+  find fade
+  find name, name tint-name
+  find bold
+  find mark
+  find format-error
+
 # `term note` -- what this package is: its name, version, description, licence, authors and dependencies.
 #
 # Ported from deck/call/code/note.ts (cli-in-term-0004).
 
 dock load
   load <@cluesurf/deck.tree>, name deck-tree
-  load <@term/make/code/tint>, name tint
   load <chalk>, name chalk
   load <node:process>, name node-process
   load <global:console>, name console
@@ -91,8 +101,8 @@ task note
       text <>
   halt take
     take error
-    call tint/logFail
-      call tint/formatError
+    call log-fail
+      call format-error
         read error
     call node-process/exit
       code 1
