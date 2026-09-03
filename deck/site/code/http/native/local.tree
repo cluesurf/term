@@ -1,0 +1,52 @@
+
+# Routes in process, the implementation: one registered server, and `ask`, which runs the uniform router against it
+# the way a transport would against a socket. Written in Term with no native, so every env resolves to this file,
+# and the `webview` env of a cask's page resolves to the generated shim that carries `ask` over the bridge (item
+# cask-0018). `register` takes a record and does not cross: the cask calls it, the page never does.
+
+load ../http
+  find server
+  find request
+  find response
+  find handle-request
+
+load @term/seed/code/hash
+  find hash
+  find get
+  find set
+
+# the one server this program registered, under one key: a module-level constant cannot be reassigned, a hash can
+host servers
+  make hash
+
+task register
+  take server, like server
+  like void
+  call set
+    read servers
+    text <app>
+    read server
+
+# the body the registered router answers for a request, or a raise when nothing was registered
+task ask
+  take method, like text
+  take path, like text
+  take body, like text
+  like text
+  note async
+  save found
+    call get
+      read servers
+      text <app>
+  fork case, read found
+    case some
+      save answer
+        call handle-request
+          read found/value
+          make request
+            bind method, read method
+            bind path, read path
+            bind body, read body
+      send back, read answer/body
+    case none
+      halt <no router is registered: call register with the app's server first>

@@ -14,12 +14,13 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# the toolkit the cask draws with, the compiler, and a display that is not one
+# the toolkit the cask draws with, the compiler, OpenSSL for the stdlib's http client, and a display that is not one
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       build-essential pkg-config ca-certificates curl \
       libgtk-4-dev libwebkitgtk-6.0-dev \
-      xvfb dbus \
+      libssl-dev \
+      xvfb xauth dbus \
  && rm -rf /var/lib/apt/lists/*
 
 # Rust, the stable toolchain, for every user of the image

@@ -4,7 +4,11 @@
 # child, so a lookup is O(path-depth) regardless of how many routes are registered. Params are resolved by index after
 # a match (clean backtracking). The transport (`serve`) delegates to native per env. See book/site/routes.md.
 
+load @term/seed/code/maybe
+  find unwrap-or
+
 load @term/seed/code/list
+  find count
   find list
   find push
   find get
@@ -39,7 +43,10 @@ form route
   link handle
     like task
       take request, like request
-      take params, like hash
+      take params
+        like hash
+          like text
+          like text
       like response
 
 # one positional parameter a matched handler binds: the segment `index`, the param `name`, and whether it is the
@@ -54,17 +61,30 @@ form handler-data
   link handle
     like task
       take request, like request
-      take params, like hash
+      take params
+        like hash
+          like text
+          like text
       like response
-  link params, like list
+  link params
+    like list
+      like param-spec
 
 # a trie node: static children (segment -> node), an optional `:param` child, an optional catch-all child, and the
-# per-method handlers registered exactly at this node. Children are held gradually (the recursion needs no named type).
+# per-method handlers registered exactly at this node. The children name the form itself: a native backend needs
+# the element of every container written, since a child left to inference is emitted as a placeholder type
 form node
-  link static, like hash
-  link param, like maybe
+  link static
+    like hash
+      like text
+      like node
+  link param
+    like maybe
+      like node
   link param-name, like text
-  link wildcard, like maybe
+  link wildcard
+    like maybe
+      like node
   link wildcard-name, like text
   link handlers
     like hash
@@ -123,7 +143,9 @@ task param-name-of
 
 # ensure a maybe child node exists, returning it (creating an empty node when absent)
 task child-or-empty
-  take slot, like maybe
+  take slot
+    like maybe
+      like node
   like node
   fork case, read slot
     case some
@@ -132,7 +154,10 @@ task child-or-empty
       send back
         call empty-node
 
-# insert one route into the trie, recording each param/catch-all slot by index. Mutates the trie in place.
+# insert one route into the trie, recording each param/catch-all slot by index. Answers the node with the route
+# in it rather than mutating the one it was given: a form is a value on Swift and Rust, so a node changed in place
+# through a local is lost the moment the local goes, and a trie built that way was empty there. Recursive over
+# the segments; the maps inside a node are shared handles on every backend and are updated in place
 task add-route
   take root, like node
   take method, like text
@@ -140,111 +165,167 @@ task add-route
   take handle
     like task
       take request, like request
-      take params, like hash
+      take params
+        like hash
+          like text
+          like text
       like response
-  save segments
-    call split
-      read path
-      text </>
-  save node, read root
+  like node
   save specs
     make list
-  save index, code 0
-  walk list, read segments
-    hook next
-      take site, name segment
-      fork test
-        hook test
-          call is-wildcard
-            read segment
-        hook hold
-          save child
-            call child-or-empty
-              read node/wildcard
-          save node/wildcard
-            make some
-              bind value, read child
-          save node/wildcard-name
-            call param-name-of
-              read segment
-          call push
-            bind list, read specs
-            bind item
-              make param-spec
-                bind index, read index
-                bind name
-                  call param-name-of
-                    read segment
-                bind rest, true
-          save node, read child
-          halt
-        hook miss
-          fork test
-            hook test
-              call starts-with
+  send back
+    call insert-route
+      read root
+      call split
+        read path
+        text </>
+      code 0
+      read method
+      read handle
+      read specs
+
+task insert-route
+  take node, like node
+  take segments
+    like list
+      like text
+  take index, like u32
+  take method, like text
+  take handle
+    like task
+      take request, like request
+      take params
+        like hash
+          like text
+          like text
+      like response
+  take specs
+    like list
+      like param-spec
+  like node
+  fork test
+    hook test
+      call is-minimum
+        read index
+        call count
+          read segments
+    hook hold
+      # every segment placed: the handler lives here
+      call set
+        read node/handlers
+        read method
+        make handler-data
+          bind handle, read handle
+          bind params, read specs
+      send back, read node
+  save segment
+    call get
+      read segments
+      read index
+  fork test
+    hook test
+      call is-wildcard
+        read segment
+    hook hold
+      # the catch-all takes the rest of the path, so the handler lives on its child
+      call push
+        bind list, read specs
+        bind item
+          make param-spec
+            bind index, read index
+            bind name
+              call param-name-of
                 read segment
-                text <:>
-            hook hold
-              save child
-                call child-or-empty
-                  read node/param
-              save node/param
-                make some
-                  bind value, read child
-              save node/param-name
-                call param-name-of
-                  read segment
-              call push
-                bind list, read specs
-                bind item
-                  make param-spec
-                    bind index, read index
-                    bind name
-                      call param-name-of
-                        read segment
-                    bind rest, false
-              save node, read child
-            hook miss
-              save existing
-                call get
-                  read node/static
-                  read segment
-              fork case, read existing
-                case some
-                  save node, read existing/value
-                case none
-                  save fresh
-                    call empty-node
-                  call set
-                    read node/static
-                    read segment
-                    read fresh
-                  save node, read fresh
-      save index
-        call add
-          read index
-          code 1
+            bind rest, true
+      save child
+        call insert-route
+          call child-or-empty
+            read node/wildcard
+          read segments
+          call count
+            read segments
+          read method
+          read handle
+          read specs
+      save node/wildcard
+        make some
+          bind value, read child
+      save node/wildcard-name
+        call param-name-of
+          read segment
+      send back, read node
+  fork test
+    hook test
+      call starts-with
+        read segment
+        text <:>
+    hook hold
+      call push
+        bind list, read specs
+        bind item
+          make param-spec
+            bind index, read index
+            bind name
+              call param-name-of
+                read segment
+            bind rest, false
+      save child
+        call insert-route
+          call child-or-empty
+            read node/param
+          read segments
+          call add
+            read index
+            code 1
+          read method
+          read handle
+          read specs
+      save node/param
+        make some
+          bind value, read child
+      save node/param-name
+        call param-name-of
+          read segment
+      send back, read node
+  save existing
+    call get
+      read node/static
+      read segment
+  save child
+    call insert-route
+      call unwrap-or
+        read existing
+        call empty-node
+      read segments
+      call add
+        read index
+        code 1
+      read method
+      read handle
+      read specs
   call set
-    read node/handlers
-    read method
-    make handler-data
-      bind handle, read handle
-      bind params, read specs
+    read node/static
+    read segment
+    read child
+  send back, read node
 
 # build a router from a list of routes (the trie is built once, here)
 task route-server
-  take routes, like list
+  take routes
+    like list
+      like route
   like server
   save root
     call empty-node
   walk list, read routes
     hook next
       take site, name r
-      call add-route
-        read root
-        read r/method
-        read r/path
-        read r/handle
+      save root
+        call add-route
+          read root
+          read r/method
+          read r/path
+          read r/handle
   send back
     make server
       bind root, read root
@@ -254,7 +335,9 @@ task route-server
 task find-node
   take node, like node
   take method, like text
-  take segments, like list
+  take segments
+    like list
+      like text
   take index, like u32
   like maybe
     like handler-data
@@ -336,10 +419,19 @@ task find-node
 # fill the params hash from the matched handler's specs: a normal slot binds one segment, a catch-all binds the joined
 # remaining segments
 task bind-params
-  take specs, like list
-  take segments, like list
-  take into, like hash
+  take specs
+    like list
+      like param-spec
+  take segments
+    like list
+      like text
+  take into
+    like hash
+      like text
+      like text
   like hash
+    like text
+    like text
   walk list, read specs
     hook next
       take site, name spec

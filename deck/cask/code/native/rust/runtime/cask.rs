@@ -290,8 +290,8 @@ mod cask {
         use windows::core::{w, HSTRING, PCWSTR, PWSTR};
         use windows::Win32::Foundation::{E_FAIL, HWND, LPARAM, LRESULT, RECT, WPARAM};
         use windows::Win32::Storage::FileSystem::FILE_ATTRIBUTE_NORMAL;
-        use windows::Win32::System::Com::StructuredStorage::{STGM_CREATE, STGM_WRITE};
-        use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, COINIT_APARTMENTTHREADED};
+        use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, COINIT_APARTMENTTHREADED, STGM_CREATE, STGM_WRITE};
+        use windows::Win32::System::WinRT::EventRegistrationToken;
         use windows::Win32::System::LibraryLoader::GetModuleHandleW;
         use windows::Win32::UI::Shell::SHCreateStreamOnFileEx;
         use windows::Win32::UI::WindowsAndMessaging::*;

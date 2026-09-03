@@ -1,0 +1,76 @@
+
+# The cask side of the route smoke of cask-0018: one route table built the way a `hook` module builds it, registered
+# for in-process asking, a window, the route page, and the GENERATED dispatcher in ./dispatch.tree answering what
+# the page posts. No window is shown: a test only talks over the bridge.
+
+load @term/cask/code/cask
+  find window
+  find open-window
+  find load-bundle
+  find on-message
+  find run
+
+load @term/site/code/http/http
+  find request
+  find response
+  find route
+  find route-server
+
+load @term/site/code/http/local
+  find register
+
+load @term/seed/code/hash
+  find get
+
+load @term/seed/code/maybe
+  find unwrap-or
+
+load @term/seed/code/list
+  find list
+  find push
+
+load ./dispatch
+  find dispatch
+
+# GET /echo/:word answers the word
+task echo-handler
+  take request, like request
+  take params, like hash
+  like response
+  send back
+    make response
+      bind status, code 200
+      bind body
+        call unwrap-or
+          call get
+            read params
+            text <word>
+          text <>
+
+task boot
+  take bundle, like text
+  like void
+  save routes
+    make list
+  call push
+    bind list, read routes
+    bind item
+      make route
+        bind method, text <GET>
+        bind path, text </echo/:word>
+        bind handle, read echo-handler
+  call register
+    call route-server
+      read routes
+  save made
+    call open-window
+      text <Term route>
+      code 640
+      code 480
+  call on-message
+    read made
+    read dispatch
+  call load-bundle
+    read made
+    read bundle
+  call run

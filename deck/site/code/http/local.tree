@@ -1,0 +1,8 @@
+
+# Routes in process: the app's router answering a caller in the same program, with no socket. A cask registers the
+# server its `hook` module builds, and the page asks a route by method and path over the bridge, so the one route
+# table that serves the web app over HTTP serves the native app in process. Userland imports this clean path. It
+# re-exports the abstract module, which has the whole implementation in Term: the build resolves it on every env,
+# and in a cask's page it is the generated bridge shim instead.
+
+bear @term/site/code/http/native/{platform}/local

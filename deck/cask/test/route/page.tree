@@ -1,0 +1,52 @@
+
+# The page side of the route smoke of cask-0018: the app's router answers the page in process. Reads the line the
+# driver put in <bundle>/smoke.txt, asks the route `GET /echo/<line>` over the bridge, and leaves with 0 when the
+# router echoed the expected line back through its `:word` parameter and 1 when it did not. The driver reads that
+# status.
+
+load @term/cask/code/cask
+  find bundle-path
+  find exit
+
+load @term/site/code/http/local
+  find ask
+
+load @term/seed/code/file
+  find read
+
+load @term/seed/code/text
+  find trim
+
+# what the driver writes into <bundle>/smoke.txt
+host expected, text <cask-route-ok>
+
+task boot
+  note async
+  like void
+  save bundle
+    call bundle-path
+      wait true
+  save line
+    call trim
+      call read
+        wait true
+        text <{{bundle}}/smoke.txt>
+  save answer
+    call ask
+      wait true
+      text <GET>
+      text </echo/{{line}}>
+      text <>
+  fork test
+    hook test
+      call is-equal
+        read answer
+        read expected
+    hook hold
+      call exit
+        wait true
+        code 0
+    hook miss
+      call exit
+        wait true
+        code 1

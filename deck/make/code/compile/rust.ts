@@ -122,9 +122,14 @@ function rustType(type: Type | undefined): string {
     case 'map':
       // a shared, interior-mutable handle, so a map mutated through one binding (a `set.insert`) is seen through every
       // binding even after the owning struct is moved. `Rc` is `Clone`, so passing a map shares it, never moving it.
-      return `std::rc::Rc<std::cell::RefCell<std::collections::HashMap<${rustType(
-        type.key,
-      )}, ${rustType(type.value)}>>>`
+      // a key nothing constrained: the free-variable default is the boxed unknown, which is neither Eq nor Hash,
+      // and a key that no use ever pinned is a text one in every program here (route parameters, json objects)
+      const key =
+        (type.key?.kind === 'variable' && !rustVarNames.has(type.key.id)) || type.key?.kind === 'unknown' || type.key?.kind === 'dynamic'
+          ? 'String'
+          : rustType(type.key)
+
+      return `std::rc::Rc<std::cell::RefCell<std::collections::HashMap<${key}, ${rustType(type.value)}>>>`
 
     case 'named': {
       const opaque = rustOpaqueTypes.get(type.name)

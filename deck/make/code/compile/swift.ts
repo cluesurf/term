@@ -428,9 +428,14 @@ export function emitSwift(
       case 'map':
         // a reference class wrapping a Dictionary, so a map mutated through one binding (a `set.insert`) is seen
         // through every binding. A bare Swift Dictionary is a value type and would not carry the mutation across a copy.
-        return `SeedMap<${swiftType(type.key)}, ${swiftType(
-          type.value,
-        )}>`
+        // a key nothing constrained is any Hashable value, not `Any`, which Swift cannot hash: the free-variable
+        // default is `Any`, and a map key needs the hashable form of it
+        const key =
+          (type.key?.kind === 'variable' && !varNames.has(type.key.id)) || type.key?.kind === 'unknown' || type.key?.kind === 'dynamic'
+            ? 'AnyHashable'
+            : swiftType(type.key)
+
+        return `SeedMap<${key}, ${swiftType(type.value)}>`
 
       case 'named': {
         const opaque = opaqueTypes.get(type.name)
