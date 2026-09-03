@@ -41,6 +41,18 @@ private const val PAGE_ASSET = "webview"
 
 private val main = Handler(Looper.getMainLooper())
 
+// installed when a document starts: an uncaught error or an unhandled rejection in the page becomes a `cask_log`
+// line, even one thrown before the bridge module is evaluated
+private const val ERROR_LISTENERS = """
+window.addEventListener('error', function (event) {
+  __term_native.post(JSON.stringify({ id: '', command: 'cask_log', arguments: { text: 'error: ' + (event.message || String(event.error)) + ' at ' + (event.filename || '?') + ':' + (event.lineno || 0) } }))
+});
+window.addEventListener('unhandledrejection', function (event) {
+  var reason = event.reason;
+  __term_native.post(JSON.stringify({ id: '', command: 'cask_log', arguments: { text: 'unhandled rejection: ' + (reason && reason.message ? reason.message + '\n' + reason.stack : String(reason)) } }))
+});
+"""
+
 // receives every `window.term.post`. Exposed to the page as `__term_native`
 class CaskInterface(private val handle: CaskWindow) {
     @JavascriptInterface
@@ -85,6 +97,13 @@ class CaskWindow(val title: String, val width: Long, val height: Long) {
         view.settings.allowUniversalAccessFromFileURLs = true
         view.addJavascriptInterface(CaskInterface(this), "__term_native")
         view.webViewClient = object : WebViewClient() {
+            // the page's errors reach the cask's log from the moment the document starts, before any module of the
+            // page is evaluated, the way the Swift and Rust runtimes inject the same two listeners at document start.
+            // `__term_native` is the interface below, which the page-side runtime builds `window.term` over
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                view?.evaluateJavascript(ERROR_LISTENERS, null)
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 onReady?.invoke()
             }

@@ -5,7 +5,8 @@
 # The cask side of the bridge for this app: the allowlist is exactly the commands the page docks plus the
 # cask's own, `run-command` calls the public task for each, and `dispatch` turns one message into one reply.
 # A message is `{ id, command, arguments }`. The reply is `{ id, value }`, or `{ id, exception }` when the
-# command is not allowed, and then nothing runs.
+# command is not allowed, and then nothing runs. An opaque handle a task answers is kept in a table here under a
+# fresh id, and the id is what the page gets; a handle the page sends back is looked up in the same table.
 
 load @term/cask/code/cask
   find exit
@@ -38,10 +39,58 @@ load @term/seed/code/json
   find from-boolean
   find from-number
   find make-null
+  find as-text
+  find as-boolean
+  find as-number
+  find make-array
+  find push-item
+  find get-item
+  find array-size
 
 load @term/seed/code/float
   find to-number
   find to-decimal
+
+load @term/seed/code/list
+  find list
+  find push
+
+load @term/seed/code/hash
+  find hash
+  find get
+  find set
+
+load @term/seed/code/uuid
+  find version4
+
+load @term/seed/code/maybe
+  find maybe
+  find unwrap
+
+# the items of a json array, as a list whose element the checker knows
+task items-of
+  take array, like dynamic
+  like list
+    like unknown
+  save items
+    make list
+  walk size
+    bind base, code 0
+    bind head
+      call array-size
+        read array
+    hook next
+      take site, name index
+      # declared unknown, so a backend that boxes its dynamic boxes it here
+      save item
+        like unknown
+        call get-item
+          read array
+          read index
+      call push
+        bind list, read items
+        bind item, read item
+  send back, read items
 
 # the commands this app allows: what its page docks, and nothing else
 task is-allowed
@@ -139,28 +188,44 @@ task run-command
         read command
         text <file_read>
     hook hold
+      save field-1
+        call get-field
+          read arguments
+          text <path>
+      save value-3
+        call as-text
+          read field-1
       save answer
         call file-read
           wait true
-          call field-text
-            read arguments
-            text <path>
-      send back
+          read value-3
+      save json-5
         call from-text
           read answer
+      send back, read json-5
     hook test
       call is-equal
         read command
         text <file_write>
     hook hold
-      call file-write
-        wait true
-        call field-text
+      save field-6
+        call get-field
           read arguments
           text <path>
-        call field-text
+      save value-8
+        call as-text
+          read field-6
+      save field-9
+        call get-field
           read arguments
           text <data>
+      save value-11
+        call as-text
+          read field-9
+      call file-write
+        wait true
+        read value-8
+        read value-11
       send back
         call make-null
     hook test
@@ -168,14 +233,24 @@ task run-command
         read command
         text <file_append>
     hook hold
-      call file-append
-        wait true
-        call field-text
+      save field-12
+        call get-field
           read arguments
           text <path>
-        call field-text
+      save value-14
+        call as-text
+          read field-12
+      save field-15
+        call get-field
           read arguments
           text <data>
+      save value-17
+        call as-text
+          read field-15
+      call file-append
+        wait true
+        read value-14
+        read value-17
       send back
         call make-null
     hook test
@@ -183,11 +258,16 @@ task run-command
         read command
         text <file_remove>
     hook hold
-      call file-remove
-        wait true
-        call field-text
+      save field-18
+        call get-field
           read arguments
           text <path>
+      save value-20
+        call as-text
+          read field-18
+      call file-remove
+        wait true
+        read value-20
       send back
         call make-null
     hook test
@@ -195,14 +275,24 @@ task run-command
         read command
         text <file_copy>
     hook hold
-      call file-copy
-        wait true
-        call field-text
+      save field-21
+        call get-field
           read arguments
           text <from>
-        call field-text
+      save value-23
+        call as-text
+          read field-21
+      save field-24
+        call get-field
           read arguments
           text <to>
+      save value-26
+        call as-text
+          read field-24
+      call file-copy
+        wait true
+        read value-23
+        read value-26
       send back
         call make-null
     hook test
@@ -210,14 +300,24 @@ task run-command
         read command
         text <file_move>
     hook hold
-      call file-move
-        wait true
-        call field-text
+      save field-27
+        call get-field
           read arguments
           text <from>
-        call field-text
+      save value-29
+        call as-text
+          read field-27
+      save field-30
+        call get-field
           read arguments
           text <to>
+      save value-32
+        call as-text
+          read field-30
+      call file-move
+        wait true
+        read value-29
+        read value-32
       send back
         call make-null
     hook test
@@ -225,15 +325,21 @@ task run-command
         read command
         text <file_test>
     hook hold
+      save field-33
+        call get-field
+          read arguments
+          text <path>
+      save value-35
+        call as-text
+          read field-33
       save answer
         call file-test
           wait true
-          call field-text
-            read arguments
-            text <path>
-      send back
+          read value-35
+      save json-37
         call from-boolean
           read answer
+      send back, read json-37
     hook test
       call is-equal
         read command
@@ -284,7 +390,8 @@ task run-command
       send back
         call make-null
 
-# one message in, one reply out
+# one message in, one reply out. A command that raises answers the exception by name and note, so the page
+# gets a rejection and the cask keeps running
 task dispatch
   note async
   take message, like text
@@ -313,16 +420,25 @@ task dispatch
       call is-allowed
         read command
     hook hold
-      save reply
-        call set-field
-          read reply
-          text <value>
-          call run-command
-            wait true
-            read command
-            call get-field
-              read request
-              text <arguments>
+      note unsafe
+        save reply
+          call set-field
+            read reply
+            text <value>
+            call run-command
+              wait true
+              read command
+              call get-field
+                read request
+                text <arguments>
+      halt take
+        take error
+        save reply
+          call set-field
+            read reply
+            text <exception>
+            call from-text
+              text <{{error/form}}: {{error/note}}>
     hook miss
       save reply
         call set-field

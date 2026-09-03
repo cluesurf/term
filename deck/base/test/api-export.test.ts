@@ -1,5 +1,17 @@
 import { describe, it, expect } from 'vitest'
-import { exportTree, exportArchive, manifestOf, archiveKey, worthCaching } from '@term/base/code/api/export'
+import { walkTree, walkArchive, manifestOf, archiveKey, worthCaching } from '@term/base/code/api/export'
+import type { Entry } from '@term/base/code/api/export'
+
+// the walk collected, so each test reads the way it did when these were generators
+const listOf = (walk: (take: (entry: Entry) => boolean | void) => void): Entry[] => {
+  const out: Entry[] = []
+
+  walk(entry => {
+    out.push(entry)
+  })
+
+  return out
+}
 import { countsOf, candidates, ripe, sweep, repair, packRemovable, GRACE_MS } from '@term/base/code/gc/refcount'
 import { record, text } from '@term/base/code/base/make'
 import { datasetOf } from '@term/base/code/diff/change'
@@ -21,10 +33,10 @@ function setup() {
   return { repo, commit: repo.head('main')! }
 }
 
-describe('exportTree', () => {
+describe('walkTree', () => {
   it('yields one readable file per record', () => {
     const { repo, commit } = setup()
-    const entries = [...exportTree({ repo, commit })]
+    const entries = listOf(take => walkTree({ repo, commit }, take))
     expect(entries).toHaveLength(2)
     expect(entries[0]!.path).toMatch(/^word\/.*\.tree$/)
     expect(entries[0]!.bytes.toString('utf8')).toContain('word')
@@ -32,17 +44,17 @@ describe('exportTree', () => {
 
   it('is deterministic, so an archive can be content-addressed', () => {
     const { repo, commit } = setup()
-    const a = [...exportTree({ repo, commit })].map(e => e.path)
-    const b = [...exportTree({ repo, commit })].map(e => e.path)
+    const a = listOf(take => walkTree({ repo, commit }, take)).map(e => e.path)
+    const b = listOf(take => walkTree({ repo, commit }, take)).map(e => e.path)
     expect(a).toEqual(b)
     expect(a).toEqual([...a].sort())
   })
 })
 
-describe('exportArchive', () => {
+describe('walkArchive', () => {
   it('puts the manifest first, so a truncated download is detectable', () => {
     const { repo, commit } = setup()
-    const entries = [...exportArchive({ repo, commit, repository: 'term/make' })]
+    const entries = listOf(take => walkArchive({ repo, commit, repository: 'term/make' }, take))
     expect(entries[0]!.path).toBe('manifest.json')
     const manifest = JSON.parse(entries[0]!.bytes.toString('utf8'))
     expect(manifest.commit).toBe(commit)

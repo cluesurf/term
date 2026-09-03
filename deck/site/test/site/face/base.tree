@@ -1,14 +1,48 @@
 
-# The page entry of the blog app inside a cask: mount the blog view on the document body. `term make --target`
-# calls `boot` when the page loads.
+# The page entry of the blog app inside a cask: open the database the cask keeps in its data directory, read the
+# posts, and mount the blog view on the document body with the repository as its store. `term make --target` calls
+# `boot` when the page loads. The database calls in ../back/post reach `@term/site/code/base/db`, which in the page
+# is the generated bridge shim, so each one is a message to the cask and runs there against SQLite.
 
 load ./blog
   find blog
 
+load ../back/post
+  find post
+  find setup
+  find create-post
+  find list-posts
+
+load @term/cask/code/cask
+  find data-path
+
 load @term/site/code/dom/dom
   find page-body
 
+# the store: one post into the database
+task keep
+  take item, like post
+  note async
+  call create-post
+    read item/id
+    read item/title
+    read item/body
+    wait true
+
 task boot
+  note async
   like void
+  save directory
+    call data-path
+      text <Blog>
+      wait true
+  call setup
+    text <{{directory}}/blog.sqlite>
+    wait true
+  save posts
+    call list-posts
+      wait true
   call blog
     call page-body
+    read posts
+    read keep

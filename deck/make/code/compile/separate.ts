@@ -258,12 +258,10 @@ export function compileSeparate(
     const make = (): UnitBuild | { diagnostics: Diagnostic[] } => {
       // dependency context: the stubs of every reachable unit, dependency order preserved
       const program: Program = []
-      const origin = new WeakMap<Statement, string>()
-
       for (const d of [...reach[i]!].sort((a, b) => a - b)) {
         for (const [file, statements] of builds[d]!.stubs) {
           for (const s of statements) {
-            origin.set(s, file)
+            s.span.file = file
             program.push(s)
           }
         }
@@ -290,7 +288,7 @@ export function compileSeparate(
         }
 
         for (const s of milled.program) {
-          origin.set(s, unit.file)
+          s.span.file = unit.file
           program.push(s)
         }
       }
@@ -300,7 +298,7 @@ export function compileSeparate(
         program,
         source.file,
         undefined,
-        origin,
+        true,
         options.modules,
         undefined,
         options.env,
@@ -324,7 +322,7 @@ export function compileSeparate(
       // checker zonks types onto these objects, so inferred signatures are part of the surface)
       const stubbed: [string, Statement[]][] = files.map(f => [
         f,
-        stubProgram(ownStatements.filter(s => origin.get(s) === f)),
+        stubProgram(ownStatements.filter(s => s.span.file === f)),
       ])
 
       const surface = stubbed.flatMap(([, list]) => list)

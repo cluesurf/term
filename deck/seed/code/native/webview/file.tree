@@ -4,7 +4,8 @@
 #
 # The `file` module from inside a cask's page. Every task is one command over the bridge to the cask, which
 # runs the same public task in the env that is native there. The command name is the public module, an
-# underscore, the public task, with hyphens as underscores. Internal: reached only through the public file API.
+# underscore, the public task, with hyphens as underscores. An opaque handle stays in the cask and crosses as its
+# id, which the page keeps in the form's private field. Internal: reached only through the public file API.
 
 dock load
   load <global:bridge>, name bridge
@@ -16,122 +17,228 @@ load @term/seed/code/json
   find from-boolean
   find from-number
   find make-null
+  find as-text
+  find as-boolean
+  find as-number
+  find make-array
+  find push-item
+  find get-item
+  find array-size
 
 load @term/seed/code/float
   find to-decimal
+  find to-number
+
+load @term/seed/code/list
+  find list
+  find push
+
+# the items of a json array, as a list whose element the checker knows
+task file-items-of
+  take array, like dynamic
+  like list
+    like unknown
+  save items
+    make list
+  walk size
+    bind base, code 0
+    bind head
+      call array-size
+        read array
+    hook next
+      take site, name index
+      # declared unknown, so a backend that boxes its dynamic boxes it here
+      save item
+        like unknown
+        call get-item
+          read array
+          read index
+      call push
+        bind list, read items
+        bind item, read item
+  send back, read items
 
 task read-file
   note async
-  take path, like text
+  take path
+    like text
   like text
+  save arguments
+    call make-object
+  save json-1
+    call from-text
+      read path
+  save arguments
+    call set-field
+      read arguments
+      text <path>
+      read json-1
   send back
     call bridge/invoke-text
       wait true
       text <file_read>
-      call set-field
-        call make-object
-        text <path>
-        call from-text
-          read path
+      read arguments
 
 task write-file
   note async
-  take path, like text
-  take data, like text
+  take path
+    like text
+  take data
+    like text
   like void
+  save arguments
+    call make-object
+  save json-2
+    call from-text
+      read path
+  save arguments
+    call set-field
+      read arguments
+      text <path>
+      read json-2
+  save json-3
+    call from-text
+      read data
+  save arguments
+    call set-field
+      read arguments
+      text <data>
+      read json-3
   call bridge/invoke-void
     wait true
     text <file_write>
-    call set-field
-      call set-field
-        call make-object
-        text <path>
-        call from-text
-          read path
-      text <data>
-      call from-text
-        read data
+    read arguments
 
 task append-file
   note async
-  take path, like text
-  take data, like text
+  take path
+    like text
+  take data
+    like text
   like void
+  save arguments
+    call make-object
+  save json-4
+    call from-text
+      read path
+  save arguments
+    call set-field
+      read arguments
+      text <path>
+      read json-4
+  save json-5
+    call from-text
+      read data
+  save arguments
+    call set-field
+      read arguments
+      text <data>
+      read json-5
   call bridge/invoke-void
     wait true
     text <file_append>
-    call set-field
-      call set-field
-        call make-object
-        text <path>
-        call from-text
-          read path
-      text <data>
-      call from-text
-        read data
+    read arguments
 
 task remove-file
   note async
-  take path, like text
+  take path
+    like text
   like void
+  save arguments
+    call make-object
+  save json-6
+    call from-text
+      read path
+  save arguments
+    call set-field
+      read arguments
+      text <path>
+      read json-6
   call bridge/invoke-void
     wait true
     text <file_remove>
-    call set-field
-      call make-object
-      text <path>
-      call from-text
-        read path
+    read arguments
 
 task copy-file
   note async
-  take from, like text
-  take to, like text
+  take from
+    like text
+  take to
+    like text
   like void
+  save arguments
+    call make-object
+  save json-7
+    call from-text
+      read from
+  save arguments
+    call set-field
+      read arguments
+      text <from>
+      read json-7
+  save json-8
+    call from-text
+      read to
+  save arguments
+    call set-field
+      read arguments
+      text <to>
+      read json-8
   call bridge/invoke-void
     wait true
     text <file_copy>
-    call set-field
-      call set-field
-        call make-object
-        text <from>
-        call from-text
-          read from
-      text <to>
-      call from-text
-        read to
+    read arguments
 
 task move-file
   note async
-  take from, like text
-  take to, like text
+  take from
+    like text
+  take to
+    like text
   like void
+  save arguments
+    call make-object
+  save json-9
+    call from-text
+      read from
+  save arguments
+    call set-field
+      read arguments
+      text <from>
+      read json-9
+  save json-10
+    call from-text
+      read to
+  save arguments
+    call set-field
+      read arguments
+      text <to>
+      read json-10
   call bridge/invoke-void
     wait true
     text <file_move>
-    call set-field
-      call set-field
-        call make-object
-        text <from>
-        call from-text
-          read from
-      text <to>
-      call from-text
-        read to
+    read arguments
 
 task file-exists
   note async
-  take path, like text
+  take path
+    like text
   like boolean
+  save arguments
+    call make-object
+  save json-11
+    call from-text
+      read path
+  save arguments
+    call set-field
+      read arguments
+      text <path>
+      read json-11
   send back
     call bridge/invoke-boolean
       wait true
       text <file_test>
-      call set-field
-        call make-object
-        text <path>
-        call from-text
-          read path
+      read arguments
 
 # not carried: result is bytes
 task read-file-bytes

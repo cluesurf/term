@@ -1,6 +1,6 @@
 // The streaming reader and the whole-file reader agree, on every `.tree` in the repository.
 //
-// A streaming reader is only worth having if it is the SAME reader. This compares the groups `readGroups` yields
+// A streaming reader is only worth having if it is the SAME reader. This compares the groups `walkGroups` reports
 // against the top-level groups `parse` produces for the same file, printed with the parser's own `printTree` so
 // the comparison is on structure rather than on object identity. Any disagreement is a second grammar, which is
 // the thing that must not exist (note/term/one-parser.md).
@@ -19,7 +19,8 @@
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse, printTree } from '@term/make/code/parser/tree'
-import { readGroups } from '@term/make/code/parser/stream'
+import { walkGroups } from '@term/make/code/parser/stream'
+import type { StreamResult } from '@term/make/code/parser/stream'
 import type { GroupNode, RootNode } from '@term/make/code/parser/tree'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
@@ -90,13 +91,13 @@ for (const file of files) {
   const streamed: string[] = []
   let truncated = false
 
-  for (const result of readGroups({ file, text })) {
+  walkGroups({ file, text }, result => {
     if (result.kind === 'group') {
       streamed.push(shapeOf(result.group))
     } else if (result.kind === 'kink') {
       truncated = true
     }
-  }
+  })
 
   const label = file.replace(`${TERM}/`, '')
 
@@ -131,32 +132,52 @@ ok(`compared ${compared} files (${skipped} skipped: they do not parse)`, compare
 
 // ---- stopping early ----
 
-const first = readGroups({
-  file: 'x.tree',
-  text: 'load @term/seed/code/list\n  find get\n\ntask a\n  call b\n\ntask c\n  call d\n',
-})
-const one = first.next()
+// STOPPING EARLY IS THE WHOLE POINT of the reader, and after the push rewrite (self-hosting-0002) it is a `false`
+// from the consumer rather than an abandoned generator. Counting the calls is what proves it: a reader that
+// ignored the stop would report all three groups and still pass a test that only looked at the first.
+const taken: StreamResult[] = []
 
-first.return(undefined)
+walkGroups(
+  {
+    file: 'x.tree',
+    text: 'load @term/seed/code/list\n  find get\n\ntask a\n  call b\n\ntask c\n  call d\n',
+  },
+  result => {
+    taken.push(result)
+
+    return false
+  },
+)
+
+const one = taken[0]
 
 ok(
   'a consumer can take one group and stop',
-  one.value !== undefined && one.value.kind === 'group' && printTree({ kind: 'root', nodes: [one.value.group] }).startsWith('load'),
+  taken.length === 1 && one !== undefined && one.kind === 'group' && printTree({ kind: 'root', nodes: [one.group] }).startsWith('load'),
+  `${taken.length} taken`,
 )
 
 // ---- a truncated file is not a whole one ----
 
-const cut = [...readGroups({ file: 'x.tree', text: 'task a\n  save s, text <unclosed\n' })]
+const cut: StreamResult[] = []
+
+walkGroups({ file: 'x.tree', text: 'task a\n  save s, text <unclosed\n' }, result => {
+  cut.push(result)
+})
 
 ok(
-  'a source ending mid-construct yields kink, not end',
+  'a source ending mid-construct reports kink, not end',
   cut.some(r => r.kind === 'kink') && !cut.some(r => r.kind === 'end'),
   JSON.stringify(cut.map(r => r.kind)),
 )
 
 // ---- a file that ends in a comment is whole ----
 
-const commented = [...readGroups({ file: 'x.tree', text: 'task a\n  call b\n\n# a trailing note\n' })]
+const commented: StreamResult[] = []
+
+walkGroups({ file: 'x.tree', text: 'task a\n  call b\n\n# a trailing note\n' }, result => {
+  commented.push(result)
+})
 
 ok(
   'a file ending in a comment ends cleanly',

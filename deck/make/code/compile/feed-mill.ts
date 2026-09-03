@@ -20,7 +20,7 @@
 // branch it's in.
 
 import type { GroupNode, Node, RootNode } from '@term/make/code/parser/tree'
-import { readGroups } from '@term/make/code/parser/stream'
+import { walkGroups } from '@term/make/code/parser/stream'
 import { headWord, textOf, wordOf } from './mill-run'
 
 // ---- reading the mine grammar into rule objects ----
@@ -703,7 +703,7 @@ export function feedMineSubstrate(
 // So a grammar writes `load` the way every other `.tree` file does, and the generated reader carries those blocks
 // through verbatim. No new syntax: `load` is Term's import statement, parsed here by the same parser.
 //
-// THE PARSER FINDS THE BOUNDARIES. `readGroups` says where each top-level group ends, and the raw lines of the
+// THE PARSER FINDS THE BOUNDARIES. `walkGroups` says where each top-level group ends, and the raw lines of the
 // ones headed `load` are taken from the source untouched. Counting indentation to find a block's extent would be
 // a second reader of the grammar, which is the thing that must not exist.
 export function feedMineLoads(file: string, text: string): string[] {
@@ -711,9 +711,9 @@ export function feedMineLoads(file: string, text: string): string[] {
   const out: string[] = []
   let at = 0
 
-  for (const result of readGroups({ file, text })) {
+  walkGroups({ file, text }, result => {
     if (result.kind !== 'group') {
-      break
+      return false
     }
 
     const span = lines.slice(at, at + result.lines)
@@ -723,7 +723,9 @@ export function feedMineLoads(file: string, text: string): string[] {
     if (headWord(result.group) === 'load') {
       out.push(...span.map(line => line.replace(/\s+$/, '')))
     }
-  }
+
+    return true
+  })
 
   // a trailing blank so the generated file's own `load` blocks do not run into these
   return out.length > 0 ? [...out, ''] : out

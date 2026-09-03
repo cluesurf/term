@@ -43,11 +43,19 @@ function opensGroup(line: string): boolean {
   return !line.startsWith('#')
 }
 
-// The groups of a source, in order, each yielded as soon as it is complete.
+// The groups of a source, in order, each handed over as soon as it is complete.
 //
 // A consumer may stop after any one of them and pays only for what it read: the reader holds the current group's
-// lines and nothing else, so resident memory is bounded by the DEEPEST group rather than by the file. Abandoning
-// the generator after the first group costs the first group.
+// lines and nothing else, so resident memory is bounded by the DEEPEST group rather than by the file. Returning
+// `false` from `take` stops the walk, and costs the groups already read.
+//
+// PUSH, NOT A GENERATOR, and that is a portability decision rather than a style one (self-hosting-0002). Term has
+// no `function*` and no `yield`, so a pull-shaped reader is a thing the compiler cannot be written in. Every
+// generator in the compiler was examined and each one is this same shape: produce a sequence, let the consumer
+// leave early. A closure that returns `false` to stop expresses exactly that, is one construct Term already has,
+// and the Rust backend already boxes closures. The alternative -- adding coroutines to the language -- buys
+// nothing else and costs a backend feature on all four targets.
+//
 // A source is either a whole string (convenient, and what a test or an editor already holds) or an ITERABLE OF
 // LINES, which is what makes the reader independent of the file's size: nothing but the current group is resident,
 // so a file larger than the heap streams through. `readLines` in this file turns a text into the second.
@@ -55,22 +63,47 @@ export type TreeSource =
   | { file: string; text: string }
   | { file: string; lines: Iterable<string> }
 
+// `false` stops the walk. Returning nothing continues it, so the common consumer writes no return at all.
+export type TakeResult = (result: StreamResult) => boolean | void
+
 // the lines of a source, without materialising the whole file when it was given as lines
-function* linesOf(source: TreeSource): Generator<string, void, undefined> {
+//
+// The `for..of` over an `Iterable` is the one JavaScript-only step in this file and it is deliberate: an iterable
+// is what a node caller already holds (a `readline` interface, a generator in a test), so adapting it here keeps
+// the adaptation at the edge instead of in every caller. The Term port takes a line walker directly.
+function walkLines(source: TreeSource, take: (line: string) => boolean): void {
   if ('lines' in source) {
-    yield* source.lines
+    for (const line of source.lines) {
+      if (!take(line)) {
+        return
+      }
+    }
 
     return
   }
 
   // a whole string still has to be split, but the split is the caller's memory, not the reader's
-  yield* source.text.split('\n')
+  for (const line of source.text.split('\n')) {
+    if (!take(line)) {
+      return
+    }
+  }
 }
 
-export function* readGroups(
-  source: TreeSource,
-): Generator<StreamResult, void, undefined> {
+export function walkGroups(source: TreeSource, take: TakeResult): void {
   let held: string[] = []
+  let stopped = false
+
+  // one place that reports a result and records whether the consumer wants more
+  const give = (result: StreamResult): boolean => {
+    if (take(result) === false) {
+      stopped = true
+
+      return false
+    }
+
+    return true
+  }
 
   // the group `held` currently holds, parsed, or undefined when it is not complete yet
   const complete = (): GroupNode | undefined => {
@@ -85,23 +118,32 @@ export function* readGroups(
       : undefined
   }
 
-  for (const line of linesOf(source)) {
+  walkLines(source, line => {
     // a new group starts here only if what is held is already a complete one. Held lines that do not parse are an
     // unclosed construct (a `text <...>` spanning lines), and this column-0 line is its content.
     if (held.length > 0 && opensGroup(line)) {
       const group = complete()
 
       if (group) {
-        yield { kind: 'group', group, lines: held.length }
+        if (!give({ kind: 'group', group, lines: held.length })) {
+          return false
+        }
+
         held = []
       }
     }
 
     held.push(line)
+
+    return true
+  })
+
+  if (stopped) {
+    return
   }
 
   if (held.length === 0) {
-    yield { kind: 'end' }
+    give({ kind: 'end' })
 
     return
   }
@@ -109,8 +151,9 @@ export function* readGroups(
   const group = complete()
 
   if (group) {
-    yield { kind: 'group', group, lines: held.length }
-    yield { kind: 'end' }
+    if (give({ kind: 'group', group, lines: held.length })) {
+      give({ kind: 'end' })
+    }
 
     return
   }
@@ -123,16 +166,16 @@ export function* readGroups(
   )
 
   if (trailing) {
-    yield { kind: 'end' }
+    give({ kind: 'end' })
 
     return
   }
 
   const parsed = parse({ file: source.file, text: held.join('\n') })
 
-  yield {
+  give({
     kind: 'kink',
     diagnostics: parsed.ok ? [] : parsed.diagnostics,
     lines: held.length,
-  }
+  })
 }

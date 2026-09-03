@@ -37,7 +37,11 @@ type Facts = {
   told: Map<string, Tell>
 }
 
-const factsOf = new WeakMap<Program, Facts>()
+// The facts below are computed at most once per lint call, through the shared `context.memo`.
+//
+// This was a `WeakMap<Program, Facts>`: keyed by the program OBJECT, so the cache could not pin a program in memory.
+// Term has no weak reference and no identity-keyed map, and needs neither (self-hosting-0002). The memo lives on the
+// lint call, which is the exact lifetime wanted, so nothing is keyed and nothing can collide.
 
 // the base of a record as written: `like exception` / `like excess`, before or after extendForms resolved the chain
 function baseOf(record: RecordType): string | undefined {
@@ -50,12 +54,14 @@ function baseOf(record: RecordType): string | undefined {
   return base?.kind === 'named' ? base.name : undefined
 }
 
-function facts(program: Program): Facts {
-  const known = factsOf.get(program)
+function facts(context: LintContext): Facts {
+  const known = context.memo.tell as Facts | undefined
 
   if (known) {
     return known
   }
+
+  const program = context.program
 
   const records = new Map<string, RecordType>()
   const tells: Tell[] = []
@@ -138,7 +144,8 @@ function facts(program: Program): Facts {
   }
 
   const out: Facts = { decides, rootOf, reachable, told }
-  factsOf.set(program, out)
+
+  context.memo.tell = out
 
   return out
 }
@@ -165,7 +172,7 @@ export const tellMissing: Rule = {
       return
     }
 
-    const { decides, rootOf, reachable, told } = facts(program)
+    const { decides, rootOf, reachable, told } = facts(context)
     const record = target.node
     const root = rootOf.get(record.name)
 
@@ -197,7 +204,7 @@ export const tellOfFailure: Rule = {
       return
     }
 
-    const { rootOf } = facts(program)
+    const { rootOf } = facts(context)
     const tell = target.node
     const bare = tell.name.slice(tell.name.lastIndexOf('/') + 1)
     const root = rootOf.get(bare)
@@ -230,7 +237,7 @@ export const tellReveals: Rule = {
       return
     }
 
-    const { rootOf } = facts(program)
+    const { rootOf } = facts(context)
     const tell = target.node
     const bare = tell.name.slice(tell.name.lastIndexOf('/') + 1)
     const root = rootOf.get(bare)

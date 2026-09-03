@@ -475,7 +475,11 @@ export function emitSwift(
       case 'bytes':
         return 'Data'
       case 'variable':
-        return varNames.get(type.id) ?? 'Int' // a free variable not in this function's scope: default to Int
+        // a free variable not in this function's scope: nothing concrete ever met it, only the gradual `unknown` /
+        // `dynamic` (which unify without binding), so the faithful type is `Any`. It was `Int`, which made a `make
+        // list` fed json items a `SeedList<Int>` returned where a declared `like list, like unknown` wanted
+        // `SeedList<Any>` (the cask dispatcher's items-of)
+        return varNames.get(type.id) ?? 'Any'
       case 'unknown':
         // the declared dynamic (`like unknown` / `like any`): any value, so a hive entry's `base` can carry a record
         return 'Any'

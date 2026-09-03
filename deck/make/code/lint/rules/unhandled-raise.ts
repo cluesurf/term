@@ -11,10 +11,13 @@ import { EXCEPTION_FORM } from '@term/make/code/check/extend'
 
 type Raises = Map<string, Set<string>>
 
-const raisesOf = new WeakMap<Program, Raises>()
-
-function raises(program: Program): Raises {
-  const known = raisesOf.get(program)
+// Computed at most once per lint call, through the shared `context.memo` rather than a module-level cache.
+//
+// This was a `WeakMap<Program, Raises>`: keyed by the program OBJECT, so the cache could not pin a program in
+// memory. Term has no weak reference and no identity-keyed map, and needs neither (self-hosting-0002). The memo
+// lives on the lint call, which is the exact lifetime wanted, so nothing is keyed and nothing can leak.
+function raises(context: LintContext): Raises {
+  const known = context.memo.raises
 
   if (known) {
     return known
@@ -22,14 +25,15 @@ function raises(program: Program): Raises {
 
   const exceptions = new Set<string>()
 
-  for (const s of program) {
+  for (const s of context.program) {
     if (s.form === 'record-type' && s.chain?.includes(EXCEPTION_FORM)) {
       exceptions.add(s.name)
     }
   }
 
-  const sets = raiseSets(program, exceptions).raises
-  raisesOf.set(program, sets)
+  const sets = raiseSets(context.program, exceptions).raises
+
+  context.memo.raises = sets
 
   return sets
 }
@@ -45,7 +49,7 @@ export const unhandledRaise: Rule = {
       return
     }
 
-    const sets = raises(context.program)
+    const sets = raises(context)
 
     const visitExpression = (node: Expression, guarded: boolean): void => {
       switch (node.form) {

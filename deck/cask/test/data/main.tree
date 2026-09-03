@@ -1,0 +1,30 @@
+
+# The cask side of the data smoke of cask-0012: open a window, load the data page, and answer what it posts through
+# the GENERATED dispatcher in ./dispatch.tree, which carries the database commands to the SQLite native of this
+# platform and keeps the rows the page holds handles to. No window is shown: a test only talks over the bridge.
+
+load @term/cask/code/cask
+  find window
+  find open-window
+  find load-bundle
+  find on-message
+  find run
+
+load ./dispatch
+  find dispatch
+
+task boot
+  take bundle, like text
+  like void
+  save made
+    call open-window
+      text <Term data>
+      code 640
+      code 480
+  call on-message
+    read made
+    read dispatch
+  call load-bundle
+    read made
+    read bundle
+  call run

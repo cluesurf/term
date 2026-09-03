@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { zipBuffer, encodeZip, crc32 } from '@term/base/code/api/zip'
+import { zipBuffer, walkZip, crc32 } from '@term/base/code/api/zip'
 
 const entry = (path: string, text: string) => ({
   path,
@@ -65,7 +65,15 @@ describe('zip encoding', () => {
   })
 
   it('streams without holding the payload', () => {
-    const chunks = [...encodeZip([entry('a.tree', 'one'), entry('b.tree', 'two')])]
+    const chunks: Buffer[] = []
+
+    walkZip(
+      take => {
+        take(entry('a.tree', 'one'))
+        take(entry('b.tree', 'two'))
+      },
+      chunk => chunks.push(chunk),
+    )
 
     // header and payload per entry, then one directory header each, then the end record
     expect(chunks.length).toBe(2 * 2 + 2 + 1)

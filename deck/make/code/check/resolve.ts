@@ -92,7 +92,6 @@ export function buildGlobalScope(program: Program): Scope {
 export function resolve(
   program: Program,
   file: string,
-  origin?: WeakMap<Statement, string>,
   // incremental hooks (default = whole-program, unchanged): `scope` reuses a prebuilt global scope instead of building
   // one; `only` resolves just that one function. The per-definition path passes both. See functional-checker.md.
   options?: { scope?: Scope; only?: string },
@@ -519,7 +518,7 @@ export function resolve(
   }
 
   for (const statement of program) {
-    currentFile = origin?.get(statement) ?? file
+    currentFile = statement.span.file ?? file
 
     // incremental: resolve only the requested function's body (the global scope already has every name)
     if (

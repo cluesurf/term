@@ -88,5 +88,6 @@ export const CACHE_SCOPE: Record<string, string[]> = {
     'deck/make/code/parser/event.ts',
     'deck/make/code/parser/token.ts',
     'deck/make/code/parser/tree.ts',
+    'deck/make/code/resolve.ts',
   ],
 }

@@ -725,7 +725,6 @@ export function raiseSets(
 export function checkRaiseBounds(
   program: Program,
   file: string,
-  origin?: WeakMap<Statement, string>,
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
   const exceptions = new Set<string>()
@@ -748,7 +747,7 @@ export function checkRaiseBounds(
 
   for (const s of bounded) {
     const declared = new Set(s.raises)
-    const at = origin?.get(s) ?? file
+    const at = s.span.file ?? file
 
     // a native shim raises `failure` whether or not it says so: foreign code fails in ways nobody listed
     if (sets.native.has(s.name)) {

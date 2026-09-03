@@ -10,12 +10,15 @@ load ../db
 
 task connect
   take url, like text
+  note async
   call postgres/connect
     read url
 
 task query
   take sql, like text
-  take params, like list
+  take params
+    like list
+      like unknown
   like list
   note async
   send back
@@ -26,7 +29,9 @@ task query
 
 task run
   take sql, like text
-  take params, like list
+  take params
+    like list
+      like unknown
   note async
   call postgres/run
     read sql
@@ -37,6 +42,7 @@ task field
   take row, like row
   take name, like text
   like text
+  note async
   send back
     call postgres/field
       read row

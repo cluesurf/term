@@ -252,10 +252,9 @@ export function compile(
 
     const program: Program = []
     const roots = new Set<string>()
-    // statement->source-file map: the merged program loses per-module provenance, so downstream passes (resolve,
-    // check) would otherwise blame the entry file for an error living in an imported module. Recording each
-    // top-level statement's origin lets diagnostics point at the real file.
-    const origin = new WeakMap<Statement, string>()
+    // The merged program loses per-module provenance, so downstream passes (resolve, check) would otherwise blame
+    // the entry file for an error living in an imported module. Each top-level statement's span records the file it
+    // came from, and `merged` below tells the checker that the program is more than one module.
 
     for (const unit of sources) {
       // mill cache: reuse a module's parse + expand + mill when its text (and the template set) is unchanged
@@ -302,7 +301,7 @@ export function compile(
       }
 
       for (const node of milled.program) {
-        origin.set(node, unit.file)
+        node.span.file = unit.file
       }
 
       program.push(...milled.program)
@@ -312,7 +311,7 @@ export function compile(
       program,
       source.file,
       roots,
-      origin,
+      true,
       options?.modules,
       options?.optimize,
       options?.env,
@@ -397,7 +396,7 @@ export function compileProgram(
   program: Program,
   file: string,
   roots?: Set<string>,
-  origin?: WeakMap<Statement, string>,
+  merged?: boolean,
   modulesUrl?: (file: string) => string,
   optimize?: boolean,
   env?: string,
@@ -407,7 +406,7 @@ export function compileProgram(
 ): CompileResult {
   // form extension: resolve every `form x` that is `like <base>` with children into an ordinary record, and finish
   // every `halt <form>` raise, before any name is bound. See code/check/extend.ts.
-  const extendDiagnostics = extendForms(program, file, origin, { deckOf })
+  const extendDiagnostics = extendForms(program, file, { deckOf })
 
   if (extendDiagnostics.length) {
     return { ok: false, diagnostics: extendDiagnostics }
@@ -418,7 +417,7 @@ export function compileProgram(
   disambiguateOverloads(program)
 
   // hole-filling: bind names to definitions
-  const resolveDiagnostics = resolve(program, file, origin)
+  const resolveDiagnostics = resolve(program, file)
 
   if (resolveDiagnostics.length) {
     return { ok: false, diagnostics: resolveDiagnostics }
@@ -465,7 +464,7 @@ export function compileProgram(
   }
 
   // formal type checking: the surface pass (gradual bidirectional inference) annotates the AST with types
-  const checkDiagnostics = check(program, file, origin)
+  const checkDiagnostics = check(program, file, merged)
   // the checker's warnings (an unknown type name) ride with the build's other warnings; only its errors stop it
   const checkErrors = checkDiagnostics.filter(d => d.severity !== 'warning')
   const checkWarnings = checkDiagnostics.filter(d => d.severity === 'warning')
@@ -547,14 +546,14 @@ export function compileProgram(
   ]
 
   // the app's `tell` decisions: each must name an exception the program can raise, with props it declares
-  const tellDiagnostics = checkTells(program, file, origin, deckOf)
+  const tellDiagnostics = checkTells(program, file, deckOf)
 
   if (tellDiagnostics.length) {
     return { ok: false, diagnostics: tellDiagnostics }
   }
 
   // a task that bounds its raise set with `halt` lines on its signature is held to them
-  const boundDiagnostics = checkRaiseBounds(program, file, origin)
+  const boundDiagnostics = checkRaiseBounds(program, file)
 
   if (boundDiagnostics.length) {
     return { ok: false, diagnostics: boundDiagnostics }
@@ -562,13 +561,13 @@ export function compileProgram(
 
   // the roll is built from the checked, un-simplified program, so every task is still there to be listed
   const roll = wantRoll
-    ? buildRoll(program, file, origin, { deckOf })
+    ? buildRoll(program, file, { deckOf })
     : undefined
 
   // what wakes the hive: every deck with its exceptions and tells, whether or not a roll was asked for. Cheap, and
   // only emitted when the program loads the stdlib hive.
   const wake = program.some(s => s.form === 'function' && s.name === 'hive-wake')
-    ? wakeGroups(buildRoll(program, file, origin, { deckOf }))
+    ? wakeGroups(buildRoll(program, file, { deckOf }))
     : undefined
 
   // trait-instance dictionary passing: thread a trait's instance through every trait-bounded generic call so generic
@@ -588,19 +587,10 @@ export function compileProgram(
   let tsProgram = program
 
   if (hasTraitGenerics) {
+    // Each statement's origin rides along on its span, which `structuredClone` copies, so the clone needs no
+    // fixup. The map this replaced needed an index-paired loop here, and would have misattributed an entire module
+    // had the clone ever reordered.
     const cloned = structuredClone(program)
-
-    // the clone's statements are new objects: carry each one's origin over (index-paired, structuredClone preserves
-    // order), or per-module emit below would find no origin and bucket everything under the entry
-    if (origin) {
-      program.forEach((s, i) => {
-        const from = origin.get(s)
-
-        if (from !== undefined && cloned[i]) {
-          origin.set(cloned[i]!, from)
-        }
-      })
-    }
 
     tsProgram = passDictionaries(cloned)
   }
@@ -612,7 +602,7 @@ export function compileProgram(
       ok: true,
       program: tsProgram,
       typescript: '',
-      modules: emitModules(tsProgram, origin, modulesUrl),
+      modules: emitModules(tsProgram, modulesUrl),
       warnings,
       ...(roll ? { roll } : {}),
     }

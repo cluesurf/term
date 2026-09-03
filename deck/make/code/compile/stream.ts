@@ -99,13 +99,20 @@ export function splitStreamingToArray(
 
 /**
  * Stream a `.tree` file from disk block-by-block, in constant memory.
- * Uses readline's async iterator (pull-based), so we hold only the
- * current block plus a tiny trivia backlog - never the whole file - and
- * yield each top-level block the instant it completes.
+ * Hands each top-level block to `take` the instant it completes, holding
+ * only the current block plus a tiny trivia backlog - never the whole
+ * file. Returning `false` from `take` stops the read.
+ *
+ * PUSH, NOT AN ASYNC GENERATOR (self-hosting-0002). Term has no
+ * `yield`, so the pull shape is one the compiler cannot be written in.
+ * `readline`'s async iterator stays, because reading a file line by line
+ * is a node capability at the edge rather than a shape in the language,
+ * and the Term port replaces it with the stdlib's own line reader.
  */
-export async function* streamFileBlocks(
+export async function walkFileBlocks(
   path: string,
-): AsyncGenerator<TopBlock> {
+  take: (block: TopBlock) => boolean | void,
+): Promise<void> {
   const rl = createInterface({
     input: createReadStream(path, { encoding: 'utf8' }),
     crlfDelay: Infinity,
@@ -128,7 +135,13 @@ export async function* streamFileBlocks(
 
       const keep = block.length - trailing
       const text = block.slice(0, keep).join('\n')
-      yield { text, startLine: blockStartLine, hash: hashText(text) }
+
+      if (take({ text, startLine: blockStartLine, hash: hashText(text) }) === false) {
+        rl.close()
+
+        return
+      }
+
       blockStartLine += keep
       block = block.slice(keep)
     }
@@ -140,5 +153,6 @@ export async function* streamFileBlocks(
 
   // the final block (everything still buffered)
   const text = block.join('\n')
-  yield { text, startLine: blockStartLine, hash: hashText(text) }
+
+  take({ text, startLine: blockStartLine, hash: hashText(text) })
 }

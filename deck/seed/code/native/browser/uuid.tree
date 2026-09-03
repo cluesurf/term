@@ -1,0 +1,11 @@
+# Browser UUID implementation: the platform's own `crypto.randomUUID`, which every current browser and WebView has,
+# reached as the host global so no runtime shim is needed (a page bundled without preludes still has it). Internal:
+# reached only through the public uuid API.
+
+dock load
+  load <global:crypto>, name crypto
+
+task generate-v4
+  like text
+  send back
+    call crypto/random-uuid

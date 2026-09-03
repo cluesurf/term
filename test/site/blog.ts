@@ -121,7 +121,9 @@ async function main(): Promise<void> {
   fs.writeFileSync(path.join(dir, 'app.ts'), result.typescript)
   fs.writeFileSync(
     path.join(dir, 'entry.ts'),
-    `import { blog } from './app'\nblog({ handle: document.body })\n`,
+    // the view takes the posts to start from and the store to hand each new post to: in-memory here, so an empty
+    // list and a store that keeps nothing. Inside a cask the store is the database over the bridge
+    `import { blog } from './app'\nblog({ handle: document.body }, [], async () => {})\n`,
   )
 
   const bundled = await build({
@@ -167,10 +169,14 @@ async function main(): Promise<void> {
     posts?.tagName === 'div' && posts.children.length === 0,
   )
 
+  const settled = (): Promise<void> => new Promise(done => setTimeout(done, 0))
+
   // create the first post
   titleInput.value = 'First Post'
   bodyInput.value = 'Hello world'
   addButton.fire('click')
+  // adding hands the post to the store first, and the store is asynchronous: the list re-renders on the next tick
+  await settled()
   ok('one post after adding', posts.children.length === 1)
 
   const post1 = posts.children[0]
@@ -198,6 +204,8 @@ async function main(): Promise<void> {
   titleInput.value = 'Second Post'
   bodyInput.value = 'More text'
   addButton.fire('click')
+  // adding hands the post to the store first, and the store is asynchronous: the list re-renders on the next tick
+  await settled()
   ok('two posts after adding again', posts.children.length === 2)
   ok(
     'first post unchanged',

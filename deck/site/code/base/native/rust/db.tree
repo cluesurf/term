@@ -1,0 +1,54 @@
+
+# Rust database impl: SQLite-backed through rusqlite (with SQLite built in), conforming to the abstract API in ../../db.
+# Docks the `<global:sqlite>` runtime shim, so a Term app on Linux or Windows keeps its data in a file of its own with
+# no server anywhere. `connect` takes the file path (an empty text is an in-memory database). Parameters are `?`
+# placeholders, and the node impl's `$1` spelling is rewritten to them by the shim so one query text serves both.
+# Internal: reached only through the public `base/db` API.
+
+dock load
+  load <global:sqlite>, name sqlite
+
+# the opaque result row, declared here rather than loaded from ../db: names are program-global, and loading the
+# abstract module brings its bare `like list` signatures into the same program as these, where they unify with
+# them and turn every list back into an inference variable
+form row
+  link handle, mark private
+
+task connect
+  take url, like text
+  note async
+  call sqlite/connect
+    read url
+
+task query
+  take sql, like text
+  take params
+    like list
+      like unknown
+  like list
+    like row
+  note async
+  send back
+    call sqlite/query
+      read sql
+      read params
+
+task run
+  take sql, like text
+  take params
+    like list
+      like unknown
+  note async
+  call sqlite/run
+    read sql
+    read params
+
+task field
+  take row, like row
+  take name, like text
+  like text
+  note async
+  send back
+    call sqlite/field
+      read row
+      read name

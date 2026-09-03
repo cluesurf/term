@@ -88,10 +88,9 @@ function literal(value: Expression | undefined): unknown {
 export function buildRoll(
   program: Program,
   file: string,
-  origin?: WeakMap<Statement, string>,
   options?: RollOptions,
 ): Roll {
-  const fileOf = (s: Statement): string => origin?.get(s) ?? file
+  const fileOf = (s: Statement): string => s.span.file ?? file
 
   const hostOf = (s: Statement): string =>
     options?.deckOf?.(fileOf(s))?.name ?? deckFromPath(fileOf(s))

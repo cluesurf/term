@@ -168,8 +168,10 @@ function rustType(type: Type | undefined): string {
     case 'bytes':
       return 'Vec<u8>'
     case 'variable':
-      // a free inference variable: its function's generic letter, or i64 when it is not in a generic position
-      return rustVarNames.get(type.id) ?? 'i64'
+      // a free inference variable: its function's generic letter. One in no generic position that nothing concrete
+      // ever met (only the gradual `unknown` / `dynamic`, which unify without binding) is the boxed unknown, so a
+      // `make list` fed json items is a `Vec<Rc<dyn Any>>`. It was `i64`, which no value of such a list ever was
+      return rustVarNames.get(type.id) ?? 'std::rc::Rc<dyn std::any::Any>'
     case 'unknown':
       // the declared dynamic (`like unknown` / `like any`): a boxed value of any 'static type, so a hive entry's
       // `base` can carry a record. Construction sites box with `Rc::new` (the unsized coercion fills in `dyn Any`).
@@ -446,6 +448,8 @@ export function emitRust(
   const raising = new Set<string>()
   let currentRaising = false
   let currentResult: Type | undefined
+  // whether the function or closure body being emitted is asynchronous, so a guard inside it can `.await`
+  let currentAsync = false
   let guardDepth = 0
   // set by an `await` around a raising call, so the `?` lands after `.await` and not before it
   let awaitedRaise = false
@@ -539,6 +543,13 @@ export function emitRust(
       ? `std::rc::Rc::new((${rendered}) as i64)`
       : `std::rc::Rc::new(${rendered})`
   }
+
+  // the asynchronous tasks, for boxing one read as a value into the pinned-future closure a task slot holds
+  const asyncFunctions = new Set<string>(
+    program
+      .filter((n): n is Extract<Statement, { form: 'function' }> => n.form === 'function' && Boolean(n.async))
+      .map(n => n.name),
+  )
 
   // every task's declared parameter types, for boxing an argument into an `unknown` parameter
   const functionParams = new Map<string, (Type | undefined)[]>(
@@ -877,6 +888,22 @@ export function emitRust(
         return 'serde_json::Value::Null'
       case 'variable':
       case 'hole':
+        // a top-level task read as a value (`read dispatch` handed to `on-message`) is a fn item, which is not the
+        // `Rc<dyn Fn>` a task-typed slot holds: box it. An asynchronous one is wrapped in a closure that pins the
+        // future, since the slot's type is `Fn(..) -> Pin<Box<dyn Future>>` and a fn item's is `-> impl Future`
+        if (functionParams.has(node.name) && !localNames.has(node.name) && node.type?.kind === 'function') {
+          const type = node.type
+
+          if (asyncFunctions.has(node.name) || type.effects?.includes('async')) {
+            const names = type.params.map((_, i) => `a${i}`)
+            const typed = type.params.map((p, i) => `a${i}: ${rustType(p)}`).join(', ')
+
+            return `std::rc::Rc::new(move |${typed}| -> std::pin::Pin<std::boxed::Box<dyn std::future::Future<Output = ${rustType(type.result)}>>> { std::boxed::Box::pin(${snake(node.name)}(${names.join(', ')})) })`
+          }
+
+          return `std::rc::Rc::new(${snake(node.name)})`
+        }
+
         // a module-level constant lives in a thread_local (rust has no top-level `let`): a read clones it out
         if (moduleConsts.has(node.name) && !localNames.has(node.name)) {
           return moduleSlots.has(node.name)
@@ -1221,9 +1248,12 @@ export function emitRust(
         // clone everything here -- the conservative, always-correct choice.
         const outerMoveArgs = moveArgs
         moveArgs = new Set<string>()
+        const previousAsyncInClosure = currentAsync
+        currentAsync = Boolean(node.async)
         const body = [...shadows, ...node.body.map(s => stmt(s, 0))]
           .filter(Boolean)
           .join(' ')
+        currentAsync = previousAsyncInClosure
         moveArgs = outerMoveArgs
 
         // each captured cell handle is cloned BEFORE the `move`, so the closure owns its own Rc and the original
@@ -1654,7 +1684,13 @@ export function emitRust(
           ? `std::result::Result::Err(${vname(node.catch.name)}) => {\n${block(node.catch.body, d + 2)}\n${pad(d + 1)}}`
           : 'std::result::Result::Err(_) => {}'
 
-        return `match (|| -> std::result::Result<Option<${result}>, TermException> {\n${body}\n${pad(d + 1)}std::result::Result::Ok(None)\n${pad(d)}})() {\n${pad(d + 1)}std::result::Result::Ok(Some(value)) => ${returned},\n${pad(d + 1)}std::result::Result::Ok(None) => {}\n${pad(d + 1)}${handler}\n${pad(d)}}`
+        // inside an asynchronous body the guard is an async block awaited in place, since a closure cannot `.await`
+        // and a `send back` or `?` inside the block leaves the block the way it leaves the closure
+        const guarded = currentAsync
+          ? `(async { ${'\n'}${body}\n${pad(d + 1)}std::result::Result::Ok::<Option<${result}>, TermException>(None)\n${pad(d)}}).await`
+          : `(|| -> std::result::Result<Option<${result}>, TermException> {\n${body}\n${pad(d + 1)}std::result::Result::Ok(None)\n${pad(d)}})()`
+
+        return `match ${guarded} {\n${pad(d + 1)}std::result::Result::Ok(Some(value)) => ${returned},\n${pad(d + 1)}std::result::Result::Ok(None) => {}\n${pad(d + 1)}${handler}\n${pad(d)}}`
       }
 
       case 'for-each': {
@@ -2026,6 +2062,8 @@ export function emitRust(
             ? ` -> ${plainResult}`
             : ''
         const previousRaising = currentRaising
+        const previousAsync = currentAsync
+        currentAsync = Boolean(node.async)
         const previousResult = currentResult
         currentRaising = raising.has(node.name)
         currentResult = declaredResult
@@ -2153,6 +2191,7 @@ export function emitRust(
                 .join('\n')
 
         currentRaising = previousRaising
+        currentAsync = previousAsync
         currentResult = previousResult
         fnReturnsArray = previousReturnsArray
         moveArgs = previousMoveArgs

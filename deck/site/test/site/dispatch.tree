@@ -5,7 +5,8 @@
 # The cask side of the bridge for this app: the allowlist is exactly the commands the page docks plus the
 # cask's own, `run-command` calls the public task for each, and `dispatch` turns one message into one reply.
 # A message is `{ id, command, arguments }`. The reply is `{ id, value }`, or `{ id, exception }` when the
-# command is not allowed, and then nothing runs.
+# command is not allowed, and then nothing runs. An opaque handle a task answers is kept in a table here under a
+# fresh id, and the id is what the page gets; a handle the page sends back is looked up in the same table.
 
 load @term/cask/code/cask
   find exit
@@ -15,6 +16,13 @@ load @term/cask/code/cask
 
 load @term/seed/code/console
   find log
+
+load @term/site/code/base/db
+  find connect, name db-connect
+  find query, name db-query
+  find run, name db-run
+  find field, name db-field
+  find row
 
 load @term/seed/code/json
   find parse
@@ -29,16 +37,92 @@ load @term/seed/code/json
   find from-boolean
   find from-number
   find make-null
+  find as-text
+  find as-boolean
+  find as-number
+  find make-array
+  find push-item
+  find get-item
+  find array-size
 
 load @term/seed/code/float
   find to-number
   find to-decimal
+
+load @term/seed/code/list
+  find list
+  find push
+
+load @term/seed/code/hash
+  find hash
+  find get
+  find set
+
+load @term/seed/code/uuid
+  find version4
+
+load @term/seed/code/maybe
+  find maybe
+  find unwrap
+
+# the row values the page holds ids for
+host row-handles
+  make hash
+
+# the items of a json array, as a list whose element the checker knows
+task items-of
+  take array, like dynamic
+  like list
+    like unknown
+  save items
+    make list
+  walk size
+    bind base, code 0
+    bind head
+      call array-size
+        read array
+    hook next
+      take site, name index
+      # declared unknown, so a backend that boxes its dynamic boxes it here
+      save item
+        like unknown
+        call get-item
+          read array
+          read index
+      call push
+        bind list, read items
+        bind item, read item
+  send back, read items
 
 # the commands this app allows: what its page docks, and nothing else
 task is-allowed
   take command, like text
   like boolean
   fork test
+    hook test
+      call is-equal
+        read command
+        text <db_connect>
+    hook hold
+      send back, true
+    hook test
+      call is-equal
+        read command
+        text <db_query>
+    hook hold
+      send back, true
+    hook test
+      call is-equal
+        read command
+        text <db_run>
+    hook hold
+      send back, true
+    hook test
+      call is-equal
+        read command
+        text <db_field>
+    hook hold
+      send back, true
     hook test
       call is-equal
         read command
@@ -83,6 +167,124 @@ task run-command
       read arguments
       text <text>
   fork test
+    hook test
+      call is-equal
+        read command
+        text <db_connect>
+    hook hold
+      save field-1
+        call get-field
+          read arguments
+          text <url>
+      save value-3
+        call as-text
+          read field-1
+      call db-connect
+        wait true
+        read value-3
+      send back
+        call make-null
+    hook test
+      call is-equal
+        read command
+        text <db_query>
+    hook hold
+      save field-4
+        call get-field
+          read arguments
+          text <sql>
+      save value-6
+        call as-text
+          read field-4
+      save field-7
+        call get-field
+          read arguments
+          text <params>
+      save value-9
+        call items-of
+          read field-7
+      save answer
+        call db-query
+          wait true
+          read value-6
+          read value-9
+      save json-11
+        call make-array
+      walk list, read answer
+        hook next
+          take site, name item-12
+          save id-14
+            call version4
+          call set
+            read row-handles
+            read id-14
+            read item-12
+          save json-13
+            call from-text
+              read id-14
+          save json-11
+            call push-item
+              read json-11
+              read json-13
+      send back, read json-11
+    hook test
+      call is-equal
+        read command
+        text <db_run>
+    hook hold
+      save field-15
+        call get-field
+          read arguments
+          text <sql>
+      save value-17
+        call as-text
+          read field-15
+      save field-18
+        call get-field
+          read arguments
+          text <params>
+      save value-20
+        call items-of
+          read field-18
+      call db-run
+        wait true
+        read value-17
+        read value-20
+      send back
+        call make-null
+    hook test
+      call is-equal
+        read command
+        text <db_field>
+    hook hold
+      save field-22
+        call get-field
+          read arguments
+          text <row>
+      save found-24
+        call get
+          read row-handles
+          call as-text
+            read field-22
+      save value-23
+        call unwrap
+          read found-24
+      save field-25
+        call get-field
+          read arguments
+          text <name>
+      save value-27
+        call as-text
+          read field-25
+      save answer
+        call db-field
+          wait true
+          read value-23
+          read value-27
+      save json-29
+        call from-text
+          read answer
+      send back, read json-29
     hook test
       call is-equal
         read command
@@ -133,7 +335,8 @@ task run-command
       send back
         call make-null
 
-# one message in, one reply out
+# one message in, one reply out. A command that raises answers the exception by name and note, so the page
+# gets a rejection and the cask keeps running
 task dispatch
   note async
   take message, like text
@@ -162,16 +365,25 @@ task dispatch
       call is-allowed
         read command
     hook hold
-      save reply
-        call set-field
-          read reply
-          text <value>
-          call run-command
-            wait true
-            read command
-            call get-field
-              read request
-              text <arguments>
+      note unsafe
+        save reply
+          call set-field
+            read reply
+            text <value>
+            call run-command
+              wait true
+              read command
+              call get-field
+                read request
+                text <arguments>
+      halt take
+        take error
+        save reply
+          call set-field
+            read reply
+            text <exception>
+            call from-text
+              text <{{error/form}}: {{error/note}}>
     hook miss
       save reply
         call set-field

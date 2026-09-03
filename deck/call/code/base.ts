@@ -29,7 +29,7 @@ import { MemoryRefStore } from '@term/base/code/store/ref-store'
 import { commitChanges } from '@term/base/code/project/feed'
 import { canonicalizeRecord } from '@term/base/code/canon/canonicalize'
 import { FORMAT_REF } from '@term/base/code/canon/format'
-import { exportTree } from '@term/base/code/api/export'
+import { walkTree } from '@term/base/code/api/export'
 import { rowsFor } from '@term/base/code/project/projector'
 import type { Mapping } from '@term/base/code/project/mapping'
 import type { TableForm } from '@term/base/code/project/table'
@@ -656,13 +656,13 @@ export function callBaseExport(input: {
   const at = resolve(repo, input.commit)
   let count = 0
 
-  for (const entry of exportTree({ repo, commit: at })) {
+  walkTree({ repo, commit: at }, entry => {
     const full = path.join(input.out, entry.path)
 
     fs.mkdirSync(path.dirname(full), { recursive: true })
     fs.writeFileSync(full, entry.bytes)
     count += 1
-  }
+  })
 
   console.log(`exported ${count} file(s) to ${input.out}`)
 }

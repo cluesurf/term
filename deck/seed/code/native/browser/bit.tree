@@ -63,3 +63,12 @@ task do-unsigned-shift-right
     call bit/shift-right-unsigned
       read value
       read count
+
+task do-multiply-32
+  take left, like number
+  take right, like number
+  like number
+  send back
+    call bit/multiply-32
+      read left
+      read right

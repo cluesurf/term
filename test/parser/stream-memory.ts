@@ -11,7 +11,7 @@
 // Run: pnpm term:stream-memory   (it needs --expose-gc to measure RETAINED heap rather than whatever the collector
 //                                 has not got to yet, which the alias supplies)
 
-import { readGroups } from '@term/make/code/parser/stream'
+import { walkGroups } from '@term/make/code/parser/stream'
 
 // how many top-level groups to stream. Each is six lines of about 80 bytes, so this is 24 million lines and
 // roughly 340 MB of source that is NEVER MATERIALISED: the generator makes each line as the reader asks for it.
@@ -72,9 +72,9 @@ let seen = 0
 let early = 0
 let peak = 0
 
-for (const result of readGroups({ file: 'big.tree', lines: generate(GROUPS) })) {
+walkGroups({ file: 'big.tree', lines: generate(GROUPS) }, result => {
   if (result.kind !== 'group') {
-    continue
+    return
   }
 
   seen++
@@ -87,7 +87,7 @@ for (const result of readGroups({ file: 'big.tree', lines: generate(GROUPS) })) 
   if (seen % 50_000 === 0) {
     peak = Math.max(peak, heapMb())
   }
-}
+})
 
 const end = heapMb()
 const ratio = early > 0 ? Math.max(end, peak) / early : Infinity

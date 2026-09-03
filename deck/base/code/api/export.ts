@@ -15,6 +15,18 @@ export type Entry = {
   bytes: Buffer
 }
 
+// Each entry as it is produced, `false` to stop.
+//
+// PUSH, NOT A GENERATOR (self-hosting-0002). An export is streamed so a repository larger
+// than memory can be written to a socket, and `yield` is the one way JavaScript writes
+// that. Term has no generator, and a closure that returns `false` to stop says the same
+// thing in a construct the language and all four backends already have.
+export type TakeEntry = (entry: Entry) => boolean | void
+
+// A source of entries, so a producer composes with a consumer without either holding the
+// whole sequence. `walkZip` takes one of these rather than an `Iterable`.
+export type WalkEntries = (take: TakeEntry) => void
+
 export type Manifest = {
   // what this archive is OF. A zip carries no proof of its own completeness, so the
   // commit travels with it and a recipient can re-verify after extraction.
@@ -40,11 +52,14 @@ function pathFor(record: RecordNode, mark: string): string {
  * It is a checkout, not the object graph, so history and branches do NOT come with it.
  * Someone migrating off the platform wants `bundle` below instead.
  */
-export function* exportTree(input: {
-  repo: Repository
-  commit: string
-  repository?: string
-}): Generator<Entry> {
+export function walkTree(
+  input: {
+    repo: Repository
+    commit: string
+    repository?: string
+  },
+  take: TakeEntry,
+): void {
   const dataset = input.repo.checkout(input.commit)
 
   // sorted by mark so two exports of one commit are byte-identical. An archive that
@@ -52,9 +67,13 @@ export function* exportTree(input: {
   for (const mark of [...dataset.keys()].sort()) {
     const record = dataset.get(mark)!
 
-    yield {
-      path: pathFor(record, mark),
-      bytes: Buffer.from(formatTree(record), 'utf8'),
+    if (
+      take({
+        path: pathFor(record, mark),
+        bytes: Buffer.from(formatTree(record), 'utf8'),
+      }) === false
+    ) {
+      return
     }
   }
 }
@@ -84,20 +103,24 @@ export function manifestOf(input: {
  * The manifest comes FIRST so a streaming recipient knows what to expect before the
  * payload arrives, and can tell a truncated download from a small repository.
  */
-export function* exportArchive(input: {
-  repo: Repository
-  commit: string
-  repository: string
-}): Generator<Entry> {
-  yield {
+export function walkArchive(
+  input: {
+    repo: Repository
+    commit: string
+    repository: string
+  },
+  take: TakeEntry,
+): void {
+  const first = take({
     path: 'manifest.json',
-    bytes: Buffer.from(
-      JSON.stringify(manifestOf(input), null, 2),
-      'utf8',
-    ),
+    bytes: Buffer.from(JSON.stringify(manifestOf(input), null, 2), 'utf8'),
+  })
+
+  if (first === false) {
+    return
   }
 
-  yield* exportTree(input)
+  walkTree(input, take)
 }
 
 /**

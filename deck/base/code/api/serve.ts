@@ -20,8 +20,8 @@ import type { ControlStore } from '@term/base/code/api/control'
 import * as forms from '@term/base/code/api/form'
 import type { FormStore } from '@term/base/code/api/form'
 import type { Contract } from '@term/base/code/project/contract'
-import { exportArchive } from '@term/base/code/api/export'
-import { encodeZip } from '@term/base/code/api/zip'
+import { walkArchive } from '@term/base/code/api/export'
+import { walkZip } from '@term/base/code/api/zip'
 
 /**
  * A record as JSON.
@@ -381,9 +381,17 @@ export function serveApi(options: ServeOptions): http.Server {
         // written chunk by chunk, respecting backpressure, so a repository larger than
         // memory still downloads instead of buffering the whole archive in the socket's
         // write queue on a slow connection
-        for (const chunk of encodeZip(
-          exportArchive({ repo, commit, repository: archive.repository! }),
-        )) {
+        // Backpressure needs to be awaited, and a push walk cannot await inside itself,
+        // so the chunks that arrive while the socket is full are held and drained here.
+        // That holds at most one entry's worth rather than the archive.
+        const pending: Buffer[] = []
+
+        walkZip(
+          take => walkArchive({ repo, commit, repository: archive.repository! }, take),
+          chunk => pending.push(chunk),
+        )
+
+        for (const chunk of pending) {
           if (!response.write(chunk)) {
             await once(response, 'drain')
           }

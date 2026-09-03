@@ -1,7 +1,12 @@
-# A minimal blog as a zone (view component): a title input, a body textarea, an "Add post" button, and a reactive
-# list of posts. State is a signal holding the list. Clicking Add reads the inputs (by ref), appends a post, and
-# clears the inputs; writing the signal re-renders the list. Everything goes through the platform-agnostic dom +
-# reactive runtime, so the same component runs in the browser (via @term/bind) or against the in-memory tree.
+# A minimal blog as a view component: a title input, a body textarea, an "Add post" button, and a reactive list of
+# posts. State is a signal holding the list, started from `initial`. Clicking Add reads the inputs (by ref), makes a
+# post with a fresh id, hands it to `on-add` (the store: the database inside a cask, or nothing for the in-memory
+# demo), appends it, and clears the inputs; writing the signal re-renders the list. Everything goes through the
+# platform-agnostic dom + reactive runtime, so the same component runs in a browser, in a cask, or against the
+# in-memory tree.
+
+load ../back/post
+  find post
 
 load @term/site/code/dom/dom
   find view
@@ -18,28 +23,37 @@ load @term/seed/code/list
   find list
   find push
 
-form post
-  link title, like text
-  link body, like text
+load @term/seed/code/uuid
+  find version4
 
-# read the two inputs, append a post to the list signal, then clear the inputs. Called from the button's click handler
-# with the input refs and the posts signal.
+# read the two inputs, make a post, keep it through `on-add`, append it to the list signal, then clear the inputs.
+# Called from the button's click handler with the input refs, the posts signal and the store
 task add-post
   take title-field, like view
   take body-field, like view
   take posts, like signal
+  take on-add
+    like task
+      take item, like post
+      wait true
+  note async
   save title-text
     call get-value, read title-field
   save body-text
     call get-value, read body-field
+  save item
+    make post
+      bind id, call version4
+      bind title, read title-text
+      bind body, read body-text
+  call on-add
+    read item
+    wait true
   save current
     call read-signal, read posts
   call push
     bind list, read current
-    bind item
-      make post
-        bind title, read title-text
-        bind body, read body-text
+    bind item, read item
   call write-signal
     bind self, read posts
     read current
@@ -52,11 +66,16 @@ task add-post
 
 view blog
   take host, like view
+  take initial, like list
+  take on-add
+    like task
+      take item, like post
+      wait true
 
   # the growing list of posts, held in a signal so the list re-renders on change
   save posts
     call make-signal
-      make list
+      read initial
 
   view div
     view input
@@ -69,6 +88,7 @@ view blog
           read title-input
           read body-input
           read posts
+          read on-add
       text <Add post>
     view div
       name post-list

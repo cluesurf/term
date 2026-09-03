@@ -39,7 +39,7 @@ export function processDef(
 
   // resolve this function's body against the global scope (only this definition, on its clone)
   diagnostics.push(
-    ...resolveNames([clone], '<entry>', undefined, {
+    ...resolveNames([clone], '<entry>', {
       scope: context.scope,
       only: source.name,
     }),

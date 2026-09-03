@@ -14,6 +14,7 @@ import type {
 import type {
   Finding,
   LintContext,
+  LintMemo,
   Rule,
 } from '@term/make/code/lint/rule'
 import { kebabNames } from '@term/make/code/lint/rules/kebab-names'
@@ -333,6 +334,10 @@ export function lint(
 
   const enabled = rules.filter(r => config.severity?.[r.code] !== 'off')
 
+  // ONE per lint call, shared by reference into every context below, so a whole-program analysis a rule needs is
+  // computed at most once no matter how many rules or nodes ask for it
+  const memo: LintMemo = {}
+
   // one context per rule (so a finding is attributed to the right rule + severity), but a SINGLE AST traversal that
   // dispatches each node to every rule. This is N rules over one tree walk, not N separate walks.
   const contexts = enabled.map((rule): LintContext => {
@@ -347,6 +352,7 @@ export function lint(
       referenced,
       duplicateLoads,
       program,
+      memo,
       slice,
       report(finding) {
         // honor inline suppression (`# lint off Lxxx` on the line above the node)

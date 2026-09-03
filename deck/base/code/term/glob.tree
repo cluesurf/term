@@ -1,0 +1,148 @@
+# A small glob matcher for file-path rules, in Term.
+#
+# It supports the familiar subset: `*` (any run within a path segment), `?` (one non-slash character), `**` (any
+# run across segments), and a leading `**/` that also matches zero segments. That is enough to say "ignore build
+# output" (`build/**`) or "these generated files" (`**/*.js`). No dependency, and the pattern compiles once.
+#
+# THE FIRST `@term/base` FILE IN TERM (self-hosting-0003), chosen to price the phase rather than to guess at it:
+# 45 lines, zero imports, pure text in and a boolean out. It also happens to be the one thing `deck/call/role-of`
+# needed and could not have, so porting it removes a named blocker from the CLI port at the same time.
+#
+# The pattern becomes a regular expression, the same way the TypeScript does, and `pnpm term:self-host` holds the
+# two against every glob and path pair the corpus can supply.
+
+load @term/seed/code/text
+  find char-count
+  find substring
+  find contains
+
+load @term/seed/code/regex
+  find matches
+
+# The characters a regular expression treats specially and a glob does not, so they are escaped rather than
+# interpreted. `*` and `?` are absent on purpose: those are the glob's own two.
+task is-regex-special
+  take character, like text
+  like boolean
+  send back
+    call contains
+      text <.+^${}()|[]\\>
+      read character
+
+# a glob compiled to the source of a regular expression, anchored at both ends
+task glob-pattern
+  take glob, like text
+  like text
+  save out
+    text <^>
+  save at
+    code 0
+  save size
+    call char-count
+      read glob
+  walk test
+    hook test
+      call is-below
+        read at
+        read size
+    hook hold
+      save three
+        call substring
+          read glob
+          read at
+          call add
+            read at
+            code 3
+      save two
+        call substring
+          read glob
+          read at
+          call add
+            read at
+            code 2
+      save one
+        call substring
+          read glob
+          read at
+          call add
+            read at
+            code 1
+      # `**/` first: it matches zero or more LEADING segments, which `**` alone does not
+      fork test
+        call is-equal
+          read three
+          text <**/>
+        hook hold
+          save out
+            text <{{out}}(?:.*/)?>
+          save at
+            call add
+              read at
+              code 3
+          turn next
+      fork test
+        call is-equal
+          read two
+          text <**>
+        hook hold
+          save out
+            text <{{out}}.*>
+          save at
+            call add
+              read at
+              code 2
+          turn next
+      fork test
+        call is-equal
+          read one
+          text <*>
+        hook hold
+          save out
+            text <{{out}}[^/]*>
+          save at
+            call add
+              read at
+              code 1
+          turn next
+      fork test
+        call is-equal
+          read one
+          text <?>
+        hook hold
+          save out
+            text <{{out}}[^/]>
+          save at
+            call add
+              read at
+              code 1
+          turn next
+      fork test
+        call is-regex-special
+          read one
+        hook hold
+          save out
+            text <{{out}}\\{{one}}>
+          save at
+            call add
+              read at
+              code 1
+          turn next
+      save out
+        text <{{out}}{{one}}>
+      save at
+        call add
+          read at
+          code 1
+  send back
+    text <{{out}}$>
+
+# does one path match one glob?
+task matches-glob
+  take glob, like text
+  take path, like text
+  like boolean
+  send back
+    call matches
+      call glob-pattern
+        read glob
+      read path

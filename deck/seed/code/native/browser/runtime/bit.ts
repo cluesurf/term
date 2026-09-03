@@ -47,4 +47,9 @@ const bit = {
       BigInt.asUintN(64, BigInt(Math.trunc(value))) >>
         BigInt(Math.trunc(count)),
     ),
+  // A SIGNED 32-BIT MULTIPLY WITH WRAPAROUND. `Math.imul` exactly: the high bits are DISCARDED, which is what
+  // the classic string hashes are defined in terms of. The other ops here are 64-bit through BigInt; this one is
+  // deliberately not, because a 64-bit product would give a different number and cyrb53 would stop being cyrb53.
+  multiply32: (left: number, right: number): number =>
+    Math.imul(Math.trunc(left), Math.trunc(right)),
 }

@@ -18,6 +18,7 @@ task setup
   note async
   call connect
     read url
+    wait true
   call ensure-schema
     wait true
 
@@ -50,20 +51,24 @@ task create-post
 task post-of
   take r, like row
   like post
+  note async
   send back
     make post
       bind id
         call field
           read r
           text <id>
+          wait true
       bind title
         call field
           read r
           text <title>
+          wait true
       bind body
         call field
           read r
           text <body>
+          wait true
 
 task list-posts
   like list
@@ -83,6 +88,7 @@ task list-posts
         bind item
           call post-of
             read r
+            wait true
   send back, read posts
 
 task get-post
@@ -102,3 +108,4 @@ task get-post
   send back
     call post-of
       read r
+      wait true

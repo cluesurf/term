@@ -13,7 +13,6 @@ import { deckFromPath } from '@term/make/code/compile/roll'
 export function checkTells(
   program: Program,
   file: string,
-  origin?: WeakMap<Statement, string>,
   deckOf?: (file: string) => { name: string; root: string } | undefined,
 ): Diagnostic[] {
   const tells = program.filter(
@@ -25,7 +24,7 @@ export function checkTells(
   }
 
   const diagnostics: Diagnostic[] = []
-  const fileOf = (s: Statement): string => origin?.get(s) ?? file
+  const fileOf = (s: Statement): string => s.span.file ?? file
   const hostOf = (s: Statement): string =>
     deckOf?.(fileOf(s))?.name ?? deckFromPath(fileOf(s))
 

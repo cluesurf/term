@@ -7,7 +7,17 @@ import chalk from 'chalk'
 export type Position = { line: number; column: number }
 
 // A range from a start to an end position.
-export type Span = { start: Position; end: Position }
+// `file` is the module the span is IN, and it is optional because most spans never leave the file being read.
+//
+// It matters once modules MERGE. `compileProgram` receives one flat program built from every reachable unit, so a
+// span alone would blame the entry file for an error living three imports away. This used to be carried beside the
+// program in a `WeakMap<Statement, string>` threaded through nine files, which Term cannot express: the language
+// has no weak reference, and an identity-keyed map is not a construct it has either (self-hosting-0002).
+//
+// Putting it on the span is smaller than the map it replaces AND more correct: `structuredClone` copies it, so the
+// dictionary-pass clone keeps every statement's origin for free, where the map needed an index-paired fixup loop
+// that would silently misattribute a whole module if the clone ever reordered.
+export type Span = { start: Position; end: Position; file?: string }
 
 export type Severity = 'error' | 'warning' | 'info'
 

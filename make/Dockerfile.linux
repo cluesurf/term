@@ -1,0 +1,29 @@
+# The Linux box a Term cask is built and run in: Rust, GTK4, WebKitGTK 6 and Xvfb on Debian, which is what
+# deck/cask/code/native/rust/runtime/cask.rs and the rusqlite native need. Built and run on the work droplet by
+# `pnpm term:app-smoke --target linux` (task/term/cask/droplet.ts), never on the laptop, whose link is too slow for
+# the image. The cargo project of an app is mounted at /work and its target directory is kept in a named volume,
+# so the GTK and WebKit bindings compile once.
+#
+#   docker build -f Dockerfile.linux -t term-cask-linux .
+#   docker run --rm -v <project>:/work -v term-cask-target:/work/target term-cask-linux cargo build --release
+#   docker run --rm -v <app>:/app term-cask-linux xvfb-run -a /app/bin/<crate>
+FROM debian:trixie-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# the toolkit the cask draws with, the compiler, and a display that is not one
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      build-essential pkg-config ca-certificates curl \
+      libgtk-4-dev libwebkitgtk-6.0-dev \
+      xvfb dbus \
+ && rm -rf /var/lib/apt/lists/*
+
+# Rust, the stable toolchain, for every user of the image
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal \
+ && chmod -R a+w /usr/local/rustup /usr/local/cargo
+
+WORKDIR /work

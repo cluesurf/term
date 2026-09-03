@@ -1,0 +1,210 @@
+# The identifier a Term name compiles to, in Term.
+#
+# THE FIRST PIECE OF THE COMPILER WRITTEN IN ITSELF (self-hosting-0001). It was chosen because it is pure, exactly
+# specified, and applied to EVERY identifier the compiler emits, so the corpus of real inputs to check it against
+# is every name in every `.tree` file in the tree rather than a fixture somebody wrote.
+#
+# `to-camel`: kebab or snake to camelCase. Plain camelCase, so a user's own `make-api` becomes `makeApi` and not
+# `makeAPI`. Acronym uppercasing is reserved for MEMBER access, where the emitted name must match the platform
+# exactly, and that is `to-member`, not this.
+#
+# A name that lands on a TypeScript reserved word gets a trailing underscore, because `class` is a fine Term task
+# name and an impossible TypeScript one.
+
+load @term/seed/code/text
+  find split
+  find substring
+  find char-count
+  find to-upper-case
+
+# The words a camelCase name cannot be on TypeScript, as ONE list rather than a fork chain of 49 arms.
+# `pnpm term:self-host` compares this implementation against the TypeScript over the real corpus, so the two
+# lists are held equal by measurement rather than by having been transcribed carefully.
+task reserved-words
+  like list
+    like text
+  send back
+    make list
+      text <break>
+      text <case>
+      text <catch>
+      text <class>
+      text <const>
+      text <continue>
+      text <debugger>
+      text <default>
+      text <delete>
+      text <do>
+      text <else>
+      text <enum>
+      text <export>
+      text <extends>
+      text <false>
+      text <finally>
+      text <for>
+      text <function>
+      text <if>
+      text <import>
+      text <in>
+      text <instanceof>
+      text <new>
+      text <null>
+      text <return>
+      text <super>
+      text <switch>
+      text <this>
+      text <throw>
+      text <true>
+      text <try>
+      text <typeof>
+      text <var>
+      text <void>
+      text <while>
+      text <with>
+      text <yield>
+      text <let>
+      text <static>
+      text <await>
+      text <async>
+      text <implements>
+      text <interface>
+      text <package>
+      text <private>
+      text <protected>
+      text <public>
+      text <eval>
+      text <arguments>
+
+task is-reserved
+  take word, like text
+  like boolean
+  walk list, call reserved-words
+    hook next
+      take site, name one
+      fork test
+        call is-equal
+          read one
+          read word
+        hook hold
+          send back, true
+  send back, false
+
+# the first character upper-cased, the rest as written
+task upper-head
+  take part, like text
+  like text
+  save size
+    call char-count
+      read part
+  fork test
+    call is-equal
+      read size
+      code 0
+    hook hold
+      send back
+        text <>
+  save head
+    call to-upper-case
+      call substring
+        read part
+        code 0
+        code 1
+  save rest
+    call substring
+      read part
+      code 1
+      read size
+  send back
+    text <{{head}}{{rest}}>
+
+task to-camel
+  take name, like text
+  like text
+  save parts
+    call split-name
+      read name
+  save built
+    read parts/0
+  save at
+    code 0
+  walk list, read parts
+    hook next
+      take site, name part
+      save at
+        call add
+          read at
+          code 1
+      fork test
+        call is-above
+          read at
+          code 1
+        hook hold
+          save piece
+            call upper-head
+              read part
+          save built
+            text <{{built}}{{piece}}>
+  fork test
+    call is-reserved
+      read built
+    hook hold
+      send back
+        text <{{built}}_>
+  send back, read built
+
+# a kebab or snake name to a SCREAMING_SNAKE constant: `database-url` becomes `DATABASE_URL`
+task to-constant
+  take name, like text
+  like text
+  save parts
+    call split-name
+      read name
+  save built
+    text <>
+  save at
+    code 0
+  walk list, read parts
+    hook next
+      take site, name part
+      save loud
+        call to-upper-case
+          read part
+      save at
+        call add
+          read at
+          code 1
+      fork test
+        call is-equal
+          read at
+          code 1
+        hook hold
+          save built
+            read loud
+        hook miss
+          save built
+            text <{{built}}_{{loud}}>
+  send back, read built
+
+# a name split on BOTH separators. The TypeScript splits on the character class `[-_]` in one pass; the stdlib's
+# `split` takes one separator, so the underscores are split out of each dash-part.
+task split-name
+  take name, like text
+  like list
+    like text
+  save found
+    make list
+  walk list
+    call split
+      read name
+      text <->
+    hook next
+      take site, name dashed
+      walk list
+        call split
+          read dashed
+          text <_>
+        hook next
+          take site, name part
+          call found/push
+            read part
+  send back, read found

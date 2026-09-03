@@ -497,11 +497,17 @@ let package = Package(
     )
   } catch (e) {
     fail++
-    console.log(
-      `FAIL  ${name}  (swift build error: ${String(
-        (e as { stderr?: Buffer }).stderr ?? e,
-      ).slice(-900)})`,
-    )
+
+    // swiftc puts its diagnostics on STDOUT and leaves stderr empty, so reporting stderr alone printed
+    // `swift build error: ` with nothing after it and hid every cause. Whichever stream said something wins, and
+    // the exception itself is the last resort.
+    const said = e as { stderr?: Buffer; stdout?: Buffer }
+    const why =
+      String(said.stderr ?? '').trim() ||
+      String(said.stdout ?? '').trim() ||
+      String(e)
+
+    console.log(`FAIL  ${name}  (swift build error: ${why.slice(-900)})`)
 
     return
   }

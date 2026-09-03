@@ -38,6 +38,15 @@ Object.defineProperty(window, 'term', { value: {
   onPush: null
 } });
 Object.freeze(window.term.post);
+// a page error before the bridge module is even evaluated (a throw at module init) would otherwise vanish: these
+// two listeners exist from document start and hand every uncaught error to the cask's log
+window.addEventListener('error', function (event) {
+  window.term.post(JSON.stringify({ id: '', command: 'cask_log', arguments: { text: 'error: ' + (event.message || String(event.error)) + ' at ' + (event.filename || '?') + ':' + (event.lineno || 0) } }))
+});
+window.addEventListener('unhandledrejection', function (event) {
+  var reason = event.reason;
+  window.term.post(JSON.stringify({ id: '', command: 'cask_log', arguments: { text: 'unhandled rejection: ' + (reason && reason.message ? reason.message + '\\n' + reason.stack : String(reason)) } }))
+});
 """
 
 // the name the page posts to and the handler is registered under

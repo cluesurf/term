@@ -41,11 +41,10 @@ export type ExtendOptions = {
 export function extendForms(
   program: Program,
   file: string,
-  origin?: WeakMap<Statement, string>,
   options?: ExtendOptions,
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
-  const fileOf = (s: Statement): string => origin?.get(s) ?? file
+  const fileOf = (s: Statement): string => s.span.file ?? file
 
   const types = new Map<string, RecordType>()
 
@@ -171,7 +170,7 @@ export function extendForms(
       synthesized.push(record)
       types.set(name, record)
       resolved.add(name)
-      origin?.set(record, fileOf(rt))
+      record.span.file = fileOf(rt)
     }
 
     let props: string | undefined = base.props

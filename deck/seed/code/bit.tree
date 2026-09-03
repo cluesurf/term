@@ -8,6 +8,7 @@ load @term/seed/code/native/{platform}/bit
   find do-shift-left
   find do-shift-right
   find do-unsigned-shift-right
+  find do-multiply-32
 
 task bitwise-and
   take left, like number
@@ -70,3 +71,19 @@ task unsigned-shift-right
     call do-unsigned-shift-right
       read value
       read count
+
+# A SIGNED 32-BIT MULTIPLY WITH WRAPAROUND, which is `Math.imul` on a JavaScript host and the only multiply the
+# classic string hashes are defined in terms of. Ordinary multiplication is not a substitute: cyrb53 and every
+# hash like it rely on the high bits being DISCARDED, so a 64-bit product gives a different number and a cache
+# keyed on it stops agreeing with itself.
+#
+# Added 2026-09-02 for self-hosting: `hashText` is the compiler's content-addressed cache key, and it could not be
+# written in Term at all without this. Found by trying to port it (self-hosting-0002).
+task multiply-32
+  take left, like number
+  take right, like number
+  like number
+  send back
+    call do-multiply-32
+      read left
+      read right

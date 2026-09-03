@@ -6,6 +6,7 @@
 
 import type { Resolver, Source } from '@term/make/code/compile/load'
 import type { Program } from '@term/make/code/compile/node'
+import { stdlibBase } from '@term/make/code/resolve'
 
 // the platforms a native module can target; an import already under one of these is concrete, not abstract
 export const NATIVE_ENVS = [
@@ -193,6 +194,16 @@ export function nativePrelude(
           `${file.slice(0, at)}/code/native/${env}/runtime/${name}.${RUNTIME_EXTENSION[env]}`,
         )
       }
+    }
+
+    // the stdlib's runtime dir for the env, by path: a global the stdlib provides for an env (`bridge` in `webview`)
+    // is for every package that docks it, and a dock in another package (`@term/site`'s db shim, `@term/cask`'s own)
+    // never walks up into the stdlib. Without this the bundle built clean and the first call died with
+    // `ReferenceError: bridge is not defined`
+    const stdlib = stdlibBase()
+
+    if (stdlib) {
+      candidates.push(`${stdlib}/code/native/${env}/runtime/${name}.${RUNTIME_EXTENSION[env]}`)
     }
 
     candidates.push(runtimePath(env, name))

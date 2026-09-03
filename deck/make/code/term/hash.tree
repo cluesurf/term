@@ -1,0 +1,138 @@
+# The compiler's content hash, in Term.
+#
+# cyrb53: a fast, well-distributed 53-bit string hash. A collision only ever causes a stale REUSE and never a
+# crash, and at 53 bits that is astronomically unlikely for a source tree.
+#
+# THIS IS THE CACHE KEY. Every cached mill and every cached compile is addressed by it, so it is the one function
+# in the compiler where a one-bit disagreement between the TypeScript and the Term version would be invisible in
+# testing and catastrophic in use: two compilers that hash differently do not share a cache, and two that hash the
+# SAME WAY BUT WRONGLY serve each other stale answers. `pnpm term:self-host` compares them over every name in the
+# corpus for exactly that reason.
+#
+# IT COULD NOT BE WRITTEN IN TERM UNTIL 2026-09-02. cyrb53 is defined in terms of `Math.imul`, a signed 32-bit
+# multiply that DISCARDS the high bits, and the stdlib had only ordinary multiplication. A 64-bit product gives a
+# different number, so the hash would not have been cyrb53. `bit/multiply-32` was added for this and is the first
+# language gap the self-hosting port closed.
+
+load @term/seed/code/bit
+  find bitwise-exclusive-or
+  find unsigned-shift-right
+  find multiply-32
+  find bitwise-and
+
+load @term/seed/code/text
+  find char-count
+  find char-code-at
+
+# the two seeds cyrb53 starts from
+host seed-one, code 3735928559
+host seed-two, code 1103547991
+
+task hash-text
+  take text, like text
+  like text
+  save one
+    read seed-one
+  save two
+    read seed-two
+  save size
+    call char-count
+      read text
+  save at
+    code 0
+  walk test
+    hook test
+      call is-below
+        read at
+        read size
+    hook hold
+      save code
+        call char-code-at
+          read text
+          read at
+      save one
+        call multiply-32
+          call bitwise-exclusive-or
+            read one
+            read code
+          code 2654435761
+      save two
+        call multiply-32
+          call bitwise-exclusive-or
+            read two
+            read code
+          code 1597334677
+      save at
+        call add
+          read at
+          code 1
+  save one-mixed
+    call bitwise-exclusive-or
+      call multiply-32
+        call bitwise-exclusive-or
+          read one
+          call shift-32
+            read one
+            code 16
+        code 2246822507
+      call multiply-32
+        call bitwise-exclusive-or
+          read two
+          call shift-32
+            read two
+            code 13
+        code 3266489909
+  save two-mixed
+    call bitwise-exclusive-or
+      call multiply-32
+        call bitwise-exclusive-or
+          read two
+          call shift-32
+            read two
+            code 16
+        code 2246822507
+      call multiply-32
+        call bitwise-exclusive-or
+          read one-mixed
+          call shift-32
+            read one-mixed
+            code 13
+        code 3266489909
+  # `4294967296 * (2097151 & h2) + (h1 >>> 0)`, then base 36
+  save high
+    call bitwise-and
+      read two-mixed
+      code 2097151
+  save low
+    call shift-32
+      read one-mixed
+      code 0
+  send back
+    call to-base-36
+      call add
+        call multiply
+          code 4294967296
+          read high
+        read low
+
+# `>>>` IS A 32-BIT SHIFT IN JAVASCRIPT and the stdlib's `unsigned-shift-right` is 64-bit, so a negative
+# intermediate shifts in a completely different number. Masking to the low 32 bits first is what makes the two
+# agree. This is the second thing cyrb53 needed that Term did not have a direct word for.
+task shift-32
+  take value, like number
+  take count, like number
+  like number
+  send back
+    call unsigned-shift-right
+      call bitwise-and
+        read value
+        code 4294967295
+      read count
+
+# a non-negative integer in base 36, which is how the key is spelled on disk
+task to-base-36
+  take value, like number
+  like text
+  send back
+    call value/toString
+      code 36

@@ -7,4 +7,7 @@ object bit {
     fun shiftLeft(value: Long, count: Long): Long = value shl count.toInt()
     fun shiftRight(value: Long, count: Long): Long = value shr count.toInt()
     fun shiftRightUnsigned(value: Long, count: Long): Long = value ushr count.toInt()
+    // A SIGNED 32-BIT MULTIPLY WITH WRAPAROUND, `Math.imul` semantics: the high bits are DISCARDED, which is
+    // what the classic string hashes are defined in terms of. A 64-bit product would give a different number.
+    fun multiply32(left: Long, right: Long): Long = (left.toInt() * right.toInt()).toLong()
 }

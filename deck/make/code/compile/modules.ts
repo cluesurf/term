@@ -2,8 +2,8 @@
 // blob, `emitModules` emits one ESM file per source module, with `import` statements reconnecting cross-module
 // references. This is what the dev server serves lazily over native ESM, and the foundation for fine-grained HMR.
 //
-// The merged program carries no module boundaries except `origin` (statement -> source file). So the import graph is
-// reconstructed here: group statements by origin, build a name -> defining-file map (last definition wins, matching
+// The merged program carries no module boundaries except each statement's `span.file`. So the import graph is
+// reconstructed here: group statements by that file, build a name -> defining-file map (last definition wins, matching
 // `emitTypeScript`'s dedup, which resolves the abstract/impl native-delegation case to the impl), then for each module
 // add an import for every cross-module function and type it references. A name is always imported from its TRUE
 // definer, so `bear` re-exports need no special handling (ESM resolves transitively).
@@ -226,13 +226,12 @@ function walkStatement(
 // dedup), which for native delegation resolves a name to its concrete impl, loaded after the abstract signature.
 function definedNames(
   program: Program,
-  origin: WeakMap<Statement, string> | undefined,
 ): { values: Map<string, string>; types: Map<string, string> } {
   const values = new Map<string, string>()
   const types = new Map<string, string>()
 
   for (const statement of program) {
-    const file = origin?.get(statement) ?? ENTRY
+    const file = statement.span.file ?? ENTRY
 
     if (statement.form === 'function' || statement.form === 'view') {
       values.set(statement.name, file)
@@ -310,14 +309,13 @@ function hotEpilogue(): string {
 // per source file, the emitted code plus its dependency edges and zone flag (for the dev server's graph + HMR).
 export function emitModules(
   program: Program,
-  origin: WeakMap<Statement, string> | undefined,
   urlForFile: (file: string) => string,
 ): Map<string, ModuleEmit> {
   // group statements by their source file, preserving program order within each file
   const byFile = new Map<string, Statement[]>()
 
   for (const statement of program) {
-    const file = origin?.get(statement) ?? ENTRY
+    const file = statement.span.file ?? ENTRY
     const bucket = byFile.get(file)
 
     if (bucket) {
@@ -327,7 +325,7 @@ export function emitModules(
     }
   }
 
-  const defined = definedNames(program, origin)
+  const defined = definedNames(program)
   // every enum variant name across all modules, so a module building `make some` emits the `form` discriminant even
   // when the enum (`maybe`) is defined in another module
   const variants = new Set<string>()

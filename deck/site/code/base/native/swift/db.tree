@@ -16,6 +16,7 @@ form row
 
 task connect
   take url, like text
+  note async
   call sqlite/connect
     read url
 
@@ -46,6 +47,7 @@ task field
   take row, like row
   take name, like text
   like text
+  note async
   send back
     call sqlite/field
       read row

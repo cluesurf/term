@@ -564,7 +564,7 @@ const cli = yargs(hideBin(process.argv))
         })
         .option('target', {
           type: 'string',
-          description: 'Build a native app cask for a platform (macos)',
+          description: 'Build a native app cask for a platform (macos, ios, android, linux, windows)',
         })
         .option('page', {
           type: 'string',

@@ -28,6 +28,23 @@ export type Finding = {
   fix?: TextEdit
 }
 
+// Whole-program facts a rule needs that cost a full sweep to compute.
+//
+// Created once per `lint()` call and shared BY REFERENCE into every rule's context, so a rule fills a field on first
+// use and every later node of that program reads it back. One traversal already serves N rules; this makes one
+// analysis serve them too.
+//
+// It replaces two module-level `WeakMap<Program, ...>` caches, which Term cannot express (self-hosting-0002). A
+// file-keyed cache was tried first and is WRONG for a reason worth recording: a file name does not identify a
+// program. The lint suite compiles dozens of different sources as `t.tree`, so the second one read the first one's
+// answer and three rules reported nothing. Tied to the call rather than to a key, there is nothing to collide.
+export type LintMemo = {
+  // exception name -> the raises reachable from it (unhandled-raise, L041)
+  raises?: Map<string, Set<string>>
+  // the tell-advice rules' view of the program (L037 to L039). Shaped by that rule file, opaque here.
+  tell?: unknown
+}
+
 // what a rule sees while checking a node: the file, the raw source (for span-accurate fixes), a set of names that
 // are reassigned somewhere in the program, a set of every name read somewhere in the program (both computed once by
 // the driver), and the report sink.
@@ -43,6 +60,8 @@ export type LintContext = {
   // the whole program the node belongs to, for a rule whose answer needs more than the node (the tell advice rules
   // read every exception form and the raise sets)
   program: Program
+  // whole-program analyses, computed at most once per lint call. See LintMemo above.
+  memo: LintMemo
   slice(span: Span): string
   report(
     finding: Omit<Finding, 'rule' | 'code' | 'severity'> & {

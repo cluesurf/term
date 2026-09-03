@@ -10,7 +10,7 @@
 //
 // See note/library/base/design/export-and-dump.md.
 
-import type { Entry } from '@term/base/code/api/export'
+import type { Entry, WalkEntries } from '@term/base/code/api/export'
 
 // The CRC-32 table, built once at module load rather than per call.
 const TABLE = (() => {
@@ -103,24 +103,28 @@ function centralHeader(placed: Placed): Buffer {
 /**
  * Encode entries as a zip, streaming.
  *
- * A generator rather than a returned Buffer, so a repository larger than memory can be
- * written to a socket. Only the central directory accumulates, and that holds one small
- * header per entry rather than any file content.
+ * Chunks are handed to `take` rather than returned as one Buffer, so a repository larger
+ * than memory can be written to a socket. Only the central directory accumulates, and
+ * that holds one small header per entry rather than any file content.
+ *
+ * PUSH ON BOTH SIDES (self-hosting-0002). `entries` is a walker rather than an
+ * `Iterable`, so the producer streams too and the pair composes without a generator
+ * anywhere: `walkZip(t => walkArchive(input, t), chunk => response.write(chunk))`.
  */
-export function* encodeZip(entries: Iterable<Entry>): Generator<Buffer> {
+export function walkZip(entries: WalkEntries, take: (chunk: Buffer) => void): void {
   const placed: Array<Placed> = []
   let offset = 0
 
-  for (const entry of entries) {
+  entries(entry => {
     const crc = crc32(entry.bytes)
     const header = localHeader(entry, crc)
 
     placed.push({ entry, offset, crc })
     offset += header.length + entry.bytes.length
 
-    yield header
-    yield entry.bytes
-  }
+    take(header)
+    take(entry.bytes)
+  })
 
   const start = offset
   let size = 0
@@ -129,7 +133,7 @@ export function* encodeZip(entries: Iterable<Entry>): Generator<Buffer> {
     const header = centralHeader(one)
     size += header.length
 
-    yield header
+    take(header)
   }
 
   const end = Buffer.alloc(22)
@@ -143,10 +147,23 @@ export function* encodeZip(entries: Iterable<Entry>): Generator<Buffer> {
   end.writeUInt32LE(start, 16)
   end.writeUInt16LE(0, 20) // comment
 
-  yield end
+  take(end)
 }
 
 /** The whole zip as one buffer, for callers small enough not to need streaming. */
 export function zipBuffer(entries: Iterable<Entry>): Buffer {
-  return Buffer.concat([...encodeZip(entries)])
+  const chunks: Buffer[] = []
+
+  walkZip(
+    take => {
+      for (const entry of entries) {
+        if (take(entry) === false) {
+          return
+        }
+      }
+    },
+    chunk => chunks.push(chunk),
+  )
+
+  return Buffer.concat(chunks)
 }

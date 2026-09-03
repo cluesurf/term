@@ -333,7 +333,7 @@ hook make
   # Compile .tree files even when package.json owns `make` (which otherwise runs that script instead)
   take trees
     like boolean
-  # Build a native app cask for a platform (macos)
+  # Build a native app cask for a platform (macos, ios, android, linux, windows)
   take target
     like text
   # The page entry of the cask app (default face/base.tree)
@@ -486,6 +486,15 @@ hook work
     like number
   # Target env
   take env
+    like text
+  # Develop a native app cask: the page on a dev server with hot swaps, the app pointed at it
+  take target
+    like text
+  # The page entry of the cask app (default face/base.tree)
+  take page
+    like text
+  # The cask entry of the app (default cask.tree)
+  take entry
     like text
   task work
 

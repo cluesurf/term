@@ -1,0 +1,102 @@
+
+# The page side of the data smoke of cask-0012: the database lives in the cask, and the page reaches it through the
+# generated bridge shim for `@term/site/code/base/db`. Opens a database in the cask's data directory, writes a row
+# with text parameters, reads it back with a number parameter, reads a field through the opaque row handle, and
+# leaves with 0 when the field holds the line the driver put in <bundle>/smoke.txt, 1 when it does not, 2 when the
+# row did not come back at all. The driver reads that status.
+
+load @term/cask/code/cask
+  find bundle-path
+  find data-path
+  find exit
+
+load @term/site/code/base/db
+  find connect
+  find query
+  find run
+  find field
+  find row
+
+load @term/seed/code/file
+  find read
+
+load @term/seed/code/text
+  find trim
+
+load @term/seed/code/list
+  find list
+  find count
+  find get
+
+task boot
+  note async
+  like void
+  save directory
+    call data-path
+      text <TermData>
+      wait true
+  call connect
+    text <{{directory}}/smoke.sqlite>
+    wait true
+  call run
+    text <CREATE TABLE IF NOT EXISTS note (id TEXT PRIMARY KEY, title TEXT NOT NULL, rank INTEGER NOT NULL)>
+    make list
+    wait true
+  call run
+    text <DELETE FROM note>
+    make list
+    wait true
+  # text parameters cross as text
+  call run
+    text <INSERT INTO note (id, title, rank) VALUES ($1, $2, $3)>
+    make list
+      text <one>
+      text <cask-data-ok>
+      text <7>
+    wait true
+  # a number parameter crosses as a number, and the rows come back as handles
+  save rows
+    call query
+      text <SELECT id, title, rank FROM note WHERE rank = $1>
+      make list
+        code 7
+      wait true
+  save bundle
+    call bundle-path
+      wait true
+  save expected
+    call trim
+      call read
+        wait true
+        text <{{bundle}}/smoke.txt>
+  fork test
+    hook test
+      call is-equal
+        call count
+          read rows
+        code 1
+    hook hold
+      save title
+        call field
+          call get
+            read rows
+            code 0
+          text <title>
+          wait true
+      fork test
+        hook test
+          call is-equal
+            read title
+            read expected
+        hook hold
+          call exit
+            wait true
+            code 0
+        hook miss
+          call exit
+            wait true
+            code 1
+    hook miss
+      call exit
+        wait true
+        code 2

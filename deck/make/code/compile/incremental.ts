@@ -275,15 +275,10 @@ export class QueryCompiler {
 
         const scope = await this.nameIndex(c, files)
         const clone = structuredClone(source)
-        const diagnostics = resolveNames(
-          [clone],
-          '<entry>',
-          undefined,
-          {
-            scope,
-            only: name,
-          },
-        )
+        const diagnostics = resolveNames([clone], '<entry>', {
+          scope,
+          only: name,
+        })
 
         return { def: clone, diagnostics }
       },

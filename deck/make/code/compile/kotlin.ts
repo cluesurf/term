@@ -389,7 +389,10 @@ export function emitKotlin(
       case 'bytes':
         return 'ByteArray'
       case 'variable':
-        return varNames.get(type.id) ?? 'Long'
+        // a free variable not in this function's scope: nothing concrete ever met it, only the gradual `unknown` /
+        // `dynamic` (which unify without binding), so the faithful type is `Any`. It was `Long`, which made a
+        // `make list` fed json items a `MutableList<Long>` where a declared `like list, like unknown` wanted `Any`
+        return varNames.get(type.id) ?? 'Any'
       case 'unknown':
         // the declared dynamic (`like unknown` / `like any`): any value, so a hive entry's `base` can carry a record
         return 'Any'
@@ -1158,12 +1161,17 @@ export function emitKotlin(
       case 'guard': {
         // the caught value is a TermException: a raise passes through, and a foreign throw (a Kotlin runtime error) is
         // wrapped as `failure`, so the handler sees one shape on every path
-        const handler = node.catch
-          ? `catch (thrown: Throwable) {\n${pad(d + 1)}val ${camel(node.catch.name)} = termException(thrown)\n${block(
-              node.catch.body,
-              d + 1,
-            )}\n${pad(d)}}`
-          : 'catch (_: Throwable) {}'
+        let handler = 'catch (_: Throwable) {}'
+
+        if (node.catch) {
+          // the caught name is a local of the handler: without this a task parameter of the same name anywhere in
+          // the program made `{{error/note}}` inside the handler emit as the function reference `::error.note`
+          localNames.add(node.catch.name)
+          handler = `catch (thrown: Throwable) {\n${pad(d + 1)}val ${camel(node.catch.name)} = termException(thrown)\n${block(
+            node.catch.body,
+            d + 1,
+          )}\n${pad(d)}}`
+        }
 
         return `try {\n${block(node.body, d + 1)}\n${pad(d)}} ${handler}`
       }

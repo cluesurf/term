@@ -45,7 +45,7 @@ import {
 export function check(
   program: Program,
   file: string,
-  fileOrigin?: WeakMap<Statement, string>,
+  merged?: boolean,
   // when set, only this function's body is checked + zonked (signatures + module bindings are still built whole, which
   // is cheap). The incremental compiler uses this for per-definition type checking. Default (undefined) checks all,
   // so the whole-program behavior is unchanged. See code/compile/incremental.ts (Tier 2).
@@ -285,7 +285,7 @@ export function check(
   for (const statement of program) {
     // each module reports its own: an app compiling the stdlib in is not told about the stdlib's, the stdlib's own
     // build is
-    if (fileOrigin && fileOrigin.get(statement) !== file) {
+    if (merged && statement.span.file !== file) {
       continue
     }
 
@@ -308,7 +308,7 @@ export function check(
       if (!knownType(name, own)) {
         diagnostics.push(
           diagnose('unknown-type', {
-            file: fileOrigin?.get(statement) ?? currentFile,
+            file: statement.span.file ?? currentFile,
             span: statement.span,
             message: `"${name}" is not a type this build knows: no form, enum, primitive, generic, mask or alias declares it`,
           }),
@@ -360,7 +360,7 @@ export function check(
       // signatures); those keep the first silently, and the emitter dedups them.
       if (
         existing.params.length !== statement.params.length &&
-        (fileOrigin?.get(statement) ?? file) === file
+        (statement.span.file ?? file) === file
       ) {
         diagnostics.push(
           diagnose('duplicate-definition', {
@@ -1964,7 +1964,7 @@ export function check(
   // typed for dispatch in every consuming function. But one whose name collides with a function is skipped: bind's
   // `Element`/`Text` host globals must not shadow the framework's `element`/`text` render helpers.
   for (const statement of program) {
-    currentFile = fileOrigin?.get(statement) ?? file
+    currentFile = statement.span.file ?? file
 
     if (
       statement.form === 'function' ||
@@ -1985,7 +1985,7 @@ export function check(
   }
 
   for (const statement of program) {
-    currentFile = fileOrigin?.get(statement) ?? file
+    currentFile = statement.span.file ?? file
 
     if (
       statement.form === 'function' &&
@@ -2011,7 +2011,7 @@ export function check(
       const signature = functions.get(statement.name)
 
       if (signature && resolve(signature.result).kind === 'variable') {
-        currentFile = fileOrigin?.get(statement) ?? file
+        currentFile = statement.span.file ?? file
         expect(UNIT, signature.result, statement.span, 'result')
       }
     }
@@ -2023,7 +2023,7 @@ export function check(
 
   // final pass: record fully resolved types (cross-function constraints from call sites are now known)
   for (const statement of program) {
-    currentFile = fileOrigin?.get(statement) ?? file
+    currentFile = statement.span.file ?? file
 
     if (
       statement.form === 'function' &&

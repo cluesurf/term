@@ -14,7 +14,7 @@ import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { splitTopLevel } from '@term/make/code/compile/incremental-parse'
-import { splitStreamingToArray, streamFileBlocks } from '@term/make/code/compile/stream'
+import { splitStreamingToArray, walkFileBlocks } from '@term/make/code/compile/stream'
 
 let pass = 0
 let fail = 0
@@ -48,9 +48,11 @@ async function main(): Promise<void> {
   const sample = files.find(f => splitTopLevel(readFileSync(path.resolve(root, f), 'utf8')).length >= 2)
   if (sample) {
     const blocks = []
-    for await (const b of streamFileBlocks(path.resolve(root, sample))) blocks.push(b)
+    await walkFileBlocks(path.resolve(root, sample), b => {
+      blocks.push(b)
+    })
     const expected = splitTopLevel(readFileSync(path.resolve(root, sample), 'utf8'))
-    ok('streamFileBlocks yields the right block count + start lines',
+    ok('walkFileBlocks reports the right block count + start lines',
       blocks.length === expected.length &&
       blocks.every((b, i) => b.startLine === expected[i]!.startLine),
       `(${blocks.length} blocks from ${sample.split('/').pop()})`)
@@ -68,11 +70,11 @@ async function main(): Promise<void> {
   let streamedCount = 0
   let last = -1
   let ordered = true
-  for await (const b of streamFileBlocks(huge)) {
+  await walkFileBlocks(huge, b => {
     streamedCount++
     if (b.startLine <= last) ordered = false
     last = b.startLine
-  }
+  })
   ok('streamed a 50k-definition file block-by-block', streamedCount === N,
     `(${streamedCount} blocks in ${Date.now() - t0}ms)`)
   ok('streamed blocks arrive in source order', ordered)

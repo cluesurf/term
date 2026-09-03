@@ -7,4 +7,7 @@ enum bit {
     static func shiftLeft(_ value: Int, _ count: Int) -> Int { return value << count }
     static func shiftRight(_ value: Int, _ count: Int) -> Int { return value >> count }
     static func shiftRightUnsigned(_ value: Int, _ count: Int) -> Int { return Int(bitPattern: UInt(bitPattern: value) >> UInt(count)) }
+    // A SIGNED 32-BIT MULTIPLY WITH WRAPAROUND, `Math.imul` semantics: the high bits are DISCARDED, which is
+    // what the classic string hashes are defined in terms of. A 64-bit product would give a different number.
+    static func multiply32(_ left: Int, _ right: Int) -> Int { return Int(Int32(truncatingIfNeeded: left) &* Int32(truncatingIfNeeded: right)) }
 }
