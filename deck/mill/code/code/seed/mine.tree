@@ -19,6 +19,18 @@ load @term/mill/code/code/task/mine
 load @term/mill/code/code/tool/flow/mine
   find move
 
+load @term/mill/code/code/wait/mine
+  find wait
+
+load @term/mill/code/code/bind/mine
+  find bind
+
+load @term/mill/code/code/halt/mine
+  find halt
+
+load @term/mill/code/code/like/mine
+  find like
+
 mine seed
   mine any
     mine form, like call
@@ -117,19 +129,6 @@ mine seed-def
       mine form, like seed
         site seed
 
-# a bare call: the callee is the head itself (`make-vector-4` with seed arguments below). At least one
-# argument, so a lone word stays a word.
-#
-# `mark lean` OPTS THIS RULE IN to the lean surface: in a file whose role carries `mark lean`, an argument that
-# is itself a bare-head call with a plain name is read as a NAMED argument instead, the head becoming the label.
-# See note/term/lean.md.
-#
-# DECLARED HERE RATHER THAN DERIVED. The first design derived the set from "a rule with a `bind` site", and the
-# measurement killed it: thirty `mine` rules have one, and at least seven must never take labels, because `bind`
-# is a CLI default under `mine take`, a loop bound under `mine walk`, a route under `mine hook`. Requiring a
-# `seed` site alongside does not rescue it either, since `mine mold` has no `seed` site and is one of the places
-# lean most needs to fire. So a rule opts in by name, which is also what makes the decision reviewable when
-# somebody adds a `bind` site to a new rule.
 # `wait <call>` as a PREFIX. `wait delay(ms)` is what `call delay / read ms / wait true` writes today, and the
 # two mean the same thing: the call is awaited.
 #
@@ -149,17 +148,60 @@ mine seed-wait
       mine form, like seed-call-open
         site open
 
+# a bare call: the callee is the head itself (`make-vector-4` with seed arguments below). At least one
+# argument, so a lone word stays a word.
+#
+# `mark lean` OPTS THIS RULE IN to the lean surface: in a file whose role carries `mark lean`, an argument that
+# is itself a bare-head call with a plain name is read as a NAMED argument instead, the head becoming the label.
+# See note/term/lean.md.
+#
+# DECLARED HERE RATHER THAN DERIVED. The first design derived the set from "a rule with a `bind` site", and the
+# measurement killed it: thirty `mine` rules have one, and at least seven must never take labels, because `bind`
+# is a CLI default under `mine take`, a loop bound under `mine walk`, a route under `mine hook`. Requiring a
+# `seed` site alongside does not rescue it either, since `mine mold` has no `seed` site and is one of the places
+# lean most needs to fire. So a rule opts in by name, which is also what makes the decision reviewable when
+# somebody adds a `bind` site to a new rule.
+#
+# THE SAME SITES `mine call` MATCHES, except `note`. A piped, awaited, propagating or callback-taking call
+# meant different things in the two spellings until 2026-09-13, and an equivalence gate cannot carry an
+# exception. `note` is the one deliberate omission: under `call` the mill reads it as an ARGUMENT (quirk 6,
+# a source mistake reproduced for parity), and in a lean call `note <...>` is a label, which is what a DSL
+# wants.
+#
+# AND NOT `hook`. The parity run found it: `hook make` is a STATEMENT in the mill dialect, and a `hook` site
+# here read all 325 of them as call modifiers across 110 grammar files. `mine call` can carry the site because
+# `call` is an explicit head; a bare head cannot. lean-0030.
 mine seed-call-open
   mark lean
   mine open
     site name
     mine any
+      mine form, like wait
+        site wait
+      mine form, like bind
+        site bind
+      mine form, like halt
+        site halt
+      mine form, like like
+        site like
+      mine form, like call-link
+        site link
       mine form, like seed-bind-arg
         site seed
       mine form, like seed
         site seed
     mine list
       mine any
+        mine form, like wait
+          site wait
+        mine form, like bind
+          site bind
+        mine form, like halt
+          site halt
+        mine form, like like
+          site like
+        mine form, like call-link
+          site link
         mine form, like seed-bind-arg
           site seed
         mine form, like seed

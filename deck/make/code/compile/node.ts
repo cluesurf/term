@@ -261,6 +261,9 @@ export type Statement =
   | {
       form: 'for-each'
       item: string
+      // a SECOND `take` binds the turn's index. Without it a walk could not name its own position at all, and
+      // the answer was a `save` counter beside the loop. lean-0017
+      index?: string
       iterable: Expression
       body: Statement[]
       span: Span

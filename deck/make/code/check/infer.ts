@@ -1359,6 +1359,12 @@ export function check(
 
         const inner = new Map(env)
         inner.set(node.item, { vars: [], type: element })
+
+        // a second `take` binds the turn's index, which is a number on every backend. lean-0017
+        if (node.index) {
+          inner.set(node.index, { vars: [], type: NUMBER })
+        }
+
         loopDepth += 1
         checkBody(node.body, inner, result)
         loopDepth -= 1
@@ -1854,6 +1860,49 @@ export function check(
         .filter((one): one is Type => one !== undefined)
 
       const fieldType = seen[0]
+
+      // A NESTED OBJECT. `at / a 10 / b 20` under a field declared `like point` arrives as an array of lean
+      // CALLS to `a` and `b`, which are point's FIELDS rather than tasks. The declared type is the only thing
+      // that knows, so the fold is here: build the record the labels describe, and let anything else through.
+      // lean-0018
+      if (
+        fieldType?.kind === 'named' &&
+        field.value.form === 'array' &&
+        field.value.items.length > 0
+      ) {
+        const own = records.get(fieldType.name)
+        const labels = field.value.items.map(one =>
+          one.form === 'call' && one.lean && one.callee.form === 'variable'
+            ? one.callee.name
+            : undefined,
+        )
+
+        if (
+          own !== undefined &&
+          own.size > 0 &&
+          labels.every(one => one !== undefined && own.has(one))
+        ) {
+          const built: Extract<Expression, { form: 'record' }> = {
+            form: 'record',
+            name: fieldType.name,
+            fields: field.value.items.map((one, i) => ({
+              name: labels[i]!,
+              value: {
+                form: 'array',
+                items: (one as Extract<Expression, { form: 'call' }>).args,
+                span: one.span,
+              },
+            })),
+            functionFree: true,
+            lean: true,
+            span: field.value.span,
+          }
+
+          unwrapLeanFields(built, env)
+          field.value = built
+          continue
+        }
+      }
 
       if (field.value.form !== 'array' || !fieldType) {
         continue

@@ -16,6 +16,18 @@ load @term/mill/code/code/task/mint
 load @term/mill/code/code/tool/flow/mint
   find move
 
+load @term/mill/code/code/wait/mint
+  find wait
+
+load @term/mill/code/code/bind/mint
+  find bind
+
+load @term/mill/code/code/halt/mint
+  find halt
+
+load @term/mill/code/code/like/mint
+  find like
+
 load @term/seed/code/lang
   find seed-def
 
@@ -113,10 +125,25 @@ mint seed-call-open
     site seed
   case name
     site name
+  case wait, mint wait
+    site wait
+  case bind, mint bind
+    site bind
+  case halt, mint halt
+    site halt
+  case like, mint like
+    site like
+  case link, mint call-link
+    site link
   hook make
     make seed-call-open
       bind seed, read seed
       bind name, read name
+      bind wait, read wait
+      bind bind, read bind
+      bind halt, read halt
+      bind like, read like
+      bind link, read link
 
 mint seed-term
   case name

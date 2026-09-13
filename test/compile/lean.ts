@@ -402,6 +402,161 @@ task go
 `,
   },
   {
+    // A NESTED OBJECT NEEDS NO `make`. The labels under `at` are point's own fields, and the enclosing
+    // schema is the only thing that knows: position picks the namespace and the name picks the answer.
+    name: 'a nested object by label, with no make',
+    lean: `
+form shape
+  link name, like text
+  link at, like point
+
+task go
+  like shape
+  send back
+    shape
+      name <corner>
+      at
+        a 10
+        b 20
+`,
+    long: `
+form shape
+  link name, like text
+  link at, like point
+
+task go
+  like shape
+  send back
+    make shape
+      bind name, text <corner>
+      bind at
+        make point
+          bind a, code 10
+          bind b, code 20
+`,
+  },
+  {
+    // A SECOND `take` binds the turn's index. A walk could not name its own position at all before, and the
+    // answer was a `save` counter beside the loop. Short form: the walk's own takes are item then index.
+    // Long form: the `hook next` take is the item and the walk's own take is the index.
+    name: 'a walk binds its index with a second take',
+    lean: `
+task label
+  take xs, like list, like text
+  like text
+  save out, text <>
+  walk read(xs)
+    take one
+    take at
+    save out
+      text <{{out}}{{at}}{{one}}>
+  send back, read out
+`,
+    long: `
+task label
+  take xs, like list, like text
+  like text
+  save out, text <>
+  walk list, read(xs)
+    take at
+    hook next
+      take site, name one
+      save out
+        text <{{out}}{{at}}{{one}}>
+  send back, read out
+`,
+  },
+  {
+    // The bare-head call now matches the same modifier sites `call` does, so an awaited or piped call means
+    // one thing in both spellings. `hook` is the one site left off, and `note` the other: the parity run found
+    // `hook make` is a statement in the mill dialect, 325 of them across 110 grammar files. lean-0030.
+    name: 'a bare-head call takes the same wait and link modifiers `call` does',
+    lean: `
+task go
+  note async
+  take n, like number
+  like number
+  send back
+    later n
+      wait true
+`,
+    long: `
+task go
+  note async
+  take n, like number
+  like number
+  send back
+    call later
+      read n
+      wait true
+`,
+  },
+  {
+    // A fork's arms with no `hook`. Decidable: hold, miss, step, fall and else can only be arms there.
+    name: 'a fork whose arms drop their hook',
+    lean: `
+task pick
+  take n, like number
+  like text
+  fork test, is-above(n, 1)
+    hold
+      send back
+        text <big>
+    miss
+      send back
+        text <small>
+`,
+    long: `
+task pick
+  take n, like number
+  like text
+  fork test
+    hook test
+      call is-above
+        read n
+        code 1
+    hook hold
+      send back
+        text <big>
+    hook miss
+      send back
+        text <small>
+`,
+  },
+  {
+    // A SHORTER WALK: the mode is a closed set of three words, so anything else is the sequence, and the item
+    // binding and the body may sit directly under the walk with no `hook next`. Both halves are outside the
+    // lean mark, so this pair is the short form against the long one, not lean against long.
+    name: 'a walk with no mode word and no hook next',
+    lean: `
+task total
+  take xs, like list, like number
+  like number
+  save sum, code 0
+  walk read(xs)
+    take one
+    save sum
+      add
+        read sum
+        read one
+  send back, read sum
+`,
+    long: `
+task total
+  take xs, like list, like number
+  like number
+  save sum, code 0
+  walk list, read(xs)
+    hook next
+      take site, name one
+      save sum
+        call add
+          read sum
+          read one
+  send back, read sum
+`,
+  },
+  {
     // `wait <call>` as a PREFIX, and the `wait true` child marker, building the same program. OUTSIDE the lean
     // mark on purpose: it is decidable with no schema, so every file gets it and `wait do-x` is the same text
     // whether the file is lean or not. Both sides of this pair are compiled with the flag ON, which is what

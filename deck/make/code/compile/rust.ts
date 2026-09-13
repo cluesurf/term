@@ -1716,10 +1716,16 @@ export function emitRust(
             ? `${expr(node.iterable)}.borrow().clone()`
             : expr(node.iterable)
 
-        return `for ${vname(node.item)} in ${iterable} {\n${block(
-          node.body,
-          d + 1,
-        )}\n${pad(d)}}`
+        // a walk that names its INDEX enumerates; `i64` because that is what a Term number is here. lean-0017
+        return node.index
+          ? `for (${vname(node.index)}, ${vname(node.item)}) in ${iterable}.into_iter().enumerate().map(|(i, v)| (i as i64, v)) {\n${block(
+              node.body,
+              d + 1,
+            )}\n${pad(d)}}`
+          : `for ${vname(node.item)} in ${iterable} {\n${block(
+              node.body,
+              d + 1,
+            )}\n${pad(d)}}`
       }
 
       case 'match': {

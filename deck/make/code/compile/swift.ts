@@ -1599,11 +1599,18 @@ export function emitSwift(
             ? `${expr(node.iterable, bind)}.data`
             : expr(node.iterable, bind)
 
-        return `for ${vname(node.item)} in ${iterable} {\n${block(
-          node.body,
-          d + 1,
-          bind,
-        )}\n${pad(d)}}`
+        // a walk that names its INDEX enumerates; `Int64` because that is what a Term number is here. lean-0017
+        return node.index
+          ? `for (${vname(node.index)}, ${vname(node.item)}) in ${iterable}.enumerated().map({ (Int64($0.offset), $0.element) }) {\n${block(
+              node.body,
+              d + 1,
+              bind,
+            )}\n${pad(d)}}`
+          : `for ${vname(node.item)} in ${iterable} {\n${block(
+              node.body,
+              d + 1,
+              bind,
+            )}\n${pad(d)}}`
       }
 
       case 'match': {

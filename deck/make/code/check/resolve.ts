@@ -123,6 +123,12 @@ export function resolve(
   // `b` inside `a`, and putting it back needs to know that `b` names a parameter of `pick`
   const taskParams = new Map<string, string[]>()
 
+  // FIELD NAME -> the field names of the form that field is declared as. A nested object writes its own
+  // labels one level down (`shape / at / a 10 / b 20`), and those are fields of `point` rather than tasks, so
+  // the resolver leaves them for the checker exactly as it leaves the head above them. lean-0018
+  const fieldsUnder = new Map<string, Set<string>>()
+  const EMPTY = new Set<string>()
+
   for (const statement of program) {
     if (statement.form === 'function') {
       taskParams.set(
@@ -155,6 +161,40 @@ export function resolve(
           variant.name,
           variant.fields.map(f => f.name),
         )
+      }
+    }
+  }
+
+  // a second pass, because a field's declared form may be read before it is declared
+  const fieldsOf = (name: string): string[] | undefined => {
+    for (const statement of program) {
+      if (statement.form === 'record-type' && statement.name === name) {
+        return statement.fields.map(f => f.name)
+      }
+    }
+
+    return undefined
+  }
+
+  for (const statement of program) {
+    if (statement.form !== 'record-type') {
+      continue
+    }
+
+    for (const field of [
+      ...statement.fields,
+      ...statement.variants.flatMap(v => v.fields),
+    ]) {
+      if (field.type?.kind !== 'named') {
+        continue
+      }
+
+      const under = fieldsOf(field.type.name)
+
+      if (under && under.length > 0) {
+        const seen = fieldsUnder.get(field.name) ?? new Set<string>()
+        under.forEach(one => seen.add(one))
+        fieldsUnder.set(field.name, seen)
       }
     }
   }
@@ -267,7 +307,10 @@ export function resolve(
           !look(item.callee.name) &&
           swallowed.has(item.callee.name)
 
-        for (const arg of node.args) {
+        node.args.forEach((arg, argAt) => {
+          // the LABEL this argument was written under, which is what says whose fields its children are
+          const label = node.names?.[argAt] ?? undefined
+          const under = label ? (fieldsUnder.get(label) ?? EMPTY) : EMPTY
           // THE LEAN SURFACE: a bare word among a lean call's arguments may be a FLAG (`strict` naming a boolean
           // parameter of the callee) rather than a variable, and only the checker, which holds the signature,
           // can say which. So an unbound word here is left unresolved rather than diagnosed, and
@@ -281,7 +324,7 @@ export function resolve(
             !(arg.name in BINARY_BUILTIN) &&
             !UNARY_BUILTIN.has(arg.name)
           ) {
-            continue
+            return
           }
 
           // a property's children arrive as an array, and the swallowed head sits among them
@@ -295,14 +338,28 @@ export function resolve(
                 continue
               }
 
+              // A NESTED OBJECT. The children of a property head are the inner form's own labels, and they
+              // bind to nothing here: `at / a 10 / b 20` under a field declared `like point`. The checker
+              // folds them by the declared type (`unwrapLeanFields`). lean-0018
+              if (
+                under.size > 0 &&
+                item.form === 'call' &&
+                item.callee.form === 'variable' &&
+                !look(item.callee.name) &&
+                under.has(item.callee.name)
+              ) {
+                item.args.forEach(resolveExpression)
+                continue
+              }
+
               resolveExpression(item)
             }
 
-            continue
+            return
           }
 
           resolveExpression(arg)
-        }
+        })
 
         break
       case 'array':
@@ -441,6 +498,11 @@ export function resolve(
         resolveExpression(node.iterable)
         stack.push(new Map())
         declare(node.item, { kind: 'local' })
+
+        // a second `take` binds the turn's index. lean-0017
+        if (node.index) {
+          declare(node.index, { kind: 'local' })
+        }
 
         for (const statement of node.body) {
           resolveStatement(statement)

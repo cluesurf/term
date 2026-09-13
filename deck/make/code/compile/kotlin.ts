@@ -1176,9 +1176,17 @@ export function emitKotlin(
         return `try {\n${block(node.body, d + 1)}\n${pad(d)}} ${handler}`
       }
       case 'for-each':
-        return `for (${camel(node.item)} in ${expr(
-          node.iterable,
-        )}) {\n${block(node.body, d + 1)}\n${pad(d)}}`
+        // a walk that names its INDEX uses withIndex; `toLong` because that is what a Term number is. lean-0017
+        return node.index
+          ? `for ((__at, ${camel(node.item)}) in ${expr(
+              node.iterable,
+            )}.withIndex()) {\n${pad(d + 1)}val ${camel(node.index)} = __at.toLong()\n${block(
+              node.body,
+              d + 1,
+            )}\n${pad(d)}}`
+          : `for (${camel(node.item)} in ${expr(
+              node.iterable,
+            )}) {\n${block(node.body, d + 1)}\n${pad(d)}}`
 
       case 'match': {
         // a match whose labels are only true/false is a match over a NATIVE Boolean (booleans lower to `Boolean`

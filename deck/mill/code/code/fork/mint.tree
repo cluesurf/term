@@ -34,6 +34,8 @@ mint fork-test, like fork-test
     site name
   case arm, mint fork-arm-hook
     site arm
+  case arm, mint fork-arm-bare
+    site arm
   case drop, mint fork-arm-other
     site drop
   hook make
@@ -119,6 +121,17 @@ mint fork-arm-hook
     make fork-arm-hook
       bind kind, read kind
       bind arm, read arm
+      bind flow, read flow
+
+# A bare arm mints the SAME form a `hook` arm does, so the bridge reads one shape.
+mint fork-arm-bare
+  case kind
+    site kind
+  case flow
+    site flow
+  hook make
+    make fork-arm-hook
+      bind kind, read kind
       bind flow, read flow
 
 mint fork-lack

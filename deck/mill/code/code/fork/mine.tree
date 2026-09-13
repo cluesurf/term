@@ -51,6 +51,8 @@ mine fork-test
     mine any
       mine form, like fork-arm-hook
         site arm
+      mine form, like fork-arm-bare
+        site arm
       mine form, like fork-arm-other
         site drop
   mine maybe
@@ -63,6 +65,8 @@ mine fork-test
   mine list
     mine any
       mine form, like fork-arm-hook
+        site arm
+      mine form, like fork-arm-bare
         site arm
       mine form, like fork-arm-other
         site drop
@@ -99,6 +103,37 @@ mine fork-arm-hook
         # in every `fork roll` compiled to an empty branch: `if (n == 1) {} else if (n == 2) {}`, no diagnostic.
         mine form, like fork-arm-hook
           site arm
+        mine form, like flow
+          site flow
+
+# An arm written WITHOUT its `hook`: `fork test, cond / hold / ... / miss / ...`. Decidable, because these five
+# words can only be arms in that position. `test` is NOT one of them: `fork test, <cond>` already writes the
+# condition inline, and a bare `test` line is far more likely to be a call. lean-0022.
+mine fork-arm-bare
+  mine any
+    mine term, term hold
+      site kind
+      mine list
+        mine form, like flow
+          site flow
+    mine term, term miss
+      site kind
+      mine list
+        mine form, like flow
+          site flow
+    mine term, term step
+      site kind
+      mine list
+        mine form, like flow
+          site flow
+    mine term, term fall
+      site kind
+      mine list
+        mine form, like flow
+          site flow
+    mine term, term else
+      site kind
+      mine list
         mine form, like flow
           site flow
 

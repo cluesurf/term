@@ -798,14 +798,9 @@ function expressionOf(
         return commaTrap(bridge, value, plainName(callee), span)
       }
 
-      // A BUILTIN HAS NO PARAMETER NAMES, so a bare-head child under one is a nested CALL and never a label.
-      // Under lean every bare-head child with a plain name became a named argument whose value is an array,
-      // and `foldBuiltin` then folded the array itself as an operand: `divide / subtract / ... ` emitted
-      // `subtractArray / step` and the checker reported `arithmetic operand: expected number, found ?1[]` at
-      // a line with nothing wrong on it. A builtin folds to an operator and has no signature for
-      // `arrangeArguments` to unwrap the array against, so the label reading has to be refused HERE.
-      // Found 2026-09-13 porting @term/seed/code/range.tree to lean (lean-0011), which is what that item is
-      // for: a real file carries shapes a worked example does not.
+      // A BUILTIN HAS NO PARAMETER NAMES, so a bare-head child under one is a nested call, never a label. It
+      // used to become a named argument whose value is an array, which `foldBuiltin` folded as an operand.
+      // Found porting range.tree to lean (lean-0011).
       if (
         isLean(bridge, 'seed-call-open') &&
         (BINARY_BUILTIN[plainName(callee)] !== undefined ||
@@ -831,6 +826,27 @@ function expressionOf(
         )
       }
 
+      // The same modifiers `call` reads, so a piped, awaited, propagating or callback-taking call means one
+      // thing in both spellings. lean-0030.
+      refuseHooks(bridge, value)
+
+      const propagate = formsAt(value, 'halt').some(
+        halt => wordAt(halt, 'mode') === 'kink',
+      )
+      const background = formsAt(value, 'wait').some(
+        wait => wordAt(wait, 'seed') === 'false',
+      )
+      const awaited = formsAt(value, 'wait').some(
+        wait => wordAt(wait, 'seed') === 'true',
+      )
+      const into =
+        plainName(callee) === 'fill' || plainName(callee) === 'melt'
+          ? typeOf(bridge, firstAt(value, 'like'))
+          : undefined
+
+      const finish = (call: Expression): Expression =>
+        withLinks(bridge, awaited ? { form: 'await', expr: call, span } : call, value)
+
       // the lean surface: property heads among the arguments become labels. Written order is kept the way
       // `callOf` keeps it, by numbering the call's own children out of the parse tree.
       if (isLean(bridge, 'seed-call-open')) {
@@ -840,44 +856,83 @@ function expressionOf(
           value.node.nodes.forEach((child, index) => order.set(child, index))
         }
 
-        const written = leanArguments(bridge, value, order).sort((a, b) => a.at - b.at)
+        // the `bind` SITE, which this rule gained with the other call modifiers: an explicit `bind name, value`
+        // is a named argument here exactly as it is under `call`
+        const written = [
+          ...bindArguments(bridge, value, order),
+          ...leanArguments(bridge, value, order),
+        ].sort((a, b) => a.at - b.at)
         const args = written.map(entry => entry.expr)
         const names = written.map(entry => entry.name)
         const leanNames = written.map(entry => entry.lean === true)
 
-        return (
-          foldBuiltin(plainName(callee), args, span) ?? {
-            form: 'call',
-            callee: readPath(plainName(callee), span),
-            args,
-            span,
-            ...(names.some(Boolean) ? { names } : {}),
-            ...(leanNames.some(Boolean) ? { leanNames } : {}),
-            lean: true,
-          }
+        const folded = foldBuiltin(plainName(callee), args, span)
+
+        return finish(
+          folded ??
+            (into
+              ? ({ form: 'call', callee: readPath(`${plainName(callee)}-form`, span), args, into, span } as Expression)
+              : ({
+                  form: 'call',
+                  callee: readPath(plainName(callee), span),
+                  args,
+                  span,
+                  ...(names.some(Boolean) ? { names } : {}),
+                  ...(leanNames.some(Boolean) ? { leanNames } : {}),
+                  lean: true,
+                  ...(propagate ? { propagate: true } : {}),
+                  ...(background ? { background: true } : {}),
+                } as Expression)),
         )
       }
 
-      const args: Expression[] = []
+      const plainOrder = new Map<Node, number>()
+
+      if (value.node?.kind === 'group') {
+        value.node.nodes.forEach((child, index) =>
+          plainOrder.set(child, index),
+        )
+      }
+
+      // the `bind` SITE, which this rule gained with the other call modifiers. Outside lean a `bind` drops its
+      // name, exactly as `seed-bind-arg` always did here, so only the value is kept.
+      const loose = bindArguments(bridge, value, plainOrder)
 
       for (const seed of at(value, 'seed')) {
         const built = expressionOf(bridge, seed)
 
         if (built) {
-          args.push(built)
+          loose.push({
+            at: seed.node
+              ? (plainOrder.get(seed.node) ?? loose.length)
+              : loose.length,
+            expr: built,
+            name: undefined,
+          })
         }
       }
+
+      const args = loose
+        .sort((a, b) => a.at - b.at)
+        .map(entry => entry.expr)
 
       // the arithmetic, comparison and boolean builtins fold to an operator here as they do under `call`:
       // `and a, b` is `a && b`, not a call to something named `and`. Probed 2026-09-12 that it was not
       // (note/term/lean.md, "meet and becomes and"), and the fold was only ever run from callOf.
-      return (
-        foldBuiltin(plainName(callee), args, span) ?? {
-          form: 'call',
-          callee: readPath(plainName(callee), span),
-          args,
-          span,
-        }
+      const plain = foldBuiltin(plainName(callee), args, span)
+
+      return finish(
+        plain ??
+          (into
+            ? ({ form: 'call', callee: readPath(`${plainName(callee)}-form`, span), args, into, span } as Expression)
+            : ({
+                form: 'call',
+                callee: readPath(plainName(callee), span),
+                args,
+                span,
+                ...(propagate ? { propagate: true } : {}),
+                ...(background ? { background: true } : {}),
+              } as Expression)),
       )
     }
 
@@ -1220,6 +1275,34 @@ type Written = { at: number; expr: Expression; name: string | undefined; lean?: 
 //
 // `seed-bind-arg` (`bind x, v` in an open call) drops its name today and keeps dropping it outside lean. Under
 // lean the name is kept, which is what makes `bind` the long-form escape inside a lean call.
+// The explicit `bind name, value` site, as a named argument. `callOf` has read it forever; `seed-call-open`
+// gained the site with the other call modifiers (lean-0030) and needs the same reading, or the argument is
+// captured there and never built. Under lean the name is kept, which is what makes `bind` the long-form
+// escape inside a lean call; outside it the name is dropped, as it always was.
+function bindArguments(
+  bridge: Bridge,
+  value: Form,
+  order: Map<Node, number>,
+): Written[] {
+  const written: Written[] = []
+
+  for (const bind of formsAt(value, 'bind')) {
+    const built = expressionOf(bridge, firstAt(bind, 'seed'))
+
+    if (built) {
+      written.push({
+        at: bind.node ? (order.get(bind.node) ?? written.length) : written.length,
+        expr: built,
+        name: isLean(bridge, 'seed-call-open')
+          ? wordAt(bind, 'name')
+          : undefined,
+      })
+    }
+  }
+
+  return written
+}
+
 function leanArguments(
   bridge: Bridge,
   value: Form,
@@ -1276,6 +1359,21 @@ function leanArguments(
   }
 
   return written
+}
+
+// A `hook` under a call is not a callback: the bridge reads none, so the whole thing used to be dropped with
+// no message. An anonymous `task` IS the callback spelling and keeps its parameters. lean-0015.
+function refuseHooks(bridge: Bridge, value: Form): void {
+  for (const hook of formsAt(value, 'hook')) {
+    bridge.diagnostics.push(
+      diagnose('unexpected-node', {
+        file: bridge.file,
+        span: spanOf(hook),
+        message: 'a `hook` under a call is not read as an argument, so this would be dropped',
+        hint: 'write the callback as an anonymous task: `task` on its own line, with its `take` parameters and body indented under it',
+      }),
+    )
+  }
 }
 
 function callOf(bridge: Bridge, value: Form): Expression | undefined {
@@ -1358,22 +1456,7 @@ function callOf(bridge: Bridge, value: Form): Expression | undefined {
     })
   }
 
-  // A `hook` UNDER A CALL is not a callback. `mine call` matches a `hook` site and this bridge reads none, so
-  // `call letters/flat-map / hook next / take one ...` built `letters.flatMap()` with no argument and no
-  // message: the whole callback vanished on a clean build, which is the silent-drop class this codebase has
-  // paid for repeatedly. An anonymous task IS the callback spelling and keeps its parameters
-  // (`call letters/map / task / take one, like letter / ...`), so the fix is to say so rather than to invent a
-  // second one. lean-0015.
-  for (const hook of formsAt(value, 'hook')) {
-    bridge.diagnostics.push(
-      diagnose('unexpected-node', {
-        file: bridge.file,
-        span: spanOf(hook),
-        message: `a \`hook\` under a call is not read as an argument, so this would be dropped`,
-        hint: 'write the callback as an anonymous task: `task` on its own line, with its `take` parameters and body indented under it',
-      }),
-    )
-  }
+  refuseHooks(bridge, value)
 
   written.sort((a, b) => a.at - b.at)
 
@@ -1933,13 +2016,10 @@ function loopOf(
   const written = wordAt(value, 'mode')
   const hooks = formsAt(value, 'hook')
 
-  // THE MODE IS A CLOSED SET OF THREE WORDS, so a first term outside it is the SEQUENCE and the walk is a
-  // list walk. `walk one/stem` means `walk list, read one/stem`. Until 2026-09-13 an unrecognized mode fell
-  // through to a loop that never runs (`while (false) {}`), silently, which is the worst answer available.
-  // lean-0023.
+  // The mode is a closed set, so anything outside it is the SEQUENCE: `walk one/stem` is `walk list, ...`.
+  // An unrecognized mode used to fall through to a loop that never runs, silently. lean-0023.
   const mode = WALK_MODES.has(written ?? '') ? written : 'list'
-  // and where the mode slot held the sequence rather than a mode word, that word IS the sequence: a bare
-  // `walk items` names a variable, which is what the value fallback would have built for it anyway
+  // a bare `walk items` names a variable, which is what the value fallback would have built anyway
   const named: Expression | undefined =
     written !== undefined && !WALK_MODES.has(written)
       ? { form: 'variable', name: plainName(written), span }
@@ -1947,12 +2027,17 @@ function loopOf(
 
   if (mode === 'list') {
     const iterable = expressionOf(bridge, firstAt(value, 'seed')) ?? named
-    // `hook next` is the long form. A walk may also write its item binding and its body DIRECTLY under it,
-    // with no hook between, which is what the `take` and `flow` sites on the walk itself carry.
+    // `hook next` is the long form; the `take` and `flow` sites carry the short one
     const next = hooks.find(h => wordAt(h, 'name') === 'next') ?? hooks[0]
-    const binder = next
-      ? formsAt(next, 'take')[0]
-      : formsAt(value, 'take')[0]
+    // the takes, in written order: the first names the item and a SECOND names the turn's INDEX. A walk had
+    // no way to name its own position before, and the answer was a `save` counter beside the loop. lean-0017
+    // With a `hook next`, ITS take is the item (that is the established spelling) and a take on the walk
+    // itself is the index. Written short, the walk's own takes are item then index, in order.
+    const takes = next
+      ? [...formsAt(next, 'take'), ...formsAt(value, 'take')]
+      : formsAt(value, 'take')
+    const binder = takes[0]
+    const counter = takes[1]
     const body = next
       ? scopedFlow(bridge, at(next, 'flow'))
       : scopedFlow(bridge, at(value, 'flow'))
@@ -1965,17 +2050,23 @@ function loopOf(
       return unhandled(bridge, value, 'a walk with no body')
     }
 
-    // `take site, name item` names the loop variable in its alias; written directly under the walk it is
-    // `take one` and the name is its own
+    // `take site, name item` names it in its alias; written directly under the walk, `take one` names itself
     const item =
       wordAt(firstAt(binder, 'alias'), 'name') ??
       textOf(firstAt(binder, 'alias')) ??
       wordAt(binder, 'name') ??
       ''
 
+    const index = counter
+      ? (wordAt(firstAt(counter, 'alias'), 'name') ??
+        textOf(firstAt(counter, 'alias')) ??
+        wordAt(counter, 'name'))
+      : undefined
+
     return {
       form: 'for-each',
       item,
+      ...(index ? { index } : {}),
       iterable,
       body,
       span,

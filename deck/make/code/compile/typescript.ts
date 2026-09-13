@@ -1288,9 +1288,15 @@ function makeEmitter(
         return `try ${block(node.body, depth)}${handler}`
       }
       case 'for-each':
-        return `for (const ${toCamel(node.item)} of ${expression(
-          node.iterable,
-        )}) ${block(node.body, depth)}`
+        // a walk that names its INDEX iterates the entries; one that does not keeps the plain `of` loop, so
+        // nothing that compiled before changes shape. lean-0017
+        return node.index
+          ? `for (const [${toCamel(node.index)}, ${toCamel(node.item)}] of ${expression(
+              node.iterable,
+            )}.entries()) ${block(node.body, depth)}`
+          : `for (const ${toCamel(node.item)} of ${expression(
+              node.iterable,
+            )}) ${block(node.body, depth)}`
 
       case 'match': {
         const raw = expression(node.subject)
