@@ -14,8 +14,10 @@ load @term/seed/code/list
 load @term/seed/code/mark/8
   find mark-8
 
-load @term/seed/code/text/code/utf-8
-  find text-utf-8
+# NOT `find text-utf-8` from `code/text/code/utf-8`. This module declares its OWN buffer form below, and until
+# 2026-09-13 that declaration was ALSO called `text-utf-8`: the import and the local form collided, the local
+# one won because form names are package-global and last-wins, and the import had no effect. The local form is
+# `text-utf-8-hold` now and the import is gone, so nothing here depends on which was read second.
 
 host utf-8-decoding-table
   make list
@@ -37,9 +39,9 @@ host utf-8-decoding-table
 
 task allocate-utf-8
   take size
-  free text, like text-utf-8
+  free text, like text-utf-8-hold
 
-form text-utf-8
+form text-utf-8-hold
   link list
     like list
       like u8

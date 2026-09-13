@@ -68,6 +68,12 @@ export function check(
 
   // record-type field maps, for member-access typing
   const records = new Map<string, Map<string, Type>>()
+  // how many times each form NAME was declared in the program. Term names are package-global and `records` is
+  // keyed on the name alone, so two modules declaring `form show-ask` leave whichever was read second in the
+  // table. A name declared more than once has no single answer about its fields, so the unknown-field check
+  // below says nothing about one rather than guessing. 107 names are declared twice across the tree today,
+  // most of them deliberate platform slots where only one is ever in a program's closure.
+  const declaredTwice = new Map<string, number>()
   // exception form -> the name of its props record (undefined when it adds no props)
   const exceptionProps = new Map<string, string | undefined>()
   // the fields every exception carries, bound in a `case <form>` arm beside the form's own props
@@ -120,6 +126,11 @@ export function check(
           nicks.set(field.name, field.nick)
         }
       }
+
+      declaredTwice.set(
+        statement.name,
+        (declaredTwice.get(statement.name) ?? 0) + 1,
+      )
 
       records.set(statement.name, fields)
 
@@ -687,7 +698,12 @@ export function check(
               field.value.span,
               'field value',
             )
-          } else if (declared && declared.size > 0) {
+          } else if (
+            declared &&
+            declared.size > 0 &&
+            (declaredTwice.get(node.name) ?? 0) < 2 &&
+            (variantFieldsByOwner.get(node.name)?.length ?? 0) < 2
+          ) {
             // A FIELD THE FORM DOES NOT DECLARE. It used to be accepted in silence and emitted, which is how
             // `position some value 3, description <x>` shipped `{ form: "some", value: 3, description: ["x"] }`:
             // the comma popped one level, left the inline `some` open, and the next property landed inside it.
@@ -1646,6 +1662,126 @@ export function check(
         ? [records.get(node.name)!]
         : []
 
+    // AN INLINE COMMA AFTER A BARE-WORD VALUE LEAVES THE NEXT PROPERTY INSIDE IT, and this puts it back.
+    //
+    // `pair a <x>, b true, c true` parses as `pair(a("x"), b(true, c(true)))`. A comma pops ONE level and a
+    // bare word OPENS one, so `c` lands beside `true` under `b` rather than beside `b`. A quoted value is a
+    // leaf and opens nothing, which is why `a <x>, b <y>` is two fields and `a true, b <y>` is one. Numbers
+    // are leaves too, so `a 1, b 2` was always right and `a true, b true` never was.
+    //
+    // THE PARSER CANNOT TELL THE TWO APART. `save x, make point, a 10` wants exactly the nesting that
+    // `b true, c true` does not, and the two are the same shape to a rule that has no types. So the comma rule
+    // stays as the grammar specifies it and the DECLARED FORM decides here: `b` is `like boolean`, it takes one
+    // value and is complete, and anything after it belongs to the construction.
+    //
+    // BY THE DECLARED FIELDS AND NEVER BY THE COUNT, which is the same rule the two passes below use. A
+    // trailing item is lifted only when its own head NAMES ANOTHER FIELD of this same construction, so a
+    // property whose value genuinely is a nested call keeps it. Nothing else moves.
+    //
+    // Found 2026-09-13 in the Sanskrit sūtrapāṭha table, where two boolean flags on one edge were emitted side
+    // by side. The old failure was `unknown-name: the name "apakarsa" is not defined`, reported in every file
+    // that loaded the one with the line and in none of them at the line, while the form on disk plainly
+    // declared the field.
+    {
+      const declared = (name: string): boolean => candidates.some(one => one.has(name))
+
+      // A FIELD THAT TAKES ONE VALUE IS COMPLETE AFTER IT. A list field accumulates, so a trailing item there
+      // may be a real member and a bare word among them that happens to spell a sibling is indistinguishable
+      // from one. Only the single-valued fields lift.
+      const single = (name: string): boolean => {
+        const held = candidates
+          .map(one => one.get(name))
+          .filter((one): one is Type => one !== undefined)
+
+        return (
+          held.length > 0 &&
+          held.every(one => resolve(seedType(one, new Map())).kind !== 'array')
+        )
+      }
+
+      if (candidates.length > 0) {
+        for (let i = 0; i < node.fields.length; i++) {
+          for (;;) {
+            const field = node.fields[i]!
+            const value = field.value
+
+            if (
+              value.form !== 'array' ||
+              value.items.length < 2 ||
+              !single(field.name)
+            ) {
+              break
+            }
+
+            const last = value.items[value.items.length - 1]!
+
+            if (last.form !== 'call') {
+              break
+            }
+
+            const callee = last.callee as { form?: string; name?: string }
+
+            if (
+              callee.form !== 'variable' ||
+              typeof callee.name !== 'string' ||
+              !declared(callee.name)
+            ) {
+              break
+            }
+
+            // THE SWALLOW CHAINS, so what was swallowed may itself have swallowed more: `a true, b true, c true`
+            // leaves `c` as a named argument OF `b`, which is already inside `a`. Those come out with it.
+            //
+            // And they are what tells a swallow from a real nested call. A property whose value is genuinely a
+            // construction carries that construction as its argument (`b / inner a <y>`); one that carries
+            // named arguments of its OWN, every one of them naming a field of the ENCLOSING form, is a comma
+            // that popped one level too few. A single name that is not a field here means it is not that, and
+            // nothing moves.
+            const labels = last.names ?? []
+
+            if (
+              labels.some(
+                one => typeof one === 'string' && one !== null && !declared(one),
+              )
+            ) {
+              break
+            }
+
+            const carried: { name: string; value: Expression }[] = []
+            const positional: Expression[] = []
+
+            last.args.forEach((arg, at) => {
+              const label = labels[at]
+
+              if (typeof label === 'string' && label !== null) {
+                carried.push({ name: label, value: arg })
+              } else {
+                positional.push(arg)
+              }
+            })
+
+            value.items.pop()
+
+            // inserted in written order immediately after, so the loop reaches each lifted field in turn and a
+            // deeper swallow unwinds one turn at a time
+            node.fields.splice(
+              i + 1,
+              0,
+              {
+                name: callee.name,
+                value: {
+                  form: 'array',
+                  items: positional,
+                  span: last.span,
+                } as Expression,
+              },
+              ...carried,
+            )
+          }
+        }
+      }
+    }
+
     // A PROPERTY HEAD GIVEN TWICE. `one <a>` and `one <c>` under the same construction emitted
     // `{ one: "a", two: "b", one: "c" }`: the second silently wins and the first is gone, which cost two
     // wrong tables in the Sanskrit port and was caught only by a parity test against another implementation.
@@ -1849,7 +1985,9 @@ export function check(
     }
 
     const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
-    const names = node.names ?? node.args.map(() => undefined)
+    // `let`, because the lean accumulation below drops the later heads of a repeated list label and `names` has
+    // to stay index-aligned with `node.args`
+    let names = node.names ?? node.args.map(() => undefined)
 
     // THE LEAN SURFACE, two adjustments before the arguments are placed, both by the DECLARED type and never by
     // the count. A property built its children as an array; where the parameter is not a list, a one-item array
@@ -1857,6 +1995,144 @@ export function check(
     // boolean parameter is that parameter set to true, which is what makes `strict` under a call a flag.
     if (node.lean) {
       const seen = new Set<string>()
+
+      // AN INLINE COMMA AFTER A BARE-WORD VALUE, on a CALL. The same rule and the same reason as the record
+      // side's, which `unwrapLeanFields` carries with the full argument: `pick a true, b true` parses as
+      // `pick(a(true, b(true)))` because a comma pops ONE level and a bare word OPENS one, so the parameter
+      // named second lands inside the one named first. A quoted or numeric value is a leaf and opens nothing,
+      // which is why only the bare ones were ever affected.
+      //
+      // BY THE DECLARED PARAMETERS. A trailing item lifts only when its head names ANOTHER parameter of this
+      // same callee and the parameter it is leaving takes ONE value, so a list parameter, which accumulates,
+      // keeps everything it was given.
+      {
+        const declaredHere = (name: string): boolean => signature.names.includes(name)
+
+        const singleHere = (name: string): boolean => {
+          const at = signature.names.indexOf(name)
+
+          return at >= 0 && resolve(signature.params[at] ?? UNKNOWN).kind !== 'array'
+        }
+
+        for (let i = 0; i < node.args.length; i++) {
+          for (;;) {
+            const name = names[i]
+            const arg = node.args[i]!
+
+            if (
+              typeof name !== 'string' ||
+              arg.form !== 'array' ||
+              arg.items.length < 2 ||
+              !singleHere(name)
+            ) {
+              break
+            }
+
+            const last = arg.items[arg.items.length - 1]!
+
+            if (last.form !== 'call') {
+              break
+            }
+
+            const callee = last.callee as { form?: string; name?: string }
+
+            if (
+              callee.form !== 'variable' ||
+              typeof callee.name !== 'string' ||
+              !declaredHere(callee.name)
+            ) {
+              break
+            }
+
+            const labels = last.names ?? []
+
+            if (
+              labels.some(
+                one => typeof one === 'string' && one !== null && !declaredHere(one),
+              )
+            ) {
+              break
+            }
+
+            const carriedNames: string[] = []
+            const carriedArgs: Expression[] = []
+            const positional: Expression[] = []
+
+            last.args.forEach((one, at) => {
+              const label = labels[at]
+
+              if (typeof label === 'string' && label !== null) {
+                carriedNames.push(label)
+                carriedArgs.push(one)
+              } else {
+                positional.push(one)
+              }
+            })
+
+            arg.items.pop()
+
+            node.args.splice(
+              i + 1,
+              0,
+              { form: 'array', items: positional, span: last.span } as Expression,
+              ...carriedArgs,
+            )
+            names.splice(i + 1, 0, callee.name, ...carriedNames)
+          }
+        }
+      }
+
+      // A PROPERTY HEAD GIVEN TWICE, on a CALL. The same rule the record side uses (`unwrapLeanFields`), by the
+      // DECLARED type and never by the count: a list parameter accumulates its heads, so `states <a>` on one
+      // line and `states <b>` on the next is one list of two, which is how a DSL wants to write one. Anything
+      // else keeps the "given twice" diagnostic below, where a second value would silently replace the first.
+      {
+        const byName = new Map<string, number[]>()
+
+        names.forEach((name, i) => {
+          if (name === undefined || name === null) {
+            return
+          }
+
+          const at = byName.get(name)
+          at ? at.push(i) : byName.set(name, [i])
+        })
+
+        const drop = new Set<number>()
+
+        for (const [name, at] of byName) {
+          if (at.length < 2) {
+            continue
+          }
+
+          const index = signature.names.indexOf(name)
+          const param = resolve(signature.params[index] ?? UNKNOWN)
+          const every = at.map(i => node.args[i]!)
+
+          if (
+            index < 0 ||
+            param.kind !== 'array' ||
+            !every.every(one => one.form === 'array')
+          ) {
+            continue
+          }
+
+          const first = every[0] as Extract<Expression, { form: 'array' }>
+
+          for (const later of every.slice(1)) {
+            first.items.push(
+              ...(later as Extract<Expression, { form: 'array' }>).items,
+            )
+          }
+
+          at.slice(1).forEach(i => drop.add(i))
+        }
+
+        if (drop.size > 0) {
+          node.args = node.args.filter((_, i) => !drop.has(i))
+          names = names.filter((_, i) => !drop.has(i))
+        }
+      }
 
       for (let i = 0; i < node.args.length; i++) {
         const name = names[i]

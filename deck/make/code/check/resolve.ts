@@ -119,6 +119,19 @@ export function resolve(
   // here and is not a type name, so without this set the resolver reported every such head as undefined.
   const variantNames = new Set<string>()
 
+  // a TASK's parameter names, for the same lean repair as a form's fields below: `pick a true, b true` leaves
+  // `b` inside `a`, and putting it back needs to know that `b` names a parameter of `pick`
+  const taskParams = new Map<string, string[]>()
+
+  for (const statement of program) {
+    if (statement.form === 'function') {
+      taskParams.set(
+        statement.name,
+        statement.params.map(one => one.name),
+      )
+    }
+  }
+
   for (const statement of program) {
     if (statement.form === 'record-type') {
       typeNames.add(statement.name)
@@ -228,6 +241,32 @@ export function resolve(
           resolveExpression(node.callee)
         }
 
+        // THE LEAN SURFACE: an inline comma after a BARE-WORD value leaves the next property inside it, so
+        // `sutra-word word <x>, alone true, apakarsa true` builds `apakarsa` as a call among `alone`'s
+        // children. A comma pops one level and a bare word opens one; a quoted or numeric value is a leaf and
+        // opens nothing, which is why only the bare ones are ever caught.
+        //
+        // The checker puts it back, by the declared fields (`unwrapLeanFields`). It never gets the chance if
+        // the head is reported here first, and reported it would be: it binds to nothing, because it is a
+        // FIELD NAME rather than a value. So a nested head that names a field of THIS construction is left
+        // unresolved, exactly as an unbound word is left in case it is a flag.
+        //
+        // The name alone is the test. A head that names no field of this construction is a real unknown and is
+        // reported as it always was.
+        const swallowed =
+          node.lean && node.callee.form === 'variable'
+            ? new Set([
+                ...(variantFields.get(node.callee.name) ?? []),
+                ...(taskParams.get(node.callee.name) ?? []),
+              ])
+            : new Set<string>()
+
+        const defer = (item: Expression): boolean =>
+          item.form === 'call' &&
+          item.callee.form === 'variable' &&
+          !look(item.callee.name) &&
+          swallowed.has(item.callee.name)
+
         for (const arg of node.args) {
           // THE LEAN SURFACE: a bare word among a lean call's arguments may be a FLAG (`strict` naming a boolean
           // parameter of the callee) rather than a variable, and only the checker, which holds the signature,
@@ -242,6 +281,23 @@ export function resolve(
             !(arg.name in BINARY_BUILTIN) &&
             !UNARY_BUILTIN.has(arg.name)
           ) {
+            continue
+          }
+
+          // a property's children arrive as an array, and the swallowed head sits among them
+          if (swallowed.size > 0 && arg.form === 'array') {
+            for (const item of arg.items) {
+              if (defer(item)) {
+                for (const one of (item as Extract<Expression, { form: 'call' }>).args) {
+                  resolveExpression(one)
+                }
+
+                continue
+              }
+
+              resolveExpression(item)
+            }
+
             continue
           }
 

@@ -34,7 +34,11 @@ dock load
   load <global:console>, name console
   load <global:JSON>, name json-global
 
-form show-ask
+# NOT `show-ask`, which is what this was called until 2026-09-13: `base-verbs.tree` declares a different
+# `show-ask` (root, commit, mark) and Term names are PACKAGE-GLOBAL, so the two collided and whichever module
+# was read second decided what the name meant. The collision was silent until the checker learned to refuse a
+# field the form does not declare, and then it surfaced in the OTHER file, as this hazard always does.
+form roll-show-ask
   link path, like boolean
 
 # the kinds a roll always has, before any a deck declares with `roll <name>`
@@ -137,7 +141,7 @@ task roll
     call roll-show/showRoll
       read roll
       read kind
-      make show-ask
+      make roll-show-ask
         bind path, read show-path
   call console/log
     text <>

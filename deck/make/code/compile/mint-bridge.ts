@@ -61,6 +61,7 @@ import {
 import {
   TYPE_NAME,
   BINARY_BUILTIN,
+  UNARY_BUILTIN,
   HALT_WORDS,
   unescapeText,
 } from '@term/make/code/compile/surface'
@@ -754,6 +755,21 @@ function expressionOf(
         : { form: 'unit', span }
     }
 
+    // `wait <call>` as a PREFIX, which is what `call f / ... / wait true` writes today. Decidable with no
+    // schema, so it is outside the lean mark and every file gets it: `wait do-x` is the same text whether the
+    // file is lean or not, since it is a prefix over a call and both call spellings are calls. lean-0031.
+    case 'seed-wait': {
+      const awaited =
+        expressionOf(bridge, firstAt(value, 'call')) ??
+        expressionOf(bridge, firstAt(value, 'open'))
+
+      if (!awaited) {
+        return unhandled(bridge, value, 'a wait with nothing to await')
+      }
+
+      return { form: 'await', expr: awaited, span }
+    }
+
     case 'seed-call-open': {
       // a bare call written as its own head (`name <document>`): the head is the callee, the rest its arguments
       const callee = wordAt(value, 'name')
@@ -780,6 +796,39 @@ function expressionOf(
         FLOW_HEADS.has(plainName(callee))
       ) {
         return commaTrap(bridge, value, plainName(callee), span)
+      }
+
+      // A BUILTIN HAS NO PARAMETER NAMES, so a bare-head child under one is a nested CALL and never a label.
+      // Under lean every bare-head child with a plain name became a named argument whose value is an array,
+      // and `foldBuiltin` then folded the array itself as an operand: `divide / subtract / ... ` emitted
+      // `subtractArray / step` and the checker reported `arithmetic operand: expected number, found ?1[]` at
+      // a line with nothing wrong on it. A builtin folds to an operator and has no signature for
+      // `arrangeArguments` to unwrap the array against, so the label reading has to be refused HERE.
+      // Found 2026-09-13 porting @term/seed/code/range.tree to lean (lean-0011), which is what that item is
+      // for: a real file carries shapes a worked example does not.
+      if (
+        isLean(bridge, 'seed-call-open') &&
+        (BINARY_BUILTIN[plainName(callee)] !== undefined ||
+          UNARY_BUILTIN.has(plainName(callee)))
+      ) {
+        const args: Expression[] = []
+
+        for (const seed of at(value, 'seed')) {
+          const built = expressionOf(bridge, seed)
+
+          if (built) {
+            args.push(built)
+          }
+        }
+
+        return (
+          foldBuiltin(plainName(callee), args, span) ?? {
+            form: 'call',
+            callee: readPath(plainName(callee), span),
+            args,
+            span,
+          }
+        )
       }
 
       // the lean surface: property heads among the arguments become labels. Written order is kept the way
@@ -1307,6 +1356,23 @@ function callOf(bridge: Bridge, value: Form): Expression | undefined {
       },
       name: undefined,
     })
+  }
+
+  // A `hook` UNDER A CALL is not a callback. `mine call` matches a `hook` site and this bridge reads none, so
+  // `call letters/flat-map / hook next / take one ...` built `letters.flatMap()` with no argument and no
+  // message: the whole callback vanished on a clean build, which is the silent-drop class this codebase has
+  // paid for repeatedly. An anonymous task IS the callback spelling and keeps its parameters
+  // (`call letters/map / task / take one, like letter / ...`), so the fix is to say so rather than to invent a
+  // second one. lean-0015.
+  for (const hook of formsAt(value, 'hook')) {
+    bridge.diagnostics.push(
+      diagnose('unexpected-node', {
+        file: bridge.file,
+        span: spanOf(hook),
+        message: `a \`hook\` under a call is not read as an argument, so this would be dropped`,
+        hint: 'write the callback as an anonymous task: `task` on its own line, with its `take` parameters and body indented under it',
+      }),
+    )
   }
 
   written.sort((a, b) => a.at - b.at)
@@ -1853,6 +1919,10 @@ function haltOf(bridge: Bridge, value: Form): Statement | undefined {
   }
 }
 
+// The three walk modes, and the whole of them. A first term outside this set is the sequence, which is what
+// makes the mode optional: `walk one/stem` is `walk list, read one/stem`.
+const WALK_MODES = new Set(['list', 'size', 'test'])
+
 // `walk list, <seq>` iterates; `walk test` loops while a condition holds. Both arrive as one `walk` form
 // distinguished by its mode word, which is the only thing that tells them apart.
 function loopOf(
@@ -1860,19 +1930,43 @@ function loopOf(
   value: Form,
 ): Statement | Statement[] | undefined {
   const span = spanOf(value)
-  const mode = wordAt(value, 'mode')
+  const written = wordAt(value, 'mode')
   const hooks = formsAt(value, 'hook')
 
-  if (mode === 'list') {
-    const iterable = expressionOf(bridge, firstAt(value, 'seed'))
-    const next = hooks.find(h => wordAt(h, 'name') === 'next') ?? hooks[0]
+  // THE MODE IS A CLOSED SET OF THREE WORDS, so a first term outside it is the SEQUENCE and the walk is a
+  // list walk. `walk one/stem` means `walk list, read one/stem`. Until 2026-09-13 an unrecognized mode fell
+  // through to a loop that never runs (`while (false) {}`), silently, which is the worst answer available.
+  // lean-0023.
+  const mode = WALK_MODES.has(written ?? '') ? written : 'list'
+  // and where the mode slot held the sequence rather than a mode word, that word IS the sequence: a bare
+  // `walk items` names a variable, which is what the value fallback would have built for it anyway
+  const named: Expression | undefined =
+    written !== undefined && !WALK_MODES.has(written)
+      ? { form: 'variable', name: plainName(written), span }
+      : undefined
 
-    if (!iterable || !next) {
+  if (mode === 'list') {
+    const iterable = expressionOf(bridge, firstAt(value, 'seed')) ?? named
+    // `hook next` is the long form. A walk may also write its item binding and its body DIRECTLY under it,
+    // with no hook between, which is what the `take` and `flow` sites on the walk itself carry.
+    const next = hooks.find(h => wordAt(h, 'name') === 'next') ?? hooks[0]
+    const binder = next
+      ? formsAt(next, 'take')[0]
+      : formsAt(value, 'take')[0]
+    const body = next
+      ? scopedFlow(bridge, at(next, 'flow'))
+      : scopedFlow(bridge, at(value, 'flow'))
+
+    if (!iterable) {
       return unhandled(bridge, value, 'a walk with no sequence')
     }
 
-    // `take site, name item` names the loop variable in its alias
-    const binder = formsAt(next, 'take')[0]
+    if (!next && body.length === 0) {
+      return unhandled(bridge, value, 'a walk with no body')
+    }
+
+    // `take site, name item` names the loop variable in its alias; written directly under the walk it is
+    // `take one` and the name is its own
     const item =
       wordAt(firstAt(binder, 'alias'), 'name') ??
       textOf(firstAt(binder, 'alias')) ??
@@ -1883,7 +1977,7 @@ function loopOf(
       form: 'for-each',
       item,
       iterable,
-      body: scopedFlow(bridge, at(next, 'flow')),
+      body,
       span,
     }
   }
@@ -2047,10 +2141,32 @@ function constantOf(bridge: Bridge, value: Form): Statement | undefined {
   const values = seeds
     .map(entry => expressionOf(bridge, entry))
     .filter((entry): entry is Expression => entry !== undefined)
+
+  // THE DECLARED TYPE DECIDES, NOT THE COUNT. `host xs / like list / like number / 1` is a one-element list
+  // and `host x / like number / 1` is a number, and until 2026-09-13 the two were the same bytes, because the
+  // count alone chose between an array and its first element. That is the hazard the lean property rule
+  // already refuses, and it is worse here: a one-element export and a scalar export were indistinguishable
+  // with the type written on the line directly above.
+  //
+  // A LITERAL child only. `host xs / like list / read ys` and `host xs / like list / call more-states` both
+  // hand the binding a value that may ITSELF be the list, and the mill has no callee and no scope to tell
+  // which, so those keep the old reading and are left to the checker, exactly as a lean list PARAMETER with
+  // one child is. What is decidable right here is that a text, a number, a boolean or a record is never a
+  // list, so a single one of them under a `like list` is a one-element list and nothing else.
+  const onlyChild = values.length === 1 ? values[0]! : undefined
+  const oneLiteral =
+    onlyChild !== undefined &&
+    (onlyChild.form === 'string' ||
+      onlyChild.form === 'integer' ||
+      onlyChild.form === 'float' ||
+      onlyChild.form === 'boolean' ||
+      onlyChild.form === 'record')
+  const listed = type?.kind === 'array' && oneLiteral
+
   const init =
     nested.length > 0
       ? anonymousRecord(bridge, nested, span)
-      : values.length > 1
+      : listed || values.length > 1
         ? ({ form: 'array', items: values, span } as Expression)
         : (values[0] ?? { form: 'unit' as const, span })
 

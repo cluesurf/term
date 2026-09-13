@@ -37,17 +37,13 @@ form list
     send back
       call self/pop
 
-  # read the element at an index. An INDEX READ, not `self/at`, because that is what the other three backends
-  # already lower `get` to (`data[i]` on Rust, Swift and Kotlin alike), so JavaScript's `at` was the outlier and
-  # its negative-index reading was never portable. It also cost: `at` is typed `T | undefined` in TypeScript
-  # while `get` is declared `like t`, and this task is inlined into every module, so one stdlib line was 47 of
-  # the 61 strict type errors in the v4 Sanskrit grammar.
   task get
     take self
     take index, like number
     like t
     send back
-      read self/{index}
+      call self/at
+        read index
 
   # write the element at an index in place, returning the list. The native splice (delete one, insert one) replaces rather than shifts; it lowers cross-backend (JS splice, rust Vec::splice, swift replaceSubrange, kotlin subList).
   task set
@@ -217,7 +213,8 @@ form list
         send back
           make some
             bind value
-              read self/0
+              call self/at
+                code 0
       hook miss
         send back
           make none
@@ -232,14 +229,13 @@ form list
           read self/length
           code 0
       hook hold
-        save end
-          call subtract
-            read self/length
-            code 1
         send back
           make some
             bind value
-              read self/{end}
+              call self/at
+                call subtract
+                  read self/length
+                  code 1
       hook miss
         send back
           make none

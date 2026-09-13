@@ -48,7 +48,10 @@ form show-ask
   link commit, like text
   link mark, like text
 
-form make-ask
+# NOT `make-ask`, which is what this was called until 2026-09-13: `make.tree` declares a DIFFERENT `make-ask`
+# (root, ride, separate, trees) and Term names are PACKAGE-GLOBAL, so the two collided and whichever module was
+# read second decided what the name meant. `pnpm term:name-clash` lists every such pair.
+form base-make-ask
   link root, like text
   link branch, like text
   link author, like text
@@ -226,7 +229,7 @@ task base-commit
     call project-root
   note unsafe
     call base-module/callBaseCommit
-      make make-ask
+      make base-make-ask
         bind root, read root
         bind branch, read branch
         bind author, read author

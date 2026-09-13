@@ -751,17 +751,23 @@ function makeEmitter(
         return toCamel(node.name)
 
       case 'call': {
-        // `get` / `set` on an ARRAY receiver: JavaScript arrays have no such methods; they are indexing
+        // `get` / `set` / `at` on an ARRAY receiver: JavaScript arrays have no `get` or `set`; they are
+        // indexing. `at` is a real method and was left alone until 2026-09-13, and that was the outlier:
+        // Rust, Swift and Kotlin all lower `at` to a direct index read, so its negative-index reading was
+        // never portable, while its `T | undefined` result did not match `list/get`'s declared `like t` and
+        // that one stdlib line, inlined into every module, was 47 of the v4 grammar's 61 strict errors.
         if (
           node.callee.form === 'member' &&
           node.callee.target.type?.kind === 'array' &&
-          (node.callee.name === 'get' || node.callee.name === 'set')
+          (node.callee.name === 'get' ||
+            node.callee.name === 'set' ||
+            node.callee.name === 'at')
         ) {
           const target = expression(node.callee.target)
 
-          return node.callee.name === 'get'
-            ? `${target}[${expression(node.args[0]!)}]`
-            : `(${target}[${expression(node.args[0]!)}] = ${expression(node.args[1]!)})`
+          return node.callee.name === 'set'
+            ? `(${target}[${expression(node.args[0]!)}] = ${expression(node.args[1]!)})`
+            : `${target}[${expression(node.args[0]!)}]`
         }
 
         // `flat()` on an array: TypeScript's conditional flat type does not narrow back to the declared element,

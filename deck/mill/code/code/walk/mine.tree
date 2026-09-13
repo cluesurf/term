@@ -7,6 +7,12 @@ load @term/mill/code/code/bind/mine
 load @term/mill/code/code/tool/hook
   find hook
 
+load @term/mill/code/code/take/mine
+  find take
+
+load @term/mill/code/code/tool/flow/mine
+  find flow
+
 # `walk list, <seq>` / `walk size` with `bind` bounds / `walk test` with `hook test` and `hook step` arms.
 #
 # THE ARMS ARE MATCHED BEFORE THE SEQUENCE and again after it, the same way `mine fork-test` matches its own.
@@ -15,18 +21,34 @@ load @term/mill/code/code/tool/hook
 # out with a constant `true` for its condition.
 mine walk
   mine term, term walk
+    # THE MODE IS A CLOSED SET OF THREE WORDS, listed here rather than taken as any first term. It used to be
+    # `mine term / site mode`, which takes the HEAD of whatever is written first, so `walk read(xs)` read the
+    # mode as `read` and left no sequence. Listing them is what makes the mode optional: anything that is not
+    # one of the three falls through to the sequence slot below. lean-0023.
     mine maybe
-      mine term
-        site mode
+      mine any
+        mine term, term list
+          site mode
+        mine term, term size
+          site mode
+        mine term, term test
+          site mode
     # The arms and the bounds are matched before the sequence and again after it. `walk list, <seq>` writes
     # its sequence first, `walk size` writes its `bind` bounds first, and both end in `hook` arms; the value
     # fallback takes any headed group, so whichever of them is written first has to be matched first.
+    # `take` and `flow` BEFORE the sequence as well as after it, for the same reason the hooks and the bounds
+    # are matched twice: the value fallback takes any headed group, so whichever of them is written first has
+    # to be matched first. A walk may now write its item binding and its body DIRECTLY under it, with no
+    # `hook next` between: `mine flow`'s statement list carries no `bind` and no `take`, so a bind child is a
+    # bound, a take child is the item binding, and everything else is the body. lean-0023.
     mine list
       mine any
         mine form, like hook
           site hook
         mine form, like bind
           site bind
+        mine form, like take
+          site take
     mine maybe
       mine form, like seed
         site seed
@@ -36,5 +58,9 @@ mine walk
           site hook
         mine form, like bind
           site bind
+        mine form, like take
+          site take
+        mine form, like flow
+          site flow
 
 fuse hook

@@ -53,6 +53,9 @@ mine seed
       site term
     mine form, like seed-meet
       site meet
+    # BEFORE the bare-head fallback, which would read `wait f(x)` as a call to something named `wait`
+    mine form, like seed-wait
+      site wait
     mine form, like seed-call-open
       site open
     # A BARE WORD in value position. `compile/mill.ts` lowers a childless group to a variable of that name,
@@ -127,6 +130,25 @@ mine seed-def
 # `seed` site alongside does not rescue it either, since `mine mold` has no `seed` site and is one of the places
 # lean most needs to fire. So a rule opts in by name, which is also what makes the decision reviewable when
 # somebody adds a `bind` site to a new rule.
+# `wait <call>` as a PREFIX. `wait delay(ms)` is what `call delay / read ms / wait true` writes today, and the
+# two mean the same thing: the call is awaited.
+#
+# OUTSIDE THE LEAN MARK, because it is decidable with no schema, the way `walk` and `back` are. The point is
+# convergence: `wait do-x` is the same text whether the file is lean or not, since it is a prefix over a call
+# and both call spellings are calls.
+#
+# MATCHED BEFORE `seed-call-open`, or the bare-head fallback takes `wait` as the callee and `delay(ms)` as its
+# argument, which is a call to something named `wait`. The `wait true` / `wait false` CHILD markers are
+# untouched: those are matched at a call's own `wait` site by `mine wait`, never here, and a bare `true` or
+# `false` is not a call so it cannot reach this rule. lean-0031.
+mine seed-wait
+  mine term, term wait
+    mine any
+      mine form, like call
+        site call
+      mine form, like seed-call-open
+        site open
+
 mine seed-call-open
   mark lean
   mine open

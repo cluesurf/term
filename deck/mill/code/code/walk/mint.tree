@@ -7,6 +7,12 @@ load @term/mill/code/code/hook/mint
 load @term/mill/code/code/seed/mint
   find seed
 
+load @term/mill/code/code/take/mint
+  find take
+
+load @term/mill/code/code/tool/flow/mint
+  find flow
+
 mint walk
   case mode
     site mode
@@ -16,12 +22,18 @@ mint walk
     site bind
   case hook
     site hook
+  case take, mint take
+    site take
+  case flow, mint flow
+    site flow
   hook make
     make walk
       bind mode, read mode
       bind seed, read seed
       bind bind, read bind
       bind hook, read hook
+      bind take, read take
+      bind flow, read flow
 
 mint walk-hook
   case name

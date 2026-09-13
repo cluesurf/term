@@ -383,6 +383,26 @@ function expandFuse(group: GroupNode, ctx: Context): Node[] {
   for (const node of args.slice(1)) {
     const head = node.kind === 'group' ? headName(node) : undefined
 
+    // THE LEAN SURFACE, and the one case of it that needs no role mark and no signature lookup: a macro's
+    // parameters are its own `take` names in the same file, so a child whose HEAD is one of them is that
+    // argument by name. `fuse sound-row / symbol <a> / gloss <open>` binds symbol and gloss, and `bind` stays
+    // the long form of the same thing. A `tree` or a `fuse` never reaches a mill (template.ts expands both
+    // before any mill runs), so no pass over the match can do this. lean-0021.
+    //
+    // BEFORE the positional branch, which accepts a group like `size 8` and would otherwise swallow it: the
+    // head is the parameter name and the child is the value, not two positional arguments.
+    if (
+      head !== undefined &&
+      head !== 'bind' &&
+      head !== 'beam' &&
+      template.params.includes(head) &&
+      node.kind === 'group' &&
+      rest(node).length > 0
+    ) {
+      subs.set(head, resolveValue(rest(node)[0], ctx.subs))
+      continue
+    }
+
     if (
       head !== 'bind' &&
       head !== 'beam' &&

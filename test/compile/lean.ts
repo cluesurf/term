@@ -40,6 +40,12 @@ task dimension
   take strict, like boolean, fall false
   like text
   send back, read key
+
+task later
+  note async
+  take n, like number
+  like number
+  send back, read n
 `
 
 // the emitted TypeScript, or the diagnostics as one string when it did not build
@@ -368,6 +374,169 @@ task both
 `,
   },
   {
+    // the same rule on a CALL: a list PARAMETER accumulates its heads too, so the two surfaces agree
+    name: 'a list parameter accumulates across repeated property heads',
+    lean: `
+task go
+  like text
+  send back
+    dimension
+      key <tense>
+      states <present>
+      states <imperfect>
+      max-count 1
+`,
+    long: `
+task go
+  like text
+  send back
+    call dimension
+      bind key
+        text <tense>
+      bind states
+        make list
+          text <present>
+          text <imperfect>
+      bind max-count
+        code 1
+`,
+  },
+  {
+    // `wait <call>` as a PREFIX, and the `wait true` child marker, building the same program. OUTSIDE the lean
+    // mark on purpose: it is decidable with no schema, so every file gets it and `wait do-x` is the same text
+    // whether the file is lean or not. Both sides of this pair are compiled with the flag ON, which is what
+    // makes it a test of the prefix rather than of lean.
+    // And the argument is `n`, not `read(n)`: a bare word in value position is already the variable, so the
+    // two spellings build the same call. The long side keeps `read` because that is how the file is written
+    // today; both are legal in both.
+    name: 'wait is a prefix over a call, and the child marker still means the same',
+    lean: `
+task go
+  note async
+  take n, like number
+  like number
+  send back
+    wait later(n)
+`,
+    long: `
+task go
+  note async
+  take n, like number
+  like number
+  send back
+    call later
+      read n
+      wait true
+`,
+  },
+  {
+    // A BUILTIN HAS NO PARAMETER NAMES, so a bare-head child under one is a nested CALL and never a label.
+    // It used to become a named argument whose value is an array, and `foldBuiltin` folded the array itself
+    // as an operand: `divide / subtract / ...` emitted `subtractArray / step`. Found by porting a real stdlib
+    // module to lean (lean-0011), which is what that item is for.
+    name: 'a builtin nests another builtin, stacked, as a positional argument',
+    lean: `
+task span
+  take a, like number
+  take b, like number
+  take c, like number
+  like number
+  back
+    divide
+      subtract
+        read a
+        read b
+      read c
+`,
+    long: `
+task span
+  take a, like number
+  take b, like number
+  take c, like number
+  like number
+  send back
+    call divide
+      call subtract
+        read a
+        read b
+      read c
+`,
+  },
+  {
+    // A MACRO ARGUMENT BY ITS HEAD, which is the one lean case that needs no role mark and no signature
+    // lookup: a template's parameters are its own `take` names in the same file. A `tree` or a `fuse` never
+    // reaches a mill (template.ts expands both before any mill runs), so this cannot be a pass over the match.
+    name: 'a macro argument binds by its head, and `bind` is the long form of it',
+    lean: `
+tree sound-row
+  take symbol
+  take gloss
+
+  hook fuse
+    task describe-{symbol}
+      like text
+      send back
+        text <{gloss}>
+
+fuse sound-row
+  symbol a
+  gloss open
+
+task go
+  like text
+  send back
+    call describe-a
+`,
+    long: `
+tree sound-row
+  take symbol
+  take gloss
+
+  hook fuse
+    task describe-{symbol}
+      like text
+      send back
+        text <{gloss}>
+
+fuse sound-row
+  bind symbol, a
+  bind gloss, open
+
+task go
+  like text
+  send back
+    call describe-a
+`,
+  },
+  {
+    // A ONE-ELEMENT LIST IS NOT ITS ELEMENT. The `like` says which, and until 2026-09-13 the COUNT did, so a
+    // one-entry table and a scalar were the same bytes with the type written on the line above.
+    name: 'a host whose declared type is a list builds one however many entries it holds',
+    lean: `
+host one
+  like list
+    like number
+  code 7
+
+task go
+  like number
+  send back
+    read one/0
+`,
+    long: `
+host one
+  like list
+    like number
+  make list
+    code 7
+
+task go
+  like number
+  send back
+    read one/0
+`,
+  },
+  {
     // a LIST field repeats its head, one entry per line, which is how a DSL wants to write one. The rule is
     // the declared type, exactly as for a single head: a list accumulates, and a scalar given twice is refused.
     name: 'a list field accumulates across repeated property heads',
@@ -490,6 +659,41 @@ task shape
   send back, read n
 `,
     expect: '`fork` is a statement',
+  },
+  // a `hook` under a call. It used to build `letters.flatMap()` with no argument and no message: the whole
+  // callback vanished on a clean build.
+  {
+    name: 'a hook under a call, which is not a callback spelling',
+    text: `
+task go
+  take letters, like list, like text
+  like list
+    like text
+  send back
+    call letters/flat-map
+      hook next
+        take one, like text
+        like list
+          like text
+        send back
+          make list
+            read one
+`,
+    expect: 'is not read as an argument',
+  },
+  // and a SCALAR parameter given twice is still refused, on a call as on a construction
+  {
+    name: 'a scalar parameter given twice on a call',
+    text: `
+task go
+  like text
+  send back
+    dimension
+      key <tense>
+      states <present>
+      key <mood>
+`,
+    expect: 'given twice',
   },
   // a field the form does not declare. The comma pops ONE level, so an inline construction is still open when
   // the next property arrives and swallows it: `position some value 3, description <x>` shipped

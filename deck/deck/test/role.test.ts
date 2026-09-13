@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { parseRoleFile, matchRole } from '../code/role'
+import {
+  parseRoleFile,
+  matchRole,
+  matchRoleRule,
+  globMatch,
+} from '../code/role'
 
 describe('parseRoleFile', () => {
   it('parses basic role definitions', () => {
@@ -195,5 +200,161 @@ role code
     expect(roleOf('book/web/view/example.tree')).toBe('code')
     expect(roleOf('code/a/b.tree')).toBe('code')
     expect(roleOf('deck/make/code/x.tree')).toBe(null)
+  })
+})
+
+// THE LEAN MARK. Scoping lean to a subtree depends on `matchRoleRule` returning the FIRST matching rule, and
+// on one role name being allowed to appear twice with different marks. That is how the reader behaves and
+// nothing asserted it, so a later rewrite that sorted or merged the rules would change what a file MEANS with
+// no test failing. lean-0010.
+describe('the lean mark', () => {
+  const CONFIG = `
+role code
+  mark lean
+  take @/code/grammar/**/*.tree
+
+role code
+  take @/code/**/*.tree
+
+role book
+  take @/book/**/*.tree
+`
+
+  const config = parseRoleFile({ text: CONFIG, root: '/project' })
+
+  const ruleFor = (path: string) =>
+    matchRoleRule({ filePath: `/project${path}`, config })
+
+  it('carries the mark on the rule that declares it', () => {
+    expect(ruleFor('/code/grammar/sound.tree')?.mark).toContain('lean')
+  })
+
+  it('leaves a rule that does not declare it unmarked', () => {
+    const rule = ruleFor('/code/other/thing.tree')
+
+    expect(rule?.name).toBe('code')
+    expect(rule?.mark ?? []).not.toContain('lean')
+  })
+
+  it('a rule with no mark at all carries an empty list, never undefined', () => {
+    expect(ruleFor('/book/page.tree')?.mark).toEqual([])
+  })
+
+  // WRITTEN ORDER IS THE PRECEDENCE. Both rules are called `code` and both match the grammar file; the
+  // narrower one is written first, so it wins and the file is lean. Sorting or merging the rules would
+  // silently take the mark away.
+  it('the narrower rule written first wins, so both spellings keep one role name', () => {
+    expect(ruleFor('/code/grammar/sound.tree')?.name).toBe('code')
+    expect(ruleFor('/code/other/thing.tree')?.name).toBe('code')
+    expect(ruleFor('/code/grammar/sound.tree')).not.toBe(
+      ruleFor('/code/other/thing.tree'),
+    )
+  })
+
+  it('and the broad rule written first takes the mark away from the whole role', () => {
+    const flipped = parseRoleFile({
+      text: `
+role code
+  take @/code/**/*.tree
+
+role code
+  mark lean
+  take @/code/grammar/**/*.tree
+`,
+      root: '/project',
+    })
+
+    expect(
+      matchRoleRule({
+        filePath: '/project/code/grammar/sound.tree',
+        config: flipped,
+      })?.mark ?? [],
+    ).not.toContain('lean')
+  })
+})
+
+// THE MILL ROLE IS NOT LEAN, and this is the gate that says so. A `mint` file carries
+// `hook make / make x / bind a, read a`, which HAS a bind site, so a lean pass would fire there the moment a
+// glob let it. It must not: a grammar file is the one place where the heads ARE the vocabulary under
+// discussion, and a file describing how heads are read must not be read by a rule that rewrites heads.
+// lean-0026.
+// THE MILL ROLE IS NOT LEAN, and this is the gate that says so. A `mint` file carries
+// `hook make / make x / bind a, read a`, which HAS a bind site, so a lean pass would fire there the moment a
+// glob let it. It must not: a grammar file is the one place where the heads ARE the vocabulary under
+// discussion, and a file describing how heads are read must not be read by a rule that rewrites heads.
+// lean-0026.
+describe('the mill role stays out of lean', () => {
+  const TERM = join(__dirname, '..', '..', '..')
+
+  // one real mill grammar file, as the thing no lean glob may reach
+  const MILL = join(TERM, 'deck/mill/code/code/call/mine.tree')
+
+  // every lean `take` glob in a config that matches the mill file
+  function leanReaching(text: string, root: string): string[] {
+    const config = parseRoleFile({ text, root })
+
+    return config.rules
+      .filter(rule => rule.mark.includes('lean'))
+      .flatMap(rule => rule.take)
+      .filter(entry => globMatch({ pattern: entry.pattern, path: MILL }))
+      .map(entry => entry.pattern)
+  }
+
+  // the mill file has to EXIST, or every assertion below passes by matching nothing
+  it('the mill grammar this gate is written against is on disk', () => {
+    expect(existsSync(MILL)).toBe(true)
+  })
+
+  // AND THE DETECTOR HAS TO FIRE. Without this the sweep passes while nobody marks lean at all, which is the
+  // shape of gate that stops asking without saying so.
+  it('catches a lean rule whose glob reaches the mill grammar', () => {
+    expect(
+      leanReaching(
+        `
+role code
+  mark lean
+  take @/deck/mill/code/**/*.tree
+`,
+        TERM,
+      ),
+    ).toHaveLength(1)
+  })
+
+  it('and says nothing about the same glob without the mark', () => {
+    expect(
+      leanReaching(
+        `
+role code
+  take @/deck/mill/code/**/*.tree
+`,
+        TERM,
+      ),
+    ).toEqual([])
+  })
+
+  it('no role.tree in the tree marks lean over a mill grammar path', () => {
+    const roots = readdirSync(join(TERM, 'deck'))
+      .map(name => join(TERM, 'deck', name))
+      .filter(dir => existsSync(join(dir, 'base', 'role.tree')))
+      .concat(TERM)
+
+    expect(roots.length).toBeGreaterThan(1)
+
+    const offenders = roots.flatMap(root =>
+      leanReaching(
+        readFileSync(join(root, 'base', 'role.tree'), 'utf8'),
+        root,
+      ).map(pattern => `${root}: ${pattern}`),
+    )
+
+    expect(offenders).toEqual([])
+  })
+
+  // `@term/mill` declares no role file of its own, so nothing there can be marked. That is the state this
+  // gate protects; a role.tree appearing in that package is the moment to read it.
+  it('deck/mill declares no role file of its own', () => {
+    expect(existsSync(join(TERM, 'deck', 'mill', 'base', 'role.tree'))).toBe(
+      false,
+    )
   })
 })

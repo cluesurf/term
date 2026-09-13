@@ -189,7 +189,12 @@ task poll
       read bond
   save out
     make list
+  # `take item` was MISSING until 2026-09-13, and the loop never ran. `walk read bond-in/seat` with the body
+  # directly under it read `read` as the walk's MODE, which is not one of the three, and an unrecognized mode
+  # lowered to `while (false) {}` with an empty body: this task returned an empty list however many seats the
+  # binding had, and nothing said so. The body already names the item `item`, so that is what it binds.
   walk read bond-in/seat
+    take item
     call push
       bind list, read out
       bind item

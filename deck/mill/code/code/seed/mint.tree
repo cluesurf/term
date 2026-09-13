@@ -48,6 +48,8 @@ mint seed
     site term
   case meet, mint seed-meet
     site meet
+  case wait, mint seed-wait
+    site wait
   case open, mint seed-call-open
     site open
   case word
@@ -94,6 +96,17 @@ mint seed-text
   hook make
     make seed-text
       bind value, read value
+
+# `wait <call>` as a prefix: the awaited call, by whichever call spelling it was written in. lean-0031
+mint seed-wait
+  case call
+    site call
+  case open, mint seed-call-open
+    site open
+  hook make
+    make seed-wait
+      bind call, read call
+      bind open, read open
 
 mint seed-call-open
   case seed
