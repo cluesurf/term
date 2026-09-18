@@ -326,6 +326,13 @@ export type Statement =
       // is empty and is neither checked nor emitted; dependents type-check against stubs instead of dependency
       // bodies, so a body-only edit in a dependency never re-checks its dependents. See code/compile/stub.ts.
       stub?: boolean
+      // a `rule` written as a SIGNATURE (`head` / `take` / `like`, no `show` goal): a CLAIM. It declares a name at
+      // a type and owes a proof, which is a `task` of the same name. Until that task exists the name is declared
+      // and not defined: `open-claim` refuses the book, and `open-claim-used` refuses code that calls it. `open`
+      // is `note open` on the rule, which keeps the claim deliberately open (counted and reported, not fatal).
+      // See note/term/project/law-proof-gate.md.
+      claim?: boolean
+      open?: boolean
       method?: { form: string; name: string }
       // `halt <form>` lines with no children on the signature: the exceptions the task declares it can raise. Absent
       // means inferred. Present means checked: the inferred raise set must be a subset (03-exception.md, bounding).

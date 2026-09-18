@@ -252,11 +252,21 @@ bind put-secret
 # always meant to be. `Atomics.wait` is the sleep because this function
 # has to stay SYNCHRONOUS: it returns text, and every caller reads it
 # as a value rather than awaiting it.
+#
+# A PIPE IS READ TOO. When standard input is not a terminal the value
+# is taken from it, up to the first newline, and `/dev/tty` is never
+# opened. That is what lets a value travel from another machine or
+# another command into the provider without being typed and without
+# ever being an argument: `ssh host 'cat file' | term zone save --name
+# x --commit`. Until 2026-09-16 only the terminal was read, so that
+# command printed "Nothing was typed" and wrote nothing, while the
+# guide said values go on stdin. The rule that a secret is never an
+# argument only works if stdin is actually read.
 bind ask-secret
   take word, like text
   like text
   case node
-    text <(function () \{ var fs = require("node:fs"), tty = require("node:tty"), fd; try \{ fd = fs.openSync("/dev/tty", "r+") \} catch (e) \{ return "" \} var rs, raw = false; try \{ fs.writeSync(fd, $word); rs = new tty.ReadStream(fd); if (rs.isTTY) \{ rs.setRawMode(true); raw = true \} var out = "", one = Buffer.alloc(1), idle = new Int32Array(new SharedArrayBuffer(4)); for (;;) \{ var n; try \{ n = fs.readSync(fd, one, 0, 1, null) \} catch (e) \{ if (e && e.code === "EAGAIN") \{ Atomics.wait(idle, 0, 0, 10); continue \} throw e \} if (n === 0) \{ break \} var c = one.toString("utf8"); if (c === "\\n" || c === "\\r") \{ break \} if (c === "\\u0003") \{ if (raw) \{ rs.setRawMode(false) \} fs.writeSync(fd, "\\n"); process.exit(130) \} if (c === "\\u007f" || c === "\\b") \{ out = out.slice(0, -1); continue \} out += c \} fs.writeSync(fd, "\\n"); return out \} finally \{ try \{ if (raw) \{ rs.setRawMode(false) \} \} catch (e) \{\} try \{ if (rs) \{ rs.destroy() \} \} catch (e) \{\} try \{ fs.closeSync(fd) \} catch (e) \{\} \} \})()>
+    text <(function () \{ var fs = require("node:fs"), tty = require("node:tty"), fd; var idle = new Int32Array(new SharedArrayBuffer(4)); if (!process.stdin.isTTY) \{ var got = "", part = Buffer.alloc(4096); for (;;) \{ var m; try \{ m = fs.readSync(0, part, 0, part.length, null) \} catch (e) \{ if (e && e.code === "EAGAIN") \{ Atomics.wait(idle, 0, 0, 10); continue \} if (e && e.code === "EOF") \{ break \} throw e \} if (m === 0) \{ break \} got += part.toString("utf8", 0, m); var nl = got.indexOf("\\n"); if (nl !== -1) \{ got = got.slice(0, nl); break \} \} return got.replace(/\\r$/, "") \} try \{ fd = fs.openSync("/dev/tty", "r+") \} catch (e) \{ return "" \} var rs, raw = false; try \{ fs.writeSync(fd, $word); rs = new tty.ReadStream(fd); if (rs.isTTY) \{ rs.setRawMode(true); raw = true \} var out = "", one = Buffer.alloc(1); for (;;) \{ var n; try \{ n = fs.readSync(fd, one, 0, 1, null) \} catch (e) \{ if (e && e.code === "EAGAIN") \{ Atomics.wait(idle, 0, 0, 10); continue \} throw e \} if (n === 0) \{ break \} var c = one.toString("utf8"); if (c === "\\n" || c === "\\r") \{ break \} if (c === "\\u0003") \{ if (raw) \{ rs.setRawMode(false) \} fs.writeSync(fd, "\\n"); process.exit(130) \} if (c === "\\u007f" || c === "\\b") \{ out = out.slice(0, -1); continue \} out += c \} fs.writeSync(fd, "\\n"); return out \} finally \{ try \{ if (raw) \{ rs.setRawMode(false) \} \} catch (e) \{\} try \{ if (rs) \{ rs.destroy() \} \} catch (e) \{\} try \{ fs.closeSync(fd) \} catch (e) \{\} \} \})()>
 
 # This machine's name. Detected rather than asked: a person setting up a
 # laptop knows its name and typing it again is a question that answers

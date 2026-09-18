@@ -138,12 +138,17 @@ export const CATALOG = {
     severity: 'warning',
     fix: 'make a recursive call decrease an argument (e.g. a structurally smaller value), or add a base case',
   },
+  // NOT PROVEN IS NOT PROVEN. This was a warning until 2026-09-18, which meant a claim the prover could not
+  // reach compiled green: `a * b == a * a` over two naturals, and `secret a == a` where `secret` adds one, both
+  // passed with nothing but a warning (tmp probe, law-proof-gate-0002). A claim nobody checked and a claim
+  // somebody checked are not the same thing, and a gate that cannot tell them apart is not a gate. The stdlib
+  // emitted zero of these across 534 files, so the change costs nothing and closes the hole.
   'unchecked-hold': {
     code: 0xf,
     message:
       'this hold is outside the decidable linear fragment and was not proven',
-    severity: 'warning',
-    fix: 'rewrite it as a linear comparison (<, <=, >, >=, ==), or prove it in the dependent kernel',
+    severity: 'error',
+    fix: 'rewrite it as a linear comparison (<, <=, >, >=, ==), prove it in the dependent kernel with `calm` / `fold` / `cite`, or mark the claim `note open` to leave it open and counted',
   },
   'duplicate-instance': {
     code: 0x10,
@@ -169,6 +174,22 @@ export const CATALOG = {
     message: 'this proof does not establish the proposition',
     severity: 'error',
     fix: 'check the tactic and its argument; `melt` needs both sides to compute equal, `cite` needs a proven lemma of the same statement',
+  },
+  // A `rule` states a claim. A `task` of the same name fills it. Between the two the name is DECLARED and not
+  // DEFINED, and nothing may use it as though it were proven. An unfilled claim used to compile silently, which
+  // made a rule a comment with a type on it.
+  'open-claim': {
+    code: 0x15,
+    message: 'this claim has no proof',
+    severity: 'error',
+    fix: 'write a `task` of the same name whose body proves it, or mark the rule `note open` to leave it open and counted',
+  },
+  // Using a claim that nobody has proven yet. The claim is a promise, and code that runs cannot be built on one.
+  'open-claim-used': {
+    code: 0x16,
+    message: 'this name is an open claim, not a proven one',
+    severity: 'error',
+    fix: 'prove it with a `task` of the same name, or stop calling it',
   },
 } satisfies Record<string, CatalogEntry>
 

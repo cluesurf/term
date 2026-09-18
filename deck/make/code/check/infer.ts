@@ -651,6 +651,33 @@ export function check(
       }
 
       case 'record': {
+        // THE QUALIFIED SPELLING IS THE SAME CONSTRUCTION. `make light/red` names the variant `red` of the enum
+        // `light`, which is what `make red` names; the prefix exists only to pick a side when two enums share a
+        // constructor name. Read as written, `light/red` is a name nothing declares, so the construction typed as
+        // itself and `send back / make light/red` under `like light` failed with
+        // `expected light, found light/red`. Every use of it in the tree was in the four proof files, which is
+        // why an obviously-wrong spelling survived: nothing else spells it that way. Normalize to the bare name
+        // and let the paths below type it exactly as they type `make red`.
+        // Only where the bare name is UNAMBIGUOUS: one owning enum, and it is the prefix written. A shared
+        // constructor name is the one case where the prefix carries information the bare name does not, and
+        // dropping it there would turn a precise construction into an ambiguous one. That case still fails, and
+        // fixing it means carrying the owner through the paths below rather than rewriting the name.
+        const slash = node.name.lastIndexOf('/')
+
+        if (slash > 0) {
+          const owner = node.name.slice(0, slash)
+          const bare = node.name.slice(slash + 1)
+          const owners = variantOwners.get(bare) ?? []
+
+          if (
+            enums.get(owner)?.has(bare) &&
+            owners.length === 1 &&
+            owners[0] === owner
+          ) {
+            node.name = bare
+          }
+        }
+
         // THE LEAN UNWRAP RUNS FIRST, before the overloaded-variant escape below. A property head builds an
         // array whatever the construction turns out to be, so a variant whose name two enums share (`not` on
         // both `pattern` and `condition`) would otherwise hand the kernel `Array pattern` where one pattern

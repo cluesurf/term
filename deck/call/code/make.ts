@@ -523,7 +523,15 @@ export function compileProject(
   cache: CompileCache = projectCache(root),
   // the platform this build targets; other platforms' native trees are not compiled. Matches the resolver default.
   platform = 'node',
-): { compiled: number; written: number; failed: number; errors: string[] } {
+): {
+  compiled: number
+  written: number
+  failed: number
+  errors: string[]
+  // the claims this project states that nobody has proven: every `rule` carrying `note open`. Reported on the
+  // build line so an open claim is visible rather than silent. See note/term/project/law-proof-gate.md.
+  open: string[]
+} {
   const files = findTreeFiles(root, [], platform)
   const resolve = projectResolver(root)
   const deckOf = projectDeckOf()
@@ -539,6 +547,7 @@ export function compileProject(
   let written = 0
   let failed = 0
 
+  const open = new Set<string>()
   const errors: string[] = []
 
   for (const file of files) {
@@ -613,6 +622,10 @@ export function compileProject(
 
     compiled++
 
+    for (const claim of result.openClaims ?? []) {
+      open.add(claim)
+    }
+
     // a look stylesheet emits CSS, not TypeScript: write it to a sibling `.css` under host/
     const isCss = typeof result.css === 'string'
     const outPath = path.join(
@@ -641,7 +654,7 @@ export function compileProject(
     }
   }
 
-  return { compiled, written, failed, errors }
+  return { compiled, written, failed, errors, open: [...open].sort() }
 }
 
 // Separate compilation for the whole project (`term make --separate`): every module of every entry's closure is
@@ -992,6 +1005,12 @@ export async function callMake(input: {
       }
 
       const { compiled, failed, errors } = result
+      // present only on the merged path, which is the one that sees a whole program; the separate path checks
+      // unit by unit and does not, so it reports nothing rather than reporting a zero it did not measure
+      const openClaims =
+        'open' in result && Array.isArray(result.open)
+          ? (result.open as string[])
+          : undefined
 
       for (const error of errors) {
         console.error('\n' + error)
@@ -1014,6 +1033,17 @@ export async function callMake(input: {
             compiled === 1 ? '' : 's'
           } to host/`,
         )
+
+        // AN OPEN CLAIM IS NOT A PROVEN ONE. A `rule` carrying `note open` compiles, because a book under
+        // construction has to, but the count says so on every build rather than letting it pass in silence.
+        // `term hold` is the gate that refuses while this is non-zero. note/term/project/law-proof-gate.md.
+        if (openClaims && openClaims.length > 0) {
+          logFail(
+            `${openClaims.length} claim${
+              openClaims.length === 1 ? '' : 's'
+            } open: ${openClaims.join(', ')}`,
+          )
+        }
 
         // the roll of the project's own entries, beside the output, for tools that are not Term. Every compile
         // above is cached, so this costs the roll pass and nothing else. See code/compile/roll.ts.

@@ -7,6 +7,6 @@ rule absurd
   take proof, like void
   like a
 
-test absurd
+task absurd
   take proof, like void
   fork case, read proof

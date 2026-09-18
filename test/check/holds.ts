@@ -66,6 +66,32 @@ function expectWarning(
   }
 }
 
+// the same, for a diagnostic that REFUSES the build. `unchecked-hold` moved from warning to error on
+// 2026-09-18: a claim the prover could not reach used to compile, and two plainly false laws did.
+// See note/term/project/law-proof-gate.md.
+function expectError(
+  name: string,
+  source: string,
+  code: string,
+): void {
+  const result = compile({ file: 'h.tree', text: source })
+  const errors = result.ok ? [] : result.diagnostics
+
+  if (!result.ok && errors.some(d => d.name === code)) {
+    pass++
+    console.log(
+      `ok    ${name}  (${errors.find(d => d.name === code)!.message})`,
+    )
+  } else {
+    fail++
+    console.log(
+      `FAIL  ${name}  (ok=${result.ok}, errors=${errors
+        .map(d => d.name)
+        .join(',')})`,
+    )
+  }
+}
+
 function expectDischarged(name: string, source: string): void {
   const result = compile({ file: 'h.tree', text: source })
   const warnings = result.ok ? result.warnings : []
@@ -277,12 +303,13 @@ task check-it
 `,
   )
 
-  // a non-linear hold the prover cannot decide is FLAGGED (a warning), not silently skipped and not a false pass. `n*n
-  // >= 1` is outside the linear fragment, is not non-negative everywhere (it is below 1 near the origin), and has real
-  // roots so the univariate Sturm route declines too -- so it is left as an unchecked hold rather than wrongly proven.
-  // (`n*n >= 0`, a genuine square non-negativity, IS proven now -- see positivity.ts -- so it would not test "flagged".)
-  expectWarning(
-    'non-linear hold is flagged, not silently skipped',
+  // a non-linear hold the prover cannot decide REFUSES THE BUILD, and is not silently skipped and not a false pass.
+  // `n*n >= 1` is outside the linear fragment, is not non-negative everywhere (it is below 1 near the origin), and has
+  // real roots so the univariate Sturm route declines too -- so it is an unchecked hold rather than a wrong proof.
+  // (`n*n >= 0`, a genuine square non-negativity, IS proven now -- see positivity.ts -- so it would not test this.)
+  // It was a WARNING until 2026-09-18, which meant a claim nobody checked compiled exactly like one somebody did.
+  expectError(
+    'non-linear hold the prover cannot reach refuses the build',
     `task nonlinear
   take n
   hold

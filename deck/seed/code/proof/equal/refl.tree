@@ -7,7 +7,7 @@ rule refl
   take x, like a
   like equal a x x
 
-test refl
+task refl
   take x, like a
   send back
     make equal/refl

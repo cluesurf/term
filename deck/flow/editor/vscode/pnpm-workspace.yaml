@@ -2,10 +2,23 @@ allowBuilds:
   '@vscode/vsce-sign': true
   esbuild: true
   keytar: true
+# Advisory floors. Each is the lowest release that carries the fix for
+# the advisory named beside it, so raising one is safe and lowering one
+# is not. `tsx task/audit-safe.ts --root <this dir>` from the repo root
+# is what checks them against the lockfile.
 overrides:
   esbuild: ^0.28.1
-  js-yaml: ^4.3.0
-  fast-uri: ^3.1.4
+  # GHSA-2883-xcg3-v3hh. Raised from ^4.3.0, which still admitted the
+  # vulnerable 4.3.1 the lockfile was holding.
+  js-yaml: ^4.3.2
+  # GHSA-5jgf-p345-68v8 and three siblings, SSRF and host confusion.
+  # ^3.1.4 admitted the vulnerable 3.1.5 the lockfile was holding. The
+  # 3.x fix is 3.1.6.
+  fast-uri: ^3.1.6
+  # GHSA-4mjr-xmp4-gh2g and GHSA-x5fp-wj9c-mxmx, a denial of service
+  # through isBuffer and an array-limit bypass. Pulled in by @vscode/vsce.
+  # Both are fixed in 6.16.0.
+  qs: ^6.16.0
   linkify-it: ^5.0.2
   undici: ^7.29.0
   brace-expansion@1: ^1.1.18

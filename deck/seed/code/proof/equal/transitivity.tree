@@ -13,7 +13,7 @@ rule transitivity
     like equal a y z
   like equal a x z
 
-test transitivity
+task transitivity
   take x, like a
   take y, like a
   take z, like a

@@ -2,17 +2,32 @@ allowBuilds:
   esbuild: true
 onlyBuiltDependencies:
   - esbuild
+# Advisory floors. Each is the lowest release that carries the fix for
+# the advisory named beside it, so raising one is safe and lowering one
+# is not. `tsx task/audit-safe.ts --root <this dir>` from the repo root
+# is what checks them against the lockfile.
 overrides:
   vite: ^7.3.5
-  vitest: ^4.1.0
+  # GHSA-82fw-gwwq-j7x9, path traversal and arbitrary file read through
+  # the mocker's redirect mock. vitest pulls its own matching mocker so
+  # both are pinned. The 4.x fix is 4.1.11.
+  vitest: ^4.1.11
+  '@vitest/mocker': ^4.1.11
   esbuild: ^0.28.1
-  postcss: ^8.5.10
+  # GHSA-fxqj-rqcc-2cmp, the incomplete fix for sourceMappingURL file
+  # reads. ^8.5.10 admitted the 8.5.19 the lockfile was holding.
+  postcss: ^8.5.23
   picomatch@2: ^2.3.2
   picomatch@4: ^4.0.4
   shell-quote: ^1.8.4
   braces: ^3.0.3
   flatted: ^3.4.2
-  js-yaml: ^4.2.0
+  # GHSA-2883-xcg3-v3hh. The 4.x fix is 4.3.2.
+  js-yaml: ^4.3.2
+  # GHSA-2v37-7h3g-55p8, a custom generator loops forever on size zero.
+  # Scoped to the 3.x line: 4.x and later are ESM-only and the consumer
+  # here reaches nanoid through a CommonJS path. The 3.x fix is 3.3.18.
+  'nanoid@3': ^3.3.18
   minimatch@3: ^3.1.3
   lodash: ^4.18.0
   ws: ^8.21.0

@@ -32,6 +32,7 @@ export const CACHE_SCOPE: Record<string, string[]> = {
     'deck/make/code/check/async-resolve.ts',
     'deck/make/code/check/cad-nvar.ts',
     'deck/make/code/check/cad.ts',
+    'deck/make/code/check/claim.ts',
     'deck/make/code/check/effects.ts',
     'deck/make/code/check/elaborate.ts',
     'deck/make/code/check/expect.ts',

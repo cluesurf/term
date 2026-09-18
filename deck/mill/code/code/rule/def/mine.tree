@@ -19,8 +19,11 @@ load @term/mill/code/code/call/mine
 load @term/mill/code/code/seed/mine
   find seed
 
+load @term/mill/code/code/note/mine
+  find note
+
 # A `rule` is a named THEOREM or AXIOM, and it desugars to a function whose parameters are its universal
-# binders and whose body holds its goal. See note/library/seed/proof-checking/08-structured-rule-dsl.md.
+# binders and whose body holds its goal. See note/term/law-and-proof.md.
 #
 #   rule reorder            the name, a word or a readable phrase in a text
 #     mark a, like integer  a universal binder, which becomes a parameter
@@ -29,6 +32,10 @@ load @term/mill/code/code/seed/mine
 #     show hold <claim>     the goal; `show miss` proves it false
 #     base true             an AXIOM: postulated rather than proved
 #     melt both             a proof step, the same vocabulary `hold` takes
+#
+# A rule with NO `show` is the other shape: a CLAIM, a name declared at a type and owing a proof, which a
+# `task` of the same name fills. `head` / `take` / `like` are its generics, parameters and result there,
+# and `note open` leaves it deliberately open. See note/term/project/law-proof-gate.md.
 mine rule-def
   mine term, term rule
     mine any
@@ -38,6 +45,10 @@ mine rule-def
         site name
     mine list
       mine any
+        # `note open` on a SIGNATURE-shaped rule leaves the claim deliberately open: counted and reported
+        # by check/claim.ts rather than refused. Without this site it fell to the seed fallback unseen.
+        mine form, like note
+          site note
         mine form, like head
           site head
         mine form, like rule-mark

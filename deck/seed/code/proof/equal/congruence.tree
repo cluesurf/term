@@ -19,7 +19,7 @@ rule congruence
     call f
       bind value, read y
 
-test congruence
+task congruence
   take f
     like task
       take value, like a

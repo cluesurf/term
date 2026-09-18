@@ -29,6 +29,7 @@ import { elaborateReport } from '@term/make/code/check/elaborate'
 import { checkHolds } from '@term/make/code/check/holds'
 import { checkTraits } from '@term/make/code/check/traits'
 import { checkEffects } from '@term/make/code/check/effects'
+import { checkClaims, fillClaims } from '@term/make/code/check/claim'
 import { checkTotality } from '@term/make/code/check/totality'
 import { findUnused } from '@term/make/code/check/unused'
 import { pruneToReachable } from '@term/make/code/ir/prune'
@@ -96,6 +97,10 @@ export type CompileResult =
       // present only in per-module mode (`options.modules`): one emitted ESM module per source file (file -> emit)
       modules?: Map<string, ModuleEmit>
       warnings: Diagnostic[]
+      // the claims this book states that nobody has proven yet, in declaration order. Each one carried `note open`,
+      // because an unfilled claim without it is an error and never reaches here. The build line reports the count
+      // and a gate refuses on it: a book with an open claim compiles, but it is not proven. See check/claim.ts.
+      openClaims?: string[]
       // present when `options.roll` was set: the roll of this entry's closure (compile/roll.ts)
       roll?: Roll
     }
@@ -485,6 +490,10 @@ export function compileProgram(
     program = pruneToReachable(program, pruneRoots)
   }
 
+  // a claim's fill inherits the claim's signature, so a proof states the name and its parameters and the type is
+  // written once, on the rule. Runs BEFORE the checker so the fill's body is checked against the claim. claim.ts.
+  fillClaims(program)
+
   // formal type checking: the surface pass (gradual bidirectional inference) annotates the AST with types
   const checkDiagnostics = check(program, file, merged)
   // the checker's warnings (an unknown type name) ride with the build's other warnings; only its errors stop it
@@ -529,9 +538,19 @@ export function compileProgram(
     return { ok: false, diagnostics: effectDiagnostics }
   }
 
-  // refinement layer 2: discharge `hold` verification conditions. The linear prover handles the linear fragment;
-  // holds the kernel already proved by definitional equality are dropped. Unprovable holds are errors; holds
-  // outside the decidable fragment (and not kernel-discharged) are warnings (flagged, not silently skipped).
+  // the claim wall: a `rule` states a claim and a `task` of the same name proves it. An unfilled claim is refused,
+  // and code that runs may not call one. `note open` leaves a claim deliberately open, counted here so the build
+  // line and the gate can report it rather than pass it in silence. See check/claim.ts.
+  const claims = checkClaims(program, file)
+
+  if (claims.diagnostics.length) {
+    return { ok: false, diagnostics: claims.diagnostics }
+  }
+
+  // refinement layer 2: discharge `hold` verification conditions. The linear prover handles the linear fragment, and
+  // holds the kernel already proved by definitional equality are dropped. BOTH remaining outcomes are errors since
+  // 2026-09-18: a hold the prover refutes, and a hold it could not reach. Not proven is not proven, and a claim
+  // nobody checked must not compile as though somebody had. See note/term/project/law-proof-gate.md.
   const holdDiagnostics = checkHolds(program, file).filter(
     d =>
       !d.markers.some(m =>
@@ -626,6 +645,7 @@ export function compileProgram(
       typescript: '',
       modules: emitModules(tsProgram, modulesUrl),
       warnings,
+      ...(claims.open.length ? { openClaims: claims.open } : {}),
       ...(roll ? { roll } : {}),
     }
   }
@@ -641,6 +661,7 @@ export function compileProgram(
       program,
       typescript: emitTypeScript(lowerZones(program)),
       warnings,
+      ...(claims.open.length ? { openClaims: claims.open } : {}),
       ...(roll ? { roll } : {}),
     }
   }
@@ -667,6 +688,7 @@ export function compileProgram(
     program: loweredProgram,
     typescript: emitTypeScript(loweredTs, { env, wake }),
     warnings,
+    ...(claims.open.length ? { openClaims: claims.open } : {}),
     ...(roll ? { roll } : {}),
   }
 }

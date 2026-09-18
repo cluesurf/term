@@ -85,6 +85,28 @@ const vault = (() => {
   }
 
   /**
+   * EVERY secret under one key, not the first.
+   *
+   * A KEY IS NOT UNIQUE AT THIS PROVIDER. Nothing stops two secrets sharing
+   * one `key`, and once that happens the writer and the reader disagree in
+   * the worst possible way: `named` above takes the FIRST match, while the
+   * read path walks its candidates and keeps the LAST one it sees, so a save
+   * reports success, writes a real value, and the zone goes on serving the
+   * other copy for ever.
+   *
+   * MEASURED, NOT IMAGINED. `github-token` was saved twice under two zones,
+   * each save printing `grew`, and `term zone read --fresh` afterwards
+   * returned a cache byte-identical to the one before it while the token it
+   * served stayed expired. `term zone test` reported "Everything checks out"
+   * throughout, because every name opened; it just opened the wrong value.
+   */
+  const allNamed = async (client: any, org: string, name: string) => {
+    const all = await client.secrets().list(org)
+
+    return all.data.filter((one: any) => one.key === name)
+  }
+
+  /**
    * What is worth trying again, and what is an answer.
    *
    * THE RATE LIMIT ARRIVES AS `503 Service Unavailable`, NOT `429`.
@@ -282,12 +304,38 @@ const vault = (() => {
         process.exit(1)
       }
 
-      const already = await named(client, org, name)
+      // EVERY COPY IS UPDATED, NOT THE FIRST.
+      //
+      // Updating one of several leaves the others holding the old value, and
+      // the read path keeps the LAST candidate it walks rather than the one
+      // just written, so the save silently does nothing observable. Writing
+      // all of them converges the key on one value whatever the reader picks,
+      // which is the only outcome that makes `save` mean what it says.
+      //
+      // It is also the only repair available from here: nothing in the CLI
+      // deletes a secret, so a duplicate cannot be removed, and leaving one
+      // stale copy behind is what caused a rotated credential to go on
+      // failing through two correct-looking saves.
+      const already = await allNamed(client, org, name)
 
-      if (already) {
-        await client
-          .secrets()
-          .update(org, already.id, name, value, note, [project])
+      if (already.length) {
+        // SAID OUT LOUD, because a silent convergence hides the defect that
+        // made it necessary. Somebody reading this knows why a credential
+        // appeared not to rotate, and that one name is stored twice.
+        if (already.length > 1) {
+          process.stderr.write(
+            `${name} is stored ${already.length} times at the provider.\n` +
+              'All of them were just written, so every reader now agrees.\n\n' +
+              'A key is not unique here, and the two sides disagree about\n' +
+              'which copy wins: a write took the first and a read takes the\n' +
+              'last. That is why a saved value could appear not to take\n' +
+              'effect. Remove the spare copies when convenient.\n',
+          )
+        }
+
+        for (const one of already) {
+          await client.secrets().update(org, one.id, name, value, note, [project])
+        }
 
         return 'grew'
       }

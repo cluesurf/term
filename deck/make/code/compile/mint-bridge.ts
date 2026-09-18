@@ -3095,12 +3095,58 @@ function viewOf(bridge: Bridge, value: Form): Statement[] {
 // A `rule` is a named THEOREM or AXIOM, and it desugars to a FUNCTION: its universal `mark` binders become the
 // parameters, so the goal is checked as a law over them by the same prover stack a `hold` uses. A theorem's body
 // is the goal held under its hypotheses; an axiom's is the hypotheses and the claim bound as values, postulated
-// rather than proved. See note/library/seed/proof-checking/08-structured-rule-dsl.md.
+// rather than proved. See note/term/law-and-proof.md.
+//
+// TWO SHAPES, told apart by one thing: whether the rule states a `show` goal.
+//
+//   GOAL shape       `rule r / mark a / show <claim>`            a theorem over its binders. `take` is a
+//                    HYPOTHESIS, and the goal becomes a `hold` the prover must discharge.
+//   SIGNATURE shape  `rule r / head a / take x, like a / like a` a CLAIM: a name declared at a type, owing a
+//                    proof. `take` is a PARAMETER and `like` is the result. All six rules in the tree are
+//                    written this way, and the grammar already captures `head`, `take` and `like` for it.
+//
+// A claim is emitted as a signature-only function marked `claim`, so the name type-checks wherever it is
+// mentioned while owing a body. `check/claim.ts` then requires a `task` of the same name to fill it and refuses
+// live code that calls one nobody filled. `note open` keeps a claim deliberately open: counted and reported
+// rather than fatal, which is what `?TODO` is for in Bend.
+//
+// Until 2026-09-18 a signature-shaped rule fell through to the theorem path, found no goal, and emitted a
+// function whose body was `return <first param>`. It owed nothing, so a `rule` was a comment with a type on it
+// and its paired `test` was connected to it by nothing but a shared spelling. See
+// note/term/project/law-proof-gate.md.
 function ruleOf(bridge: Bridge, value: Form): Statement[] {
   const span = spanOf(value)
   const named = firstAt(value, 'name')
   const name =
     (named?.kind === 'text' ? slugOf(named.value) : textOf(named)) ?? 'rule'
+
+  if (formsAt(value, 'show').length === 0) {
+    const claimed: Statement = {
+      form: 'function',
+      name,
+      params: formsAt(value, 'take').map(take =>
+        paramOf(bridge, take, bridge.owner),
+      ),
+      body: [],
+      generics: formsAt(value, 'head').map(head => ({
+        name: wordAt(head, 'name') ?? '',
+      })),
+      claim: true,
+      // a claim declares and does not define: nothing elaborates or emits its empty body, the same way nothing
+      // does for a separate-compilation stub
+      stub: true,
+      ...(marked(value, 'open') ? { open: true } : {}),
+      span,
+    }
+
+    const claimResult = typeOf(bridge, firstAt(value, 'like'))
+
+    if (claimResult) {
+      claimed.result = claimResult
+    }
+
+    return [claimed]
+  }
 
   // `mark x, like natural-number` carries the n >= 0 bound the prover needs, and the refinement is read from
   // the type's NAME: `typeOf` maps it to the plain number type and the name is gone by then.

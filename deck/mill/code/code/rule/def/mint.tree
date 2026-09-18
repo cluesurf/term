@@ -19,9 +19,15 @@ load @term/mill/code/code/seed/mint
 load @term/mill/code/code/take/mint
   find take
 
+load @term/mill/code/code/note/mint
+  find note
+
 mint rule-def
   case name
     site name
+  # `note open` leaves a signature-shaped rule's claim deliberately open. See check/claim.ts.
+  case note
+    site note
   case head
     site head
   case take
@@ -49,6 +55,7 @@ mint rule-def
   hook make
     make rule-def
       bind name, read name
+      bind note, read note
       bind head, read head
       bind take, read take
       bind like, read like

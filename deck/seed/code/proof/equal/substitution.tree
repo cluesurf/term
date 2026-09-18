@@ -17,7 +17,7 @@ rule substitution
   like call p
     bind value, read y
 
-test substitution
+task substitution
   take p
     like task
       take value, like a
