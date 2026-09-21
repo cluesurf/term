@@ -218,24 +218,59 @@ task gear-up
           read code-got
 
 # The zone that DECLARES a name, which is where its value lives.
+# EVERY ZONE, NOT THE ROOT ALONE. This used to ask `pull-need` for the
+# root's own path, which is the root's needs and nothing nested, so a
+# name declared under `land`, `land/tf` or any `mesh/…` zone was refused
+# as "Nothing declares" while sitting in the tree, and `--spot` changed
+# nothing because `put-one` never read it. `work-volume-size` under
+# `cluesurf/land/tf` was the one that surfaced it (2026-09-21): the
+# volume grew at the provider and the value that tofu reads could not
+# be written. Innermost first, so a zone that redeclares a name is the
+# one whose value is written.
 task home-of
   take root, like spot
   take name, like text
   like text
+  send back
+    call home-in
+      bind at, read root
+      bind name, read name
+
+task home-in
+  take at, like spot
+  take name, like text
+  like text
   save out, text <>
-  walk list
-    call pull-need
-      bind root, read root
-      bind path, read root/path
+  walk list, read at/zone
     hook next
-      take site, name one
+      take site, name child
       fork test
         hook test
-          call equal
-            read one/name
-            read name
+          call not-equal
+            read out
+            text <>
         hook hold
-          save out, read root/path
+          turn next
+      save out
+        call home-in
+          bind at, read child
+          bind name, read name
+  fork test
+    hook test
+      call equal
+        read out
+        text <>
+    hook hold
+      walk list, read at/need
+        hook next
+          take site, name one
+          fork test
+            hook test
+              call equal
+                read one/name
+                read name
+            hook hold
+              save out, read at/path
   send back
     read out
 
