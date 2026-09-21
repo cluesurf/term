@@ -99,6 +99,22 @@ const mill = (() => {
 
       return got.forms.map(toLeaf)
     },
+
+    // A stored secret's NOTE. A person's field first: it arrives from the
+    // web vault with \`\\r\\n\` line endings, and it may be prose. So the
+    // endings are normalised before the parse, and a note the parser
+    // refuses yields NO leaves rather than an exit. \`read\` above is the
+    // declaration, where a parse error is a bug in a file we own and
+    // must stop the run. A note is not ours, and one unparseable note
+    // must not take every \`term zone read\` down, which it did once.
+    note: (text: string): any[] => {
+      const got = (__read as any).readTree({
+        file: 'note.tree',
+        text: String(text ?? '').replace(/\\r\\n?/g, '\\n'),
+      })
+
+      return got.ok ? got.forms.map(toLeaf) : []
+    },
   }
 })()
 `,

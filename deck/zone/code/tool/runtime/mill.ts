@@ -111,6 +111,14 @@ var __read = (() => {
       severity: "error",
       fix: "implement every method the trait declares"
     },
+    // a `like <name>` naming no form, enum, primitive, generic, mask, alias or opaque native type: it used to compile
+    // clean and emit a type the target language has never heard of
+    "unknown-type": {
+      code: 20,
+      message: "this type name is not defined",
+      severity: "warning",
+      fix: "declare the form, import it, or check the spelling"
+    },
     "unused-binding": {
       code: 10,
       message: "this binding is never used",
@@ -141,11 +149,16 @@ var __read = (() => {
       severity: "warning",
       fix: "make a recursive call decrease an argument (e.g. a structurally smaller value), or add a base case"
     },
+    // NOT PROVEN IS NOT PROVEN. This was a warning until 2026-09-18, which meant a claim the prover could not
+    // reach compiled green: `a * b == a * a` over two naturals, and `secret a == a` where `secret` adds one, both
+    // passed with nothing but a warning (tmp probe, law-proof-gate-0002). A claim nobody checked and a claim
+    // somebody checked are not the same thing, and a gate that cannot tell them apart is not a gate. The stdlib
+    // emitted zero of these across 534 files, so the change costs nothing and closes the hole.
     "unchecked-hold": {
       code: 15,
       message: "this hold is outside the decidable linear fragment and was not proven",
-      severity: "warning",
-      fix: "rewrite it as a linear comparison (<, <=, >, >=, ==), or prove it in the dependent kernel"
+      severity: "error",
+      fix: "rewrite it as a linear comparison (<, <=, >, >=, ==), prove it in the dependent kernel with `calm` / `fold` / `cite`, or mark the claim `note open` to leave it open and counted"
     },
     "duplicate-instance": {
       code: 16,
@@ -170,6 +183,22 @@ var __read = (() => {
       message: "this proof does not establish the proposition",
       severity: "error",
       fix: "check the tactic and its argument; `melt` needs both sides to compute equal, `cite` needs a proven lemma of the same statement"
+    },
+    // A `rule` states a claim. A `task` of the same name fills it. Between the two the name is DECLARED and not
+    // DEFINED, and nothing may use it as though it were proven. An unfilled claim used to compile silently, which
+    // made a rule a comment with a type on it.
+    "open-claim": {
+      code: 21,
+      message: "this claim has no proof",
+      severity: "error",
+      fix: "write a `task` of the same name whose body proves it, or mark the rule `note open` to leave it open and counted"
+    },
+    // Using a claim that nobody has proven yet. The claim is a promise, and code that runs cannot be built on one.
+    "open-claim-used": {
+      code: 22,
+      message: "this name is an open claim, not a proven one",
+      severity: "error",
+      fix: "prove it with a `task` of the same name, or stop calling it"
     }
   };
   function diagnose(name, input) {
@@ -244,7 +273,13 @@ var __read = (() => {
     // a `{` opens an interpolation ONLY when an identifier follows (`{name}`); otherwise it is a literal brace. This lets
     // a text string carry JSON (`<{"a":1}>`) or a regex quantifier (`<[0-9]{3}>`) without escaping, while `{name}`
     // template / string interpolation still works.
-    ["open-brace" /* OpenBrace */]: /\{+(?=[a-zA-Z_])/y,
+    // A DOUBLE brace may be followed by whitespace, including a newline, before its content: `{{ foo }}` and a
+    // `{{` that opens at the end of a line are interpolations holding a tree, which is what
+    // test/parser/file/text-multiline.tree and sink.tree are written in. A SINGLE `{` still has to be followed
+    // immediately by a letter, because that is what keeps an embedded JS or Rust block literal — `text <... { if
+    // (sc === 0) ... }>` in decimal.tree would otherwise open an interpolation. Only the braces are captured, so
+    // the interpolation's depth is still the length of the match.
+    ["open-brace" /* OpenBrace */]: /\{+(?=\s*(?:[a-zA-Z_]|$))/y,
     ["open-paren" /* OpenParen */]: /\(/y,
     ["open-angle" /* OpenAngle */]: /</y,
     ["space" /* Space */]: / +/y,
@@ -268,7 +303,13 @@ var __read = (() => {
     // a backslash that does not introduce a known escape is a LITERAL backslash, so a Windows path (`text <\Temp>`) or
     // any other stray `\` can be written without doubling it. Without this the chunk matcher stops dead at the `\` and
     // no matcher can consume it, which surfaces as a structure error rather than anything about the backslash.
-    ["chunk" /* Chunk */]: /(?:\\[<>{}nrt\\]|\\(?![<>{}nrt\\])|\{+(?![a-zA-Z_])|[^>{\\])+/y
+    // a run of braces followed by a letter opens an interpolation whole (`{x}` is depth one, `{{x}}` depth two, the
+    // runtime interpolation), so the chunk matcher stops before a brace run that a letter follows
+    ["chunk" /* Chunk */]: (
+      // `e` alongside `nrt`: `\e` is the escape character (0x1B), which is what every ANSI colour sequence opens
+      // with and the one thing a Term program needed to write terminal output without an npm package.
+      /(?:\\[<>{}nrte\\]|\\(?![<>{}nrte\\])|\{+(?!\s*(?:[a-zA-Z_{]|$))|[^>{\\])+/y
+    )
   };
   function tokenize(source) {
     const tokens = {
@@ -385,25 +426,17 @@ var __read = (() => {
               textDepthStack.pop();
               textOpenStack.pop();
               break;
-            // A COMMA CANNOT APPEAR IN AN INTERPOLATION. `{name}` substitutes ONE name, so
-            // `{code,view}` is not a template: it is data whose braces were not escaped,
-            // and it used to lex as an interpolation and silently drop its closing brace.
-            // Escape them (`\{code,view\}`) to mean the literal characters.
-            case "comma" /* Comma */:
-              if (mode === "interpolation" /* Interpolation */) {
-                found.push(
-                  diagnose("syntax-error", {
-                    file: source.file,
-                    span: {
-                      start: { line, column },
-                      end: { line, column: column + 1 }
-                    },
-                    message: "a comma cannot appear inside `{...}`, which substitutes a single name",
-                    hint: "to mean literal braces, escape them: `\\{a,b\\}`"
-                  })
-                );
-              }
-              break;
+            // A comma is ORDINARY inside an interpolation. `{...}` and `{{...}}` hold a whole tree, not one name:
+            // `{foo bar, baz}` and `{foo(bar,baz(bing boom))}` are both trees, read by the same rules as anywhere
+            // else (a space nests, a comma pops one level). Space nesting already worked; the comma was refused,
+            // which is what made `values.tree`'s `b{x y 123, 123}/c` and `index.tree`'s
+            // `{another(a/b/c, 1, foo bar baz)}` unparseable even though both are fixtures of the grammar.
+            //
+            // The case that refusal was protecting against is a glob whose braces were never escaped
+            // (`@/book/**/{code,view}/**`). That is still handled, one level up: an interpolation only OPENS on a
+            // `{` followed by a name, so `{"a":1}` and `{ ... }` stay literal text, and a real `{code,view}` in a
+            // path is written `\{code,view\}` as it always was. Checked across the tree: the only unescaped
+            // `{name,` left is inside a `#` comment.
             case "chunk" /* Chunk */:
               if (mode === "text" /* Text */ && textDepthStack.length > 0) {
                 textDepthStack[textDepthStack.length - 1] += (text.match(/(?<!\\)</g) ?? []).length;
@@ -415,6 +448,25 @@ var __read = (() => {
           break;
         }
         if (!matched) {
+          const bracedIndex = /\{(\d+)\}/y;
+          bracedIndex.lastIndex = pos;
+          const literalIndex = bracedIndex.exec(lineText);
+          if (literalIndex) {
+            found.push(
+              diagnose("syntax-error", {
+                file: source.file,
+                span: {
+                  start: { line, column },
+                  end: { line, column: column + literalIndex[0].length }
+                },
+                message: `a literal index is a plain segment: write /${literalIndex[1]}, not /{${literalIndex[1]}}`,
+                hint: "braces evaluate a name, `read x/{key}`; a number is a segment of its own"
+              })
+            );
+            pos += literalIndex[0].length;
+            column += literalIndex[0].length;
+            continue;
+          }
           found.push(
             diagnose("syntax-error", {
               file: source.file,
@@ -461,6 +513,7 @@ var __read = (() => {
   }
 
   // ../make/code/parser/event.ts
+  var commaPopsOneLevel = true;
   function buildEvents(tokens) {
     const events = [];
     const contexts = [{ kind: "root" /* Root */ }];
@@ -507,6 +560,7 @@ var __read = (() => {
               pop();
               events.push({ kind: "close-name" /* CloseName */ });
             }
+            push({ kind: "paren" /* Paren */, token });
             break;
           case "close-paren" /* CloseParen */:
             closeParen();
@@ -656,8 +710,9 @@ var __read = (() => {
     }
     function chunk(token2) {
       const frame = indent();
+      const startsLine = !token2.previous || token2.previous.span.end.line < token2.span.start.line;
       if (frame.ownLine) {
-        token2.text = token2.text.slice(frame.depth * 2).trimEnd();
+        token2.text = startsLine ? token2.text.slice(frame.depth * 2).trimEnd() : token2.text.trim();
       }
       const last = events[events.length - 1];
       if (last?.kind === "chunk" /* Chunk */ && frame.ownLine) {
@@ -683,8 +738,24 @@ var __read = (() => {
       if (top()?.kind === "name" /* Name */) {
         pop();
         events.push({ kind: "close-name" /* CloseName */ });
+      }
+      const closeOne = () => {
+        if (top()?.kind !== "group" /* Group */) {
+          return false;
+        }
+        const below = contexts[contexts.length - 2];
+        if (!below || below.kind === "indent" /* Indent */ || below.kind === "root" /* Root */) {
+          return false;
+        }
         pop();
         events.push({ kind: "close-group" /* CloseGroup */ });
+        return true;
+      };
+      if (commaPopsOneLevel) {
+        closeOne();
+        return;
+      }
+      while (closeOne()) {
       }
     }
     function name(token2) {
@@ -717,7 +788,7 @@ var __read = (() => {
     }
     function openName(token2) {
       const previousKind = token2.previous?.kind;
-      if (previousKind === void 0 || previousKind === "newline" /* Newline */ || previousKind === "comma" /* Comma */ || previousKind === "open-brace" /* OpenBrace */ || previousKind === "space" /* Space */) {
+      if (previousKind === void 0 || previousKind === "newline" /* Newline */ || previousKind === "comma" /* Comma */ || previousKind === "open-brace" /* OpenBrace */ || previousKind === "open-paren" /* OpenParen */ || previousKind === "space" /* Space */) {
         events.push({ kind: "open-group" /* OpenGroup */ });
         push({ kind: "group" /* Group */ });
         startContent();
@@ -742,6 +813,7 @@ var __read = (() => {
       pushIndent(1);
     }
     function closeParen() {
+      const owned = contexts.some((frame) => frame.kind === "paren" /* Paren */);
       walk: while (true) {
         switch (top()?.kind) {
           case "indent" /* Indent */:
@@ -756,9 +828,16 @@ var __read = (() => {
             events.push({ kind: "close-name" /* CloseName */ });
             pop();
             break;
+          case "paren" /* Paren */:
+            pop();
+            break walk;
           default:
             break walk;
         }
+      }
+      if (owned && top()?.kind === "group" /* Group */) {
+        events.push({ kind: "close-group" /* CloseGroup */ });
+        pop();
       }
     }
     function closeInterpolation() {
@@ -805,6 +884,18 @@ var __read = (() => {
             events.push({ kind: "close-name" /* CloseName */ });
             pop();
             break;
+          case "paren" /* Paren */: {
+            const frame = top();
+            pop();
+            if (frame.token) {
+              fail(
+                "syntax-error",
+                frame.token,
+                "a parenthesis must be closed on the line it opens"
+              );
+            }
+            break;
+          }
           case "root" /* Root */:
             break walk;
           default:
@@ -825,7 +916,8 @@ var __read = (() => {
   function buildTree(events, file, diagnostics) {
     const root = { kind: "root", nodes: [] };
     const stack = [{ line: [root], levels: [root], level: 0 }];
-    const top = () => stack[stack.length - 1];
+    const VOID_FRAME = { line: [], levels: [], level: 0 };
+    const top = () => stack[stack.length - 1] ?? VOID_FRAME;
     const VOID_NODE = { kind: "void" };
     const base = () => top().line[top().line.length - 1] ?? VOID_NODE;
     const lift = (frame, node) => {
@@ -878,9 +970,15 @@ var __read = (() => {
         }
         case "close-group" /* CloseGroup */:
         case "close-name" /* CloseName */:
-        case "close-text" /* CloseText */:
-          top().line.pop();
+        case "close-text" /* CloseText */: {
+          const frame = stack[stack.length - 1];
+          if (!frame) {
+            unexpected(event);
+            break;
+          }
+          frame.line.pop();
           break;
+        }
         case "open-name" /* OpenName */: {
           const here = base();
           if (here.kind === "group") {
@@ -897,6 +995,10 @@ var __read = (() => {
           const here = base();
           if (here.kind === "group") {
             const text = { kind: "text", parts: [] };
+            if (pendingComments.length > 0) {
+              text.comments = pendingComments;
+              pendingComments = [];
+            }
             here.nodes.push(text);
             setParent(text, here);
             top().line.push(text);
@@ -963,6 +1065,10 @@ var __read = (() => {
               value: event.value,
               token: event.token
             };
+            if (pendingComments.length > 0) {
+              node.comments = pendingComments;
+              pendingComments = [];
+            }
             here.nodes.push(node);
             setParent(node, here);
           } else if (here.kind === "root") {
@@ -986,8 +1092,20 @@ var __read = (() => {
               value: event.value,
               token: event.token
             };
+            if (pendingComments.length > 0) {
+              node.comments = pendingComments;
+              pendingComments = [];
+            }
             here.nodes.push(node);
             setParent(node, here);
+          } else if (here.kind === "root") {
+            diagnostics.push(
+              diagnose("invalid-nesting", {
+                file,
+                span: event.token.span,
+                hint: "a bare number is a value, not a name, so it cannot be the head of a line"
+              })
+            );
           } else {
             unexpected(event);
           }
@@ -1002,8 +1120,20 @@ var __read = (() => {
               radix: event.radix,
               token: event.token
             };
+            if (pendingComments.length > 0) {
+              node.comments = pendingComments;
+              pendingComments = [];
+            }
             here.nodes.push(node);
             setParent(node, here);
+          } else if (here.kind === "root") {
+            diagnostics.push(
+              diagnose("invalid-nesting", {
+                file,
+                span: event.token.span,
+                hint: "a bare number is a value, not a name, so it cannot be the head of a line"
+              })
+            );
           } else {
             unexpected(event);
           }
@@ -1263,6 +1393,22 @@ const mill = (() => {
       }
 
       return got.forms.map(toLeaf)
+    },
+
+    // A stored secret's NOTE. A person's field first: it arrives from the
+    // web vault with `\r\n` line endings, and it may be prose. So the
+    // endings are normalised before the parse, and a note the parser
+    // refuses yields NO leaves rather than an exit. `read` above is the
+    // declaration, where a parse error is a bug in a file we own and
+    // must stop the run. A note is not ours, and one unparseable note
+    // must not take every `term zone read` down, which it did once.
+    note: (text: string): any[] => {
+      const got = (__read as any).readTree({
+        file: 'note.tree',
+        text: String(text ?? '').replace(/\r\n?/g, '\n'),
+      })
+
+      return got.ok ? got.forms.map(toLeaf) : []
     },
   }
 })()

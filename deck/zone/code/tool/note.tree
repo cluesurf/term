@@ -50,7 +50,7 @@ load ../base
   find leaf
 
 load ./read
-  find mine-tree
+  find mine-note
 
 load ./base
   find join-text

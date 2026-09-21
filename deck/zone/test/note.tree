@@ -1,0 +1,65 @@
+# Tests for the note reader.
+#
+# A note is a PERSON'S field on a stored secret, and the parser is the
+# compiler's, which is strict. These hold the two ways a note used to take
+# every `term zone read` down: `\r\n` endings from the web vault, and
+# prose. Each yields its zones, or none, and the process goes on.
+#
+# Run with: term test
+
+load @term/seed/code/text
+  find text
+
+load @term/seed/code/list
+  find list
+  find join
+  find size
+
+load ../code/tool/note
+  find note-zones
+
+load ../code/tool/base
+  find equal
+
+# The literal control characters, which a `text <...>` cannot spell.
+bind crlf-note
+  like text
+  case node
+    text <"list zone, \<cluesurf\>, \<mesh\>\\r\\n">
+
+task zones-of
+  take note, like text
+  like text
+  send back
+    call join
+      call note-zones
+        read note
+      text < >
+
+test note-plain-line
+  want hold
+    call equal
+      call zones-of
+        text <list zone, \<cluesurf\>, \<mesh\>>
+      text <cluesurf mesh>
+
+test note-crlf-endings
+  want hold
+    call equal
+      call zones-of
+        call crlf-note
+      text <cluesurf mesh>
+
+test note-prose-yields-none
+  want hold
+    call equal
+      call zones-of
+        text <Rotate this every ninety days. Ask ops \< before you do.>
+      text <>
+
+test note-retired-line
+  want hold
+    call equal
+      call zones-of
+        text <zone: cluesurf, mesh>
+      text <cluesurf mesh>

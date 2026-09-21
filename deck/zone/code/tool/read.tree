@@ -56,3 +56,22 @@ task mine-tree
   send back
     call do-mine-tree
       read body
+
+# The reader for a stored secret's NOTE, which is a person's field and
+# may be prose or carry `\r\n` endings. The shim normalises the endings
+# and answers an empty list where the parse fails, where `mine-tree`
+# stops the run: a declaration we own that does not parse is a bug, a
+# note somebody typed is not.
+bind do-mine-note
+  take body, like text
+  like list
+  case node
+    text <mill.note($body)>
+
+# Parse a note into leaves, or none.
+task mine-note
+  take body, like text
+  like list
+  send back
+    call do-mine-note
+      read body
