@@ -71,8 +71,15 @@ task note-zones
   save out
     make list
 
+  # A NOTE IS A PERSON'S FIELD FIRST, and the parser is strict. A note
+  # typed into the web vault arrives with `\r\n` line endings, and the
+  # compiler's parser halts the whole process on one rather than
+  # returning nothing: "The declaration does not parse". That took every
+  # `term zone read` down over one note on one secret. So the note is
+  # normalised before it is parsed, and a note the parser still refuses
+  # yields no zones rather than an exit, exactly as prose does.
   save rows
-    call mine-tree
+    call mine-note
       read note
 
   walk list, read rows
