@@ -2,7 +2,7 @@
   "name": "@cluesurf/term",
   "main": "./host/line.js",
   "type": "module",
-  "version": "2.5.12",
+  "version": "2.5.14",
   "bin": {
     "term": "./host/line.js"
   },
