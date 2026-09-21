@@ -253,20 +253,36 @@ bind put-secret
 # has to stay SYNCHRONOUS: it returns text, and every caller reads it
 # as a value rather than awaiting it.
 #
-# A PIPE IS READ TOO. When standard input is not a terminal the value
-# is taken from it, up to the first newline, and `/dev/tty` is never
-# opened. That is what lets a value travel from another machine or
-# another command into the provider without being typed and without
-# ever being an argument: `ssh host 'cat file' | term zone save --name
-# x --commit`. Until 2026-09-16 only the terminal was read, so that
-# command printed "Nothing was typed" and wrote nothing, while the
-# guide said values go on stdin. The rule that a secret is never an
-# argument only works if stdin is actually read.
+# A PIPE IS READ TOO. When standard input is not a terminal the WHOLE of
+# it is taken, and `/dev/tty` is never opened. That is what lets a value
+# travel from another machine or another command into the provider
+# without being typed and without ever being an argument: `ssh host
+# 'cat file' | term zone save --name x --commit`. Until 2026-09-16 only
+# the terminal was read, so that command printed "Nothing was typed" and
+# wrote nothing, while the guide said values go on stdin. The rule that
+# a secret is never an argument only works if stdin is actually read.
+#
+# THE VALUE IS WHAT WAS TYPED OR PIPED, TRIMMED, AND NOTHING ELSE. The
+# whitespace around it goes, so a file that ends in a newline, a pasted
+# line with a trailing space, and `  1000` all store the bytes a person
+# meant. `\r\n` endings become `\n`. Everything inside is kept as it
+# is: `1000`, `3.5`, `true`, `false`, `0`, a url, a line with spaces,
+# quotes, `<`, `$` or `#`, a PEM key with its line breaks. Nothing here
+# reads a value as a number or a boolean, because the program that
+# receives it decides what it means, and a value that arrived as text
+# leaves as the same text. The pipe used to stop at the first newline,
+# which made a multi-line key impossible to store by any route.
+#
+# AT THE TERMINAL, ENTER ENDS THE VALUE. A pasted line arrives with its
+# newline and that newline is the Enter. A pasted value with line breaks
+# INSIDE it stops at the first one, because a raw terminal cannot tell a
+# paste from typing: pipe those in. `zone/test/save.sh` holds every one
+# of the shapes above through the provider, the cache and a child.
 bind ask-secret
   take word, like text
   like text
   case node
-    text <(function () \{ var fs = require("node:fs"), tty = require("node:tty"), fd; var idle = new Int32Array(new SharedArrayBuffer(4)); if (!process.stdin.isTTY) \{ var got = "", part = Buffer.alloc(4096); for (;;) \{ var m; try \{ m = fs.readSync(0, part, 0, part.length, null) \} catch (e) \{ if (e && e.code === "EAGAIN") \{ Atomics.wait(idle, 0, 0, 10); continue \} if (e && e.code === "EOF") \{ break \} throw e \} if (m === 0) \{ break \} got += part.toString("utf8", 0, m); var nl = got.indexOf("\\n"); if (nl !== -1) \{ got = got.slice(0, nl); break \} \} return got.replace(/\\r$/, "") \} try \{ fd = fs.openSync("/dev/tty", "r+") \} catch (e) \{ return "" \} var rs, raw = false; try \{ fs.writeSync(fd, $word); rs = new tty.ReadStream(fd); if (rs.isTTY) \{ rs.setRawMode(true); raw = true \} var out = "", one = Buffer.alloc(1); for (;;) \{ var n; try \{ n = fs.readSync(fd, one, 0, 1, null) \} catch (e) \{ if (e && e.code === "EAGAIN") \{ Atomics.wait(idle, 0, 0, 10); continue \} throw e \} if (n === 0) \{ break \} var c = one.toString("utf8"); if (c === "\\n" || c === "\\r") \{ break \} if (c === "\\u0003") \{ if (raw) \{ rs.setRawMode(false) \} fs.writeSync(fd, "\\n"); process.exit(130) \} if (c === "\\u007f" || c === "\\b") \{ out = out.slice(0, -1); continue \} out += c \} fs.writeSync(fd, "\\n"); return out \} finally \{ try \{ if (raw) \{ rs.setRawMode(false) \} \} catch (e) \{\} try \{ if (rs) \{ rs.destroy() \} \} catch (e) \{\} try \{ fs.closeSync(fd) \} catch (e) \{\} \} \})()>
+    text <(function () \{ var fs = require("node:fs"), tty = require("node:tty"), fd; var idle = new Int32Array(new SharedArrayBuffer(4)); if (!process.stdin.isTTY) \{ var got = "", part = Buffer.alloc(4096); for (;;) \{ var m; try \{ m = fs.readSync(0, part, 0, part.length, null) \} catch (e) \{ if (e && e.code === "EAGAIN") \{ Atomics.wait(idle, 0, 0, 10); continue \} if (e && e.code === "EOF") \{ break \} throw e \} if (m === 0) \{ break \} got += part.toString("utf8", 0, m) \} return got.replace(/\\r\\n?/g, "\\n").trim() \} try \{ fd = fs.openSync("/dev/tty", "r+") \} catch (e) \{ return "" \} var rs, raw = false; try \{ fs.writeSync(fd, $word); rs = new tty.ReadStream(fd); if (rs.isTTY) \{ rs.setRawMode(true); raw = true \} var out = "", one = Buffer.alloc(1); for (;;) \{ var n; try \{ n = fs.readSync(fd, one, 0, 1, null) \} catch (e) \{ if (e && e.code === "EAGAIN") \{ Atomics.wait(idle, 0, 0, 10); continue \} throw e \} if (n === 0) \{ break \} var c = one.toString("utf8"); if (c === "\\n" || c === "\\r") \{ break \} if (c === "\\u0003") \{ if (raw) \{ rs.setRawMode(false) \} fs.writeSync(fd, "\\n"); process.exit(130) \} if (c === "\\u007f" || c === "\\b") \{ out = out.slice(0, -1); continue \} out += c \} fs.writeSync(fd, "\\n"); return out.trim() \} finally \{ try \{ if (raw) \{ rs.setRawMode(false) \} \} catch (e) \{\} try \{ if (rs) \{ rs.destroy() \} \} catch (e) \{\} try \{ fs.closeSync(fd) \} catch (e) \{\} \} \})()>
 
 # This machine's name. Detected rather than asked: a person setting up a
 # laptop knows its name and typing it again is a question that answers

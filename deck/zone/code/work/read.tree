@@ -521,6 +521,8 @@ task pull
         call list-hold
           bind kind, read root/base
           bind body, read token
+          bind team, read root/team
+          wait true
       walk list, read banks
         hook next
           take site, name one

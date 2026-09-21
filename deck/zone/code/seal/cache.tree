@@ -42,6 +42,10 @@ load ../base
   find spot
   find lock
   find file
+  find need
+
+load ../config/zone
+  find mine-zone
 
 load ../tool/base
   find join-text
@@ -199,11 +203,109 @@ task show-file
     call join-line
       read out
 
-# The tone code of the sha256 of the declaration this cache was built from.
+# THE SHAPE of a declaration: the part of it the cache depends on, and
+# nothing else, rendered one way.
+#
+# The cache holds sealed values for the names each zone DECLARES, fetched
+# from the provider the root names. So the shape is: the provider block,
+# every zone path, and under each the names it needs, with `from` where
+# a name is stored under another spelling, and the files it splices in.
+#
+# NOT IN THE SHAPE, on purpose:
+#
+#   bind <name>, <value>   config. Read from the declaration itself on
+#                          every `term zone load`, never cached, never at
+#                          the provider. Editing one must take effect on
+#                          the next command and must not send anyone to
+#                          `term zone read`.
+#   cast, name             how a value is SPELLED into the environment.
+#                          Applied at load time to whatever is cached.
+#   comments, blank lines, order of unrelated lines
+#
+# Before this the mark was the sha256 of the file's bytes, so a comment
+# edit or a changed `bind` made `term zone test` refuse the cache and
+# `term zone read` fetch again. A config value that could only be changed
+# by round-tripping the provider was not config.
+task shape-spot
+  take at, like spot
+  take out, like list
+  call push
+    bind list, read out
+    bind item
+      call join-text
+        make list
+          text <zone >
+          read at/path
+  walk list, read at/load
+    hook next
+      take site, name one
+      call push
+        bind list, read out
+        bind item
+          call join-text
+            make list
+              text <  load >
+              read one
+  walk list, read at/need
+    hook next
+      take site, name one
+      save word, text <  want >
+      fork test
+        hook test
+          read one/must
+        hook hold
+          save word, text <  need >
+      call push
+        bind list, read out
+        bind item
+          call join-text
+            make list
+              read word
+              read one/name
+              text < from >
+              read one/from
+  walk list, read at/zone
+    hook next
+      take site, name kid
+      call shape-spot
+        bind at, read kid
+        bind out, read out
+
+task shape-deck
+  take body, like text
+  like text
+  save root
+    call mine-zone
+      read body
+  save out
+    make list
+  call push
+    bind list, read out
+    bind item
+      call join-text
+        make list
+          text <base >
+          read root/base
+          text < team >
+          read root/team
+          text < hold >
+          read root/hold
+          text < bank >
+          read root/bank
+  call shape-spot
+    bind at, read root
+    bind out, read out
+  send back
+    call join-line
+      read out
+
+# The tone code of the sha256 of the SHAPE of the declaration this cache
+# was built from (`shape-deck` above).
 #
 # It answers "was this cache built against the current `zone.tree`", which is
-# checkable with no key at all, so an edit to the declaration invalidates the
-# cache structurally rather than silently serving values for names that moved.
+# checkable with no key at all, so an edit to what the declaration ASKS FOR
+# invalidates the cache structurally rather than silently serving values for
+# names that moved, while an edit to a comment or a config value does not.
 #
 # Grouped in EIGHTS, which is the house shape for a sha256. `tone-encode`
 # groups in fours, so the dashes are taken back out and put in again.
@@ -217,7 +319,8 @@ task mark-deck
         call to-hex
           call digest-sha256
             call from-text
-              read body
+              call shape-deck
+                read body
             wait true
       text <->
       text <>

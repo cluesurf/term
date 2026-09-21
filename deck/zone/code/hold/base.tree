@@ -82,14 +82,18 @@ task read-hold-many
 
 # Every project the credential can see, as name and id pairs.
 task list-hold
+  note async
   take kind, like text
   take body, like text
+  take team, like text
   like list
   fork case, read kind
     case bitwarden
       send back
         call bitwarden-list
-          read body
+          bind body, read body
+          bind team, read team
+          wait true
   send back
     make list
 

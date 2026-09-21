@@ -274,6 +274,76 @@ task home-in
   send back
     read out
 
+# The name a value is STORED under at the provider, which is the `from`
+# when the declaration gives one and the declared name otherwise.
+#
+#   need work-volume-size, from tf-var-work-volume-size
+#
+# says the provider's key is `tf-var-work-volume-size`, and that is the
+# key `term zone read` fetches by (`seal-spot` in `work/read.tree`). A
+# save that wrote under the DECLARED name put a second secret beside the
+# real one, reported `grew`, refilled the cache, and the value tofu read
+# stayed 400: the read path never looks at a key called
+# `work-volume-size`. Measured 2026-09-21, the first save after `--name`
+# could reach a nested zone at all. Innermost zone first, the same walk
+# as `home-in`, so the declaration that wins the path wins the key.
+task from-in
+  take at, like spot
+  take name, like text
+  like text
+  save out, text <>
+  walk list, read at/zone
+    hook next
+      take site, name child
+      fork test
+        hook test
+          call not-equal
+            read out
+            text <>
+        hook hold
+          turn next
+      save out
+        call from-in
+          bind at, read child
+          bind name, read name
+  fork test
+    hook test
+      call equal
+        read out
+        text <>
+    hook hold
+      walk list, read at/need
+        hook next
+          take site, name one
+          fork test
+            hook test
+              call equal
+                read one/name
+                read name
+            hook hold
+              save out, read one/from
+  send back
+    read out
+
+task store-name
+  take root, like spot
+  take name, like text
+  like text
+  save from
+    call from-in
+      bind at, read root
+      bind name, read name
+  fork test
+    hook test
+      call equal
+        read from
+        text <>
+    hook hold
+      send back
+        read name
+  send back
+    read from
+
 # Refuse a name the declaration does not carry.
 #
 # Writing a secret nothing declares would put a value at the provider that no
@@ -311,10 +381,28 @@ task home-or-halt
   send back
     read home
 
-# `term zone save <name>` — write one value, read from a hidden prompt.
+# `term zone save --name <name>` — write one value, read from a hidden prompt.
+#
+# REPORTS BY DEFAULT AND WRITES ONLY ON `--commit`, like everything else
+# that writes here. Without the flag it says which zone the value would
+# be filed under and stops before asking for one, because local work
+# points at the real provider and forgetting the flag has to be the safe
+# direction. It used to write on every call and take `--commit` without
+# reading it, so the flag in every runbook was decoration.
+#
+# THE VALUE IS THE BYTES TYPED, trimmed of surrounding whitespace and
+# nothing else. `1000`, `3.5`, `true`, a url, a line with spaces and
+# quotes: each is stored as the text it was typed as and comes back out
+# of `term zone load` as the same text. Nothing here reads a value as a
+# number or a boolean, because the consumer decides that (tofu coerces
+# `TF_VAR_x=1000` by the variable's declared type, a shell does not). A
+# multi-line value, such as a PEM key, is piped in: when stdin is not a
+# terminal the whole of it is taken. `zone/test/save.sh` holds every one
+# of those shapes through the provider, the cache and a child process.
 task put-one
   note async
   take name, like text
+  take commit, like boolean
   like number
 
   save it
@@ -324,6 +412,31 @@ task put-one
     call home-or-halt
       bind root, read it/root
       bind name, read name
+  save key
+    call store-name
+      bind root, read it/root
+      bind name, read name
+
+  fork test
+    hook test
+      read commit
+    hook miss
+      call show-line
+        call join-text
+          make list
+            text <would write >
+            read name
+            text < at >
+            read home
+            call stored-as
+              bind name, read name
+              bind key, read key
+      call show-line
+        text <>
+      call show-line
+        text <report only. Add --commit to write, and the value is asked for then.>
+      send back
+        code 0
 
   save body
     call ask-secret
@@ -379,7 +492,7 @@ task put-one
         call bitwarden-note
           bind body, read it/token
           bind team, read it/root/team
-          bind name, read name
+          bind name, read key
           wait true
       bind want, read home
 
@@ -389,7 +502,7 @@ task put-one
       bind team, read it/root/team
       bind bank, read bank
       bind mind, read mind
-      bind name, read name
+      bind name, read key
       bind code, read body
       wait true
 
@@ -401,12 +514,31 @@ task put-one
         read what
         text < at >
         read home
-  call show-line
-    text <>
-  call show-line
-    text <Run `term zone read --fresh` to bring it into the local cache.>
+        call stored-as
+          bind name, read name
+          bind key, read key
   send back
     code 0
+
+# `, stored as <key>` when the provider's key differs from the declared
+# name, so a person reading the line can find the secret in the vault.
+task stored-as
+  take name, like text
+  take key, like text
+  like text
+  fork test
+    hook test
+      call equal
+        read name
+        read key
+    hook hold
+      send back
+        text <>
+  send back
+    call join-text
+      make list
+        text <, stored as >
+        read key
 
 # `term zone toss <name>` — remove one value at the provider.
 task drop-one
@@ -421,13 +553,17 @@ task drop-one
     call home-or-halt
       bind root, read it/root
       bind name, read name
+  save key
+    call store-name
+      bind root, read it/root
+      bind name, read name
 
   save gone
     call bitwarden-drop
       bind body, read it/token
       bind team, read it/root/team
       bind path, read home
-      bind name, read name
+      bind name, read key
       wait true
 
   fork test
@@ -474,12 +610,16 @@ task see-one
     call home-or-halt
       bind root, read it/root
       bind name, read name
+  save key
+    call store-name
+      bind root, read it/root
+      bind name, read name
 
   save body
     call bitwarden-one
       bind body, read it/token
       bind team, read it/root/team
-      bind name, read name
+      bind name, read key
       wait true
 
   fork test
@@ -530,12 +670,16 @@ task hook-one
     call home-or-halt
       bind root, read it/root
       bind name, read name
+  save key
+    call store-name
+      bind root, read it/root
+      bind name, read name
 
   save body
     call bitwarden-one
       bind body, read it/token
       bind team, read it/root/team
-      bind name, read name
+      bind name, read key
       wait true
 
   fork test

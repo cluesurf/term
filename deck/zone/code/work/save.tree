@@ -43,6 +43,9 @@ load ../base
 load ./one
   find put-one
 
+load ./read
+  find pull
+
 load ../config/find
   find read-decks
   find halt-no-deck
@@ -128,16 +131,36 @@ task keep-zone
 
   # A name given writes that one value, read from a hidden prompt, instead of
   # walking the declaration and creating a project per zone.
+  #
+  # THE CACHE FOLLOWS THE WRITE. A value just written is the value the
+  # next command should run with, and until this the way to get it there
+  # was a second command, `term zone read --fresh`, printed as a hint and
+  # forgotten as often as not: the save reported success and the process
+  # went on reading the old value out of the cache. So the write is
+  # followed by the same fetch that command does, and the save is done
+  # when the cache is.
   fork test
     hook test
       call not-equal
         read name
         text <>
     hook hold
-      send back
+      save wrote
         call put-one
-          read name
+          bind name, read name
+          bind commit, read commit
           wait true
+      fork test
+        hook test
+          read commit
+        hook hold
+          call pull
+            bind spot, text <>
+            bind fresh, true
+            bind name, text <>
+            wait true
+      send back
+        read wrote
 
   like number
 
@@ -213,6 +236,8 @@ task keep-zone
     call list-hold
       bind kind, read root/base
       bind body, read token
+      bind team, read root/team
+      wait true
 
   # IN `note` MODE THERE IS ONE PROJECT, not one per zone.
   #

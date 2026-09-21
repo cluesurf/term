@@ -556,5 +556,50 @@ const vault = (() => {
 
       return got.data[0]?.value ?? ''
     },
+
+    // Every project the credential can see, as name and id pairs.
+    //
+    // THROUGH THE SDK, like every other read, so a tree that has the SDK
+    // and no `bws` can run `term zone read` in `note` mode, where the one
+    // project's id has to be looked up before anything is fetched. This
+    // was the last call still shelling out to `bws`, which meant the SDK
+    // alone could read every secret and yet not find the project they
+    // were in.
+    //
+    // `bws` is the fallback, exactly as in `all`: no SDK, or no
+    // organization id to hand it (the command derives one from the
+    // credential and the library does not).
+    projects: async (
+      token: string,
+      org: string,
+    ): Promise<Array<{ name: string; body: string }>> => {
+      if (!maybe() || !org) {
+        const cp = need('node:child_process')
+        const raw = cp.execFileSync(
+          'bws',
+          ['project', 'list', '--output', 'json'],
+          {
+            encoding: 'utf8',
+            maxBuffer: 33554432,
+            timeout: 20000,
+            env: { ...process.env, BWS_ACCESS_TOKEN: token },
+            stdio: ['ignore', 'pipe', 'pipe'],
+          },
+        )
+
+        return JSON.parse(raw).map((one: any) => ({
+          name: String(one.name ?? ''),
+          body: String(one.id ?? ''),
+        }))
+      }
+
+      const client = await open(token)
+      const listed = await client.projects().list(org)
+
+      return (listed?.data ?? []).map((one: any) => ({
+        name: String(one.name ?? ''),
+        body: String(one.id ?? ''),
+      }))
+    },
   }
 })()
