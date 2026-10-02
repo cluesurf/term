@@ -1848,8 +1848,13 @@ const OWED: Record<HoldOrigin, string> = {
   given: 'a promised fact',
 }
 
-// drop every assumption that mentions one of these names: their values changed, so a fact about the old value is no
-// longer a fact. A write whose root has no name (EVERYTHING) drops them all.
+// forget these names: their values changed, so a fact about the old value is no longer a fact. But what the facts
+// said about OTHER names through them still holds, so each name is PROJECTED out (Fourier-Motzkin: every upper bound
+// on it added to every lower bound, which cancels it) rather than its facts dropped. `len - i == 0` and `i == 25`
+// leave `len == 25` when `i` is reset, where dropping them left nothing. Over the rationals the projection is exactly
+// "some old value existed", so it is sound for integers too; it only gives up the integer tightening. A projection
+// that would make too many rows falls back to dropping, which is weaker and still sound. A write whose root has no
+// name (EVERYTHING) drops them all.
 function forget(current: Inequality[], names: Set<string>): Inequality[] {
   if (names.size === 0) {
     return current
@@ -1859,15 +1864,89 @@ function forget(current: Inequality[], names: Set<string>): Inequality[] {
     return []
   }
 
-  return current.filter(q => {
+  let facts = current
+  const keys = new Set<string>()
+
+  for (const q of current) {
     for (const key of q.linear.terms.keys()) {
       if (names.has(keyRoot(key))) {
-        return false
+        keys.add(key)
       }
     }
+  }
 
-    return true
-  })
+  for (const key of keys) {
+    facts = eliminate(facts, key)
+  }
+
+  return facts
+}
+
+// the most rows one elimination may produce before it gives up and drops instead
+const MAX_PROJECTED = 200
+
+// Fourier-Motzkin elimination of one atom: the facts that do not mention it, and every sum of an upper and a lower
+// bound on it scaled so it cancels
+function eliminate(facts: Inequality[], key: string): Inequality[] {
+  const kept: Inequality[] = []
+  const upper: Inequality[] = []
+  const lower: Inequality[] = []
+
+  for (const q of facts) {
+    const c = q.linear.terms.get(key) ?? 0
+
+    if (c > 0) {
+      upper.push(q)
+    } else if (c < 0) {
+      lower.push(q)
+    } else {
+      kept.push(q)
+    }
+  }
+
+  if (upper.length * lower.length > MAX_PROJECTED) {
+    return kept
+  }
+
+  const seen = new Set(kept.map(rowKey))
+
+  for (const u of upper) {
+    for (const l of lower) {
+      const a = u.linear.terms.get(key)!
+      const b = -l.linear.terms.get(key)!
+      // b*u + a*l: the key's coefficients are a*b and -b*a
+      const sum = add(scale(u.linear, b), scale(l.linear, a))
+      sum.terms.delete(key)
+
+      for (const [k, v] of [...sum.terms]) {
+        if (v === 0) {
+          sum.terms.delete(k)
+        }
+      }
+
+      const row: Inequality = { linear: sum, strict: u.strict || l.strict }
+
+      // a row with no atoms is either always true (drop it) or a contradiction the path already carried (keep it)
+      if (sum.terms.size === 0 && (sum.constant < 0 || (sum.constant === 0 && !row.strict))) {
+        continue
+      }
+
+      const id = rowKey(row)
+
+      if (!seen.has(id)) {
+        seen.add(id)
+        kept.push(row)
+      }
+    }
+  }
+
+  return kept
+}
+
+function rowKey(q: Inequality): string {
+  const terms = [...q.linear.terms].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+
+  return `${terms.map(([k, v]) => `${v}*${k}`).join('+')}${q.strict ? '<' : '<='}${-q.linear.constant}`
 }
 
 // A WALK THAT ONLY COUNTS UP. Before a loop, every fact about a name its body writes is dropped, because a later
@@ -2811,15 +2890,18 @@ function walkHolds(
 
     if (grown !== undefined) {
       const key = `@length:${grown}`
-      // two names each bound only to fresh lists hold different lists, so a push to one leaves the other's length
+      // a push to a name bound only to fresh lists leaves the length of every list that is not that one: another such
+      // name (each holds lists only it made), or a parameter the task never rebinds (it held its list before the fresh
+      // one existed). A path into a list is not covered: the fresh list may have been pushed into it.
       const apart = (k: string): boolean => {
         const other = k.startsWith('@length:') ? k.slice('@length:'.length) : undefined
 
         return (
           other !== undefined &&
+          !other.includes('/') &&
           other !== grown &&
-          walk.fresh?.has(other) === true &&
-          walk.fresh.has(grown)
+          walk.fresh?.has(grown) === true &&
+          (walk.fresh.has(other) || walk.params?.has(other) === true)
         )
       }
 

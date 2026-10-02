@@ -215,6 +215,14 @@ task sha3-keccak
   take hi
     like list
       like number
+  have
+    call is-minimum
+      read lo/length
+      code 25
+  have
+    call is-minimum
+      read hi/length
+      code 25
   save rnd, code 0
   walk test
     hook test
