@@ -39,7 +39,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-const PACKS: Record<string, string> = { seed: join(TERM, 'deck/base'), feed: join(TERM, 'deck/feed') }
+const PACKS: Record<string, string> = { base: join(TERM, 'deck/base'), feed: join(TERM, 'deck/feed') }
 
 const resolver = (path: string, from: string): Source | undefined => {
   if (path.startsWith('./') || path.startsWith('../')) {
@@ -54,7 +54,7 @@ const resolver = (path: string, from: string): Source | undefined => {
     return undefined
   }
 
-  const found = /^@(?:cluesurf|term)\/(seed|feed)\/(.*)$/.exec(path)
+  const found = /^@term\/(base|feed)\/(.*)$/.exec(path)
 
   if (!found) {
     return undefined

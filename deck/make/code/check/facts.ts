@@ -396,6 +396,9 @@ function stableLocal(body: Statement[], name: string): boolean {
 // only scalars does not reach a Term value, since it holds none and does not call back into Term.
 const SCALARS = new Set(['number', 'float', 'boolean', 'string', 'unit', 'bytes'])
 
+// the scalars no method can change in place, on any backend (`bytes` is a buffer, and can be)
+export const IMMUTABLE = new Set(['number', 'float', 'boolean', 'string', 'unit'])
+
 const STATE_FREE = new WeakMap<Program, Set<string>>()
 const LENGTH_KEEPING = new WeakMap<Program, Set<string>>()
 const RETURNS_FRESH = new WeakMap<Program, Set<string>>()
@@ -515,8 +518,10 @@ export function stateFreeFunctions(program: Program): Set<string> {
               !own.has(root) &&
               !globals.has(root) &&
               !functions.has(root)
+            // a method on a value that cannot change (a number, a text), handed only scalars: `input/concat other`
+            const onValue = IMMUTABLE.has(callee.target.type?.kind ?? '') && scalars
 
-            if (!(onOwn || (onModule && scalars))) {
+            if (!(onOwn || onValue || (onModule && scalars))) {
               ok = false
             }
           } else {
@@ -758,7 +763,12 @@ export function lengthKeepingFunctions(program: Program): Set<string> {
                 ((callee.name === 'get' || callee.name === 'at') && args.length === 1) ||
                 READ_ONLY_LIST_METHODS.has(callee.name))
 
-            if (!(keeps || (root !== undefined && fresh.has(root)))) {
+            // a method on a value that cannot change, handed only values that cannot change
+            const onValue =
+              IMMUTABLE.has(list?.kind ?? '') &&
+              args.every(a => IMMUTABLE.has(a.type?.kind ?? ''))
+
+            if (!(keeps || onValue || (root !== undefined && fresh.has(root)))) {
               ok = false
             }
           } else {

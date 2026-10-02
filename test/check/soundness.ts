@@ -847,6 +847,69 @@ task identity
     proven,
   )
 
+  // ---- a constant table's length ----
+
+  const table = (handed: string): string => `host table
+  code 1
+  code 2
+  code 3
+
+task grow
+  take xs, like list, like number
+  call xs/push
+    code 9
+
+task sink
+  take n, like number
+  save out, make list
+  call out/push
+    read n
+
+task use
+${handed}  hold
+    call is-equal
+      read table/length
+      code 3
+`
+
+  expect(
+    'a table handed whole to a task that pushes onto it has no known length',
+    table('  call grow\n    read table\n'),
+    refused('unproven'),
+  )
+
+  expect(
+    'control: one number read out of the table, handed on, leaves its length',
+    table('  call sink\n    read table/0\n'),
+    proven,
+  )
+
+  // ---- a disequality ----
+
+  const otherwise = (value: string, goal: string): string => `task use
+  take xs, like list, like number
+  fork test
+    hook test
+      call is-equal
+        read xs/length
+        code ${value}
+    hook hold
+      send back, code 0
+    hook miss
+      hold
+        call is-above
+          read xs/length
+          code ${goal}
+  send back, code 0
+`
+
+  expect('a length that is not zero is at least one', otherwise('0', '0'), proven)
+  expect(
+    'a length that is not two is not thereby above two',
+    otherwise('2', '2'),
+    refused('unproven'),
+  )
+
   console.log(`\nsoundness: ${pass} pass, ${fail} fail`)
 
   if (fail > 0) {

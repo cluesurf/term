@@ -1,4 +1,4 @@
-# Statistics over a list of numbers. Pure folds, identical on every backend. Integer results: `mean` truncates, and `total` of an empty list is zero. `least` / `greatest` assume a non-empty list. `variance` and `standard-deviation` need floats and live in a float-stats follow-up.
+# Statistics over a list of numbers. Pure folds, identical on every backend. Integer results: `mean` truncates, and `total` of an empty list is zero. `least`, `greatest` and `span` take a non-empty list, which each states as a `have` its callers must prove. `variance` and `standard-deviation` need floats and live in a float-stats follow-up.
 
 load @term/base/code/list
   find list
@@ -36,6 +36,10 @@ task mean
 
 task least
   take values, like list
+  have
+    call is-above
+      read values/length
+      code 0
   like number
   save best
     call values/at
@@ -55,6 +59,10 @@ task least
 
 task greatest
   take values, like list
+  have
+    call is-above
+      read values/length
+      code 0
   like number
   save best
     call values/at
@@ -74,6 +82,10 @@ task greatest
 
 task span
   take values, like list
+  have
+    call is-above
+      read values/length
+      code 0
   like number
   send back
     call subtract

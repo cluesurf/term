@@ -181,7 +181,7 @@ function countRules(list: readonly unknown[]): number {
 // the real front end, over a generated reader, against the real stdlib. The same phases `term make` runs, so a
 // grammar that passes here is one a build can actually compile.
 const PACKS: Record<string, string> = {
-  seed: join(TERM, 'deck/base'),
+  base: join(TERM, 'deck/base'),
   feed: join(TERM, 'deck/feed'),
 }
 

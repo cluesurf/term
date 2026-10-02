@@ -17,6 +17,7 @@ import {
   EVERYTHING,
   freshNames,
   functionNames,
+  IMMUTABLE,
   lengthKeepingFunctions,
   localNames,
   pureFunctions,
@@ -1675,10 +1676,32 @@ function assumptionInequalities(
     case '>=':
       return negated ? [below(left, right)] : [atLeast(left, right)]
     case '==':
-      return negated ? [] : [atMost(left, right), atLeast(left, right)] // can't assume a disequality
+      return negated
+        ? nonEmpty(left, right)
+        : [atMost(left, right), atLeast(left, right)]
+    case '!=':
+      return negated ? [atMost(left, right), atLeast(left, right)] : nonEmpty(left, right)
     default:
       return []
   }
+}
+
+// A disequality is a disjunction and is not assumed, with ONE exact exception: a length is never negative, so
+// `length != 0` is `length >= 1`. That is the `fork` that guards every division by a list's length.
+function nonEmpty(left: Linear, right: Linear): Inequality[] {
+  const difference = add(left, scale(right, -1))
+  const terms = [...difference.terms].filter(([, c]) => c !== 0)
+
+  if (
+    terms.length === 1 &&
+    difference.constant === 0 &&
+    terms[0]![0].startsWith('@length:') &&
+    Math.abs(terms[0]![1]) === 1
+  ) {
+    return [atLeast(linear({ [terms[0]![0]]: 1 }), linear({}, 1))]
+  }
+
+  return []
 }
 
 // equality assumptions from an immutable binding `x = e` (only when e is linear): x <= e and x >= e
@@ -1760,6 +1783,7 @@ export function checkHolds(
         keeping,
         fresh: freshNames(statement, returning),
         returning,
+        params: steadyParams(statement),
         scalars: scalarLocals(statement.body, statement.params),
         task: statement.method
           ? `${statement.method.form}/${statement.method.name}`
@@ -1813,6 +1837,8 @@ type Walk = {
   fresh?: Set<string>
   // the tasks that hand back only a list they made (facts.ts returnsFreshFunctions)
   returning?: Set<string>
+  // the task's parameters that its body never rebinds
+  params?: Set<string>
   // the task's locals that only ever hold scalars (scalarLocals)
   scalars?: Set<string>
 }
@@ -1880,6 +1906,13 @@ function forget(current: Inequality[], names: Set<string>): Inequality[] {
   }
 
   return facts
+}
+
+// a task's parameters that nothing in its body rebinds (a closure's included), so each still holds what it was handed
+function steadyParams(fn: { params: { name: string }[]; body: Statement[] }): Set<string> {
+  const written = writtenNames(fn.body)
+
+  return new Set(fn.params.map(p => p.name).filter(name => !written.has(name)))
 }
 
 // the most rows one elimination may produce before it gives up and drops instead
@@ -2369,10 +2402,10 @@ function keepMonotone(
     writesThroughMember(body)
 
   // any impure call at all may change a list that is not local to this task, so no such length survives a turn,
-  // unless every one is a call that changes no length (keepsLengths)
+  // unless every one is a call that changes no length (keepsLengths) or a push onto a list this task made
   if (
     callsImpure(body, walk.pure, walk.functions, walk.local) &&
-    !onlyKeepsLengths(body, walk)
+    !onlyKeepsLengths(body, walk, true)
   ) {
     current = current.filter(q => {
       for (const key of q.linear.terms.keys()) {
@@ -2872,6 +2905,7 @@ function walkHolds(
           local: localNames(statement),
           volatile: volatileNames(statement.body),
           fresh: freshNames(statement, walk.returning),
+          params: steadyParams(statement),
         })
         break
 
@@ -3094,6 +3128,11 @@ function constantTableLengths(
         scalar.has(call.type?.kind ?? '')
 
       for (const argument of reads ? [] : call.args) {
+        // one number read out of the table is not the table: a scalar argument cannot carry it off
+        if (scalarValue(argument)) {
+          continue
+        }
+
         const root =
           argument.form === 'variable' || argument.form === 'member'
             ? rootName(argument)
@@ -3152,7 +3191,8 @@ function scalarValue(e: Expression, locals?: Set<string>): boolean {
     target.type?.kind === 'array' &&
     SCALAR_KINDS.has(target.type.element.kind)
 
-  if (e.form === 'member' && e.index) {
+  // `read xs/{i}`, and `read xs/0` with its index written as a plain segment
+  if (e.form === 'member' && (e.index || /^[0-9]+$/.test(e.name))) {
     return fromList(e.target)
   }
 
@@ -3332,6 +3372,15 @@ function keepsLengths(call: Record<string, unknown>, walk: Walk): boolean {
     return walk.functions.has(callee.name) && walk.keeping.has(callee.name)
   }
 
+  // a method on a value no method can change (a text, a number), handed only such values: `input/concat other`
+  if (
+    callee?.form === 'member' &&
+    IMMUTABLE.has(callee.target.type?.kind ?? '') &&
+    args.every(a => IMMUTABLE.has(a.type?.kind ?? ''))
+  ) {
+    return true
+  }
+
   if (callee?.form !== 'member' || callee.index || callee.target.type?.kind !== 'array') {
     return false
   }
@@ -3344,8 +3393,10 @@ function keepsLengths(call: Record<string, unknown>, walk: Walk): boolean {
   )
 }
 
-// does every impure call in a statement change no length (keepsLengths), with none passing a function value on
-function onlyKeepsLengths(statement: unknown, walk: Walk): boolean {
+// does every impure call in a statement change no length (keepsLengths), with none passing a function value on.
+// With `besidesFresh`, a push onto a name bound only to fresh lists is allowed too: it changes that list's length
+// and no other, which is what a caller asking about the lengths of lists it did not make needs.
+function onlyKeepsLengths(statement: unknown, walk: Walk, besidesFresh = false): boolean {
   let other = false
   const stack: unknown[] = [statement]
   const seen = new Set<unknown>()
@@ -3386,9 +3437,19 @@ function onlyKeepsLengths(statement: unknown, walk: Walk): boolean {
       const head = { ...record, args: [] }
       const callee = record.callee as Expression
 
+      const freshPush =
+        besidesFresh &&
+        callee.form === 'member' &&
+        !callee.index &&
+        callee.name === 'push' &&
+        callee.target.form === 'variable' &&
+        callee.target.type?.kind === 'array' &&
+        walk.fresh?.has(callee.target.name) === true
+
       if (
         callsImpure(head, walk.pure, walk.functions, walk.local) &&
         !keepsLengths(record, walk) &&
+        !freshPush &&
         !(callee.form === 'member' &&
           !callee.index &&
           READ_ONLY_LIST_METHODS.has(callee.name) &&

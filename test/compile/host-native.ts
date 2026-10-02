@@ -58,7 +58,7 @@ function have(tool: string): boolean {
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const FIXTURE = join(TERM, 'deck/host/test/fixture')
-const PACKS: Record<string, string> = { seed: join(TERM, 'deck/base'), host: join(TERM, 'deck/host') }
+const PACKS: Record<string, string> = { base: join(TERM, 'deck/base'), host: join(TERM, 'deck/host') }
 const fixture = (name: string): string => readFileSync(join(FIXTURE, name), 'utf8')
 
 // the record separator between one program's outputs
@@ -78,7 +78,7 @@ const resolver = (path: string, from: string): Source | undefined => {
     return undefined
   }
 
-  const found = /^@(?:cluesurf|term)\/(seed|host)\/(.*)$/.exec(path)
+  const found = /^@term\/(base|host)\/(.*)$/.exec(path)
 
   if (!found) {
     return undefined

@@ -57,7 +57,7 @@ function have(tool: string): boolean {
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-const PACKS: Record<string, string> = { seed: join(TERM, 'deck/base'), feed: join(TERM, 'deck/feed') }
+const PACKS: Record<string, string> = { base: join(TERM, 'deck/base'), feed: join(TERM, 'deck/feed') }
 
 // the stdlib and the package by name, and relative loads from the file that makes them
 const resolver = (path: string, from: string): Source | undefined => {
@@ -73,7 +73,7 @@ const resolver = (path: string, from: string): Source | undefined => {
     return undefined
   }
 
-  const found = /^@(?:cluesurf|term)\/(seed|feed)\/(.*)$/.exec(path)
+  const found = /^@term\/(base|feed)\/(.*)$/.exec(path)
 
   if (!found) {
     return undefined

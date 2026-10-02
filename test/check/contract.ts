@@ -767,6 +767,51 @@ task use
       code 1
 `
 
+  const paramAndFresh = (rebind: string): string => `task use
+  take xs, like list, like number
+  have
+    call is-equal
+      read xs/length
+      code 2
+  save m, make list
+${rebind}  call m/push
+    code 1
+  hold
+    call is-equal
+      read xs/length
+      code 2
+`
+
+  expect('a push to a fresh list keeps a parameter length', paramAndFresh(''), proven)
+  expect(
+    'not once the parameter is rebound to that list',
+    paramAndFresh('  save xs, read m\n'),
+    refused('unproven'),
+  )
+
+  expect(
+    'a reset counter leaves what it pinned: len - i == 0 and i == 3 give len == 3',
+    `task use
+  save xs, make list
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        code 3
+    hook hold
+      call xs/push
+        read i
+      save i, call increment(read i)
+  save i, code 0
+  hold
+    call is-equal
+      read xs/length
+      code 3
+`,
+    proven,
+  )
+
   expect('a push to one fresh list keeps another fresh list length', twoLists('make list'), proven)
   expect('a push through a second name for the same list does not', twoLists('read a'), refused('unproven'))
 
