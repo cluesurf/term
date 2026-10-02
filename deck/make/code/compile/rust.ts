@@ -80,6 +80,42 @@ function bare(rendered: string): string {
   return rendered.slice(1, -1)
 }
 
+// an index expression cast to `usize`, parenthesized only when it needs it. `as` binds tighter than every binary
+// operator and looser than a call or a field, so `i - 1` needs them and `i64::checked_sub(a, 1).expect(..)` does not,
+// and rustc's unused_parens warning (a gate fails on warnings) fires on the second
+function asUsize(text: string): string {
+  let depth = 0
+  let quote = false
+  let bare = true
+
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!
+
+    if (quote) {
+      if (c === '\\') {
+        i++
+      } else if (c === '"') {
+        quote = false
+      }
+
+      continue
+    }
+
+    if (c === '"') {
+      quote = true
+    } else if (c === '(' || c === '[' || c === '{') {
+      depth++
+    } else if (c === ')' || c === ']' || c === '}') {
+      depth--
+    } else if (depth === 0 && /[\s+\-*/%<>=!&|?^]/.test(c)) {
+      bare = false
+      break
+    }
+  }
+
+  return bare && text.length > 0 ? `${text} as usize` : `(${text}) as usize`
+}
+
 function snake(name: string): string {
   const snakeName = name.replace(/-/g, '_')
 
@@ -472,6 +508,33 @@ export function emitRust(
   // set by an `await` around a raising call, so the `?` lands after `.await` and not before it
   let awaitedRaise = false
 
+  // PREEMPTION BY BUDGET (note/term/research/beam-otp-lessons.md, design 5). BEAM switches a process out after 4,000
+  // reductions, paying a check on every call. Here a loop in an ASYNCHRONOUS task checks a per-thread budget at the top
+  // of each turn and yields to the scheduler when it runs out, so one task's long loop cannot starve the others on the
+  // same runtime. A synchronous task cannot yield in Rust at all, which is the same limit TypeScript has. The check is
+  // left out of a loop whose condition bounds its counter by a small literal (`i < K`, K at most the budget), the
+  // shape of a counted loop over a fixed table, which BEAM still pays for on every turn. It is a reading of the
+  // condition, not a proof: a counter that starts far below zero runs longer, and then only fairness suffers, never
+  // correctness. Using the walk's proven `down` measure instead is the precise version, and is left open
+  let budgetUses = 0
+  let budgetElided = 0
+  const BUDGET = 4000
+  const budgetCheck = (node: Statement, depth: number): string => {
+    if (!currentAsync || (node.form !== 'while' && node.form !== 'for-each')) {
+      return ''
+    }
+
+    if (node.form === 'while' && constantBounded(node.cond, BUDGET)) {
+      budgetElided++
+
+      return ''
+    }
+
+    budgetUses++
+
+    return `${pad(depth)}__term_budget().await;\n`
+  }
+
   const raiseSuffix = (): string =>
     currentRaising || guardDepth > 0
       ? '?'
@@ -516,6 +579,22 @@ export function emitRust(
       .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type' && Boolean(n.chain?.includes('exception')))
       .map(n => n.name),
   )
+  // the value answered by an untyped SHIM: a call to a Term task, or to a `dock load` module, awaited or not. A built-in
+  // collection operation is neither: its value is already the element type, and a downcast of it does not compile
+  const nativeAliases = new Set(
+    program.flatMap(n => (n.form === 'native' && n.kind !== 'type' ? [n.alias] : [])),
+  )
+  const shimCall = (value: Expression): boolean => {
+    const call = value.form === 'await' ? value.expr : value
+
+    return (
+      call.form === 'call' &&
+      ((call.callee.form === 'variable' && !nativeAliases.has(call.callee.name)) ||
+        (call.callee.form === 'member' &&
+          call.callee.target.form === 'variable' &&
+          nativeAliases.has(call.callee.target.name)))
+    )
+  }
 
   for (const [name, raises] of raiseSets(program, exceptionForms).raises) {
     if (raises.size > 0) {
@@ -1087,12 +1166,25 @@ export function emitRust(
         return `${JSON.stringify(node.value)}.to_string()`
       case 'template': {
         // `format!`: braces in the chunks doubled, one `{}` per expression (Display covers text, numbers, flags)
-        const shape = node.parts
-          .map(part => (typeof part === 'string' ? JSON.stringify(part).slice(1, -1).replace(/[{}]/g, '$&$&') : '{}'))
-          .join('')
-        const args = node.parts.filter((part): part is Expression => typeof part !== 'string').map(expr)
+        // each chunk escaped ONCE for a Rust string literal. It was JSON-encoded, joined, JSON-encoded again and the
+        // backslash pairs halved, which turned a chunk holding `"` into `\\"`, a string that ends one character early
+        const rustChunk = (text: string): string =>
+          text
+            .replace(/[{}]/g, '$&$&')
+            .replace(/\\/g, '\\\\')
+            .replace(/"/g, '\\"')
+            .replace(/\n/g, '\\n')
+            .replace(/\r/g, '\\r')
+            .replace(/\t/g, '\\t')
+            // eslint-disable-next-line no-control-regex
+            .replace(/[\u0000-\u001f\u007f]/g, c => `\\u{${c.charCodeAt(0).toString(16)}}`)
+        const shape = node.parts.map(part => (typeof part === 'string' ? rustChunk(part) : '{}')).join('')
+        // a float interpolates as `term_number` lays it out, the same text as every other backend
+        const args = node.parts
+          .filter((part): part is Expression => typeof part !== 'string')
+          .map(part => (part.type?.kind === 'float' ? `term_number(${expr(part)})` : expr(part)))
 
-        return `format!(${[JSON.stringify(shape).replace(/\\\\/g, '\\'), ...args].join(', ')})`
+        return `format!(${[`"${shape}"`, ...args].join(', ')})`
       }
       case 'unit':
         return '()'
@@ -1479,9 +1571,22 @@ export function emitRust(
         moveArgs = new Set<string>()
         const previousAsyncInClosure = currentAsync
         currentAsync = Boolean(node.async)
+        // a closure answers for ITSELF: its own result (so a `send back` into an unknown result boxes), and it is not
+        // the enclosing task's raising body or guard. Its type carries no raise set, so a raise inside it ends the
+        // program the way an unhandled raise does. Inheriting the task's state wrapped the closure's returns in the
+        // task's `Ok(..)`, which no `Fn` type here returns
+        const outerRaising = currentRaising
+        const outerGuardDepth = guardDepth
+        const outerResult = currentResult
+        currentRaising = false
+        guardDepth = 0
+        currentResult = node.result ?? (node.type?.kind === 'function' ? node.type.result : undefined)
         const body = [...shadows, ...node.body.map(s => stmt(s, 0))]
           .filter(Boolean)
           .join(' ')
+        currentRaising = outerRaising
+        guardDepth = outerGuardDepth
+        currentResult = outerResult
         currentAsync = previousAsyncInClosure
         moveArgs = outerMoveArgs
 
@@ -1545,7 +1650,10 @@ export function emitRust(
     args: Expression[],
   ): string => {
     const target = expr(op.target)
-    const arg = args.map(expr)
+    // an argument is OWNED, the way any value stored into a structure is: cloned unless this is its variable's last
+    // use. A bare name here moved the variable into the collection, so `push(started)` followed by a read of
+    // `started.dock` was a use after move
+    const arg = args.map(owned)
 
     if (op.kind === 'map') {
       switch (op.op) {
@@ -1581,9 +1689,9 @@ export function emitRust(
         return `${target}.borrow_mut().pop().unwrap()`
       case 'at':
       case 'get':
-        return `${data}[(${arg[0]}) as usize].clone()`
+        return `${data}[${asUsize(arg[0]!)}].clone()`
       case 'set':
-        return `{ ${target}.borrow_mut()[(${arg[0]}) as usize] = ${arg[1]}; }`
+        return `{ ${target}.borrow_mut()[${asUsize(arg[0]!)}] = ${arg[1]}; }`
       case 'includes':
         return `${data}.contains(&${arg[0]})`
       case 'indexOf':
@@ -1595,18 +1703,20 @@ export function emitRust(
           `[${data}.clone(), ${arg[0]}.borrow().clone()].concat()`,
         )
       case 'slice':
-        // one argument slices to the end (JS `slice(start)`); two slices a range
+        // both bounds clamped to the length, empty when start reaches end, never counted from the end
+        // (note/term/stdlib/semantics.md); one argument slices to the end
         return wrapList(
-          arg[1] !== undefined
-            ? `${data}[(${arg[0]} as usize)..(${arg[1]} as usize)].to_vec()`
-            : `${data}[(${arg[0]} as usize)..].to_vec()`,
+          `{ let __d = ${data}; let __n = __d.len() as i64; let __x = (${arg[0]}).max(0).min(__n) as usize; let __y = (${arg[1] ?? '__n'}).max(0).min(__n) as usize; if __x < __y { __d[__x..__y].to_vec() } else { Vec::new() } }`,
         )
       case 'toReversed':
         return wrapList(
           `${data}.iter().rev().cloned().collect::<Vec<_>>()`,
         )
       case 'join':
-        return `${data}.iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join(&${arg[0]})`
+        // each item as `to-text` renders it, so a float reads as on every backend
+        return op.target.type?.kind === 'array' && op.target.type.element.kind === 'float'
+          ? `${data}.iter().map(|e| term_number(*e)).collect::<Vec<_>>().join(&${arg[0]})`
+          : `${data}.iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join(&${arg[0]})`
       case 'map':
         return wrapList(
           `${data}.iter().map(|e| ${arg[0]}(e.clone())).collect::<Vec<_>>()`,
@@ -1624,8 +1734,12 @@ export function emitRust(
       case 'findIndex':
         return `${data}.iter().position(|e| ${arg[0]}(e.clone())).map(|i| i as i64).unwrap_or(-1)`
       case 'flat':
-        // flattening a non-nested list is a shallow copy (JS `[1,2,3].flat()` is `[1,2,3]`)
-        return wrapList(`${data}.clone()`)
+        // one level of nesting removed when the items are lists; a copy otherwise (JS `[1,2,3].flat()` is `[1,2,3]`)
+        return wrapList(
+          op.target.type?.kind === 'array' && op.target.type.element.kind === 'array'
+            ? `${data}.iter().flat_map(|e| e.borrow().clone()).collect::<Vec<_>>()`
+            : `${data}.clone()`,
+        )
       case 'unshift':
         // insert at the front, returning the new length (JS `unshift`)
         return `{ let mut __b = ${target}.borrow_mut(); __b.insert(0, ${arg[0]}); __b.len() as i64 }`
@@ -1637,7 +1751,8 @@ export function emitRust(
         // JS `splice(start, deleteCount, ...items)`: remove `deleteCount` at `start`, insert the items, in place
         const items = arg.slice(2).join(', ')
 
-        return `{ let mut __b = ${target}.borrow_mut(); let __s = (${arg[0]}) as usize; let __d = (${arg[1]}) as usize; let _: Vec<_> = __b.splice(__s..__s + __d, vec![${items}]).collect(); 0i64 }`
+        // the start clamped to the length and the count to what remains (semantics.md)
+        return `{ let mut __b = ${target}.borrow_mut(); let __n = __b.len() as i64; let __s = (${arg[0]}).max(0).min(__n); let __d = (${arg[1]}).max(0).min(__n - __s); let (__s, __d) = (__s as usize, __d as usize); let _: Vec<_> = __b.splice(__s..__s + __d, vec![${items}]).collect(); 0i64 }`
       }
 
       default:
@@ -1712,7 +1827,7 @@ export function emitRust(
       case 'at':
         return `{ let h: &str = &${t}; let i = ${a[0]}; if i < 0 { String::new() } else { h.chars().nth(i as usize).map(|c| c.to_string()).unwrap_or_default() } }`
       case 'charCodeAt':
-        return `{ let h: &str = &${t}; let i = ${a[0]}; if i < 0 { 0 } else { h.encode_utf16().nth(i as usize).map(|c| c as i64).unwrap_or(0) } }`
+        return `{ let h: &str = &${t}; let i = ${a[0]}; if i < 0 { -1i64 } else { h.chars().nth(i as usize).map(|c| c as i64).unwrap_or(-1) } }`
       case 'indexOf':
         return `{ let h: &str = &${t}; let n: String = ${a[0]}; let from = (${a[1] ?? '0'}).max(0) as usize; let start = h.char_indices().nth(from).map(|(b, _)| b).unwrap_or(h.len()); match h[start..].find(n.as_str()) { Some(b) => h[..start + b].chars().count() as i64, None => -1 } }`
       case 'lastIndexOf':
@@ -1736,10 +1851,11 @@ export function emitRust(
         return `${t}.trim_start().to_string()`
       case 'trimEnd':
         return `${t}.trim_end().to_string()`
+      // the fill repeats and is cut so the result is exactly the width in code points (semantics.md)
       case 'padStart':
-        return `{ let mut o: String = ${t}; let f: String = ${a[1]}; while (o.chars().count() as i64) < (${a[0]}) && !f.is_empty() { o = format!("{}{}", f, o); } o }`
+        return `{ let o: String = ${t}; let f: Vec<char> = (${a[1]}).chars().collect(); let n = o.chars().count() as i64; let w: i64 = ${a[0]}; if n >= w || f.is_empty() { o } else { let p: String = (0..(w - n) as usize).map(|i| f[i % f.len()]).collect(); format!("{}{}", p, o) } }`
       case 'padEnd':
-        return `{ let mut o: String = ${t}; let f: String = ${a[1]}; while (o.chars().count() as i64) < (${a[0]}) && !f.is_empty() { o = format!("{}{}", o, f); } o }`
+        return `{ let o: String = ${t}; let f: Vec<char> = (${a[1]}).chars().collect(); let n = o.chars().count() as i64; let w: i64 = ${a[0]}; if n >= w || f.is_empty() { o } else { let p: String = (0..(w - n) as usize).map(|i| f[i % f.len()]).collect(); format!("{}{}", o, p) } }`
       case 'replace':
         return `{ let a: String = ${a[0]}; let b: String = ${a[1]}; ${t}.replacen(a.as_str(), b.as_str(), 1) }`
       case 'replaceAll':
@@ -1750,6 +1866,9 @@ export function emitRust(
         return `format!("{}{}", ${t}, ${a[0]})`
       case 'repeat':
         return `${t}.repeat((${a[0]}).max(0) as usize)`
+      case 'compare':
+        // byte order of UTF-8 is code point order (semantics.md)
+        return `{ let a: &str = &${t}; let b: String = ${a[0]}; match a.cmp(b.as_str()) { std::cmp::Ordering::Less => -1i64, std::cmp::Ordering::Equal => 0i64, std::cmp::Ordering::Greater => 1i64 } }`
       default:
         return ''
     }
@@ -1880,15 +1999,8 @@ export function emitRust(
         // NOT a native list or map operation on a typed receiver (`self/pop`, `self/get` in the stdlib's list): its
         // rust value is already the element type, and downcasting a `T` does not compile (E0599), which broke every
         // Rust program that used a list (found by test/compile/meaning-native.ts, 2026-10-02)
-        const callee = node.value?.form === 'call' ? node.value.callee : undefined
-        const collectionCall =
-          callee?.form === 'member' &&
-          (callee.target.type?.kind === 'array' ||
-            callee.target.type?.kind === 'map' ||
-            (callee.target.type?.kind === 'named' && (callee.target.type.name === 'list' || callee.target.type.name === 'hash')))
-        const callValue =
-          (node.value?.form === 'call' && !collectionCall) ||
-          (node.value?.form === 'await' && node.value.expr.form === 'call')
+        // so only a call into an untyped shim downcasts: a Term task, or a `dock load` module (shimCall)
+        const callValue = node.value !== undefined && shimCall(node.value)
         const generic =
           currentResult?.kind === 'variable' ||
           (currentResult?.kind === 'named' &&
@@ -1949,17 +2061,20 @@ export function emitRust(
 
         return `{ let raised = ${carrier}; eprintln!("{}", raised); std::process::exit(1) }`
       }
-      case 'while':
+      case 'while': {
+        const budget = budgetCheck(node, d + 1)
+
         // `while true` emits `loop`, which rustc knows diverges: a function ending in the loop then needs no
         // unreachable trailing value (E0308)
         if (node.cond.form === 'boolean' && node.cond.value === true) {
-          return `loop {\n${block(node.body, d + 1)}\n${pad(d)}}`
+          return `loop {\n${budget}${block(node.body, d + 1)}\n${pad(d)}}`
         }
 
-        return `while ${condExpr(node.cond)} {\n${block(
+        return `while ${condExpr(node.cond)} {\n${budget}${block(
           node.body,
           d + 1,
         )}\n${pad(d)}}`
+      }
       case 'guard': {
         // the body runs as a closure returning Result<Option<T>, TermException>, T the enclosing task's result: a
         // `send back` inside it is Ok(Some(v)) and returns from the task after the match, falling off the end is
@@ -1991,13 +2106,15 @@ export function emitRust(
             ? `${expr(node.iterable)}.borrow().clone()`
             : expr(node.iterable)
 
+        const budget = budgetCheck(node, d + 1)
+
         // a walk that names its INDEX enumerates; `i64` because that is what a Term number is here. lean-0017
         return node.index
-          ? `for (${vname(node.index)}, ${vname(node.item)}) in ${iterable}.into_iter().enumerate().map(|(i, v)| (i as i64, v)) {\n${block(
+          ? `for (${vname(node.index)}, ${vname(node.item)}) in ${iterable}.into_iter().enumerate().map(|(i, v)| (i as i64, v)) {\n${budget}${block(
               node.body,
               d + 1,
             )}\n${pad(d)}}`
-          : `for ${vname(node.item)} in ${iterable} {\n${block(
+          : `for ${vname(node.item)} in ${iterable} {\n${budget}${block(
               node.body,
               d + 1,
             )}\n${pad(d)}}`
@@ -2801,6 +2918,35 @@ impl<T> std::hash::Hash for TermShared<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) { (std::rc::Rc::as_ptr(&self.0) as *const () as usize).hash(state) }
 }
 impl<T> std::ops::Deref for TermShared<T> { type Target = std::cell::RefCell<T>; fn deref(&self) -> &Self::Target { &self.0 } }`,
+    // a float as text, the same on every backend (note/term/stdlib/semantics.md, "Numbers as text"): the shortest
+    // digits that read back as the same float, laid out as ECMAScript's Number::toString lays them out. Rust's own
+    // Display never uses an exponent and prints -0 as "-0"
+    `// a float as text, ECMAScript's layout over the shortest round-trip digits
+#[allow(dead_code)]
+pub fn term_number(x: f64) -> String {
+    if x.is_nan() { return "NaN".to_string(); }
+    if x.is_infinite() { return if x > 0.0 { "Infinity".to_string() } else { "-Infinity".to_string() }; }
+    if x == 0.0 { return "0".to_string(); }
+    let shortest = format!("{:e}", x.abs());
+    let (mantissa, exponent) = shortest.split_once('e').unwrap_or((shortest.as_str(), "0"));
+    let digits: String = mantissa.chars().filter(|c| *c != '.').collect();
+    let digits = digits.trim_end_matches('0').to_string();
+    let digits = if digits.is_empty() { "0".to_string() } else { digits };
+    let k = digits.len() as i64;
+    let n = exponent.parse::<i64>().unwrap_or(0) + 1;
+    let body = if k <= n && n <= 21 {
+        format!("{}{}", digits, "0".repeat((n - k) as usize))
+    } else if 0 < n && n <= 21 {
+        format!("{}.{}", &digits[..n as usize], &digits[n as usize..])
+    } else if -6 < n && n <= 0 {
+        format!("0.{}{}", "0".repeat((-n) as usize), digits)
+    } else {
+        let e = n - 1;
+        let sign = if e < 0 { "-" } else { "+" };
+        if k == 1 { format!("{}e{}{}", digits, sign, e.abs()) } else { format!("{}.{}e{}{}", &digits[..1], &digits[1..], sign, e.abs()) }
+    };
+    if x < 0.0 { format!("-{}", body) } else { body }
+}`,
   ]
 
   const carrier = body.some(b => b.includes('TermException'))
@@ -2843,7 +2989,33 @@ impl std::error::Error for TermException {}`,
     wake.push(`pub fn wake_hive() {\n${calls}\n}`)
   }
 
-  return [...uses, ...termMap, ...carrier, ...body, ...rustFormWalk(fillSpecs, meltSpecs), ...wake].join('\n\n') + '\n'
+  // the preemption budget, when any loop checks it: BEAM's 4,000 reductions, counted per thread, refilled on a yield
+  const budget = budgetUses > 0
+    ? [
+        `// the preemption budget (note/term/research/beam-otp-lessons.md, design 5): an asynchronous loop yields to the
+// scheduler once every ${BUDGET} turns, so no task starves the others on its runtime
+thread_local! { static __TERM_BUDGET: std::cell::Cell<u32> = std::cell::Cell::new(${BUDGET}); }
+async fn __term_budget() {
+    let left = __TERM_BUDGET.with(|b| { let n = b.get().saturating_sub(1); b.set(n); n });
+    if left == 0 {
+        __TERM_BUDGET.with(|b| b.set(${BUDGET}));
+        tokio::task::yield_now().await;
+    }
+}`,
+      ]
+    : []
+
+  lastBudgetStats = { checked: budgetUses, elided: budgetElided }
+
+  return [...uses, ...termMap, ...carrier, ...budget, ...body, ...rustFormWalk(fillSpecs, meltSpecs), ...wake].join('\n\n') + '\n'
+}
+
+// how many asynchronous loops the last `emitRust` gave a budget check, and how many it left one out of because a
+// small literal bounds them: the elision rate design 5 asked to be measured before it is promised
+let lastBudgetStats = { checked: 0, elided: 0 }
+
+export function budgetStats(): { checked: number; elided: number } {
+  return lastBudgetStats
 }
 
 // MUTATED-CAPTURE analysis: the names a function must box in `Rc<RefCell>` because a nested closure assigns to them.
@@ -3225,6 +3397,25 @@ function usedNames(body: Statement[], into: Set<string>): void {
 // invalidated, so the borrow checker always accepts the move). Returns the set of such variable names. `reads` counts
 // every `variable` occurrence (any nesting); `restricted` counts the ones inside a loop or closure body. A name is
 // move-eligible when `reads === 1 && restricted === 0`. Conservative by construction: anything else keeps cloning.
+// a loop condition that bounds it by a small literal: `i < K` or `i <= K` (either way round), or a conjunction one of
+// whose sides does, with K at most `most`. Such a loop ends within one preemption budget
+function constantBounded(cond: Expression, most: number): boolean {
+  if (cond.form !== 'binary') {
+    return false
+  }
+
+  if (cond.op === '&&') {
+    return constantBounded(cond.left, most) || constantBounded(cond.right, most)
+  }
+
+  const small = (e: Expression): boolean => e.form === 'integer' && Number(e.value) <= most
+
+  return (
+    ((cond.op === '<' || cond.op === '<=') && small(cond.right)) ||
+    ((cond.op === '>' || cond.op === '>=') && small(cond.left))
+  )
+}
+
 function moveOnLastUse(body: Statement[]): Set<string> {
   const reads = new Map<string, number>()
   const restricted = new Map<string, number>()

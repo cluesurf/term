@@ -982,7 +982,12 @@ function recordOf(bridge: Bridge, value: Form): Expression | undefined {
   // the lean surface: `make x / foo true / bar <baz>` fills the fields `foo` and `bar`. A property head among
   // the positionals is a field, built as an array the checker unwraps against the field's declared type; the
   // rest stay positional and fill the form's slots as they do today.
-  const lean = isLean(bridge, 'make')
+  //
+  // NOT for `make list` or `make find`: an array and a native map have no fields, so every child is an ELEMENT.
+  // Read with labels, `make list / text <a> / replace-all from, <->, <_>` built the record
+  // `{ replaceAll: [...] }` where the list's second item belonged, and two items of one head were refused as a
+  // field "given twice". Found by `pnpm term:lean-equal` on deck/zone/code (self-hosting-0013).
+  const lean = isLean(bridge, 'make') && name !== 'list' && name !== 'find'
 
   if (lean) {
     const order = new Map<Node, number>()
@@ -1319,8 +1324,17 @@ function leanArguments(
 
     if (seed.kind === 'form' && seed.form === 'seed-call-open') {
       const head = wordAt(seed, 'name')
+      // A property head carrying a CALL MODIFIER is a call, never a label: a label's value takes no `wait`,
+      // passes no exception on, and names no arguments of its own with `bind`. Read as a label, `source-lines
+      // file, wait true` lost its await, and `read-env / bind name, <ZONE_SAVE>` under another call lost BOTH its
+      // arguments, because only a property's plain children become its value. So the modifier decides it here,
+      // structurally, before any schema is consulted. Both found by `pnpm term:lean-equal` (self-hosting-0013).
+      const modified =
+        formsAt(seed, 'wait').length > 0 ||
+        formsAt(seed, 'halt').length > 0 ||
+        formsAt(seed, 'bind').length > 0
 
-      if (head !== undefined && !head.includes('/')) {
+      if (head !== undefined && !head.includes('/') && !modified) {
         const items: Expression[] = []
 
         for (const inner of at(seed, 'seed')) {
@@ -1466,6 +1480,10 @@ function callOf(bridge: Bridge, value: Form): Expression | undefined {
 
   const args = written.map(entry => entry.expr)
   const names = written.map(entry => entry.name)
+  // which labels came from a PROPERTY HEAD rather than a `bind`, exactly as the bare-head call records it. Without
+  // this an explicit `call` under lean had labels the checker could not tell apart from `bind`s, so one on a
+  // native callee (`call diagnostic-module/renderKink`) was dropped as documentation, in silence
+  const leanNames = written.map(entry => entry.lean === true)
 
   // the arithmetic and comparison builtins lower to an operator, not a call: they have no definition to bind to
   const folded = foldBuiltin(name, args, span)
@@ -1502,6 +1520,7 @@ function callOf(bridge: Bridge, value: Form): Expression | undefined {
           args,
           span,
           ...(names.some(Boolean) ? { names } : {}),
+          ...(leanNames.some(Boolean) ? { leanNames } : {}),
           ...(isLean(bridge, 'call') ? { lean: true } : {}),
           ...(propagate ? { propagate: true } : {}),
           ...(background ? { background: true } : {}),
@@ -2605,7 +2624,10 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
     // `wait true` on a DEFINITION marks it async, the same as `note async`. The two are not alternatives in
     // the reader, they are two spellings of one fact, and a task that says only `wait true` is async too.
     ...(marked(value, 'async') || waitsTrue(value) ? { async: true } : {}),
+    // `mark private`: visible only inside this file, enforced by check/private.ts. `note private` is the old
+    // spelling, still honored, and its line is kept so the checker can warn about it
     ...(marked(value, 'private') ? { private: true } : {}),
+    ...privateNoteOf(value),
     // `note roam`: meant to run forever (a server, an event loop)
     ...(marked(value, 'roam') ? { roam: true } : {}),
     ...(owner ? { method: { form: owner, name: bare } } : {}),
@@ -2923,13 +2945,28 @@ function claimOf(bridge: Bridge, shown: Form): Expression | undefined {
 
 // the head word a minted value was built from, for a relation written as a bare name
 // Metadata written as `note <word>` or as `mark <word>`. The documented spelling is `note`, and `mark` is
-// accepted alongside it because it is live in about thirty files: `mark private` on a record field, `mark
-// async` in the stdlib's async tasks, and several fixtures. Refusing it was tried and reverted.
+// accepted alongside it because it is live in several fixtures (`mark async`). Refusing it was tried and
+// reverted. PRIVACY IS THE EXCEPTION: `mark private` is its canonical spelling since 2026-10-02, enforced per
+// file (check/private.ts), and `note private` is the old one, honored and warned about (privateNoteOf below).
 function marked(value: Form, word: string): boolean {
   return (
     hasWord(value, 'note', word) ||
     formsAt(value, 'mark').some(mark => wordAt(mark, 'kind') === word)
   )
+}
+
+// The line of a `note private` on a task that does not also say `mark private`: the old spelling, which the
+// checker warns about (`note-private`) while still honoring it.
+function privateNoteOf(value: Form): { privateNote?: Span } {
+  if (formsAt(value, 'mark').some(mark => wordAt(mark, 'kind') === 'private')) {
+    return {}
+  }
+
+  const note = at(value, 'note').find(
+    v => textOf(v) === 'private' || wordAt(v, 'text') === 'private',
+  )
+
+  return note ? { privateNote: spanOf(note) } : {}
 }
 
 // `wait true` written on the definition itself. `wait false` is fire-and-forget and is not this: the marker's

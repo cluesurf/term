@@ -73,10 +73,27 @@ ok(
   existsSync(join(root, 'deck.tree')) ? readFileSync(join(root, 'deck.tree'), 'utf8') : '',
 )
 
+// the scaffold is already in `term form`'s canonical layout. It was not: the formatter collapsed the manifest onto
+// one line and rewrote the entry, so `form --check` failed on a project nobody had touched (2026-10-02)
+const checkedForm = term(root, 'form', '--check')
+
+ok('`form --check` passes on a freshly scaffolded project', /already formatted/.test(checkedForm), checkedForm)
+
+// the scaffold starts at an EVEN patch, because `term host` refuses an odd one. Read through `show code`, which is
+// the package manager's own reading of the manifest
+const shownCode = term(root, 'show', 'code').trim()
+
+ok('`wake` starts the version at an even patch', /^\d+\.\d+\.\d*[02468]$/.test(shownCode), shownCode)
+
 // `make`: compiles the .tree it scaffolded into host/
 const made = term(root, 'make')
 
 ok('`make` emits host/ from the scaffolded source', existsSync(join(root, 'host/code/boot.ts')), made)
+
+// and ONLY the code. `wake` writes an unscoped `deck demo`, and `make` used to accept only `deck @scope/name` as a
+// manifest, so it compiled deck.tree as code into host/deck.ts and said "Compiled 2 files" for a project of one
+ok('`make` does not compile the unscoped manifest as code', !existsSync(join(root, 'host/deck.ts')), made)
+ok('`make` counts one compiled file', /Compiled 1 file\b/.test(made), made)
 
 // `time`: compiles the project THE WAY THE BUILD DOES, then reports what it found.
 //
@@ -94,6 +111,7 @@ ok('`time` does not report an imported name as undefined', !/unknown-name/.test(
 const shown = term(root, 'show')
 
 ok('`show` prints a version', /\d+\.\d+\.\d+/.test(shown), shown)
+ok('`show` names the toolchain `term`, not `seed`', /term/.test(shown) && !/seed/.test(shown), shown)
 
 // `look`: lists what a module holds
 const looked = term(root, 'look', 'code/boot.tree')
@@ -184,7 +202,7 @@ ok('`halt` says `term`, not `seed`', !/\bseed [a-z]/.test(halted), halted)
 // `note`: names the package and its version, read from the manifest
 const noted = term(root, 'note')
 
-ok('`note` names the package and version', /demo/.test(noted) && /0\.0\.1/.test(noted), noted)
+ok('`note` names the package and version', /demo/.test(noted) && /0\.0\.2/.test(noted), noted)
 
 // `hold`: the gate. One line counting the files and the tier-0 obligations it proved
 const held = term(root, 'hold')
@@ -234,16 +252,26 @@ const tested = term(root, 'test')
 
 ok('`test` runs a test file and counts it', /1 test passed/.test(tested), tested)
 
-// `hunt`: an EMPTY corpus says so rather than passing.
+// `hunt`: reads THIS project's files, really fuzzes, and an empty corpus FAILS rather than passing.
 //
-// It defaulted to `deck/base/code`, the pre-rename stdlib path, which has not existed since the package became
-// `deck/base`. `find` failed, the catch set the corpus to empty, and every run reported `no oracle violations`
-// having read nothing at all - a check that answers the question it was asked while testing nothing. It reads 803
-// files on the real tree now, and an empty one is reported as empty.
-const hunted = term(root, 'hunt')
+// It defaulted to `deck/base/code`, the compiler's own stdlib, which a user project does not have: it read nothing
+// and said CLEAN with exit 0. Its fuzzing half spawned `npx tsx host/fuzz-campaign.ts`, a file that exists only in
+// source, so from host/line.js no fuzz input ever ran and the report still said `no crashes, no hangs`.
+const hunt = (...argv: string[]) =>
+  spawnSync('node', [LINE, 'hunt', ...argv], { cwd: root, encoding: 'utf8', timeout: 300000 })
 
-ok('`hunt` says when it read no files', /no files read/i.test(hunted), hunted)
-ok('`hunt` does not claim the oracles held over nothing', !/no oracle violations/.test(hunted), hunted)
+const hunted = hunt('--runs', '20', '--seeds', '1')
+const huntedText = `${hunted.stdout ?? ''}${hunted.stderr ?? ''}`
+
+ok('`hunt` reads the project\'s own files by default', /corpus oracles: [1-9]\d* file\(s\) read/.test(huntedText), huntedText)
+ok('`hunt` runs the fuzz campaign from the built CLI', /fuzzing: 20 run\(s\) over 1 of 1 seed/.test(huntedText), huntedText)
+
+mkdirSync(join(root, 'empty'), { recursive: true })
+const huntedEmpty = hunt('empty', '--runs', '20', '--seeds', '1')
+const huntedEmptyText = `${huntedEmpty.stdout ?? ''}${huntedEmpty.stderr ?? ''}`
+
+ok('`hunt` over no files exits non-zero', huntedEmpty.status === 1, huntedEmptyText)
+ok('`hunt` over no files never says CLEAN', !/CLEAN/.test(huntedEmptyText) && /no files read/i.test(huntedEmptyText), huntedEmptyText)
 
 // `seek`: reports what a project is missing
 const sought = term(root, 'seek')

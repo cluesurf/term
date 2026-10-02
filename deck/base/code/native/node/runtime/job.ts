@@ -123,6 +123,29 @@ const job = {
       }
     }),
 
+  // resolve as soon as ANY job has stopped running, for any reason: what a supervisor waits for, since a permanent
+  // child that returns normally must be restarted too, and `settleGroup` waits through a normal return
+  settleAny: (jobs: SeedJob[]): Promise<void> =>
+    new Promise<void>(resolve => {
+      let over = false
+      const finish = (): void => {
+        if (!over) {
+          over = true
+          resolve()
+        }
+      }
+
+      if (jobs.length === 0 || jobs.some(one => one.state !== 'running')) {
+        finish()
+
+        return
+      }
+
+      for (const one of jobs) {
+        void job.settle(one).then(finish)
+      }
+    }),
+
   state: (self: SeedJob): string => self.state,
 
   result: (self: SeedJob): unknown => self.result,

@@ -13,6 +13,9 @@ import type {
 import {
   exhausted,
   mapCollect,
+  stringCall,
+  stringRead,
+  isText,
 } from '@term/make/code/compile/backend'
 import { lowerRoutes } from '@term/make/code/compile/route-lower'
 import {
@@ -316,6 +319,17 @@ let tsFormWalkUsed = false
 let tsIntUsed = false
 // set when an `is-equal` compares by structure (__termEqual) or a map key is interned (__termKey)
 let tsEqualUsed = false
+// set when a text operation goes through `__termText`, which counts code points (note/term/stdlib/semantics.md)
+let tsTextUsed = false
+// set when a list read, write, pop or slice goes through the checked list helpers (note/term/stdlib/semantics.md)
+let tsListUsed = false
+// the list methods whose JavaScript meaning differs from the stdlib's, and the helper that has the stdlib's
+const LIST_HELPER: Record<string, string> = {
+  pop: '__termPop',
+  shift: '__termShift',
+  slice: '__termSlice',
+  splice: '__termSplice',
+}
 // the `note shared` forms: references by design, compared and keyed by identity as on the other backends
 let tsSharedForms = new Set<string>()
 
@@ -534,6 +548,176 @@ const intPrelude = (withClass: boolean): string => `function __termInt(x: number
     ${withClass ? `throw new ${EXCEPTION_CLASS}(base)` : `throw Object.assign(new Error(base.note), base, { name: "${EXCEPTION_CLASS}" })`}
   }
   return x
+}`
+
+// THE TEXT OPERATIONS COUNT CODE POINTS, as they do on Rust, Swift and Kotlin (note/term/stdlib/semantics.md).
+// JavaScript's own string methods count UTF-16 units, so `"a𝄞b".charAt(1)` is half a surrogate pair here and `𝄞`
+// everywhere else. Each method is the meaning on that page; a text with no surrogate takes the native path, which
+// is the same answer by construction. No escape sequence appears in it: the White_Space set and the surrogate test
+// are built from character codes, because an escaped U+2028 that some later step decodes is a line break inside a
+// regular expression.
+const TEXT_PRELUDE = `const __termSurrogate = { test(s: string): boolean { for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); if (c >= 55296 && c <= 57343) return true } return false } }
+const __termWhite = [9, 10, 11, 12, 13, 32, 133, 160, 5760, 8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288].map(c => String.fromCharCode(c)).join('')
+const __termWhiteStart = new RegExp('^[' + __termWhite + ']+')
+const __termWhiteEnd = new RegExp('[' + __termWhite + ']+$')
+const __termText = {
+  length(s: string): number {
+    if (!__termSurrogate.test(s)) return s.length
+    let n = 0
+    for (const _ of s) n++
+    return n
+  },
+  // the UTF-16 offset of code point i, for a text with surrogates
+  offset(s: string, i: number): number {
+    let at = 0
+    let n = 0
+    for (const c of s) {
+      if (n === i) return at
+      at += c.length
+      n++
+    }
+    return s.length
+  },
+  charAt(s: string, i: number): string {
+    if (!(i >= 0)) return ''
+    if (!__termSurrogate.test(s)) return i < s.length ? s[i]! : ''
+    const c = Array.from(s)
+    return i < c.length ? c[i]! : ''
+  },
+  at(s: string, i: number): string {
+    return __termText.charAt(s, i)
+  },
+  charCodeAt(s: string, i: number): number {
+    const c = __termText.charAt(s, i)
+    return c === '' ? -1 : c.codePointAt(0)!
+  },
+  indexOf(s: string, n: string, from: number = 0): number {
+    const size = __termText.length(s)
+    const f = Math.min(Math.max(from, 0), size)
+    if (n === '') return f
+    const plain = !__termSurrogate.test(s)
+    const found = s.indexOf(n, plain ? f : __termText.offset(s, f))
+    if (found < 0) return -1
+    return plain ? found : __termText.length(s.slice(0, found))
+  },
+  lastIndexOf(s: string, n: string): number {
+    const found = s.lastIndexOf(n)
+    if (found < 0) return -1
+    return __termText.length(s.slice(0, found))
+  },
+  split(s: string, d: string): string[] {
+    return d === '' ? Array.from(s) : s.split(d)
+  },
+  substring(s: string, a: number, b?: number): string {
+    const c = __termSurrogate.test(s) ? Array.from(s) : null
+    const size = c ? c.length : s.length
+    let x = Math.min(Math.max(a, 0), size)
+    let y = Math.min(Math.max(b === undefined ? size : b, 0), size)
+    if (x > y) [x, y] = [y, x]
+    return c ? c.slice(x, y).join('') : s.slice(x, y)
+  },
+  slice(s: string, a: number, b?: number): string {
+    return __termText.substring(s, a, b)
+  },
+  toLowerCase(s: string): string {
+    return s.toLowerCase()
+  },
+  toUpperCase(s: string): string {
+    return s.toUpperCase()
+  },
+  trim(s: string): string {
+    return s.replace(__termWhiteStart, '').replace(__termWhiteEnd, '')
+  },
+  trimStart(s: string): string {
+    return s.replace(__termWhiteStart, '')
+  },
+  trimEnd(s: string): string {
+    return s.replace(__termWhiteEnd, '')
+  },
+  pad(s: string, w: number, f: string, front: boolean): string {
+    const size = __termText.length(s)
+    if (size >= w || f === '') return s
+    const fill = Array.from(f)
+    let out = ''
+    for (let i = 0; i < w - size; i++) out += fill[i % fill.length]
+    return front ? out + s : s + out
+  },
+  padStart(s: string, w: number, f: string): string {
+    return __termText.pad(s, w, f, true)
+  },
+  padEnd(s: string, w: number, f: string): string {
+    return __termText.pad(s, w, f, false)
+  },
+  replace(s: string, a: string, b: string): string {
+    const at = s.indexOf(a)
+    return at < 0 ? s : s.slice(0, at) + b + s.slice(at + a.length)
+  },
+  replaceAll(s: string, a: string, b: string): string {
+    if (a === '') return b + Array.from(s).join(b) + (s === '' ? '' : b)
+    return s.split(a).join(b)
+  },
+  includes(s: string, n: string): boolean {
+    return s.includes(n)
+  },
+  startsWith(s: string, n: string): boolean {
+    return s.startsWith(n)
+  },
+  endsWith(s: string, n: string): boolean {
+    return s.endsWith(n)
+  },
+  repeat(s: string, n: number): string {
+    return n > 0 ? s.repeat(n) : ''
+  },
+  concat(s: string, b: string): string {
+    return s + b
+  },
+  // code point order, which is UTF-8 byte order: JavaScript's < orders by UTF-16 unit, and the two disagree above
+  // the basic plane
+  compare(a: string, b: string): number {
+    if (!__termSurrogate.test(a) && !__termSurrogate.test(b)) return a < b ? -1 : a > b ? 1 : 0
+    const x = Array.from(a)
+    const y = Array.from(b)
+    for (let i = 0; i < Math.min(x.length, y.length); i++) {
+      const p = x[i]!.codePointAt(0)!
+      const q = y[i]!.codePointAt(0)!
+      if (p !== q) return p < q ? -1 : 1
+    }
+    return x.length === y.length ? 0 : x.length < y.length ? -1 : 1
+  },
+}`
+
+// A LIST READ PAST THE END STOPS, as it does on Rust, Swift and Kotlin, instead of reading `undefined`. So do a write
+// out of range and a pop of an empty list. A slice clamps its bounds and never counts from the end
+// (note/term/stdlib/semantics.md). The stop is the stdlib's `defect`, thrown the way `__termInt` throws it.
+const listPrelude = (withClass: boolean): string => `function __termStop(thing: string): never {
+  const base = { host: "@term/base", form: "defect", note: "Invalid", code: "", time: Date.now(), link: { thing } }
+  ${withClass ? `throw new ${EXCEPTION_CLASS}(base)` : `throw Object.assign(new Error(base.note), base, { name: "${EXCEPTION_CLASS}" })`}
+}
+function __termAt<T>(a: T[], i: number): T {
+  if (!(i >= 0 && i < a.length)) __termStop("a list read at " + i + " of " + a.length)
+  return a[i]!
+}
+function __termPut<T>(a: T[], i: number, v: T): T {
+  if (!(i >= 0 && i < a.length)) __termStop("a list write at " + i + " of " + a.length)
+  return (a[i] = v)
+}
+function __termPop<T>(a: T[]): T {
+  if (a.length === 0) __termStop("a pop of an empty list")
+  return a.pop()!
+}
+function __termShift<T>(a: T[]): T {
+  if (a.length === 0) __termStop("a shift of an empty list")
+  return a.shift()!
+}
+function __termSlice<T>(a: T[], s: number, e?: number): T[] {
+  const n = a.length
+  const x = Math.min(Math.max(s, 0), n)
+  const y = Math.min(Math.max(e === undefined ? n : e, 0), n)
+  return x < y ? a.slice(x, y) : []
+}
+function __termSplice<T>(a: T[], s: number, d: number, ...items: T[]): T[] {
+  const x = Math.min(Math.max(s, 0), a.length)
+  return a.splice(x, Math.min(Math.max(d, 0), a.length - x), ...items)
 }`
 
 // the walk, in the prelude of a module that lowers a `fill` or `melt` with a form. `data` is the value the
@@ -897,6 +1081,8 @@ function makeEmitter(
         // Rust, Swift and Kotlin all lower `at` to a direct index read, so its negative-index reading was
         // never portable, while its `T | undefined` result did not match `list/get`'s declared `like t` and
         // that one stdlib line, inlined into every module, was 47 of the v4 grammar's 61 strict errors.
+        // Since 2026-10-02 the read and the write are CHECKED, and a pop, shift, slice and splice follow the one
+        // meaning in note/term/stdlib/semantics.md: out of range stops with `defect`, a slice clamps.
         if (
           node.callee.form === 'member' &&
           node.callee.target.type?.kind === 'array' &&
@@ -904,11 +1090,58 @@ function makeEmitter(
             node.callee.name === 'set' ||
             node.callee.name === 'at')
         ) {
+          tsListUsed = true
           const target = expression(node.callee.target)
 
           return node.callee.name === 'set'
-            ? `(${target}[${expression(node.args[0]!)}] = ${expression(node.args[1]!)})`
-            : `${target}[${expression(node.args[0]!)}]`
+            ? `__termPut(${target}, ${expression(node.args[0]!)}, ${expression(node.args[1]!)})`
+            : `__termAt(${target}, ${expression(node.args[0]!)})`
+        }
+
+        if (
+          node.callee.form === 'member' &&
+          node.callee.target.type?.kind === 'array' &&
+          LIST_HELPER[node.callee.name]
+        ) {
+          tsListUsed = true
+
+          return `${LIST_HELPER[node.callee.name]}(${[
+            expression(node.callee.target),
+            ...node.args.map(arg => expression(arg)),
+          ].join(', ')})`
+        }
+
+        // membership and position in a list of records compare by structure, as `is-equal` does
+        if (
+          node.callee.form === 'member' &&
+          node.callee.target.type?.kind === 'array' &&
+          (node.callee.name === 'includes' ||
+            node.callee.name === 'indexOf' ||
+            node.callee.name === 'lastIndexOf') &&
+          structuralType(node.callee.target.type.element)
+        ) {
+          tsEqualUsed = true
+          const target = expression(node.callee.target)
+          const item = expression(node.args[0]!)
+          const test = `(__e) => __termEqual(__e, ${item})`
+
+          return node.callee.name === 'includes'
+            ? `${target}.some(${test})`
+            : node.callee.name === 'indexOf'
+              ? `${target}.findIndex(${test})`
+              : `${target}.findLastIndex(${test})`
+        }
+
+        // a text method follows the code-point meaning (`__termText`), never JavaScript's UTF-16 one
+        const textOp = stringCall(node.callee)
+
+        if (textOp) {
+          tsTextUsed = true
+
+          return `__termText.${textOp.op}(${[
+            expression(textOp.target),
+            ...node.args.map(arg => expression(arg)),
+          ].join(', ')})`
         }
 
         // `flat()` on an array: TypeScript's conditional flat type does not narrow back to the declared element,
@@ -1076,15 +1309,35 @@ function makeEmitter(
       }
 
       case 'member':
-        // a DYNAMIC segment (`read table/{key}`) subscripts rather than dot-accesses
+        // a DYNAMIC segment (`read table/{key}`) subscripts rather than dot-accesses. On a list it is the checked
+        // read, which stops past the end as every other backend does
         if (node.index) {
+          if (node.target.type?.kind === 'array') {
+            tsListUsed = true
+
+            return `__termAt(${expression(node.target)}, ${expression(node.index)})`
+          }
+
           return `${expression(node.target)}[${expression(node.index)}]`
+        }
+
+        // the length of a text counts code points
+        if (stringRead(node)) {
+          tsTextUsed = true
+
+          return `__termText.length(${expression(node.target)})`
         }
 
         // a binding field with a foreign `name <...>` (e.g. COLOR_BUFFER_BIT) emits that native name verbatim; other
         // members camelCase the seed name
         // a literal index is a plain segment (`read items/0`), and JavaScript spells that with brackets
         if (/^\d+$/.test(node.name)) {
+          if (node.target.type?.kind === 'array') {
+            tsListUsed = true
+
+            return `__termAt(${expression(node.target)}, ${node.name})`
+          }
+
           return `${expression(node.target)}[${node.name}]`
         }
 
@@ -1127,6 +1380,18 @@ function makeEmitter(
           const call = `__termEqual(${expression(node.left)}, ${expression(node.right)})`
 
           return node.op === '==' ? call : `!${call}`
+        }
+
+        // two texts order by code point (note/term/stdlib/semantics.md); JavaScript's `<` orders by UTF-16 unit
+        if (
+          (node.op === '<' || node.op === '>' || node.op === '<=' || node.op === '>=') &&
+          isText(node.left.type) &&
+          isText(node.right.type)
+        ) {
+          tsTextUsed = true
+          const compared = `__termText.compare(${expression(node.left)}, ${expression(node.right)}) ${node.op} 0`
+
+          return parentPrecedence > 0 ? `(${compared})` : compared
         }
 
         const precedence = PRECEDENCE[node.op]
@@ -1465,6 +1730,18 @@ function makeEmitter(
       }
 
       case 'assign': {
+        // a write to a list slot (`save slots/{value}, ...`, `save xs/0, ...`): the READ of one is the checked
+        // `__termAt(xs, i)`, which is no place to assign to (esbuild: "Invalid assignment target"). The write keeps
+        // the same check, so a slot past the end stops here as on every other backend, then writes the slot itself
+        if (node.target.form === 'member' && node.target.target.type?.kind === 'array' && (node.target.index || /^\d+$/.test(node.target.name))) {
+          tsListUsed = true
+          const list = expression(node.target.target)
+          const at = node.target.index ? expression(node.target.index) : node.target.name
+          const write = node.op === '=' ? `${list}[${at}] = ${expression(node.value)}` : `${list}[${at}] ${node.op} ${expression(node.value)}`
+
+          return `__termAt(${list}, ${at}); ${write}`
+        }
+
         const target = expression(node.target)
 
         return node.op === '='
@@ -1532,9 +1809,10 @@ function makeEmitter(
             out += `${i ? ' else ' : ''}if (${exceptionSubject}.form === ${JSON.stringify(branch.label)}) {\n${[...locals, ...branch.body.map(s => `${pad(depth + 1)}${guardStart(statement(s, depth + 1))}`)].join('\n')}\n${pad(depth)}}`
           })
 
-          if (node.otherwise) {
-            out += ` else ${block(node.otherwise, depth)}`
-          }
+          // an exception no arm names goes on to the caller, as it does on Rust, Swift and Kotlin. Without the
+          // rethrow the handler fell through and the task returned undefined: a JSON refusal in the browser env,
+          // raised as a TypeError by a failing uuid, came back from `why` as nothing at all
+          out += node.otherwise ? ` else ${block(node.otherwise, depth)}` : ` else {\n${pad(depth + 1)}throw ${exceptionSubject}\n${pad(depth)}}`
 
           return out
         }
@@ -1889,6 +2167,8 @@ export function emitTypeScript(
   tsFormWalkUsed = false
   tsIntUsed = false
   tsEqualUsed = false
+  tsTextUsed = false
+  tsListUsed = false
   tsSharedForms = new Set(
     program.flatMap(n => (n.form === 'record-type' && n.shared ? [n.name] : [])),
   )
@@ -2071,6 +2351,14 @@ export function emitTypeScript(
 
   if (tsEqualUsed) {
     prelude.push(EQUAL_PRELUDE)
+  }
+
+  if (tsTextUsed) {
+    prelude.push(TEXT_PRELUDE)
+  }
+
+  if (tsListUsed) {
+    prelude.push(listPrelude(prelude.includes(EXCEPTION_PRELUDE)))
   }
 
   // the wake chain: one `hiveWake` per deck with its static entries, then the raise hook, when the program has the

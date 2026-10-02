@@ -14,13 +14,13 @@ Maps to: structs, enums, and classes in Rust / Swift / TypeScript.
 | `form x` then `like other` | an alias for an existing type |
 | `form x` then `like other` + children | an extension: `head a, like T` names a type argument, `bind f, v` pins a field, `link p, like T` adds a prop |
 | `slot f, like T` | a positional field, filled by order at a `make` |
-| `link f, like T, fall v` | a field with a default |
-| `link f, like T, need false` | an optional field |
+| `link f, like T` + `fall v` beneath | a field with a default |
+| `link f, like T` + `need false` beneath | an optional field |
 | `head t` | a type parameter on the form |
 | `head t, need bound` | a type parameter with a trait bound |
 | `take self` | the receiver inside a method |
 | `task ...` inside a form | a method on the form |
-| `note private` under a `link` | a private field |
+| `mark private` under a `link` | a private field |
 | `make name` + `bind field, v` | construct a value |
 | `make name` + values | construct a value with `slot` fields, by position |
 | `make none` | construct a no-field variant |
@@ -173,9 +173,9 @@ form pair
         bind second, read self/first
 ```
 
-Methods can carry their own extra type parameters with `head`, declared before `take self`:
+Methods can carry their own extra type parameters with `head`, declared before `take self`. This method goes inside `form pair` above:
 
-```tree
+```tree fragment
 task map-first
   head c
   take self
@@ -186,19 +186,20 @@ task map-first
   like pair
   send back
     make pair
-      bind first, call change, read self/first
+      bind first
+        call change, read self/first
       bind second, read self/second
 ```
 
 ## Visibility
 
-`note private` under a `link` hides that field from other modules. Public methods can still read it.
+`mark private` under a `link` hides that field from other modules. Public methods can still read it.
 
 ```tree
 form account
   link name, like text
   link secret, like text
-    note private
+    mark private
 ```
 
 ## Extending a form
@@ -231,7 +232,8 @@ When the base has one type parameter, `link` lines directly under the `like` fil
 form point
   slot x, like number
   slot y, like number
-  link label, like text, fall text <origin>
+  link label, like text
+    fall text <origin>
 
 task origin
   like point
@@ -246,7 +248,7 @@ task origin
 
 `make name` builds a value. `bind field, value` sets each field. A no-field variant is just `make name`.
 
-```tree
+```tree fragment
 make some
   bind value, read x
 
@@ -267,7 +269,7 @@ make node
 
 When a constructed value is returned, it goes on the line below `send back`, never inline with `bind` children:
 
-```tree
+```tree fragment
 send back
   make some
     bind value, read x

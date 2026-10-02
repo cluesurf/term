@@ -82,6 +82,9 @@ A bare `halt <text>` raises `failure` with the text as its `thing`. It is what a
 When a deck has more to say than the seventeen, it declares a form `like` one of them. The new form inherits everything, restates the `note`, may pin a prop, and may add props.
 
 ```tree
+load @term/base/code/exception
+  find excess
+
 form upload-excess
   like excess
     bind note, <Upload too large>
@@ -91,7 +94,7 @@ form upload-excess
 
 `upload-excess` is an `excess`: a handler arm for `excess` catches it, and a route answering with it answers the way `excess` does. `thing` is pinned, so a `halt upload-excess` gives only `limit`, `actual` and `policy`, and giving `thing` or `note` is a build error.
 
-```tree
+```tree fragment
 halt upload-excess
   bind limit, code 5
   bind actual, read size
@@ -102,19 +105,27 @@ Name the failure with the qualifier in front: `upload-excess`, `slug-conflict`, 
 
 ## Passing it on
 
-`halt kink` as a child of a `call` says: if this call raises, let it through to my caller. The raise set of `process-file` below is the union of what `read-file` and `parse` raise.
+`halt kink` as a child of a `call` says: if this call raises, let it through to my caller. The raise set of `process-file` below is the union of what `read` and `parse` raise.
 
 ```tree
+load @term/base/code/file
+  find read
+load @term/base/code/json
+  find parse
+  find stringify
+
 task process-file
+  note async
   take path, like text
   like text
   save content
-    call read-file, read path
+    call read, read path
       halt kink
   save parsed
     call parse, read content
       halt kink
-  send back, read parsed
+  send back
+    call stringify, read parsed
 ```
 
 ## Catching
@@ -122,6 +133,26 @@ task process-file
 `note unsafe` over a body guards it. The `halt take` that follows is the handler, and its `take` names the caught value, an `exception` with `form`, `note`, `code`, `link` (the props) and `base` (the cause, if any).
 
 ```tree
+load @term/base/code/exception
+  find absence
+
+form user-absence
+  like absence
+    bind note, <No such user>
+    bind thing, <user>
+
+task find-user
+  take key, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read key
+        text <>
+    hook hold
+      halt user-absence
+  send back, read key
+
 task lookup
   take key, like text
   like text
@@ -139,9 +170,9 @@ task lookup
 
 A guarded body's raises leave the task's raise set. Whatever the handler raises comes back in. A guard with no handler catches everything and says nothing, which a lint will flag.
 
-A handler can branch on which exception it caught with `fork case`. Each `case` names a form the body can raise, and inside the arm that form's props are locals by their own names, beside the shared `note`, `form`, `code`, `host` and `time`. The arms must cover everything the body can raise (or carry an `otherwise`), and a form the body cannot raise is refused.
+A handler can branch on which exception it caught with `fork case`. Each `case` names a form the body can raise, and inside the arm that form's props are locals by their own names, beside the shared `note`, `form`, `code`, `host` and `time`. The arms must cover everything the body can raise (or carry an `otherwise`), and a form the body cannot raise is refused. With `user-absence` and `find-user` from above:
 
-```tree
+```tree fragment
 task describe
   take key, like text
   like text
@@ -163,12 +194,27 @@ This is the same on every backend. TypeScript throws and catches a class, Rust r
 A task may declare what it raises with bare `halt` lines in its signature. The compiler already infers the set, so the declaration is a contract: the inferred set must fit inside it, or the build fails where the change was made rather than in every caller.
 
 ```tree
+load @term/base/code/exception
+  find excess
+
 task store
-  take path, like text
-  like size
+  take size, like number
+  like number
   halt excess
-  halt absence
+  fork test
+    hook test
+      call is-above
+        read size
+        code 5
+    hook hold
+      halt excess
+        bind thing, text <upload>
+        bind limit, code 5
+        bind actual, read size
+  send back, read size
 ```
+
+The bare `halt excess` line above the first statement is the bound. The `halt excess` with `bind` children inside the body is a raise.
 
 Declare it on the public surface of a library. Never on internal tasks.
 
@@ -182,9 +228,9 @@ prints every exception in the build with its deck, its base among the seventeen,
 
 ## Telling the customer
 
-A library declares what it raises. **The app decides what a person is told.** In `code/tell.tree`:
+A library declares what it raises. **The app decides what a person is told.** In `code/tell.tree` of an app whose build can raise `upload-excess`:
 
-```tree
+```tree fragment
 tell @term/site/upload-excess
   note <File too large>
   hint <This upload is larger than the limit for its kind.>
@@ -202,13 +248,15 @@ Every exception, tell and deck in the build wakes into the runtime **hive** at b
 load @term/base/code/hive
   find hive-roll
   find hive-hear
+load @term/base/code/console
+  find log
 
 task watch
   call hive-hear
     text <exception>
     task report
       take entry, like hive-entry
-      call info, read entry/name
+      call log, read entry/name
 ```
 
 ## See also

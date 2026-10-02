@@ -22,7 +22,7 @@ form mock
 
 # the mock's data, typed out of the opaque dock handle (the gradual `unknown` coerces at a declared boundary)
 task data-of
-  note private
+  mark private
   take mock, like mock
   like mock-data
   send back, read mock/dock

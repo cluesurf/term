@@ -86,10 +86,13 @@ code false
 The boolean type is `like boolean`. In a condition you pass the boolean value straight through, you do not compare it to `true`:
 
 ```tree
-fork test
-  hook test, read flag
-  hook hold, send back, text <on>
-  hook miss, send back, text <off>
+task switch-label
+  take flag, like boolean
+  like text
+  fork test
+    hook test, read flag
+    hook hold, send back, text <on>
+    hook miss, send back, text <off>
 ```
 
 Inside the `boolean` form itself the two shapes are `case true` and `case false`. That is the definition. As a value you always write `true` / `false`. See [structures](structures.md) for the form, [operators](operators.md) for `and` / `or` / `not`.
@@ -99,10 +102,13 @@ Inside the `boolean` form itself the two shapes are `case true` and `case false`
 `void` is the unit value. It means "no meaningful value here." A task that returns nothing declares `like void`.
 
 ```tree
+load @term/base/code/console
+  find log
+
 task log-line
   take line, like text
   like void
-  call write-line, read line
+  call log, read line
 ```
 
 `void` is distinct from a missing optional value. For an absent value in typed code, use `maybe` and `make none` instead of `void`. See [collections](collections.md).
@@ -112,6 +118,9 @@ task log-line
 A small task using each primitive type. It takes a name and a count, returns text, and shows a flag along the way.
 
 ```tree
+load @term/base/code/console
+  find log
+
 task report
   take name, like text
   take count, like number
@@ -119,18 +128,14 @@ task report
   host loud, true
   fork test
     hook test, read loud
-    hook hold, call write-line, text <reporting>
-  send back
-    call join
-      read name
-      text < x >
-      read count
+    hook hold, call log, text <reporting>
+  send back, text <{{name}} x {{count}}>
 
 # the module body runs: no main task
-call write-line
+call log
   call report
     text <widget>
     code 7
 ```
 
-`name` is `text`, `count` is `number`, `loud` is `boolean`, the bracketed strings are `text` literals, and `code 7` is an integer. See [variables](variables.md) for `save` and `host`, and [functions](functions.md) for `task` and `send back`.
+`name` is `text`, `count` is `number`, `loud` is `boolean`, the bracketed strings are `text` literals (`{{name}}` inside one is filled in at run time), and `code 7` is an integer. See [variables](variables.md) for `save` and `host`, and [functions](functions.md) for `task` and `send back`.

@@ -1,20 +1,5 @@
+note draft
 
-task get
-  take name, like text
-  like text
-
-task set
-  take name, like text
-  take value, like text
-
-task remove
-  take name, like text
-
-task list
-  like hash
-    like text
-    like text
-
-task check
-  take name, like text
-  like boolean
+# SHELVED 2026-10-02 (base-v1-0017): superseded by code/environment.tree, which now holds has-variable, set-variable, remove-variable and variables. This module
+# declared its tasks and bound nothing, so every call built clean and threw `stub` at run time; its natives are
+# renamed (fetch-variable, store-variable, drop-variable, gather-variables, holds-variable) and environment.tree delegates to them.

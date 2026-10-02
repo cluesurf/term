@@ -719,6 +719,185 @@ task go
           text <aorist>
 `,
   },
+  {
+    // A NESTED TASK CALL IS POSITIONAL. A head that names no parameter of the callee and names a task is a call
+    // to that task, by note/term/lean.md's own rule (position first, then the name). It used to be read as a
+    // label and refused: `"shout" has no parameter "shout"`. Found by `pnpm term:lean-equal` on the CLI's .tree,
+    // 21 of 29 files (self-hosting-0013, check/lean-nest.ts)
+    name: 'a nested task call under a task call is positional, not a label',
+    lean: `
+task shout
+  take text, like text
+  like text
+  send back, text <{{text}}!>
+
+task go
+  like text
+  send back
+    shout
+      shout <a>
+`,
+    long: `
+task shout
+  take text, like text
+  like text
+  send back, text <{{text}}!>
+
+task go
+  like text
+  send back
+    call shout
+      call shout
+        text <a>
+`,
+  },
+  {
+    // A NESTED CALL UNDER A CALLEE WITH NO SIGNATURE. A method on a receiver (or a native dock) has no parameter a
+    // label could name, and the label was DROPPED there in silence: the call received an array of the nested
+    // call's arguments instead of its result. Found on `call console/log / call fade <...>` in
+    // deck/call/code/work/form.tree, which compiled clean and would have printed the wrong thing
+    name: 'a nested call under a method call is a call, never a dropped label',
+    lean: `
+task shout
+  take text, like text
+  like text
+  send back, text <{{text}}!>
+
+task go
+  like list
+    like text
+  save xs, make list
+  xs/push
+    shout <a>
+  send back, read xs
+`,
+    long: `
+task shout
+  take text, like text
+  like text
+  send back, text <{{text}}!>
+
+task go
+  like list
+    like text
+  save xs, make list
+  call xs/push
+    call shout
+      text <a>
+  send back, read xs
+`,
+  },
+  {
+    // A NESTED BUILTIN folds to its operator. `subtract` has no binding to resolve to, so the nested-call rule
+    // has to know the builtins the mill folds and fold them the same way (test-text.tree, `substring`)
+    name: 'a nested builtin under a task call folds to its operator',
+    lean: `
+task twice
+  take n, like number
+  like number
+  send back, add(n, n)
+
+task go
+  like number
+  send back
+    twice
+      subtract 3, 1
+`,
+    long: `
+task twice
+  take n, like number
+  like number
+  send back, add(n, n)
+
+task go
+  like number
+  send back
+    call twice
+      call subtract
+        code 3
+        code 1
+`,
+  },
+  {
+    // A PROPERTY HEAD WITH A CALL MODIFIER IS A CALL. A label's value takes no `wait`, so `later 2, wait true`
+    // under a call is the awaited call it says it is. Read as a label it lost its await and became an array
+    // (serve-verbs.tree, `source-lines`)
+    name: 'a property head that waits is an awaited call, not a label',
+    lean: `
+task twice
+  take n, like number
+  like number
+  send back, add(n, n)
+
+task go
+  note async
+  like number
+  send back
+    twice
+      later 2, wait true
+`,
+    long: `
+task twice
+  take n, like number
+  like number
+  send back, add(n, n)
+
+task go
+  note async
+  like number
+  send back
+    call twice
+      call later
+        code 2
+        wait true
+`,
+  },
+  {
+    // A PROPERTY HEAD WITH `bind` CHILDREN IS A CALL. Only a property's plain children become its value, so read
+    // as a label `read-env / bind name, <x>` under another call lost both of its arguments and the call ran on its
+    // defaults (deck/zone/code/config/machine.tree, `ZONE_SAVE` read as "")
+    name: 'a property head with bind children is a call with those arguments',
+    lean: `
+task twice
+  take n, like number
+  like number
+  send back, add(n, n)
+
+task pick
+  take n, like number
+  take m, like number, fall 0
+  like number
+  send back, add(n, m)
+
+task go
+  like number
+  send back
+    twice
+      pick
+        bind n, 2
+        bind m, 3
+`,
+    long: `
+task twice
+  take n, like number
+  like number
+  send back, add(n, n)
+
+task pick
+  take n, like number
+  take m, like number, fall 0
+  like number
+  send back, add(n, m)
+
+task go
+  like number
+  send back
+    call twice
+      call pick
+        bind n, code 2
+        bind m, code 3
+`,
+  },
 ]
 
 for (const pair of PAIRS) {
@@ -734,6 +913,21 @@ for (const pair of PAIRS) {
 
 // and the things lean must REFUSE, each with the reason a reader gets
 const REFUSALS: { name: string; text: string; expect: string }[] = [
+  {
+    // self-hosting-0014: a member callee never reaches arrangeArguments, so a label naming nothing there was
+    // dropped in silence and the call took the label's value as one more positional array
+    name: 'a label on a member call that names nothing callable',
+    text: `
+task go
+  like list
+    like text
+  save xs, make list
+  xs/push
+    nowhere <a>
+  send back, read xs
+`,
+    expect: 'has no parameters on record',
+  },
   {
     name: 'a label the callee does not have',
     text: `

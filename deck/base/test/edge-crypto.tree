@@ -1,0 +1,53 @@
+# A MAC is checked in constant time, the same on every backend: `verify-hmac` against RFC 4231's second test case,
+# and `is-equal-secret` on equal, unequal and different-length bytes. Held by `pnpm term:base-gate`.
+
+load @term/base/code/cryptography/hmac
+  find hmac-algorithm
+  find is-equal-secret
+  find verify-hmac
+
+load @term/base/code/bytes
+  find from-text
+  find from-hex
+
+test <a tag that matches verifies>
+  want hold
+    call verify-hmac
+      call from-text, text <Jefe>
+      call from-text, text <what do ya want for nothing?>
+      call from-hex, text <5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843>
+      make sha-256
+      wait true
+
+test <a tag one byte off does not verify>
+  want hold
+    call is-equal
+      call verify-hmac
+        call from-text, text <Jefe>
+        call from-text, text <what do ya want for nothing?>
+        call from-hex, text <5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3842>
+        make sha-256
+        wait true
+      false
+
+test <equal secrets are equal>
+  want hold
+    call is-equal-secret
+      call from-hex, text <00ff10>
+      call from-hex, text <00ff10>
+
+test <secrets that differ in the last byte are not equal>
+  want hold
+    call is-equal
+      call is-equal-secret
+        call from-hex, text <00ff10>
+        call from-hex, text <00ff11>
+      false
+
+test <secrets of two lengths are not equal>
+  want hold
+    call is-equal
+      call is-equal-secret
+        call from-hex, text <00ff>
+        call from-hex, text <00ff10>
+      false

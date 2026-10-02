@@ -12,7 +12,7 @@ load @term/base/code/native/{platform}/file/asynchronous/stream/reader
 form reader
   link dock
     like reader-dock
-    note private
+    mark private
   link path, like text
 
 # `start` is where to begin, `size` how many bytes to read from there. `size` 0 reads to the end of the file.

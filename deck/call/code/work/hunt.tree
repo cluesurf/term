@@ -75,20 +75,18 @@ task hunt
       call console/log
         call hunt-module/renderHunt
           read result
+      # `ok`, never `findings` alone: a check that did not run (no files read, a fuzz child that wrote no report)
+      # is in `result/unrun` and is not a pass
       fork test
-        call is-equal
-          read result/findings
-          code 0
+        read result/ok
         hook hold
           call log-good
-            text <No issues found>
+            text <No issues found, every check ran>
         hook miss
           call log-fail
-            text <Found {{result/findings}} issue(s)>
+            text <Not clean: {{result/findings}} issue(s), and see what did not run above>
   fork test
-    call is-equal
-      read result/findings
-      code 0
+    read result/ok
     hook hold
       call node-process/exit
         code 0

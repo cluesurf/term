@@ -79,7 +79,7 @@ export async function callForm(input: {
 
   if (input.check && changed > 0) {
     logFail(
-      `${changed} file${changed === 1 ? '' : 's'} need formatting`,
+      `${changed} file${changed === 1 ? ' needs' : 's need'} formatting`,
     )
     process.exit(1)
   }

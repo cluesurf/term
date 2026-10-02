@@ -11,11 +11,11 @@ Maps to: `Array` / `Vec`, `Map` / `HashMap`, `Set` / `HashSet`, plus a classic c
 | Collection | Build with | Empty value |
 | --- | --- | --- |
 | list | `make list` | `make list` |
-| hash | `make find` | `make find` |
-| set | `make set` then `bind items, make find` | same |
+| hash | `make hash` | `make hash` |
+| set | `make set` then `bind items, make hash` | same |
 | roll | `make nil` / `make cons` | `make nil` |
 
-A `form` literally named `list` is the native array. `make list` produces a native array value, and every list method delegates to a native array operation. The map type is built with `make find` (not `make hash`).
+A `form` literally named `list` is the native array. `make list` produces a native array value, and every list method delegates to a native array operation. The map type is the `hash` form, and `make hash` is the native map (`new Map()` on TypeScript).
 
 ### List methods
 
@@ -83,29 +83,32 @@ A `form` literally named `list` is the native array. `make list` produces a nati
 
 ### Calling style
 
-Both forms work and mean the same thing:
+Call a method in function form, with the receiver as the first argument:
 
-```tree
-call get, read items, code 0     # function form
-read items/get                   # member form, when the call takes only self
+```tree fragment
+call get(read(items), code 0)    # the element at 0
+call size, read items            # one argument, so an inline comma is safe
 ```
 
-A method with arguments reads more clearly in function form. See [operators](operators.md) for `link` chaining.
+`read items/get` is not a call: `read` with `/` reads a field. Load the form you use (`load @term/base/code/list` / `find list`) so its methods resolve. See [operators](operators.md) for `link` chaining.
 
 ## Lists
 
 Build a list, then push and read elements. `make list` on its own is the empty list.
 
 ```tree
+load @term/base/code/list
+  find list
+
 host items
   make list
 
-call push, read items, code 1
-call push, read items, code 2
-call push, read items, code 3
+call push(read(items), code 1)
+call push(read(items), code 2)
+call push(read(items), code 3)
 
-host first
-  call get, read items, code 0      # 1
+host first-item
+  call get(read(items), code 0)     # 1
 
 host count
   call size, read items             # 3
@@ -113,7 +116,7 @@ host count
 
 `get` returns the raw element. `first` and `last` return a [maybe](structures.md) so the empty case is handled in the types.
 
-```tree
+```tree fragment
 host head
   call first, read items            # make some / bind value, code 1
 ```
@@ -123,6 +126,9 @@ host head
 `map`, `filter`, and `reduce` take a function. A function parameter is declared with a nested `like task` (see [functions](functions.md)).
 
 ```tree
+load @term/base/code/list
+  find list
+
 task double-all
   take xs
     like list
@@ -130,12 +136,13 @@ task double-all
   like list
     like number
   send back
-    call map, read xs
+    call map
+      read xs
       task each
         take n, like number
         like number
         send back
-          call multiply, read n, code 2
+          call multiply(read(n), code 2)
 
 task total
   take xs
@@ -143,13 +150,14 @@ task total
       like number
   like number
   send back
-    call reduce, read xs
+    call reduce
+      read xs
       task step
         take running, like number
         take n, like number
         like number
         send back
-          call add, read running, read n
+          call add(read(running), read(n))
       code 0
 ```
 
@@ -157,66 +165,99 @@ task total
 
 ### Iterating
 
-To walk a list element by element, use `walk`. The bound element comes in through `take site, name <label>`.
+To walk a list element by element, use `walk`. The bound element comes in through `take site, name <label>`. A `walk` runs inside a task.
 
 ```tree
-walk list, read items
-  hook next
-    take site, name value
-    call write-line, read value
+load @term/base/code/console
+  find log
+
+task show-all
+  take items
+    like list
+      like text
+  walk list, read items
+    hook next
+      take site, name value
+      call log, read value
 ```
 
 `turn next` skips to the next element and `halt` breaks out. Full loop forms are in [loops](loops.md).
 
 ## Hashes
 
-The map type is built with `make find`. Keys and values are generic.
+The map type is built with `make hash`. Keys and values are generic.
 
 ```tree
-host ages
-  make find
+load @term/base/code/hash
+  find hash
 
-call set, read ages, text <ada>, code 36
-call set, read ages, text <bob>, code 41
+host ages
+  make hash
+
+call set(read(ages), text <ada>, code 36)
+call set(read(ages), text <bob>, code 41)
 
 host one
-  call get, read ages, text <ada>          # make some / bind value, code 36
+  call get(read(ages), text <ada>)        # make some / bind value, code 36
 
-host backup
-  call get-or-default, read ages, text <eve>, code 0   # 0
+host backup                               # 0
+  call get-or-default
+    read ages
+    text <eve>
+    code 0
 ```
 
 `get` returns a `maybe`, so a missing key is `none` rather than a crash. Iterate by walking the `keys` list.
 
 ```tree
-walk list
-  call keys, read ages
-  hook next
-    take site, name key
-    call write-line, read key
-    call write-line
-      call get-or-default, read ages, read key, code 0
+load @term/base/code/hash
+  find hash
+
+load @term/base/code/console
+  find log
+
+task show-ages
+  take ages
+    like hash
+      like text
+      like text
+  walk list
+    call keys, read ages
+    hook next
+      take site, name key
+      call log, read key
+      call log
+        call get-or-default
+          read ages
+          read key
+          text <none>
 ```
 
 `merge` folds another map into this one, and `clear` empties it.
 
-```tree
-call merge, read ages, read more-ages
+```tree fragment
+call merge(read(ages), read(more-ages))
 call clear, read ages
 ```
 
 ## Sets
 
-A set is built on `make find` for O(1) membership. Construct it by binding its inner map.
+A set is built on `make hash` for O(1) membership. Construct it by binding its inner map.
 
 ```tree
+load @term/base/code/hash
+  find hash
+
+load @term/base/code/set
+  find set
+
 host seen
   make set
     bind items
-      make find
+      make hash
 
-call insert, read seen, text <red>
-call insert, read seen, text <red>      # no-op, already present
+call insert(read(seen), text <red>)
+call insert(read(seen), text <red>)    # no-op, already present
 
 host n
   call size, read seen                  # 1
@@ -224,31 +265,31 @@ host n
 
 The algebra operations return a new set.
 
-```tree
+```tree fragment
 host both
-  call union, read seen, read other
+  call union(read(seen), read(other))
 
 host common
-  call intersection, read seen, read other
+  call intersection(read(seen), read(other))
 
 host only-mine
-  call difference, read seen, read other
+  call difference(read(seen), read(other))
 
 fork test
   hook test
-    call is-subset, read seen, read other
+    call is-subset(read(seen), read(other))
   hook hold
-    call write-line, text <seen fits inside other>
+    call log, text <seen fits inside other>
 ```
 
 Read the members back out with `to-list`.
 
-```tree
+```tree fragment
 walk list
   call to-list, read seen
   hook next
     take site, name item
-    call write-line, read item
+    call log, read item
 ```
 
 ## The roll (inductive list)

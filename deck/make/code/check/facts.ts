@@ -192,9 +192,29 @@ export function readsState(expression: unknown): boolean {
 //
 // A CLAIM (a signature-shaped `rule`) is pure by construction: it is a proposition, never run. A name that is neither
 // a task of the program nor bound in scope is an intrinsic the compiler lowers (`add`, `is-equal`), which is pure.
+// The answer for the last few PROGRAMS asked about, by identity. Was a module-level WeakMap per table, which a Term
+// port cannot spell and a Rust build cannot hold (self-hosting-0022). A bounded memo keeps what the weak map was for,
+// that a long-lived process does not keep every program it ever checked alive, and keeps the hit rate: the passes
+// that ask alternate between at most a program and the checker's lowered copy of it (check/contract.ts), so four
+// slots never thrash.
+function recentPrograms<T>(size = 4): {
+  get: (program: Program) => T | undefined
+  set: (program: Program, value: T) => void
+} {
+  const slots: { program: Program; value: T }[] = []
+
+  return {
+    get: program => slots.find(slot => slot.program === program)?.value,
+    set: (program, value) => {
+      slots.unshift({ program, value })
+      slots.length = Math.min(slots.length, size)
+    },
+  }
+}
+
 // the answer per program array: the kernel, both hold walks and the claim wall each ask, after the last pass that
 // rewrites a body (async resolution runs before the kernel), so one answer serves them all
-const PURE = new WeakMap<Program, Set<string>>()
+const PURE = recentPrograms<Set<string>>()
 
 export function pureFunctions(program: Program): Set<string> {
   const known = PURE.get(program)
@@ -552,9 +572,9 @@ const SCALARS = new Set(['number', 'float', 'boolean', 'string', 'unit', 'bytes'
 // the scalars no method can change in place, on any backend (`bytes` is a buffer, and can be)
 export const IMMUTABLE = new Set(['number', 'float', 'boolean', 'string', 'unit'])
 
-const STATE_FREE = new WeakMap<Program, Set<string>>()
-const LENGTH_KEEPING = new WeakMap<Program, Set<string>>()
-const RETURNS_FRESH = new WeakMap<Program, Set<string>>()
+const STATE_FREE = recentPrograms<Set<string>>()
+const LENGTH_KEEPING = recentPrograms<Set<string>>()
+const RETURNS_FRESH = recentPrograms<Set<string>>()
 
 export function stateFreeFunctions(program: Program): Set<string> {
   const known = STATE_FREE.get(program)
@@ -991,11 +1011,13 @@ export function callsImpure(
       return
     }
 
-    // an impure task named as a value, passed to a task that will call it, is an impure call made one step later
+    // an impure task named as a value, passed to a task that will call it, is an impure call made one step later. A
+    // local binding of the same name shadows the task: it is a value of its own
     if (
       node.form === 'variable' &&
       functions.has(node.name as string) &&
-      !pure.has(node.name as string)
+      !pure.has(node.name as string) &&
+      !local.has(node.name as string)
     ) {
       found = true
 

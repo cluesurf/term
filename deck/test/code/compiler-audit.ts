@@ -2,8 +2,9 @@
  * The Seed compiler audit, as a standalone runner. Thin wrapper over the
  * shared `huntSeedCompiler` engine (seed-hunt.ts), which both this script
  * and the `seed hunt` CLI verb call. Runs the corpus oracles
- * (round-trip, determinism, cross-backend, tolerant, perf) plus hang-safe
- * fuzzing, and exits non-zero on any finding so it gates CI.
+ * (round-trip, determinism, backend emit, tolerant, perf) plus hang-safe
+ * fuzzing, and exits non-zero on any finding, or when any check did not
+ * run, so it gates CI.
  *
  * Run from the seed install root:
  *   npx tsx deck/test/code/compiler-audit.ts [--glob <dir>] [--runs N] [--seeds N]
@@ -40,7 +41,7 @@ async function main(): Promise<void> {
   })
 
   console.log(renderHunt(result))
-  process.exit(result.findings === 0 ? 0 : 1)
+  process.exit(result.ok ? 0 : 1)
 }
 
 main().catch(e => {

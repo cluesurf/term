@@ -1,0 +1,128 @@
+# A number turned into text reads the same on every backend (note/term/stdlib/semantics.md, "Numbers as text"): the
+# shortest digits that read back as the same float, laid out the way ECMAScript's Number::toString lays them out.
+# Swift and Kotlin print `2.0` for two and Rust prints `1000000000000000000000` for 1e21, so each is held here.
+# Held by `pnpm term:base-gate`.
+
+load @term/base/code/list
+  find join
+
+task show
+  take value, like float
+  like text
+  send back, text <{{value}}>
+
+test <a whole float prints without a fraction>
+  want hold
+    call is-equal
+      call show, 2.0
+      text <2>
+
+test <a fraction prints its shortest digits>
+  want hold
+    call is-equal
+      call show, 1.5
+      text <1.5>
+
+test <a sum that is not exactly representable prints every digit it needs>
+  want hold
+    call is-equal
+      call show
+        call add
+          0.1
+          0.2
+      text <0.30000000000000004>
+
+test <a large float switches to an exponent at 1e21>
+  want hold
+    call is-equal
+      call show
+        call multiply
+          1000000000.0
+          1000000000000.0
+      text <1e+21>
+
+test <a float below 1e21 prints in full>
+  want hold
+    call is-equal
+      call show
+        call multiply
+          100000000.0
+          1000000000000.0
+      text <100000000000000000000>
+
+test <a small float switches to an exponent below 1e-6>
+  want hold
+    call is-equal
+      call show, 0.0000001
+      text <1e-7>
+
+test <a float at 1e-6 prints in full>
+  want hold
+    call is-equal
+      call show, 0.000001
+      text <0.000001>
+
+test <negative zero prints as zero>
+  want hold
+    call is-equal
+      call show
+        call multiply
+          0.0
+          -1.0
+      text <0>
+
+test <not a number prints as NaN>
+  want hold
+    call is-equal
+      call show
+        call divide
+          0.0
+          0.0
+      text <NaN>
+
+test <infinity prints as Infinity>
+  want hold
+    call is-equal
+      call show
+        call divide
+          1.0
+          0.0
+      text <Infinity>
+
+test <negative infinity prints as -Infinity>
+  want hold
+    call is-equal
+      call show
+        call divide
+          -1.0
+          0.0
+      text <-Infinity>
+
+test <an integer prints its digits>
+  save n, code 1234567
+  want hold
+    call is-equal
+      text <{{n}}>
+      text <1234567>
+
+test <a negative integer prints its sign>
+  save n
+    call subtract
+      code 0
+      code 42
+  want hold
+    call is-equal
+      text <{{n}}>
+      text <-42>
+
+test <join renders floats the same way>
+  save xs
+    make list
+  call xs/push, 1.5
+  call xs/push, 2.0
+  want hold
+    call is-equal
+      call join
+        read xs
+        text <,>
+      text <1.5,2>

@@ -669,9 +669,9 @@ hook hold
   task hold
 
 # Automated bug-hunt: oracles + fuzzing over .tree files (crashes, hangs, round-trip, determinism,
-# cross-backend, perf)
+# backend emit, perf). Fails when any check did not run
 hook hunt
-  # Directory of .tree files to hunt (default: deck/base/code)
+  # Directory of .tree files to hunt (default: this project's .tree files, as term make finds them)
   take glob
     like text
   # Fuzz inputs per term

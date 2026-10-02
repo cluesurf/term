@@ -16,14 +16,14 @@ Maps to: `for ... of` (list), a `for` range loop, and `while`.
 | `hook hold, <body>` | the body run each pass while the test holds (while-loops) |
 | `take site, name x` | bind the current element to the name `x` |
 | `take i` | bind the current index / counter to `i` (range loops) |
-| `bind base, mark N` | the range start (inclusive) |
-| `bind head, mark N` | the range end (exclusive) |
+| `bind base, code N` | the range start (inclusive) |
+| `bind head, code N` | the range end (exclusive) |
 | `turn next` | continue to the next iteration |
 | `halt` | break out of the loop |
 
 Rules at a glance:
 
-- List loops use `walk list` plus `hook next` and a `take site, name x` binding.
+- List loops use `walk list` plus `hook next` and a `take site, name x` binding. The binding and the body are indented UNDER `hook next`. A line at the same depth as `hook next` is not part of the body.
 - Range loops use `walk size` with `bind base` / `bind head` and a `take i` counter.
 - While-loops use `walk test` with `hook test` (condition) and `hook hold` (body).
 - Accumulate results into a `save`d variable declared before the loop.
@@ -33,13 +33,16 @@ Rules at a glance:
 `walk list, <items>` runs the body once per element. `hook next` holds the body. `take site, name x` binds the current element to `x`.
 
 ```tree
+load @term/base/code/console
+  find log
+
 task show-all
   take items, like list
   like void
   walk list, read items
     hook next
-    take site, name line
-    call write-line, read line
+      take site, name line
+      call log, read line
 ```
 
 To build a result, declare a `save`d accumulator before the loop and update it each pass. This is the standard sum:
@@ -51,11 +54,11 @@ task sum
   save total, code 0
   walk list, read items
     hook next
-    take site, name value
-    save total
-      call add
-        read total
-        read value
+      take site, name value
+      save total
+        call add
+          read total
+          read value
   send back, read total
 ```
 
@@ -66,6 +69,9 @@ task sum
 `walk size` counts over a numeric range. `bind base` is the start (inclusive), `bind head` is the end (exclusive). `take i` binds the counter. `hook next` holds the body.
 
 ```tree
+load @term/base/code/console
+  find log
+
 task count-up
   like void
   walk size
@@ -73,7 +79,7 @@ task count-up
     bind head, code 10
     take i
     hook next
-      call write-line, read i
+      call log, text <{{i}}>
 ```
 
 This shows `0` through `9`. Use a range loop when you need an index, not just the elements. To sum the numbers in a range:
@@ -89,7 +95,7 @@ task triangle
     take i
     hook next
       save total
-        call add, read total, read i
+        call add(read(total), read(i))
   send back, read total
 ```
 
@@ -98,17 +104,20 @@ task triangle
 `walk test` loops while a condition holds. `hook test` carries the condition, `hook hold` carries the body. The test is checked before each pass, so the body may run zero times.
 
 ```tree
+load @term/base/code/console
+  find log
+
 task count-down
   take start, like number
   like void
   save at, read start
   walk test
     hook test
-      call is-above, read at, code 0
+      call is-above(read(at), code 0)
     hook hold
-      call write-line, read at
+      call log, text <{{at}}>
       save at
-        call subtract, read at, code 1
+        call subtract(read(at), code 1)
 ```
 
 The loop runs while `at` is above zero. Each pass shows `at` then decreases it, so the test eventually fails and the loop ends. A while-loop is the right tool when the number of iterations is not known up front and depends on values computed inside the loop.
@@ -124,14 +133,14 @@ task sum-positive
   save total, code 0
   walk list, read items
     hook next
-    take site, name value
-    fork test
-      hook test
-        call is-below, read value, code 0
-      hook hold
-        turn next
-    save total
-      call add, read total, read value
+      take site, name value
+      fork test
+        hook test
+          call is-below(read(value), code 0)
+        hook hold
+          turn next
+      save total
+        call add(read(total), read(value))
   send back, read total
 ```
 
@@ -148,13 +157,13 @@ task first-negative
   save found, code 0
   walk list, read items
     hook next
-    take site, name value
-    fork test
-      hook test
-        call is-below, read value, code 0
-      hook hold
-        save found, read value
-        halt
+      take site, name value
+      fork test
+        hook test
+          call is-below(read(value), code 0)
+        hook hold
+          save found, read value
+          halt
   send back, read found
 ```
 

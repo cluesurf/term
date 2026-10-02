@@ -4,7 +4,7 @@
 
 import { realpathSync, watch as fsWatch, existsSync } from 'fs'
 import path from 'path'
-import { startDevServer } from '@term/make/code/dev/server'
+import { startDevServer } from '@term/call/code/dev/server'
 import { findEntry } from '@term/call/code/boot'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import {

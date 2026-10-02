@@ -1,18 +1,81 @@
-
-# Environment: working directory, platform info, and environment variables. Implementation selected at build time, hidden behind this API.
+# Environment: the working directory, environment variables and the locale. The implementation is selected at
+# build time per platform and hidden behind this API.
 
 load @term/base/code/native/{platform}/environment
   find current-directory
   find get-variable
+
+load @term/base/code/native/{platform}/environment/variable
+  find holds-variable
+  find store-variable
+  find drop-variable
+  find gather-variables
+
+load @term/base/code/native/{platform}/environment/directory
+  find enter-directory
+
+load @term/base/code/native/{platform}/environment/language
+  find read-locale
+  find known-locales
+
+load @term/base/code/environment/language
+  find locale
 
 task directory
   like text
   send back
     call current-directory
 
+# make `path` the working directory
+task change-directory
+  take path, like text
+  call enter-directory
+    read path
+
+# the variable's value, or the empty text when it is not set (`has-variable` tells the two apart)
 task variable
   take name, like text
   like text
   send back
     call get-variable
       read name
+
+task has-variable
+  take name, like text
+  like boolean
+  send back
+    call holds-variable
+      read name
+
+task set-variable
+  take name, like text
+  take value, like text
+  call store-variable
+    read name
+    read value
+
+task remove-variable
+  take name, like text
+  call drop-variable
+    read name
+
+# every variable, name to value
+task variables
+  like hash
+    like text
+    like text
+  send back
+    call gather-variables
+
+# the locale the program runs under
+task locale
+  like locale
+  send back
+    call read-locale
+
+# the locale tags the platform knows
+task locales
+  like list
+    like text
+  send back
+    call known-locales

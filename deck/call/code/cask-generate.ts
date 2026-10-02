@@ -14,8 +14,10 @@
 //   <out>/dispatch.tree                            the cask side: `is-allowed`, `run-command`, `dispatch`
 //
 // What crosses: text, boolean, number, decimal, nothing (void), an OPAQUE HANDLE (a form whose one field is a
-// private `handle`: the value stays in the cask under a tone-code id and the page holds the id), and a LIST of any of
-// those. A record with fields, bytes and a dynamic do not cross yet; such a task is emitted as a raise naming the
+// private `handle`: the value stays in the cask under a tone-code id and the page holds the id), a RECORD by value
+// (native-dom-0019: a form declared in a module of its own, its fields scalars, lists or records, carried as host
+// data text through `melt` and `fill`, so a missing field is the named `data-mismatch`), and a LIST of any of those.
+// Bytes, and a record the module declares itself, do not cross yet; such a task is emitted as a raise naming the
 // reason, so the module still builds and the gap is visible rather than silent. Design: note/term/cask/readme.md.
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, relative } from 'node:path'
@@ -53,6 +55,11 @@ type Kind =
   | { kind: 'dynamic' }
   | { kind: 'handle'; form: string }
   | { kind: 'list'; item: Kind }
+  // a RECORD crosses by value (native-dom-0019): written as host data on one side (`melt`, then `write`) and filled
+  // back into the form on the other (`read`, then `fill`), so both ends use the walker the compiler generates for the
+  // form on every backend, and a field missing or of the wrong kind raises the named `data-mismatch` with its path.
+  // `from` is the module that declares the form, which the shim and the dispatcher both load it from
+  | { kind: 'record'; form: string; from: string }
 
 type Param = { name: string; kind: Kind }
 
@@ -100,12 +107,49 @@ function programOf(file: string, term: string): Program {
   return built.program
 }
 
+// every name a module `find`s, with the files it resolves to, as the build resolves them for node
+function importedNames(file: string, term: string): Map<string, string[]> {
+  const collected = collectModules({ file, text: readFileSync(file, 'utf8') }, projectResolver(term, 'node'))
+  const own = collected.scope?.get(file) ?? [...(collected.scope?.entries() ?? [])].find(([key]) => realOf(key) === realOf(file))?.[1]
+
+  return own?.finds ?? new Map()
+}
+
+const realOf = (file: string): string => (existsSync(file) ? realpathSync(file) : file)
+
+// the load path a program writes for a file: `<...>/deck/<package>/code/<rest>.tree` is `@term/<package>/code/<rest>`
+function importPathOf(file: string): string | undefined {
+  const match = /\/deck\/([^/]+)\/code\/(.+)\.tree$/.exec(realOf(file))
+
+  return match ? `@term/${match[1]}/code/${match[2]}` : undefined
+}
+
 // a form whose one field is a private `handle` is an opaque handle: the value stays in the cask, the page holds an id
 function isHandleForm(form: RecordType): boolean {
   return form.fields.length === 1 && form.fields[0]!.name === 'handle' && form.variants.length === 0
 }
 
-function kindOf(type: Type | undefined, forms: Map<string, RecordType>): Kind | { refuse: string } {
+// the forms a module can name, and for each one IMPORTED, the load path of the module that declares it. A form
+// declared in the public or abstract module itself has no `from`: the shim cannot load the module that bears it
+type Forms = { declared: Map<string, RecordType>; from: Map<string, string> }
+
+// the field kinds `fill` and `melt` carry: scalars, lists of them, and nested records
+function crossesByValue(kind: Kind): boolean {
+  switch (kind.kind) {
+    case 'text':
+    case 'boolean':
+    case 'number':
+    case 'decimal':
+    case 'record':
+      return true
+    case 'list':
+      return crossesByValue(kind.item)
+    default:
+      return false
+  }
+}
+
+function kindOf(type: Type | undefined, forms: Forms, seen: Set<string> = new Set()): Kind | { refuse: string } {
   if (!type) {
     return { kind: 'void' }
   }
@@ -122,7 +166,7 @@ function kindOf(type: Type | undefined, forms: Map<string, RecordType>): Kind | 
     case 'unit':
       return { kind: 'void' }
     case 'array': {
-      const item = kindOf(type.element, forms)
+      const item = kindOf(type.element, forms, seen)
 
       if ('refuse' in item) {
         return { refuse: `a list of ${item.refuse}` }
@@ -135,13 +179,43 @@ function kindOf(type: Type | undefined, forms: Map<string, RecordType>): Kind | 
       return { kind: 'list', item }
     }
     case 'named': {
-      const form = forms.get(type.name)
+      const form = forms.declared.get(type.name)
 
       if (form && isHandleForm(form)) {
         return { kind: 'handle', form: type.name }
       }
 
-      return { refuse: form ? `record ${type.name}` : `type ${type.name}` }
+      if (!form) {
+        return { refuse: `type ${type.name}` }
+      }
+
+      const from = forms.from.get(type.name)
+
+      if (!from) {
+        return { refuse: `record ${type.name}, declared in the module itself: declare it in a module of its own, which both sides load` }
+      }
+
+      if (form.variants.length > 0 || form.params.length > 0 || (type.args?.length ?? 0) > 0) {
+        return { refuse: `record ${type.name}, which has variants or type parameters` }
+      }
+
+      if (seen.has(type.name)) {
+        return { refuse: `record ${type.name}, which holds itself` }
+      }
+
+      for (const field of form.fields) {
+        const inner = kindOf(field.type, forms, new Set([...seen, type.name]))
+
+        if ('refuse' in inner) {
+          return { refuse: `record ${type.name}, whose field ${field.name} is ${inner.refuse}` }
+        }
+
+        if (!crossesByValue(inner)) {
+          return { refuse: `record ${type.name}, whose field ${field.name} is a ${inner.kind}, which a record cannot carry` }
+        }
+      }
+
+      return { kind: 'record', form: type.name, from }
     }
     case 'unknown':
     case 'dynamic':
@@ -189,11 +263,26 @@ function callIn(node: Statement | Expression): string | undefined {
 function signaturesOf(module: Module, term: string): { carried: Signature[]; refused: Refused[] } {
   const publicProgram = programOf(module.publicFile, term)
   const abstractProgram = module.abstractFile ? programOf(module.abstractFile, term) : []
-  const forms = new Map<string, RecordType>()
+  const forms: Forms = { declared: new Map(), from: new Map() }
 
   for (const statement of [...publicProgram, ...abstractProgram]) {
     if (statement.form === 'record-type') {
-      forms.set(statement.name, statement)
+      forms.declared.set(statement.name, statement)
+    }
+  }
+
+  // the forms the public module imports by name, each read from the file that declares it (native-dom-0019)
+  for (const [name, files] of importedNames(module.publicFile, term)) {
+    for (const file of files) {
+      const declared = programOf(file, term).find(
+        (s): s is RecordType => s.form === 'record-type' && s.name === name,
+      )
+      const path = importPathOf(file)
+
+      if (declared && path && !forms.declared.has(name)) {
+        forms.declared.set(name, declared)
+        forms.from.set(name, path)
+      }
     }
   }
 
@@ -238,6 +327,17 @@ function signaturesOf(module: Module, term: string): { carried: Signature[]; ref
 
     if (!reason && 'refuse' in result) {
       reason = `result is ${result.refuse}`
+    }
+
+    // the dispatcher names each task `<module>-<task>`, and names are package-global: a record form of the same
+    // name would be shadowed by the alias in the one program that needs both
+    if (!reason && !('refuse' in result)) {
+      const clash = recordForms([{ module: module.name, task: statement.name, native, params, result, async: false }])
+        .find(({ form }) => source.some(task => `${module.name}-${task.name}` === form))
+
+      if (clash) {
+        reason = `record ${clash.form} has the name the dispatcher gives the task ${clash.form.slice(module.name.length + 1)}: rename the form`
+      }
     }
 
     if (reason || 'refuse' in result) {
@@ -370,10 +470,12 @@ function likeOf(kind: Kind): string[] {
       return ['like unknown']
     case 'list':
       return ['like list', ...likeOf(kind.item).map(line => `  ${line}`)]
+    case 'record':
+      return [`like ${kind.form}`]
   }
 }
 
-const INVOKE: Record<Exclude<Kind, { kind: 'list' | 'handle' | 'dynamic' }>['kind'], string> = {
+const INVOKE: Record<Exclude<Kind, { kind: 'list' | 'handle' | 'dynamic' | 'record' }>['kind'], string> = {
   text: 'invoke-text',
   boolean: 'invoke-boolean',
   number: 'invoke-number',
@@ -406,6 +508,19 @@ function pageToJson(kind: Kind, read: string, indent: string): { lines: string[]
     case 'handle':
       // the page holds the id in the form's private field
       return { local, lines: [`${indent}save ${local}`, `${indent}  call from-text`, `${indent}    read ${read}/handle`] }
+    case 'record':
+      // the record as host data text: melt walks the form's fields, write lays the data out
+      return {
+        local,
+        lines: [
+          `${indent}save ${local}`,
+          `${indent}  call from-text`,
+          `${indent}    call data-to-text`,
+          `${indent}      call melt`,
+          `${indent}        read ${read}`,
+          `${indent}        like ${kind.form}`,
+        ],
+      }
     case 'list': {
       const item = temporary('item')
       const inner = pageToJson(kind.item, item, `${indent}    `)
@@ -465,7 +580,61 @@ function pageFromJson(kind: Kind, read: string, indent: string): { lines: string
       }
     case 'list':
       return listFromJson(kind.item, read, indent, pageFromJson)
+    case 'record':
+      // the host data text read back and filled into the form: a field missing, or of the wrong kind, raises
+      // `data-mismatch` naming its path, which the dispatcher answers as the exception and the page's call rejects with
+      return {
+        local,
+        lines: [
+          `${indent}save ${local}`,
+          `${indent}  call fill`,
+          `${indent}    call data-from-text`,
+          `${indent}      call as-text`,
+          `${indent}        read ${read}`,
+          `${indent}    like ${kind.form}`,
+        ],
+      }
   }
+}
+
+// every record form a set of signatures mentions, with the module each is loaded from
+function recordForms(signatures: Signature[]): { form: string; from: string }[] {
+  const forms = new Map<string, string>()
+  const visit = (kind: Kind): void => {
+    if (kind.kind === 'record') {
+      forms.set(kind.form, kind.from)
+    } else if (kind.kind === 'list') {
+      visit(kind.item)
+    }
+  }
+
+  for (const signature of signatures) {
+    signature.params.forEach(p => visit(p.kind))
+    visit(signature.result)
+  }
+
+  return [...forms].sort(([a], [b]) => a.localeCompare(b)).map(([form, from]) => ({ form, from }))
+}
+
+// the loads a program carrying records needs: each form from its own module, and the host dialect's reader and
+// writer under names no program around them would use
+function recordLoads(records: { form: string; from: string }[]): string[] {
+  if (records.length === 0) {
+    return []
+  }
+
+  return [
+    ...records.flatMap(({ form, from }) => [`load ${from}`, `  find ${form}`, '']),
+    // under names of their own, never aliases: the dispatcher imports `file` too, whose `read` and `write` share their
+    // names with the host dialect's, and an alias is rewritten to the original name inside its file
+    'load @term/host/code/base',
+    '  find data',
+    '',
+    'load @term/host/code/text',
+    '  find data-from-text',
+    '  find data-to-text',
+    '',
+  ]
 }
 
 // a list from a json array: the items as a list, then each one converted. A list of dynamic is the items as they are
@@ -676,6 +845,7 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], term
     '  find list',
     '  find push',
     '',
+    ...recordLoads(recordForms(carried)),
   ]
 
   for (const form of handleForms(carried)) {
@@ -722,7 +892,7 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], term
 
     const result = signature.result
 
-    if (result.kind === 'list' || result.kind === 'handle' || result.kind === 'dynamic') {
+    if (result.kind === 'list' || result.kind === 'handle' || result.kind === 'dynamic' || result.kind === 'record') {
       lines.push('  save reply', '    call bridge/invoke', '      wait true', `      text <${commandOf(signature)}>`, '      read arguments')
       const value = pageFromJson(result, 'reply', '  ')
       lines.push(...value.lines, `  send back, read ${value.local}`)
@@ -859,10 +1029,21 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     '  find unwrap',
 
     '',
+    ...recordLoads(recordForms(signatures)),
   )
 
   for (const form of handleForms(signatures)) {
-    lines.push(`# the ${form} values the page holds ids for`, `host ${tableOf(form)}`, '  make hash', '')
+    // typed, so `make hash` is the native map even in a program that also holds the host dialect's `data`, whose
+    // `case hash` is a constructor of the same name (native-dom-0019)
+    lines.push(
+      `# the ${form} values the page holds ids for`,
+      `host ${tableOf(form)}`,
+      '  make hash',
+      '  like hash',
+      '    like text',
+      `    like ${form}`,
+      '',
+    )
   }
 
 

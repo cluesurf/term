@@ -27,7 +27,11 @@ import { callNote } from '@term/call/code/note'
 import { callForm } from '@term/call/code/form'
 import { callLint } from '@term/call/code/lint'
 import { callHold } from '@term/call/code/hold'
-import { callHunt } from '@term/call/code/hunt'
+import {
+  callHunt,
+  HUNT_FUZZ_CHILD,
+  runHuntFuzzChild,
+} from '@term/call/code/hunt'
 import { callLook } from '@term/call/code/look'
 import { callRoll } from '@term/call/code/roll'
 import { callMold } from '@term/call/code/mold'
@@ -150,6 +154,12 @@ function suggestCommand(input: string): string | undefined {
 }
 
 const root = process.cwd()
+
+// `term hunt` forks this same CLI to run each fuzz campaign under a watchdog. Handled before yargs so the hidden
+// verb never appears in help or in the did-you-mean list.
+if (process.argv[2] === HUNT_FUZZ_CHILD) {
+  runHuntFuzzChild(process.argv.slice(3))
+}
 
 const cli = yargs(hideBin(process.argv))
   .scriptName('term')
@@ -394,7 +404,7 @@ const cli = yargs(hideBin(process.argv))
   )
   .command(
     'wake [name]',
-    'Scaffold a new Seed project',
+    'Scaffold a new Term project',
     yargs =>
       yargs.positional('name', {
         type: 'string',
@@ -1031,7 +1041,7 @@ const cli = yargs(hideBin(process.argv))
         .positional('target', {
           type: 'string',
           description:
-            'A package path (@cluesurf/bind/code/browser/dom) or a .tree file',
+            'A package path (@term/bind/code/browser/dom) or a .tree file',
         })
         .option('json', { type: 'boolean', description: 'Output JSON' })
         .option('csv', { type: 'boolean', description: 'Output CSV' })
@@ -1201,13 +1211,13 @@ const cli = yargs(hideBin(process.argv))
   )
   .command(
     'hunt [glob]',
-    'Automated bug-hunt: oracles + fuzzing over .tree files (crashes, hangs, round-trip, determinism, cross-backend, perf)',
+    'Automated bug-hunt: oracles + fuzzing over .tree files (crashes, hangs, round-trip, determinism, backend emit, perf). Fails when any check did not run',
     yargs =>
       yargs
         .positional('glob', {
           type: 'string',
           description:
-            'Directory of .tree files to hunt (default: deck/base/code)',
+            "Directory of .tree files to hunt (default: this project's .tree files, as term make finds them)",
         })
         .option('runs', {
           type: 'number',
@@ -1244,7 +1254,7 @@ const cli = yargs(hideBin(process.argv))
     yargs =>
       yargs.positional('what', {
         type: 'string',
-        description: 'What to show (code, deck, self)',
+        description: '`code` for this package\'s version; omit for the toolchain version and platform',
       }),
     async argv => {
       if (argv.what === 'code') {

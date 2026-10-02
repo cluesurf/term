@@ -19,7 +19,7 @@
 
 import { createReadStream } from 'node:fs'
 import { createInterface } from 'node:readline'
-import { hashText } from '@term/make/code/compile/cache'
+import { hashText } from '@term/make/code/term/hash'
 import type { TopBlock } from '@term/make/code/compile/incremental-parse'
 
 function isHead(line: string): boolean {

@@ -39,6 +39,53 @@ export type TwinChoices = Record<string, TwinChoice>
 
 export const twinTask = (task: string, label: string): string => `${task}-twin-${label}`
 export const chosenTask = (task: string): string => `${task}-chosen`
+export const guardTask = (task: string, label: string): string => `${task}-guard-${label}`
+
+// every twin of the program as a plain task beside its reference, with its `hook test`s as one boolean task, and no
+// call redirected: what admission (deck/test/code/twin-diff.ts) calls to compare a twin with its task on chosen
+// inputs. A twin with knobs is left out (a `tour` instantiates those). Returns the twins it exposed.
+export function exposeTwins(program: Program, twins: Twin[]): Twin[] {
+  const tasks = new Map<string, Fn>()
+
+  for (const statement of program) {
+    if (statement.form === 'function' && !statement.method) {
+      tasks.set(statement.name, statement)
+    }
+  }
+
+  const exposed: Twin[] = []
+
+  for (const twin of twins) {
+    const reference = tasks.get(twin.of)
+
+    if (!reference || twin.knobs.length > 0) {
+      continue
+    }
+
+    const { have: _have, must: _must, down: _down, ...signature } = reference as Fn & { have?: unknown; must?: unknown; down?: unknown }
+    const span = twin.span
+    // the twin's conditions, `have` and `hook test` alike: admission compares only where both hold
+    const conditions = [...twin.have, ...twin.test].map(c => structuredClone(c))
+    const all: Expression = conditions.length
+      ? conditions.reduce((a, b): Expression => ({ form: 'binary', op: '&&', left: a, right: b, span }))
+      : { form: 'boolean', value: true, span }
+
+    program.push(
+      { ...structuredClone(signature), name: twinTask(twin.of, twin.name), body: structuredClone(twin.body), span } as Fn,
+      {
+        ...structuredClone(signature),
+        name: guardTask(twin.of, twin.name),
+        result: { kind: 'boolean' },
+        raises: undefined,
+        body: [{ form: 'return', value: all, span }],
+        span,
+      } as Fn,
+    )
+    exposed.push(twin)
+  }
+
+  return exposed
+}
 
 // the targets a twin's `mark platform, name <x>` can name, and the build environments each covers
 const PLATFORM_ENVS: Record<string, string[]> = {

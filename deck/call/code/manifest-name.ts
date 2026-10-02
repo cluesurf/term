@@ -82,13 +82,44 @@ export function manifestValueOf(
   }
 }
 
-// the `@scope/name` a manifest declares. A `deck.tree` is a MANIFEST only when its `deck` head carries an
-// `@scope/name`: the stdlib's own deck.tree is a code module (`form deck`, the manifest's shape) and correctly
-// reads as undefined.
-export function manifestNameOf(file: string): string | undefined {
-  const name = manifestValueOf(file, 'deck')
+// the name a manifest declares: the argument of its TOP-LEVEL `deck` statement, `@scope/name` or a bare `name`.
+//
+// A `deck.tree` is a MANIFEST when it has that statement, whatever the name's shape. The manifest grammar
+// (deck/deck/code/grammar.ts, `mine deck-def`) reads a path word there and parseManifest takes `deck name` as an
+// unscoped package, so this is the same rule the package manager already used. The stdlib's own deck.tree is a code
+// module (`form deck`, the manifest's shape) with no `deck` statement, and still reads as undefined.
+//
+// It required an `@` until 2026-10-02, and that was the bug: `term wake hello` writes `deck hello`, so `term make`
+// did not see a manifest, compiled the scaffold's deck.tree as CODE into host/deck.ts, and reported "Compiled 2
+// files" for a project holding one. Only the top level is read, never a `deck ./member` line nested under it, which
+// manifestValue would find first and which named a monorepo's first member instead of the package.
+export function manifestName(text: string, file: string): string | undefined {
+  const parsed = parse({ file, text })
 
-  return name?.startsWith('@') ? name : undefined
+  if (!parsed.ok) {
+    return undefined
+  }
+
+  for (const node of parsed.tree.nodes) {
+    if (node.kind === 'group' && headName(node) === 'deck') {
+      const first = node.nodes[1]
+      const name = first?.kind === 'group' ? headName(first) : undefined
+
+      if (name) {
+        return name
+      }
+    }
+  }
+
+  return undefined
+}
+
+export function manifestNameOf(file: string): string | undefined {
+  try {
+    return manifestName(readFileSync(file, 'utf8'), file)
+  } catch {
+    return undefined
+  }
 }
 
 // Is this file a LOCKFILE (`lock <1>` and one `deck` entry per resolved package), as opposed to Term code?

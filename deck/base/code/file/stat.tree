@@ -1,0 +1,10 @@
+
+# What the file module's `stat` answers about a path: its size in bytes and whether it is a directory, in one record.
+# Named `path-info`, never `file-stat`: a cask's dispatcher names the `stat` task `file-stat`. A module of
+# its own so every side that names it can load it: the public file API, each platform's native, and a cask's bridge,
+# which carries a record by value and needs the form on both ends (native-dom-0019). A missing path reads as size 0
+# and not a directory, so the API stays total, as file/metadata does.
+
+form path-info
+  link size, like number
+  link directory, like boolean

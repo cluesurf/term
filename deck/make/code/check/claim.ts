@@ -164,6 +164,170 @@ export type ClaimEvidence = {
   declined?: Map<string, string>
 }
 
+// WHY A DEFINITION CANNOT CARRY A PROOF, or undefined when it can. A fill is checked against its claim with every
+// task it calls read at that task's SIGNATURE only, so a fill proves its claim only if everything it reaches proves
+// its own signature in turn. Until 2026-10-02 only the fill itself was asked, and a fill that called a helper the
+// kernel had declined proved anything the helper's signature said: a helper typed `equal a x x -> equal a x y`
+// whose body the kernel never read made `x == y` hold for every x and y.
+//
+// A definition is GROUNDED when the kernel checked its whole body as one term (not statement by statement, where a
+// body with no return passes), it terminates, it is pure, and every task its body names is grounded. A cycle is
+// assumed grounded while it is being walked: each member is still checked by the kernel against its own signature,
+// and whether the recursion ends is the termination check's question, asked of every member above.
+//
+// A separate-compilation stub has no body here. Its own unit stamped `grounded` on it (stampGrounded below) when
+// the stub was taken, and an unstamped stub is not grounded: a verdict nobody recorded is not a verdict.
+export type Ungrounded = {
+  // the definition that failed, which may be the fill itself or anything it reaches
+  name: string
+  // why that definition proves nothing
+  reason: string
+  // the call path from the fill to `name`, the fill first
+  path: string[]
+}
+
+type FunctionStatement = Statement & { form: 'function' }
+
+export function groundingOf(
+  program: Program,
+  evidence: ClaimEvidence,
+): (name: string) => Ungrounded | undefined {
+  // every DEFINITION of a name: an ordinary task, a claim's fill, or a stub of either. A claim is not a definition,
+  // it is the statement its fill is held to.
+  const definitions = new Map<string, FunctionStatement[]>()
+
+  for (const statement of program) {
+    if (statement.form !== 'function' || statement.claim) {
+      continue
+    }
+
+    const list = definitions.get(statement.name) ?? []
+    list.push(statement)
+    definitions.set(statement.name, list)
+  }
+
+  const memo = new Map<string, Ungrounded | null>()
+  const walking = new Set<string>()
+
+  const own = (statement: FunctionStatement): string | undefined => {
+    const name = statement.name
+
+    if (statement.stub) {
+      return statement.grounded === true
+        ? undefined
+        : 'its unit recorded no kernel verdict for it'
+    }
+
+    if (!evidence.pure.has(name)) {
+      return 'it calls something impure'
+    }
+
+    if (!evidence.terminating.has(name)) {
+      return 'it is not shown to terminate'
+    }
+
+    if (!evidence.verified.has(name)) {
+      const declined = evidence.declined?.get(name)
+
+      return declined
+        ? `the kernel declined it: ${declined}`
+        : 'the kernel did not check it as one term'
+    }
+
+    return undefined
+  }
+
+  const visit = (name: string): Ungrounded | undefined => {
+    const known = memo.get(name)
+
+    if (known !== undefined) {
+      return known ?? undefined
+    }
+
+    if (walking.has(name)) {
+      return undefined
+    }
+
+    const statements = definitions.get(name)
+
+    if (!statements) {
+      // not a task of this program: a constructor, a type, or a primitive the kernel's base signature states
+      return undefined
+    }
+
+    walking.add(name)
+
+    let found: Ungrounded | undefined
+
+    for (const statement of statements) {
+      const reason = own(statement)
+
+      if (reason) {
+        found = { name, reason, path: [name] }
+        break
+      }
+
+      const callees = new Set<string>()
+
+      eachName(statement.body, (callee, _span, binding) => {
+        if (binding?.kind === 'parameter' || binding?.kind === 'local') {
+          return
+        }
+
+        if (definitions.has(callee)) {
+          callees.add(callee)
+        }
+      })
+
+      for (const callee of callees) {
+        const below = visit(callee)
+
+        if (below) {
+          found = { ...below, path: [name, ...below.path] }
+          break
+        }
+      }
+
+      if (found) {
+        break
+      }
+    }
+
+    walking.delete(name)
+    memo.set(name, found ?? null)
+
+    return found
+  }
+
+  return visit
+}
+
+// Record on every task of the program whether it is grounded, so a stub taken from this unit carries the verdict
+// to a dependent unit that sees only the signature (compile/stub.ts copies the statement). Runs once per compile,
+// after the kernel and before the claim check.
+export function stampGrounded(
+  program: Program,
+  evidence: ClaimEvidence,
+): void {
+  const grounding = groundingOf(program, evidence)
+
+  for (const statement of program) {
+    if (
+      statement.form !== 'function' ||
+      statement.claim ||
+      statement.stub
+    ) {
+      continue
+    }
+
+    if (grounding(statement.name)) {
+      delete statement.grounded
+    } else {
+      statement.grounded = true
+    }
+  }
+}
+
 export function checkClaims(
   program: Program,
   file: string,
@@ -238,6 +402,8 @@ export function checkClaims(
   // proves nothing (its type may be gradual, or its body outside the fragment), a fill that may not end proves
   // anything, and a fill that touches the world is a different value on every run.
   if (evidence) {
+    const grounding = groundingOf(program, evidence)
+
     for (const statement of program) {
       if (
         statement.form !== 'function' ||
@@ -278,6 +444,21 @@ export function checkClaims(
               : `the proof of \`${name}\` was not verified by the kernel as one term, so it proves nothing`,
           }),
         )
+      } else {
+        // the fill itself passed, so anything wrong is in what it reaches: every task it calls was read at its
+        // signature, and a signature proves nothing unless its body was checked too
+        const below = grounding(name)
+
+        if (below && below.name !== name) {
+          diagnostics.push(
+            diagnose('unverified-proof', {
+              file,
+              span: statement.span,
+              message: `the proof of \`${name}\` rests on \`${below.name}\` (${below.path.join(' -> ')}), and ${below.reason}, so it proves nothing`,
+              hint: `make the kernel check \`${below.name}\` as one term, or leave the claim unfilled with \`note open\``,
+            }),
+          )
+        }
       }
     }
   }

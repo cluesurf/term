@@ -1,3 +1,7 @@
+# NOT FOR SECRETS. A reference implementation, not constant time: the S-box is a table read at an index that
+# depends on the key and the data, so cache timing can recover the key. Nothing in the public API routes data through
+# it; `cryptography/cipher` is AES-256-GCM over each platform's own library. base-v1-0014.
+#
 # AES-128 (FIPS-197), byte-oriented over a flat 16-byte column-major block (state[4*column + row]). The
 # S-box, its inverse and the rnd constants are carried as the spec tables. `aes-encrypt-block` and
 # `aes-decrypt-block` are the single-block cipher and inverse cipher over a 16-byte key: one block, no mode,

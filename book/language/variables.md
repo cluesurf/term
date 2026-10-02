@@ -27,7 +27,7 @@ Quick rules:
 
 `save name, <value>` introduces a mutable local. The value can be a literal or a longer expression on the next indented line.
 
-```tree
+```tree fragment
 save count, code 0
 save greeting, text <hello>
 
@@ -58,11 +58,11 @@ task sum
   save total, code 0
   walk list, read items
     hook next
-    take site, name value
-    save total
-      call add
-        read total
-        read value
+      take site, name value
+      save total
+        call add
+          read total
+          read value
   send back, read total
 ```
 
@@ -84,7 +84,7 @@ Reassigning a `host` is rejected by the compiler. If you need to change the valu
 
 A bare name is a label. To use the value behind it, wrap it in `read`.
 
-```tree
+```tree fragment
 take name, like text    # `name` is a name being declared
 read name               # the VALUE held by `name`
 ```
@@ -95,7 +95,7 @@ This is the difference between mentioning a variable and using it. Heads like `t
 
 `/` reaches into a field, one segment per slash. It reads left to right, outermost first.
 
-```tree
+```tree fragment
 read user/email
 read config/host/port
 read order/total/cents
@@ -103,8 +103,8 @@ read order/total/cents
 
 The same `/` reaches a method or a member of an imported module:
 
-```tree
-call text/length, read line
+```tree fragment
+call list/push, read item
 call fs/read-file, read path
 ```
 
@@ -115,6 +115,9 @@ See [modules](modules.md) for module members and [native](native.md) for host mo
 `loan x` lends a value to a callee for reading without consuming or moving it. You keep ownership and can use the variable again afterward. Use `loan` when a function only needs to look at a value, not take it.
 
 ```tree
+load @term/base/code/text
+  find char-count
+
 task longest
   take a, like text
   take b, like text
@@ -122,13 +125,13 @@ task longest
   fork test
     hook test
       call is-above
-        call text/length, loan a
-        call text/length, loan b
+        call char-count, loan a
+        call char-count, loan b
     hook hold, send back, read a
     hook miss, send back, read b
 ```
 
-Here `loan a` and `loan b` let `text/length` read each string. The strings stay owned by `longest`, so both are still available for `send back`. Use `read` when the callee should take the value, `loan` when it should only borrow it.
+Here `loan a` and `loan b` let `char-count` read each string. The strings stay owned by `longest`, so both are still available for `send back`. Use `read` when the callee should take the value, `loan` when it should only borrow it.
 
 ## Scope and shadowing
 
@@ -150,18 +153,21 @@ task pick
 
 Each branch declares its own `label`. The two do not collide, because each lives only inside its own branch.
 
-An inner block may shadow a name from an outer block. The inner name is used within the inner block, and the outer name returns once the inner block ends.
+An inner block may shadow a name from an outer block with `host`. The inner name is used within the inner block, and the outer name returns once the inner block ends.
 
 ```tree
+load @term/base/code/console
+  find log
+
 task scope-demo
   like number
-  save x, code 1
+  host x, code 1
   fork test
     hook test, true
     hook hold
-      save x, code 2
-      call write-line, read x
+      host x, code 2
+      call log, text <{{x}}>
   send back, read x
 ```
 
-The shown `x` is `2`, the returned `x` is `1`. The inner `save x` shadows the outer one only inside the `hook hold` block. Prefer distinct names when the shadowing is not intentional.
+The shown `x` is `2`, the returned `x` is `1`. The inner `host x` shadows the outer one only inside the `hook hold` block. A `save x` there would NOT shadow: `save` of a name already in scope reassigns it, so the returned `x` would be `2`. Prefer distinct names when the shadowing is not intentional.

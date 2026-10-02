@@ -22,3 +22,13 @@ task hmac-sha512
     call crypto/hmac-sha512
       read key
       read data
+
+# equal without leaking where they differ (the runtime reads every byte). A length difference answers at once
+task equal-secret
+  take left, like bytes
+  take right, like bytes
+  like boolean
+  send back
+    call crypto/equal-secret
+      read left
+      read right

@@ -9,7 +9,7 @@ dock load
   load <node:os>, name os
   load <global:locale>, name locale
 
-task read
+task read-locale
   save options
     call locale/options
   save tag, read options/locale
@@ -46,7 +46,7 @@ task read
       bind tag, read tag
       bind timezone, read timezone
 
-task list
+task known-locales
   save options
     call locale/options
   save tag, read options/locale

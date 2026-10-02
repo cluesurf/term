@@ -1,3 +1,6 @@
+# NOT FOR SECURITY. MD5 is broken for collisions, and this is a reference implementation in Term. Nothing in the public
+# API reaches it; `cryptography/digest` is each platform's own library. base-v1-0014.
+#
 # MD5 (RFC 1321), written on the 32-bit bit vocabulary the way crc32 is: additions run exact in doubles and
 # wrap through `unsigned-shift-right(x, 0)`, the four round functions are the spec's F G H I, and the sine
 # table is carried as the 64 spec constants rather than recomputed (floor(abs(sin(i+1)) * 2^32), the values

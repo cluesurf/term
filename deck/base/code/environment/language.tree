@@ -1,13 +1,9 @@
+# The locale a program runs under: language and region subtags, the full tag, and the time zone. `environment`'s
+# `locale` reads it and `locales` lists the ones the platform knows; this file holds the form both use, so the
+# natives can build it without importing the module that delegates to them.
 
 form locale
   link language, like text
   link region, like text
   link tag, like text
   link timezone, like text
-
-task read
-  like locale
-
-task list
-  like list
-    like text

@@ -87,7 +87,7 @@ load @term/base/code/json
   find get-item
   find as-text
 
-# pull data/items[0]/label out of a JSON blob
+# pull items[0]/label out of a JSON blob
 task first-label
   take raw, like text
   like text
@@ -140,6 +140,10 @@ task write-user
 `parse` and `stringify` are inverses for any JSON value. Reading a form out and writing it back gives equivalent text, which makes the pair safe for storage, caching, and message passing.
 
 ```tree
+load @term/base/code/json
+  find parse
+  find stringify
+
 task round-trip
   take raw, like text
   like text

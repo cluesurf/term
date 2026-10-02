@@ -52,18 +52,17 @@ host new-year
     code 1
 ```
 
-`from-parts` takes the three components in order. The result is an ordinary `plain-date` value, so you can read its fields with `/`.
+`from-parts` takes the three components in order. The result is an ordinary `plain-date` value, so you can read its fields with `/`. This line and the next samples on this page go in the same file as `new-year` above.
 
-```tree
-call write-line
-  read new-year/year       # 2026
+```tree fragment
+save year, read new-year/year       # 2026
 ```
 
 ## Date arithmetic
 
 Shift a date by a number of days with `add-days`. A negative count moves backward. The math runs through the epoch day-number, so it crosses month and year boundaries correctly.
 
-```tree
+```tree fragment
 # the day after new year
 host next-day
   call add-days
@@ -82,6 +81,9 @@ host last-week
 To find the number of days between two dates, take the difference of their epoch day-numbers.
 
 ```tree
+load @term/base/code/plain-date
+  find plain-date
+
 task days-between
   take start, like plain-date
   take finish, like plain-date
@@ -96,20 +98,22 @@ task days-between
 
 ## Day of the week and calendar facts
 
-```tree
+```tree fragment
 host weekday
   call day-of-week
     read new-year        # 0 = Sunday ... 6 = Saturday
 
 host leap
-  call is-leap-year
-    code 2028            # true
+  call is-leap-year      # true
+    code 2028
 
 host february-length
-  call days-in-month
+  call days-in-month     # 29
     code 2028
-    code 2               # 29
+    code 2
 ```
+
+`is-leap-year` and `days-in-month` are free tasks, so they come in with their own `find` lines under the `plain-date` load.
 
 ## Durations
 
@@ -137,6 +141,9 @@ host as-minutes
 `minus`, `negate`, and `absolute` compose spans the same way.
 
 ```tree
+load @term/base/code/duration
+  find duration
+
 task time-left
   take total, like duration
   take spent, like duration

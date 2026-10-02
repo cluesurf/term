@@ -19,6 +19,11 @@ import {
   BINARY_BUILTIN,
   UNARY_BUILTIN,
 } from '@term/make/code/compile/mill'
+import { isFoldable, nestLeanCalls } from '@term/make/code/check/lean-nest'
+import { armLocals } from '@term/make/code/check/arm'
+
+// the fields every caught exception binds in an arm, beside its own props (infer.ts keeps the same list)
+const EXCEPTION_SHARED = ['host', 'form', 'note', 'code', 'time']
 
 export type Scope = Map<string, Binding>
 
@@ -165,6 +170,22 @@ export function resolve(
     }
   }
 
+  // an exception form's props (its synthesized `<form>-link` record), for an arm over a caught exception
+  const exceptionLink = new Map<string, string[]>()
+
+  for (const statement of program) {
+    if (statement.form === 'record-type' && statement.chain?.includes('exception')) {
+      const props = statement.props
+        ? program.find(s => s.form === 'record-type' && s.name === statement.props)
+        : undefined
+
+      exceptionLink.set(
+        statement.name,
+        props && props.form === 'record-type' ? props.fields.map(f => f.name) : [],
+      )
+    }
+  }
+
   // a second pass, because a field's declared form may be read before it is declared
   const fieldsOf = (name: string): string[] | undefined => {
     for (const statement of program) {
@@ -279,6 +300,44 @@ export function resolve(
           )
         ) {
           resolveExpression(node.callee)
+        }
+
+        // A LEAN LABEL THAT NAMES NO PARAMETER IS A NESTED CALL (check/lean-nest.ts). Done here, where the scope
+        // is, so the nested callee resolves like any other and an imported task it names counts as used.
+        //
+        // For EVERY lean call, not only a known task's. A callee with no parameters on record (a native dock such
+        // as `console/log`, a method on a receiver) has no parameter a label could name, and the label used to be
+        // DROPPED there in silence: `console/log / fade <x>` emitted `console.log(["x"])`, a program that compiles
+        // and prints the wrong thing. Found by `pnpm term:lean-equal` on deck/call/code/work/form.tree.
+        if (node.lean) {
+          const params =
+            node.callee.form === 'variable'
+              ? (taskParams.get(node.callee.name) ?? variantFields.get(node.callee.name))
+              : undefined
+
+          nestLeanCalls(
+            node,
+            name => params?.includes(name) === true,
+            name => look(name) !== undefined || isFoldable(name),
+          )
+
+          // AND WHAT IS LEFT ON A CALLEE THAT IS NOT A NAME IS REFUSED (self-hosting-0014, H3). A member or native
+          // call (`console/log`, `xs/push`) never reaches the checker's `arrangeArguments`, which is where a label
+          // with nothing to bind to is refused for a plain-name callee. Here it would be dropped in silence and
+          // the call would receive the label's value as one more positional array. lean.md names that as the one
+          // way the lean surface can fail with no message, so it gets one.
+          if (node.callee.form !== 'variable' && node.leanNames?.some(Boolean)) {
+            const left = (node.names ?? []).filter((name, i) => typeof name === 'string' && node.leanNames?.[i])
+
+            diagnostics.push(
+              diagnose('type-mismatch', {
+                file: currentFile,
+                span: node.span,
+                message: `this call has no parameters on record, so its properties (${left.join(', ')}) name nothing`,
+                hint: 'write the value positionally, or use `bind <name>, <value>` where the name is documentation',
+              }),
+            )
+          }
         }
 
         // THE LEAN SURFACE: an inline comma after a BARE-WORD value leaves the next property inside it, so
@@ -515,6 +574,18 @@ export function resolve(
 
         for (const branch of node.cases) {
           stack.push(new Map())
+
+          // an arm over a caught exception binds the shared fields and the form's own props by name, as the checker
+          // and every emitter read it (book/language/errors.md, "Catching"; infer.ts, `exceptionArms`). Until
+          // 2026-10-02 the props were never declared here, so `case json-mismatch / read reason` failed as an
+          // unknown name although the checker and the emitters both had it right
+          const caughtLink = exceptionLink.get(branch.label)
+
+          if (caughtLink) {
+            for (const { local } of armLocals([...EXCEPTION_SHARED, ...caughtLink], branch.binds)) {
+              declare(local, { kind: 'local' })
+            }
+          }
 
           // bind the matched variant's fields as locals for this branch, honoring `binds` field-renames if present
           for (const fieldName of branch.binds ??

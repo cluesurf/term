@@ -1,6 +1,5 @@
+note draft
 
-task get
-  like text
-
-task set
-  take path, like text
+# SHELVED 2026-10-02 (base-v1-0017): superseded by code/environment.tree, which now holds directory and change-directory. This module
+# declared its tasks and bound nothing, so every call built clean and threw `stub` at run time; its natives are
+# renamed (working-directory, enter-directory) and environment.tree delegates to them.

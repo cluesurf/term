@@ -329,11 +329,38 @@ form list
           call self/slice
             code 0
             read count
+      # `count` from each end: the first and the last, or the whole list when the two overlap
       case both
-        send back
-          call self/slice
-            code 0
+        # one walk pushing into a fresh list, the shape `unique` uses, which every backend lowers natively. Not
+        # `concat` in any spelling: a call or a member call of that name reaches the top-level `concat` of
+        # text/string.tree or bytes.tree, which shadows the list's own
+        save out
+          make list
+        save at, code 0
+        save cut
+          call subtract
+            read self/length
             read count
+        walk list, read self
+          hook next
+            take site, name item
+            fork test
+              hook test
+                call or
+                  call is-below
+                    read at
+                    read count
+                  call is-minimum
+                    read at
+                    read cut
+              hook hold
+                call out/push
+                  read item
+            save at
+              call add
+                read at
+                code 1
+        send back, read out
 
   # drop `count` items from the chosen side
   task drop
@@ -354,10 +381,14 @@ form list
         send back
           call self/slice
             read count
+      # `count` off each end: what lies between, empty when the two meet
       case both
         send back
           call self/slice
             read count
+            call subtract
+              read self/length
+              read count
 
   # take / drop from the end: readable sugar over the verb
   task take-last
@@ -392,12 +423,6 @@ form list
       call self/lastIndexOf
         read item
 
-  task flatten
-    take self
-    like list
-      like t
-    send back
-      call self/flat
 
   task sum
     take self
@@ -474,3 +499,26 @@ form list
       hook miss
         send back
           make none
+
+# one list from a list of lists, in order: one level of nesting removed. Pure Term, so it is the same walk on every
+# backend. It was a method over the host's `flat`, which a native backend could not lower inside the generic `list`
+# form, where it cannot see that the items are lists, and so copied them unflattened
+task flatten
+  head t
+  take lists
+    like list
+      like list
+        like t
+  like list
+    like t
+  save out
+    make list
+  walk list, read lists
+    hook next
+      take site, name inner
+      walk list, read inner
+        hook next
+          take site, name item
+          call out/push
+            read item
+  send back, read out

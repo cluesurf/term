@@ -19,4 +19,12 @@ enum crypto {
         for _ in 0..<size { bytes.append(UInt8.random(in: UInt8.min...UInt8.max, using: &generator)) }
         return Data(bytes)
     }
+    // equal without leaking where they differ: every byte is read whatever the earlier ones held. A length difference
+    // answers at once
+    static func equalSecret(_ a: Data, _ b: Data) -> Bool {
+        if a.count != b.count { return false }
+        var diff: UInt8 = 0
+        for (x, y) in zip(a, b) { diff |= x ^ y }
+        return diff == 0
+    }
 }

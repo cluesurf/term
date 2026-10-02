@@ -18,7 +18,7 @@ import type {
   Statement,
   Type,
 } from '@term/make/code/compile/node'
-import { hashText } from '@term/make/code/compile/cache'
+import { hashText } from '@term/make/code/term/hash'
 
 // a stable, structural string for a type (no spans, no inference ids that vary)
 function typeKey(type: Type | undefined): string {

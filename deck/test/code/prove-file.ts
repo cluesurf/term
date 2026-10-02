@@ -61,7 +61,7 @@ export function proveFile(input: { file: string; resolve: Resolve; cross: boolea
 /** Render a report the way the terminal prints it. */
 export function renderReport(report: Report): string {
   const lines: string[] = []
-  lines.push(`=== seed hold: ${report.file} ===`)
+  lines.push(`=== term hold: ${report.file} ===`)
 
   if (report.gaps.length === 0 && report.compiles) {
     lines.push('  PROVED - compiles with no open obligations')

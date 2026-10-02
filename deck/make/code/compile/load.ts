@@ -3,7 +3,8 @@
 // it (transitively) loads are collected in dependency order, then compiled as one merged program. Circular loads
 // are handled (each module is included exactly once). Browser-safe: file reading is delegated to a resolver.
 
-import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
+import { spanOfWhole } from '@term/make/code/compile/mill-run'
 import { parse, renderHead } from '@term/make/code/parser/tree'
 import type { GroupNode, ParseResult, RootNode } from '@term/make/code/parser/tree'
 
@@ -26,15 +27,20 @@ export type Source = { file: string; text: string }
 type ImportScan = {
   paths: string[]
   hasZone: boolean
-  // per import path, whether it is a `bear` (a re-export) and the names its `find` lines ask for
-  finds: { path: string; bear: boolean; names: string[] }[]
+  // per import path, whether it is a `bear` (a re-export) and the names its `find` lines ask for, with where each
+  // `find` line is
+  finds: { path: string; bear: boolean; names: string[]; spans: Span[] }[]
 }
 
 // What each module imports BY NAME, resolved to files: a `find`ed name -> every file a `load` / `bear` that finds it
 // resolved to, and the files the module re-exports with `bear`. Names are package-global, so this is the only record
 // of WHICH definition a call site meant when two modules define one name (native-dom-0031). Read by
-// check/overload.ts, which binds such a call by it.
-export type ImportScope = Map<string, { finds: Map<string, string[]>; bears: string[] }>
+// check/overload.ts, which binds such a call by it, and by check/private.ts, which refuses a `find` of a name that
+// is private to the file it names. `at` is where each name's first `find` line is, for that diagnostic.
+export type ImportScope = Map<
+  string,
+  { finds: Map<string, string[]>; bears: string[]; at?: Map<string, Span> }
+>
 
 // the parser's own renderer, so an interpolated path keeps its braces: `load @term/base/code/native/{platform}/float`
 // has to reach the resolver with `{platform}` intact for `withNativeEnv` to fill it in. Reading only the chunks drops
@@ -140,6 +146,7 @@ function scanImports(tree: RootNode): ImportScan {
 
       // `find <name>` lines under the path, an alias (`find x, name y`) recorded by the name it imports
       const names: string[] = []
+      const spans: Span[] = []
 
       for (const child of group.nodes.slice(2)) {
         if (child.kind !== 'group' || headName(child) !== 'find') {
@@ -151,10 +158,11 @@ function scanImports(tree: RootNode): ImportScan {
 
         if (name !== undefined) {
           names.push(name)
+          spans.push(spanOfWhole(child))
         }
       }
 
-      finds.push({ path, bear: keyword === 'bear', names })
+      finds.push({ path, bear: keyword === 'bear', names, spans })
     }
   }
 
@@ -202,7 +210,11 @@ export function collectModules(
       ? scanImports(tree.tree)
       : { paths: [], hasZone: false, finds: [] }
     const paths = scan.paths
-    const own = { finds: new Map<string, string[]>(), bears: [] as string[] }
+    const own = {
+      finds: new Map<string, string[]>(),
+      bears: [] as string[],
+      at: new Map<string, Span>(),
+    }
     scope.set(source.file, own)
 
     // a module with a zone implicitly depends on the render runtime (the emitter synthesizes its calls). Inject it
@@ -224,9 +236,13 @@ export function collectModules(
             own.bears.push(dependency.file)
           }
 
-          for (const name of entry.names) {
+          entry.names.forEach((name, i) => {
             own.finds.set(name, [...(own.finds.get(name) ?? []), dependency.file])
-          }
+
+            if (!own.at.has(name) && entry.spans[i]) {
+              own.at.set(name, { ...entry.spans[i]!, file: source.file })
+            }
+          })
         }
 
         visit(dependency)

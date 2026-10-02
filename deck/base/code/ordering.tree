@@ -72,3 +72,31 @@ task from-numbers
           send back, make greater
         hook miss
           send back, make equal
+
+# the text comparator: by code point, which is UTF-8 byte order, on every backend (note/term/stdlib/semantics.md).
+# Not UTF-16 unit order (JavaScript's and Kotlin's `<`) and not canonical equivalence (Swift's), which disagree with
+# it on some texts
+task from-texts
+  take left, like text
+  take right, like text
+  like ordering
+  save sign
+    call left/compare
+      read right
+  fork test
+    hook test
+      call is-below
+        read sign
+        code 0
+    hook hold
+      send back, make less
+    hook miss
+      fork test
+        hook test
+          call is-above
+            read sign
+            code 0
+        hook hold
+          send back, make greater
+        hook miss
+          send back, make equal

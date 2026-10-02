@@ -30,12 +30,16 @@ test <identity has zeros off the diagonal>
       0.0
 
 test <identity times identity keeps the diagonal one>
+  save a
+    call identity-matrix-4
+  save b
+    call identity-matrix-4
   want hold
     call is-equal
       call get
         call times
-          call identity-matrix-4
-          call identity-matrix-4
+          read a
+          read b
         code 2
         code 2
       1.0

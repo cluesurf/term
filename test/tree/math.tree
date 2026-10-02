@@ -20,7 +20,7 @@ test <absolute makes a negative positive>
   want hold
     call is-equal
       call absolute
-        mark -5
+        code -5
       code 5
 
 test <minimum picks the smaller>

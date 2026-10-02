@@ -5,13 +5,13 @@
 dock load
   load <global:directory>, name directory
 
-task get
+task working-directory
   like text
 
   send back
     call directory/get
 
-task set
+task enter-directory
   take path, like text
 
   call directory/set

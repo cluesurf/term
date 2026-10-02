@@ -19,6 +19,7 @@ import {
   reassigned,
   stringCall,
   stringRead,
+  isText,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp, FormKind, FormSpec } from '@term/make/code/compile/backend'
 import { formSpec, hasValuedReturn, refuseAny, specForms } from '@term/make/code/compile/backend'
@@ -95,6 +96,113 @@ const OP: Record<string, string> = {
   '/': '/',
   '%': '%',
 }
+
+// The text operations by code point (note/term/stdlib/semantics.md). Kotlin's String is UTF-16, so every position
+// and length here converts through the code point array; matching itself (indexOf, split, replace) is a UTF-16
+// search, which finds exactly the code point matches because a needle is whole code points.
+const KOTLIN_TEXT = `object TermText {
+    private fun cps(s: String): IntArray = s.codePoints().toArray()
+    private fun str(c: IntArray, a: Int, b: Int): String = if (a >= b) "" else String(c, a, b - a)
+    private fun find(h: IntArray, n: IntArray, from: Int): Int {
+        if (n.isEmpty()) return from
+        var i = from
+        while (i + n.size <= h.size) {
+            var k = 0
+            while (k < n.size && h[i + k] == n[k]) k++
+            if (k == n.size) return i
+            i++
+        }
+        return -1
+    }
+    private fun white(c: Int): Boolean = c in 9..13 || c == 32 || c == 133 || c == 160 || c == 5760 || c in 8192..8202 || c == 8232 || c == 8233 || c == 8239 || c == 8287 || c == 12288
+    fun length(s: String): Long = s.codePointCount(0, s.length).toLong()
+    fun charAt(s: String, i: Long): String { val c = cps(s); return if (i >= 0 && i < c.size) String(c, i.toInt(), 1) else "" }
+    fun charCodeAt(s: String, i: Long): Long { val c = cps(s); return if (i >= 0 && i < c.size) c[i.toInt()].toLong() else -1L }
+    fun indexOf(s: String, n: String, from: Long = 0L): Long { val h = cps(s); return find(h, cps(n), from.coerceIn(0L, h.size.toLong()).toInt()).toLong() }
+    fun lastIndexOf(s: String, n: String): Long {
+        val h = cps(s)
+        val m = cps(n)
+        var i = h.size - m.size
+        while (i >= 0) {
+            var k = 0
+            while (k < m.size && h[i + k] == m[k]) k++
+            if (k == m.size) return i.toLong()
+            i--
+        }
+        return -1L
+    }
+    fun split(s: String, d: String): MutableList<String> = if (d.isEmpty()) cps(s).map { String(intArrayOf(it), 0, 1) }.toMutableList() else s.split(d).toMutableList()
+    fun substring(s: String, a: Long, b: Long? = null): String {
+        val c = cps(s)
+        var x = a.coerceIn(0L, c.size.toLong()).toInt()
+        var y = (b ?: c.size.toLong()).coerceIn(0L, c.size.toLong()).toInt()
+        if (x > y) { val t = x; x = y; y = t }
+        return str(c, x, y)
+    }
+    fun slice(s: String, a: Long, b: Long? = null): String = substring(s, a, b)
+    fun toLowerCase(s: String): String = s.lowercase()
+    fun toUpperCase(s: String): String = s.uppercase()
+    fun trimStart(s: String): String { val c = cps(s); var i = 0; while (i < c.size && white(c[i])) i++; return str(c, i, c.size) }
+    fun trimEnd(s: String): String { val c = cps(s); var j = c.size; while (j > 0 && white(c[j - 1])) j--; return str(c, 0, j) }
+    fun trim(s: String): String = trimEnd(trimStart(s))
+    private fun pad(s: String, w: Long, f: String, front: Boolean): String {
+        val n = length(s)
+        if (n >= w || f.isEmpty()) return s
+        val fc = cps(f)
+        val out = StringBuilder()
+        for (i in 0 until (w - n).toInt()) out.appendCodePoint(fc[i % fc.size])
+        return if (front) out.toString() + s else s + out.toString()
+    }
+    fun padStart(s: String, w: Long, f: String): String = pad(s, w, f, true)
+    fun padEnd(s: String, w: Long, f: String): String = pad(s, w, f, false)
+    fun replace(s: String, a: String, b: String): String { val i = s.indexOf(a); return if (i < 0) s else s.substring(0, i) + b + s.substring(i + a.length) }
+    fun replaceAll(s: String, a: String, b: String): String {
+        if (a.isNotEmpty()) return s.split(a).joinToString(b)
+        val out = StringBuilder(b)
+        for (x in cps(s)) { out.appendCodePoint(x); out.append(b) }
+        return out.toString()
+    }
+    fun includes(s: String, n: String): Boolean = s.contains(n)
+    fun startsWith(s: String, n: String): Boolean = s.startsWith(n)
+    fun endsWith(s: String, n: String): Boolean = s.endsWith(n)
+    fun repeat(s: String, n: Long): String = if (n > 0) s.repeat(n.toInt()) else ""
+    fun concat(s: String, b: String): String = s + b
+    fun compare(a: String, b: String): Long {
+        val x = cps(a)
+        val y = cps(b)
+        for (i in 0 until minOf(x.size, y.size)) if (x[i] != y[i]) return if (x[i] < y[i]) -1L else 1L
+        return x.size.compareTo(y.size).toLong()
+    }
+}`
+
+// A float as text, the same on every backend (note/term/stdlib/semantics.md, "Numbers as text"): the shortest digits
+// that read back as the same float (the JDK's Double.toString gives them since 19), laid out as ECMAScript's
+// Number::toString lays them out. Kotlin's own rendering prints two as `2.0` and 1e21 as `1.0E21`.
+const KOTLIN_NUMBER = `fun termNumber(x: Double): String {
+    if (x.isNaN()) return "NaN"
+    if (x.isInfinite()) return if (x > 0) "Infinity" else "-Infinity"
+    if (x == 0.0) return "0"
+    val shortest = Math.abs(x).toString().lowercase()
+    val halves = shortest.split("e")
+    val exponent = if (halves.size > 1) halves[1].toInt() else 0
+    val pieces = halves[0].split(".")
+    val whole = pieces[0]
+    var all = whole + (if (pieces.size > 1) pieces[1] else "")
+    var n = whole.length + exponent
+    while (all.length > 1 && all[0] == '0') { all = all.substring(1); n -= 1 }
+    all = all.trimEnd('0').ifEmpty { "0" }
+    val k = all.length
+    val body = when {
+        k <= n && n <= 21 -> all + "0".repeat(n - k)
+        0 < n && n <= 21 -> all.substring(0, n) + "." + all.substring(n)
+        -6 < n && n <= 0 -> "0." + "0".repeat(-n) + all
+        else -> {
+            val e = n - 1
+            (if (k == 1) all else all.substring(0, 1) + "." + all.substring(1)) + "e" + (if (e < 0) "-" else "+") + Math.abs(e)
+        }
+    }
+    return if (x < 0) "-" + body else body
+}`
 
 // Kotlin requires every `import` at the top of the file, but a built program concatenates the runtime prelude (one or
 // more shim files, each with its own imports) with the emitted program (which may also emit imports). Hoist every
@@ -211,9 +319,22 @@ export function emitKotlin(
   const genericLetter = (type: Type | undefined): boolean =>
     type?.kind === 'variable' ||
     (type?.kind === 'named' && /^[a-z]$/.test(type.name) && !type.args?.length && !recordFields.has(type.name))
-  // a call, awaited or not: what answers the unknown at a generic boundary
-  const isCallValue = (value: Expression): boolean =>
-    value.form === 'call' || (value.form === 'await' && value.expr.form === 'call')
+  // the value answered by an untyped SHIM: a call to a Term task, or to a `dock load` module, awaited or not. A built-in
+  // collection operation is neither: its value is already the element type
+  const nativeAliases = new Set(
+    program.flatMap(n => (n.form === 'native' && n.kind !== 'type' ? [n.alias] : [])),
+  )
+  const isCallValue = (value: Expression): boolean => {
+    const call = value.form === 'await' ? value.expr : value
+
+    return (
+      call.form === 'call' &&
+      ((call.callee.form === 'variable' && !nativeAliases.has(call.callee.name)) ||
+        (call.callee.form === 'member' &&
+          call.callee.target.form === 'variable' &&
+          nativeAliases.has(call.callee.target.name)))
+    )
+  }
 
   // a `let` bound to a call with no arguments whose type the checker knows concretely as a generic application
   const uninferableCall = (node: Extract<Statement, { form: 'let' }>): boolean => {
@@ -611,8 +732,15 @@ export function emitKotlin(
         return JSON.stringify(node.value)
       case 'template':
         // `"a${x}b"`: chunks escaped as a Kotlin string with `$` escaped, expressions interpolated
+        // a float interpolates as `termNumber` lays it out, the same text as every other backend
         return `"${node.parts
-          .map(part => (typeof part === 'string' ? JSON.stringify(part).slice(1, -1).replace(/\$/g, '\\$') : `\${${expr(part)}}`))
+          .map(part =>
+            typeof part === 'string'
+              ? JSON.stringify(part).slice(1, -1).replace(/\$/g, '\\$')
+              : part.type?.kind === 'float'
+                ? `\${termNumber(${expr(part)})}`
+                : `\${${expr(part)}}`,
+          )
           .join('')}"`
       case 'unit':
         return 'Unit'
@@ -636,6 +764,16 @@ export function emitKotlin(
 
         if (exact && node.left.type?.kind === 'number' && node.right.type?.kind === 'number') {
           return `Math.${exact}((${expr(node.left)}).toLong(), (${expr(node.right)}).toLong())`
+        }
+
+        // two texts order by code point (note/term/stdlib/semantics.md). Kotlin's compareTo orders by UTF-16 unit,
+        // which disagrees above the basic plane
+        if (
+          (node.op === '<' || node.op === '>' || node.op === '<=' || node.op === '>=') &&
+          isText(node.left.type) &&
+          isText(node.right.type)
+        ) {
+          return `(TermText.compare(${expr(node.left)}, ${expr(node.right)}) ${OP[node.op]} 0L)`
         }
 
         return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
@@ -880,7 +1018,7 @@ export function emitKotlin(
         const textLength = stringRead(node)
 
         if (textLength) {
-          return `${expr(textLength.target)}.length.toLong()`
+          return `TermText.length(${expr(textLength.target)})`
         }
 
         if (node.index) {
@@ -949,9 +1087,14 @@ export function emitKotlin(
           .map(s => stmt(s, 0))
           .filter(Boolean)
 
+        // a lambda answering the unknown whose value is a generic (`T` is nullable in Kotlin, `Any` is not) gives it
+        // back as `Any`: the closure `spawn` hands a typed task's work to the one untyped job shim
+        const closureResult = node.result ?? (node.type?.kind === 'function' ? node.type.result : undefined)
         const tail =
           last?.form === 'return' && last.value
-            ? expr(last.value)
+            ? closureResult?.kind === 'unknown' && genericLetter(last.value.type)
+              ? `(${expr(last.value)} as Any)`
+              : expr(last.value)
             : last
               ? stmt(last, 0)
               : ''
@@ -1024,13 +1167,16 @@ export function emitKotlin(
       case 'concat':
         return `(${target} + ${arg[0]}).toMutableList()`
       case 'slice':
-        return arg[1] !== undefined
-          ? `${target}.subList((${arg[0]}).toInt(), (${arg[1]}).toInt()).toMutableList()`
-          : `${target}.subList((${arg[0]}).toInt(), ${target}.size).toMutableList()`
+        // both bounds clamped to the length, empty when start reaches end, never counted from the end
+        // (note/term/stdlib/semantics.md)
+        return `${target}.let { d -> val x = (${arg[0]}).toInt().coerceIn(0, d.size); val y = (${arg[1] !== undefined ? `(${arg[1]}).toInt()` : 'd.size'}).coerceIn(0, d.size); if (x < y) d.subList(x, y).toMutableList() else d.subList(0, 0).toMutableList() }`
       case 'toReversed':
         return `${target}.reversed().toMutableList()`
       case 'join':
-        return `${target}.joinToString(${arg[0]})`
+        // each item as `to-text` renders it, so a float reads as on every backend
+        return op.target.type?.kind === 'array' && op.target.type.element.kind === 'float'
+          ? `${target}.joinToString(${arg[0]}) { termNumber(it) }`
+          : `${target}.joinToString(${arg[0]})`
       case 'map':
         return `${target}.map(${arg[0]}).toMutableList()`
       case 'filter':
@@ -1044,74 +1190,28 @@ export function emitKotlin(
       case 'findIndex':
         return `${target}.indexOfFirst(${arg[0]}).toLong()`
       case 'flat':
-        // flattening a non-nested list is a shallow copy (JS `[1,2,3].flat()` is `[1,2,3]`)
-        return `${target}.toMutableList()`
+        // one level of nesting removed when the items are lists; a copy otherwise (JS `[1,2,3].flat()` is `[1,2,3]`)
+        return op.target.type?.kind === 'array' && op.target.type.element.kind === 'array'
+          ? `${target}.flatten().toMutableList()`
+          : `${target}.toMutableList()`
       case 'unshift':
         return `${target}.apply { add(0, ${arg[0]}) }.size.toLong()`
       case 'shift':
         return `${target}.removeAt(0)`
       case 'splice':
         // JS `splice(start, deleteCount, ...items)`: remove the range, insert the items, in place
-        return `${target}.apply { subList((${arg[0]}).toInt(), (${arg[0]}).toInt() + (${arg[1]}).toInt()).clear(); addAll((${arg[0]}).toInt(), listOf(${arg.slice(2).join(', ')})) }.let { 0L }`
+        // the start clamped to the length and the count to what remains (semantics.md)
+        return `${target}.apply { val s = (${arg[0]}).toInt().coerceIn(0, size); val c = (${arg[1]}).toInt().coerceIn(0, size - s); subList(s, s + c).clear(); addAll(s, listOf(${arg.slice(2).join(', ')})) }.let { 0L }`
       default:
         return ''
     }
   }
 
-  // JavaScript's string methods over kotlin's String (see backend.ts, STRING_METHODS). Indexes are Long in seed
-  // and Int in kotlin; a read past the end is empty (charAt) or 0 (charCodeAt), never an exception.
-  const stringExpr = (op: string, t: string, a: string[]): string => {
-    switch (op) {
-      case 'charAt':
-      case 'at':
-        return `(${t}.getOrNull((${a[0]}).toInt())?.toString() ?: "")`
-      case 'charCodeAt':
-        return `(${t}.getOrNull((${a[0]}).toInt())?.code ?: 0).toLong()`
-      case 'indexOf':
-        return a[1] !== undefined
-          ? `${t}.indexOf(${a[0]}, (${a[1]}).toInt()).toLong()`
-          : `${t}.indexOf(${a[0]}).toLong()`
-      case 'lastIndexOf':
-        return `${t}.lastIndexOf(${a[0]}).toLong()`
-      case 'split':
-        return `(${a[0]}).let { d -> if (d.isEmpty()) ${t}.map { it.toString() }.toMutableList() else ${t}.split(d).toMutableList() }`
-      case 'substring':
-      case 'slice':
-        return a[1] !== undefined
-          ? `${t}.let { s -> s.substring((${a[0]}).toInt().coerceIn(0, s.length), (${a[1]}).toInt().coerceIn(0, s.length)) }`
-          : `${t}.let { s -> s.substring((${a[0]}).toInt().coerceIn(0, s.length)) }`
-      case 'toLowerCase':
-        return `${t}.lowercase()`
-      case 'toUpperCase':
-        return `${t}.uppercase()`
-      case 'startsWith':
-        return `${t}.startsWith(${a[0]})`
-      case 'endsWith':
-        return `${t}.endsWith(${a[0]})`
-      case 'trim':
-        return `${t}.trim()`
-      case 'trimStart':
-        return `${t}.trimStart()`
-      case 'trimEnd':
-        return `${t}.trimEnd()`
-      case 'padStart':
-        return `${t}.let { s -> var o = s; val f = ${a[1]}; while (o.length < (${a[0]}).toInt() && f.isNotEmpty()) { o = f + o }; o }`
-      case 'padEnd':
-        return `${t}.let { s -> var o = s; val f = ${a[1]}; while (o.length < (${a[0]}).toInt() && f.isNotEmpty()) { o = o + f }; o }`
-      case 'replace':
-        return `${t}.replaceFirst(${a[0]}, ${a[1]})`
-      case 'replaceAll':
-        return `${t}.replace(${a[0]}, ${a[1]})`
-      case 'includes':
-        return `${t}.contains(${a[0]})`
-      case 'concat':
-        return `(${t} + ${a[0]})`
-      case 'repeat':
-        return `${t}.repeat((${a[0]}).toInt())`
-      default:
-        return ''
-    }
-  }
+  // The text operations (see backend.ts, STRING_METHODS) mean what note/term/stdlib/semantics.md says, which counts
+  // code points. Kotlin's String counts UTF-16 units, so each goes through `TermText` in the prelude rather than the
+  // String method of the same name.
+  const stringExpr = (op: string, t: string, a: string[]): string =>
+    `TermText.${op === 'at' ? 'charAt' : op}(${[t, ...a].join(', ')})`
 
   // the forms that are exceptions: a raise of one carries the record whole
   const exceptionForms = new Set(
@@ -1724,6 +1824,8 @@ export function emitKotlin(
 
   const prelude = [
     ...(body.some(b => b.includes('SeedError(')) ? ['class SeedError(message: String) : RuntimeException(message)'] : []),
+    ...(body.some(b => b.includes('TermText.')) ? [KOTLIN_TEXT] : []),
+    ...(body.some(b => b.includes('termNumber(')) ? [KOTLIN_NUMBER] : []),
     // the one exception value of a Term program on this backend (note/term/hive/11-native-exceptions.md): the shared
     // fields of every exception, the props as `link`, the raised record as `base`. `termException` is the boundary
     // that makes a foreign throw a `failure`.

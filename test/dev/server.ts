@@ -2,7 +2,7 @@
 // serves the app shell, serves a compiled module as native ESM, opens the SSE channel (receives `connected`), and on a
 // change pushes an HMR message. Proves lazy serving + the SSE HMR plumbing end to end. Run: npx tsx test/dev/server.ts
 
-import { startDevServer } from '@term/make/code/dev/server'
+import { startDevServer } from '@term/call/code/dev/server'
 import { applyHmr } from '@term/make/code/dev/client'
 import type { HmrMessage } from '@term/make/code/dev/client'
 import * as fs from 'node:fs'

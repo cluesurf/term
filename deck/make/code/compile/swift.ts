@@ -21,6 +21,7 @@ import {
   reassigned,
   stringCall,
   stringRead,
+  isText,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp, FormKind, FormSpec } from '@term/make/code/compile/backend'
 import { formSpec, hasValuedReturn, refuseAny, specForms } from '@term/make/code/compile/backend'
@@ -114,6 +115,149 @@ function camel(name: string): string {
 }
 
 // type / variant names are capitalized, so they can never collide with a (lowercase) keyword
+// The text operations by code point (note/term/stdlib/semantics.md), over unicodeScalars. Swift's String counts
+// grapheme clusters and its `range(of:)` and `==` match canonically equivalent text, so nothing here uses either:
+// every search compares scalar arrays, which is the literal match every other backend makes.
+const SWIFT_TEXT = `enum TermText {
+    static func scalars(_ s: String) -> [Unicode.Scalar] { Array(s.unicodeScalars) }
+    static func text(_ c: ArraySlice<Unicode.Scalar>) -> String { var v = String.UnicodeScalarView(); v.append(contentsOf: c); return String(v) }
+    static func find(_ h: [Unicode.Scalar], _ n: [Unicode.Scalar], _ from: Int) -> Int {
+        if n.isEmpty { return from }
+        var i = from
+        while i + n.count <= h.count {
+            var k = 0
+            while k < n.count && h[i + k] == n[k] { k += 1 }
+            if k == n.count { return i }
+            i += 1
+        }
+        return -1
+    }
+    static func white(_ c: Unicode.Scalar) -> Bool { c.properties.isWhitespace }
+    static func length(_ s: String) -> Int { s.unicodeScalars.count }
+    static func charAt(_ s: String, _ i: Int) -> String { let c = scalars(s); return i >= 0 && i < c.count ? text(c[i...i]) : "" }
+    static func charCodeAt(_ s: String, _ i: Int) -> Int { let c = scalars(s); return i >= 0 && i < c.count ? Int(c[i].value) : -1 }
+    static func indexOf(_ s: String, _ n: String, _ from: Int = 0) -> Int { let h = scalars(s); return find(h, scalars(n), min(max(from, 0), h.count)) }
+    static func lastIndexOf(_ s: String, _ n: String) -> Int {
+        let h = scalars(s)
+        let m = scalars(n)
+        var i = h.count - m.count
+        while i >= 0 {
+            var k = 0
+            while k < m.count && h[i + k] == m[k] { k += 1 }
+            if k == m.count { return i }
+            i -= 1
+        }
+        return -1
+    }
+    static func split(_ s: String, _ d: String) -> [String] {
+        let h = scalars(s)
+        let m = scalars(d)
+        if m.isEmpty { return h.indices.map { text(h[$0...$0]) } }
+        var out: [String] = []
+        var start = 0
+        var i = 0
+        while i + m.count <= h.count {
+            if find(Array(h[i..<(i + m.count)]), m, 0) == 0 { out.append(text(h[start..<i])); i += m.count; start = i } else { i += 1 }
+        }
+        out.append(text(h[start..<h.count]))
+        return out
+    }
+    static func substring(_ s: String, _ a: Int, _ b: Int? = nil) -> String {
+        let h = scalars(s)
+        var x = min(max(a, 0), h.count)
+        var y = min(max(b ?? h.count, 0), h.count)
+        if x > y { swap(&x, &y) }
+        return text(h[x..<y])
+    }
+    static func slice(_ s: String, _ a: Int, _ b: Int? = nil) -> String { substring(s, a, b) }
+    // Unicode's default lowercase mapping with its one context rule, Final_Sigma, which JavaScript, Rust and the JDK
+    // apply and Swift's lowercased() does not: a capital sigma after a cased letter and before none becomes final
+    static func toLowerCase(_ s: String) -> String {
+        let h = scalars(s)
+        var out = String.UnicodeScalarView()
+        for (i, c) in h.enumerated() {
+            if c.value != 0x3A3 { out.append(contentsOf: String(c).lowercased().unicodeScalars); continue }
+            var j = i - 1
+            while j >= 0 && h[j].properties.isCaseIgnorable { j -= 1 }
+            var k = i + 1
+            while k < h.count && h[k].properties.isCaseIgnorable { k += 1 }
+            let final = j >= 0 && h[j].properties.isCased && !(k < h.count && h[k].properties.isCased)
+            out.append(Unicode.Scalar(final ? 0x3C2 : 0x3C3)!)
+        }
+        return String(out)
+    }
+    static func toUpperCase(_ s: String) -> String { s.uppercased() }
+    static func trimStart(_ s: String) -> String { let h = scalars(s); var i = 0; while i < h.count && white(h[i]) { i += 1 }; return text(h[i..<h.count]) }
+    static func trimEnd(_ s: String) -> String { let h = scalars(s); var j = h.count; while j > 0 && white(h[j - 1]) { j -= 1 }; return text(h[0..<j]) }
+    static func trim(_ s: String) -> String { trimEnd(trimStart(s)) }
+    static func pad(_ s: String, _ w: Int, _ f: String, _ front: Bool) -> String {
+        let n = length(s)
+        let fill = scalars(f)
+        if n >= w || fill.isEmpty { return s }
+        var out = String.UnicodeScalarView()
+        for i in 0..<(w - n) { out.append(fill[i % fill.count]) }
+        return front ? String(out) + s : s + String(out)
+    }
+    static func padStart(_ s: String, _ w: Int, _ f: String) -> String { pad(s, w, f, true) }
+    static func padEnd(_ s: String, _ w: Int, _ f: String) -> String { pad(s, w, f, false) }
+    static func replace(_ s: String, _ a: String, _ b: String) -> String {
+        let h = scalars(s)
+        let m = scalars(a)
+        let i = find(h, m, 0)
+        return i < 0 ? s : text(h[0..<i]) + b + text(h[(i + m.count)..<h.count])
+    }
+    static func replaceAll(_ s: String, _ a: String, _ b: String) -> String {
+        if !a.isEmpty { return split(s, a).joined(separator: b) }
+        let h = scalars(s)
+        return b + h.indices.map { text(h[$0...$0]) + b }.joined()
+    }
+    static func includes(_ s: String, _ n: String) -> Bool { find(scalars(s), scalars(n), 0) >= 0 }
+    static func startsWith(_ s: String, _ n: String) -> Bool { scalars(s).starts(with: scalars(n)) }
+    static func endsWith(_ s: String, _ n: String) -> Bool { let h = scalars(s); let m = scalars(n); return h.count >= m.count && Array(h[(h.count - m.count)...]) == m }
+    static func repeated(_ s: String, _ n: Int) -> String { n > 0 ? String(repeating: s, count: n) : "" }
+    static func concat(_ s: String, _ b: String) -> String { s + b }
+    static func equal(_ a: String, _ b: String) -> Bool { a.unicodeScalars.elementsEqual(b.unicodeScalars) }
+    static func compare(_ a: String, _ b: String) -> Int {
+        let x = scalars(a)
+        let y = scalars(b)
+        for i in 0..<min(x.count, y.count) where x[i] != y[i] { return x[i].value < y[i].value ? -1 : 1 }
+        return x.count == y.count ? 0 : (x.count < y.count ? -1 : 1)
+    }
+}`
+
+// A float as text, the same on every backend (note/term/stdlib/semantics.md, "Numbers as text"): the shortest digits
+// that read back as the same float (Swift's `description` gives them), laid out as ECMAScript's Number::toString
+// lays them out. Swift's own rendering prints two as `2.0` and NaN as `nan`.
+const SWIFT_NUMBER = `func termNumber(_ x: Double) -> String {
+    if x.isNaN { return "NaN" }
+    if x.isInfinite { return x > 0 ? "Infinity" : "-Infinity" }
+    if x == 0 { return "0" }
+    let shortest = abs(x).description.lowercased()
+    let halves = shortest.split(separator: "e", omittingEmptySubsequences: false)
+    let exponent = halves.count > 1 ? (Int(halves[1]) ?? 0) : 0
+    let pieces = halves[0].split(separator: ".", omittingEmptySubsequences: false)
+    let whole = String(pieces[0])
+    var all = Array(whole + (pieces.count > 1 ? String(pieces[1]) : ""))
+    var n = whole.count + exponent
+    while all.count > 1 && all.first == "0" { all.removeFirst(); n -= 1 }
+    while all.count > 1 && all.last == "0" { all.removeLast() }
+    let k = all.count
+    let digits = String(all)
+    var body: String
+    if k <= n && n <= 21 {
+        body = digits + String(repeating: "0", count: n - k)
+    } else if 0 < n && n <= 21 {
+        body = String(all[0..<n]) + "." + String(all[n...])
+    } else if -6 < n && n <= 0 {
+        body = "0." + String(repeating: "0", count: -n) + digits
+    } else {
+        let e = n - 1
+        let sign = e < 0 ? "-" : "+"
+        body = (k == 1 ? digits : String(all[0..<1]) + "." + String(all[1...])) + "e" + sign + String(abs(e))
+    }
+    return x < 0 ? "-" + body : body
+}`
+
 // Foundation and standard-library type names a seed form must not shadow: `form data` would hide `Foundation.Data`
 // from every shim that uses it, so such a form is spelled with a `Form` suffix throughout the emit
 const SWIFT_TAKEN = new Set([
@@ -390,6 +534,11 @@ export function emitSwift(
     }
   }
 
+  // the names the function being emitted reassigns, for its own locals; undefined at the module level, where a binding
+  // any task writes must be a `var`
+  let currentAssigned: Set<string> | undefined
+  const assignedHere = (name: string): boolean => (currentAssigned ?? assignedAnywhere).has(name)
+
   // a function's free inference variables become named generic parameters; this maps each to its letter for the
   // duration of that function's emission, so `(t) -> ?5` prints as `(T) -> U` with `U` declared, not an unused `S`.
   let varNames = new Map<number, string>()
@@ -631,6 +780,22 @@ export function emitSwift(
       .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type' && n.variants.length === 0)
       .map(n => [n.name, n.fields]),
   )
+  // the value answered by an untyped SHIM: a call to a Term task, or to a `dock load` module, awaited or not. A built-in
+  // collection operation is neither, since `SeedList.popping()` is already typed and a cast there only warns
+  const nativeAliases = new Set(
+    program.flatMap(n => (n.form === 'native' && n.kind !== 'type' ? [n.alias] : [])),
+  )
+  const shimCall = (value: Expression): boolean => {
+    const call = value.form === 'await' ? value.expr : value
+
+    return (
+      call.form === 'call' &&
+      ((call.callee.form === 'variable' && !nativeAliases.has(call.callee.name)) ||
+        (call.callee.form === 'member' &&
+          call.callee.target.form === 'variable' &&
+          nativeAliases.has(call.callee.target.name)))
+    )
+  }
   const exceptionForms = new Set(
     program
       .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type' && Boolean(n.chain?.includes('exception')))
@@ -963,8 +1128,15 @@ export function emitSwift(
         return JSON.stringify(node.value)
       case 'template':
         // `"a\\(x)b"`: chunks escaped as a Swift string, expressions interpolated
+        // a float interpolates as `termNumber` lays it out, the same text as every other backend
         return `"${node.parts
-          .map(part => (typeof part === 'string' ? JSON.stringify(part).slice(1, -1) : `\\(${expr(part, bind)})`))
+          .map(part =>
+            typeof part === 'string'
+              ? JSON.stringify(part).slice(1, -1)
+              : part.type?.kind === 'float'
+                ? `\\(termNumber(${expr(part, bind)}))`
+                : `\\(${expr(part, bind)})`,
+          )
           .join('')}"`
       case 'unit':
         return '()'
@@ -977,6 +1149,11 @@ export function emitSwift(
       case 'unary': {
         // an operator over a throwing call needs the `try` in front of the whole expression, not the call alone
         const operand = expr(node.operand, bind)
+
+        // and an operator over an awaited call wraps it: `!await f()` is refused, `!(await f())` is not
+        if (operand.startsWith('await ')) {
+          return `${node.op}(${operand})`
+        }
 
         return operand.includes('try ') ? `(try ${node.op}${operand})` : `${node.op}${operand}`
       }
@@ -1030,6 +1207,18 @@ export function emitSwift(
 
         if (shared && (node.op === '==' || node.op === '!=')) {
           return `(${mark}${left} ${node.op === '==' ? '===' : '!=='} ${right})`
+        }
+
+        // two texts are equal when their code points are, and order by code point (note/term/stdlib/semantics.md).
+        // Swift's `==` and `<` on String use canonical equivalence, so `"é" == "e\u{301}"` is true here only
+        if (isText(node.left.type) && isText(node.right.type)) {
+          if (node.op === '==' || node.op === '!=') {
+            return `(${node.op === '!=' ? '!' : ''}${mark}TermText.equal(${left}, ${right}))`
+          }
+
+          if (node.op === '<' || node.op === '>' || node.op === '<=' || node.op === '>=') {
+            return `(${mark}TermText.compare(${left}, ${right}) ${OP[node.op]} 0)`
+          }
         }
 
         return `(${mark}${left} ${OP[node.op]} ${right})`
@@ -1265,7 +1454,7 @@ export function emitSwift(
         const textLength = stringRead(node)
 
         if (textLength) {
-          return `${expr(textLength.target, bind)}.count`
+          return `TermText.length(${expr(textLength.target, bind)})`
         }
 
         // a LITERAL index segment (`read parts/0`) on an array target subscripts the SeedList's storage
@@ -1400,13 +1589,16 @@ export function emitSwift(
       case 'concat':
         return `SeedList(${data} + ${arg[0]}.data)`
       case 'slice':
-        return arg[1] !== undefined
-          ? `SeedList(Array(${data}[${arg[0]}..<${arg[1]}]))`
-          : `SeedList(Array(${data}[${arg[0]}...]))`
+        // both bounds clamped to the length, empty when start reaches end, never counted from the end
+        // (note/term/stdlib/semantics.md)
+        return `${target}.slicing(${arg[0]}${arg[1] !== undefined ? `, ${arg[1]}` : ''})`
       case 'toReversed':
         return `SeedList(${data}.reversed())`
       case 'join':
-        return `${data}.map { String(describing: $0) }.joined(separator: ${arg[0]})`
+        // each item as `to-text` renders it, so a float reads as on every backend
+        return op.target.type?.kind === 'array' && op.target.type.element.kind === 'float'
+          ? `${data}.map { termNumber($0) }.joined(separator: ${arg[0]})`
+          : `${data}.map { String(describing: $0) }.joined(separator: ${arg[0]})`
       case 'map':
         return `SeedList(${data}.map(${arg[0]}))`
       case 'filter':
@@ -1420,8 +1612,10 @@ export function emitSwift(
       case 'findIndex':
         return `Int(${data}.firstIndex(where: ${arg[0]}) ?? -1)`
       case 'flat':
-        // flattening a non-nested list is a shallow copy (JS `[1,2,3].flat()` is `[1,2,3]`)
-        return `SeedList(${data})`
+        // one level of nesting removed when the items are lists; a copy otherwise (JS `[1,2,3].flat()` is `[1,2,3]`)
+        return op.target.type?.kind === 'array' && op.target.type.element.kind === 'array'
+          ? `SeedList(${data}.flatMap { $0.data })`
+          : `SeedList(${data})`
       case 'unshift':
         return `${target}.unshifting(${arg[0]})`
       case 'shift':
@@ -1433,55 +1627,15 @@ export function emitSwift(
     }
   }
 
-  // JavaScript's string methods over swift's String (see backend.ts, STRING_METHODS). Positions count Characters;
-  // a read past the end is empty (charAt) or 0 (charCodeAt), never a trap. Foundation is imported by the prelude.
+  // The text operations (see backend.ts, STRING_METHODS) mean what note/term/stdlib/semantics.md says, which counts
+  // code points. Swift's String counts grapheme clusters and matches by canonical equivalence (`"é" == "e\u{301}"`),
+  // so each goes through `TermText` in the prelude, over unicodeScalars, rather than the String method.
   const stringExpr = (op: string, t: string, a: string[]): string => {
-    switch (op) {
-      case 'charAt':
-      case 'at':
-        return `({ () -> String in let c = Array(${t}); let i = Int(${a[0]}); return i >= 0 && i < c.count ? String(c[i]) : "" })()`
-      case 'charCodeAt':
-        return `({ () -> Int in let c = Array(${t}.utf16); let i = Int(${a[0]}); return i >= 0 && i < c.count ? Int(c[i]) : 0 })()`
-      case 'indexOf':
-        return `({ () -> Int in let h = ${t}; let n = ${a[0]}; let f = min(max(Int(${a[1] ?? '0'}), 0), h.count); if n.isEmpty { return f }; let s = h.index(h.startIndex, offsetBy: f); if let r = h.range(of: n, range: s..<h.endIndex) { return h.distance(from: h.startIndex, to: r.lowerBound) }; return -1 })()`
-      case 'lastIndexOf':
-        return `({ () -> Int in let h = ${t}; if let r = h.range(of: ${a[0]}, options: .backwards) { return h.distance(from: h.startIndex, to: r.lowerBound) }; return -1 })()`
-      case 'split':
-        return `({ () -> SeedList<String> in let d = ${a[0]}; return SeedList(d.isEmpty ? ${t}.map { String($0) } : ${t}.components(separatedBy: d)) })()`
-      case 'substring':
-      case 'slice':
-        return `({ () -> String in let s = ${t}; let n = s.count; var x = min(max(Int(${a[0]}), 0), n); var y = min(max(Int(${a[1] ?? 'n'}), 0), n); if x > y { swap(&x, &y) }; return String(s[s.index(s.startIndex, offsetBy: x)..<s.index(s.startIndex, offsetBy: y)]) })()`
-      case 'toLowerCase':
-        return `${t}.lowercased()`
-      case 'toUpperCase':
-        return `${t}.uppercased()`
-      case 'startsWith':
-        return `${t}.hasPrefix(${a[0]})`
-      case 'endsWith':
-        return `${t}.hasSuffix(${a[0]})`
-      case 'trim':
-        return `${t}.trimmingCharacters(in: .whitespacesAndNewlines)`
-      case 'trimStart':
-        return `String(${t}.drop(while: { $0.isWhitespace }))`
-      case 'trimEnd':
-        return `String(String(${t}.reversed()).drop(while: { $0.isWhitespace }).reversed())`
-      case 'padStart':
-        return `({ () -> String in var o = ${t}; let f = ${a[1]}; while o.count < Int(${a[0]}) && !f.isEmpty { o = f + o }; return o })()`
-      case 'padEnd':
-        return `({ () -> String in var o = ${t}; let f = ${a[1]}; while o.count < Int(${a[0]}) && !f.isEmpty { o = o + f }; return o })()`
-      case 'replace':
-        return `({ () -> String in var s = ${t}; if let r = s.range(of: ${a[0]}) { s.replaceSubrange(r, with: ${a[1]}) }; return s })()`
-      case 'replaceAll':
-        return `${t}.replacingOccurrences(of: ${a[0]}, with: ${a[1]})`
-      case 'includes':
-        return `${t}.contains(${a[0]})`
-      case 'concat':
-        return `(${t} + ${a[0]})`
-      case 'repeat':
-        return `String(repeating: ${t}, count: max(Int(${a[0]}), 0))`
-      default:
-        return ''
-    }
+    // `repeat` is a Swift keyword, so the helper spells it `repeated`
+    const name = op === 'at' ? 'charAt' : op === 'repeat' ? 'repeated' : op
+    const call = `TermText.${name}(${[t, ...a].join(', ')})`
+
+    return name === 'split' ? `SeedList(${call})` : call
   }
 
   const block = (
@@ -1519,7 +1673,7 @@ export function emitSwift(
           (node.init.type?.kind === 'unknown' ||
             node.init.type?.kind === 'dynamic')
         ) {
-          return `${node.mutable || assignedAnywhere.has(node.name) ? 'var' : 'let'} ${vname(node.name)} = ${expr(node.init, bind)} as! ${swiftType(node.type)}`
+          return `${(node.mutable && currentAssigned === undefined) || assignedHere(node.name) ? 'var' : 'let'} ${vname(node.name)} = ${expr(node.init, bind)} as! ${swiftType(node.type)}`
         }
 
         // annotate an ADT binding so leading-dot construction has a type to infer from. An anonymous record's
@@ -1543,7 +1697,7 @@ export function emitSwift(
             ? `: ${swiftType(node.type)}`
             : ''
 
-        return `${node.mutable || assignedAnywhere.has(node.name) ? 'var' : 'let'} ${vname(
+        return `${(node.mutable && currentAssigned === undefined) || assignedHere(node.name) ? 'var' : 'let'} ${vname(
           node.name,
         )}${annotation} = ${expr(node.init, bind)}`
       }
@@ -1586,8 +1740,7 @@ export function emitSwift(
         const valueKind =
           node.value.form === 'await' ? (node.value.type ?? node.value.expr.type)?.kind : node.value.type?.kind
         const unknownValue = valueKind === 'unknown' || valueKind === 'dynamic'
-        const callValue =
-          node.value.form === 'call' || (node.value.form === 'await' && node.value.expr.form === 'call')
+        const callValue = shimCall(node.value)
         const generic =
           currentResult?.kind === 'variable' ||
           (currentResult?.kind === 'named' &&
@@ -1850,6 +2003,11 @@ export function emitSwift(
             ? `${pad(d + 1)}fatalError("unreachable")`
             : ''
 
+        // a local is a `var` only when THIS function reassigns it: the program-wide set made every `count` a `var`
+        // because some other task reassigns a `count` of its own, and swiftc warns on each (warnings fail the gates)
+        const previousAssigned = currentAssigned
+        currentAssigned = mutated
+
         // a signature-only stub compiles: its body is the not-implemented trap
         const bodyText =
           node.body.length === 0
@@ -1862,6 +2020,7 @@ export function emitSwift(
                 .filter(Boolean)
                 .join('\n')
 
+        currentAssigned = previousAssigned
         fnReturnsArray = previousReturnsArray
 
 
@@ -2305,6 +2464,14 @@ export function emitSwift(
     )
   }
 
+  if (body.some(b => b.includes('TermText.'))) {
+    prelude.push(SWIFT_TEXT)
+  }
+
+  if (body.some(b => b.includes('termNumber('))) {
+    prelude.push(SWIFT_NUMBER)
+  }
+
   // the one exception value of a Term program on this backend (note/term/hive/11-native-exceptions.md)
   if (body.some(b => b.includes('TermException(') || b.includes('termException('))) {
     prelude.push(
@@ -2380,7 +2547,9 @@ export function emitSwift(
         '    @discardableResult func popping() -> T { return data.removeLast() }',
         '    @discardableResult func unshifting(_ item: T) -> Int { data.insert(item, at: 0); return data.count }',
         '    @discardableResult func shifting() -> T { return data.removeFirst() }',
-        '    @discardableResult func splicing(_ start: Int, _ count: Int, _ items: [T]) -> Int { data.replaceSubrange(start..<(start + count), with: items); return data.count }',
+        // a splice and a slice clamp their bounds and never count from the end (note/term/stdlib/semantics.md)
+        '    @discardableResult func splicing(_ start: Int, _ count: Int, _ items: [T]) -> Int { let s = min(max(start, 0), data.count); let c = min(max(count, 0), data.count - s); data.replaceSubrange(s..<(s + c), with: items); return data.count }',
+        '    func slicing(_ start: Int, _ end: Int? = nil) -> SeedList<T> { let x = min(max(start, 0), data.count); let y = min(max(end ?? data.count, 0), data.count); return SeedList(x < y ? Array(data[x..<y]) : []) }',
         '}',
         '// a list compares and hashes by its items, as on every other backend (note/term/optimize/meaning.md, question 4)',
         'extension SeedList: Equatable where T: Equatable {',

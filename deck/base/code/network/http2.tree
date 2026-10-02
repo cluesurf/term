@@ -29,7 +29,7 @@ load @term/base/code/network/server/response
 form http2-server
   link dock
     like http2-dock
-    note private
+    mark private
   link host, like text
   link port, like number
 

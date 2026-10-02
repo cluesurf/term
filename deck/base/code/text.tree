@@ -76,18 +76,16 @@ task index-of
       read search
       read start-index
 
+# the last position where `search` starts, counted in code points, else -1 (note/term/stdlib/semantics.md). It takes
+# no start: a left-out start read as the empty value 0 on the native backends and as the end on JavaScript, so the
+# same call searched two different ranges
 task last-index-of
   take value, like text
   take search, like text
-  take
-    start-index
-    like integer
-    need false
   like integer
   send back
     call value/last-index-of
       read search
-      read start-index
 
 task split
   take value, like text

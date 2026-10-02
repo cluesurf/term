@@ -4,7 +4,8 @@
 const current = {
   id: (): number => process.pid,
 
-  arguments: (): string[] => process.argv,
+  // the program's own arguments, as on every backend: argv[0] is node and argv[1] the script
+  arguments: (): string[] => process.argv.slice(2),
 
   directory: (): string => process.cwd(),
 

@@ -21,8 +21,14 @@ import {
   overloadGroups,
 } from '@term/make/code/check/overload'
 import { extendForms } from '@term/make/code/check/extend'
+import {
+  checkPrivateFinds,
+  checkPrivateReferences,
+  warnPrivateNotes,
+} from '@term/make/code/check/private'
 import { checkTells } from '@term/make/code/check/tell'
 import { checkRaiseBounds } from '@term/make/code/check/effects'
+import { checkSupervision } from '@term/make/code/check/supervise'
 import { buildRoll } from '@term/make/code/compile/roll'
 import type { Roll } from '@term/make/code/compile/roll'
 import { elaborateReport } from '@term/make/code/check/elaborate'
@@ -30,7 +36,11 @@ import { checkHolds } from '@term/make/code/check/holds'
 import type { Tally } from '@term/make/code/check/holds'
 import { checkTraits } from '@term/make/code/check/traits'
 import { checkEffects } from '@term/make/code/check/effects'
-import { checkClaims, fillClaims } from '@term/make/code/check/claim'
+import {
+  checkClaims,
+  fillClaims,
+  stampGrounded,
+} from '@term/make/code/check/claim'
 import {
   checkTotality,
   terminatingFunctions,
@@ -74,7 +84,7 @@ import type { ModuleEmit } from '@term/make/code/compile/modules'
 import { collectModules, makeParseMemo } from '@term/make/code/compile/load'
 import type { ImportScope, ParseMemo } from '@term/make/code/compile/load'
 import type { Resolver } from '@term/make/code/compile/load'
-import { hashText } from '@term/make/code/compile/cache'
+import { hashText } from '@term/make/code/term/hash'
 import type { CompileCache } from '@term/make/code/compile/cache'
 import type {
   Program,
@@ -82,7 +92,7 @@ import type {
   Twin,
 } from '@term/make/code/compile/node'
 import { checkTwins } from '@term/make/code/check/twin'
-import { applyTwins } from '@term/make/code/ir/twin'
+import { applyTwins, exposeTwins, guardTask, twinTask } from '@term/make/code/ir/twin'
 import type { TwinChoices } from '@term/make/code/ir/twin'
 
 // The render-runtime helpers that `lowerZones` (compile/view-lower.ts)
@@ -229,6 +239,12 @@ export function compile(
     // which implementation of a task to build, for this target (ir/twin.ts): the reference, a twin by label, or a size
     // check between two. From `bake.json` (optimize-0014) or a test. Absent, every task is built as written
     twins?: TwinChoices
+    // build every twin as a plain task beside its reference, and its conditions as a boolean task, with no call
+    // redirected (ir/twin.ts `exposeTwins`): what admission compares (deck/test/code/twin-diff.ts)
+    exposeTwins?: boolean
+    // rewrite the closure's twins before they are built: how admission makes a deliberately WRONG twin (a mutant) and
+    // checks its comparison catches it (deck/test/code/twin-diff.ts). Nothing else passes it
+    adjustTwins?: (twins: Twin[]) => Twin[]
   },
 ): CompileResult {
   // a look stylesheet (.tree whose top-level statements are all `face` / `tone` / `base`) is not a normal compile
@@ -299,6 +315,9 @@ export function compile(
     (options?.roll ? '|roll' : '') +
     // a different choice of implementation is a different program
     (options?.twins && Object.keys(options.twins).length ? `|twins:${JSON.stringify(options.twins)}` : '') +
+    (options?.exposeTwins ? '|expose' : '') +
+    // a mutant is a different program every time it is asked for, so it is never answered from the cache
+    (options?.adjustTwins ? `|adjusted:${Math.random()}` : '') +
     (options?.entryPoints?.length
       ? `|entry:${[...options.entryPoints].sort().join(',')}`
       : '')
@@ -413,7 +432,13 @@ export function compile(
       options?.roll,
       options?.deckOf,
       collected?.scope,
-      options?.twins && Object.keys(options.twins).length > 0 ? { twins, choices: options.twins } : undefined,
+      (options?.twins && Object.keys(options.twins).length > 0) || options?.exposeTwins
+        ? {
+            twins: options?.adjustTwins ? options.adjustTwins(structuredClone(twins)) : twins,
+            choices: options?.twins ?? {},
+            expose: options?.exposeTwins,
+          }
+        : undefined,
     )
 
     // a twin is checked against the program it twins a task of: what can be refused without running anything
@@ -512,7 +537,7 @@ export function compileProgram(
   // what each module imports by name, so a call to a name two modules define binds to the one its file imported
   scope?: ImportScope,
   // the chosen implementations, with the closure's twins (ir/twin.ts)
-  selected?: { twins: Twin[]; choices: TwinChoices },
+  selected?: { twins: Twin[]; choices: TwinChoices; expose?: boolean },
 ): CompileResult {
   // the certificate checker's refusals so far, so this compile can report its own
   const uncertifiedBefore = uncertifiedCount()
@@ -528,6 +553,14 @@ export function compileProgram(
   // arity overloading: rename same-name / different-arity functions (and their calls) to unique `name__<arity>` names,
   // so everything downstream sees one definition per name. See code/check/overload.ts. It refuses two bodied
   // definitions of one name from two files that a call's own imports do not tell apart (native-dom-0031)
+  // `mark private`: a `find` of a name private to the file it names is refused, before overloads rename anything,
+  // so the found name is compared as written (check/private.ts)
+  const privateFinds = checkPrivateFinds(program, scope, deckOf)
+
+  if (privateFinds.length) {
+    return { ok: false, diagnostics: privateFinds }
+  }
+
   const ambiguities = disambiguateOverloads(program, scope)
 
   if (ambiguities.length) {
@@ -536,6 +569,15 @@ export function compileProgram(
 
   // the chosen implementations, BEFORE names are bound, so the twins and the dispatch are checked like any task
   if (selected) {
+    if (selected.expose) {
+      // and kept: nothing calls them, so dead-code removal would take them back out
+      for (const twin of exposeTwins(program, selected.twins)) {
+        roots?.add(twinTask(twin.of, twin.name))
+        roots?.add(guardTask(twin.of, twin.name))
+        roots?.add(twin.of)
+      }
+    }
+
     const refused = applyTwins(program, selected.twins, selected.choices, env, file)
 
     if (refused.length) {
@@ -548,6 +590,14 @@ export function compileProgram(
 
   if (resolveDiagnostics.length) {
     return { ok: false, diagnostics: resolveDiagnostics }
+  }
+
+  // `mark private`: a call to, or a value reference of, a task private to another file. After the resolver, so a
+  // local that shares the name is bound to itself and never refused (check/private.ts)
+  const privateReferences = checkPrivateReferences(program, file, deckOf)
+
+  if (privateReferences.length) {
+    return { ok: false, diagnostics: privateReferences }
   }
 
   // tree-shaking (opt-in): once names are bound, drop the imported definitions
@@ -655,12 +705,18 @@ export function compileProgram(
   // the claim wall: a `rule` states a claim and a `task` of the same name proves it. An unfilled claim is refused,
   // and code that runs may not call one. `note open` leaves a claim deliberately open, counted here so the build
   // line and the gate can report it rather than pass it in silence. See check/claim.ts.
-  const claims = checkClaims(program, file, {
+  const claimEvidence = {
     verified: new Set(elaboration.proven),
     terminating: safeTerminating(program),
     pure: pureFunctions(program),
     declined: new Map(elaboration.declined.map(d => [d.name, d.reason])),
-  })
+  }
+
+  // every task records whether it may carry a proof, so a stub taken from this unit tells a dependent unit, which
+  // sees the signature only (check/claim.ts groundingOf)
+  stampGrounded(program, claimEvidence)
+
+  const claims = checkClaims(program, file, claimEvidence)
 
   if (claims.diagnostics.length) {
     return { ok: false, diagnostics: claims.diagnostics }
@@ -755,6 +811,7 @@ export function compileProgram(
   const warnings = [
     ...checkWarnings,
     ...findUnused(program, file),
+    ...warnPrivateNotes(program, file),
     ...totality.warnings,
     ...holdWarnings,
   ]
@@ -771,6 +828,13 @@ export function compileProgram(
 
   if (boundDiagnostics.length) {
     return { ok: false, diagnostics: boundDiagnostics }
+  }
+
+  // supervision trees: a transient worker whose work can raise nothing never restarts (check/supervise.ts)
+  const supervisionDiagnostics = checkSupervision(program, file)
+
+  if (supervisionDiagnostics.length) {
+    return { ok: false, diagnostics: supervisionDiagnostics }
   }
 
   // the roll is built from the checked, un-simplified program, so every task is still there to be listed

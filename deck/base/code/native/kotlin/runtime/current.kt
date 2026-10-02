@@ -7,9 +7,14 @@
 object current {
   fun id(): Long = ProcessHandle.current().pid()
 
-  // the seed list representation on this backend
+  // the program's own arguments, as on every backend. Only `main(args)` sees them on the JVM (ProcessHandle's are the
+  // JVM's own: -cp, the class), so an entry point stores them in `given`. Without one, the launcher's command line
+  // (`sun.java.command`, the main class or jar then the arguments) is the nearest answer, and splits on spaces
+  @JvmStatic var given: Array<String>? = null
+
   fun arguments(): MutableList<String> =
-    ProcessHandle.current().info().arguments().orElse(emptyArray()).toMutableList()
+    given?.toMutableList()
+      ?: (System.getProperty("sun.java.command") ?: "").split(" ").filter { it.isNotEmpty() }.drop(1).toMutableList()
 
   fun directory(): String = System.getProperty("user.dir") ?: ""
 

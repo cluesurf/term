@@ -1,6 +1,6 @@
 # Modules
 
-Code is organized into files and packages. Bring names in with `load`, and pick which names with `find`. Paths are either a package (`@scope/pkg/...`) or a relative file (`./foo`). Visibility is public by default. Mark something `private` to keep it in its file. Native host modules use `dock`, covered in [native](native.md).
+Code is organized into files and packages. Bring names in with `load`, and pick which names with `find`. Paths are either a package (`@scope/pkg/...`) or a relative file (`./foo`). Visibility is public by default. Write `mark private` on a task to keep it in its file. Native host modules use `dock`, covered in [native](native.md).
 
 Maps to: `import` / `export`, plus a package manifest like `Cargo.toml` or `package.json`.
 
@@ -13,7 +13,7 @@ Maps to: `import` / `export`, plus a package manifest like `Cargo.toml` or `pack
 | `find <name>, name <alias>` | import under a local alias |
 | `bear <path>` | re-export a module's contents |
 | `dock load <native>` | import a host module (see [native](native.md)) |
-| `note private` | keep a definition inside its file |
+| `mark private` | keep a task inside its file |
 
 Inside a `load`, use `find` to select names. Never use `take` there. `take` is for function parameters only.
 
@@ -71,36 +71,47 @@ my-lib/
     base.tree
 ```
 
-The manifest names the package, its version, license, and dependencies.
+The manifest names the package, its version, license, source and test folders, and dependencies.
 
 ```tree
 deck @cluesurf/my-lib
   head <A small library>
-  mark <0.0.1>
+  code <0.0.2>
   lock apache-2
+  bear ./code
+  test ./test
 
-  link @term/base, mark <0.0.x>
-
-  book ./book
-  task ./task
+  link @term/base, code <0.0.x>
 ```
 
-Publishing convention: use an even patch number for a release version.
+The version is `code <...>`, on the package and on each `link`. Publishing convention: use an even patch number for a release version.
 
 ## Visibility
 
-Every definition is public by default. Add `note private` to keep it inside its file.
+Every definition is public by default. Add `mark private` to a task to keep it inside its file.
 
 ```tree
 task helper
-  note private
+  mark private
   take n, like number
   like number
   send back
-    call multiply, read n, code 2
+    call multiply
+      read n
+      code 2
 ```
 
-A private name is callable from its own module but is not importable by `find` elsewhere.
+A private task is callable from its own file and nowhere else. The build refuses each of these from any other file as `private-name`, naming the file that defines it:
+
+- a call to it, by its name
+- a reference to it as a value
+- a `find` of it under a `load`
+
+The rule follows bindings, not spelling. A parameter or a `save` in another file that happens to share the private task's name is its own name and is not refused. A call that may bind to a public definition of the same name, such as a public overload, is not refused either.
+
+One exception: a file under the package's `test/` directory may use a private task of that package, so an internal helper can be tested directly.
+
+`note private` is the old spelling. It is still honored, and it warns (`note-private`) with a hint to write `mark private`.
 
 ## Re-exports
 
@@ -122,27 +133,34 @@ task square
   take n, like number
   like number
   send back
-    call multiply, read n, read n
+    call multiply
+      read n
+      read n
 
 task cube
-  note private
+  mark private
   take n, like number
   like number
   send back
-    call multiply, read n
+    call multiply
+      read n
       call square, read n
 ```
 
-```tree
-# app.tree
+```tree fragment
+# app.tree, beside math.tree
 load ./math
   find square
+load @term/base/code/console
+  find log
 
-call write-line
+save area
   call square, code 5
+call log
+  text <{{area}}>
 ```
 
-`app.tree` can import `square` but not `cube`, since `cube` is `private`. Note there is no `main` task. The module body runs top to bottom.
+`app.tree` can import `square` but not `cube`, since `cube` is `mark private`. A `find cube` or a `call cube` in `app.tree` fails the build. Note there is no `main` task. The module body runs top to bottom.
 
 ## See also
 

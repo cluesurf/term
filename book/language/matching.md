@@ -70,11 +70,16 @@ task area
       link radius
       send back
         call multiply
-          call multiply, read radius, read radius
+          call multiply
+            read radius
+            read radius
           code 3
     case square
       link side
-      send back, call multiply, read side, read side
+      send back
+        call multiply
+          read side
+          read side
     case point
       send back, code 0
 ```

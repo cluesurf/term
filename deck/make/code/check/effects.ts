@@ -535,6 +535,41 @@ export function checkEffects(
 }
 
 
+// the closure literals an expression makes, outermost first: a closure inside another closure's body is found when
+// that body is scanned, so each is visited once
+function closuresIn(node: Expression): Extract<Expression, { form: 'closure' }>[] {
+  const found: Extract<Expression, { form: 'closure' }>[] = []
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== 'object') {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(visit)
+
+      return
+    }
+
+    const record = value as Record<string, unknown>
+
+    if (record.form === 'closure') {
+      found.push(record as Extract<Expression, { form: 'closure' }>)
+
+      return
+    }
+
+    for (const [key, child] of Object.entries(record)) {
+      if (key !== 'type' && key !== 'span' && key !== 'result') {
+        visit(child)
+      }
+    }
+  }
+
+  visit(node)
+
+  return found
+}
+
 // ---- raise sets ----
 //
 // The exceptions each function can raise: every `halt <form>` in its body outside a guarded body, plus what every
@@ -632,16 +667,16 @@ export function raiseSets(
 
           break
         case 'while':
-          expressionCalls(node.cond, called)
+          expressionCalls(node.cond, called, direct)
           scan(node.body, direct, called)
           break
         case 'for-each':
-          expressionCalls(node.iterable, called)
+          expressionCalls(node.iterable, called, direct)
           scan(node.body, direct, called)
           break
         case 'if':
           for (const branch of node.branches) {
-            expressionCalls(branch.cond, called)
+            expressionCalls(branch.cond, called, direct)
             scan(branch.body, direct, called)
           }
 
@@ -651,7 +686,7 @@ export function raiseSets(
 
           break
         case 'match':
-          expressionCalls(node.subject, called)
+          expressionCalls(node.subject, called, direct)
 
           for (const branch of node.cases) {
             scan(branch.body, direct, called)
@@ -663,23 +698,23 @@ export function raiseSets(
 
           break
         case 'let':
-          expressionCalls(node.init, called)
+          expressionCalls(node.init, called, direct)
           break
         case 'assign':
-          expressionCalls(node.target, called)
-          expressionCalls(node.value, called)
+          expressionCalls(node.target, called, direct)
+          expressionCalls(node.value, called, direct)
           break
         case 'expression':
-          expressionCalls(node.expr, called)
+          expressionCalls(node.expr, called, direct)
           break
         case 'return':
           if (node.value) {
-            expressionCalls(node.value, called)
+            expressionCalls(node.value, called, direct)
           }
 
           break
         case 'hold':
-          expressionCalls(node.expr, called)
+          expressionCalls(node.expr, called, direct)
           break
         default:
           break
@@ -687,9 +722,23 @@ export function raiseSets(
     }
   }
 
-  const expressionCalls = (node: Expression, called: Set<string>): void => {
+  // A CLOSURE'S RAISES ARE ITS MAKER'S. A closure's type carries no raise set, so what its body raises surfaces
+  // wherever it is called: through `wait` and `gather` its raise is re-raised unchanged, and through any other
+  // call it unwinds the caller. Attributing it to the task that MAKES the closure keeps the set sound for the usual
+  // shape (make the work, spawn or gather it, wait in the same task), and it is what holds a signature bound to the
+  // exceptions its spawned work can raise: before, a `halt conflict` inside a gathered task reached no raise set at
+  // all, so `halt outage` on the gatherer's signature passed while `conflict` escaped. A handle handed to another
+  // task and waited there is the case this over-approximates rather than tracks
+  // (note/term/research/beam-otp-lessons.md, design 3)
+  const expressionCalls = (node: Expression, called: Set<string>, direct?: Set<string>): void => {
     for (const name of calledNames([{ form: 'expression', expr: node, span: node.span }], names, reach)) {
       called.add(name)
+    }
+
+    if (direct) {
+      for (const closure of closuresIn(node)) {
+        scan(closure.body, direct, called)
+      }
     }
   }
 

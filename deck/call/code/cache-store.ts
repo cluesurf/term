@@ -51,8 +51,8 @@ import { env, userHome } from '@term/call/code/home'
 import {
   CACHE_EPOCH,
   CompileCache,
-  hashText,
 } from '@term/make/code/compile/cache'
+import { hashText } from '@term/make/code/term/hash'
 import { CACHE_SCOPE } from '@term/make/code/compile/cache-scope.generated'
 
 // How many compiler versions keep their entries. The current one plus one, so alternating between two binaries (a

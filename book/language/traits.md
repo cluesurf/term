@@ -10,7 +10,6 @@ Maps to: a Rust trait, a Swift protocol, a Java interface, a Haskell typeclass.
 | --- | --- |
 | `mask <name>` | define a trait: a list of `task` signatures |
 | `task` (in a `mask`) | a required method, body omitted (signature only) |
-| `task` with a body (in a `mask`) | a default method, used unless overridden |
 | `head <param>` | a type parameter on the trait |
 | `head <param>, base self` | a parameter defaulting to the implementing type |
 | `wear <trait>` | implement a trait inside a `form` body |
@@ -19,7 +18,7 @@ Maps to: a Rust trait, a Swift protocol, a Java interface, a Haskell typeclass.
 | `take self` | the receiver of a trait method |
 | `like self` | the implementing type, as a return type |
 
-A method signature is a `task` with `take`/`like` lines but no `send back`. A default method is the same with a body.
+A method signature is a `task` with `take`/`like` lines but no `send back`. An implementer must supply every method its mask declares. There are no default methods: a mask method that has a body is still required of every implementer, and the build names each one that is missing (`incomplete-instance`).
 
 ## Defining a trait
 
@@ -32,7 +31,7 @@ mask printable
     like text
 ```
 
-Several methods, including a default. The default `is-unequal` is written in terms of `is-equal`, so an implementer only has to provide `is-equal`.
+A mask with several methods. An implementer provides both.
 
 ```tree
 mask comparison
@@ -45,9 +44,6 @@ mask comparison
     take self
     take other, like self
     like boolean
-    send back
-      call not
-        call is-equal, read self, read other
 ```
 
 A trait can carry a type parameter. `base self` makes it default to the implementing type.
@@ -68,6 +64,11 @@ mask addition
 `wear` attaches an implementation inside the form it belongs to.
 
 ```tree
+mask printable
+  task to-text
+    take self
+    like text
+
 form color
   case red
   case green
@@ -86,9 +87,9 @@ form color
           send back, text <blue>
 ```
 
-A form can wear several traits.
+A form can wear several traits. With `printable` and `comparison` defined as above:
 
-```tree
+```tree fragment
 form color
   case red
   case green
@@ -113,15 +114,24 @@ form color
       like boolean
       send back
         call is-equal
-          call to-number, read self
-          call to-number, read other
+          call to-text, read self
+          call to-text, read other
+
+    task is-unequal
+      take self
+      take other, like color
+      like boolean
+      send back
+        call is-unequal
+          call to-text, read self
+          call to-text, read other
 ```
 
 ## Implementing for an outside type
 
-When the type lives in another module, implement with `suit`.
+When the type lives in another module, implement with `suit`. Here `shape` is the form from [structures](structures.md) and `printable` the mask above:
 
-```tree
+```tree fragment
 suit shape
   wear printable
     task to-text
@@ -136,56 +146,75 @@ suit shape
 
 ## Trait bounds
 
-`need` constrains a type parameter so it must implement a trait. The bound lets the body call that trait's methods.
+`need` constrains a type parameter so it must implement a trait. The bound lets the body call that trait's methods, in member form on a value of the parameter's type.
 
 ```tree
+mask ranked
+  task outranks
+    take self
+    take other, like self
+    like boolean
+
 task largest
-  head t, need comparable
+  head t, need ranked
   take items
     like list
       like t
-  like maybe
+  like t
   send back
-    call reduce, read items
+    call items/reduce
       task pick
         take best, like t
         take item, like t
         like t
         fork test
           hook test
-            call is-above, read item, read best
+            call item/outranks
+              read best
           hook hold
             send back, read item
           hook miss
             send back, read best
-      call get, read items, code 0
+      call items/get
+        code 0
 ```
 
 Multiple bounds: repeat `need` under the same `head`.
 
 ```tree
+load @term/base/code/console
+  find log
+
+mask hashable
+  task hash
+    take self
+    like number
+
+mask printable
+  task to-text
+    take self
+    like text
+
 task store
   head t, need hashable
     need printable
   take value, like t
   like void
-  call write-line
-    call to-text, read value
+  call log
+    call value/to-text
 ```
 
 ## Calling trait methods
 
-Both call styles work. Function form names the method and passes the receiver. Member form reaches the method through `/`.
+On a value of a concrete type, call a trait method in function form: name the method and pass the receiver first. Inside a task that is generic over a bound, as in `largest` and `store` above, reach the method through `/` in member form, with the receiver before the slash.
 
-```tree
-host label
-  call to-text, read value      # function form
+```tree fragment
+save label
+  call to-text, read value      # function form, a concrete `color`
 
-host label
-  read value/to-text            # member form
+save label
+  call value/to-text            # member form, a `value` of a bound type `t`
 ```
-
-Member form reads best for a method that takes only `self`. A method with arguments reads more clearly in function form.
 
 ## Self type
 

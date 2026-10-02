@@ -13,6 +13,7 @@ import { diagnose } from '@term/make/code/parser/diagnostic'
 import { Substitution } from '@term/make/code/check/substitution'
 import { instantiate } from '@term/make/code/check/signature'
 import { overloadGroups } from '@term/make/code/check/overload'
+import { isFoldable, nestLeanCalls } from '@term/make/code/check/lean-nest'
 import type { Signature } from '@term/make/code/check/signature'
 import { makeSeedType } from '@term/make/code/check/type-seed'
 import { zonkGeneric as zonkGenericType } from '@term/make/code/check/zonk'
@@ -734,7 +735,11 @@ export function check(
 
         // a variant constructor is typed as its enum (`make red` : color); a struct as itself. The form's type
         // arguments are inferred by unifying the supplied field values against the declared (generic) field types.
-        const enumName = variantEnum.get(node.name) ?? node.name
+        // a field-less `make hash` / `make list` is the native map / array whatever variants the program declares, as
+        // every emitter already reads it: the host dialect's `data` has a `case hash` (which always carries its `list`),
+        // and typing a bare `make hash` as that variant broke every program holding both (native-dom-0019)
+        const nativeEmpty = (node.name === 'hash' || node.name === 'list') && node.fields.length === 0
+        const enumName = nativeEmpty ? node.name : (variantEnum.get(node.name) ?? node.name)
         const params = formGenerics.get(enumName) ?? []
         const argMap = new Map<string, Type>()
         const args = params.map(p => {
@@ -1160,6 +1165,23 @@ export function check(
             // pin only a still-FREE slot type from a SIMPLE argument type: this exists to give a fresh
             // `make list`'s element the type of what is pushed into it, and a broader unification here can
             // build a cyclic type (no occurs check on this path)
+            // a type with no variable anywhere in it, so pinning a slot to it cannot build a cycle: a scalar, a form
+            // with no arguments, or a FUNCTION of such types. The last is a closure pushed into a fresh list (the
+            // works a `gather` is handed), whose element otherwise stayed `() -> ?` and reached every native
+            // backend as the boxed unknown
+            const ground = (t: Type): boolean => {
+              const r = resolve(t)
+
+              return (
+                r.kind === 'number' ||
+                r.kind === 'float' ||
+                r.kind === 'string' ||
+                r.kind === 'boolean' ||
+                r.kind === 'bytes' ||
+                (r.kind === 'named' && !r.args?.length) ||
+                (r.kind === 'function' && r.params.every(ground) && ground(r.result))
+              )
+            }
             const pin = (slot: Type, arg: Expression | undefined): void => {
               if (!arg) {
                 return
@@ -1168,16 +1190,7 @@ export function check(
               const el = resolve(slot)
               const given = arg.type ? resolve(arg.type) : undefined
 
-              if (
-                el.kind === 'variable' &&
-                given &&
-                (given.kind === 'number' ||
-                  given.kind === 'float' ||
-                  given.kind === 'string' ||
-                  given.kind === 'boolean' ||
-                  given.kind === 'bytes' ||
-                  (given.kind === 'named' && !given.args?.length))
-              ) {
+              if (el.kind === 'variable' && given && ground(given)) {
                 expect(given, el, arg.span, 'argument')
               } else if (el.kind === 'variable' && given?.kind === 'unit') {
                 // pushing `make void` into a fresh list: the slot holds anything, so the element is the
@@ -2016,6 +2029,32 @@ export function check(
     const callee = (node.callee as { name: string }).name
     const signature = functions.get(callee)
 
+    // A LEAN LABEL THAT NAMES NO PARAMETER IS A NESTED CALL (check/lean-nest.ts). The resolver already did this
+    // for every head it could see in scope; this catches the ones only the checker's tables hold, a form or a
+    // variant written positionally under a call. Never under a CONSTRUCTION: there the labels are fields, and a
+    // field typed by a form shares that form's name (`construct / pattern / feature ...`, held by
+    // test/compile/lean.ts), so reading it as a nested construction would take the field away.
+    //
+    // A METHOD NAME IS A CALL, even where a form shares it: `set` is both the stdlib's `set` form and the hash method
+    // `set`, and a bare `set table, key, value` in deck/base/code/set.tree built a `set` record out of the method's
+    // arguments (`pnpm term:lean-equal`, self-hosting-0013). Receiver dispatch below decides which method.
+    const construction =
+      !signature && !methodNames.has(callee) && (records.has(callee) || variantEnum.has(callee))
+
+    if (!construction) {
+      nestLeanCalls(
+        node,
+        name => signature?.names.includes(name) === true,
+        name =>
+          functions.has(name) ||
+          overloadGroups.has(name) ||
+          methodNames.has(name) ||
+          records.has(name) ||
+          variantEnum.has(name) ||
+          isFoldable(name),
+      )
+    }
+
     // THE LEAN SURFACE, where a bare head that names a FORM rather than a task is a construction of that form,
     // with the labels as its fields. Rewritten in place into a `record` node, which the record case then types
     // exactly as a `make` would. Only under lean: outside it a call to a form's name is the unknown-callee
@@ -2023,7 +2062,7 @@ export function check(
     // A FORM or a VARIANT: `point a 10, b 20` builds a point, and `feature feature <case>, value <nominative>`
     // builds the `feature` case of whichever sum declares it, typed as that sum by the record case exactly as
     // `make feature` would be. A variant shared by several sums is left to the kernel there, the same as `make`.
-    if (!signature && node.lean && (records.has(callee) || variantEnum.has(callee))) {
+    if (node.lean && construction) {
       const names = node.names ?? node.args.map(() => undefined)
       const fields: { name: string; value: Expression }[] = []
       const positional: Expression[] = []
@@ -2251,8 +2290,13 @@ export function check(
         const arg = node.args[i]!
 
         if (name === undefined || name === null) {
+          // A FLAG IS AN UNBOUND WORD. A word the resolver bound is a VARIABLE, passed by value, however its name
+          // reads: `do-serve-http2 port, host, handler, secure` passes the caller's `secure`, which may be false.
+          // Without the binding test every such argument became `true`, a silent security downgrade in the stdlib's
+          // own HTTP and TCP servers, found by `pnpm term:lean-equal` on deck/base/code/network (11 files).
           if (
             arg.form === 'variable' &&
+            !arg.binding &&
             signature.names.includes(arg.name) &&
             !seen.has(arg.name) &&
             resolve(signature.params[signature.names.indexOf(arg.name)] ?? UNKNOWN).kind === 'boolean'

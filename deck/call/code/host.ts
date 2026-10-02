@@ -14,6 +14,7 @@ import {
   isOciRegistry,
   normalizeRegistry,
   hostScopeRegistries,
+  pingIndex,
 } from '@cluesurf/deck.tree'
 import type { DeckManifest, Keypair, OciRoute } from '@cluesurf/deck.tree'
 
@@ -21,7 +22,7 @@ import { existsSync } from 'fs'
 import nodePath from 'path'
 
 import { callBoot } from '@term/call/code/boot'
-import { keptAt, userHome, legacyUserHome } from '@term/call/code/home'
+import { env, keptAt, userHome, legacyUserHome } from '@term/call/code/home'
 import {
   logGood,
   logFail,
@@ -31,9 +32,11 @@ import {
 } from '@term/make/code/tint'
 
 // `term host`: publish this package to its scope's OCI registry, or with `--trust` / `--untrust` rotate the scope's
-// key set instead. Credentials come from TERM_OCI_TOKEN (for TERM_OCI_HOST, default ghcr.io), GHCR_TOKEN (ghcr.io,
-// what `zone load cluesurf` casts), or the docker config that `oras login` writes. See
-// note/term/registry/18-oci-registry-default.md.
+// key set instead. Registry credentials come from TERM_OCI_TOKEN (for TERM_OCI_HOST, default ghcr.io), GHCR_TOKEN
+// (ghcr.io, what `zone load cluesurf` casts), or the docker config that `oras login` writes. See
+// note/term/registry/18-oci-registry-default.md. A term.surf token (TERM_TOKEN, or the user-level `auth` file) is a
+// different thing: it never reaches a registry, and only credits the version to an account in the package index
+// (note/term/registry/19-package-index.md).
 export async function callHost(input: {
   root: string
   dryRun?: boolean
@@ -152,6 +155,13 @@ export async function callHost(input: {
       console.log(fade(`  manifest ${artifact.digest}, ${artifact.manifest.length} bytes`))
       console.log(
         fade(
+          (await readIndexToken())
+            ? '  package index: a term.surf token was found, so the ping would credit the version to its account'
+            : '  package index: no term.surf token (TERM_TOKEN or the auth file), so the ping would be anonymous',
+        ),
+      )
+      console.log(
+        fade(
           `  ${release.files.length} files, ${release.closure.length} objects: ${artifact.packed} packed into ${artifact.files.packs.length} packs, ${artifact.loose} loose`,
         ),
       )
@@ -188,6 +198,19 @@ export async function callHost(input: {
           `${result.layers} layers, manifest ${result.manifestSize} bytes, signature referrer ${result.referrer}`,
       ),
     )
+
+    // a hint to the package index; its crawl finds what a lost ping misses, so this never fails a publish. A
+    // term.surf token, when there is one, credits the version to its account
+    const token = await readIndexToken()
+    const ping = await pingIndex({ repository: route.repository, digest: result.digest, token, keypair })
+
+    console.log(
+      fade(
+        ping.form === 'sent'
+          ? `  package index: ${ping.outcome}${ping.publisher ? `, credited to account ${ping.publisher}` : token ? '' : ', anonymous (no term.surf token)'}`
+          : `  package index: ${ping.form}, ${ping.reason}`,
+      ),
+    )
   } catch (err) {
     logFail(formatError(err))
     process.exit(1)
@@ -217,11 +240,42 @@ function routeOf(input: { name: string; registry?: string; manifest: DeckManifes
       }
   const route = ociRouteOf({ name: input.name, config })
 
+  // An UNSCOPED package (`deck hello`, which is what `term wake hello` writes) has no scope to pick a registry by.
+  // It builds and runs as one, and it publishes once it is told where: a scope in deck.tree, or --registry. Said in
+  // those words, because "not on an oci:// registry" read as a broken registry rather than a missing scope.
+  if (!route && !flag && !input.name.startsWith('@')) {
+    throw new Error(
+      `${input.name} has no scope, so there is no registry to publish it to. Name it \`deck @<scope>/${input.name}\` in deck.tree (a scope publishes to ghcr.io/<scope> unless a \`base\` line says otherwise), or pass --registry oci://<host>/<namespace>`,
+    )
+  }
+
   if (!route) {
     throw new Error(`${input.name} is not on an oci:// registry. Pass --registry oci://<host>/<namespace>`)
   }
 
   return route
+}
+
+// The term.surf token that credits a publish to an account in the package index: `TERM_TOKEN` (`SEED_TOKEN` still
+// honored), else the user-level `auth` file, which holds the token and nothing else. Made at
+// https://term.surf/settings/tokens with the `package:publish` scope. It is sent to the index only, never to a
+// registry. Absent, the ping is anonymous and the version is indexed all the same.
+async function readIndexToken(): Promise<string | undefined> {
+  const fromEnv = env('TOKEN')?.trim()
+
+  if (fromEnv) {
+    return fromEnv
+  }
+
+  const fs = await import('fs/promises')
+
+  try {
+    const fromFile = (await fs.readFile(keptAt(userHome('auth'), legacyUserHome('auth')), 'utf-8')).trim()
+
+    return fromFile || undefined
+  } catch {
+    return undefined
+  }
 }
 
 // The signing keypair. A release is signed so authorship cannot be forged, and the scope's key set says which keys

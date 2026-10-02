@@ -30,7 +30,7 @@ task sign-label
   like text
   fork test
     hook test
-      call is-below, read n, code 0
+      call is-below(read(n), code 0)
     hook hold
       send back, text <negative>
     hook miss
@@ -49,15 +49,15 @@ task grade
   like text
   fork test
     hook test
-      call is-minimum, read score, code 90
+      call is-minimum(read(score), code 90)
     hook hold
       send back, text <A>
     hook test
-      call is-minimum, read score, code 80
+      call is-minimum(read(score), code 80)
     hook hold
       send back, text <B>
     hook test
-      call is-minimum, read score, code 70
+      call is-minimum(read(score), code 70)
     hook hold
       send back, text <C>
     hook miss
@@ -77,7 +77,7 @@ task check
   save valid, true
   fork test
     hook test
-      call is-below, read value, code 0
+      call is-below(read(value), code 0)
     hook hold
       save valid, false
   send back, read valid
@@ -88,15 +88,18 @@ task check
 When a test and its branch are short, write each `hook` on one line. The condition or body follows the comma.
 
 ```tree
-fork test
-  hook test, read flag
-  hook hold, send back, text <on>
-  hook miss, send back, text <off>
+task switch-label
+  take flag, like boolean
+  like text
+  fork test
+    hook test, read flag
+    hook hold, send back, text <on>
+    hook miss, send back, text <off>
 ```
 
-This is the same block as the indented form, just compressed. Notice `hook test, read flag`: a boolean variable is passed straight through as the condition. You do not compare it to `true`. The value `read flag` is already a `boolean`. The stdlib's `boolean` form uses exactly this shape:
+This is the same block as the indented form, just compressed. It works because each comma pops one level: in `hook hold, send back, text <on>`, `send back` sits beside `hold`, and `text <on>` sits beside `back`, which is where `send back` wants its value. A condition with more than one argument (`call is-below(read(x), code 0)`) takes parentheses or its own indented lines. Notice `hook test, read flag`: a boolean variable is passed straight through as the condition. You do not compare it to `true`. The value `read flag` is already a `boolean`. The stdlib's `boolean` form uses exactly this shape, inside its `and` task:
 
-```tree
+```tree fragment
 fork test
   hook test, read self
   hook hold, send back, read other
@@ -116,8 +119,8 @@ task in-range
   fork test
     hook test
       call and
-        call is-minimum, read x, read low
-        call is-below, read x, read high
+        call is-minimum(read(x), read(low))
+        call is-below(read(x), read(high))
     hook hold, send back, true
     hook miss, send back, false
 ```

@@ -18,7 +18,7 @@ export function projectDeckOf(): DeckOf {
       return byDir.get(dir)
     }
 
-    // walk up. A `deck.tree` that is a MANIFEST opens with `deck @scope/name`; the stdlib also has a code module
+    // walk up. A `deck.tree` that is a MANIFEST has a top-level `deck <name>` (scoped or not); the stdlib also has a code module
     // named deck.tree (`form deck`, the manifest's own shape), which is skipped because it has no such line.
     let found: { name: string; root: string } | undefined
     let at: string | undefined = dir

@@ -10,6 +10,7 @@
 
 import type { Program, Twin } from '@term/make/code/compile/node'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { hashText } from '@term/make/code/term/hash'
 
 // the cache format epoch. Bump to invalidate every persisted entry at once (turborepo's `global_cache_key`). Change
 // this on any change to the cached value shape or the mill/compile pipeline that the per-entry key does not capture.
@@ -69,27 +70,14 @@ function readEntry<T>(stored: string | undefined): T | undefined {
   }
 }
 
-// cyrb53: a fast, well-distributed 53-bit string hash. A collision only ever causes a stale reuse (never a crash),
-// and at 53 bits that is astronomically unlikely for a source tree.
-export function hashText(text: string): string {
-  let h1 = 0xdeadbeef
-  let h2 = 0x41c6ce57
-
-  for (let i = 0; i < text.length; i++) {
-    const ch = text.charCodeAt(i)
-    h1 = Math.imul(h1 ^ ch, 2654435761)
-    h2 = Math.imul(h2 ^ ch, 1597334677)
-  }
-
-  h1 =
-    Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^
-    Math.imul(h2 ^ (h2 >>> 13), 3266489909)
-  h2 =
-    Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^
-    Math.imul(h1 ^ (h1 >>> 13), 3266489909)
-
-  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)
-}
+// THE CONTENT HASH IS TERM: `hashText` is deck/make/code/term/hash.tree, the first compiler module switched to its
+// port (self-hosting-0018, 2026-10-02). The TypeScript original was deleted in the same change, and every importer
+// reaches the emitted module through the `host/port/*` fallback in tsconfig.json (task/port-build.ts writes it).
+//
+// The switch CHANGED THE HASH of text outside the Basic Multilingual Plane, on purpose: the TypeScript walked UTF-16
+// code units and Term walks code points, which is what Term text is on every backend. A changed key is a cache miss,
+// never a wrong reuse, so nothing stale can be served. The pairing in `pnpm term:self-host` had held the two equal
+// over 16,575 identifiers, all ASCII, which is why it never saw the difference.
 
 // join fields into one hash input with length prefixes, so no concatenation is ambiguous (`a` + `bc` cannot collide
 // with `ab` + `c`). Use for any composite key.

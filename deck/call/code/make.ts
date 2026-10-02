@@ -71,9 +71,10 @@ function isDraftTree(file: string): boolean {
   }
 }
 
-// is this file a package MANIFEST (a `deck @scope/name` statement), as opposed to a code module that merely shares
-// the name? Parsed, never matched: deck/base/code/deck.tree is a module, and telling them apart by filename skipped
-// the entire stdlib.
+// is this file a package MANIFEST (a top-level `deck <name>` statement, scoped or not), as opposed to a code module
+// that merely shares the name? Parsed, never matched: deck/base/code/deck.tree is a module, and telling them apart by
+// filename skipped the entire stdlib. Unscoped counts: `term wake hello` writes `deck hello`, and requiring an `@`
+// compiled that manifest as code into host/deck.ts.
 function isPackageManifest(file: string): boolean {
   return existsSync(file) && manifestNameOf(file) !== undefined
 }
@@ -164,7 +165,7 @@ export function findTreeFiles(
       // It has to be a MANIFEST, not merely a file called deck.tree. The stdlib has a code module at
       // deck/base/code/deck.tree (`load ./text ...`, the manifest's own shape as Term), so a filename test skipped
       // the whole of deck/base/code — 803 files, the entire stdlib — and the build cheerfully reported success on
-      // the 20 that were left. manifestNameOf parses it and answers only for a real `deck @scope/name`.
+      // the 20 that were left. manifestNameOf parses it and answers only for a real top-level `deck <name>`.
       if (isPackageManifest(path.join(full, 'deck.tree'))) {
         continue
       }

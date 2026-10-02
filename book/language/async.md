@@ -9,7 +9,7 @@ Maps to: `async` / `await` and promises (JavaScript), `async fn` / `.await` (Rus
 | Write | Where | Means |
 | --- | --- | --- |
 | `note async` | child of a `task` definition | this task is asynchronous |
-| `note async` | child of a `like task` type | the parameter or field is an async task |
+| `wait true` | child of a `like task` type | the parameter or field is an async task |
 | `wait true` | child of a `call` | force this call to be awaited here |
 | `wait false` | child of a `call` | fire and forget (do not await) |
 | (nothing) | a plain `call` to an async task | awaited automatically |
@@ -27,7 +27,7 @@ The rules in one breath:
 `note async` sits with the other configuration children of a `task`, before the parameters and return type.
 
 ```tree
-load @term/base/code/native/file
+load @term/base/code/native/{platform}/file
   find read-file
 
 task read
@@ -43,9 +43,14 @@ task read
 
 ## Calling is awaited by default
 
-A call to an async task is awaited where it sits. The value you bind is the resolved value, never an in-flight task.
+A call to an async task is awaited where it sits. The value you bind is the resolved value, never an in-flight task. The stdlib's own `read` in `@term/base/code/file` is the task above:
 
 ```tree
+load @term/base/code/file
+  find read
+load @term/base/code/console
+  find log
+
 task show-file
   note async
   take path, like text
@@ -53,7 +58,7 @@ task show-file
   save body
     call read
       read path
-  call write-line
+  call log
     read body
 ```
 
@@ -64,6 +69,9 @@ task show-file
 When a task arrives through a parameter or a field, the compiler sees a `task` value, not a known async definition. Add `wait true` to the call to await it.
 
 ```tree
+load @term/base/code/native/{platform}/mutex
+  find do-lock
+
 form mutex
   link dock, like mutex-handle
 
@@ -83,7 +91,7 @@ task run-twice
   note async
   take work
     like task
-      note async
+      wait true
       like text
   like text
   save first
@@ -93,28 +101,34 @@ task run-twice
     call work
       wait true
   send back
-    call join, read first, read second
+    text <{{first}} {{second}}>
 ```
 
-`work` is an async task passed in. Each `call work` awaits it with `wait true` and binds the resolved text.
+`work` is an async task passed in. The `wait true` under its `like task` is part of its type: it says the callback is async, so calling it is an async call. Each `call work` awaits it with `wait true` and binds the resolved text.
 
 ## Fire and forget with `wait false`
 
 `wait false` starts the work and continues without waiting. Use it when you want a task to run in the background and you do not need its result inline.
 
 ```tree
+load @term/base/code/file
+  find append
+load @term/base/code/console
+  find log
+
 task kick-off
   note async
   take path, like text
   like void
-  call write-log
+  call append
     read path
+    text <started>
     wait false
-  call write-line
+  call log
     text <logging started, moving on>
 ```
 
-`write-log` is started, but `kick-off` does not block on it. Control falls straight to the `show`.
+`append` is started, but `kick-off` does not block on it. Control falls straight to the `log`.
 
 ## Running several at once
 
@@ -123,6 +137,8 @@ To run tasks concurrently and join them, spawn each and wait for all. The standa
 ```tree
 load @term/base/code/task
   find gather
+load @term/base/code/file
+  find read
 
 task read-all
   note async
@@ -153,13 +169,13 @@ Each `task work` closure is an async task that reads one path. `gather` runs the
 
 ## Async tasks as types
 
-A parameter or field that holds an async task spells the async in the nested `like task`.
+A parameter or field that holds an async task spells the async in the nested `like task`, with `wait true`. On a type, `wait true` is the effect. On a definition, `note async` is.
 
 ```tree
 form job
   link work
     like task
-      note async
+      wait true
       like text
 ```
 

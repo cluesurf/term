@@ -40,7 +40,7 @@ export async function applyHmr(
   environment: HmrEnvironment,
 ): Promise<void> {
   if (message.type === 'connected') {
-    environment.log('seed hmr connected')
+    environment.log('term hmr connected')
 
     return
   }
@@ -87,7 +87,7 @@ export async function applyHmr(
 // the browser client source. A small module that wires SSE to `applyHmr` with a real environment, and exposes a tiny
 // hot registry (`window.__seedHot(url)`) that compiled boundary modules use to register an accept callback.
 export function devClient(hmrUrl: string): string {
-  return `// seed dev client (generated)
+  return `// term dev client (generated)
 const registry = new Map()
 window.__seedHot = (url) => {
   let entry = registry.get(url)
@@ -108,7 +108,7 @@ const environment = {
     const entry = registry.get(boundary)
     return entry && entry.dispose ? () => entry.dispose(entry.data) : undefined
   },
-  log: (message) => console.log('[seed]', message),
+  log: (message) => console.log('[term]', message),
 }
 const source = new EventSource(${JSON.stringify(hmrUrl)})
 source.onmessage = (event) => applyHmr(JSON.parse(event.data), environment)

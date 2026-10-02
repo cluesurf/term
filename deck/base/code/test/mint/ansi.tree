@@ -7,7 +7,7 @@ load ../view/tint
   find make, name make-zone
 
 task make-mint
-  note private
+  mark private
 
   save zone, call make-zone
 

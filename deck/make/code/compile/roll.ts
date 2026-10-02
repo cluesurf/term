@@ -323,6 +323,8 @@ export function buildRoll(
     }
   }
 
+  roll.supervision = supervisionEntries(program, s => ({ host: hostOf(s), site: siteOf(s) }))
+
   // tells
   for (const s of program) {
     if (s.form !== 'tell') {
@@ -345,6 +347,151 @@ export function buildRoll(
 }
 
 // merge several rolls (one per compiled entry) into one, deduplicating entries by host, kind and name
+// THE SUPERVISION TREES (deck/base/code/supervisor.tree): every `make-supervisor` written with literal limits, its
+// strategy, its limits, its children, and its WORST CASE. A nested supervisor that exhausts its own `intensity` stops and
+// counts as one failure of its parent, which restarts it up to the parent's `intensity` times, so the workers under a
+// supervisor can restart `intensity × Π (ancestor intensity + 1)` times before the root itself stops. OTP computes this
+// nowhere, and a restart storm through a tree each of whose levels looked safe is how it bites
+// (note/term/research/beam-otp-lessons.md, design 4). A tree whose limits are not written as literals is listed with
+// what is known and no worst case.
+function supervisionEntries(
+  program: Program,
+  where: (s: Statement) => { host: string; site: string },
+): RollEntry[] {
+  type Call = Extract<Expression, { form: 'call' }>
+  type Node = {
+    call: Call
+    owner: Statement
+    name: string
+    strategy?: string
+    intensity?: number
+    period?: number
+    workers: number
+    nested: Call[]
+    parent?: Node
+  }
+  const nodes = new Map<Call, Node>()
+
+  const visit = (value: unknown, owner: Statement, found: Call[], pushed: Map<string, Expression[]>): void => {
+    if (!value || typeof value !== 'object') {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(v => visit(v, owner, found, pushed))
+
+      return
+    }
+
+    const record = value as Record<string, unknown>
+
+    if (record.form === 'call') {
+      const call = record as unknown as Call
+
+      if (call.callee.form === 'variable' && call.callee.name === 'make-supervisor') {
+        found.push(call)
+      }
+
+      // `call children/push / <child>`: what a children list receives, by the list's name
+      if (call.callee.form === 'member' && call.callee.name === 'push' && call.callee.target.form === 'variable') {
+        const list = pushed.get(call.callee.target.name) ?? []
+
+        list.push(...call.args)
+        pushed.set(call.callee.target.name, list)
+      }
+    }
+
+    for (const [key, child] of Object.entries(record)) {
+      if (key !== 'type' && key !== 'span') {
+        visit(child, owner, found, pushed)
+      }
+    }
+  }
+
+  for (const s of program) {
+    if (s.form !== 'function') {
+      continue
+    }
+
+    const found: Call[] = []
+    const pushed = new Map<string, Expression[]>()
+
+    visit(s.body, s, found, pushed)
+
+    for (const call of found) {
+      const [name, strategy, intensity, period, children] = call.args
+      const items =
+        children?.form === 'variable'
+          ? (pushed.get(children.name) ?? [])
+          : children?.form === 'array'
+            ? children.items
+            : []
+      const kids = items.filter((i): i is Extract<Expression, { form: 'record' }> => i.form === 'record')
+
+      nodes.set(call, {
+        call,
+        owner: s,
+        name: typeof literal(name) === 'string' ? (literal(name) as string) : '(computed)',
+        strategy: strategy?.form === 'record' ? strategy.name : undefined,
+        intensity: typeof literal(intensity) === 'number' ? (literal(intensity) as number) : undefined,
+        period: typeof literal(period) === 'number' ? (literal(period) as number) : undefined,
+        workers: kids.filter(k => k.name === 'worker').length,
+        nested: kids
+          .filter(k => k.name === 'nested')
+          .map(k => k.fields.find(f => f.name === 'tree')?.value)
+          .filter((t): t is Call => t?.form === 'call'),
+      })
+    }
+  }
+
+  for (const node of nodes.values()) {
+    for (const inner of node.nested) {
+      const child = nodes.get(inner)
+
+      if (child) {
+        child.parent = node
+      }
+    }
+  }
+
+  const worst = (node: Node): number | undefined => {
+    if (node.intensity === undefined) {
+      return undefined
+    }
+
+    let total = node.intensity
+
+    for (let up = node.parent; up; up = up.parent) {
+      if (up.intensity === undefined) {
+        return undefined
+      }
+
+      total *= up.intensity + 1
+    }
+
+    return total
+  }
+
+  return [...nodes.values()].map(node => {
+    const { host, site } = where(node.owner)
+    const most = worst(node)
+
+    return {
+      host,
+      kind: 'supervision',
+      name: node.name,
+      site,
+      ...(node.strategy ? { strategy: node.strategy } : {}),
+      ...(node.intensity !== undefined ? { intensity: node.intensity } : {}),
+      ...(node.period !== undefined ? { period: node.period } : {}),
+      worker: node.workers,
+      nested: node.nested.map(n => nodes.get(n)?.name ?? '(computed)'),
+      ...(node.parent ? { under: node.parent.name } : {}),
+      ...(most !== undefined ? { worst: most } : {}),
+    }
+  })
+}
+
 export function mergeRolls(rolls: Roll[]): Roll {
   const out: Roll = {
     deck: [],

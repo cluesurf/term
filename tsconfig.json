@@ -21,12 +21,12 @@
     "noImplicitAny": false,
     "paths": {
       "@/*": ["./*"],
-      "@term/make/*": ["./deck/make/*"],
+      "@term/make/*": ["./deck/make/*", "./deck/make/host/port/*"],
       "@cluesurf/save/*": ["../../../../mesh/deck/save/code/*"],
-      "@term/call/*": ["./deck/call/*"],
-      "@term/scan/*": ["./deck/scan/*"],
-      "@term/test/*": ["./deck/test/*"],
-      "@term/flow/*": ["./deck/flow/*"],
+      "@term/call/*": ["./deck/call/*", "./deck/call/host/port/*"],
+      "@term/scan/*": ["./deck/scan/*", "./deck/scan/host/port/*"],
+      "@term/test/*": ["./deck/test/*", "./deck/test/host/port/*"],
+      "@term/flow/*": ["./deck/flow/*", "./deck/flow/host/port/*"],
       "@cluesurf/deck.tree": ["./deck/deck/code/index"]
     }
   },

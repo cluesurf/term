@@ -41,7 +41,7 @@ A `maybe` is `some` (a value) or `none` (absence). Use it when failure needs no 
 | Head | Does |
 | --- | --- |
 | `halt <form>` | raise an exception (the exceptional path) |
-| `halt kink` | as a child of a `call`, propagate a failure upward like Rust's `?` |
+| `halt kink` | as a child of a `call`, pass the callee's exception on to the caller, like Rust's `?` |
 
 ## A validator returns a result
 
@@ -70,9 +70,9 @@ task check-age
           bind value, read age
 ```
 
-The caller inspects the result instead of guarding against a bad value everywhere.
+The caller inspects the result instead of guarding against a bad value everywhere. This line goes in the same file as `check-age`.
 
-```tree
+```tree fragment
 host safe-age
   call unwrap-or
     call check-age
@@ -85,6 +85,9 @@ host safe-age
 Real input has several rules. `and-then` runs the next step only when the previous one succeeded, threading the error through untouched. This is how you compose a pipeline without nesting `fork` after `fork`.
 
 ```tree
+load @term/base/code/result
+  find result
+
 task check-username
   take name, like text
   like result
@@ -146,29 +149,37 @@ task even-or-none
             code 0
 ```
 
-## Propagating failure with halt kink
+## Propagating failure
 
-Inside a task that itself returns a result, `halt kink` as a child of a `call` unwraps an `okay` and returns early on an `error`. It is the same idea as Rust's `?` operator: success flows on, failure exits.
+A `result` is an ordinary value, so its error travels by chaining: `and-then` for a step that can fail, `map` for a step that cannot. `halt kink` is not for results. It passes a callee's **exception** on, as a child of the `call` (see [errors](../language/errors.md)). This task goes in the same file as `check-username` and `check-age` above.
 
-```tree
+```tree fragment
+form account
+  link name, like text
+  link age, like number
+
 task make-account
   take name, like text
   take age, like number
   like result
-  save valid-name
-    call check-username
-      read name
-    halt kink
-  save valid-age
-    call check-age
-      read age
-    halt kink
   send back
-    make okay
-      bind value
-        make account
-          bind name, read valid-name
-          bind age, read valid-age
+    call and-then
+      call check-username
+        read name
+      task add-age
+        take valid-name, like text
+        like result
+        send back
+          call map
+            call check-age
+              read age
+            task build
+              take valid-age, like number
+              like account
+              send back
+                make account
+                  bind name, read valid-name
+                  bind age, read valid-age
 ```
 
 If either check returns an `error`, `make-account` returns that same error and never reaches the construction.

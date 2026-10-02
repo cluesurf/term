@@ -14,7 +14,7 @@ load @term/base/code/environment/language
 load @term/base/code/text
   find split
 
-task read
+task read-locale
   like locale
 
   save tag
@@ -45,7 +45,7 @@ task read
       bind tag, read tag
       bind timezone, read timezone
 
-task list
+task known-locales
   like list
     like text
 

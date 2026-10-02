@@ -9,7 +9,7 @@ form line
   head item-type
 
   link dock
-    note private
+    mark private
 
   task get
     take self

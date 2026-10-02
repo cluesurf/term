@@ -4,6 +4,6 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    projects: ['deck/deck/vitest.config.ts'],
+    projects: ['deck/deck/vitest.config.ts', 'deck/test/vitest.config.ts'],
   },
 })

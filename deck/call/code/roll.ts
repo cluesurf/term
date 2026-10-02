@@ -15,7 +15,7 @@ import { projectCache } from '@term/call/code/cache-store'
 import { preprocessTests } from '@term/call/code/test-preprocess'
 import { logFail, logStep, fade } from '@term/make/code/tint'
 
-export const ROLL_KINDS = ['deck', 'exception', 'task', 'dock', 'tell', 'kind']
+export const ROLL_KINDS = ['deck', 'exception', 'task', 'dock', 'tell', 'kind', 'supervision']
 
 // the roll of every entry under `root` that is the project's own (not a linked dependency), merged
 export function projectRoll(root: string): {

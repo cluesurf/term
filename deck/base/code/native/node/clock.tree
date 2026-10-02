@@ -4,11 +4,14 @@
 dock load
   load <node:perf_hooks>, name perf
   load <node:timers/promises>, name timers
+  load <global:Math>, name math
 
+# monotonic whole milliseconds, as on every backend (note/term/stdlib/semantics.md)
 task current-time
   like number
   send back
-    call perf/performance/now
+    call math/floor
+      call perf/performance/now
 
 task delay
   note async

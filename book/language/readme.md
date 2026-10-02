@@ -5,12 +5,12 @@ Term has one syntactic shape, used everywhere. Learn it once and every construct
 ## The shape, in one rule
 
 ```
-head value, child-head value, child-head value
+head value, child-head value
   child-head value
     grandchild-head value
 ```
 
-A line is a **head word**, an optional inline **value** after a comma, and zero or more **children** (either indented below, or appended inline after more commas). That is the whole grammar. Keywords are heads. Indentation is structure. There are no braces and no operators.
+A line is a **head word**, an optional inline **value**, and zero or more **children** indented below. Only two things change depth on a line. A **space nests**: `like number` is `like` holding `number`. A **comma pops exactly one level**: the part after it is a sibling of the word before it. So in `take left, like number`, the part `like number` sits beside `left`, and both are children of `take`. That is the whole grammar. Keywords are heads. Indentation is structure. There are no braces and no operators.
 
 ```tree
 task add                  # head `task`, value `add`
@@ -23,13 +23,17 @@ task add                  # head `task`, value `add`
       read right
 ```
 
-The last block can be written inline since each comma starts a new child:
+The last block can be written on one line, with one catch. A comma pops only ONE level, so a part of two or more words cannot be followed by another comma: `call add, read left, read right` puts `read right` INSIDE the first `read`, beside `left`. Make each argument self-contained with parentheses instead:
 
 ```tree
-send back, call add, read left, read right
+task add
+  take left, like number
+  take right, like number
+  like number
+  send back, call add(read(left), read(right))
 ```
 
-Both forms parse to the same tree. Use indentation when nesting is deep, inline commas when it is shallow.
+Both forms build the same call. Use indentation when nesting is deep or an argument is more than one word, and an inline comma right after the head and its value, as in `take left, like number` or `send back, read total`.
 
 ## The keyword cheatsheet
 
@@ -69,8 +73,8 @@ Every head you will meet, grouped by job. Each has its own page.
 | `note unsafe` / `halt take` | guard a body and handle what it raises | [errors](errors.md) |
 | `slot` | a positional field or parameter | [structures](structures.md), [functions](functions.md) |
 | `tell` | what the app says about an exception | [errors](errors.md) |
-| `mark` | a modifier (`mark private`) or a rule's universal binder (`mark x, like T`) | [primitives](primitives.md), [math](../math/readme.md) |
-| `note` | an annotation on a task or call (`note async`, `note private`) | [functions](functions.md) |
+| `mark` | privacy (`mark private`) or a rule's universal binder (`mark x, like T`) | [modules](modules.md), [math](../math/readme.md) |
+| `note` | metadata on a task or load (`note async`, `note native`, `note unsafe`) | [functions](functions.md) |
 | `text` | a string literal | [primitives](primitives.md) |
 | `code` | the number literal, every base, plus `code true` / `code false` | [primitives](primitives.md) |
 | `true` / `false` | a boolean literal | [primitives](primitives.md) |
@@ -97,7 +101,7 @@ Logging is not a keyword. You print with the standard library: `call info` / `ca
 
 A bare word after a head is a **name** (a definition or a label). To use a *value*, you wrap it in a head:
 
-```tree
+```tree fragment
 take name, like text     # `name` and `text` are names
 read name                # the VALUE of the variable `name`
 make user                # construct the form named `user`
@@ -110,7 +114,7 @@ read user/email          # the value of the `email` field, via `/`
 
 ```tree
 # a full-line comment
-task add  # there are no trailing comments after code; keep them on their own line
+task add  # a comment may also follow code on the same line
 ```
 
 ## How this maps to what you know
@@ -126,18 +130,22 @@ task add  # there are no trailing comments after code; keep them on their own li
 load @term/base/code/log
   find info
 
+load @term/base/code/text/string
+  find concat
+
 task greet
   take name, like text
   like text
   send back
-    call join
+    call concat
       text <hello, >
       read name
 
 # the module body is the program: top-level statements run top to bottom
 host who, text <world>
 call info
-  call greet, read who
+  call greet
+    read who
 ```
 
-Read top to bottom: `greet` takes a `name`, returns `text`, and sends back the two strings joined. Then the module body runs. It declares a constant `who` and logs the greeting with `info` (loaded from the standard library). There is no `main` function. The top-level statements are the program. Every other page is this same shape with a different head.
+Read top to bottom: `greet` takes a `name`, returns `text`, and sends back the two strings joined with `concat`. Then the module body runs. It declares a constant `who` and logs the greeting with `info` (loaded from the standard library). There is no `main` function. The top-level statements are the program. Every other page is this same shape with a different head.

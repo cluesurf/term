@@ -1,194 +1,212 @@
 # Forms
 
-A form is a `form` declared inside a [zone](components.md). Each field is a `link` with a type, optional default (`base`), and optional validation (`mill`). The form tracks draft values, dirty status, and per-field errors. Submit handling goes in `hook submit`.
+There is no form construct. A form is built from parts that exist: an input carries `name <ref>`, a click handler reads it with `get-value`, a check task decides, and a [signal](state.md) holds the message the page shows. The blog's post editor in `deck/site/test/site/face/blog.tree` is written this way.
 
-Maps to: a typed form library (React Hook Form, Formik) where the schema, defaults, and validators are declared once and the framework manages draft state.
+An earlier version of this page described a `form` declared inside a component, with `mill email` validators, `need true`, `base` defaults, `read form/dirty`, and `hook submit`. The component grammar has no `form` node, and none of that compiles.
+
+Maps to: an uncontrolled form in plain DOM code: read each field when it is needed, validate in a function, show the error from state.
 
 ## Cheatsheet
 
-| Form | Job |
+| Piece | How |
 | --- | --- |
-| `form <name>` inside a `zone` | Declare a form and its fields |
-| `link <field>, like <type>` | A typed field |
-| `need true` | Mark a field required |
-| `base <value>` | The field's default value |
-| `mill <rule>` | Attach a validator (`email`, `uuid`, `integer`, `enum`, `text`, ...) |
-| `mill <task>` | A custom validator referenced by task name |
-| `read form` | The whole draft |
-| `read form/<field>` | One field's current value |
-| `read form/dirty` | Whether the form has unsaved changes |
-| `read form/kink/<field>` | A field's validation error, if any |
-| `hook submit` | Handle the submit (pass `read form` to a task) |
-| `hook input` / `hook change` / `hook blur` | Field events |
+| A field | `view input` with `name <ref>` |
+| Read a field | `call get-value, read <ref>` |
+| Clear a field | `call set-value` with the ref and `text <>` |
+| Validate | an ordinary task returning a boolean or a message |
+| Show an error | a `signal` of text, read in a `view p` |
+| Submit | `seed click` on a button, with the handler as its body |
+| Field events | `seed input` or `seed change` on the input |
+| Focus | `call focus` / `call blur` with the ref |
+
+All the DOM tasks are in `@term/site/code/dom/dom`: `get-value`, `set-value`, `focus`, `blur`, `set-attribute`, `get-attribute`, and `listen-event` for a handler that receives the DOM event.
 
 ## A basic form
 
 ```tree
-zone login-form
+load @term/site/code/dom/dom
+  find view
+  find get-value
+  find set-value
+
+load @term/site/code/view/reactive
+  find signal
+  find make-signal
+  find read-signal
+  find write-signal
+
+# read the field, check it, then either report the problem or hand the value on
+task submit-email
+  take field, like view
+  take problem, like signal text
+  take on-submit
+    like task
+      take email, like text
+  save email
+    call get-value, read field
+  fork test
+    hook test
+      call email/includes, text <@>
+    hook hold
+      call write-signal
+        bind self, read problem
+        bind value, text <>
+      call on-submit
+        read email
+      call set-value
+        read field
+        text <>
+    hook miss
+      call write-signal
+        bind self, read problem
+        bind value, text <An email address has an @ in it>
+
+view email-form
   take host, like view
-  form login
-    link email, like text
-      need true
-      mill email
-    link password, like text
-      need true
-      mill text
-        bind min, code 8
-
-  hook submit
-    call login
-      bind data, read form
-      halt kink
+  take on-submit
+    like task
+      take email, like text
+  save problem
+    call make-signal
+      text <>
+  view label
+    text <Email>
+  view input
+    name email-field
+    seed type, text <email>
+  view button
+    seed click
+      call submit-email
+        read email-field
+        read problem
+        read on-submit
+    text <Subscribe>
+  view p
+    read
+      call read-signal, read problem
 ```
 
-## Field types
-
-```tree
-form profile
-  link name, like text
-    need true
-    mill text
-      bind min, code 2
-      bind max, code 100
-  link age, like number
-    mill integer
-      bind min, code 0
-      bind max, code 150
-  link agree, like boolean
-    need true
-    base false
-  link role, like text
-    base text <member>
-    mill enum
-      case admin
-      case member
-      case guest
-```
+`on-submit` is a task the caller passes in, so the same form can save to a database, post to a server, or do nothing in a test.
 
 ## Validation rules
 
-`mill` attaches a validator to a field. Built-in rules cover the common cases.
+A validator is a `task` taking the value and returning a message, empty when the value is fine. There are no built-in field rules, so write the check the field needs.
 
 ```tree
-link email, like text
-  need true
-  mill email
-
-link id, like text
-  mill uuid
-
-link phone, like text
-  mill text
-    bind match, text <^\+[0-9]{10,15}$>
-```
-
-A custom validator is a `task` taking the value, returning either a boolean or an error message. Reference it by name with `mill`.
-
-```tree
-task mill-username
+# a username has 2 to 32 characters and no spaces
+task check-username
   take value, like text
+  like text
   fork test
     hook test
-      call has-space, read value
+      call value/includes, text < >
     hook hold
       send back, text <username must not contain spaces>
-  send back, true
-
-zone profile-form
-  take host, like view
-  form profile
-    link username, like text
-      mill mill-username
+  fork test
+    hook test
+      call is-below
+        read value/length
+        code 2
+    hook hold
+      send back, text <username is too short>
+  fork test
+    hook test
+      call is-above
+        read value/length
+        code 32
+    hook hold
+      send back, text <username is too long>
+  send back, text <>
 ```
 
 ## Defaults
 
-`base` sets a field's initial value.
+A field's starting value is an attribute on the input.
 
 ```tree
-form settings
-  link theme, like text
-    base text <light>
-  link page-size, like number
-    base code 20
-  link notify, like boolean
-    base true
+load @term/site/code/dom/dom
+  find view
+
+view settings-form
+  take host, like view
+  view input
+    name theme
+    seed value, text <light>
+  view input
+    name page-size
+    seed type, text <number>
+    seed value, text <20>
 ```
 
 ## Reading state and errors
 
-The form tracks the draft. Read the whole thing with `read form`, one field with `read form/<field>`, the dirty flag with `read form/dirty`, and a field error with `read form/kink/<field>`.
+Read a field by its ref when it is needed. Show an error by reading the signal that holds it. A `fork test` hides the error line while the signal is empty.
 
 ```tree
-zone user-form
+load @term/site/code/dom/dom
+  find view
+
+load @term/site/code/view/reactive
+  find signal
+  find make-signal
+  find read-signal
+
+view email-field
   take host, like view
-  form user
-    link email, like text
-      need true
-      mill email
-
-  zone label
+  take problem, like signal text
+  view label
     text <Email>
-  zone input
-    bind type, text <email>
-    bind value, read form/email
-  fork
+  view input
+    name field
+    seed type, text <email>
+  fork test
     hook test
-      read form/kink/email
+      call is-unequal
+        call read-signal, read problem
+        text <>
     hook hold
-      zone span
-        bind class, text <error>
-        read form/kink/email
-
-  hook submit
-    call save-user
-      bind data, read form
-      halt kink
+      view span
+        seed class, text <error>
+        read
+          call read-signal, read problem
 ```
 
 ## Field events
 
-Handle per-field events with `hook input`, `hook change`, and `hook blur`. The event carries the new value.
+Handle a field event with `seed input`, `seed change`, or `seed blur` on the input, and the handler as its body. Typing writes no signal by itself. Read the value in the handler and write it.
 
 ```tree
-zone search-form
+load @term/site/code/dom/dom
+  find view
+  find get-value
+
+load @term/site/code/view/reactive
+  find make-signal
+  find read-signal
+  find write-signal
+
+view search-form
   take host, like view
   save query
     call make-signal
       bind value, text <>
-  zone input
-    bind type, text <text>
-    hook input
-      take site, name event
+  view input
+    name field
+    seed type, text <text>
+    seed input
       call write-signal
         bind self, read query
-        bind value, read event/value
+        bind value
+          call get-value, read field
+  view p
+    read
+      call read-signal, read query
 ```
 
 ## Submitting
 
-`hook submit` runs on form submission. Pass the draft to a task with `bind data`. Use `halt kink` to propagate an error like Rust's `?`, which stops the submit and surfaces the failure.
-
-```tree
-zone user-form
-  take host, like view
-  form user
-    link name, like text
-      need true
-    link email, like text
-      need true
-      mill email
-
-  hook submit
-    call save-user
-      bind data, read form
-      halt kink
-    call notify
-      bind text, text <User saved>
-```
-
-To prevent a double submit, gate on a busy signal and disable the button while the save is in flight.
+There is no `submit` event that reads the whole form. A button's click handler reads each field by its ref, validates, and hands the values on. To prevent a double submit, hold a busy signal, set the button's `disabled` attribute with `set-attribute` while the save is in flight, and clear it after.
 
 ## Dynamic and multi-step forms
 
-Render repeated field groups by holding a list signal and iterating with `walk list`. For a wizard, hold a step signal and switch panels with `fork case`. The list and signal APIs are on the [state](state.md) page. Field add and remove use the standard list operations from the standard library.
+Render repeated field groups by holding a list signal and iterating with `walk list`. For a wizard, hold a step signal and switch panels with `fork test`. The list and signal APIs are on the [state](state.md) page. Field add and remove use the standard list operations from the standard library.

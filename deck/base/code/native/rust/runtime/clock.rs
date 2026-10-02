@@ -22,8 +22,10 @@ mod clock {
         from.elapsed().as_millis() as i64
     }
 
+    // what `clock/now` reads: monotonic milliseconds on every backend (note/term/stdlib/semantics.md). The wall
+    // clock is `time/now`
     pub fn current_time() -> i64 {
-        now()
+        precise()
     }
 
     pub fn sleep(ms: i64) {

@@ -1,4 +1,4 @@
-// The VS Code client for the Seed language server. It launches the bundled server (deck/flow/code/main.ts, built to
+// The VS Code client for the Term language server. It launches the bundled server (deck/flow/code/main.ts, built to
 // host/server.js next to this file) as a child `node` process and speaks LSP to it over stdio. Syntax highlighting is
 // provided separately by the TextMate grammar in text/tree.json; this client adds the semantic features the server
 // implements: diagnostics, hover, go-to-definition, references, rename, and document symbols.
@@ -34,9 +34,11 @@ export function activate(context: ExtensionContext): void {
     documentSelector: [{ scheme: 'file', language: 'tree' }],
   }
 
+  // the id stays `seed`: it is the prefix of the client's settings (`seed.trace.server`), so renaming it would drop
+  // a user's existing configuration. Only the name a person reads (the Output panel's channel) says Term.
   client = new LanguageClient(
     'seed',
-    'Seed Language Server',
+    'Term Language Server',
     serverOptions,
     clientOptions,
   )

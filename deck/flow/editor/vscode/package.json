@@ -1,7 +1,7 @@
 {
   "name": "seed-language",
-  "displayName": "Seed",
-  "description": "Seed language support: .tree syntax highlighting plus the Seed language server (diagnostics, hover, completion, go-to-definition, go-to-implementation, find references, rename, code actions and quick fixes, document symbols, signature help, code lens, inlay hints, semantic tokens).",
+  "displayName": "Term",
+  "description": "Term language support: .tree syntax highlighting plus the Term language server (diagnostics, hover, completion, go-to-definition, go-to-implementation, find references, rename, code actions and quick fixes, document symbols, signature help, code lens, inlay hints, semantic tokens).",
   "version": "0.5.0",
   "license": "MIT",
   "publisher": "cluesurf",
@@ -27,7 +27,7 @@
     "languages": [
       {
         "id": "tree",
-        "aliases": ["Seed", "Tree", "tree"],
+        "aliases": ["Term", "Tree", "tree"],
         "extensions": [".tree"],
         "configuration": "./text/bind.json"
       },

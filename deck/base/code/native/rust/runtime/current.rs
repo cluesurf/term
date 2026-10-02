@@ -7,7 +7,8 @@ mod current {
 
     // the seed list representation: a reference-counted mutable vec
     pub fn arguments() -> std::rc::Rc<std::cell::RefCell<Vec<String>>> {
-        std::rc::Rc::new(std::cell::RefCell::new(std::env::args().collect()))
+        // the program's own arguments, as on every backend: the first is the program
+        std::rc::Rc::new(std::cell::RefCell::new(std::env::args().skip(1).collect()))
     }
 
     pub fn directory() -> String {

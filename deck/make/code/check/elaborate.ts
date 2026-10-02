@@ -1695,6 +1695,11 @@ export function elaborateReport(
   // in the body mints its type metas abstracted over these (contextual metavariables), so a meta can solve to the
   // enclosing generic itself (a bounded generic FORWARDING to another bounded generic) without a scope escape.
   let enclosingGenericLevels: number[] = []
+  // the same binders BY NAME, so an inline function value in the body can write the enclosing task's generic in its
+  // own annotations. The convoy (`chain`, `carry` in proof/equal/) returns `task id / take r, like equal a ...` from a
+  // match, and that `a` is the enclosing task's `head a`. Without it the closure's types were unreadable, the pure
+  // elaboration gave up, and the statement fallback declined the whole task.
+  let enclosingGenerics = new Map<string, number>()
 
   for (const statement of program) {
     if (statement.form !== 'function') {
@@ -1868,7 +1873,7 @@ export function elaborateReport(
         let closureContext = context
         let closureScope: Scope = scope
         let closureValueScope: Map<string, number> = new Map(scope)
-        const noGenerics = new Map<string, number>()
+        const outerGenerics = enclosingGenerics
         let ok = true
 
         for (const param of node.params) {
@@ -1876,7 +1881,7 @@ export function elaborateReport(
             ? kernelTypeAt(
                 param.type,
                 closureContext.level,
-                noGenerics,
+                outerGenerics,
                 namedTypes,
                 closureValueScope,
                 resolveIndexCtor,
@@ -1910,7 +1915,7 @@ export function elaborateReport(
           ? kernelTypeAt(
               node.result,
               closureContext.level,
-              noGenerics,
+              outerGenerics,
               namedTypes,
               closureValueScope,
               resolveIndexCtor,
@@ -5468,7 +5473,7 @@ export function elaborateReport(
           file,
           span: statement.span,
           message:
-            'auto could not close the goal by rewriting with the known lemmas and computing',
+            'seek could not close the goal by rewriting with the known lemmas and computing',
         }),
       )
 
@@ -5930,6 +5935,11 @@ export function elaborateReport(
     // first try a pure term (proof-relevant); if the body is outside the pure fragment, type-check it as effectful
     // commands. Either way the kernel is the authority for the expression types.
     enclosingGenericLevels = genericLevels
+    enclosingGenerics = new Map(
+      statement.generics
+        .slice(0, genericLevels.length)
+        .map((g, i) => [g.name, genericLevels[i]!]),
+    )
     factsLocal = localNames(statement)
     factsVolatile = volatileNames(statement.body)
 
@@ -5996,6 +6006,7 @@ export function elaborateReport(
       // Decline (unrepresentable) or any other error: leave this function to the surface checker, no diagnostic
     } finally {
       enclosingGenericLevels = []
+      enclosingGenerics = new Map()
       factsLocal = new Set()
       factsVolatile = new Set()
     }

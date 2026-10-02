@@ -5,6 +5,8 @@
 
 load @term/base/code/list
   find list
+  find get
+  find is-empty
 
 # A signal, an effect and an owner are each ONE object that every reader holds: a write to a signal must reach the
 # effects that subscribed to that very signal. `note shared` says so, so a backend whose forms are values (Swift's
@@ -130,13 +132,14 @@ task make-effect
     hook hold
       save skip, code 0
     hook miss
+      # the list's `get`, POSITIONAL: a labelled `bind self` is checked against a top-level `get` (the HTTP
+      # client's), where a positional call is dispatched on the list it is given
       save top
         call get
-          bind self, read owners
-          bind index
-            call subtract
-              read owners/length
-              code 1
+          read owners
+          call subtract
+            read owners/length
+            code 1
       call push
         bind list, read top/effects
         bind item, read own
@@ -157,11 +160,10 @@ task on-cleanup
     hook miss
       save top
         call get
-          bind self, read owners
-          bind index
-            call subtract
-              read owners/length
-              code 1
+          read owners
+          call subtract
+            read owners/length
+            code 1
       call push
         bind list, read top/cleanups
         bind item, read run
@@ -271,8 +273,8 @@ task track
               code 1
           save current
             call get
-              bind self, read running
-              bind index, read index
+              read running
+              read index
           call push
             bind list, read signal/observers
             bind item, read current

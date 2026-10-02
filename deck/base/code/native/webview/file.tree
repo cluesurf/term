@@ -33,6 +33,16 @@ load @term/base/code/list
   find list
   find push
 
+load @term/base/code/file/stat
+  find path-info
+
+load @term/host/code/base
+  find data
+
+load @term/host/code/text
+  find data-from-text
+  find data-to-text
+
 # the items of a json array, as a list whose element the checker knows
 task file-items-of
   take array, like dynamic
@@ -239,6 +249,34 @@ task file-exists
       wait true
       text <file_test>
       read arguments
+
+task stat-file
+  note async
+  take path
+    like text
+  like path-info
+  save arguments
+    call make-object
+  save json-12
+    call from-text
+      read path
+  save arguments
+    call set-field
+      read arguments
+      text <path>
+      read json-12
+  save reply
+    call bridge/invoke
+      wait true
+      text <file_stat>
+      read arguments
+  save value-13
+    call fill
+      call data-from-text
+        call as-text
+          read reply
+      like path-info
+  send back, read value-13
 
 # not carried: result is bytes
 task read-file-bytes

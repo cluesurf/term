@@ -1,0 +1,337 @@
+# A seeded random source: the same seed gives the same sequence on every backend, which the host generators cannot
+# promise (note/term/stdlib/semantics.md). The generator is xoshiro128** (Blackman and Vigna), chosen because it needs
+# only 32-bit shifts, xors, rotations and multiplication by 5 and 9, all exact below 2^53, so a JavaScript number holds
+# every intermediate value. The seed is spread over the four state words by xorshift32.
+#
+# Not for secrets: `cryptography/random` is the secure source. Use this for tests, simulations, procedural content and
+# anything that must replay.
+
+load @term/base/code/bit
+  find bitwise-and
+  find bitwise-or
+  find bitwise-exclusive-or
+  find shift-left
+  find unsigned-shift-right
+
+load @term/base/code/list
+  find list
+  find size
+  find get
+  find set
+
+load @term/base/code/maybe
+  find maybe
+
+form random-source
+  link state
+    like list
+      like number
+
+# a 32-bit word, kept unsigned
+task word-of
+  take value, like number
+  like number
+  send back
+    call bitwise-and
+      read value
+      code 4294967295
+
+task rotate-word
+  take value, like number
+  take count, like number
+  like number
+  send back
+    call word-of
+      call bitwise-or
+        call shift-left
+          read value
+          read count
+        call unsigned-shift-right
+          read value
+          call subtract
+            code 32
+            read count
+
+task xorshift-word
+  take value, like number
+  like number
+  save x, read value
+  save x
+    call word-of
+      call bitwise-exclusive-or
+        read x
+        call shift-left
+          read x
+          code 13
+  save x
+    call bitwise-exclusive-or
+      read x
+      call unsigned-shift-right
+        read x
+        code 17
+  save x
+    call word-of
+      call bitwise-exclusive-or
+        read x
+        call shift-left
+          read x
+          code 5
+  send back, read x
+
+# a source whose sequence is fixed by `seed`, the same on every backend
+task seeded-random
+  take seed, like number
+  like random-source
+  save x
+    call word-of
+      read seed
+  fork test
+    hook test
+      call is-equal
+        read x
+        code 0
+    hook hold
+      save x, code 2654435769
+  save state
+    make list
+  save k, code 0
+  walk test
+    down
+      call subtract
+        code 4
+        read k
+    hook test
+      call is-below
+        read k
+        code 4
+    hook step
+      save x
+        call xorshift-word
+          read x
+      call state/push
+        read x
+      save k
+        call add
+          read k
+          code 1
+  send back
+    make random-source
+      bind state, read state
+
+# the next 32-bit word, uniform over 0 to 4294967295
+task next-word
+  take source, like random-source
+  like number
+  save s
+    read source/state
+  save s0
+    call get
+      read s
+      code 0
+  save s1
+    call get
+      read s
+      code 1
+  save s2
+    call get
+      read s
+      code 2
+  save s3
+    call get
+      read s
+      code 3
+  save result
+    call word-of
+      call multiply
+        call rotate-word
+          call word-of
+            call multiply
+              read s1
+              code 5
+          code 7
+        code 9
+  save t
+    call word-of
+      call shift-left
+        read s1
+        code 9
+  save s2
+    call bitwise-exclusive-or
+      read s2
+      read s0
+  save s3
+    call bitwise-exclusive-or
+      read s3
+      read s1
+  save s1
+    call bitwise-exclusive-or
+      read s1
+      read s2
+  save s0
+    call bitwise-exclusive-or
+      read s0
+      read s3
+  save s2
+    call bitwise-exclusive-or
+      read s2
+      read t
+  save s3
+    call rotate-word
+      read s3
+      code 11
+  call set
+    read s
+    code 0
+    read s0
+  call set
+    read s
+    code 1
+    read s1
+  call set
+    read s
+    code 2
+    read s2
+  call set
+    read s
+    code 3
+    read s3
+  send back, read result
+
+# the next float, uniform over 0 inclusive to 1 exclusive
+task next-fraction
+  take source, like random-source
+  like float
+  send back
+    call divide
+      call next-word
+        read source
+      4294967296.0
+
+# the next whole number from `low` to `high`, both included, without the bias a remainder alone gives: words from the
+# incomplete last stretch are drawn again
+task between
+  take source, like random-source
+  take low, like number
+  take high, like number
+  like number
+  save span
+    call add
+      call subtract
+        read high
+        read low
+      code 1
+  fork test
+    hook test
+      call is-maximum
+        read span
+        code 0
+    hook hold
+      send back, read low
+  save limit
+    call subtract
+      code 4294967296
+      call modulo
+        code 4294967296
+        read span
+  save word
+    call next-word
+      read source
+  walk test
+    hook test
+      call is-minimum
+        read word
+        read limit
+    hook step
+      save word
+        call next-word
+          read source
+  send back
+    call add
+      read low
+      call modulo
+        read word
+        read span
+
+# a new list holding the items in an order drawn from the source (Fisher-Yates); the input is left as it was
+task shuffle
+  head t
+  take source, like random-source
+  take items
+    like list
+      like t
+  like list
+    like t
+  save out
+    make list
+  walk list, read items
+    hook next
+      take site, name item
+      call out/push
+        read item
+  save i
+    call subtract
+      call size
+        read out
+      code 1
+  walk test
+    down
+      read i
+    hook test
+      call is-above
+        read i
+        code 0
+    hook step
+      save j
+        call between
+          read source
+          code 0
+          read i
+      save held
+        call get
+          read out
+          read i
+      call set
+        read out
+        read i
+        call get
+          read out
+          read j
+      call set
+        read out
+        read j
+        read held
+      save i
+        call subtract
+          read i
+          code 1
+  send back, read out
+
+# one item drawn from the source, or none from an empty list
+task pick
+  head t
+  take source, like random-source
+  take items
+    like list
+      like t
+  like maybe
+    head t
+  fork test
+    hook test
+      call is-equal
+        call size
+          read items
+        code 0
+    hook hold
+      send back, make none
+  send back
+    make some
+      bind value
+        call get
+          read items
+          call between
+            read source
+            code 0
+            call subtract
+              call size
+                read items
+              code 1

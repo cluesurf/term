@@ -1,0 +1,37 @@
+
+# Data to text and back under names no other module uses (native-dom-0019). A cask's bridge carries a record as host
+# data text, and its generated dispatcher also imports the `file` module, whose `read` and `write` share their names
+# with this package's. An import alias is rewritten to the original name inside its own file, so a file that imports
+# both under two aliases still calls `read` twice and cannot say which. These two names leave nothing to tell apart.
+
+load ./read
+  find read
+
+load ./write
+  find write
+
+load ./base
+  find data
+  find data-tree
+
+# host data text to data, anchors expanded
+task data-from-text
+  take input, like text
+  like data
+  send back
+    call read
+      read input
+
+# data to its long text form. The anchors are passed, empty, rather than left to their default: with `file` in the
+# program a second two-parameter `write` exists, and a typed overload chooses by the arguments written
+task data-to-text
+  take value, like data
+  like text
+  save trees
+    like list
+      like data-tree
+    make list
+  send back
+    call write
+      read value
+      read trees

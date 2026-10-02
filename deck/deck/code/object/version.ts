@@ -160,11 +160,9 @@ export async function readVersionFiles(input: {
 }
 
 function recordOf(data: Buffer): ReturnType<typeof parseTree> | undefined {
-  if (data.toString('utf8').trim() === '') {
-    return undefined
-  }
+  const text = data.toString('utf8')
 
-  return parseTree(data.toString('utf8'))
+  return text.trim() === '' ? undefined : parseTree(text)
 }
 
 // Build a version: walk, chunk, and write the prolly tree. The tree's own chunks are

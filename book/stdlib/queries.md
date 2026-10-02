@@ -1,6 +1,6 @@
 # Querying collections
 
-Most data work is filtering, transforming, and summarizing a collection. The `list` type carries the full set of verbs as methods, so a query is a chain of `map` / `filter` / `reduce` over a list. Sets and maps add membership and key operations on top. The `ordering` type is the currency for sorting.
+Most data work is filtering, transforming, and summarizing a collection. The `list` type carries the full set of verbs as methods, so a query is a chain of `map` / `filter` / `reduce` over a list. Sets and maps add membership and key operations on top. The `ordering` type is the currency for comparing.
 
 Maps to: JavaScript array methods, Rust iterator adapters, or LINQ.
 
@@ -96,6 +96,9 @@ task even-squares
 `reduce` folds with a running total and an initial value.
 
 ```tree
+load @term/base/code/list
+  find list
+
 task total-length
   take words, like list
   like number
@@ -118,53 +121,70 @@ task total-length
 `find` returns the first match as a `maybe`, so a miss is `none` rather than a crash. `any` and `all` ask about the whole list.
 
 ```tree
-host first-big
-  call find
-    read values
-    task over-ten
-      take n, like number
-      like boolean
-      send back
-        call is-above
-          read n
-          code 10
+load @term/base/code/list
+  find list
 
-host has-negative
-  call any
-    read values
-    task is-negative
-      take n, like number
-      like boolean
-      send back
-        call is-below
-          read n
-          code 0
+task first-big
+  take values, like list
+  send back
+    call find
+      read values
+      task over-ten
+        take n, like number
+        like boolean
+        send back
+          call is-above
+            read n
+            code 10
+
+task has-negative
+  take values, like list
+  like boolean
+  send back
+    call any
+      read values
+      task is-negative
+        take n, like number
+        like boolean
+        send back
+          call is-below
+            read n
+            code 0
 ```
 
 ## Summarizing
 
-For numeric lists, the `statistics` module reads off the common aggregates directly.
+For numeric lists, the `statistics` module reads off the common aggregates directly. `least`, `greatest` and `span` need a non-empty list and say so with a `have`, so a task that calls them states the same `have` (or checks the length first).
 
 ```tree
+load @term/base/code/list
+  find list
+
 load @term/base/code/statistics
   find mean
   find greatest
   find span
 
-host average
-  call mean
-    read values
-host high
-  call greatest
-    read values
-host spread
-  call span         # greatest minus least
-    read values
+task summary
+  take values, like list
+  have
+    call is-above
+      read values/length
+      code 0
+  save average
+    call mean
+      read values
+  save high
+    call greatest
+      read values
+  save spread
+    call span         # greatest minus least
+      read values
 ```
 
 ## Sorting
 
-Sorting needs a comparator: a function that returns an `ordering`. The `from-numbers` task is the base comparator for numbers, and `reverse` flips it for descending order.
+Sorting needs a comparator: a function that returns an `ordering`. The `from-numbers` task is the base comparator for numbers, and `reverse` flips it for descending order. `list` has no sort method yet, so the comparator is what you write today and hand to your own sort.
 
 ```tree
 load @term/base/code/ordering
@@ -183,7 +203,7 @@ task by-score-desc
         read right/score
 ```
 
-A comparator that returns `less`, `equal`, or `greater` plugs into any ordered structure or sort.
+A comparator that returns `less`, `equal`, or `greater` plugs into any ordered structure.
 
 ## Set and map queries
 
@@ -193,21 +213,26 @@ A `set` answers membership and the standard algebra. A `hash` answers key lookup
 load @term/base/code/set
   find set
 
-# the tags in both lists
-host shared
-  call intersection
-    read mine
-    read theirs
-
 load @term/base/code/hash
   find hash
 
+# the tags in both sets
+task shared
+  take mine, like set
+  take theirs, like set
+  send back
+    call intersection
+      read mine
+      read theirs
+
 # a config value with a default
-host port
-  call get-or-default
-    read config
-    text <port>
-    code 8080
+task port
+  take config, like hash
+  send back
+    call get-or-default
+      read config
+      text <port>
+      code 8080
 ```
 
 ## A full query
@@ -215,6 +240,16 @@ host port
 These compose. A typical pipeline filters, maps, then summarizes.
 
 ```tree
+load @term/base/code/list
+  find list
+
+load @term/base/code/statistics
+  find mean
+
+form item
+  link price, like number
+  link in-stock, like boolean
+
 # the average price of in-stock items
 task average-in-stock
   take items, like list

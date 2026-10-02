@@ -33,10 +33,8 @@ import { compileProgram } from '@term/make/code/compile/compile'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
 import { stubProgram } from '@term/make/code/compile/stub'
 import { interfaceHash } from '@term/make/code/compile/interface'
-import {
-  hashText,
-  hashFields,
-} from '@term/make/code/compile/cache'
+import { hashFields } from '@term/make/code/compile/cache'
+import { hashText } from '@term/make/code/term/hash'
 import type { CompileCache } from '@term/make/code/compile/cache'
 
 export type SeparateResult =

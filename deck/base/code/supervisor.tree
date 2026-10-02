@@ -1,0 +1,382 @@
+# Supervision: a tree of running tasks that restarts what fails, by OTP's protocol (lib/stdlib/src/supervisor.erl),
+# with what OTP checks at start-up, or only documents, decided before the program runs instead.
+#
+#   strategy    which children restart when one stops: `one-for-one` the one, `one-for-all` all of them,
+#               `rest-for-one` it and every child after it. A variant form, so a strategy that does not exist cannot
+#               be written (OTP refuses one at start-up, supervisor.erl:2066-2088)
+#   restart     per child: `permanent` restarts whenever it stops, `transient` only when it raises, `temporary` never
+#   intensity   more than `intensity` restarts within `period` milliseconds stops the supervisor, which raises
+#               `overload` naming it, so a crash loop is bounded and escalates. `make-supervisor` owes `intensity >= 0`
+#               and `period > 0` at every call site, so the prover refuses a tree that could not mean anything. There is
+#               no default: OTP's is 1 in 5 s and Elixir's 3 in 5 s, so one tree means two things (supervisor.erl:445,
+#               elixir supervisor.ex:802)
+#   nested      a child that is itself a supervisor. It has no `shutdown` to set, so the rule that a child supervisor's
+#               shutdown is unbounded (supervisor.erl:249-253, a warning in OTP's documentation) holds by construction
+#
+# `term make` refuses a `transient` worker whose work cannot raise (check/supervise.ts): it can never restart, so it is
+# a `temporary` with a misleading name. Design 4 in note/term/research/beam-otp-lessons.md.
+
+load @term/base/code/task
+  find spawn
+
+load @term/base/code/clock
+  find now
+
+load @term/base/code/exception
+  find overload
+
+load @term/base/code/native/{platform}/job
+  find do-settle-any
+  find do-state
+  find do-cancel
+
+# which children restart when one stops
+form strategy
+  case one-for-one
+  case one-for-all
+  case rest-for-one
+
+# when one child restarts
+form restart
+  case permanent
+  case transient
+  case temporary
+
+# one child of a supervisor: a worker running `work`, or a nested supervisor
+form child
+  case worker
+    link name, like text
+    link restart, like restart
+    link work
+      like task
+        like text
+  case nested
+    link tree, like supervisor
+
+form supervisor
+  link name, like text
+  link strategy, like strategy
+  link intensity, like number
+  link period, like number
+  link children
+    like list
+      like child
+
+# a supervisor. The two `have` lines are what OTP validates when the supervisor starts, owed here by every caller
+task make-supervisor
+  take name, like text
+  take strategy, like strategy
+  take intensity, like number
+  take period, like number
+  take children
+    like list
+      like child
+  have
+    call is-minimum
+      read intensity
+      code 0
+  have
+    call is-above
+      read period
+      code 0
+  like supervisor
+  send back
+    make supervisor
+      bind name, read name
+      bind strategy, read strategy
+      bind intensity, read intensity
+      bind period, read period
+      bind children, read children
+
+# the work a child runs: a worker's own, or a nested supervisor supervised in turn. A nested supervisor that stops
+# itself (its intensity exceeded) raises, so its parent sees a failed child and applies its own strategy, which is
+# how a failure escalates up the tree
+task child-work
+  take one, like child
+  like task
+    like text
+  fork case, read one
+    case worker
+      send back, read work
+    case nested
+      send back
+        task run-nested
+          note async
+          like text
+          send back
+            call supervise
+              read tree
+              wait true
+
+# whether a child that stopped in `state` (`done` or `failed`) is started again
+task restarts
+  take one, like child
+  take state, like text
+  like boolean
+  fork case, read one
+    case worker
+      fork case, read restart
+        case permanent
+          send back, true
+        case transient
+          send back
+            call is-equal
+              read state
+              text <failed>
+        case temporary
+          send back, false
+    case nested
+      # a nested supervisor is permanent: it stops only by raising, and that is the case to restart
+      send back, true
+
+# run a supervision tree until every child has stopped for good. Answers the supervisor's name when it ends that way.
+# Raises `overload` naming the supervisor when more than `intensity` restarts land within `period` milliseconds, after
+# cancelling every child it still runs. A supervisor that restarts permanent children runs until that happens or
+# forever, so it is marked to run forever
+task supervise
+  note async
+  note roam
+  take tree, like supervisor
+  like text
+  save handles
+    make list
+  save alive
+    make list
+  walk list, read tree/children
+    hook next
+      take site, name one
+      call handles/push
+        call spawn
+          call child-work
+            read one
+      call alive/push
+        true
+  save restarted
+    make list
+  walk test
+    hook test
+      call any-alive
+        read alive
+    hook hold
+      save docks
+        make list
+      walk list, read handles
+        hook next
+          take site, name started
+          call docks/push
+            read started/dock
+      call do-settle-any
+        read docks
+        wait true
+      # one child per turn, by index: the condition bounds every list the turn reads, each the same length by
+      # construction (one entry pushed per child), and is asked again each turn
+      save at, code 0
+      walk test
+        hook test
+          call and
+            call is-below
+              read at
+              read tree/children/length
+            call and
+              call is-below
+                read at
+                read handles/length
+              call is-below
+                read at
+                read alive/length
+        hook hold
+          save one, read tree/children/{at}
+          save started, read handles/{at}
+          save running, read alive/{at}
+          save state
+            call do-state
+              read started/dock
+          fork test
+            hook test
+              call and
+                read running
+                call not
+                  call is-equal
+                    read state
+                    text <running>
+            hook hold
+              fork test
+                hook test
+                  call restarts
+                    read one
+                    read state
+                hook hold
+                  save restarted
+                    call within
+                      read restarted
+                      read tree/period
+                  fork test
+                    hook test
+                      call is-minimum
+                        read restarted/length
+                        read tree/intensity
+                    hook hold
+                      walk list, read handles
+                        hook next
+                          take site, name running
+                          call do-cancel
+                            read running/dock
+                      halt overload
+                        bind thing, read tree/name
+                  call restarted/push
+                    call now
+                  call restart-children
+                    read tree
+                    read handles
+                    read alive
+                    read at
+                hook miss
+                  # `restarts` and the state read ran in between, so the bound is asked where the write is
+                  fork test
+                    hook test
+                      call is-below
+                        read at
+                        read alive/length
+                    hook hold
+                      call alive/set
+                        read at
+                        false
+          save at, call increment(read at)
+  send back, read tree/name
+
+# the restart times still inside the window: the last `period` milliseconds
+task within
+  take times
+    like list
+      like number
+  take period, like number
+  like list
+    like number
+  save cutoff
+    call subtract
+      call now
+      read period
+  save kept
+    make list
+  walk list, read times
+    hook next
+      take site, name time
+      fork test
+        hook test
+          call is-above
+            read time
+            read cutoff
+        hook hold
+          call kept/push
+            read time
+  send back, read kept
+
+# start the children the strategy names again, after child `at` stopped: that one, all of them, or it and the rest
+task restart-children
+  take tree, like supervisor
+  take handles
+    like list
+      like handle text
+  take alive
+    like list
+      like boolean
+  take at, like number
+  save first, read at
+  save last, read at
+  save end
+    call subtract
+      read tree/children/length
+      code 1
+  fork case, read tree/strategy
+    case one-for-one
+      save last, read at
+    case one-for-all
+      save first, code 0
+      save last, read end
+    case rest-for-one
+      save last, read end
+  # the count is taken once: a restart runs a child's work, which may do anything, so the walk ends by this local count
+  save count, read tree/children/length
+  save place, code 0
+  walk test
+    must
+      call is-minimum
+        read place
+        code 0
+    must
+      call is-maximum
+        read place
+        read count
+    down
+      call subtract
+        read count
+        read place
+    hook test
+      call and
+        call is-below
+          read place
+          read count
+        call and
+          call is-below
+            read place
+            read tree/children/length
+          call and
+            call is-below
+              read place
+              read handles/length
+            call is-below
+              read place
+              read alive/length
+    hook hold
+      fork test
+        hook test
+          call and
+            call is-minimum
+              read place
+              read first
+            call is-maximum
+              read place
+              read last
+        hook hold
+          save one, read tree/children/{place}
+          save stopped, read handles/{place}
+          call do-cancel
+            read stopped/dock
+          save fresh
+            call spawn
+              call child-work
+                read one
+          # the new child's work has started, and may have done anything, so the bounds are asked where they are used
+          fork test
+            hook test
+              call and
+                call is-below
+                  read place
+                  read handles/length
+                call is-below
+                  read place
+                  read alive/length
+            hook hold
+              call handles/set
+                read place
+                read fresh
+              call alive/set
+                read place
+                true
+      save place, call increment(read place)
+
+# whether any child is still meant to run
+task any-alive
+  take alive
+    like list
+      like boolean
+  like boolean
+  walk list, read alive
+    hook next
+      take site, name one
+      fork test
+        hook test
+          read one
+        hook hold
+          send back, true
+  send back, false

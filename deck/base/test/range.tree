@@ -1,0 +1,67 @@
+note <range: length agrees with to-list, rounding a partial last step up>
+
+load @term/base/code/range
+  find range
+
+load @term/base/code/list
+  find size
+
+test <length rounds a partial last step up>
+  save r
+    make range
+      bind start, code 0
+      bind end, code 10
+      bind step, code 3
+  want hold
+    call is-equal
+      call length
+        read r
+      code 4
+
+test <length equals the size of to-list>
+  save r
+    make range
+      bind start, code 2
+      bind end, code 17
+      bind step, code 5
+  want hold
+    call is-equal
+      call length
+        read r
+      call size
+        call to-list
+          read r
+
+test <length of a whole number of steps is exact>
+  save r
+    make range
+      bind start, code 0
+      bind end, code 9
+      bind step, code 3
+  want hold
+    call is-equal
+      call length
+        read r
+      code 3
+
+test <an empty or reversed range has length zero>
+  save r
+    make range
+      bind start, code 5
+      bind end, code 5
+      bind step, code 1
+  save back
+    make range
+      bind start, code 9
+      bind end, code 2
+      bind step, code 1
+  want hold
+    call and
+      call is-equal
+        call length
+          read r
+        code 0
+      call is-equal
+        call length
+          read back
+        code 0

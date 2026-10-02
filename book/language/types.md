@@ -28,6 +28,9 @@ The scalar vocabulary is `number`, `text`, `boolean`, `nat`, `void`. Do not writ
 A `like` line names the type. It appears as a field type, a parameter type, or a return type.
 
 ```tree
+load @term/base/code/console
+  find log
+
 form account
   link name, like text
   link balance, like number
@@ -37,16 +40,20 @@ task rename
   take self
   take name, like text
   like void
-  call write-line, read name
+  call log, read name
 ```
 
 `number` covers integers and reals. `text` is a string. `boolean` is `true` or `false`. `void` is the unit, returned by a task that does work but yields nothing useful. `nat` is a natural number used where a value must be a non-negative whole count, including index positions and the math pages.
 
 ```tree
+load @term/base/code/console
+  find log
+
 task count-down
   take n, like nat
   like void
-  call write-line, read n
+  call log
+    text <{{n}} left>
 ```
 
 ## Type parameters (generics)
@@ -93,9 +100,9 @@ form roster
       like number
 ```
 
-A `maybe` of `number`:
+A `maybe` of `number`, as a field inside a form:
 
-```tree
+```tree fragment
 link result
   like maybe
     like number
@@ -108,24 +115,34 @@ Inline, the same annotation reads `like list, like text`. Use the nested form wh
 A type parameter can require a trait with `need`. The parameter then only accepts types that implement that trait, and the body may use the trait's methods.
 
 ```tree
+mask comparable
+  task outranks
+    take self
+    take other, like self
+    like boolean
+
 form sorted-list
   head t, need comparable
   link items
     like list
       like t
-```
 
-```tree
-task largest
+task better-of
   head t, need comparable
-  take items
-    like list
-      like t
+  take a, like t
+  take b, like t
   like t
-  send back, call items/max
+  fork test
+    hook test
+      call a/outranks
+        read b
+    hook hold
+      send back, read a
+    hook miss
+      send back, read b
 ```
 
-Traits are defined with `mask`. See [traits](traits.md) for how a trait like `comparable` is declared and implemented.
+Traits are defined with `mask`, as `comparable` is above. Inside the body, the bound's method is called in member form on a value of type `t`. See [traits](traits.md) for how a trait is declared and implemented.
 
 ## Function types (`like task`)
 

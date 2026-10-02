@@ -3,9 +3,11 @@
 object clock {
     fun now(): Long = System.currentTimeMillis()
 
-    fun precise(): Long = System.nanoTime()
+    // milliseconds, as on every other backend (nanoTime alone is nanoseconds)
+    fun precise(): Long = System.nanoTime() / 1_000_000L
 
-    fun currentTime(): Long = System.currentTimeMillis()
+    // what `clock/now` reads: monotonic milliseconds on every backend (note/term/stdlib/semantics.md)
+    fun currentTime(): Long = precise()
 
     fun sleep(ms: Long) { Thread.sleep(ms) }
 }

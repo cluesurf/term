@@ -7,7 +7,7 @@ dock load
 load @term/base/code/process/current
   find process-info
 
-task read
+task read-process
   like process-info
 
   send back
@@ -21,7 +21,7 @@ task read
       bind executable
         call current/executable
 
-task exit
+task exit-process
   take
     code
     like size
@@ -30,7 +30,7 @@ task exit
   call current/exit
     read code
 
-task listen
+task listen-process
   take signal, like text
   take handler, like task
 

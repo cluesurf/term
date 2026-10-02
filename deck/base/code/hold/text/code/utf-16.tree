@@ -10,7 +10,7 @@ form text-utf-16
   link list
     like list
       like u16
-    note private
+    mark private
 
   task get-size, like size
 

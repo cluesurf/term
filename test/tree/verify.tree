@@ -46,9 +46,9 @@ test <min handles negatives>
   want hold
     call is-equal
       call minimum
-        mark -2
+        code -2
         code 4
-      mark -2
+      code -2
 
 # --- abs: result is the non-negative magnitude (abs = max(a, -a)) ---
 
@@ -56,7 +56,7 @@ test <abs of a negative is its magnitude>
   want hold
     call is-equal
       call absolute
-        mark -5
+        code -5
       code 5
 
 test <abs of a positive is itself>
@@ -79,7 +79,7 @@ test <clamp below the low bound returns the low bound>
   want hold
     call is-equal
       call clamp
-        mark -3
+        code -3
         code 0
         code 10
       code 0

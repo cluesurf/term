@@ -11,7 +11,8 @@ enum current {
     }
 
     static func arguments() -> SeedList<String> {
-        SeedList(Foundation.ProcessInfo.processInfo.arguments)
+        // the program's own arguments, as on every backend: the first is the program
+        SeedList(Array(Foundation.ProcessInfo.processInfo.arguments.dropFirst()))
     }
 
     static func directory() -> String {

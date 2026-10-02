@@ -11,7 +11,7 @@ import { mill } from '@term/make/code/compile/mill'
 import { collectUsedClasses } from '@term/make/code/compile/used-classes'
 import { Database, LOW } from '@term/make/code/compile/query'
 import type { Durability, Cx } from '@term/make/code/compile/query'
-import { hashText } from '@term/make/code/compile/cache'
+import { hashText } from '@term/make/code/term/hash'
 import type { MilledUnit } from '@term/make/code/compile/cache'
 import type {
   Program,

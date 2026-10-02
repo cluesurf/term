@@ -45,7 +45,7 @@ form text-utf-8-hold
   link list
     like list
       like u8
-    note private
+    mark private
 
   task make-upper-case
   task make-lower-case

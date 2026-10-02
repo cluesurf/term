@@ -76,5 +76,28 @@ const io = (() => {
       await directory.removeEntry(name)
     },
     fileExists: exists,
+    // a file's size in bytes, 0 for a path that is not a file, as the other platforms answer (native-dom-0019)
+    fileSize: async (path: string): Promise<number> => {
+      try {
+        const { directory, name } = await locate(path, false)
+        return (await (await directory.getFileHandle(name)).getFile()).size
+      } catch {
+        return 0
+      }
+    },
+    // whether the path names a directory: the root, or a directory handle under its parent
+    isDirectory: async (path: string): Promise<boolean> => {
+      if (path.split('/').filter(Boolean).length === 0) {
+        return true
+      }
+
+      try {
+        const { directory, name } = await locate(path, false)
+        await directory.getDirectoryHandle(name)
+        return true
+      } catch {
+        return false
+      }
+    },
   }
 })()

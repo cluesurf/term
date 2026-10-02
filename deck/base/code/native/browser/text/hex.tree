@@ -1,0 +1,21 @@
+# Browser hexadecimal implementation, over the octets runtime, since the page has no Buffer. Internal: reached only
+# through the public hex API.
+
+dock load
+  load <global:octets>, name octets
+
+task to-hex
+  take input, like text
+  like text
+  send back
+    call octets/to-hex
+      call octets/from-text
+        read input
+
+task from-hex
+  take input, like text
+  like text
+  send back
+    call octets/to-text
+      call octets/from-hex
+        read input

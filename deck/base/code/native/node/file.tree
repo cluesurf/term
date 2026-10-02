@@ -4,6 +4,10 @@
 dock load
   load <node:fs/promises>, name fs
   load <node:fs>, name fssync
+  load <global:io>, name io
+
+load @term/base/code/file/stat
+  find path-info
 
 task read-file
   note async
@@ -80,3 +84,16 @@ task file-exists
   send back
     call fssync/exists-sync
       read path
+
+# a path's size and whether it is a directory, in one record. A missing path reads as size 0 and not a directory
+task stat-file
+  take path, like text
+  like path-info
+  send back
+    make path-info
+      bind size
+        call io/file-size
+          read path
+      bind directory
+        call io/is-directory
+          read path

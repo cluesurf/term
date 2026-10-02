@@ -4,7 +4,7 @@
 
 import { compile } from '@term/make/code/compile/compile'
 import type { Source } from '@term/make/code/compile/load'
-import { hashText } from '@term/make/code/compile/cache'
+import { hashText } from '@term/make/code/term/hash'
 import { projectResolver } from '@term/call/code/make'
 import { transform } from 'esbuild'
 import * as fs from 'node:fs'

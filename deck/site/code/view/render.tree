@@ -4,9 +4,6 @@
 # a subtree on a reactive condition; `each` renders a reactive list; `mount` attaches a built tree to a host. All host
 # work goes through the platform-agnostic dom API, so this logic is identical on browser and server.
 
-load @term/base/code/list
-  find list
-
 load ../dom/native/{platform}/dom
   find view
   find create-element
@@ -270,11 +267,10 @@ task each-keyed
                     code 0
                 hook hold
                   call get
-                    bind self, read nodes
-                    bind index
-                      call subtract
-                        read found
-                        code 1
+                    read nodes
+                    call subtract
+                      read found
+                      code 1
                 hook miss
                   call build
                     bind item, read item
@@ -312,8 +308,8 @@ task each-keyed
                 call remove
                   bind node
                     call get
-                      bind self, read nodes
-                      bind index, read j
+                      read nodes
+                      read j
             save j
               call add
                 read j

@@ -19,7 +19,7 @@ load @term/base/code/native/{platform}/process/line
 form tool
   link dock
     like line-dock
-    note private
+    mark private
 
 task open
   note async

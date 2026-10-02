@@ -326,6 +326,37 @@ const ONE_CASE = `    case ask
       send back, read question
 `
 
+// a gatherer whose signature bounds what it raises, over work that raises `conflict`. The work's raise is re-raised
+// by the gather, so the bound must name it (design 3, typed exit reasons)
+const bounded = (bound: string) => `load @term/base/code/task
+  find gather
+
+load @term/base/code/exception
+  find conflict
+  find outage
+
+task run
+  note async
+${bound}  like text
+  save works
+    make list
+  call works/push
+    task a
+      like text
+      halt conflict
+        bind thing, text <a>
+  save both
+    call gather
+      read works
+      wait true
+  send back
+    call both/at
+      code 0
+`
+
+const BOUND_WITHOUT = '  halt outage\n'
+const BOUND_WITH = '  halt outage\n  halt conflict\n'
+
 // the build's refusal, or undefined when it builds
 function refusal(source: string): string | undefined {
   const compiled = compile({ file: 'main.tree', text: source }, { resolve: withNativeEnv('node', stdlib) })
@@ -428,6 +459,15 @@ async function main(): Promise<void> {
     missing !== undefined && /non-exhaustive/.test(missing) && /stop/.test(missing),
     missing ?? 'it built',
   )
+
+  const short = refusal(bounded(BOUND_WITHOUT))
+
+  ok(
+    'a signature bound must name what its gathered work raises',
+    short !== undefined && /conflict/.test(short),
+    short ?? 'it built',
+  )
+  ok('and builds once it does', refusal(bounded(BOUND_WITH)) === undefined, refusal(bounded(BOUND_WITH)) ?? '')
 
   // the slow jobs the failures above left behind settle within this, and none of them may surface either
   await new Promise(resolve => setTimeout(resolve, 500))

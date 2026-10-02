@@ -1,0 +1,249 @@
+# A map iterates in the order its keys were first set, on every backend (note/term/stdlib/semantics.md). Setting an
+# existing key keeps its place, removing a key and setting it again moves it to the end, and a record key is found
+# by an equal record. Held by `pnpm term:base-gate`.
+
+load @term/base/code/hash
+  find hash
+  find keys
+  find values
+  find remove
+  find has
+  find get-or-default
+
+load @term/base/code/list
+  find join
+  find size
+  find get
+
+load @term/base/code/hash
+  find entries
+  find change
+  find map-values
+
+load @term/base/code/pair
+  find pair
+
+form point
+  link x, like number
+  link y, like number
+
+test <keys come back in the order they were first set>
+  save m
+    make find
+  call set
+    read m
+    text <zebra>
+    code 1
+  call set
+    read m
+    text <apple>
+    code 2
+  call set
+    read m
+    text <mango>
+    code 3
+  want hold
+    call is-equal
+      call join
+        call keys
+          read m
+        text <,>
+      text <zebra,apple,mango>
+
+test <setting an existing key keeps its place>
+  save m
+    make find
+  call set
+    read m
+    text <b>
+    code 1
+  call set
+    read m
+    text <a>
+    code 2
+  call set
+    read m
+    text <b>
+    code 3
+  want hold
+    call is-equal
+      call join
+        call keys
+          read m
+        text <,>
+      text <b,a>
+
+test <removing a key and setting it again moves it to the end>
+  save m
+    make find
+  call set
+    read m
+    text <b>
+    code 1
+  call set
+    read m
+    text <a>
+    code 2
+  call remove
+    read m
+    text <b>
+  call set
+    read m
+    text <b>
+    code 3
+  want hold
+    call is-equal
+      call join
+        call keys
+          read m
+        text <,>
+      text <a,b>
+
+test <values follow the key order>
+  save m
+    make find
+  call set
+    read m
+    text <z>
+    code 26
+  call set
+    read m
+    text <a>
+    code 1
+  want hold
+    call is-equal
+      call join
+        call values
+          read m
+        text <,>
+      text <26,1>
+
+test <many keys keep their order>
+  save m
+    make find
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        code 40
+    hook step
+      call set
+        read m
+        call subtract
+          code 100
+          read i
+        read i
+      save i
+        call add
+          read i
+          code 1
+  want hold
+    call is-equal
+      call get-or-default
+        read m
+        code 61
+        code 0
+      code 39
+
+test <a record key is found by an equal record>
+  save m
+    make find
+  call set
+    read m
+    make point
+      bind x, code 1
+      bind y, code 2
+    text <one-two>
+  want hold
+    call has
+      read m
+      make point
+        bind x, code 1
+        bind y, code 2
+
+task tally
+  take value, like number
+  like number
+  send back
+    call add
+      read value
+      code 1
+
+task doubled
+  take value, like number
+  like number
+  send back
+    call multiply
+      read value
+      code 2
+
+test <entries come back in key order>
+  save m
+    make find
+  call set
+    read m
+    text <b>
+    code 2
+  call set
+    read m
+    text <a>
+    code 1
+  save all
+    call entries
+      read m
+  save last
+    call get
+      read all
+      code 1
+  want hold
+    call and
+      call is-equal
+        call size
+          read all
+        code 2
+      call is-equal
+        read last/first
+        text <a>
+
+test <change counts into a missing key and an existing one>
+  save m
+    make find
+  call change
+    read m
+    text <x>
+    code 0
+    read tally
+  call change
+    read m
+    text <x>
+    code 0
+    read tally
+  want hold
+    call is-equal
+      call get-or-default
+        read m
+        text <x>
+        code 0
+      code 2
+
+test <map-values keeps the keys and their order>
+  save m
+    make find
+  call set
+    read m
+    text <z>
+    code 1
+  call set
+    read m
+    text <a>
+    code 5
+  want hold
+    call is-equal
+      call join
+        call values
+          call map-values
+            read m
+            read doubled
+        text <,>
+      text <2,10>

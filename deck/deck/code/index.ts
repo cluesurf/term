@@ -167,5 +167,7 @@ export {
   trustDir,
 } from './oci/client'
 export type { OciRoute } from './oci/client'
+export { pingIndex, publishStatement } from './oci/index-ping'
+export type { IndexPing } from './oci/index-ping'
 export { parseRoleFile, matchRole, matchRoleRule, globMatch } from './role'
 export type { RoleConfig, RoleRule } from './form'

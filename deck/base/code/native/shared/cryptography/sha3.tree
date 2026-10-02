@@ -1,3 +1,6 @@
+# A reference implementation in Term, not reviewed for side channels and not reached by the public API, which is
+# each platform's own library (`cryptography/digest`). Use it to check vectors, not to protect data. base-v1-0014.
+#
 # SHA3-256 (FIPS-202): Keccak-f[1600] over 25 lanes, each lane held as two unsigned 32-bit halves (`lo`,
 # `hi`) since the portable bit vocabulary is 32-bit. Rate 136 bytes, domain padding 0x06...0x80, output the
 # first four lanes little-endian. The rotation offsets and round constants are the spec tables. Held to the

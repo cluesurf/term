@@ -16,16 +16,21 @@
  * toward new compiler behavior.
  */
 
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { compile } from '@term/make/code/compile/compile'
 import { makeRng, type Rng } from './property'
 
-/** A small seed corpus of valid, self-contained Seed programs. */
+/**
+ * A small seed corpus of valid, self-contained Term programs, in CURRENT syntax. The first entry read `mark 42`
+ * until 2026-10-02, a literal retired long before: every mutant of it started from a program the compiler already
+ * refused, so the campaign spent its runs on the error path. deck/test/test/hunt.test.ts holds every entry to
+ * compiling clean.
+ */
 export const DEFAULT_FUZZ_CORPUS: string[] = [
   `task answer
   like number
   send back
-    mark 42
+    code 42
 `,
   `form point
   link x, like number
@@ -37,7 +42,7 @@ export const DEFAULT_FUZZ_CORPUS: string[] = [
   send back
     call add
       read n
-      mark 1
+      code 1
 `,
   `task pick
   take a, like number
@@ -57,11 +62,13 @@ export const DEFAULT_FUZZ_CORPUS: string[] = [
 `,
 ]
 
-// the head words the compiler recognizes - swapping these stresses the mill
+// the head words the compiler recognizes - swapping these stresses the mill. Current heads only: `wave` was a
+// retired literal head and `code` (the number literal) was missing.
 const KEYWORDS = [
   'task', 'call', 'send', 'back', 'take', 'like', 'form', 'link', 'case',
   'fork', 'hook', 'walk', 'save', 'host', 'read', 'make', 'bind', 'load',
-  'find', 'mark', 'text', 'wave', 'halt', 'turn', 'show', 'fuse', 'tree',
+  'find', 'mark', 'text', 'code', 'halt', 'turn', 'show', 'fuse', 'tree',
+  'note', 'wait', 'dock', 'rule', 'have', 'must',
 ]
 
 export type Crash = {
@@ -208,6 +215,39 @@ export function fuzzCompiler(input: {
     codesSeen: [...codesSeen].sort((a, b) => a - b),
     corpusGrew,
   }
+}
+
+/**
+ * One fuzz campaign as a CHILD PROCESS body: `<report-out> <probe-file> <runs> <seed> [<corpus.json>]`. The
+ * optional corpus file is a JSON list of extra seed programs (the hunted project's own files), added to
+ * DEFAULT_FUZZ_CORPUS. Writes the FuzzReport to `report-out`; a parent that finds no report knows the campaign did
+ * not finish.
+ *
+ * It lives here, as a function, so the built CLI can carry it inside its own bundle and fork ITSELF to run it
+ * (`term hunt` does, through `HUNT_FUZZ_CHILD`). The old parent spawned `npx tsx <dir>/fuzz-campaign.ts` beside
+ * the running module, and inside host/line.js that directory is host/, which holds no such file: the child failed,
+ * no report was written, and the run printed `no crashes, no hangs` having fuzzed nothing.
+ */
+export function runFuzzCampaign(args: string[]): FuzzReport {
+  const [reportOut, probeFile, runsArg, seedArg, corpusFile] = args
+
+  if (!reportOut) {
+    throw new Error('fuzz campaign: no report path given')
+  }
+
+  const extra = corpusFile
+    ? (JSON.parse(readFileSync(corpusFile, 'utf8')) as string[])
+    : []
+
+  const report = fuzzCompiler({
+    corpus: [...DEFAULT_FUZZ_CORPUS, ...extra],
+    runs: runsArg ? Number(runsArg) : 3000,
+    seed: seedArg ? Number(seedArg) : 7,
+    probeFile,
+  })
+
+  writeFileSync(reportOut, JSON.stringify(report))
+  return report
 }
 
 /** Shrink a crashing input to a smaller one that still crashes (ddmin-lite). */

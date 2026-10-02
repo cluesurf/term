@@ -11,6 +11,10 @@ load @term/base/code/native/{platform}/file
   find copy-file
   find move-file
   find file-exists
+  find stat-file
+
+load @term/base/code/file/stat
+  find path-info
 
 task read
   note async
@@ -88,4 +92,13 @@ task test
   like boolean
   send back
     call file-exists
+      read path
+
+# a path's size and whether it is a directory, in one record
+task stat
+  note async
+  take path, like text
+  like path-info
+  send back
+    call stat-file
       read path

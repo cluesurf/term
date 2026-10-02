@@ -1,24 +1,12 @@
 /**
- * One compiler-fuzzing campaign, as a child-process entry point. The
- * demo spawns this under an overall timeout so a non-terminating input
- * (a compiler hang) kills THIS process instead of the demo; the probe
- * file then holds the offending input. On normal completion it writes a
- * JSON FuzzReport to the path in argv[2].
+ * One compiler-fuzzing campaign, as a standalone child-process entry point for running from SOURCE (the demo and
+ * the vitest suite spawn it under tsx). The built CLI does not use this file: it carries `runFuzzCampaign` in its
+ * own bundle and forks itself, because a path beside the running module does not exist inside host/line.js.
  *
  * Usage (normally spawned, not run by hand):
- *   tsx fuzz-campaign.ts <report-out> <probe-file> <runs> <seed>
+ *   tsx fuzz-campaign.ts <report-out> <probe-file> <runs> <seed> [<corpus.json>]
  */
 
-import { writeFileSync } from 'node:fs'
-import { fuzzCompiler, DEFAULT_FUZZ_CORPUS } from './compiler-fuzz'
+import { runFuzzCampaign } from './compiler-fuzz'
 
-const [reportOut, probeFile, runsArg, seedArg] = process.argv.slice(2)
-
-const report = fuzzCompiler({
-  corpus: DEFAULT_FUZZ_CORPUS,
-  runs: runsArg ? Number(runsArg) : 3000,
-  seed: seedArg ? Number(seedArg) : 7,
-  probeFile,
-})
-
-if (reportOut) writeFileSync(reportOut, JSON.stringify(report))
+runFuzzCampaign(process.argv.slice(2))

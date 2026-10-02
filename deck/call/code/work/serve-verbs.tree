@@ -31,7 +31,7 @@ load @term/base/code/text
   find split
 
 dock load
-  load <@term/make/code/dev/daemon>, name daemon-module
+  load <@term/call/code/dev/daemon>, name daemon-module
   load <@term/make/code/parser/diagnostic>, name diagnostic-module
   load <node:process>, name node-process
 

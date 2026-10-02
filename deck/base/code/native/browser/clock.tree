@@ -18,3 +18,10 @@ task delay
 task now
   send back
     call get
+
+# what the public `clock/now` reads: monotonic whole milliseconds, as on every backend
+# (note/term/stdlib/semantics.md)
+task current-time
+  like number
+  send back
+    call clock/precise

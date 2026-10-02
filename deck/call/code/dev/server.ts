@@ -10,7 +10,7 @@ import { serve } from '@hono/node-server'
 import { transformSync } from 'esbuild'
 import { readFileSync, realpathSync } from 'fs'
 import { compile } from '@term/make/code/compile/compile'
-import { hashText } from '@term/make/code/compile/cache'
+import { hashText } from '@term/make/code/term/hash'
 import { projectResolver } from '@term/call/code/make'
 import { projectCache } from '@term/call/code/cache-store'
 import { findProjectRoot } from '@term/call/code/boot'
@@ -248,7 +248,7 @@ export function startDevServer(options: DevOptions): DevServer {
   // the app shell: load the client + the entry module
   app.get('/', context =>
     context.html(
-      `<!doctype html>\n<html>\n  <head><meta charset="utf-8" /><title>seed dev</title></head>\n  <body>\n    <script type="module" src="${CLIENT_URL}"></script>\n    <script type="module" src="${entryUrl}"></script>\n${options.boot ? `    <script type="module">import { boot } from "${entryUrl}"; boot()</script>\n` : ''}  </body>\n</html>\n`,
+      `<!doctype html>\n<html>\n  <head><meta charset="utf-8" /><title>term dev</title></head>\n  <body>\n    <script type="module" src="${CLIENT_URL}"></script>\n    <script type="module" src="${entryUrl}"></script>\n${options.boot ? `    <script type="module">import { boot } from "${entryUrl}"; boot()</script>\n` : ''}  </body>\n</html>\n`,
     ),
   )
 

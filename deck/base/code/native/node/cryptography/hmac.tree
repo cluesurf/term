@@ -32,3 +32,21 @@ task hmac-sha512
       read data
   send back
     call updated/digest
+
+# equal without leaking where they differ: node's timingSafeEqual reads every byte, and throws on two lengths, which
+# answer at once here instead
+task equal-secret
+  take left, like bytes
+  take right, like bytes
+  like boolean
+  fork test
+    hook test
+      call is-unequal
+        read left/length
+        read right/length
+    hook hold
+      send back, false
+  send back
+    call crypto/timing-safe-equal
+      read left
+      read right

@@ -1,8 +1,8 @@
-# Zones
+# Views
 
-A `zone` is a UI component. It uses fine-grained reactivity: signals plus direct DOM nodes, no virtual DOM. Reading a signal inside a text node or attribute subscribes that spot, and writing the signal patches only that spot. There is no re-render of the whole component.
+A `view` is a UI component. It uses fine-grained reactivity: signals plus direct DOM nodes, no virtual DOM. Reading a signal inside a text node or attribute subscribes that spot, and writing the signal patches only that spot. There is no re-render of the whole component.
 
-Every zone is lowered to a plain function over a small render runtime, so all backends emit components with no zone-specific code.
+Every view is lowered to a plain function over a small render runtime, `@term/site/code/view/render`, so all backends emit components with no view-specific code. A component was spelled `zone` until 2026-08-30. That head now belongs to the secret system, and `@cluesurf/site/code/zone/...` no longer exists.
 
 Maps to: a SolidJS component (the same signals plus real-DOM model), but written in the uniform `.tree` shape.
 
@@ -10,40 +10,37 @@ Maps to: a SolidJS component (the same signals plus real-DOM model), but written
 
 | `.tree` | Job | Lowers to |
 | --- | --- | --- |
-| `zone <name>` | Declare a component | a function named `<name>` |
+| `view <name>` (top level) | Declare a component | a function named `<name>` |
 | `take host, like view` | The node to mount into (always first param) | the host param |
-| `take <prop>` | An input prop callers fill with `bind` | a param |
-| `zone <tag>` | A child element (`div`, `span`, ...) | `element("tag")` |
-| `zone <component>` | A component call | `component(host, ...props, children)` |
+| `take <prop>, like <type>` | An input prop callers fill with `bind` | a param |
+| `view <tag>` | A child element (`div`, `span`, ...) | `element("tag")` |
+| `view <component>` | A component call | `component(host, ...props, children)` |
+| `node <tag>` | An element even when a component shares its name | `element("tag")` |
 | `text <...>` | A static text node | `text("...")` |
 | `read <expr>` | A reactive text node | `dynamic(() => expr)` |
-| `bind <name>, <value>` | An attribute (on an element) or a prop (on a component) | `attribute(node, name, value)` |
+| `seed <attribute>, <value>` | An attribute on an element | `attribute(node, name, value)` |
+| `bind <prop>, <value>` | A prop on a component | a named argument |
 | `hook <event>, call <fn>` | An event handler | `event(node, "event", () => fn())` |
+| `seed <event>` with a body | An event handler written inline | `event(node, "event", () => body)` |
 | `name <ref>` | Bind the element to a local | a `view` local you can `read` |
 | `site` | The outlet where a caller's children render | append children thunk |
-| `fork` (with `hook test` / `hook hold` / `hook miss`) | Reactive conditional | `show(parent, cond, then, else)` |
+| `fork test` (with `hook test` / `hook hold` / `hook miss`) | Reactive conditional | `show(parent, cond, then, else)` |
 | `walk list, read <xs>` | Reactive list | `each(parent, () => xs, item => view)` |
-| `save x / call make-signal` | Local reactive state | `const x = makeSignal(init)` |
+| `save x` over `call make-signal` | Local reactive state | `const x = makeSignal(init)` |
 
 ## Imports
 
-Bring in only the render primitives the component uses.
+A component file loads the `view` handle type. The render primitives are what the lowering calls, so a component never loads them itself. Load the signal tasks from `@term/site/code/view/reactive` when the component holds state.
 
 ```tree
-load @cluesurf/site/code/zone/render
-  find element
-  find text
-  find dynamic
-  find show
-  find each
-  find append
-  find event
-load @cluesurf/site/code/zone/reactive
+load @term/site/code/dom/dom
+  find view
+
+load @term/site/code/view/reactive
+  find signal
   find make-signal
   find read-signal
   find write-signal
-load @cluesurf/site/code/dom/dom
-  find view
 ```
 
 ## Defining a component
@@ -51,38 +48,49 @@ load @cluesurf/site/code/dom/dom
 The first param is always `host`, the node the component mounts into. Other `take` lines are props.
 
 ```tree
-zone greeting
+load @term/site/code/dom/dom
+  find view
+
+view greeting
   take host, like view
-  take name
-  zone p
-    text <Hello>
+  take name, like text
+  view p
+    text <Hello, >
+    read name
 ```
 
 ## Elements and nesting
 
-A nested `zone <tag>` is a child element.
+A nested `view <tag>` is a child element.
 
 ```tree
-zone card
+load @term/site/code/dom/dom
+  find view
+
+view card
   take host, like view
-  zone div
-    zone h1
+  view div
+    view h1
       text <Title>
-    zone p
+    view p
       text <Body text>
 ```
 
-## Attributes and props with `bind`
+## Attributes with `seed`, props with `bind`
 
-`bind <name>, <value>` binds a value to a name. On an HTML element it is an attribute. On a component it is a prop. The keyword is routed by what the name resolves to. The value is any expression: a literal, a prop read, a signal read.
+`seed <name>, <value>` sets an attribute on an HTML element. `bind <name>, <value>` passes a prop to a component. The value is any expression: a literal, a prop read, a signal read. An attribute whose value reads a prop or a signal is bound reactively.
 
 ```tree
-zone a
+load @term/site/code/dom/dom
+  find view
+
+view sign-in-link
   take host, like view
-  take theme
-  bind href, text </login>
-  bind class, read theme
-  text <Sign in>
+  take theme, like text
+  view a
+    seed href, text </login>
+    seed class, read theme
+    text <Sign in>
 ```
 
 Classes, `href`, `type`, `data-*`, and `aria-*` all pass through verbatim.
@@ -90,56 +98,91 @@ Classes, `href`, `type`, `data-*`, and `aria-*` all pass through verbatim.
 ## Events with `hook`
 
 ```tree
-zone button
+load @term/site/code/dom/dom
+  find view
+
+view send-button
   take host, like view
   take submit
-  hook click, call submit
-  text <Send>
+    like task
+  view button
+    hook click, call submit
+    text <Send>
 ```
 
-`hook <event>, call <handler>` binds an event handler. This is the same `hook` keyword used by `fork` and `walk` for branches.
+`hook <event>, call <handler>` binds an event handler. This is the same `hook` keyword used by `fork` and `walk` for branches. For a handler of more than one call, write `seed click` with the body beneath it, as in [local state](#local-state).
 
 ## Static and reactive text
 
 ```tree
-zone label
+load @term/site/code/dom/dom
+  find view
+
+load @term/site/code/view/reactive
+  find signal
+  find read-signal
+
+view count-label
   take host, like view
-  take count
-  text <count: >
-  read
-    call read-signal
-      bind self, read count
+  take count, like signal number
+  view span
+    text <count: >
+    read
+      call read-signal
+        bind self, read count
 ```
 
 `text <...>` is a static node. `read <expr>` is a reactive text node: it re-reads its expression and patches in place when a signal it reads changes. See [state](state.md) for signals.
 
 ## Element refs with `name`
 
-`name <ref>` binds the built element to a local any handler in the zone can read. Use it to pull a value out of an input.
+`name <ref>` binds the built element to a local any handler in the view can read. Use it to pull a value out of an input with `get-value`.
 
 ```tree
-zone search
+load @term/site/code/dom/dom
+  find view
+  find get-value
+
+view search
   take host, like view
   take run
-  zone input
+    like task
+      take query, like text
+  view input
     name field
-  zone button
-    hook click, call run
+  view button
+    seed click
+      call run
+        call get-value, read field
     text <Go>
 ```
 
 ## Local state
 
-`save x / call make-signal / bind value, <init>` declares reactive state.
+`save x` over `call make-signal` declares reactive state.
 
 ```tree
-zone counter
+load @term/site/code/dom/dom
+  find view
+
+load @term/site/code/view/reactive
+  find make-signal
+  find read-signal
+  find write-signal
+
+view counter
   take host, like view
   save count
     call make-signal
       bind value, code 0
-  zone button
-    hook click, call bump
+  view button
+    seed click
+      call write-signal
+        bind self, read count
+        bind value
+          call add
+            call read-signal, read count
+            code 1
     read
       call read-signal
         bind self, read count
@@ -149,38 +192,49 @@ Read with `read-signal`, write with `write-signal`. The [state](state.md) page c
 
 ## Conditionals
 
-`fork` renders one branch reactively. `hook test` is the condition, `hook hold` the then branch, `hook miss` the else.
+`fork test` renders one branch reactively. `hook test` is the condition, `hook hold` the then branch, `hook miss` the else.
 
 ```tree
-zone status
+load @term/site/code/dom/dom
+  find view
+
+view status
   take host, like view
-  take ready
-  fork
+  take ready, like boolean
+  fork test
     hook test
       read ready
     hook hold
-      zone p
+      view p
         text <ready>
     hook miss
-      zone p
+      view p
         text <loading...>
 ```
 
 ## Lists
 
-`walk list, read <iterable>` with `hook next` and `take site, name <item>` renders one node per item, reconciled reactively.
+`walk list, read <iterable>` with `hook next` and `take site, name <item>` renders one node per item. When the list changes, every row is built again. The runtime's keyed `each-keyed` has no markup that reaches it yet.
 
 ```tree
-zone menu
+load @term/site/code/dom/dom
+  find view
+
+load @term/base/code/list
+  find list
+
+form item
+  link name, like text
+
+view menu
   take host, like view
-  take items
-  zone ul
+  take items, like list
+  view ul
     walk list, read items
       hook next
         take site, name row
-        zone li
-          read
-            read row/name
+        view li
+          read row/name
 ```
 
 ## Slots
@@ -188,25 +242,38 @@ zone menu
 `site` marks where a caller's children render. A component with a site automatically takes a trailing children thunk.
 
 ```tree
-zone card
+load @term/site/code/dom/dom
+  find view
+
+view card
   take host, like view
-  take class
-  zone div
-    bind data-slot, text <card>
-    bind class, read class
+  take class, like text
+  view div
+    seed data-slot, text <card>
+    seed class, read class
     site
 ```
 
 ## Composition
 
-A `zone <name>` whose name is another component is a component call, not an element. Props pass with `bind`. The nested content becomes the site children.
+A `view <name>` whose name is another component is a component call, not an element. Props pass with `bind`. The nested content becomes the site children.
 
 ```tree
-zone page
+load @term/site/code/dom/dom
+  find view
+
+view card
   take host, like view
-  zone card
+  take class, like text
+  view div
+    seed class, read class
+    site
+
+view page
+  take host, like view
+  view card
     bind class, text <p-4>
-    zone h1
+    view h1
       text <Hello>
 ```
 
@@ -214,8 +281,8 @@ zone page
 
 ## Mounting
 
-A top-level component takes `host` (a `view`) and appends its tree to it. Mount it by calling it with the document body, typically from the page entry. Component-to-component nesting needs no separate mount call.
+A top-level component takes `host` (a `view`) and appends its tree to it. Mount it by calling it with the document body, which is what the framework's `host` does for the page a route picks. Component-to-component nesting needs no separate mount call.
 
 ## Why this is clean
 
-Zones lower to ordinary functions in one compiler pass, after type-checking and before emit. The lowering produces generic IR over the render runtime (`element`, `text`, `dynamic`, `show`, `each`, `append`, `event`), so every backend emits components with no zone-specific code. The composition logic lives once, in the lowering, not per backend.
+Views lower to ordinary functions in one compiler pass, after type-checking and before emit. The lowering produces generic IR over the render runtime (`element`, `text`, `dynamic`, `show`, `each`, `append`, `event`), so every backend emits components with no view-specific code. The composition logic lives once, in the lowering, not per backend.

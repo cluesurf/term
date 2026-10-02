@@ -158,7 +158,7 @@ task length
       read value
 
 task kotlin-substring
-  note private
+  mark private
   take value, like text
   take start, like size
   take end, like size
@@ -169,7 +169,7 @@ task kotlin-substring
       read end
 
 task kotlin-substring-from
-  note private
+  mark private
   take value, like text
   take start, like size
   send back
@@ -178,7 +178,7 @@ task kotlin-substring-from
       read start
 
 task kotlin-index-of
-  note private
+  mark private
   take value, like text
   take search, like text
   take start, like size
@@ -189,7 +189,7 @@ task kotlin-index-of
       read start
 
 task kotlin-replace-all
-  note private
+  mark private
   take value, like text
   take search, like text
   take replacement, like text
@@ -200,7 +200,7 @@ task kotlin-replace-all
       read replacement
 
 task kotlin-replace-first
-  note private
+  mark private
   take value, like text
   take search, like text
   take replacement, like text
@@ -211,7 +211,7 @@ task kotlin-replace-first
       read replacement
 
 task kotlin-split
-  note private
+  mark private
   take value, like text
   take separator, like text
   send back
@@ -220,7 +220,7 @@ task kotlin-split
       read separator
 
 task kotlin-join
-  note private
+  mark private
   take list
     like list
       like text
@@ -231,28 +231,28 @@ task kotlin-join
       read separator
 
 task kotlin-trim
-  note private
+  mark private
   take value, like text
   send back
     call strings/trim
       read value
 
 task kotlin-to-upper
-  note private
+  mark private
   take value, like text
   send back
     call strings/upper
       read value
 
 task kotlin-to-lower
-  note private
+  mark private
   take value, like text
   send back
     call strings/lower
       read value
 
 task kotlin-starts-with
-  note private
+  mark private
   take value, like text
   take search, like text
   send back
@@ -261,7 +261,7 @@ task kotlin-starts-with
       read search
 
 task kotlin-ends-with
-  note private
+  mark private
   take value, like text
   take search, like text
   send back
@@ -270,7 +270,7 @@ task kotlin-ends-with
       read search
 
 task kotlin-contains
-  note private
+  mark private
   take value, like text
   take search, like text
   send back
@@ -279,7 +279,7 @@ task kotlin-contains
       read search
 
 task kotlin-length
-  note private
+  mark private
   take value, like text
   send back
     call strings/length

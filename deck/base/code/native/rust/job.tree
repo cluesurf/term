@@ -42,6 +42,14 @@ task do-settle-group
   like void
   send back
 
+task do-settle-any
+  note async
+  take docks
+    like list
+      like job-handle
+  like void
+  send back
+
 # `done`, or `failed` when the work raised and this backend's shim caught it
 task do-state
   take dock, like job-handle

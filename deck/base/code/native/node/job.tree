@@ -50,6 +50,17 @@ task do-settle-group
     read docks
     wait true
 
+# wait until any one job has stopped running, for any reason
+task do-settle-any
+  note async
+  take docks
+    like list
+      like job-handle
+  like void
+  call job/settle-any
+    read docks
+    wait true
+
 # `running`, `done`, `failed` or `cancelled`
 task do-state
   take dock, like job-handle

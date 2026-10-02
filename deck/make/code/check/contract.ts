@@ -262,9 +262,18 @@ function breaksOut(body: Statement[]): boolean {
   return false
 }
 
+// what an accessor lifts onto its callers (liftedOf), one entry per task
+type Lifted = { expr: Expression; origin: HoldOrigin }[]
+
+// the program's tasks, and what each one lifts. Made once per `lowerContracts` call and passed down, so the memo
+// lives exactly as long as the program it describes and no longer.
+type Tasks = { functions: Map<string, Fn>; lifted: Map<Fn, Lifted> }
+
 type Context = {
   // every task of the program, by name, for the `have` owed at each call and the `down` of a self-call
   functions: Map<string, Fn>
+  // what each task lifts onto its callers, memoized for this program
+  lifted: Map<Fn, Lifted>
   // the task whose body is being lowered
   current: Fn
   // the value of the task's `down` on entry, when it has one
@@ -315,7 +324,7 @@ function obligationsIn(
   // the tasks of the program, for the obligations an accessor lifts onto its callers (liftedOf), owed here under the
   // same guards as everything else: the read in `left < length and get(items, left) < x` is owed only where
   // `left < length` held
-  functions?: Map<string, Fn>,
+  tasks?: Tasks,
 ): void {
   // `0 <= index < target/length`, under the guards the expression sits beneath
   const owesIndex = (
@@ -467,8 +476,8 @@ function obligationsIn(
         }
 
         // a call to an accessor owes what the accessor lifted (liftedOf), with the arguments in place
-        if (node.form === 'call' && node.callee.form === 'variable' && functions) {
-          const callee = functions.get(node.callee.name)
+        if (node.form === 'call' && node.callee.form === 'variable' && tasks) {
+          const callee = tasks.functions.get(node.callee.name)
 
           if (callee) {
             const binding = new Map<string, Expression>()
@@ -481,7 +490,7 @@ function obligationsIn(
               }
             })
 
-            for (const { expr, origin } of liftedOf(callee, functions)) {
+            for (const { expr, origin } of liftedOf(callee, tasks)) {
               out.push(hold(guarded(substitute(expr, binding), under, node.span), origin, node.span))
             }
           }
@@ -505,12 +514,14 @@ function owedAt(
   if (context.tier0) {
     const own: Statement[] = []
 
+    const tasks: Tasks = { functions: context.functions, lifted: context.lifted }
+
     for (const expression of expressions) {
-      obligationsIn(expression, guards, own, context.functions)
+      obligationsIn(expression, guards, own, tasks)
     }
 
     // an accessor's own obligations over its parameters are its callers' (liftedOf), so they are not owed here
-    const lifted = liftedOf(context.current, context.functions)
+    const lifted = liftedOf(context.current, tasks)
     owed.push(
       ...(lifted.length > 0
         ? own.filter(s => !(s.form === 'hold' && readsOnlyParams(s.expr, context.current)))
@@ -526,28 +537,26 @@ function owedAt(
 // inside it can settle: whether `index` is inside `self` is the caller's to know. Such an obligation is LIFTED: the
 // accessor assumes it, and every call owes it as the same tier-0 obligation, counted, with the arguments in place.
 // Nothing is lost, and the obligation sits where the context that can prove it is.
-const LIFTED = new WeakMap<object, { expr: Expression; origin: HoldOrigin }[]>()
-
-function liftedOf(
-  fn: Context['current'],
-  functions?: Map<string, Context['current']>,
-): { expr: Expression; origin: HoldOrigin }[] {
-  const known = LIFTED.get(fn)
+//
+// The memo is `tasks.lifted`, made per `lowerContracts` call. It was a module-level WeakMap keyed by the task
+// object, which a Term port cannot spell and a Rust build cannot hold (self-hosting-0022).
+function liftedOf(fn: Fn, tasks: Tasks): Lifted {
+  const known = tasks.lifted.get(fn)
 
   if (known) {
     return known
   }
 
-  const out: { expr: Expression; origin: HoldOrigin }[] = []
+  const out: Lifted = []
   // set before the body is read, so an accessor that reaches itself lifts nothing rather than looping
-  LIFTED.set(fn, out)
+  tasks.lifted.set(fn, out)
   const only = fn.body.length === 1 ? fn.body[0] : undefined
 
   // a task that states its preconditions (`have`) proves its own obligations from them, and keeps them. With the
   // program's tasks, an accessor over an accessor (`matrix-4/get` over the list `get`) lifts what the inner one did
   if (only?.form === 'return' && only.value && !(fn.have?.length ?? 0)) {
     const holds: Statement[] = []
-    obligationsIn(only.value, [], holds, functions)
+    obligationsIn(only.value, [], holds, tasks)
 
     for (const h of holds) {
       if (h.form === 'hold' && h.origin && readsOnlyParams(h.expr, fn)) {
@@ -556,7 +565,7 @@ function liftedOf(
     }
   }
 
-  LIFTED.set(fn, out)
+  tasks.lifted.set(fn, out)
 
   return out
 }
@@ -1034,6 +1043,7 @@ export function lowerContracts(
 
   const fresh = { next: 0 }
   const lowered = new Set<string>()
+  const lifted = new Map<Fn, Lifted>()
 
   for (const statement of copy) {
     if (statement.form !== 'function' || !ownTask(statement)) {
@@ -1043,6 +1053,7 @@ export function lowerContracts(
     lowered.add(statement.name)
     const context: Context = {
       functions,
+      lifted,
       current: statement,
       fresh,
       tier0: options.tier0 === true,

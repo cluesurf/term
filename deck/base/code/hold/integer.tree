@@ -20,7 +20,7 @@ load @term/base/code/bit
 
 form integer
   link list, list integer-32
-    note private
+    mark private
 
 task round-down-to-power-of-two-8
   take x
@@ -175,7 +175,7 @@ task round-up-to-power-of-two-32
 task mix-for-power-rounding
   take a
   take b
-  note private
+  mark private
   like number
   send back
     call bitwise-or

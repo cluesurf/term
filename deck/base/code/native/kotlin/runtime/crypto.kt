@@ -19,4 +19,7 @@ object crypto {
         java.security.SecureRandom().nextBytes(bytes)
         return bytes
     }
+    // equal without leaking where they differ: the JDK's MessageDigest.isEqual reads every byte (since 6u17). A length
+    // difference answers at once
+    fun equalSecret(a: ByteArray, b: ByteArray): Boolean = java.security.MessageDigest.isEqual(a, b)
 }

@@ -6,15 +6,50 @@ form range
   link end, like number
   link step, like number
 
+  # the number of values `to-list` gives: the span over the step, rounded up, and never below zero. Computed from
+  # the remainder so a whole division is all it needs, which reads the same on every backend
+  # A step that is not positive gives no values (`to-list` requires one above zero), so its length is zero, and the
+  # divisions below are by a step the checker knows is positive
   task length
     take self
     like number
-    send back
+    save step, read self/step
+    save span
+      call subtract
+        read self/end
+        read self/start
+    fork test
+      hook test
+        call or
+          call is-maximum
+            read span
+            code 0
+          call is-maximum
+            read step
+            code 0
+      hook hold
+        send back, code 0
+    save rest
+      call modulo
+        read span
+        read step
+    save whole
       call divide
         call subtract
-          read self/end
-          read self/start
-        read self/step
+          read span
+          read rest
+        read step
+    fork test
+      hook test
+        call is-equal
+          read rest
+          code 0
+      hook hold
+        send back, read whole
+    send back
+      call add
+        read whole
+        code 1
 
   task contains
     take self

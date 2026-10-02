@@ -1,0 +1,329 @@
+# Every text operation at its edges, held to note/term/stdlib/semantics.md on every backend by `pnpm term:base-gate`.
+# Positions count code points: `𝄞` (U+1D11E) is one, where JavaScript and Kotlin count two and Swift's grapheme
+# count happens to agree only because it is a single scalar. A test written in ASCII alone would pass on every
+# wrong implementation.
+
+load @term/base/code/text
+  find char-count
+  find char-at
+  find char-code-at
+  find index-of
+  find last-index-of
+  find split
+  find substring
+  find to-lower-case
+  find to-upper-case
+  find trim
+  find trim-start
+  find trim-end
+  find pad-left
+  find pad-right
+  find replace
+  find replace-all
+  find contains
+
+load @term/base/code/list
+  find join
+
+load @term/base/code/ordering
+  find ordering
+  find from-texts
+  find is-less
+
+test <char-count counts an astral character once>
+  want hold
+    call is-equal
+      call char-count
+        text <a𝄞b>
+      code 3
+
+test <char-at reads the astral character whole>
+  want hold
+    call is-equal
+      call char-at
+        text <a𝄞b>
+        code 1
+      text <𝄞>
+
+test <char-at after an astral character is the next code point>
+  want hold
+    call is-equal
+      call char-at
+        text <a𝄞b>
+        code 2
+      text <b>
+
+test <char-at a negative position is empty, never from the end>
+  want hold
+    call is-equal
+      call char-at
+        text <abc>
+        call subtract
+          code 0
+          code 1
+      text <>
+
+test <char-at past the end is empty>
+  want hold
+    call is-equal
+      call char-at
+        text <abc>
+        code 3
+      text <>
+
+test <char-code-at gives the code point, not a surrogate>
+  want hold
+    call is-equal
+      call char-code-at
+        text <a𝄞b>
+        code 1
+      code 119070
+
+test <char-code-at out of range is minus one>
+  want hold
+    call is-equal
+      call char-code-at
+        text <abc>
+        code 9
+      call subtract
+        code 0
+        code 1
+
+test <index-of counts code points>
+  want hold
+    call is-equal
+      call index-of
+        text <a𝄞b>
+        text <b>
+      code 2
+
+test <index-of an empty needle is zero>
+  want hold
+    call is-equal
+      call index-of
+        text <abc>
+        text <>
+      code 0
+
+test <index-of a missing needle is minus one>
+  want hold
+    call is-equal
+      call index-of
+        text <abc>
+        text <z>
+      call subtract
+        code 0
+        code 1
+
+test <last-index-of counts code points>
+  want hold
+    call is-equal
+      call last-index-of
+        text <a𝄞ba>
+        text <a>
+      code 3
+
+test <split on an empty delimiter gives one piece per code point>
+  want hold
+    call is-equal
+      call join
+        call split
+          text <a𝄞b>
+          text <>
+        text <|>
+      text <a|𝄞|b>
+
+test <split keeps empty pieces at both ends>
+  want hold
+    call is-equal
+      call join
+        call split
+          text <,a,,>
+          text <,>
+        text <|>
+      text <|a||>
+
+test <substring counts code points>
+  want hold
+    call is-equal
+      call substring
+        text <a𝄞bc>
+        code 1
+        code 3
+      text <𝄞b>
+
+test <substring swaps reversed bounds>
+  want hold
+    call is-equal
+      call substring
+        text <a𝄞bc>
+        code 3
+        code 1
+      text <𝄞b>
+
+test <substring clamps a negative start to zero>
+  want hold
+    call is-equal
+      call substring
+        text <a𝄞bc>
+        call subtract
+          code 0
+          code 2
+        code 2
+      text <a𝄞>
+
+test <substring clamps an end past the length>
+  want hold
+    call is-equal
+      call substring
+        text <abc>
+        code 1
+        code 99
+      text <bc>
+
+test <to-upper-case maps sharp s to SS>
+  want hold
+    call is-equal
+      call to-upper-case
+        text <straße>
+      text <STRASSE>
+
+test <to-lower-case gives a final sigma>
+  want hold
+    call is-equal
+      call to-lower-case
+        text <ΟΔΟΣ>
+      text <οδος>
+
+test <to-lower-case leaves a dotted capital I as Unicode says, in every locale>
+  want hold
+    call is-equal
+      call to-lower-case
+        text <TITLE>
+      text <title>
+
+test <trim removes a no-break space, which is White_Space>
+  want hold
+    call is-equal
+      call trim
+        text <  x  >
+      text <x>
+
+test <trim keeps a byte order mark, which is not White_Space>
+  want hold
+    call is-equal
+      call char-count
+        call trim
+          text <﻿x>
+      code 2
+
+test <trim-start removes only the start>
+  want hold
+    call is-equal
+      call trim-start
+        text <  x  >
+      text <x  >
+
+test <trim-end removes only the end>
+  want hold
+    call is-equal
+      call trim-end
+        text <  x  >
+      text <  x>
+
+test <pad-left cuts the fill to the exact width>
+  want hold
+    call is-equal
+      call pad-left
+        text <7>
+        code 4
+        text <ab>
+      text <aba7>
+
+test <pad-left leaves a text already at the width>
+  want hold
+    call is-equal
+      call pad-left
+        text <abc>
+        code 2
+        text <x>
+      text <abc>
+
+test <pad-left counts an astral character once>
+  want hold
+    call is-equal
+      call pad-left
+        text <𝄞>
+        code 3
+        text <->
+      text <--𝄞>
+
+test <pad-right cuts the fill to the exact width>
+  want hold
+    call is-equal
+      call pad-right
+        text <7>
+        code 4
+        text <ab>
+      text <7aba>
+
+test <replace touches the first occurrence only>
+  want hold
+    call is-equal
+      call replace
+        text <aaa>
+        text <a>
+        text <b>
+      text <baa>
+
+test <replace with an empty needle inserts at the start>
+  want hold
+    call is-equal
+      call replace
+        text <abc>
+        text <>
+        text <x>
+      text <xabc>
+
+test <replace-all with an empty needle inserts between every code point>
+  want hold
+    call is-equal
+      call replace-all
+        text <a𝄞c>
+        text <>
+        text <x>
+      text <xax𝄞xcx>
+
+test <replace-all does not overlap>
+  want hold
+    call is-equal
+      call replace-all
+        text <aaaa>
+        text <aa>
+        text <b>
+      text <bb>
+
+test <contains an empty needle is true>
+  want hold
+    call contains
+      text <abc>
+      text <>
+
+test <texts order by code point, not by UTF-16 unit>
+  want hold
+    call is-less
+      call from-texts
+        text <～>
+        text <𝄞>
+
+test <a precomposed letter is not equal to its decomposed spelling>
+  want hold
+    call is-unequal
+      text <é>
+      text <é>
+
+test <equal texts are equal>
+  want hold
+    call is-equal
+      text <a𝄞b>
+      text <a𝄞b>

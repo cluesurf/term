@@ -18,7 +18,7 @@ load @term/base/code/native/{platform}/file/asynchronous/handle
 form file
   link dock
     like file-dock
-    note private
+    mark private
   link path, like text
 
 task open

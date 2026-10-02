@@ -27,7 +27,13 @@ const WIDTH = 84
 // why they had to be named: before that, the shape check refused the collapse on its own and a whole loop could
 // never end up on one line. `walk list, read(xs), hook(next, take(site, name(item)), save(n, code 1))` is a real
 // thing this produced, and it is unreadable.
-const ALWAYS_STACK = new Set(['load', 'task', 'form', 'view', 'walk', 'fork', 'hook', 'case'])
+//
+// `deck` is here because a package MANIFEST is a block of fields, one per line, which is how `term wake`,
+// writeManifest (`term move`) and writeLockfile all write it. Without it a fresh scaffold collapsed to
+// `deck demo, bear(./code), test(./test), code <0.0.1>, boot ./code/boot`, so the first project anyone made failed
+// `term form --check` on a file it had never touched. A member line (`deck ./deck/load`) has one leaf child and still
+// prints on one line, because a stacked group keeps one leading atom on its head line.
+const ALWAYS_STACK = new Set(['load', 'task', 'form', 'view', 'walk', 'fork', 'hook', 'case', 'deck'])
 
 // heads that DECLARE rather than call: their children name and type a thing. One of these does not collapse when a
 // non-last child would have to be parenthesized, because such a child is another declaration. See needsParens.
@@ -221,9 +227,17 @@ function wrapComment(text: string, indent: string): string[] {
   return lines
 }
 
-function comments(group: GroupNode, indent: string): string[] {
+// how a tree is printed. `wrap: false` keeps every comment line exactly as written, for a tool that rewrites code
+// and must not also reflow prose (the lean converter): wrapping one physical line at a time breaks a paragraph
+// written at a wider width into ragged halves.
+//
+// `stack` names heads to keep stacked beyond ALWAYS_STACK, for a tool whose output adds body-holding heads the
+// canonical set does not list (the lean converter's `hold` and `miss` arms).
+export type FormatOptions = { wrap?: boolean; stack?: Set<string> }
+
+function comments(group: GroupNode, indent: string, options: FormatOptions): string[] {
   return (group.comments ?? []).flatMap(c =>
-    wrapComment(c.text, indent),
+    options.wrap === false ? [`${indent}${c.text.trim()}`] : wrapComment(c.text, indent),
   )
 }
 
@@ -236,9 +250,9 @@ function hasComment(node: Node): boolean {
   return (node.comments?.length ?? 0) > 0 || node.nodes.some(hasComment)
 }
 
-function formatGroup(group: GroupNode, depth: number): string[] {
+function formatGroup(group: GroupNode, depth: number, options: FormatOptions = {}): string[] {
   const indent = '  '.repeat(depth)
-  const lines = comments(group, indent)
+  const lines = comments(group, indent, options)
   const flat = flatten(group)
 
   // inline when it fits, carries no comments to preserve, and re-parses to the same structure (meaning preserved).
@@ -247,6 +261,7 @@ function formatGroup(group: GroupNode, depth: number): string[] {
   // declarations.
   if (
     !ALWAYS_STACK.has(headName(group)) &&
+    !options.stack?.has(headName(group)) &&
     !group.nodes.some(hasComment) &&
     // a NON-LAST child that would need parentheses is another declaration, not an argument: see needsParens. The
     // last part is exempt for the same reason `flatten` exempts it, and it is the difference between the house
@@ -307,7 +322,7 @@ function formatGroup(group: GroupNode, depth: number): string[] {
   for (const kid of kids.slice(split)) {
     const kidLines =
       kid.kind === 'group'
-        ? formatGroup(kid, depth + 1)
+        ? formatGroup(kid, depth + 1, options)
         : [`${'  '.repeat(depth + 1)}${flatten(kid)}`]
 
     const head =
@@ -340,11 +355,11 @@ function formatGroup(group: GroupNode, depth: number): string[] {
   return lines
 }
 
-export function formatTree(tree: RootNode): string {
+export function formatTree(tree: RootNode, options: FormatOptions = {}): string {
   // one blank line between top-level definitions; comments ride with their group
   return (
     tree.nodes
-      .map(group => formatGroup(group, 0).join('\n'))
+      .map(group => formatGroup(group, 0, options).join('\n'))
       .join('\n\n') + '\n'
   )
 }

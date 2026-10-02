@@ -26,7 +26,7 @@ import {
 import { printDiagnostics } from '@term/call/code/report'
 import { nativePrelude } from '@term/make/code/compile/native'
 import type { NativeEnv } from '@term/make/code/compile/native'
-import { hashText } from '@term/make/code/compile/cache'
+import { hashText } from '@term/make/code/term/hash'
 import {
   projectCache,
   compilerVersion,

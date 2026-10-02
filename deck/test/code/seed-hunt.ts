@@ -1,32 +1,55 @@
 /**
- * The Seed-compiler instantiation of the generic `hunt` engine: wire the
- * compiler's oracles (round-trip, determinism, cross-backend, tolerant,
+ * The Term-compiler instantiation of the generic `hunt` engine: wire the
+ * compiler's oracles (round-trip, determinism, backend-emit, tolerant,
  * crash) and the `.tree` mutator into one orchestrated bug-hunt, with
  * hang-safe fuzzing (a child-process watchdog catches non-terminating
  * inputs). Both the standalone audit script (`compiler-audit.ts`) and the
- * `seed hunt` CLI verb call `huntSeedCompiler` so there is one engine.
+ * `term hunt` CLI verb call `huntSeedCompiler` so there is one engine.
  *
- * The resolver is injected (it lives in `@cluesurf/call`), keeping this
+ * The resolver is injected (it lives in `@term/call`), keeping this
  * package free of a call<->test cycle - same discipline as `prove-file`.
+ *
+ * FAIL CLOSED. A hunt is `ok` only when every check RAN on at least one
+ * input and found nothing. Zero files read, a fuzz child that exited
+ * non-zero or wrote no report, or zero fuzz runs executed is recorded in
+ * `unrun` and fails the hunt, because a check that did not run reads
+ * exactly like a check that passed. Both shapes shipped: the default
+ * corpus path pointed at a directory that no longer existed, and the
+ * built CLI spawned a fuzz campaign at a path that only exists in source.
  */
 
-import { readFileSync, existsSync, mkdtempSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, existsSync, mkdtempSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseTolerant } from '@term/make/code/parser/tree'
 import type { Resolver } from '@term/make/code/compile/load'
-import { auditCorpus, type CorpusAudit } from './compiler-oracles'
+import { auditCorpus, EMIT_BACKENDS, type CorpusAudit } from './compiler-oracles'
 import type { FuzzReport } from './compiler-fuzz'
 
-const HERE = path.dirname(fileURLToPath(import.meta.url))
+/** How to start one fuzz campaign as a child: the campaign's own args are appended. */
+export type FuzzEntry = { command: string; args: string[] }
 
 export type HuntResult = {
   corpus: CorpusAudit
+  // the backends the backend-emit oracle drove (emit only, nothing built or run)
+  backends: string[]
+  fuzz: {
+    // seeds whose campaign finished and wrote a report
+    seedsRun: number
+    seedsAsked: number
+    // mutated inputs actually compiled, summed over the reports
+    runs: number
+    // extra seed programs taken from the hunted files
+    corpusAdded: number
+  }
   crashes: { total: number; signatures: string[] }
   hangs: { input: string }[]
+  // what did not run, in plain words. Non-empty fails the hunt.
+  unrun: string[]
   findings: number
+  ok: boolean
 }
 
 // every `.tree` beneath a directory, or nothing when the directory is absent
@@ -52,30 +75,63 @@ function treeFilesUnder(dir: string, out: string[] = []): string[] {
   return out
 }
 
-/** Run the full Seed-compiler bug-hunt: corpus oracles + watchdog fuzz. */
+// From SOURCE, the campaign is the sibling fuzz-campaign.ts under tsx. Undefined when that file is not beside this
+// module, which is the case inside any bundle: a caller there must pass `fuzzEntry` (the CLI forks itself).
+function sourceFuzzEntry(): FuzzEntry | undefined {
+  let here: string
+  try {
+    here = path.dirname(fileURLToPath(import.meta.url))
+  } catch {
+    return undefined
+  }
+  const campaign = path.join(here, 'fuzz-campaign.ts')
+  // the child runs with the hunted project as its cwd, where tsx would find no tsconfig and so no `@term/*` paths
+  const tsconfig = path.resolve(here, '../../../tsconfig.json')
+  return existsSync(campaign)
+    ? { command: 'npx', args: ['tsx', '--tsconfig', tsconfig, campaign] }
+    : undefined
+}
+
+// the hunted files that make good fuzz seeds: small enough that a mutation is still near a real program
+function fuzzSeedsFrom(root: string, files: string[]): string[] {
+  const out: string[] = []
+  for (const f of files) {
+    if (out.length >= 32) break
+    try {
+      const text = readFileSync(path.resolve(root, f), 'utf8')
+      if (text.length > 0 && text.length <= 4000) out.push(text)
+    } catch {
+      // unreadable files are reported by the corpus phase
+    }
+  }
+  return out
+}
+
+/** Run the full compiler bug-hunt: corpus oracles + watchdog fuzz. */
 export function huntSeedCompiler(input: {
   root: string
   resolve: Resolver
+  // the files to hunt, relative to root or absolute. When given, `glob` is ignored.
+  files?: string[]
+  // a directory under root to walk for `.tree` files, when `files` is not given. There is no default directory:
+  // the CLI passes the project's own files, the way `term make` finds them.
   glob?: string
   runs?: number
   seeds?: number
   perfBudgetMs?: number
   fuzzTimeoutSec?: number
+  fuzzEntry?: FuzzEntry
 }): HuntResult {
   const { root, resolve } = input
-  // the stdlib, at its CURRENT path. This defaulted to `deck/base/code`, the pre-rename location, which has not
-  // existed since the package became `deck/base`: `find` failed, the catch below set the corpus to empty, and the
-  // run reported `no oracle violations` having read nothing at all. A check that passes on an empty corpus is
-  // worse than no check, because it answers the question it was asked.
-  const glob = input.glob ?? 'deck/base/code'
   const runs = input.runs ?? 3000
   const seeds = input.seeds ?? 4
   const fuzzTimeoutSec = input.fuzzTimeoutSec ?? 90
+  const unrun: string[] = []
 
   // ---- phase 1: corpus oracles ----
-  // walked here rather than shelled out to `find`: the old call interpolated `glob` straight into a shell command,
-  // and let `find`'s own stderr through to the user when the path was missing.
-  const files = treeFilesUnder(path.resolve(root, glob)).map(f => path.relative(root, f))
+  const files = (
+    input.files ?? (input.glob ? treeFilesUnder(path.resolve(root, input.glob)) : [])
+  ).map(f => (path.isAbsolute(f) ? path.relative(root, f) : f))
 
   const corpus = auditCorpus({
     files,
@@ -85,65 +141,144 @@ export function huntSeedCompiler(input: {
     perfBudgetMs: input.perfBudgetMs ?? 1000,
   })
 
+  if (corpus.files === 0) {
+    unrun.push(
+      input.files === undefined && input.glob
+        ? `corpus oracles: no .tree files read under ${input.glob}`
+        : 'corpus oracles: no .tree files read',
+    )
+  }
+  if (corpus.unreadable.length > 0) {
+    unrun.push(`corpus oracles: ${corpus.unreadable.length} file(s) could not be read (${corpus.unreadable.slice(0, 3).join(', ')})`)
+  }
+  if (corpus.files > 0 && corpus.compiled === 0) {
+    unrun.push(`backend emit: none of the ${corpus.files} file(s) compiled, so no backend emitted anything`)
+  }
+
   // ---- phase 2: hang-safe fuzzing (child-process watchdog) ----
-  const campaign = path.join(HERE, 'fuzz-campaign.ts')
+  const entry = input.fuzzEntry ?? sourceFuzzEntry()
   const signatures = new Set<string>()
   const hangs: { input: string }[] = []
   let totalCrashes = 0
+  let seedsRun = 0
+  let fuzzRuns = 0
+  const extraSeeds = fuzzSeedsFrom(root, files)
 
-  for (let seed = 1; seed <= seeds; seed++) {
-    const work = mkdtempSync(path.join(tmpdir(), 'seed-hunt-'))
-    const reportOut = path.join(work, 'report.json')
-    const probeFile = path.join(work, 'probe.tree')
+  if (!entry) {
+    unrun.push('fuzzing: no fuzz campaign entry (fuzz-campaign.ts is not beside this module and none was passed)')
+  } else if (seeds < 1 || runs < 1) {
+    unrun.push(`fuzzing: asked for ${seeds} seed(s) of ${runs} run(s), so nothing was fuzzed`)
+  } else {
+    const work = mkdtempSync(path.join(tmpdir(), 'term-hunt-'))
+    const corpusFile = path.join(work, 'corpus.json')
+    writeFileSync(corpusFile, JSON.stringify(extraSeeds))
 
-    const child = spawnSync(
-      'npx',
-      ['tsx', campaign, reportOut, probeFile, String(runs), String(seed)],
-      { timeout: fuzzTimeoutSec * 1000, encoding: 'utf8', cwd: root },
-    )
-    const hung = child.error !== undefined && (child.error as NodeJS.ErrnoException).code === 'ETIMEDOUT'
+    for (let seed = 1; seed <= seeds; seed++) {
+      const reportOut = path.join(work, `report-${seed}.json`)
+      const probeFile = path.join(work, `probe-${seed}.tree`)
 
-    if (hung) {
-      hangs.push({ input: existsSync(probeFile) ? readFileSync(probeFile, 'utf8') : '(probe missing)' })
-    } else if (existsSync(reportOut)) {
-      const report = JSON.parse(readFileSync(reportOut, 'utf8')) as FuzzReport
+      const child = spawnSync(
+        entry.command,
+        [...entry.args, reportOut, probeFile, String(runs), String(seed), corpusFile],
+        { timeout: fuzzTimeoutSec * 1000, encoding: 'utf8', cwd: root },
+      )
+      const hung = child.error !== undefined && (child.error as NodeJS.ErrnoException).code === 'ETIMEDOUT'
+
+      if (hung) {
+        // a hang is a finding only with the input that hung. With no probe the watchdog fired before the campaign
+        // wrote its first input (startup, or a timeout too short to load the compiler), which is a run that did not
+        // happen, not a compiler that looped.
+        if (existsSync(probeFile)) {
+          hangs.push({ input: readFileSync(probeFile, 'utf8') })
+        } else {
+          unrun.push(
+            `fuzz seed ${seed}: the ${fuzzTimeoutSec}s watchdog fired before the campaign wrote its first input`,
+          )
+        }
+        continue
+      }
+
+      if (child.error !== undefined) {
+        unrun.push(`fuzz seed ${seed}: could not start ${entry.command}: ${child.error.message}`)
+        continue
+      }
+
+      if (child.status !== 0) {
+        const why = child.status === null ? `was killed by ${child.signal}` : `exited ${child.status}`
+        // the error line, not the last line: node ends a crash with its own version banner
+        const lines = (child.stderr ?? '').split('\n').map(l => l.trim()).filter(l => l.length > 0)
+        const tail = (lines.find(l => /error/i.test(l)) ?? lines.slice(-1)[0] ?? '').slice(0, 300)
+        unrun.push(`fuzz seed ${seed}: the campaign ${why}${tail ? `: ${tail}` : ''}`)
+        continue
+      }
+
+      if (!existsSync(reportOut)) {
+        unrun.push(`fuzz seed ${seed}: the campaign exited 0 but wrote no report`)
+        continue
+      }
+
+      let report: FuzzReport
+      try {
+        report = JSON.parse(readFileSync(reportOut, 'utf8')) as FuzzReport
+      } catch (e) {
+        unrun.push(`fuzz seed ${seed}: unreadable report: ${e instanceof Error ? e.message : String(e)}`)
+        continue
+      }
+
+      seedsRun++
+      fuzzRuns += report.runs
       totalCrashes += report.crashes.length
       for (const c of report.crashes) signatures.add(c.error.split('\n')[0]!.slice(0, 100))
+    }
+
+    if (seedsRun > 0 && fuzzRuns === 0) {
+      unrun.push('fuzzing: the campaigns finished but executed zero runs')
     }
   }
 
   const findings = corpus.violations.length + signatures.size + hangs.length
   return {
     corpus,
+    backends: EMIT_BACKENDS.map(b => b.name),
+    fuzz: { seedsRun, seedsAsked: seeds, runs: fuzzRuns, corpusAdded: extraSeeds.length },
     crashes: { total: totalCrashes, signatures: [...signatures] },
     hangs,
+    unrun,
     findings,
+    ok: findings === 0 && unrun.length === 0,
   }
 }
 
 /** Render a hunt result as a terminal report. */
 export function renderHunt(result: HuntResult): string {
   const out: string[] = []
-  out.push(`=== corpus oracles: ${result.corpus.files} files ===`)
+  const c = result.corpus
+  out.push(`=== corpus oracles: ${c.files} file(s) read, ${c.compiled} compiled ===`)
 
   // An EMPTY corpus is not a clean one, and saying so is the whole point. This reported `no oracle violations`
   // over zero files for as long as the default glob pointed at the pre-rename `deck/base/code`: the oracles held
   // vacuously, and the line read exactly like a real pass.
-  if (result.corpus.files === 0) {
-    out.push('  NO FILES READ, so the oracles held over nothing. Check the corpus path.')
-  } else if (result.corpus.violations.length === 0) {
-    out.push('  no oracle violations (round-trip, determinism, cross-backend, tolerant all hold)')
+  if (c.files === 0) {
+    out.push('  NO FILES READ, so no oracle ran.')
+  } else if (c.violations.length === 0) {
+    out.push(`  no oracle violations (round-trip, determinism, tolerant parse; backend emit on ${c.compiled} compiled file(s))`)
   } else {
-    out.push(`  ${result.corpus.violations.length} VIOLATION(S):`)
-    for (const v of result.corpus.violations.slice(0, 20)) {
+    out.push(`  ${c.violations.length} VIOLATION(S):`)
+    for (const v of c.violations.slice(0, 20)) {
       out.push(`    [${v.violation.oracle}] ${v.file}: ${v.violation.detail}`)
     }
   }
-  out.push('  slowest files:')
-  for (const s of result.corpus.slowest) out.push(`    ${s.ms.toFixed(0)}ms  ${s.file}`)
+  out.push(`  backend emit: ${result.backends.join(', ')}. Emit only: nothing is built, run or compared across backends.`)
+  if (c.slowest.length > 0) {
+    out.push('  slowest files:')
+    for (const s of c.slowest) out.push(`    ${s.ms.toFixed(0)}ms  ${s.file}`)
+  }
 
   out.push('')
-  out.push('=== fuzzing ===')
+  const f = result.fuzz
+  out.push(
+    `=== fuzzing: ${f.runs} run(s) over ${f.seedsRun} of ${f.seedsAsked} seed(s), corpus ${f.corpusAdded} project file(s) + defaults ===`,
+  )
   if (result.hangs.length > 0) {
     out.push(`  ${result.hangs.length} HANG(S):`)
     for (const h of result.hangs) out.push(h.input.split('\n').map(l => '      | ' + l).join('\n'))
@@ -153,10 +288,24 @@ export function renderHunt(result: HuntResult): string {
     for (const sig of result.crashes.signatures) out.push(`    - ${sig}`)
   }
   if (result.hangs.length === 0 && result.crashes.signatures.length === 0) {
-    out.push('  no crashes, no hangs')
+    out.push(f.runs > 0 ? '  no crashes, no hangs' : '  NOTHING FUZZED')
+  }
+
+  if (result.unrun.length > 0) {
+    out.push('')
+    out.push('=== did not run ===')
+    for (const u of result.unrun) out.push(`  - ${u}`)
   }
 
   out.push('')
-  out.push(`=== hunt ${result.findings === 0 ? 'CLEAN' : `found ${result.findings} issue(s)`} ===`)
+  const emitted = c.compiled > 0 ? result.backends.length : 0
+  const counts = `${c.files} file(s) read, ${f.runs} fuzz run(s), ${emitted} backend(s) emitted`
+  if (result.ok) {
+    out.push(`=== hunt CLEAN: ${counts} ===`)
+  } else if (result.findings > 0) {
+    out.push(`=== hunt FOUND ${result.findings} issue(s): ${counts} ===`)
+  } else {
+    out.push(`=== hunt INCOMPLETE, ${result.unrun.length} check(s) did not run: ${counts} ===`)
+  }
   return out.join('\n')
 }

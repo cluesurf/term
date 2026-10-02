@@ -12,11 +12,11 @@ Maps to: FFI / platform bindings, `import` of a host module, conditional compila
 | `load <node:fs/promises>, name fs` | bind host module `fs/promises` as `fs` |
 | `load <global:json>, name json` | bind a global host object as `json` |
 | `call fs/read-file` | call `readFile` on the bound module |
-| `load @term/base/code/native/file` | load the platform-dispatched native layer |
+| `load @term/base/code/native/{platform}/file` | load the platform-dispatched native layer |
 | `note async` | mark a native wrapper async (most host IO is) |
-| `mark native` | mark a task as backed by a host implementation |
-| `mark platform, name x` | gate a definition to platform `x` |
-| `mark feature, name x` | gate a definition behind feature `x` |
+| `note native` | note that a task is backed by a host implementation |
+| `note platform, name x` | note that a definition is meant for platform `x` |
+| `note feature, name x` | note that a definition belongs to feature `x` |
 
 Module address forms inside `dock load`:
 
@@ -85,13 +85,13 @@ Capabilities that exist on every host (files, time, crypto) follow one shape so 
 2. **Native wrapper** in `code/native/<platform>/<x>.tree`. One file per host, each `dock load`-ing that host's module.
 3. **Runtime shim** in `code/native/<platform>/runtime/<x>.ext` when the host needs glue beyond a direct call.
 
-The public file imports `@term/base/code/native/<x>` by name. The compiler resolves that import to the native file for the target it is building, so the public file never names a platform.
+The public file imports `@term/base/code/native/{platform}/<x>`, with the platform slot spelled as `{platform}`. The compiler fills the slot with the target it is building, so the public file never names a platform.
 
 The public layer:
 
 ```tree
 # code/file.tree
-load @term/base/code/native/file
+load @term/base/code/native/{platform}/file
   find read-file
   find write-file
 
@@ -141,33 +141,37 @@ task write-file
 
 A Rust native layer would live at `code/native/rust/file.tree`, expose the same `read-file` and `write-file` task names, and dock `std::fs` instead. Because every backend exports the same task names, the public file in step 1 is identical for all targets. A caller writes `call read, read path` and never knows which host answered.
 
-## Per-platform marks
+## Per-platform notes
 
-When a single definition is only valid on some hosts, gate it with a mark rather than splitting the file.
+When a single definition is only meant for some hosts, say so with a `note`.
 
 ```tree
+dock load
+  load <node:fs>, name fs
+
 task watch-folder
-  mark platform, name node
-  note async
+  note platform, name node
   take path, like text
   like void
-  send back
-    call do-watch
-      read path
+  call fs/watch
+    read path
 ```
 
-`mark platform, name node` keeps `watch-folder` in the build only when targeting Node. On other targets it is absent, so referencing it there is a compile error rather than a runtime surprise. Use `mark feature, name x` the same way to gate a definition behind an optional feature.
+`note platform, name node` records that `watch-folder` is meant for Node. It is metadata like every other `note`: the build does not drop the task on other targets. To keep a capability off a host, give it a native file per platform with the three-layer pattern above, so a target with no native file has nothing to resolve. `note feature, name x` records an optional feature the same way.
 
-`mark native` labels a task whose body is supplied by a host implementation rather than Term code. It pairs with the native wrapper that actually docks the module.
+`note native` labels a task whose body is supplied by a host implementation rather than Term code. It pairs with the native wrapper that actually docks the module.
 
 ## Opaque host handles
 
 A native module often returns a value Term should not inspect, only pass back. Hold it in a field typed as a handle, marked private.
 
 ```tree
+load @term/base/code/native/{platform}/mutex
+  find do-lock
+
 form mutex
-  link dock, note private
-    like mutex-handle
+  link dock, like mutex-handle
+    mark private
 
   task lock
     note async
@@ -184,6 +188,6 @@ form mutex
 
 - One host, a quick host call: a single `dock load` plus tasks in one file.
 - A capability on every host: the three-layer pattern, one public file and one native file per platform.
-- One definition valid on some hosts only: keep it in place, add `mark platform, name x`.
+- One definition valid on some hosts only: a native file per host that has it, and a `note platform, name x` to say so where it is defined.
 
 See also [modules](modules.md) for `load` and `find`, [async](async.md) for `note async` and `wait`, and [conventions](conventions.md) for the `code/native/<platform>/` layout.

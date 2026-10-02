@@ -936,12 +936,13 @@ function runSwiftText(
   if (!have('swiftc')) {return skipped(name, 'swiftc not installed')}
 
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
-  const callCompute = isAsync ? 'await compute()' : 'compute()'
+  const emitted = emitSwift(program)
+  // a `compute` that can raise `throws`, so the call is a `try!`: an unhandled raise ends the program, as everywhere
+  const throwing = /func compute\(\)[^{]*\bthrows\b/.test(emitted)
+  const callCompute = `${throwing ? 'try! ' : ''}${isAsync ? 'await compute()' : 'compute()'}`
   writeFileSync(
     file,
-    `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(
-      program,
-    )}\nprint(${callCompute}, terminator: "")\n`,
+    `${nativePrelude(program, 'swift', readRuntime)}\n${emitted}\nprint(${callCompute}, terminator: "")\n`,
   )
 
   const exe = file.replace(/\.swift$/, '')
@@ -1038,14 +1039,20 @@ function runRustCargo(
   writeFileSync(join(proj, 'src', 'main.rs'), 'fn main() {}\n')
 
   const prelude = nativePrelude(program, 'rust', readRuntime)
+  const emitted = emitRust(program)
+  // a `compute` that can raise returns `Result<T, TermException>` (the result lowering), so main reports the raise
+  // and exits non-zero, the way an unhandled raise ends a program on every backend
+  const raising = /fn compute\(\)[^{]*-> std::result::Result</.test(emitted)
+  const value = isAsync ? 'compute().await' : 'compute()'
+  const shown = raising ? `${value}.unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) })` : value
   const main = isAsync
-    ? `\n#[tokio::main]\nasync fn main() { print!("{}", compute().await); }\n`
-    : `\nfn main() { print!("{}", compute()); }\n`
+    ? `\n#[tokio::main]\nasync fn main() { print!("{}", ${shown}); }\n`
+    : `\nfn main() { print!("{}", ${shown}); }\n`
   const bin = `p_${name.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}`.slice(0, 80)
 
   writeFileSync(
     join(proj, 'src', 'bin', `${bin}.rs`),
-    `${prelude}\n${emitRust(program)}${main}`,
+    `${prelude}\n${emitted}${main}`,
   )
 
   // built with every other cargo program in one `cargo build --bins` at the flush, then run from target/debug
@@ -2127,6 +2134,46 @@ task compute
           code 1
         text <B>
 `
+// preemption budget (design 5): an asynchronous task's 100,000-turn loop checks the budget and yields, and its
+// 16-turn loop, bounded by a small literal, does not check at all
+const BUDGET_PROG = `load @term/base/code/clock
+  find sleep
+
+task compute
+  note async
+  like boolean
+  call sleep
+    code 1
+    wait true
+  save total, code 0
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        code 100000
+    hook hold
+      save total, call increment(read total)
+      save i, call increment(read i)
+  save small, code 0
+  save j, code 0
+  walk test
+    hook test
+      call is-below
+        read j
+        code 16
+    hook hold
+      save small, call increment(read small)
+      save j, call increment(read j)
+  send back
+    call and
+      call is-equal
+        read total
+        code 100000
+      call is-equal
+        read small
+        code 16
+`
 // a typed channel carrying a form with variants, received by fork case
 const VARIANT_CHANNEL_PROG = `load @term/base/code/channel
   find make-channel
@@ -2690,13 +2737,16 @@ task compute
 `
 
 // clock: monotonic now() is positive
+// clock/now is MONOTONIC milliseconds on every backend since 2026-10-02 (note/term/stdlib/semantics.md), counted from
+// the program's first reading on Rust and Swift and from process start on node, so the first reading can be 0. What
+// it promises is never negative; a positive wall clock is time/now
 const CLOCK_PROG = `load @term/base/code/clock
   find now
 
 task compute
   like boolean
   send back
-    call is-above
+    call is-minimum
       call now
       code 0
 `
@@ -3579,6 +3629,15 @@ async function main(): Promise<void> {
   runRustCargo('rust + cargo: job spawn + wait + gather', frontEnd(JOB_PROG, true, 'rust'), 'true', true)
   runKotlinText('kotlin + job: spawn + wait + gather', frontEnd(JOB_PROG, true, 'kotlin'), 'true', true)
   runSwiftText('swift + job: spawn + wait + gather', frontEnd(JOB_PROG, true, 'swift'), 'true', true)
+  // preemption budget: the long asynchronous loop checks it, the short constant-bounded one does not, and it runs
+  if (!skip_filtered('rust: budget check in the long loop only')) {
+    const emitted = emitRust(frontEnd(BUDGET_PROG, true, 'rust'))
+    const checks = emitted.split('__term_budget().await').length - 1
+
+    ok('rust: budget check in the long loop only', String(checks), '1')
+  }
+
+  runRustCargo('rust + cargo: a budgeted loop runs to its answer', frontEnd(BUDGET_PROG, true, 'rust'), 'true', true)
   // a typed channel carrying a variant form
   runRustCargo('rust + cargo: channel of a variant form', frontEnd(VARIANT_CHANNEL_PROG, true, 'rust'), 'true', true)
   runKotlinText('kotlin + channel: a variant form', frontEnd(VARIANT_CHANNEL_PROG, true, 'kotlin'), 'true', true)

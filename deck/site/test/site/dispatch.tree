@@ -68,6 +68,9 @@ load @term/base/code/maybe
 # the row values the page holds ids for
 host row-handles
   make hash
+  like hash
+    like text
+    like row
 
 # the items of a json array, as a list whose element the checker knows
 task items-of

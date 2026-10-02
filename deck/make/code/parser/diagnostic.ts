@@ -269,6 +269,30 @@ export const CATALOG = {
     severity: 'error',
     fix: 'the relaxations are `float-order` and `float-fused` (note/term/optimize/words.md)',
   },
+  // A supervision tree OTP would start and then misbehave: a `transient` worker restarts only when it raises, so one
+  // whose work can raise nothing never restarts, and is a `temporary` under a misleading name (check/supervise.ts)
+  'dead-restart': {
+    code: 0x23,
+    message: 'this transient worker can never restart',
+    severity: 'error',
+    fix: 'make it `temporary` if it is meant to run once, or let its work raise the failure it should restart on',
+  },
+  // `mark private` on a task makes it visible only inside the file that defines it. Until 2026-10-02 the mark was
+  // read and nothing held anyone to it: names are package-global, so another file could call the task, or `find`
+  // it in a `load`, and the output exported it (check/private.ts).
+  'private-name': {
+    code: 0x24,
+    message: 'this name is private to another file',
+    severity: 'error',
+    fix: 'remove `mark private` from the definition, or use it only from the file that defines it',
+  },
+  // `note private` is the old spelling. Still honored, so code written before the change keeps building.
+  'note-private': {
+    code: 0x25,
+    message: '`note private` is the old spelling of `mark private`',
+    severity: 'warning',
+    fix: 'write `mark private`: privacy is a mark the compiler enforces, and a `note` is documentation',
+  },
 } satisfies Record<string, CatalogEntry>
 
 export type DiagnosticName = keyof typeof CATALOG

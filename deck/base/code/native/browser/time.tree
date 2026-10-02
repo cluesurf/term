@@ -1,0 +1,12 @@
+
+# Browser time implementation: the page's own clock, the same `Date` global node reads. Webview and cloudflare borrow
+# it. Without one, every page program that raised an exception failed to build, since an exception carries the time
+# it was raised (exception.tree loads time). Internal: reached only through the public time API.
+
+dock load
+  load <global:Date>, name date
+
+task epoch-millis
+  like number
+  send back
+    call date/now

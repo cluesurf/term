@@ -2,7 +2,7 @@
 // HTTP, so the LSP, `term feed`, and the CLI share one warm compiler instead of each cold-starting. Stays alive until
 // interrupted. See code/dev/daemon.ts.
 
-import { startDaemon } from '@term/make/code/dev/daemon'
+import { startDaemon } from '@term/call/code/dev/daemon'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import {
   logStep,

@@ -39,7 +39,7 @@ The core of the language. If you want to know how to write *anything*, it is her
 
 Term's type system can prove things. These pages show how to state and discharge a claim.
 
-- [readme](math/readme.md) -- `rule` / `show hold`: proving with `calm`, `fold`, `cite`, `auto`
+- [readme](math/readme.md) -- `rule` / `show hold`: proving with `calm`, `fold`, `cite`, `seek`
 - [induction](math/induction.md) -- proving universal laws by structural induction
 - [datatypes](math/datatypes.md) -- inductive families, equality, higher types
 
@@ -68,12 +68,16 @@ Common tasks with the bundled library.
 ## The one-minute orientation
 
 ```tree
+# bring a task in from the standard library
+load @term/base/code/text/string
+  find concat
+
 # a function: take inputs, name a return type, send a value back
 task greet
   take name, like text
   like text
   send back
-    call join
+    call concat
       text <hello, >
       read name
 
@@ -93,12 +97,14 @@ task area
       link radius
       send back
         call multiply
-          call multiply, read radius, read radius
+          call multiply
+            read radius
+            read radius
           code 3
     case square
       link side
       send back
-        call multiply, read side, read side
+        call multiply(read(side), read(side))
 ```
 
 If that reads cleanly, you already know how to read Term. The rest of the book fills in the vocabulary.

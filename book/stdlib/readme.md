@@ -18,7 +18,7 @@ Every module lives at `@term/base/code/<name>`. Load the form or task you need w
 | boolean | `code/boolean` | `and`, `or`, `not` |
 | maybe | `code/maybe` | an optional value (`some` / `none`) |
 | result | `code/result` | a success-or-error value (`okay` / `error`) |
-| list | `code/list` | the array type and its map / filter / reduce / sort verbs |
+| list | `code/list` | the array type and its `map`, `filter`, `reduce`, `find`, `reverse`, `unique` and `slice` methods (there is no sort) |
 | hash | `code/hash` | a key-value map |
 | set | `code/set` | a collection of unique values |
 | pair | `code/pair` | a two-value tuple |

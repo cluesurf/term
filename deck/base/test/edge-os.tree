@@ -1,0 +1,66 @@
+# The process and its environment read the same on every backend: a program's own arguments never include the
+# runtime or the program (each run here passes none), a variable set is read back, and one removed is gone. Held by
+# `pnpm term:base-gate`.
+
+load @term/base/code/environment
+  find directory
+  find variable
+  find has-variable
+  find set-variable
+  find remove-variable
+
+load @term/base/code/process/current
+  find process-info
+  find read
+
+load @term/base/code/list
+  find size
+
+load @term/base/code/text
+  find char-count
+
+test <a program run with no arguments has none>
+  save info
+    call read
+  want hold
+    call is-equal
+      call size
+        read info/arguments
+      code 0
+
+test <the working directory is named>
+  want hold
+    call is-above
+      call char-count
+        call directory
+      code 0
+
+test <a variable that is set reads back>
+  call set-variable
+    text <TERM_BASE_GATE_PROBE>
+    text <a b>
+  want hold
+    call and
+      call has-variable
+        text <TERM_BASE_GATE_PROBE>
+      call is-equal
+        call variable
+          text <TERM_BASE_GATE_PROBE>
+        text <a b>
+
+test <a variable that is removed is gone>
+  call set-variable
+    text <TERM_BASE_GATE_GONE>
+    text <x>
+  call remove-variable
+    text <TERM_BASE_GATE_GONE>
+  want hold
+    call and
+      call is-equal
+        call has-variable
+          text <TERM_BASE_GATE_GONE>
+        false
+      call is-equal
+        call variable
+          text <TERM_BASE_GATE_GONE>
+        text <>

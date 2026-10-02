@@ -5,6 +5,9 @@ load @term/base/code/maybe
   find maybe
   find unwrap-or
 
+load @term/base/code/pair
+  find pair
+
 form hash
   head k
   head v
@@ -118,6 +121,92 @@ form hash
         call self/delete
           read key
     send back, read self
+
+  # every entry as a pair of its key (`first`) and value (`second`), in the order the keys were first set, the same
+  # order on every backend (note/term/stdlib/semantics.md)
+  task entries
+    take self
+    like list
+      like pair
+        head k
+        head v
+    # the keys and values side by side, each a typed list, so a value is a `v` on every backend (read back through
+    # the host `get`, Kotlin typed it `Any` and the pair would not build)
+    save ks
+      call keys
+        read self
+    save vs
+      call values
+        read self
+    save out
+      make list
+    save at, code 0
+    walk list, read ks
+      hook next
+        take site, name key
+        call out/push
+          make pair
+            bind first, read key
+            bind second, read vs/{at}
+        save at
+          call add
+            read at
+            code 1
+    send back, read out
+
+  # set `key` to `call` of its value, or of `fallback` when it has none, returning the new value. A key that was
+  # absent goes at the end of the order, one that was present keeps its place
+  task change
+    take self
+    take key, like k
+    take fallback, like v
+    take call
+      like task
+        take value, like v
+        like v
+    like v
+    save value
+      call call
+        call get-or-default
+          read self
+          read key
+          read fallback
+    call self/set
+      read key
+      read value
+    send back, read value
+
+  # a new map with the same keys in the same order, each value passed through `call`
+  task map-values
+    head w
+    take self
+    take call
+      like task
+        take value, like v
+        like w
+    like hash
+      like k
+      like w
+    save vs
+      call values
+        read self
+    save out
+      make find
+    save at, code 0
+    walk list
+      call keys
+        read self
+      hook next
+        take site, name key
+        call out/set
+          read key
+          call call
+            read vs/{at}
+        save at
+          call add
+            read at
+            code 1
+    send back, read out
 
   # copy every entry of `other` into `self`, overwriting on key collision, returning `self`
   task merge

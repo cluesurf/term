@@ -4,7 +4,7 @@
 // changed and reuse the rest, instead of re-lexing the whole file on every keystroke. The blocks partition the source
 // exactly: `blocks.map(b => b.text).join('\n') === source`.
 
-import { hashText } from '@term/make/code/compile/cache'
+import { hashText } from '@term/make/code/term/hash'
 import { parse } from '@term/make/code/parser/tree'
 import type {
   RootNode,

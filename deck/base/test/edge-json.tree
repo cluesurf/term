@@ -1,0 +1,120 @@
+# JSON acceptance is the same on every backend: `json/check` accepts exactly RFC 8259's texts and refuses the rest with
+# the same position and reason (note/term/stdlib/semantics.md). Held by `pnpm term:base-gate`. A backslash is built
+# from its code point, so no escape in this file depends on how a text literal reads one.
+
+load @term/base/code/json/check
+  find check-json
+  find json-mismatch
+
+load @term/base/code/text/unicode
+  find rune-to-text
+
+task slash
+  like text
+  send back
+    call rune-to-text, code 92
+
+task accepts
+  take text, like text
+  like boolean
+  note unsafe
+    call check-json, read text
+    send back, true
+  halt take
+    take problem
+    send back, false
+
+task why
+  take text, like text
+  like text
+  note unsafe
+    call check-json, read text
+    send back, text <ok>
+  halt take
+    take problem
+    fork case, read problem
+      case json-mismatch
+        send back, text <{{at}} {{reason}}>
+
+test <an object of every kind of value is JSON>
+  want hold
+    call accepts
+      text < \{"a": [1, -2.5e3, 0.5, true, false, null, "x"], "b": \{\}\} >
+
+test <a bare number is JSON>
+  want hold
+    call accepts, text <42>
+
+test <a string with escapes is JSON>
+  save s, call slash
+  want hold
+    call accepts
+      text <"{{s}}n{{s}}t{{s}}"{{s}}u00e9{{s}}ud834{{s}}udd1e">
+
+test <a trailing comma is not JSON>
+  want hold
+    call is-equal
+      call why, text <[1,]>
+      text <3 a value cannot start here>
+
+test <a leading zero is not JSON>
+  want hold
+    call is-equal
+      call why, text <01>
+      text <1 text follows the value>
+
+test <a fraction needs a digit after the point>
+  want hold
+    call is-equal
+      call why, text <1.>
+      text <2 a digit is missing>
+
+test <a single-quoted string is not JSON>
+  want hold
+    call is-equal
+      call why, text <'a'>
+      text <0 a value cannot start here>
+
+test <a lone surrogate escape is not JSON>
+  save s, call slash
+  want hold
+    call is-equal
+      call why
+        text <"{{s}}ud800">
+      text <1 an escaped surrogate must be a pair>
+
+test <an unclosed string is not JSON>
+  want hold
+    call is-equal
+      call why, text <"abc>
+      text <0 a string is not closed>
+
+test <text after the value is not JSON>
+  want hold
+    call is-equal
+      call why, text <1 2>
+      text <2 text follows the value>
+
+test <an empty text is not JSON>
+  want hold
+    call is-equal
+      call why, text <   >
+      text <3 a value is missing>
+
+test <a key needs a colon>
+  want hold
+    call is-equal
+      call why, text <\{"a" 1\}>
+      text <5 a key must be followed by a colon>
+
+test <a misspelled literal is not JSON>
+  want hold
+    call is-equal
+      call why, text <tru>
+      text <3 a literal is misspelled>
+
+test <positions count code points>
+  want hold
+    call is-equal
+      call why, text <["𝄞",]>
+      text <5 a value cannot start here>

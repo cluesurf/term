@@ -177,8 +177,10 @@ task guard-cycle
             read open
             read name
         hook hold
+          # the list's own method, called on it: a bare `copy` binds to a top-level `copy` when the program has one,
+          # which `file` brings (from, to), and a top-level task shadows a form method of its name
           save chain
-            call copy(read expanding)
+            call expanding/copy
           call push
             read chain
             read name

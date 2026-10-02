@@ -5,6 +5,18 @@
 // language was renamed), imported `@term/base` (the legacy prefix, which resolves but is not the name any more),
 // and its entry comment was 87 characters, so a new project failed `term lint` on the line the scaffold itself
 // wrote. test/call/lifecycle.ts runs `wake` then `lint` and holds it.
+//
+// Three more, found writing the getting-started guide on 2026-10-02, all held by the same test:
+//
+// - Every file is written in `term form`'s canonical layout, so `term form --check` passes on a project nobody has
+//   touched yet. The entry's comment sits directly above its `load` and the one-argument `call log` is on one line,
+//   because that is what the formatter prints. The manifest stays stacked because the formatter now keeps `deck`
+//   stacked (deck/make/code/format/format.ts, ALWAYS_STACK), which is how writeManifest writes it too.
+// - The version starts at 0.0.2. `term host` refuses an odd patch, and 0.0.1 made a fresh project unpublishable
+//   until its owner found the rule. `term move code` goes 0.0.2 -> 0.0.4.
+// - The name is the user's, UNSCOPED (`deck hello`). The manifest grammar accepts it, `term make` reads it as the
+//   manifest (deck/call/code/manifest-name.ts), and `term host` asks for a scope only when it is about to publish.
+//   Inventing one here (`@hello/hello`) would put a registry decision in a file before anyone has made it.
 
 import fsp from 'fs/promises'
 import path from 'path'
@@ -16,23 +28,22 @@ import {
   name as tintName,
 } from '@term/make/code/tint'
 
-const DECK_TREE = (project: string): string => `deck ${project}
+// exported so deck/deck/test/scaffold.test.ts can hold the text itself against the formatter and the manifest rules
+export const DECK_TREE = (project: string): string => `deck ${project}
   bear ./code
   test ./test
-  code <0.0.1>
+  code <0.0.2>
   boot ./code/boot
 `
 
-const BOOT_TREE = `# The application entry point. \`term boot\` compiles and runs
+export const BOOT_TREE = `# The application entry point. \`term boot\` compiles and runs
 # this module's \`boot\` task.
-
 load @term/base/code/console
   find log
 
 task boot
   note async
-  call log
-    text <hello from term>
+  call log, text <hello from term>
 `
 
 const README = (project: string): string => `# ${project}

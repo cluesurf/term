@@ -75,10 +75,11 @@ For a single character, `rune` does Unicode-correct case mapping and category te
 load @term/base/code/rune
   find make-rune
 
+# the rune '7', so true
 host is-digit
   call is-ascii-digit
     call make-rune
-      code 55          # the rune '7', true
+      code 55
 ```
 
 ## Joining pieces
@@ -103,6 +104,9 @@ task path-of
 Combine the pieces to format a display string. `split` and `join` together let you reshape delimited text.
 
 ```tree
+load @term/base/code/list
+  find list
+
 load @term/base/code/text
   find split
 

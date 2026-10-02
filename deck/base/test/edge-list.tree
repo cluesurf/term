@@ -1,0 +1,307 @@
+# Every total list operation at its edges, held to note/term/stdlib/semantics.md on every backend by
+# `pnpm term:base-gate`. A slice clamps and never counts from the end, membership compares records by structure, and
+# flatten removes one level. The stops (a read past the end, a pop of an empty list) end the program and so are not
+# asserted here: a stop on one backend would take the whole report with it.
+
+load @term/base/code/list
+  find list
+  find size
+  find slice
+  find take-first
+  find take-last
+  find drop-last
+  find drop-first
+  find index-of
+  find last-index-of
+  find contains
+  find unique
+  find flatten
+  find join
+  find reverse
+  find concat
+  find find-index
+  find set
+  find get
+  find first
+  find last
+
+load @term/base/code/maybe
+  find unwrap-or
+
+load @term/base/code/side
+  find side
+
+load @term/base/code/list
+  find take
+  find drop
+
+form point
+  link x, like number
+  link y, like number
+
+task three
+  like list
+    like number
+  save out
+    make list
+  call out/push, code 1
+  call out/push, code 2
+  call out/push, code 3
+  send back, read out
+
+# a list of lists, typed by its signature: an empty `make list` that is later pushed lists is still typed as a list of
+# anything on Swift and Kotlin (base-v1-0042)
+task two-threes
+  like list
+    like list
+      like number
+  save out
+    make list
+  call out/push
+    call three
+  call out/push
+    call three
+  send back, read out
+
+task points
+  like list
+    like point
+  save out
+    make list
+  call out/push
+    make point
+      bind x, code 1
+      bind y, code 2
+  call out/push
+    make point
+      bind x, code 3
+      bind y, code 4
+  call out/push
+    make point
+      bind x, code 1
+      bind y, code 2
+  send back, read out
+
+test <take-first past the length takes everything>
+  want hold
+    call is-equal
+      call size
+        call take-first
+          call three
+          code 5
+      code 3
+
+test <take-last past the length takes everything, never counting from the end>
+  want hold
+    call is-equal
+      call join
+        call take-last
+          call three
+          code 5
+        text <,>
+      text <1,2,3>
+
+test <drop-last past the length leaves nothing>
+  want hold
+    call is-equal
+      call size
+        call drop-last
+          call three
+          code 5
+      code 0
+
+test <drop-first past the length leaves nothing>
+  want hold
+    call is-equal
+      call size
+        call drop-first
+          call three
+          code 9
+      code 0
+
+test <slice clamps a negative start to zero>
+  want hold
+    call is-equal
+      call join
+        call slice
+          call three
+          call subtract
+            code 0
+            code 1
+          code 2
+        text <,>
+      text <1,2>
+
+test <slice with start past end is empty>
+  want hold
+    call is-equal
+      call size
+        call slice
+          call three
+          code 2
+          code 1
+      code 0
+
+test <slice clamps an end past the length>
+  want hold
+    call is-equal
+      call join
+        call slice
+          call three
+          code 1
+          code 99
+        text <,>
+      text <2,3>
+
+test <index-of finds a record by an equal record>
+  want hold
+    call is-equal
+      call index-of
+        call points
+        make point
+          bind x, code 3
+          bind y, code 4
+      code 1
+
+test <last-index-of finds the last equal record>
+  want hold
+    call is-equal
+      call last-index-of
+        call points
+        make point
+          bind x, code 1
+          bind y, code 2
+      code 2
+
+test <contains finds a record by an equal record>
+  want hold
+    call contains
+      call points
+      make point
+        bind x, code 3
+        bind y, code 4
+
+test <unique drops records equal to an earlier one>
+  want hold
+    call is-equal
+      call size
+        call unique
+          call points
+      code 2
+
+test <index-of a missing item is minus one>
+  want hold
+    call is-equal
+      call index-of
+        call three
+        code 7
+      call subtract
+        code 0
+        code 1
+
+test <flatten removes one level of nesting>
+  save nested
+    call two-threes
+  want hold
+    call is-equal
+      call join
+        call flatten
+          read nested
+        text <,>
+      text <1,2,3,1,2,3>
+
+test <set replaces in place>
+  save xs
+    call three
+  call set
+    read xs
+    code 1
+    code 9
+  want hold
+    call is-equal
+      call join
+        read xs
+        text <,>
+      text <1,9,3>
+
+test <reverse and concat>
+  want hold
+    call is-equal
+      call join
+        call concat
+          call reverse
+            call three
+          call three
+        text <,>
+      text <3,2,1,1,2,3>
+
+test <first of an empty list is none>
+  save empty
+    make list
+  call empty/push, code 1
+  call empty/pop
+  want hold
+    call is-equal
+      call unwrap-or
+        call first
+          read empty
+        code 42
+      code 42
+
+test <last reads the last item>
+  want hold
+    call is-equal
+      call unwrap-or
+        call last
+          call three
+        code 0
+      code 3
+
+test <take from both sides keeps the first and the last>
+  save xs
+    call three
+  call xs/push, code 4
+  want hold
+    call is-equal
+      call join
+        call take
+          read xs
+          code 1
+          make both
+        text <,>
+      text <1,4>
+
+test <take from both sides that overlap keeps everything>
+  want hold
+    call is-equal
+      call join
+        call take
+          call three
+          code 2
+          make both
+        text <,>
+      text <1,2,3>
+
+test <drop from both sides keeps the middle>
+  save xs
+    call three
+  call xs/push, code 4
+  want hold
+    call is-equal
+      call join
+        call drop
+          read xs
+          code 1
+          make both
+        text <,>
+      text <2,3>
+
+test <drop from both sides that meet leaves nothing>
+  want hold
+    call is-equal
+      call size
+        call drop
+          call three
+          code 2
+          make both
+      code 0

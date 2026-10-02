@@ -192,22 +192,25 @@ function unfoldTable(
   return bodies
 }
 
-const TABLES = new WeakMap<
-  Program,
-  Map<string, { params: string[]; body: Expression }>
->()
+// The table of the LAST program asked about. One slot answers the whole hit pattern, because the prover unfolds
+// many goals against one program before it moves on, and one slot holds at most one program alive, where an
+// unbounded map keyed by program would hold every one. That bound is all the WeakMap it replaces was buying. A
+// module-level WeakMap keyed by object identity has no Term spelling and no Rust one (self-hosting-0022), the way
+// the two lint memos did not either.
+let last:
+  | { program: Program; table: Map<string, { params: string[]; body: Expression }> }
+  | undefined
 
 // unfold every call to a non-recursive single-expression task, innermost arguments first
 export function unfoldDefinitions(
   e: Expression,
   program: Program,
 ): Expression {
-  let table = TABLES.get(program)
-
-  if (!table) {
-    table = unfoldTable(program)
-    TABLES.set(program, table)
+  if (last?.program !== program) {
+    last = { program, table: unfoldTable(program) }
   }
+
+  const table = last.table
 
   const walk = (x: Expression, depth: number): Expression => {
     switch (x.form) {

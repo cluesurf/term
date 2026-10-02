@@ -11,9 +11,14 @@
  *                   bug (the printed tree reparses to a different tree).
  *   - deterministic: compiling the same source twice yields identical
  *                   output. Non-determinism is a bug (and breaks caching).
- *   - crossBackend: if a program compiles, every backend (TypeScript,
- *                   Rust, Kotlin, Swift) must emit without throwing. A
- *                   backend that diverges is a bug.
+ *   - backendEmit:  if a program compiles, every backend (TypeScript,
+ *                   Rust, Kotlin, Swift) must emit non-empty code without
+ *                   throwing. EMIT ONLY: the outputs are not built, run or
+ *                   compared with each other. This was called
+ *                   `cross-backend` and exercised the TypeScript emitter
+ *                   alone, so the name claimed a comparison it never made.
+ *                   A run-and-compare across toolchains is
+ *                   test/compile/host-native.ts.
  *   - perf:         a soft timing budget flags inputs whose compile is
  *                   pathologically slow (a near-hang / super-linear blowup)
  *                   even when it eventually returns.
@@ -25,12 +30,23 @@
 import { parse, printTree } from '@term/make/code/parser/tree'
 import { compile } from '@term/make/code/compile/compile'
 import { emitTypeScript } from '@term/make/code/compile/typescript'
+import { emitRust } from '@term/make/code/compile/rust'
+import { emitKotlin } from '@term/make/code/compile/kotlin'
+import { emitSwift } from '@term/make/code/compile/swift'
 import type { Resolver } from '@term/make/code/compile/load'
 
 type Resolve = Resolver
 
+/** The emitters the backend-emit oracle drives, in order. */
+export const EMIT_BACKENDS: { name: string; emit: (program: any) => string }[] = [
+  { name: 'typescript', emit: program => emitTypeScript(program, {}) },
+  { name: 'rust', emit: program => emitRust(program) },
+  { name: 'kotlin', emit: program => emitKotlin(program) },
+  { name: 'swift', emit: program => emitSwift(program) },
+]
+
 export type OracleViolation = {
-  oracle: 'round-trip' | 'deterministic' | 'cross-backend' | 'perf' | 'crash'
+  oracle: 'round-trip' | 'deterministic' | 'backend-emit' | 'perf' | 'crash'
   detail: string
   input: string
 }
@@ -87,25 +103,40 @@ export function checkDeterministic(text: string, resolve: Resolve, file = 'o.tre
   return null
 }
 
-/** A compiling program must emit on every backend without throwing. */
-export function checkCrossBackend(text: string, resolve: Resolve, file = 'o.tree'): OracleViolation | null {
+/**
+ * A compiling program must emit non-empty code on every backend without throwing. Emit only: nothing is built or
+ * run, so two backends that emit different behavior both pass. Returns one violation per backend that failed.
+ */
+export function checkBackendEmit(text: string, resolve: Resolve, file = 'o.tree'): OracleViolation[] {
+  return backendEmit(text, resolve, file).violations
+}
+
+/** The backend-emit oracle, also saying whether the program compiled (so a caller can count what was emitted). */
+export function backendEmit(
+  text: string,
+  resolve: Resolve,
+  file = 'o.tree',
+): { compiled: boolean; violations: OracleViolation[] } {
   let compiled
   try {
     compiled = compile({ file, text }, { resolve })
   } catch (e) {
-    return { oracle: 'crash', detail: `compile threw: ${msg(e)}`, input: text }
+    return { compiled: false, violations: [{ oracle: 'crash', detail: `compile threw: ${msg(e)}`, input: text }] }
   }
-  if (!compiled.ok) return null
+  if (!compiled.ok) return { compiled: false, violations: [] }
 
-  // the program is well-typed; every backend must accept it. (We exercise
-  // the TypeScript emitter here; the full four-backend differential lives
-  // in cross.ts / `crossEmit`, used by `seed hold --cross`.)
-  try {
-    emitTypeScript(compiled.program, {})
-  } catch (e) {
-    return { oracle: 'cross-backend', detail: `typescript emit threw on a well-typed program: ${msg(e)}`, input: text }
+  const out: OracleViolation[] = []
+  for (const backend of EMIT_BACKENDS) {
+    try {
+      const emitted = backend.emit(compiled.program)
+      if (typeof emitted !== 'string' || emitted.length === 0) {
+        out.push({ oracle: 'backend-emit', detail: `${backend.name} emitted nothing for a well-typed program`, input: text })
+      }
+    } catch (e) {
+      out.push({ oracle: 'backend-emit', detail: `${backend.name} emit threw on a well-typed program: ${msg(e)}`, input: text })
+    }
   }
-  return null
+  return { compiled: true, violations: out }
 }
 
 /** Flag a compile that exceeds a soft time budget (near-hang / blowup). */
@@ -134,7 +165,7 @@ export function checkAll(input: {
   for (const v of [
     checkRoundTrip(text),
     checkDeterministic(text, resolve),
-    checkCrossBackend(text, resolve),
+    ...checkBackendEmit(text, resolve),
     checkPerf(text, resolve, input.perfBudgetMs ?? 1000),
   ]) {
     if (v) out.push(v)
@@ -158,7 +189,12 @@ export function checkTolerant(text: string, parseTolerant: (s: { file: string; t
 }
 
 export type CorpusAudit = {
+  // files actually READ and checked, never the length of the list handed in
   files: number
+  // files in the list that could not be read; reported, never silently dropped
+  unreadable: string[]
+  // files that compiled, so the backend-emit oracle had something to emit
+  compiled: number
   violations: { file: string; violation: OracleViolation }[]
   slowest: { file: string; ms: number }[]
 }
@@ -178,29 +214,42 @@ export function auditCorpus(input: {
 }): CorpusAudit {
   const violations: { file: string; violation: OracleViolation }[] = []
   const timings: { file: string; ms: number }[] = []
+  const unreadable: string[] = []
+  let compiled = 0
 
   for (const file of input.files) {
     let text: string
     try {
       text = input.readFile(file)
     } catch {
+      unreadable.push(file)
       continue
     }
 
     const t0 = performance.now()
     // compile with the REAL file path so relative imports (load ../x)
     // resolve correctly - a fake name would misresolve and false-positive.
+    const emitted = backendEmit(text, input.resolve, file)
+    if (emitted.compiled) compiled++
     for (const check of [
       checkRoundTrip(text),
       checkDeterministic(text, input.resolve, file),
-      checkCrossBackend(text, input.resolve, file),
+      ...emitted.violations,
       checkTolerant(text, input.parseTolerant),
     ]) {
-      if (check) violations.push({ file, violation: check })
+      // two oracles that both compile see the same throw; report it once per file
+      if (
+        check &&
+        !violations.some(
+          v => v.file === file && v.violation.oracle === check.oracle && v.violation.detail === check.detail,
+        )
+      ) {
+        violations.push({ file, violation: check })
+      }
     }
     timings.push({ file, ms: performance.now() - t0 })
   }
 
   const slowest = timings.sort((a, b) => b.ms - a.ms).slice(0, 5)
-  return { files: input.files.length, violations, slowest }
+  return { files: timings.length, unreadable, compiled, violations, slowest }
 }

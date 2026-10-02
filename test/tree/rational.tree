@@ -108,4 +108,4 @@ test <negate flips the sign of the numerator>
           call make-rational
             code 1
             code 2
-      mark -1
+      code -1

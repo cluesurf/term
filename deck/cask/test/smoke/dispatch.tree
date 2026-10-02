@@ -25,6 +25,7 @@ load @term/base/code/file
   find copy, name file-copy
   find move, name file-move
   find test, name file-test
+  find stat, name file-stat
 
 load @term/base/code/json
   find parse
@@ -66,6 +67,16 @@ load @term/base/code/uuid
 load @term/base/code/maybe
   find maybe
   find unwrap
+
+load @term/base/code/file/stat
+  find path-info
+
+load @term/host/code/base
+  find data
+
+load @term/host/code/text
+  find data-from-text
+  find data-to-text
 
 # the items of a json array, as a list whose element the checker knows
 task items-of
@@ -137,6 +148,12 @@ task is-allowed
       call is-equal
         read command
         text <file_test>
+    hook hold
+      send back, true
+    hook test
+      call is-equal
+        read command
+        text <file_stat>
     hook hold
       send back, true
     hook test
@@ -346,6 +363,29 @@ task run-command
         call from-boolean
           read answer
       send back, read json-37
+    hook test
+      call is-equal
+        read command
+        text <file_stat>
+    hook hold
+      save field-38
+        call get-field
+          read arguments
+          text <path>
+      save value-40
+        call as-text
+          read field-38
+      save answer
+        call file-stat
+          wait true
+          read value-40
+      save json-42
+        call from-text
+          call data-to-text
+            call melt
+              read answer
+              like path-info
+      send back, read json-42
     hook test
       call is-equal
         read command

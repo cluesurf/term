@@ -21,6 +21,7 @@ load @term/base/code/list
   find push
   find filter
   find find
+  find get
 
 load @term/base/code/maybe
   find maybe
@@ -520,7 +521,9 @@ task child-at
   save element
     call element-of
       read node
+  # the list's `get`, POSITIONAL: a labelled `bind self` is checked against a top-level `get` (the HTTP client's),
+  # where a positional call is dispatched on the list it is given
   send back
     call get
-      bind self, read element/children
-      bind index, read index
+      read element/children
+      read index

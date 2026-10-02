@@ -1,186 +1,259 @@
 # Auth
 
-Authentication is built from ordinary [route handlers](routes.md) plus a session or token store. A login handler verifies a credential and issues a token. Later requests carry the token, and a guard or middleware verifies it before the protected handler runs. The same patterns cover sessions, JWTs, OAuth, and API keys.
+Authentication is built from ordinary [route handlers](routes.md) plus a session or token store. A login handler verifies a credential and issues a token. Later requests carry the token, and the protected handler verifies it before doing anything else. The same patterns cover sessions, signed tokens, OAuth, and API keys.
 
-Maps to: hand-rolled auth over your router (Passport-style strategies), but the handlers are plain `dock` tasks.
+Maps to: hand-rolled auth over your router (Passport-style strategies), but the handlers are plain tasks in `route` records.
+
+**Term ships no auth library.** There is no password hashing, JWT, session store, or cookie task. What the standard library does provide is `@term/base/code/cryptography/hmac` (`hmac`, `sha256`, `verify-hmac`, all async, and `is-equal-secret` for a constant-time compare), `digest` and `random`. And a server `request` carries `method`, `path` and `body` only, with no headers, so a token reaches a handler in the body or the path. The samples below declare the tasks an app writes for itself as signatures with no body, which compile as stubs.
 
 ## Cheatsheet
 
 | Piece | How |
 | --- | --- |
-| Login route | `dock /auth/login` with `task post` |
-| Read a credential | `read request/body` then parse |
-| Hash a password | `call hash-password` |
-| Check a password | `call check-password` |
-| Issue a token | `call sign-jwt` (or set a session cookie) |
-| Verify a token | `call verify-jwt` |
-| Read a bearer header | `call parse-bearer` |
-| Protect a group | a guard task that runs before the handler |
-| Revoke a token | `call revoke-token` |
-| Send a redirect | `make response` with a `30x` status and a `location` header |
-
-These verbs are library tasks. The exact names depend on the auth library you import. The shape below is what an app writes.
+| Login route | a `route` record, `POST` on `/auth/login` |
+| Read a credential | `read request/body`, then parse it |
+| Check a password | your own task, comparing with `is-equal-secret` |
+| Issue a token | your own task, signing with `hmac` |
+| Verify a token | `verify-hmac` against the same key |
+| Reject | a response with status `401` |
+| Redirect | not provided. A `response` has no `location` header |
 
 ## A login handler
 
-Verify the credential, then issue a token. On failure, raise `anonymity`.
+Verify the credential, then issue a token. On failure, answer `401`.
 
 ```tree
-dock /auth/login
-  task post
-    save creds
-      call parse-login
-        read request/body
-    save user
-      call find-user-by-email
-        read creds/email
-    fork test
-      hook test
-        call is-none, read user
-      hook hold
-        halt anonymity
-          bind text, text <invalid credentials>
-    save valid
-      call check-password
-        bind input, read creds/password
-        bind hash, read user/password-hash
-    fork test
-      hook test
-        call not, read valid
-      hook hold
-        halt anonymity
-          bind text, text <invalid credentials>
-    save token
-      call sign-jwt
-        bind user, read user
-    send back
-      make response
-        bind status, code 200
-        bind body
-          call to-json
-            make session
-              bind token, read token
+load @term/site/code/http/http
+  find request
+  find response
+
+load @term/base/code/maybe
+  find maybe
+
+form login
+  link email, like text
+  link password, like text
+
+form user
+  link id, like text
+  link email, like text
+  link password-hash, like text
+
+# the app's own tasks: Term ships none of these
+task parse-login
+  take body, like text
+  like login
+
+task find-user-by-email
+  take email, like text
+  like maybe user
+
+task check-password
+  take input, like text
+  take hash, like text
+  like boolean
+
+task sign-token
+  take user, like user
+  like text
+
+task refuse
+  like response
+  send back
+    make response
+      bind status, code 401
+      bind body, text <invalid credentials>
+
+task log-in
+  take request, like request
+  take params, like hash
+  like response
+  save creds
+    call parse-login
+      read request/body
+  save found
+    call find-user-by-email
+      read creds/email
+  fork case, read found
+    case some
+      fork test
+        hook test
+          call check-password
+            bind input, read creds/password
+            bind hash, read value/password-hash
+        hook hold
+          send back
+            make response
+              bind status, code 200
+              bind body
+                call sign-token, read value
+    case none
+      send back
+        call refuse
+  send back
+    call refuse
 ```
 
 ## Registration with password hashing
 
-Hash the password before storing it. Reject a duplicate email with a conflict.
+Hash the password before storing it. Reject a duplicate email with `409`. The hash is the app's own task. A password hash wants a slow, salted function (scrypt, argon2), which the standard library does not provide, so it is a native call from the app.
 
 ```tree
-dock /auth/register
-  task post
-    save body
-      call parse-register
-        read request/body
-    save existing
-      call find-user-by-email
+load @term/site/code/http/http
+  find request
+  find response
+
+load @term/base/code/maybe
+  find maybe
+
+form registration
+  link name, like text
+  link email, like text
+  link password, like text
+
+# the app's own tasks
+task parse-registration
+  take body, like text
+  like registration
+
+task is-registered
+  take email, like text
+  like boolean
+
+task hash-password
+  take input, like text
+  like text
+
+task store-user
+  take name, like text
+  take email, like text
+  take password-hash, like text
+  like text
+
+task register
+  take request, like request
+  take params, like hash
+  like response
+  save body
+    call parse-registration
+      read request/body
+  fork test
+    hook test
+      call is-registered
         read body/email
-    fork test
-      hook test
-        call is-some, read existing
-      hook hold
-        halt conflict
-          bind thing, text <user>
-          bind text, text <email already registered>
-    save hash
-      call hash-password
-        bind input, read body/password
-    save user
-      call make-user
-        bind name, read body/name
-        bind email, read body/email
-        bind password-hash, read hash
-    send back
-      make response
-        bind status, code 201
-        bind body
-          call to-json, read user
+    hook hold
+      send back
+        make response
+          bind status, code 409
+          bind body, text <email already registered>
+  save id
+    call store-user
+      bind name, read body/name
+      bind email, read body/email
+      bind password-hash
+        call hash-password
+          read body/password
+  send back
+    make response
+      bind status, code 201
+      bind body, read id
 ```
 
 ## Verifying on a protected route
 
-Pull the token off the `authorization` header, verify it, and reject if invalid.
+Check the token's signature, and reject if it does not verify. With no request headers, the token arrives in the body here.
 
 ```tree
-dock /me
-  task get
-    save token
-      call parse-bearer
-        call header
-          read request
-          text <authorization>
-    save payload
-      call verify-jwt
-        bind token, read token
-    fork test
-      hook test
-        call is-none, read payload
-      hook hold
-        halt anonymity
-          bind text, text <not signed in>
-    save user
-      call find-user-by-id
-        read payload/sub
-    send back
-      make response
-        bind status, code 200
-        bind body
-          call to-json, read user
+load @term/site/code/http/http
+  find request
+  find response
+
+load @term/base/code/cryptography/hmac
+  find verify-hmac
+  find hmac-algorithm
+
+# the app's own tasks
+task signing-key
+  like bytes
+
+task token-payload
+  take token, like text
+  like bytes
+
+task token-tag
+  take token, like text
+  like bytes
+
+task me
+  take request, like request
+  take params, like hash
+  like response
+  note async
+  save valid
+    call verify-hmac
+      bind key
+        call signing-key
+      bind data
+        call token-payload, read request/body
+      bind tag
+        call token-tag, read request/body
+      bind algorithm
+        make sha-256
+      wait true
+  fork test
+    hook test
+      read valid
+    hook hold
+      send back
+        make response
+          bind status, code 200
+          bind body, text <signed in>
+  send back
+    make response
+      bind status, code 401
+      bind body, text <not signed in>
 ```
 
 ## Sessions
 
-For server-rendered pages, store a session and set its id in a cookie on login. On each request, load the session by cookie and check it. A page route that needs a user redirects to `/login` when the session is absent.
-
-```tree
-dock /dashboard
-  task get
-    save session
-      call load-session, read request
-    fork test
-      hook test
-        call is-none, read session/user
-      hook hold
-        send back
-          make response
-            bind status, code 302
-            bind body, text </login>
-    send back
-      call render-dashboard, read session/user
-```
-
-A `302` response with the target path is how a handler redirects. The transport sets the `location` header.
+For server-rendered pages, store a session and give its id to the client on login. On each request, load the session by its id and check it. A page that needs a user shows the login page when the session is absent, which is a branch in your own `route` task (see [navigation](navigation.md)). A cookie cannot be set or read yet, because neither a request nor a response carries headers.
 
 ## OAuth
 
-An OAuth callback is a normal route. Exchange the code for a token, fetch the profile, find or create the user, issue your own session or JWT, then redirect to the app.
+An OAuth callback is a normal route. Exchange the code for a token with `post` from `@term/base/code/network/http`, fetch the profile with `get`, find or create the user, then issue your own token.
 
 ```tree
-dock /auth/google/callback
-  task get
-    save code
-      call query
-        read request
-        text <code>
-    save token
-      call exchange-oauth-code
-        bind provider, text <google>
-        bind code, read code
-    save profile
-      call fetch-oauth-profile
-        bind provider, text <google>
-        bind token, read token
-    save user
-      call find-or-make-user
-        bind email, read profile/email
-        bind name, read profile/name
-    save jwt
-      call sign-jwt
-        bind user, read user
-    send back
-      make response
-        bind status, code 302
-        bind body, text </dashboard>
+load @term/base/code/network/http
+  find get
+  find post
+
+task exchange-code
+  take code, like text
+  take secret, like text
+  like text
+  note async
+  save answer
+    call post
+      text <https://oauth2.googleapis.com/token>
+      text <code={{code}}&client_secret={{secret}}&grant_type=authorization_code>
+      wait true
+  send back, read answer/body
+
+task fetch-profile
+  take access, like text
+  like text
+  note async
+  save header
+    make hash
+  call header/set
+    text <authorization>
+    text <Bearer {{access}}>
+  save answer
+    call get
+      text <https://openidconnect.googleapis.com/v1/userinfo>
+      read header
+      wait true
+  send back, read answer/body
 ```
 
 ## Token refresh and revocation
@@ -189,4 +262,4 @@ Issue a new access token from a valid refresh token, checking a revocation list 
 
 ## Guards on the client
 
-For client page routes, a guard task runs before a [zone](components.md) mounts. If the user is not allowed, redirect. See [navigation](navigation.md) for client redirects and [routes](routes.md) for the route table.
+For client page routes, a guard is a branch in your own `route` task that picks the login page when the user is not allowed. See [navigation](navigation.md) for the guard and [routes](routes.md) for the route table.

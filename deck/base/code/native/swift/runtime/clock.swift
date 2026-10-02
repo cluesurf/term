@@ -16,8 +16,10 @@ enum clock {
     Int(ProcessInfo.processInfo.systemUptime * 1000)
   }
 
+  // what `clock/now` reads: monotonic milliseconds on every backend (note/term/stdlib/semantics.md). Every caller
+  // subtracts two readings; the wall clock is `time/now`
   static func currentTime() -> Int {
-    now()
+    precise()
   }
 
   static func sleep(_ ms: Int) {

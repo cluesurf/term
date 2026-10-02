@@ -1,13 +1,16 @@
 import chalk from 'chalk'
 import os from 'os'
 
+// The banner `term` prints with no verb, and the line `term show` prints. Both said `seed` (the language's old name)
+// until 2026-10-02, and the banner listed `term move mark` and `term show deck tree`, neither of which the CLI
+// accepts: `move` takes `code`, and `show` takes `code` or nothing.
 export function showBanner(): void {
   console.log('')
   console.log(
-    chalk.green.bold('  seed') + chalk.gray(' - the Seed toolkit'),
+    chalk.green.bold('  term') + chalk.gray(' - the Term toolkit'),
   )
   console.log('')
-  console.log(chalk.white('  Usage: seed <verb> [objects] [options]'))
+  console.log(chalk.white('  Usage: term <verb> [objects] [options]'))
   console.log('')
   console.log(chalk.yellow('  Package Management'))
   console.log('    term load              Install all dependencies')
@@ -32,26 +35,28 @@ export function showBanner(): void {
   console.log('    term wash              Clean build artifacts')
   console.log('')
   console.log(chalk.yellow('  Version'))
-  console.log('    term move mark         Bump patch version')
-  console.log('    term move mark 2       Bump minor version')
-  console.log('    term move mark 1       Bump major version')
+  console.log('    term move code         Bump patch version (to the next even patch)')
+  console.log('    term move code 2       Bump minor version')
+  console.log('    term move code 1       Bump major version')
   console.log('')
   console.log(chalk.yellow('  Info'))
-  console.log('    term show              Show seed info')
-  console.log('    term show deck tree    Show dependency tree')
+  console.log('    term show              Show the toolchain version and platform')
+  console.log('    term show code         Show this package\'s version')
   console.log('    term note              Show package info')
   console.log('    term fill              Print shell completion script')
-  console.log('    seed --version         Show the version number')
+  console.log('    term --version         Show the version number')
   console.log('')
   console.log(
-    chalk.gray('  Run seed <verb> --hint for command-specific help'),
+    // `--help`, not `--hint`: `term wake --hint` runs wake (scaffolding the current directory) instead of
+    // printing its help, so the banner must not send anyone there
+    chalk.gray('  Run term <verb> --help for command-specific help'),
   )
   console.log('')
 }
 
 export function showInfo(version = '0.0.0'): void {
   console.log('')
-  console.log(chalk.green.bold('seed') + ' ' + chalk.gray(version))
+  console.log(chalk.green.bold('term') + ' ' + chalk.gray(version))
   console.log('')
   console.log(
     chalk.white('  Platform:  ') + os.platform() + ' ' + os.arch(),

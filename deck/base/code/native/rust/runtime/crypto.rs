@@ -21,4 +21,12 @@ mod crypto {
         OsRng.fill_bytes(&mut buffer);
         buffer
     }
+    // equal without leaking where they differ: every byte is read whatever the earlier ones held, and black_box
+    // keeps the optimizer from turning the fold back into an early exit. A length difference answers at once
+    pub fn equal_secret(a: Vec<u8>, b: Vec<u8>) -> bool {
+        if a.len() != b.len() { return false; }
+        let mut diff = 0u8;
+        for i in 0..a.len() { diff |= std::hint::black_box(a[i] ^ b[i]); }
+        std::hint::black_box(diff) == 0
+    }
 }

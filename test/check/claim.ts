@@ -348,6 +348,288 @@ task refl
   )
 }
 
+// ---- a proof is only as checked as everything it calls ----
+//
+// Found 2026-10-02. A fill is checked with each task it calls read at that task's SIGNATURE. Until then only the
+// fill itself had to be kernel-checked, so a fill that called a helper the kernel declined proved whatever the
+// helper's signature said. The helper below is `leap`, typed `equal a x x -> equal a x y`, and with it `x == y`
+// held for every x and y. The kernel declined it because it could not read the inline function's `like equal a`
+// (the enclosing task's generic was not in scope there), and nothing asked about the helper after that.
+
+const ANYTHING_EQUAL = `
+rule anything-equal
+  head a
+  take x, like a
+  take y, like a
+  like equal a
+    head
+      read x
+    head
+      read y
+
+task anything-equal
+  take x
+  take y
+  save along
+    call leap
+      read x
+      read y
+      make equal/refl
+        bind c, read x
+  send back
+    call along
+      make equal/refl
+        bind c, read x
+`
+
+{
+  const out = run(`${EQUAL}
+task leap
+  head a
+  take x, like a
+  take y, like a
+  take left
+    like equal a
+      head
+        read x
+      head
+        read x
+  like task
+    take r
+      like equal a
+        head
+          read x
+        head
+          read x
+    like equal a
+      head
+        read x
+      head
+        read y
+  fork case, read left
+    case refl
+      link c
+      send back
+        task id
+          take r
+            like equal a
+              head
+                read c
+              head
+                read c
+          like equal a
+            head
+              read c
+            head
+              read y
+          send back
+            make equal/refl
+              bind c, read c
+${ANYTHING_EQUAL}`)
+
+  ok(
+    'FALSE: `x == y` for all x and y, through a convoy helper whose body is wrong, is refused',
+    out.refused,
+    out.errors.join(','),
+  )
+}
+
+// the same hole with a helper the kernel still cannot check as one term: its body has no `send back`, which passes
+// statement by statement and proves nothing. The fill is fine on its own, so only the walk into what it calls can
+// catch this, and the diagnostic must name the helper.
+{
+  const result = compile({
+    file: 'claim.tree',
+    text: `${EQUAL}
+task leap
+  head a
+  take x, like a
+  take y, like a
+  take left
+    like equal a
+      head
+        read x
+      head
+        read x
+  like task
+    take r
+      like equal a
+        head
+          read x
+        head
+          read x
+    like equal a
+      head
+        read x
+      head
+        read y
+  save n, code 0
+${ANYTHING_EQUAL}`,
+  })
+
+  const named =
+    !result.ok &&
+    result.diagnostics.some(
+      d =>
+        d.name === 'unverified-proof' &&
+        (d.message ?? '').includes('`leap`'),
+    )
+
+  ok(
+    'FALSE: a proof resting on a helper the kernel did not check is refused, naming the helper',
+    named,
+    result.ok
+      ? 'compiled'
+      : result.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '),
+  )
+}
+
+// THE CONVOY, the stdlib's `chain` as written, beside `transitivity`, which uses it. Must be checked and accepted:
+// the refusals above are worth nothing if they refuse this too.
+const CHAIN = (sent: string): string => `${EQUAL}
+rule transitivity
+  head a
+  take x, like a
+  take y, like a
+  take z, like a
+  take left
+    like equal a
+      head
+        read x
+      head
+        read y
+  take right
+    like equal a
+      head
+        read y
+      head
+        read z
+  like equal a
+    head
+      read x
+    head
+      read z
+
+task transitivity
+  take x
+  take y
+  take z
+  take left
+  take right
+  save along
+    call chain
+      read x
+      read y
+      read z
+      read left
+  send back
+    call along
+      read right
+
+task chain
+  head a
+  take x, like a
+  take y, like a
+  take z, like a
+  take left
+    like equal a
+      head
+        read x
+      head
+        read y
+  like task
+    take r
+      like equal a
+        head
+          read y
+        head
+          read z
+    like equal a
+      head
+        read x
+      head
+        read z
+  fork case, read left
+    case refl
+      link c
+      send back
+        task id
+          take r
+            like equal a
+              head
+                read c
+              head
+                read z
+          like equal a
+            head
+              read c
+            head
+              read z
+${sent}
+`
+
+{
+  const out = run(CHAIN('          send back, read r'))
+
+  ok(
+    'the convoy `chain` is checked by the kernel, and `transitivity` on it is accepted',
+    !out.refused,
+    out.errors.join(','),
+  )
+}
+
+{
+  // `refl c : equal a c c` where the convoy's branch owes `equal a c z`: wrong, and the kernel must say so
+  const out = run(
+    CHAIN(`          send back
+            make equal/refl
+              bind c, read c`),
+  )
+
+  ok(
+    'CONTROL: a `chain` whose body is wrong is refused',
+    out.refused && out.errors.includes('type-mismatch'),
+    `refused=${out.refused} ${out.errors.join(',')}`,
+  )
+}
+
+{
+  const out = run(`${EQUAL}
+rule symmetry
+  head a
+  take x, like a
+  take y, like a
+  take proof
+    like equal a
+      head
+        read x
+      head
+        read y
+  like equal a
+    head
+      read y
+    head
+      read x
+
+task symmetry
+  take x
+  take y
+  take proof
+  fork case, read proof
+    case refl
+      link c
+      send back
+        make equal/refl
+          bind c, read c
+`)
+
+  ok(
+    'CONTROL: `symmetry`, a true proof with no helper, is still accepted',
+    !out.refused,
+    out.errors.join(','),
+  )
+}
+
 // ---- the qualified constructor spelling ----
 
 {

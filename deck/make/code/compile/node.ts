@@ -344,10 +344,12 @@ export type Statement =
       result?: Type
       generics: { name: string; need?: string }[]
       async?: boolean
-      // `note private` / `mark private`: the definition is module-internal, not part of the package's public surface.
-      // Lets dead-code detection flag an unreferenced private function as truly dead (a public one might be called
-      // from outside this compilation).
+      // `mark private`: the definition is visible only inside the file that defines it. A reference from any other
+      // file is refused as `private-name` (check/private.ts). Also lets dead-code detection flag an unreferenced
+      // private function as truly dead (a public one might be called from outside this compilation).
       private?: boolean
+      // where the old spelling, `note private`, was written: still honored, and warned about (`note-private`)
+      privateNote?: Span
       // separate compilation: a signature-only declaration standing in for a function another unit defines. Its body
       // is empty and is neither checked nor emitted; dependents type-check against stubs instead of dependency
       // bodies, so a body-only edit in a dependency never re-checks its dependents. See code/compile/stub.ts.
@@ -359,6 +361,10 @@ export type Statement =
       // See note/term/project/law-proof-gate.md.
       claim?: boolean
       open?: boolean
+      // set by the claim check on a task the kernel checked as one term, that terminates, is pure, and calls only
+      // tasks that are grounded in turn. A stub carries it from its owning unit, which is the only way a dependent
+      // unit can know a lemma it calls is proven rather than merely typed. See check/claim.ts groundingOf.
+      grounded?: boolean
       // a `rule` with `base true`: its goal is POSTULATED, not proven. Listed by name in the trust ledger.
       axiom?: boolean
       // a `rule` with a `show` goal: a THEOREM over its `mark`s. A mark of task type is then a quantified

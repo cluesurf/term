@@ -9,7 +9,7 @@ import path from 'path'
 import { generateKeypair, signId } from '../code/object/sign'
 import { readVersionFiles } from '../code/object/version'
 import { credentialsFor, parseChallenge } from '../code/oci/auth'
-import { checkClosure, openRemotePack, parseDeckManifest } from '../code/oci/artifact'
+import { checkClosure, deckStatement, openRemotePack, parseDeckManifest } from '../code/oci/artifact'
 import { installOciVersion, listOciVersions, readOciVersion } from '../code/oci/install'
 import { keySetStatement, rotateKeys, trustedKeys, KEYS_ARTIFACT_TYPE, KEYS_CONFIG_MEDIA_TYPE } from '../code/oci/keys'
 import { layoutObjectStore, layoutTransport } from '../code/oci/layout'
@@ -91,6 +91,27 @@ describe('OCI references', () => {
     const pinned = pinnedReference({ repository: { host: 'ghcr.io', namespace: 'cluesurf/term', name: 'cluesurf/term/bind' }, digest })
 
     expect(parsePinnedReference(pinned)).toEqual({ repository: { host: 'ghcr.io', namespace: '', name: 'cluesurf/term/bind' }, digest })
+  })
+})
+
+describe('the signed statement', () => {
+  it('is byte for byte what the package index verifies', () => {
+    // the same literal is held in mesh/deck/back/code/resource/package/oci.test.ts, the server side reader
+    expect(
+      deckStatement({
+        package: '@term/demo',
+        version: '1.0.0',
+        tag: '1.0.0',
+        commit: `sha256:${'a'.repeat(64)}`,
+        tree: `sha256:${'b'.repeat(64)}`,
+        link: [
+          { deck: '@term/z', code: '1.x.x' },
+          { deck: '@term/base', code: '0.0.x' },
+        ],
+      }),
+    ).toBe(
+      `{"type":"application/vnd.cluesurf.term.deck.v1","package":"@term/demo","version":"1.0.0","tag":"1.0.0","commit":"sha256:${'a'.repeat(64)}","tree":"sha256:${'b'.repeat(64)}","link":[["@term/base","0.0.x"],["@term/z","1.x.x"]]}`,
+    )
   })
 })
 

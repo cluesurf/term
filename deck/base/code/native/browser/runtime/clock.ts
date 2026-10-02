@@ -3,7 +3,7 @@
 // clock API.
 const clock = {
   now: (): number => Date.now(),
-  precise: (): number => performance.now(),
+  precise: (): number => Math.floor(performance.now()),
   delay: (duration: number): Promise<void> =>
     new Promise(resolve => setTimeout(resolve, duration)),
 }

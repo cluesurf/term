@@ -1078,7 +1078,7 @@ export async function workCask(input: { root: string; target: CaskTarget; page?:
   const root = path.resolve(input.root)
   const page = path.resolve(root, input.page ?? DEFAULT_PAGE)
   const port = input.port ?? 5179
-  const { startDevServer } = await import('@term/make/code/dev/server')
+  const { startDevServer } = await import('@term/call/code/dev/server')
   const server = startDevServer({ root, entry: page, port, env: 'webview', boot: true })
   const url = `http://localhost:${server.port}/`
   logStep(`Dev server for ${path.relative(root, page)} at ${url}`)

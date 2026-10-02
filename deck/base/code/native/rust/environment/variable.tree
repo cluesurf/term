@@ -5,7 +5,7 @@
 dock load
   load <global:variable>, name variable
 
-task get
+task fetch-variable
   take name, like text
   like text
 
@@ -13,7 +13,7 @@ task get
     call variable/get
       read name
 
-task set
+task store-variable
   take name, like text
   take value, like text
 
@@ -21,13 +21,13 @@ task set
     read name
     read value
 
-task remove
+task drop-variable
   take name, like text
 
   call variable/remove
     read name
 
-task list
+task gather-variables
   like hash
     like text
     like text
@@ -35,7 +35,7 @@ task list
   send back
     call variable/list
 
-task check
+task holds-variable
   take name, like text
   like boolean
 

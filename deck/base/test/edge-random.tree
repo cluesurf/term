@@ -1,0 +1,157 @@
+# A seeded source gives the same sequence on every backend: the words below are xoshiro128** with xorshift32 seeding,
+# computed by an independent reference over arbitrary-precision integers (deck/term/deck/term/tmp/xoshiro-vectors.ts),
+# not by the module under test. Held by `pnpm term:base-gate`.
+
+load @term/base/code/random/seeded
+  find random-source
+  find seeded-random
+  find next-word
+  find next-fraction
+  find between
+  find shuffle
+  find pick
+
+load @term/base/code/list
+  find size
+  find join
+  find sum
+
+load @term/base/code/maybe
+  find unwrap-or
+
+test <seed 42 gives the reference words>
+  save r
+    call seeded-random, code 42
+  save a
+    call next-word, read r
+  save b
+    call next-word, read r
+  save c
+    call next-word, read r
+  want hold
+    call is-equal
+      text <{{a}} {{b}} {{c}}>
+      text <1705058134 1938743286 1704420370>
+
+test <seed 0 is spread to a nonzero state>
+  save r
+    call seeded-random, code 0
+  want hold
+    call is-equal
+      call next-word, read r
+      code 310244528
+
+test <the largest 32-bit seed gives the reference word>
+  save r
+    call seeded-random, code 4294967295
+  want hold
+    call is-equal
+      call next-word, read r
+      code 3016945062
+
+test <a fraction is at least zero and below one>
+  save r
+    call seeded-random, code 7
+  save f
+    call next-fraction, read r
+  want hold
+    call and
+      call is-minimum
+        read f
+        0.0
+      call is-below
+        read f
+        1.0
+
+test <between stays inside its bounds>
+  save r
+    call seeded-random, code 9
+  save low, code 0
+  save high, code 0
+  save k, code 0
+  save ok, true
+  walk test
+    hook test
+      call is-below
+        read k
+        code 200
+    hook step
+      save v
+        call between
+          read r
+          code 3
+          code 5
+      fork test
+        hook test
+          call or
+            call is-below
+              read v
+              code 3
+            call is-above
+              read v
+              code 5
+        hook hold
+          save ok, false
+      save k
+        call add
+          read k
+          code 1
+  want hold
+    read ok
+
+test <shuffle keeps every item>
+  save r
+    call seeded-random, code 11
+  save xs
+    make list
+  call xs/push, code 1
+  call xs/push, code 2
+  call xs/push, code 3
+  call xs/push, code 4
+  save ys
+    call shuffle
+      read r
+      read xs
+  want hold
+    call and
+      call is-equal
+        call size, read ys
+        code 4
+      call is-equal
+        call sum, read ys
+        code 10
+
+test <two sources with one seed shuffle alike>
+  save xs
+    make list
+  call xs/push, code 1
+  call xs/push, code 2
+  call xs/push, code 3
+  call xs/push, code 4
+  call xs/push, code 5
+  want hold
+    call is-equal
+      call join
+        call shuffle
+          call seeded-random, code 5
+          read xs
+        text <,>
+      call join
+        call shuffle
+          call seeded-random, code 5
+          read xs
+        text <,>
+
+test <pick from an empty list is none>
+  save empty
+    make list
+  call empty/push, code 1
+  call empty/pop
+  want hold
+    call is-equal
+      call unwrap-or
+        call pick
+          call seeded-random, code 1
+          read empty
+        code 99
+      code 99

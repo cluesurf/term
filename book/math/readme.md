@@ -10,7 +10,7 @@ Maps to: a proof assistant (Coq, Lean, Agda) with dependent types, where checkin
 
 A proof is a `rule` with a `show hold` body and a tactic.
 
-```tree
+```tree fragment
 rule my-claim
   show hold
     call is-equal      # the comparison head
@@ -49,9 +49,9 @@ Inside the comparison you build the two sides with the ordinary value heads you 
 | `calm hold` | settle the claim by **computing** both sides to normal form | definitional equality, decided arithmetic, polynomial positivity |
 | `fold <var>` | **structural induction** over an inductive value | universal laws over `nat` and other `form`s (see [induction](induction.md)) |
 | `cite <lemma>` | rewrite using an already-proven `rule` | chaining lemmas into a bigger proof |
-| `auto` | **bounded search** over known lemmas plus computation | goals reachable without naming the lemma by hand |
+| `seek` | **bounded search** over known lemmas plus computation | goals reachable without naming the lemma by hand |
 
-`calm hold` is the workhorse. If the two sides compute to the same value, the claim holds. If they cannot, it fails. `fold` and `cite` and `auto` exist for the claims that computation alone cannot close, where you need induction or a previously proven fact.
+`calm hold` is the workhorse. If the two sides compute to the same value, the claim holds. If they cannot, it fails. `fold` and `cite` and `seek` exist for the claims that computation alone cannot close, where you need induction or a previously proven fact.
 
 ## A `hold` is a checked claim
 
@@ -67,7 +67,9 @@ task safe-step
         code 1
       code 1
   send back
-    call add, read n, code 1
+    call add
+      read n
+      code 1
 ```
 
 The `hold` says `n + 1 ≥ 1`. The compiler decides it once and for all `n`, before the task ever runs. A claim that did not hold for some `n` would be a compile error here, not a runtime surprise.
@@ -120,9 +122,9 @@ rule double-one
 
 ## A false claim is rejected (the soundness control)
 
-Change the right side to `3` and the proof does not compile.
+Change the right side to `3` and the proof does not compile. This sample is wrong on purpose.
 
-```tree
+```tree fail
 rule double-one-wrong
   show hold
     call is-equal
@@ -216,10 +218,10 @@ This proves `(xy − z)² ≥ 0` for all `x`, `y`, `z`.
 
 ## Letting the search find the lemma
 
-When a claim needs a known fact plus a little computation, `auto` finds it for you.
+When a claim needs a known fact plus a little computation, `seek` finds it for you. It searches the lemmas proven in the same file, so this rule sits beside `nat`, `plus` and `plus-zero` from [induction](induction.md).
 
-```tree
-rule use-auto
+```tree fragment
+rule use-seek
   mark a, like nat
   show hold
     call is-equal
@@ -231,10 +233,10 @@ rule use-auto
       make succ
         bind prior
           read a
-  auto
+  seek
 ```
 
-`auto` closes this from the `plus`-zero law plus computation, so you never name the lemma. A non-theorem is left unproven rather than wrongly closed, the same honesty as `calm hold`.
+`seek` closes this from the `plus`-zero law plus computation, so you never name the lemma. A non-theorem is left unproven rather than wrongly closed, the same honesty as `calm hold`.
 
 ## Where to go next
 

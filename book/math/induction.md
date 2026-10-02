@@ -13,11 +13,11 @@ Maps to: an induction proof in Lean or Coq (`induction n`), or the inductive cas
 | `mark x, like T` | bind the universally quantified variable (the "for all `x`") |
 | `show hold` | state the law to prove |
 | `fold <var>` | prove it by structural induction on `<var>` |
-| `cite <lemma>` | rewrite the goal with a previously proven `rule` |
+| `cite <lemma>` | under a `fold`, rewrite with a previously proven `rule` |
 
 The shape of every induction proof:
 
-```tree
+```tree fragment
 rule the-law
   mark n, like nat        # for all n
   show hold
@@ -75,9 +75,9 @@ Why `fold` is needed here and `calm hold` is not enough: `plus` recurses on its 
 
 ## Inducting on the other side: `0 + n = n`
 
-The mirror law looks identical but is actually the easy one, because `plus` recurses on the first argument.
+The mirror law looks identical but is actually the easy one, because `plus` recurses on the first argument. It goes in the same file as `nat` and `plus` above.
 
-```tree
+```tree fragment
 rule zero-plus
   mark n, like nat
   show hold
@@ -93,9 +93,9 @@ Here `plus zero n` computes straight to `n` by the first match arm, so plain `ca
 
 ## Chaining lemmas with `cite`
 
-A harder law usually leans on simpler ones. `cite` brings a proven `rule` into the current proof and rewrites the goal with it. Commutativity of addition needs both `plus-zero` and the "successor pushes out" lemma below.
+A harder law usually leans on simpler ones. `cite`, written under the `fold`, brings a proven `rule` into the induction and rewrites the goal with it. Commutativity of addition needs both `plus-zero` and the "successor pushes out" lemma below. Both rules go in the same file as `nat`, `plus` and `plus-zero` above.
 
-```tree
+```tree fragment
 rule plus-succ
   mark a, like nat
   mark b, like nat
@@ -125,8 +125,8 @@ rule plus-commutes
         read b
         read a
   fold a
-  cite plus-zero
-  cite plus-succ
+    cite plus-zero
+    cite plus-succ
 ```
 
 In the `succ` case of `plus-commutes`, the goal needs `plus b (succ a) = succ (plus b a)`, which is exactly `plus-succ`. The `zero` case needs `plus b zero = b`, which is `plus-zero`. Each `cite` rewrites with one lemma, and the `fold` carries the structure. This is how the **full commutative semiring of the naturals** is built: commutativity, associativity, and distributivity of `*` over `+`, each a `fold` chained from the laws proved before it.
@@ -136,6 +136,11 @@ In the `succ` case of `plus-commutes`, the goal needs `plus b (succ a) = succ (p
 `fold` is not special to `nat`. It works over any inductive `form`. A law about list length, for instance, inducts over the list constructors.
 
 ```tree
+form nat
+  case zero
+  case succ
+    link prior, like nat
+
 form roll
   head t
   case nil
@@ -183,8 +188,8 @@ This last one closes by `calm hold` because `size (cons item more)` unfolds in o
 
 - One side already reduces to the other: `calm hold`.
 - The recursion is stuck on a universally bound variable: `fold <var>`.
-- The step case needs a previously proven law: add `cite <lemma>` lines after the `fold`.
-- You would rather not name the lemma: `auto` (bounded search, see [readme](readme.md)).
+- The step case needs a previously proven law: add `cite <lemma>` lines under the `fold`.
+- You would rather not name the lemma: `seek` (bounded search, see [readme](readme.md)).
 
 ## Where to go next
 

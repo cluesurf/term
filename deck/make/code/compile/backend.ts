@@ -124,6 +124,8 @@ const STRING_METHODS = new Set([
   'includes',
   'repeat',
   'concat',
+  // not a JavaScript method: the stdlib's code-point comparison (`ordering/from-texts`), -1, 0 or 1
+  'compare',
 ])
 
 export type StringOp = { target: Expression; op: string }
@@ -135,7 +137,7 @@ function hostMethod(name: string): string {
 
 // a native string METHOD CALL (`value.charAt(i)`) on a text receiver
 // is the value a text? The primitive, or the stdlib's `text` form named as such
-function isText(type: { kind: string; name?: string } | undefined): boolean {
+export function isText(type: { kind: string; name?: string } | undefined): boolean {
   return type?.kind === 'string' || (type?.kind === 'named' && type.name === 'text')
 }
 

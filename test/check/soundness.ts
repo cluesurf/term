@@ -1450,6 +1450,42 @@ ${have}  save p
       code 1
 `
 
+  // a local named like an impure task is the local: its goals are decided. Calling the task in a goal still is not
+  const tallyTask = `task tally
+  take xs, like list, like number
+  like number
+  call xs/push
+    code 0
+  send back, read xs/length
+`
+
+  expect(
+    'a local that shares a name with an impure task is decided as the local',
+    `${tallyTask}
+task use
+  take xs, like list, like number
+  save tally, code 3
+  hold
+    call is-above
+      read tally
+      code 0
+`,
+    proven,
+  )
+  expect(
+    'control: the impure task called in a goal is not decided',
+    `${tallyTask}
+task use
+  take xs, like list, like number
+  hold
+    call is-above
+      call tally
+        read xs
+      code 0
+`,
+    refused('unchecked-hold'),
+  )
+
   // a counted walk reads its head once: an impure head (it grows the list each time it is called) still bounds it
   const grow = `task grow
   take xs, like list, like number

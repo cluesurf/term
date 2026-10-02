@@ -4,7 +4,8 @@
 # with text parameters, reads it back with a number parameter, reads a field through the opaque row handle, and
 # leaves with 0 when the field holds the line the driver put in <bundle>/smoke.txt, 1 when it does not, 2 when the
 # row did not come back at all. Then it lets the row go and uses it again (native-dom-0029): the cask must refuse it,
-# and a row still readable after its release leaves with 3. The driver reads that status.
+# and a row still readable after its release leaves with 3. Last, a RECORD crosses (native-dom-0019): `stat` answers
+# a path's size and kind as one path-info, and a wrong one leaves with 4. The driver reads that status.
 
 load @term/cask/code/cask
   find bundle-path
@@ -21,6 +22,7 @@ load @term/site/code/base/db
 
 load @term/base/code/file
   find read
+  find stat
 
 load @term/base/code/text
   find trim
@@ -120,9 +122,44 @@ task boot
           fork test
             hook test, read refused
             hook hold
-              call exit
-                wait true
-                code 0
+              # a record crosses by value (native-dom-0019): the cask answers a path's size and kind as one
+              # path-info, filled back into the form on this side. The line the driver wrote is a file with bytes in
+              # it, and the bundle is a directory; anything else leaves with 4
+              save info
+                call stat
+                  text <{{bundle}}/smoke.txt>
+                  wait true
+              save folder
+                call stat
+                  read bundle
+                  wait true
+              fork test
+                hook test, read info/directory
+                hook hold
+                  call exit
+                    wait true
+                    code 4
+                hook miss
+                  fork test
+                    hook test, read folder/directory
+                    hook hold
+                      fork test
+                        hook test
+                          call is-above
+                            read info/size
+                            code 0
+                        hook hold
+                          call exit
+                            wait true
+                            code 0
+                        hook miss
+                          call exit
+                            wait true
+                            code 4
+                    hook miss
+                      call exit
+                        wait true
+                        code 4
             hook miss
               call exit
                 wait true

@@ -188,10 +188,13 @@ function impureOutsideMasks(expr: unknown, walk: Walk): boolean {
     return true
   }
 
+  // an impure task named as a value. A LOCAL of the same name is not that task: a `save count` beside the stdlib's
+  // `count` made every goal mentioning the local undecidable (supervisor.tree, 2026-10-02)
   if (
     node.form === 'variable' &&
     walk.functions.has(node.name) &&
-    !walk.pure.has(node.name)
+    !walk.pure.has(node.name) &&
+    !walk.local.has(node.name)
   ) {
     return true
   }
@@ -2052,7 +2055,9 @@ function universalGoal(expr: Expression, available: Inequality[], seeds: Express
   // a first round over the goal's own terms, and a second over the terms its instances name, tried in that order so
   // the smaller fact set is asked first
   for (let round = 0; round < 2; round++) {
-    const candidates = [...terms.values()].slice(0, 8)
+    // the second round may name a few more terms (an index such as n - m - 1 appears only in the first round's
+    // instances); the cap stays fixed so the work is bounded and the answer never depends on timing
+    const candidates = [...terms.values()].slice(0, round === 0 ? 8 : 10)
     const made = instances(candidates)
     const facts = [...available]
 
@@ -2355,6 +2360,11 @@ function factVariables(fact: Fact): string[] {
 // a comparison goal proven by products of the facts (product.ts): `L >= R` is `L - R >= 0`, an equation is both.
 // Only the facts that share a variable with the goal, directly or through other facts, are given, at most twelve.
 function productGoal(expr: Expression, available: Inequality[]): boolean {
+  // a conjunction holds when each side does, each proved from the same facts
+  if (expr.form === 'binary' && expr.op === '&&') {
+    return productGoal(expr.left, available) && productGoal(expr.right, available)
+  }
+
   if (expr.form !== 'binary' || !['<', '<=', '>', '>=', '=='].includes(expr.op)) {
     return false
   }

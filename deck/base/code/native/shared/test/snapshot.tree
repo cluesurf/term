@@ -25,7 +25,7 @@ load @term/base/code/native/shared/test
 task resolve
   take name, like text
   take format, like text
-  note private
+  mark private
   save ext, text <.json>
   fork test
     hook test
@@ -45,7 +45,7 @@ task resolve
 task serialize
   take value, like unknown
   take format, like text
-  note private
+  mark private
   like text
   fork test
     hook test
@@ -64,7 +64,7 @@ task deserialize
   take raw, like text
   take format, like text
   like unknown
-  note private
+  mark private
   fork test
     hook test
       call is-equal

@@ -1,0 +1,1059 @@
+# JSON check: is a text one JSON value by RFC 8259, and if not, where and why. Pure Term over the text's code points,
+# so every backend accepts exactly the same texts and refuses the rest with the same position and the same reason
+# (note/term/stdlib/semantics.md). `json/parse` runs it before the host parser sees the text, because the host parsers
+# disagree at the edges: JavaScript throws, Rust and Swift returned null, and an unpaired surrogate escape is accepted
+# by one and refused by another.
+#
+# A position counts code points from zero. The one choice beyond the RFC's grammar: an escaped surrogate must be a
+# high one followed by an escaped low one, since a lone one names no character and the host parsers split on it.
+#
+# Every walk is bounded by the text's length and carries a `down` measure, and every task that returns a position
+# promises (`must`) never to move backward, which is what lets each walk's measure fall: `term hold` proves the check
+# always ends.
+
+load @term/base/code/text/unicode
+  find to-runes
+
+load @term/base/code/list
+  find size
+
+load @term/base/code/exception
+  find mismatch
+
+form json-mismatch
+  like mismatch
+    bind note, <Not JSON>
+    link at, like number
+    link reason, like text
+
+# the code point at a position, or -1 past either end
+task json-rune-at
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read at
+          code 0
+        call is-below
+          read at
+          call size
+            read runes
+    hook hold
+      send back, read runes/{at}
+  send back
+    call subtract
+      code 0
+      code 1
+
+task refuse-json
+  take at, like number
+  take reason, like text
+  like number
+  halt json-mismatch
+    bind thing, text <json>
+    bind at, read at
+    bind reason, read reason
+
+# space, tab, line feed, carriage return: the only whitespace JSON has
+task json-is-space
+  take c, like number
+  like boolean
+  send back
+    call or
+      call or
+        call is-equal
+          read c
+          code 32
+        call is-equal
+          read c
+          code 9
+      call or
+        call is-equal
+          read c
+          code 10
+        call is-equal
+          read c
+          code 13
+
+task json-is-digit
+  take c, like number
+  like boolean
+  send back
+    call and
+      call is-minimum
+        read c
+        code 48
+      call is-maximum
+        read c
+        code 57
+
+task json-is-hex
+  take c, like number
+  like boolean
+  send back
+    call or
+      call json-is-digit
+        read c
+      call or
+        call and
+          call is-minimum
+            read c
+            code 97
+          call is-maximum
+            read c
+            code 102
+        call and
+          call is-minimum
+            read c
+            code 65
+          call is-maximum
+            read c
+            code 70
+
+# the position after the whitespace that starts at `at`
+task json-skip-space
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  must
+    call is-minimum
+      read back
+      read at
+  save n
+    call size
+      read runes
+  save i, read at
+  walk test
+    must
+      call is-minimum
+        read i
+        read at
+    down
+      call subtract
+        read n
+        read i
+    hook test
+      call and
+        call is-below
+          read i
+          read n
+        call json-is-space
+          call json-rune-at
+            read runes
+            read i
+    hook step
+      save i
+        call add
+          read i
+          code 1
+  send back, read i
+
+# the value of four hex digits at `at`, or -1 when any of them is not a hex digit
+task json-hex-four
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  save total, code 0
+  save k, code 0
+  walk test
+    down
+      call subtract
+        code 4
+        read k
+    hook test
+      call is-below
+        read k
+        code 4
+    hook step
+      save c
+        call json-rune-at
+          read runes
+          call add
+            read at
+            read k
+      fork test
+        hook test
+          call json-is-hex
+            read c
+        hook miss
+          send back
+            call subtract
+              code 0
+              code 1
+      save digit
+        call subtract
+          read c
+          code 48
+      fork test
+        hook test
+          call is-minimum
+            read c
+            code 97
+        hook hold
+          save digit
+            call subtract
+              read c
+              code 87
+      fork test
+        hook test
+          call and
+            call is-minimum
+              read c
+              code 65
+            call is-maximum
+              read c
+              code 70
+        hook hold
+          save digit
+            call subtract
+              read c
+              code 55
+      save total
+        call add
+          call multiply
+            read total
+            code 16
+          read digit
+      save k
+        call add
+          read k
+          code 1
+  send back, read total
+
+# the position after the literal `word` (true, false, null) at `at`
+task json-word
+  take runes
+    like list
+      like number
+  take at, like number
+  take word
+    like list
+      like number
+  like number
+  must
+    call is-minimum
+      read back
+      read at
+  save size-of-word
+    call size
+      read word
+  save k, code 0
+  walk test
+    down
+      call subtract
+        read size-of-word
+        read k
+    hook test
+      call is-below
+        read k
+        read size-of-word
+    hook step
+      fork test
+        hook test
+          call is-unequal
+            call json-rune-at
+              read runes
+              call add
+                read at
+                read k
+            call json-rune-at
+              read word
+              read k
+        hook hold
+          call refuse-json
+            call add
+              read at
+              read k
+            text <a literal is misspelled>
+      save k
+        call add
+          read k
+          code 1
+  send back
+    call add
+      read at
+      read k
+
+# the position after the run of digits at `at`, which must hold at least one
+task json-digits
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  must
+    call is-above
+      read back
+      read at
+  fork test
+    hook test
+      call json-is-digit
+        call json-rune-at
+          read runes
+          read at
+    hook miss
+      call refuse-json
+        read at
+        text <a digit is missing>
+  save n
+    call size
+      read runes
+  save i
+    call add
+      read at
+      code 1
+  walk test
+    must
+      call is-above
+        read i
+        read at
+    down
+      call subtract
+        read n
+        read i
+    hook test
+      call and
+        call is-below
+          read i
+          read n
+        call json-is-digit
+          call json-rune-at
+            read runes
+            read i
+    hook step
+      save i
+        call add
+          read i
+          code 1
+  send back, read i
+
+task json-number
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  must
+    call is-above
+      read back
+      read at
+  save signed
+    call json-sign
+      read runes
+      read at
+  save whole
+    call json-whole
+      read runes
+      read signed
+  save fraction
+    call json-fraction
+      read runes
+      read whole
+  save exponent
+    call json-exponent
+      read runes
+      read fraction
+  send back, read exponent
+
+# past a leading minus, if there is one
+task json-sign
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  must
+    call is-minimum
+      read back
+      read at
+  fork test
+    hook test
+      call is-equal
+        call json-rune-at
+          read runes
+          read at
+        code 45
+    hook hold
+      send back
+        call add
+          read at
+          code 1
+  send back, read at
+
+# past the whole part: a zero alone, or a run of digits
+task json-whole
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  must
+    call is-above
+      read back
+      read at
+  fork test
+    hook test
+      call is-equal
+        call json-rune-at
+          read runes
+          read at
+        code 48
+    hook hold
+      send back
+        call add
+          read at
+          code 1
+  save digits
+    call json-digits
+      read runes
+      read at
+  send back, read digits
+
+# past a point and its digits, if there is a point
+task json-fraction
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  must
+    call is-minimum
+      read back
+      read at
+  fork test
+    hook test
+      call is-equal
+        call json-rune-at
+          read runes
+          read at
+        code 46
+    hook hold
+      save digits
+        call json-digits
+          read runes
+          call add
+            read at
+            code 1
+      send back, read digits
+  send back, read at
+
+# past an exponent, its sign and its digits, if there is an exponent
+task json-exponent
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  must
+    call is-minimum
+      read back
+      read at
+  save e
+    call json-rune-at
+      read runes
+      read at
+  fork test
+    hook test
+      call or
+        call is-equal
+          read e
+          code 101
+        call is-equal
+          read e
+          code 69
+    hook hold
+      save signed
+        call json-plus-or-minus
+          read runes
+          call add
+            read at
+            code 1
+      save digits
+        call json-digits
+          read runes
+          read signed
+      send back, read digits
+  send back, read at
+
+task json-plus-or-minus
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  must
+    call is-minimum
+      read back
+      read at
+  save sign
+    call json-rune-at
+      read runes
+      read at
+  fork test
+    hook test
+      call or
+        call is-equal
+          read sign
+          code 43
+        call is-equal
+          read sign
+          code 45
+    hook hold
+      send back
+        call add
+          read at
+          code 1
+  send back, read at
+
+# the position after the escape whose backslash is at `at`
+task json-escape
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  must
+    call is-above
+      read back
+      read at
+  save e
+    call json-rune-at
+      read runes
+      call add
+        read at
+        code 1
+  fork test
+    hook test
+      call is-unequal
+        read e
+        code 117
+    hook hold
+      fork test
+        hook test
+          call or
+            call or
+              call or
+                call is-equal
+                  read e
+                  code 34
+                call is-equal
+                  read e
+                  code 92
+              call or
+                call is-equal
+                  read e
+                  code 47
+                call is-equal
+                  read e
+                  code 98
+            call or
+              call or
+                call is-equal
+                  read e
+                  code 102
+                call is-equal
+                  read e
+                  code 110
+              call or
+                call is-equal
+                  read e
+                  code 114
+                call is-equal
+                  read e
+                  code 116
+        hook miss
+          call refuse-json
+            read at
+            text <an escape is not one JSON knows>
+      send back
+        call add
+          read at
+          code 2
+  save unit
+    call json-hex-four
+      read runes
+      call add
+        read at
+        code 2
+  fork test
+    hook test
+      call is-below
+        read unit
+        code 0
+    hook hold
+      call refuse-json
+        read at
+        text <a unicode escape needs four hex digits>
+  # a low surrogate cannot open a pair
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read unit
+          code 56320
+        call is-maximum
+          read unit
+          code 57343
+    hook hold
+      call refuse-json
+        read at
+        text <an escaped surrogate must be a pair>
+  # a high surrogate must be followed by an escaped low one
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read unit
+          code 55296
+        call is-maximum
+          read unit
+          code 56319
+    hook hold
+      save low
+        call json-hex-four
+          read runes
+          call add
+            read at
+            code 8
+      fork test
+        hook test
+          call and
+            call and
+              call is-equal
+                call json-rune-at
+                  read runes
+                  call add
+                    read at
+                    code 6
+                code 92
+              call is-equal
+                call json-rune-at
+                  read runes
+                  call add
+                    read at
+                    code 7
+                code 117
+            call and
+              call is-minimum
+                read low
+                code 56320
+              call is-maximum
+                read low
+                code 57343
+        hook miss
+          call refuse-json
+            read at
+            text <an escaped surrogate must be a pair>
+      send back
+        call add
+          read at
+          code 12
+  send back
+    call add
+      read at
+      code 6
+
+# the position after the string whose opening quote is at `at`
+task json-string
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  must
+    call is-above
+      read back
+      read at
+  save n
+    call size
+      read runes
+  save i
+    call add
+      read at
+      code 1
+  walk test
+    must
+      call is-above
+        read i
+        read at
+    down
+      call subtract
+        read n
+        read i
+    hook test
+      call is-below
+        read i
+        read n
+    hook step
+      save c
+        call json-rune-at
+          read runes
+          read i
+      fork test
+        hook test
+          call is-equal
+            read c
+            code 34
+        hook hold
+          send back
+            call add
+              read i
+              code 1
+      fork test
+        hook test
+          call is-below
+            read c
+            code 32
+        hook hold
+          call refuse-json
+            read i
+            text <a control character in a string must be escaped>
+      save next
+        call json-string-step
+          read runes
+          read i
+          read c
+      save i, read next
+  call refuse-json
+    read at
+    text <a string is not closed>
+  send back, read i
+
+# past one character of a string body: an escape, or one code point
+task json-string-step
+  take runes
+    like list
+      like number
+  take at, like number
+  take c, like number
+  like number
+  must
+    call is-above
+      read back
+      read at
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 92
+    hook hold
+      save escaped
+        call json-escape
+          read runes
+          read at
+      send back, read escaped
+  send back
+    call add
+      read at
+      code 1
+
+# the position after the container (object or array) whose bracket is at `at`
+task json-container
+  take runes
+    like list
+      like number
+  take at, like number
+  take object, like boolean
+  like number
+  must
+    call is-above
+      read back
+      read at
+  save close, code 93
+  fork test
+    hook test
+      read object
+    hook hold
+      save close, code 125
+  save n
+    call size
+      read runes
+  save i
+    call json-skip-space
+      read runes
+      call add
+        read at
+        code 1
+  fork test
+    hook test
+      call is-equal
+        call json-rune-at
+          read runes
+          read i
+        read close
+    hook hold
+      send back
+        call add
+          read i
+          code 1
+  walk test
+    must
+      call is-above
+        read i
+        read at
+    down
+      call subtract
+        read n
+        read i
+    hook test
+      call is-below
+        read i
+        read n
+    hook step
+      save start
+        call json-key
+          read runes
+          read i
+          read object
+      save value
+        call json-value
+          read runes
+          read start
+      save after
+        call json-skip-space
+          read runes
+          read value
+      save c
+        call json-rune-at
+          read runes
+          read after
+      fork test
+        hook test
+          call is-equal
+            read c
+            read close
+        hook hold
+          send back
+            call add
+              read after
+              code 1
+      fork test
+        hook test
+          call is-unequal
+            read c
+            code 44
+        hook hold
+          call refuse-json
+            read after
+            text <a comma or a closing bracket is missing>
+      save next
+        call json-skip-space
+          read runes
+          call add
+            read after
+            code 1
+      save i, read next
+  call refuse-json
+    read i
+    text <a value is missing>
+  send back
+    call add
+      read i
+      code 1
+
+# past an object's key and its colon, to where the value starts; an array has no key, so it stays put
+task json-key
+  take runes
+    like list
+      like number
+  take at, like number
+  take object, like boolean
+  like number
+  must
+    call is-minimum
+      read back
+      read at
+  fork test
+    hook test
+      read object
+    hook miss
+      send back, read at
+  fork test
+    hook test
+      call is-unequal
+        call json-rune-at
+          read runes
+          read at
+        code 34
+    hook hold
+      call refuse-json
+        read at
+        text <a key must be a string>
+  save key
+    call json-string
+      read runes
+      read at
+  save after
+    call json-skip-space
+      read runes
+      read key
+  fork test
+    hook test
+      call is-unequal
+        call json-rune-at
+          read runes
+          read after
+        code 58
+    hook hold
+      call refuse-json
+        read after
+        text <a key must be followed by a colon>
+  send back
+    call add
+      read after
+      code 1
+
+# the position after the one value that starts at or after `at`
+task json-value
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  must
+    call is-minimum
+      read back
+      read at
+  save i
+    call json-skip-space
+      read runes
+      read at
+  save c
+    call json-rune-at
+      read runes
+      read i
+  fork test
+    hook test
+      call is-below
+        read c
+        code 0
+    hook hold
+      call refuse-json
+        read i
+        text <a value is missing>
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 123
+    hook hold
+      save found
+        call json-container
+          read runes
+          read i
+          true
+      send back, read found
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 91
+    hook hold
+      save found
+        call json-container
+          read runes
+          read i
+          false
+      send back, read found
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 34
+    hook hold
+      save found
+        call json-string
+          read runes
+          read i
+      send back, read found
+  fork test
+    hook test
+      call or
+        call is-equal
+          read c
+          code 45
+        call json-is-digit
+          read c
+    hook hold
+      save found
+        call json-number
+          read runes
+          read i
+      send back, read found
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 116
+    hook hold
+      save found
+        call json-word
+          read runes
+          read i
+          call to-runes
+            text <true>
+      send back, read found
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 102
+    hook hold
+      save found
+        call json-word
+          read runes
+          read i
+          call to-runes
+            text <false>
+      send back, read found
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 110
+    hook hold
+      save found
+        call json-word
+          read runes
+          read i
+          call to-runes
+            text <null>
+      send back, read found
+  call refuse-json
+    read i
+    text <a value cannot start here>
+  send back, read i
+
+# raise `json-mismatch` unless the text is exactly one JSON value, with optional whitespace around it
+task check-json
+  take text, like text
+  like boolean
+  save runes
+    call to-runes
+      read text
+  save end
+    call json-skip-space
+      read runes
+      call json-value
+        read runes
+        code 0
+  fork test
+    hook test
+      call is-below
+        read end
+        call size
+          read runes
+    hook hold
+      call refuse-json
+        read end
+        text <text follows the value>
+  send back, true

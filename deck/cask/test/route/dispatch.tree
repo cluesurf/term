@@ -25,6 +25,7 @@ load @term/base/code/file
   find copy, name file-copy
   find move, name file-move
   find test, name file-test
+  find stat, name file-stat
 
 load @term/site/code/http/local
   find ask, name local-ask
@@ -69,6 +70,16 @@ load @term/base/code/uuid
 load @term/base/code/maybe
   find maybe
   find unwrap
+
+load @term/base/code/file/stat
+  find path-info
+
+load @term/host/code/base
+  find data
+
+load @term/host/code/text
+  find data-from-text
+  find data-to-text
 
 # the items of a json array, as a list whose element the checker knows
 task items-of
@@ -140,6 +151,12 @@ task is-allowed
       call is-equal
         read command
         text <file_test>
+    hook hold
+      send back, true
+    hook test
+      call is-equal
+        read command
+        text <file_stat>
     hook hold
       send back, true
     hook test
@@ -358,39 +375,62 @@ task run-command
     hook test
       call is-equal
         read command
-        text <local_ask>
+        text <file_stat>
     hook hold
       save field-38
         call get-field
           read arguments
-          text <method>
+          text <path>
       save value-40
         call as-text
           read field-38
-      save field-41
+      save answer
+        call file-stat
+          wait true
+          read value-40
+      save json-42
+        call from-text
+          call data-to-text
+            call melt
+              read answer
+              like path-info
+      send back, read json-42
+    hook test
+      call is-equal
+        read command
+        text <local_ask>
+    hook hold
+      save field-43
+        call get-field
+          read arguments
+          text <method>
+      save value-45
+        call as-text
+          read field-43
+      save field-46
         call get-field
           read arguments
           text <path>
-      save value-43
+      save value-48
         call as-text
-          read field-41
-      save field-44
+          read field-46
+      save field-49
         call get-field
           read arguments
           text <body>
-      save value-46
+      save value-51
         call as-text
-          read field-44
+          read field-49
       save answer
         call local-ask
           wait true
-          read value-40
-          read value-43
-          read value-46
-      save json-48
+          read value-45
+          read value-48
+          read value-51
+      save json-53
         call from-text
           read answer
-      send back, read json-48
+      send back, read json-53
     hook test
       call is-equal
         read command

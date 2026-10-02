@@ -10,11 +10,11 @@ Maps to: arithmetic / comparison / boolean operators, and a pipe (`|>`, `.then`,
 
 | You write | Means | Maps to |
 | --- | --- | --- |
-| `call add, a, b` | a + b | `+` |
-| `call subtract, a, b` | a - b | `-` |
-| `call multiply, a, b` | a * b | `*` |
-| `call divide, a, b` | a / b | `/` |
-| `call modulo, a, b` | remainder of a / b | `%` |
+| `call add(a, b)` | a + b | `+` |
+| `call subtract(a, b)` | a - b | `-` |
+| `call multiply(a, b)` | a * b | `*` |
+| `call divide(a, b)` | a / b | `/` |
+| `call modulo(a, b)` | remainder of a / b | `%` |
 
 ### Comparison
 
@@ -22,21 +22,23 @@ Each returns a `boolean`.
 
 | You write | Means | Maps to |
 | --- | --- | --- |
-| `call is-equal, a, b` | a equals b | `==` |
-| `call is-unequal, a, b` | a does not equal b | `!=` |
-| `call is-above, a, b` | a is greater than b | `>` |
-| `call is-below, a, b` | a is less than b | `<` |
-| `call is-minimum, a, b` | a is at least b | `>=` |
-| `call is-maximum, a, b` | a is at most b | `<=` |
+| `call is-equal(a, b)` | a equals b | `==` |
+| `call is-unequal(a, b)` | a does not equal b | `!=` |
+| `call is-above(a, b)` | a is greater than b | `>` |
+| `call is-below(a, b)` | a is less than b | `<` |
+| `call is-minimum(a, b)` | a is at least b | `>=` |
+| `call is-maximum(a, b)` | a is at most b | `<=` |
+
+In the tables `a` and `b` stand for whole arguments, such as `read(x)` or `code 2`.
 
 ### Boolean logic
 
-These are the `boolean` form's own tasks. Call them by name on two booleans, or member-style on one.
+These are the `boolean` form's own tasks. Call them by name on two booleans.
 
 | You write | Means | Maps to |
 | --- | --- | --- |
-| `call and, a, b` | a and b | `&&` |
-| `call or, a, b` | a or b | `\|\|` |
+| `call and(a, b)` | a and b | `&&` |
+| `call or(a, b)` | a or b | `\|\|` |
 | `call not, a` | logical negation | `!` |
 
 ### Chaining
@@ -47,10 +49,10 @@ These are the `boolean` form's own tasks. Call them by name on two booleans, or 
 
 ## Arithmetic
 
-Each arithmetic op is a `call` with two arguments. Arguments can be inline after commas or indented below.
+Each arithmetic op is a `call` with two arguments. Arguments go indented below, or inside parentheses after the callee. A comma pops only one level, so `call add, read a, read b` does not pass two arguments: it puts `read b` inside the first `read`.
 
-```tree
-call add, read a, read b
+```tree fragment
+call add(read(a), read(b))
 
 call multiply
   read width
@@ -59,7 +61,7 @@ call multiply
 
 Nest calls to build expressions. To compute `(a + b) * c`:
 
-```tree
+```tree fragment
 call multiply
   call add
     read a
@@ -75,7 +77,7 @@ task is-even
   like boolean
   send back
     call is-equal
-      call modulo, read n, code 2
+      call modulo(read(n), code 2)
       code 0
 ```
 
@@ -90,52 +92,54 @@ task clamp-low
   like number
   fork test
     hook test
-      call is-below, read value, read low
+      call is-below(read(value), read(low))
     hook hold, send back, read low
     hook miss, send back, read value
 ```
 
 The full set covers strict and inclusive comparisons:
 
-```tree
-call is-equal, read x, code 0      # x == 0
-call is-unequal, read x, code 0    # x != 0
-call is-above, read x, code 0      # x > 0
-call is-below, read x, code 0      # x < 0
-call is-minimum, read x, code 0    # x >= 0
-call is-maximum, read x, code 0    # x <= 0
+```tree fragment
+call is-equal(read(x), code 0)      # x == 0
+call is-unequal(read(x), code 0)    # x != 0
+call is-above(read(x), code 0)      # x > 0
+call is-below(read(x), code 0)      # x < 0
+call is-minimum(read(x), code 0)    # x >= 0
+call is-maximum(read(x), code 0)    # x <= 0
 ```
 
 ## Boolean logic
 
 `and`, `or`, and `not` are tasks on the `boolean` form. Call them by name on two booleans:
 
-```tree
+```tree fragment
 call and
-  call is-minimum, read x, read low
-  call is-below, read x, read high
+  call is-minimum(read(x), read(low))
+  call is-below(read(x), read(high))
 ```
 
-`not` takes one boolean:
+`not` takes one boolean. It is a method of the `boolean` form, so load the form first:
 
 ```tree
-call not
-  call is-equal, read a, read b
+load @term/base/code/boolean
+  find boolean
+
+task differs
+  take a, like number
+  take b, like number
+  like boolean
+  send back
+    call not
+      call is-equal(read(a), read(b))
 ```
 
-You can also call them member-style on a value, which reads like a method:
-
-```tree
-call ready/and, read warm
-```
-
-This is the same `and` task, with `ready` as the value it acts on. See [primitives](primitives.md) for the `true` / `false` literals and [structures](structures.md) for the `boolean` form.
+Call them by name, not member-style. `call ready/and, read warm` builds as a native method call on the value (`ready.and(warm)` on TypeScript), which a boolean does not have. See [primitives](primitives.md) for the `true` / `false` literals and [structures](structures.md) for the `boolean` form.
 
 ## Chaining with `link`
 
 `link <fn>` pipes a value forward. A `call` followed by a child `link g` feeds the call's result into `g`. So:
 
-```tree
+```tree fragment
 call f, read x
   link g
 ```
@@ -144,7 +148,7 @@ means `g(f(x))`. Each `link` child takes the running value and applies the next 
 
 Without `link`, composing three functions nests inward:
 
-```tree
+```tree fragment
 call format
   call round
     call scale, read raw
@@ -152,7 +156,7 @@ call format
 
 With `link`, it reads top to bottom in the order things happen:
 
-```tree
+```tree fragment
 call scale, read raw
   link round
   link format
@@ -161,11 +165,31 @@ call scale, read raw
 Both compute `format(round(scale(raw)))`. The `link` form is easier to read when the pipeline is long, because each step is one line and the order matches the data flow. A `link` target can be a stdlib task or one of your own. To pass extra arguments to a linked function, give it children:
 
 ```tree
-call to-list, read range
-  link map
-    read double
-  link filter
-    read positive
+load @term/base/code/list
+  find list
+
+task double
+  take n, like number
+  like number
+  send back, call multiply(read(n), code 2)
+
+task positive
+  take n, like number
+  like boolean
+  send back, call is-above(read(n), code 0)
+
+task doubled-positives
+  take xs
+    like list
+      like number
+  like list
+    like number
+  send back
+    call copy, read xs
+      link map
+        read double
+      link filter
+        read positive
 ```
 
-This reads as `filter(map(to-list(range), double), positive)`. Reach for `link` whenever a value flows through a series of steps. Use plain nested `call` when there are only one or two stages.
+This reads as `filter(map(copy(xs), double), positive)`. Reach for `link` whenever a value flows through a series of steps. Use plain nested `call` when there are only one or two stages.

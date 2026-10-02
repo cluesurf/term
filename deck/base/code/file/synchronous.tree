@@ -25,7 +25,7 @@ load @term/base/code/native/{platform}/file/synchronous
 form synchronous-file
   link dock
     like grip-dock
-    note private
+    mark private
   link path, like text
 
 task open

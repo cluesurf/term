@@ -1,3 +1,7 @@
+load @term/base/code/native/{platform}/process/current
+  find read-process
+  find exit-process
+  find listen-process
 
 form process-info
   link id, like size
@@ -7,15 +11,25 @@ form process-info
   link directory, like text
   link executable, like text
 
+# this process: its id, its own arguments (what follows the program's name, never the runtime or the program
+# itself, the same list on every backend), its working directory and its executable
 task read
   like process-info
+  send back
+    call read-process
 
 task exit
   take
     code
     like size
     fall 0
+  call exit-process
+    read code
 
+# run `handler` when the process is asked to stop: "terminate", "interrupt" or "hangup"
 task listen
   take signal, like text
   take handler, like task
+  call listen-process
+    read signal
+    read handler
