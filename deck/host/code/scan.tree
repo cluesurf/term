@@ -28,7 +28,7 @@ load @term/base/code/json
   find as-number
 
 load ./node
-  find node
+  find scan-node
   find parse-integer
 
 load ./base
@@ -54,13 +54,13 @@ form scanned-line
   link line, like number
   link nodes
     like list
-      like node
+      like scan-node
 
 # the whole text as top-level groups
 task scan
   take input, like text
   like list
-    like node
+    like scan-node
   save lines
     call split
       read input
@@ -185,8 +185,8 @@ task attach
   note private
   take parents
     like list
-      like node
-  take child, like node
+      like scan-node
+  take child, like scan-node
   save head
     call get
       read parents
@@ -696,7 +696,7 @@ task scan-line
   take line, like text
   take number, like number
   like list
-    like node
+    like scan-node
   save tokens
     call tokenize
       read line
@@ -818,7 +818,7 @@ task scan-line
 
 task is-group
   note private
-  take one, like node
+  take one, like scan-node
   like boolean
   fork case, read one
     case group
@@ -834,8 +834,8 @@ task is-group
 
 task attach-item
   note private
-  take owner, like node
-  take item, like node
+  take owner, like scan-node
+  take item, like scan-node
   fork case, read owner
     case group
       link kids
@@ -861,7 +861,7 @@ task attach-item
 
 # one item and where the next begins
 form scanned-item
-  link node, like node
+  link node, like scan-node
   link next, like number
 
 # an item: a literal, a bare word, a word followed by a word (the key nests), or a word with a parenthesis

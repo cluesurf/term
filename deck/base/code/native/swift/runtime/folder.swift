@@ -9,7 +9,7 @@ enum folder {
     }
 
     private static func xdgOr(_ variable: String, _ fallback: String) -> String {
-        ProcessInfo.processInfo.environment[variable]
+        Foundation.ProcessInfo.processInfo.environment[variable]
             ?? "\(homeOrEmpty())/\(fallback)"
     }
 

@@ -1,14 +1,15 @@
-# Integer math: the clean uniform interface. The host-backed operations (absolute, minimum, maximum, power, sign, square-root) delegate to the per-backend native implementation in its own file (`native/<env>/math`). Operations with no host primitive (clamp, greatest-common-divisor, factorial) compose from the interface in pure Seed. `number` is the platform integer (i64 / Int / Long), so round-down / round-up / round are the identity.
+# Integer math. absolute, minimum, maximum and sign delegate to the host; power, square-root, clamp,
+# greatest-common-divisor and factorial are pure Term, so they give the same whole number on every backend (a host
+# power or square root goes through a float, and the hosts disagreed past 2^53, on a negative exponent and on a
+# negative root). A result past the integer range stops, as every integer operation does
+# (note/term/stdlib/semantics.md). The logarithm and the trigonometric functions are in `float`: their results are not
+# whole numbers.
 
 load @term/base/code/native/{platform}/math
   find abs
   find min
   find max
-  find pow
-  find log
-  find sin
   find signum
-  find sqrt
 
 task absolute
   take value, like number
@@ -35,14 +36,91 @@ task maximum
       read a
       read b
 
+# base to a whole power, exactly, by repeated squaring. A negative exponent is the reciprocal truncated toward zero:
+# 1 and -1 keep their size, any other base gives 0, and 0 stops (there is no reciprocal of zero).
 task power
   take base, like number
   take exponent, like number
   like number
-  send back
-    call pow
-      read base
-      read exponent
+  fork test
+    hook test
+      call is-below
+        read exponent
+        code 0
+    hook hold
+      fork test
+        hook test
+          call is-equal
+            read base
+            code 0
+        hook hold
+          halt text <zero has no negative power>
+      fork test
+        hook test
+          call is-equal
+            read base
+            code 1
+        hook hold
+          send back, code 1
+      fork test
+        hook test
+          call is-equal
+            read base
+            call subtract
+              code 0
+              code 1
+        hook hold
+          fork test
+            hook test
+              call is-equal
+                call modulo
+                  read exponent
+                  code 2
+                code 0
+            hook hold
+              send back, code 1
+          send back
+            call subtract
+              code 0
+              code 1
+      send back, code 0
+  save result, code 1
+  save square, read base
+  save left, read exponent
+  walk test
+    down, read left
+    hook test
+      call is-above
+        read left
+        code 0
+    hook step
+      fork test
+        hook test
+          call is-equal
+            call modulo
+              read left
+              code 2
+            code 1
+        hook hold
+          save result
+            call multiply
+              read result
+              read square
+      save left
+        call divide
+          read left
+          code 2
+      fork test
+        hook test
+          call is-above
+            read left
+            code 0
+        hook hold
+          save square
+            call multiply
+              read square
+              read square
+  send back, read result
 
 task sign
   take value, like number
@@ -51,12 +129,49 @@ task sign
     call signum
       read value
 
+# the whole square root, rounded down (the largest r with r * r at most the value); a negative value stops
 task square-root
   take value, like number
   like number
-  send back
-    call sqrt
-      read value
+  fork test
+    hook test
+      call is-below
+        read value
+        code 0
+    hook hold
+      halt text <a negative number has no square root>
+  fork test
+    hook test
+      call is-below
+        read value
+        code 2
+    hook hold
+      send back, read value
+  # Newton's method from above: each step falls until it reaches the root
+  save guess, read value
+  save next
+    call divide
+      call add
+        read guess
+        code 1
+      code 2
+  walk test
+    down, read guess
+    hook test
+      call is-below
+        read next
+        read guess
+    hook step
+      save guess, read next
+      save next
+        call divide
+          call add
+            read guess
+            call divide
+              read value
+              read guess
+          code 2
+  send back, read guess
 
 task round-down
   take value, like number
@@ -129,18 +244,33 @@ task factorial
           code 1
   send back, read result
 
-# the NATURAL logarithm (base e)
-task logarithm
-  take value, like number
+# the smallest positive number both divide, or 0 when either is 0. Divided before it is multiplied, so it stays inside
+# the integer range whenever the answer does
+task least-common-multiple
+  take a, like number
+  take b, like number
   like number
+  fork test
+    hook test
+      call or
+        call is-equal
+          read a
+          code 0
+        call is-equal
+          read b
+          code 0
+    hook hold
+      send back, code 0
+  save divisor
+    call greatest-common-divisor
+      call absolute
+        read a
+      call absolute
+        read b
   send back
-    call log
-      read value
-
-# the SINE of an angle in radians
-task sine
-  take value, like number
-  like number
-  send back
-    call sin
-      read value
+    call absolute
+      call multiply
+        call divide
+          read a
+          read divisor
+        read b

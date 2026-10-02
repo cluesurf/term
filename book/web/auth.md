@@ -220,11 +220,11 @@ For server-rendered pages, store a session and give its id to the client on logi
 
 ## OAuth
 
-An OAuth callback is a normal route. Exchange the code for a token with `post` from `@term/base/code/network/http`, fetch the profile with `get`, find or create the user, then issue your own token.
+An OAuth callback is a normal route. Exchange the code for a token with `post` from `@term/base/code/network/http`, fetch the profile with `fetch`, find or create the user, then issue your own token.
 
 ```tree
 load @term/base/code/network/http
-  find get
+  find fetch
   find post
 
 task exchange-code
@@ -249,7 +249,7 @@ task fetch-profile
     text <authorization>
     text <Bearer {{access}}>
   save answer
-    call get
+    call fetch
       text <https://openidconnect.googleapis.com/v1/userinfo>
       read header
       wait true

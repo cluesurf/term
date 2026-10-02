@@ -1,0 +1,487 @@
+# An RFC 3339 timestamp read in Term: `2026-10-02T14:05:09.250Z`, or with an offset (`+02:00`, `-05:30`) in place of
+# the `Z`. The answer is milliseconds since 1970-01-01T00:00:00Z, the same on every backend, and a text that is not one
+# raises `time-mismatch` naming the code point position and the reason (note/term/stdlib/semantics.md). The host
+# parsers each read a different language: node's Date.parse took nearly anything, Rust RFC 3339, Swift its formatter's
+# subset and Kotlin an Instant, and two of them answered a bad text with NaN or the epoch.
+#
+# A `t` and a `z` are read as `T` and `Z`, as the RFC allows. A fraction is read to the millisecond and the rest is
+# dropped. A leap second (`:60`) is refused, since milliseconds since the epoch have no place for it.
+
+load @term/base/code/text/unicode
+  find to-runes
+
+load @term/base/code/list
+  find size
+  find get
+
+load @term/base/code/exception
+  find mismatch
+
+load @term/base/code/plain-date
+  find plain-date
+  find from-parts
+  find days-in-month
+
+form time-mismatch
+  like mismatch
+    bind note, <Not an RFC 3339 time>
+    link at, like number
+    link reason, like text
+
+task refuse-time
+  take at, like number
+  take reason, like text
+  like number
+  halt time-mismatch
+    bind thing, text <time>
+    bind at, read at
+    bind reason, read reason
+
+task time-rune-at
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read at
+          code 0
+        call is-below
+          read at
+          call size
+            read runes
+    hook hold
+      send back
+        call get
+          read runes
+          read at
+  send back
+    call subtract
+      code 0
+      code 1
+
+# the number written by `count` digits at `at`, refusing a position that holds anything else
+task time-digits
+  take runes
+    like list
+      like number
+  take at, like number
+  take count, like number
+  like number
+  save total, code 0
+  save k, code 0
+  walk test
+    down
+      call subtract
+        read count
+        read k
+    hook test
+      call is-below
+        read k
+        read count
+    hook step
+      save c
+        call time-rune-at
+          read runes
+          call add
+            read at
+            read k
+      fork test
+        hook test
+          call or
+            call is-below
+              read c
+              code 48
+            call is-above
+              read c
+              code 57
+        hook hold
+          call refuse-time
+            call add
+              read at
+              read k
+            text <a digit is missing>
+      save total
+        call add
+          call multiply
+            read total
+            code 10
+          call subtract
+            read c
+            code 48
+      save k
+        call add
+          read k
+          code 1
+  send back, read total
+
+# refuse unless the code point at `at` is `want` (or `other`, its lowercase spelling)
+task time-mark
+  take runes
+    like list
+      like number
+  take at, like number
+  take want, like number
+  take other, like number
+  take reason, like text
+  like boolean
+  save c
+    call time-rune-at
+      read runes
+      read at
+  fork test
+    hook test
+      call or
+        call is-equal
+          read c
+          read want
+        call is-equal
+          read c
+          read other
+    hook miss
+      call refuse-time
+        read at
+        read reason
+  send back, true
+
+task time-range
+  take value, like number
+  take low, like number
+  take high, like number
+  take at, like number
+  take reason, like text
+  like number
+  fork test
+    hook test
+      call or
+        call is-below
+          read value
+          read low
+        call is-above
+          read value
+          read high
+    hook hold
+      call refuse-time
+        read at
+        read reason
+  send back, read value
+
+# milliseconds since the epoch for an RFC 3339 timestamp
+task parse-rfc-3339
+  take text, like text
+  like number
+  save r
+    call to-runes
+      read text
+  save year
+    call time-digits
+      read r
+      code 0
+      code 4
+  call time-mark
+    read r
+    code 4
+    code 45
+    code 45
+    text <a dash must follow the year>
+  save month
+    call time-range
+      call time-digits
+        read r
+        code 5
+        code 2
+      code 1
+      code 12
+      code 5
+      text <the month is outside 01 to 12>
+  call time-mark
+    read r
+    code 7
+    code 45
+    code 45
+    text <a dash must follow the month>
+  save day
+    call time-range
+      call time-digits
+        read r
+        code 8
+        code 2
+      code 1
+      call days-in-month
+        read year
+        read month
+      code 8
+      text <the day is outside the month>
+  call time-mark
+    read r
+    code 10
+    code 84
+    code 116
+    text <a T must separate the date and the time>
+  save hour
+    call time-range
+      call time-digits
+        read r
+        code 11
+        code 2
+      code 0
+      code 23
+      code 11
+      text <the hour is outside 00 to 23>
+  call time-mark
+    read r
+    code 13
+    code 58
+    code 58
+    text <a colon must follow the hour>
+  save minute
+    call time-range
+      call time-digits
+        read r
+        code 14
+        code 2
+      code 0
+      code 59
+      code 14
+      text <the minute is outside 00 to 59>
+  call time-mark
+    read r
+    code 16
+    code 58
+    code 58
+    text <a colon must follow the minute>
+  save second
+    call time-range
+      call time-digits
+        read r
+        code 17
+        code 2
+      code 0
+      code 59
+      code 17
+      text <the second is outside 00 to 59>
+  # a fraction: its first three digits are the milliseconds, the rest is dropped
+  save at, code 19
+  save millis, code 0
+  fork test
+    hook test
+      call is-equal
+        call time-rune-at
+          read r
+          read at
+        code 46
+    hook hold
+      save at
+        call add
+          read at
+          code 1
+      save digits, code 0
+      walk test
+        down
+          call subtract
+            call size
+              read r
+            read at
+        hook test
+          call and
+            call is-below
+              read at
+              call size
+                read r
+            call and
+              call is-minimum
+                call time-rune-at
+                  read r
+                  read at
+                code 48
+              call is-maximum
+                call time-rune-at
+                  read r
+                  read at
+                code 57
+        hook step
+          fork test
+            hook test
+              call is-below
+                read digits
+                code 3
+            hook hold
+              save millis
+                call add
+                  call multiply
+                    read millis
+                    code 10
+                  call subtract
+                    call time-rune-at
+                      read r
+                      read at
+                    code 48
+              save digits
+                call add
+                  read digits
+                  code 1
+          save at
+            call add
+              read at
+              code 1
+      fork test
+        hook test
+          call is-equal
+            read digits
+            code 0
+        hook hold
+          call refuse-time
+            read at
+            text <a fraction needs a digit>
+      walk test
+        down
+          call subtract
+            code 3
+            read digits
+        hook test
+          call is-below
+            read digits
+            code 3
+        hook step
+          save millis
+            call multiply
+              read millis
+              code 10
+          save digits
+            call add
+              read digits
+              code 1
+  # the zone: Z, or a signed hour and minute offset
+  save offset, code 0
+  save zone
+    call time-rune-at
+      read r
+      read at
+  fork test
+    hook test
+      call or
+        call is-equal
+          read zone
+          code 90
+        call is-equal
+          read zone
+          code 122
+    hook hold
+      save at
+        call add
+          read at
+          code 1
+    hook miss
+      fork test
+        hook test
+          call or
+            call is-equal
+              read zone
+              code 43
+            call is-equal
+              read zone
+              code 45
+        hook miss
+          call refuse-time
+            read at
+            text <a zone must be Z or a signed offset>
+      save offset-hour
+        call time-range
+          call time-digits
+            read r
+            call add
+              read at
+              code 1
+            code 2
+          code 0
+          code 23
+          call add
+            read at
+            code 1
+          text <the offset hour is outside 00 to 23>
+      call time-mark
+        read r
+        call add
+          read at
+          code 3
+        code 58
+        code 58
+        text <a colon must follow the offset hour>
+      save offset-minute
+        call time-range
+          call time-digits
+            read r
+            call add
+              read at
+              code 4
+            code 2
+          code 0
+          code 59
+          call add
+            read at
+            code 4
+          text <the offset minute is outside 00 to 59>
+      save offset
+        call add
+          call multiply
+            read offset-hour
+            code 60
+          read offset-minute
+      fork test
+        hook test
+          call is-equal
+            read zone
+            code 45
+        hook hold
+          save offset
+            call subtract
+              code 0
+              read offset
+      save at
+        call add
+          read at
+          code 6
+  fork test
+    hook test
+      call is-below
+        read at
+        call size
+          read r
+    hook hold
+      call refuse-time
+        read at
+        text <text follows the time>
+  save days
+    call to-day-number
+      call from-parts
+        read year
+        read month
+        read day
+  save seconds
+    call add
+      call multiply
+        read days
+        code 86400
+      call add
+        call add
+          call multiply
+            read hour
+            code 3600
+          call multiply
+            read minute
+            code 60
+        read second
+  # local time minus the offset is UTC
+  send back
+    call add
+      call multiply
+        call subtract
+          read seconds
+          call multiply
+            read offset
+            code 60
+        code 1000
+      read millis

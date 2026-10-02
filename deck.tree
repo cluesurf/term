@@ -3,8 +3,8 @@ deck @term/term
   code <0.0.1>
   sort tool
   lock mit
-  site <https://github.com/cluesurf/term.tree>
-  view ./view/seed.png
+  site <https://github.com/cluesurf/term>
+  view ./view/term.svg
   term tree-code
   term computation
   term information
@@ -14,23 +14,22 @@ deck @term/term
   term compiler
   # every package under ./deck, alphabetical. `@term/term` is this manifest itself and is not a member of itself.
   deck ./deck/base
+  deck ./deck/bind
   deck ./deck/call
+  deck ./deck/cask
   deck ./deck/deck
   deck ./deck/face
+  deck ./deck/feed
   deck ./deck/flow
+  deck ./deck/host
   deck ./deck/make
   deck ./deck/mill
   deck ./deck/scan
-  deck ./deck/base
   deck ./deck/site
   deck ./deck/test
-  deck ./deck/zone
-  link @term/bind, code <0.0.x>
-  task ./task
   # the task loader
+  task ./task
   book ./book
-  # also a default
-  # also a default
   line ./deck/call/code/line
   test ./test
   mind <Lance Pollard>

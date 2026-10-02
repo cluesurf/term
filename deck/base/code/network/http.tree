@@ -1,4 +1,13 @@
-# HTTP client. The clean uniform interface; the per-env native implementation wraps the platform's HTTP library (fetch on node/browser, reqwest/URLSession/ktor elsewhere) and is selected at build time, hidden behind the API. Async on every target (network is async everywhere).
+# HTTP client. One primitive per backend (fetch, reqwest, URLSession, java.net.http) answers the status, the body
+# and the headers; this module builds the response from them, so every backend gives the same one
+# (note/term/stdlib/semantics.md). Async on every target.
+#
+# `header` is a map of name to value, and may be empty. WITHOUT IT NOTHING AUTHENTICATED CAN BE CALLED: every API
+# worth reaching wants `Authorization`, and any that takes a body wants `Content-Type`.
+#
+# `timeout` is the milliseconds to wait for the whole answer, 30,000 when left out. Past it the call raises `timeout`
+# (`waited` is the milliseconds); a server that cannot be reached raises `outage` (`thing` is the url). Any status,
+# 404 and 500 included, is an answer, not a raise.
 
 load @term/base/code/native/{platform}/network/http
   find do-request
@@ -9,13 +18,22 @@ load @term/base/code/network/response
 load @term/base/code/hash
   find hash
 
-# `header` is a map of name to value, and may be empty.
-#
-# WITHOUT IT NOTHING AUTHENTICATED CAN BE CALLED. Every API worth reaching
-# wants `Authorization`, and any that takes a body wants `Content-Type`. This
-# client could send a method, a url and a body and nothing else, so the answer
-# to "call an API with a bearer token" was to write a native beside it and not
-# use this at all.
+load @term/base/code/list
+  find list
+  find size
+  find get
+  find sort
+
+load @term/base/code/ordering
+  find from-texts
+
+load @term/base/code/text/number
+  find parse-integer
+
+load @term/base/code/exception
+  find timeout
+  find outage
+
 task request
   note async
   take method, like text
@@ -26,16 +44,129 @@ task request
       like text
       like text
     need false
+  take timeout, like(number), fall 30000
   like http-response
-  send back
+  save got
     call do-request
       read method
       read url
       read body
       read header
+      read timeout
       wait true
+  save outcome, text <outage>
+  fork test
+    hook test
+      call is-above
+        call size
+          read got
+        code 0
+    hook hold
+      save outcome
+        call get
+          read got
+          code 0
+  fork test
+    hook test
+      call is-equal
+        read outcome
+        text <timeout>
+    hook hold
+      halt timeout
+        bind thing, read url
+        bind waited, read timeout
+  fork test
+    hook test
+      call or
+        call is-unequal
+          read outcome
+          text <ok>
+        call is-below
+          call size
+            read got
+          code 3
+    hook hold
+      halt outage
+        bind thing, read url
+  # a header the server sent twice is one entry, the values joined with ", "; then the names in code point order
+  save seen
+    make hash
+  save names
+    make list
+  save k, code 3
+  walk test
+    down
+      call subtract
+        call size
+          read got
+        read k
+    hook test
+      call is-below
+        call add
+          read k
+          code 1
+        call size
+          read got
+    hook step
+      save name
+        call get
+          read got
+          read k
+      save value
+        call get
+          read got
+          call add
+            read k
+            code 1
+      fork test
+        hook test
+          call seen/has
+            read name
+        hook hold
+          save before
+            call seen/get
+              read name
+          call seen/set
+            read name
+            text <{{before}}, {{value}}>
+        hook miss
+          call seen/set
+            read name
+            read value
+          call names/push
+            read name
+      save k
+        call add
+          read k
+          code 2
+  save headers
+    make hash
+  walk list
+    call sort
+      read names
+      read from-texts
+    hook next
+      take site, name name
+      call headers/set
+        read name
+        call seen/get
+          read name
+  send back
+    make http-response
+      bind status
+        call parse-integer
+          call get
+            read got
+            code 1
+      bind body
+        call get
+          read got
+          code 2
+      bind headers, read headers
 
-task get
+# a GET. Named `fetch`, not `get`: names are package-global, and a top-level `get` shadows list `get` in every
+# build that loads this module
+task fetch
   note async
   take url, like text
   take header
@@ -43,6 +174,7 @@ task get
       like text
       like text
     need false
+  take timeout, like(number), fall 30000
   like http-response
   send back
     call request
@@ -50,6 +182,7 @@ task get
       read url
       text <>
       read header
+      read timeout
       wait true
 
 task post
@@ -61,6 +194,7 @@ task post
       like text
       like text
     need false
+  take timeout, like(number), fall 30000
   like http-response
   send back
     call request
@@ -68,6 +202,7 @@ task post
       read url
       read body
       read header
+      read timeout
       wait true
 
 # a streaming HTTP response: the status plus the raw platform response in the opaque `dock` handle. `read` in

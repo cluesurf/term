@@ -1,0 +1,136 @@
+# The terminal a program writes to: whether standard output is one, and text painted in one of the eight ANSI colors
+# when it is. Color is off when output is not a terminal (a pipe, a file) and whenever NO_COLOR is set to anything
+# (no-color.org), the same rule on every backend, so a log redirected to a file never holds escape codes.
+
+load @term/base/code/environment
+  find has-variable
+
+load @term/base/code/text/unicode
+  find rune-to-text
+
+# whether standard output is a terminal
+bind is-terminal
+  like boolean
+  case node
+    text <(process.stdout.isTTY === true)>
+  case browser
+    text <false>
+  case rust
+    text <std::io::IsTerminal::is_terminal(&std::io::stdout())>
+  case swift
+    load <Foundation>
+    text <(isatty(STDOUT_FILENO) != 0)>
+  case kotlin
+    text <(System.console() != null)>
+
+# whether painted text should carry color: a terminal, and NO_COLOR unset
+task uses-color
+  like boolean
+  send back
+    call and
+      call is-terminal
+      call is-equal
+        call has-variable
+          text <NO_COLOR>
+        false
+
+# the ANSI foreground code for a color name, or -1 for a name that is not one of the eight
+task color-code
+  take name, like text
+  like number
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <black>
+    hook hold
+      send back, code 30
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <red>
+    hook hold
+      send back, code 31
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <green>
+    hook hold
+      send back, code 32
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <yellow>
+    hook hold
+      send back, code 33
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <blue>
+    hook hold
+      send back, code 34
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <magenta>
+    hook hold
+      send back, code 35
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <cyan>
+    hook hold
+      send back, code 36
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <white>
+    hook hold
+      send back, code 37
+  send back
+    call subtract
+      code 0
+      code 1
+
+# `value` wrapped in the color's escape codes, always: the caller has decided color is wanted. A name that is not one
+# of the eight leaves the text as it is
+task paint-always
+  take value, like text
+  take color, like text
+  like text
+  # not named `code`: inside `{{...}}` that is the number-literal head, and the template read it as 0
+  save foreground
+    call color-code
+      read color
+  fork test
+    hook test
+      call is-below
+        read foreground
+        code 0
+    hook hold
+      send back, read value
+  save escape
+    call rune-to-text, code 27
+  send back, text <{{escape}}[{{foreground}}m{{value}}{{escape}}[0m>
+
+# `value` in the color when output takes color (`uses-color`), and as it is otherwise
+task paint
+  take value, like text
+  take color, like text
+  like text
+  fork test
+    hook test
+      call uses-color
+    hook hold
+      send back
+        call paint-always
+          read value
+          read color
+  send back, read value

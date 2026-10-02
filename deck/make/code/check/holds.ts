@@ -2020,7 +2020,10 @@ function instanceFacts(e: Expression, available: Inequality[]): Inequality[] {
         return true
       }
 
-      return !productGoalLinear({ ...part, op: flip[part.op]! } as Expression, available)
+      // linear first, then with products: `2 big m >= 1` from `big >= 1` and `m >= 1` needs big times m
+      const negation = { ...part, op: flip[part.op]! } as Expression
+
+      return !(productGoalLinear(negation, available) || productGoal(negation, available))
     })
 
     return open.length === 1 ? instanceFacts(open[0]!, available) : []

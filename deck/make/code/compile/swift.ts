@@ -521,6 +521,21 @@ export function emitSwift(
       .map(n => [n.name, n.params.map(p => p.type)]),
   )
 
+  // generic tasks with a type parameter that no parameter mentions (`make-sorted-map` names `v` only in its result):
+  // the call alone cannot tell Swift what it is, so a binding of one says it (below)
+  const hiddenGeneric = new Set<string>(
+    program
+      .filter(
+        (n): n is Extract<Statement, { form: 'function' }> =>
+          n.form === 'function' && n.generics.length > 0,
+      )
+      .filter(n => {
+        const seen = JSON.stringify(n.params.map(p => p.type ?? null))
+        return n.generics.some(g => !seen.includes(`"name":"${g.name}"`))
+      })
+      .map(n => n.name),
+  )
+
   // declarative native bindings render their `case swift` template at call sites
   const binds = collectBinds(program)
 
@@ -542,6 +557,17 @@ export function emitSwift(
   // a function's free inference variables become named generic parameters; this maps each to its letter for the
   // duration of that function's emission, so `(t) -> ?5` prints as `(T) -> U` with `U` declared, not an unused `S`.
   let varNames = new Map<number, string>()
+
+  // the labels of the loops being emitted, innermost last: `break` and `continue` name theirs
+  const loopLabels: string[] = []
+  let loopCount = 0
+  const openLoop = (): string => {
+    loopCount += 1
+    const label = `loop${loopCount}`
+    loopLabels.push(label)
+
+    return label
+  }
 
   // opaque per-backend handle types (`dock type / load <Foundation.Process>, name child-handle`): seed name -> concrete
   // swift type, so a `like child-handle` field emits the real handle type rather than a nonexistent struct.
@@ -1382,9 +1408,17 @@ export function emitSwift(
             f => `${camel(f.name)}: ${expr(f.value, bind)}`,
           )
 
+          // a type argument nothing constrains (the error type of `make okay` handed straight to a generic task)
+          // leaves Swift nothing to infer from: it is any type, so it is named `Never`, the others left as `_`
+          const args = node.type?.kind === 'named' ? (node.type.args ?? []) : []
+          const free = (a: Type): boolean => a.kind === 'variable' && !varNames.has(a.id)
+          const owner = args.some(free)
+            ? `${swiftType(node.type!).replace(/<.*$/, '')}<${args.map(a => (free(a) ? 'Never' : '_')).join(', ')}>`
+            : ''
+
           return labelled.length > 0
-            ? `.${camel(node.name)}(${labelled.join(', ')})`
-            : `.${camel(node.name)}`
+            ? `${owner}.${camel(node.name)}(${labelled.join(', ')})`
+            : `${owner}.${camel(node.name)}`
         }
 
         // a struct: name the type and pass the fields, in declared order (the memberwise init), a field the
@@ -1688,7 +1722,8 @@ export function emitSwift(
         // the binding says it, when the checker knows it concretely
         const uninferable =
           initCall !== undefined &&
-          initCall.args.length === 0 &&
+          (initCall.args.length === 0 ||
+            (initCall.callee.form === 'variable' && hiddenGeneric.has(initCall.callee.name))) &&
           node.type?.kind === 'named' &&
           (node.type.args?.length ?? 0) > 0 &&
           !node.type.args!.some(a => a.kind === 'variable' || a.kind === 'unknown' || (a.kind === 'named' && /^[a-z]$/.test(a.name)))
@@ -1772,12 +1807,13 @@ export function emitSwift(
             ? `throw try ({ () throws -> TermException in let raised = ${expr(node.value, bind)}; let told = TermException(host: raised.host, form: raised.form, note: raised.note, code: raised.code, time: raised.time, link: raised.link, base: raised)${tellPart}; return told })()`
             : `throw termException(${expr(node.value, bind)})`
       }
-      case 'while':
-        return `while ${expr(node.cond, bind)} {\n${block(
-          node.body,
-          d + 1,
-          bind,
-        )}\n${pad(d)}}`
+      case 'while': {
+        const label = openLoop()
+        const body = block(node.body, d + 1, bind)
+        loopLabels.pop()
+
+        return `${label}: while ${expr(node.cond, bind)} {\n${body}\n${pad(d)}}`
+      }
       case 'guard': {
         // `note unsafe` / `halt take`: a do with its catch. Calls in the body are `try`, and the caught value is a
         // TermException: a raise passes through, a foreign error is wrapped as `failure`
@@ -1803,17 +1839,13 @@ export function emitSwift(
             : expr(node.iterable, bind)
 
         // a walk that names its INDEX enumerates; `Int64` because that is what a Term number is here. lean-0017
+        const label = openLoop()
+        const body = block(node.body, d + 1, bind)
+        loopLabels.pop()
+
         return node.index
-          ? `for (${vname(node.index)}, ${vname(node.item)}) in ${iterable}.enumerated().map({ (Int64($0.offset), $0.element) }) {\n${block(
-              node.body,
-              d + 1,
-              bind,
-            )}\n${pad(d)}}`
-          : `for ${vname(node.item)} in ${iterable} {\n${block(
-              node.body,
-              d + 1,
-              bind,
-            )}\n${pad(d)}}`
+          ? `${label}: for (${vname(node.index)}, ${vname(node.item)}) in ${iterable}.enumerated().map({ (Int64($0.offset), $0.element) }) {\n${body}\n${pad(d)}}`
+          : `${label}: for ${vname(node.item)} in ${iterable} {\n${body}\n${pad(d)}}`
       }
 
       case 'match': {
@@ -1945,10 +1977,12 @@ export function emitSwift(
         return out
       }
 
+      // labelled, because a bare `break` inside a `switch` arm leaves the switch and not the loop, so a walk that
+      // stopped on `none` went round forever
       case 'break':
-        return 'break'
+        return loopLabels.length > 0 ? `break ${loopLabels[loopLabels.length - 1]}` : 'break'
       case 'continue':
-        return 'continue'
+        return loopLabels.length > 0 ? `continue ${loopLabels[loopLabels.length - 1]}` : 'continue'
       case 'exit':
         return 'exit(0)'
       case 'debug':

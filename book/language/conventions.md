@@ -131,20 +131,20 @@ A path ends at the module. Never append `/index`, and never write a `.js` or `.t
 
 ## Functions and shape
 
-- One obvious way to do each thing. No overloading, no optional parameters that change behavior.
+- One obvious way to do each thing. Two tasks may share a name when their arity or parameter types differ, and the call picks the one its arguments fit. A parameter declared with `fall <value>` beneath its `take` takes that value when a call leaves it out. Use both to let a call read naturally, never to make one name do two different jobs.
 - A function with two or more parameters takes a single object input, not a long positional list. A variant is a parameter, not a separate function. `seek(file, offset, frame: relative)`, not `seek-relative`.
-- Public names stay clean. Internal dispatch lives in `note private` helpers.
+- Public names stay clean. Internal dispatch lives in `mark private` helpers.
 - If it touches IO, it is async (`note async`). Pure computation is synchronous.
 
 ## Ordering inside a term
 
 The parser accepts any child order. For readability, lead with configuration, then structure, then body.
 
-A task: marks, then type parameters (`head`), then parameters (`take`), then return type (`like`), then body.
+A task: `mark private` and notes, then type parameters (`head`), then parameters (`take`), then return type (`like`), then body.
 
 ```tree
 task get-name
-  note private
+  mark private
   note async
   head t
   take user, like t
@@ -153,7 +153,7 @@ task get-name
     read user/name
 ```
 
-A form: marks, then type parameters, then alias, then fields (`link`), then variants (`case`), then methods (`task`).
+A form: notes, then type parameters, then alias, then fields (`link`), then variants (`case`), then methods (`task`).
 
 ```tree
 form user

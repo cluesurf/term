@@ -1394,6 +1394,27 @@ function refuseHooks(bridge: Bridge, value: Form): void {
   }
 }
 
+// A NAMED task directly under a task, or under a walk's `hook next`, lands in that form's `task` site rather
+// than its body, and used to be dropped in silence. The language has no nested named task (a task is defined at
+// the top level, and a local function is a closure in value position), so it is refused, exactly as the checker
+// refuses one that reaches a body through a fork arm (check/infer.ts, where it used to crash).
+function refuseNestedTasks(bridge: Bridge, value: Form): void {
+  for (const nested of formsAt(value, 'task')) {
+    const name = wordAt(nested, 'name')
+
+    if (name !== undefined) {
+      bridge.diagnostics.push(
+        diagnose('unexpected-node', {
+          file: bridge.file,
+          span: spanOf(nested),
+          message: `\`task ${name}\` cannot be defined inside a body: a named task is defined at the top level of a file`,
+          hint: 'move it to the top level of the file and call it from here',
+        }),
+      )
+    }
+  }
+}
+
 function callOf(bridge: Bridge, value: Form): Expression | undefined {
   const name = wordAt(value, 'name')
 
@@ -2060,6 +2081,11 @@ function loopOf(
   const span = spanOf(value)
   const written = wordAt(value, 'mode')
   const hooks = formsAt(value, 'hook')
+
+  for (const hook of hooks) {
+    refuseNestedTasks(bridge, hook)
+  }
+
   const { must, down } = contractOf(bridge, value)
   const contract = {
     ...(must ? { must } : {}),
@@ -2609,6 +2635,8 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
       }
     }),
   ]
+
+  refuseNestedTasks(bridge, value)
 
   return {
     form: 'function',

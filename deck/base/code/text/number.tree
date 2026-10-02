@@ -184,3 +184,814 @@ task read-number
               call divide
                 read total
                 read divisor
+
+# ---------------------------------------------------------------- parse-integer, parse-float, to-radix, to-fixed
+#
+# The strict readers raise `number-mismatch` naming the code point position and the reason, and read every text the
+# same way on every backend (note/term/stdlib/semantics.md). `read-number` above is the lenient one that answers a
+# maybe.
+
+load @term/base/code/exception
+  find mismatch
+
+load @term/base/code/text/unicode
+  find to-runes
+  find rune-to-text
+
+load @term/base/code/list
+  find size
+  find get
+
+form number-mismatch
+  like mismatch
+    bind note, <Not a number>
+    link at, like number
+    link reason, like text
+
+task refuse-number
+  mark private
+  take at, like number
+  take reason, like text
+  like number
+  halt number-mismatch
+    bind thing, text <number>
+    bind at, read at
+    bind reason, read reason
+
+# the code point at `at`, or -1 past either end
+task number-rune-at
+  mark private
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read at
+          code 0
+        call is-below
+          read at
+          call size
+            read runes
+    hook hold
+      send back
+        call get
+          read runes
+          read at
+  send back
+    call subtract
+      code 0
+      code 1
+
+# the value of a digit in bases up to 36 (0-9, then a-z or A-Z), or -1
+task digit-value
+  mark private
+  take c, like number
+  like number
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read c
+          code 48
+        call is-maximum
+          read c
+          code 57
+    hook hold
+      send back
+        call subtract
+          read c
+          code 48
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read c
+          code 97
+        call is-maximum
+          read c
+          code 122
+    hook hold
+      send back
+        call subtract
+          read c
+          code 87
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read c
+          code 65
+        call is-maximum
+          read c
+          code 90
+    hook hold
+      send back
+        call subtract
+          read c
+          code 55
+  send back
+    call subtract
+      code 0
+      code 1
+
+# a whole number written in `radix` (2 to 36, 10 when left out): an optional + or -, then one or more digits, the
+# letters a-z either case for the digits past 9. Nothing else, not even a space. A value past the integer range stops,
+# as any integer arithmetic does.
+task parse-integer
+  take value, like text
+  take radix, like(number), fall 10
+  like number
+  fork test
+    hook test
+      call or
+        call is-below
+          read radix
+          code 2
+        call is-above
+          read radix
+          code 36
+    hook hold
+      call refuse-number
+        code 0
+        text <a radix is from 2 to 36>
+  save r
+    call to-runes
+      read value
+  save n
+    call size
+      read r
+  save i, code 0
+  save negative, false
+  save first
+    call number-rune-at
+      read r
+      code 0
+  fork test
+    hook test
+      call is-equal
+        read first
+        code 45
+    hook hold
+      save negative, true
+      save i, code 1
+    hook test
+      call is-equal
+        read first
+        code 43
+    hook hold
+      save i, code 1
+  fork test
+    hook test
+      call is-minimum
+        read i
+        read n
+    hook hold
+      call refuse-number
+        read i
+        text <no digits>
+  save total, code 0
+  walk test
+    down
+      call subtract
+        read n
+        read i
+    hook test
+      call is-below
+        read i
+        read n
+    hook step
+      save d
+        call digit-value
+          call get
+            read r
+            read i
+      fork test
+        hook test
+          call or
+            call is-below
+              read d
+              code 0
+            call is-minimum
+              read d
+              read radix
+        hook hold
+          call refuse-number
+            read i
+            text <not a digit in base {{radix}}>
+      # a negative value is built downward, so the least integer reads without passing the greatest
+      fork test
+        hook test
+          read negative
+        hook hold
+          save total
+            call subtract
+              call multiply
+                read total
+                read radix
+              read d
+        hook miss
+          save total
+            call add
+              call multiply
+                read total
+                read radix
+              read d
+      save i
+        call add
+          read i
+          code 1
+  send back, read total
+
+# the position just past the run of ASCII digits that starts at `at`
+task number-digits-end
+  mark private
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  save i, read at
+  walk test
+    down
+      call subtract
+        call size
+          read runes
+        read i
+    hook test
+      call and
+        call is-minimum
+          call number-rune-at
+            read runes
+            read i
+          code 48
+        call is-maximum
+          call number-rune-at
+            read runes
+            read i
+          code 57
+    hook step
+      save i
+        call add
+          read i
+          code 1
+  send back, read i
+
+bind host-parse-float
+  take value, like text
+  like decimal
+  case node
+    text <Number($value)>
+  case browser
+    text <Number($value)>
+  case rust
+    text <$value.parse::<f64>().unwrap_or(f64::NAN)>
+  case swift
+    text <(Double($value) ?? Double.nan)>
+  case kotlin
+    text <($value).toDouble()>
+
+# a float written in decimal: an optional minus, digits, optionally a point and digits, optionally an exponent
+# (`e` or `E`, an optional sign, digits). `12`, `-0.5`, `6.02e23`. Not `.5`, `5.`, `+1`, `Infinity` or a space. The
+# grammar is checked here, then the host reads the text, and every host rounds to the nearest float.
+task parse-float
+  take value, like text
+  like decimal
+  save r
+    call to-runes
+      read value
+  save n
+    call size
+      read r
+  save i, code 0
+  fork test
+    hook test
+      call is-equal
+        call number-rune-at
+          read r
+          code 0
+        code 45
+    hook hold
+      save i, code 1
+  save end
+    call number-digits-end
+      read r
+      read i
+  fork test
+    hook test
+      call is-equal
+        read end
+        read i
+    hook hold
+      call refuse-number
+        read i
+        text <a digit was expected>
+  save i, read end
+  fork test
+    hook test
+      call is-equal
+        call number-rune-at
+          read r
+          read i
+        code 46
+    hook hold
+      save end
+        call number-digits-end
+          read r
+          call add
+            read i
+            code 1
+      fork test
+        hook test
+          call is-equal
+            read end
+            call add
+              read i
+              code 1
+        hook hold
+          call refuse-number
+            call add
+              read i
+              code 1
+            text <a digit was expected after the point>
+      save i, read end
+  save mark
+    call number-rune-at
+      read r
+      read i
+  fork test
+    hook test
+      call or
+        call is-equal
+          read mark
+          code 101
+        call is-equal
+          read mark
+          code 69
+    hook hold
+      save i
+        call add
+          read i
+          code 1
+      save sign
+        call number-rune-at
+          read r
+          read i
+      fork test
+        hook test
+          call or
+            call is-equal
+              read sign
+              code 43
+            call is-equal
+              read sign
+              code 45
+        hook hold
+          save i
+            call add
+              read i
+              code 1
+      save end
+        call number-digits-end
+          read r
+          read i
+      fork test
+        hook test
+          call is-equal
+            read end
+            read i
+        hook hold
+          call refuse-number
+            read i
+            text <a digit was expected in the exponent>
+      save i, read end
+  fork test
+    hook test
+      call is-below
+        read i
+        read n
+    hook hold
+      call refuse-number
+        read i
+        text <the number ends before this>
+  send back
+    call host-parse-float
+      read value
+
+# a whole number written in `radix` (2 to 36): lower-case letters past 9, a minus first when negative
+task to-radix
+  take value, like number
+  take radix, like number
+  like text
+  fork test
+    hook test
+      call or
+        call is-below
+          read radix
+          code 2
+        call is-above
+          read radix
+          code 36
+    hook hold
+      halt number-mismatch
+        bind thing, text <radix>
+        bind at, code 0
+        bind reason, text <a radix is from 2 to 36>
+  fork test
+    hook test
+      call is-equal
+        read value
+        code 0
+    hook hold
+      send back, text <0>
+  save letters, text <0123456789abcdefghijklmnopqrstuvwxyz>
+  save alphabet
+    call to-runes
+      read letters
+  save out, text <>
+  save rest, read value
+  # the remainder is taken with the sign of the value (division truncates), and its size is the digit, so the least
+  # integer writes without being negated
+  walk test
+    hook test
+      call is-unequal
+        read rest
+        code 0
+    hook step
+      save next
+        call divide
+          read rest
+          read radix
+      save remainder
+        call subtract
+          read rest
+          call multiply
+            read next
+            read radix
+      fork test
+        hook test
+          call is-below
+            read remainder
+            code 0
+        hook hold
+          save remainder
+            call subtract
+              code 0
+              read remainder
+      save digit
+        call rune-to-text
+          call number-rune-at
+            read alphabet
+            read remainder
+      save out, text <{{digit}}{{out}}>
+      save rest, read next
+  fork test
+    hook test
+      call is-below
+        read value
+        code 0
+    hook hold
+      send back, text <-{{out}}>
+  send back, read out
+
+# the float with exactly `places` digits after the point (0 to 100). It rounds the float's shortest decimal text, the
+# one `to-text` prints, half away from zero: `1.005` to two places is `1.01`, as it reads, on every backend. (The hosts
+# round the exact binary value and break ties three ways, so `1.005` gave `1.00` on some.) A result that rounds to zero
+# has no minus. NaN and the infinities come back as their text.
+task to-fixed
+  take value, like decimal
+  take places, like number
+  like text
+  fork test
+    hook test
+      call or
+        call is-below
+          read places
+          code 0
+        call is-above
+          read places
+          code 100
+    hook hold
+      halt number-mismatch
+        bind thing, text <places>
+        bind at, code 0
+        bind reason, text <places is from 0 to 100>
+  save shown, text <{{value}}>
+  fork test
+    hook test
+      call or
+        call is-equal
+          read shown
+          text <NaN>
+        call or
+          call is-equal
+            read shown
+            text <Infinity>
+          call is-equal
+            read shown
+            text <-Infinity>
+    hook hold
+      send back, read shown
+  save r
+    call to-runes
+      read shown
+  save n
+    call size
+      read r
+  save negative
+    call is-equal
+      call number-rune-at
+        read r
+        code 0
+      code 45
+  save i, code 0
+  fork test
+    hook test
+      read negative
+    hook hold
+      save i, code 1
+  # the decimal digits, how many stand before the point, and the exponent
+  save digits
+    make list
+  save point
+    call subtract
+      code 0
+      code 1
+  save exponent, code 0
+  save exponent-negative, false
+  save in-exponent, false
+  walk test
+    down
+      call subtract
+        read n
+        read i
+    hook test
+      call is-below
+        read i
+        read n
+    hook step
+      save c
+        call get
+          read r
+          read i
+      fork test
+        hook test
+          call is-equal
+            read c
+            code 101
+        hook hold
+          save in-exponent, true
+        hook test
+          call is-equal
+            read c
+            code 45
+        hook hold
+          save exponent-negative, true
+        hook test
+          call is-equal
+            read c
+            code 46
+        hook hold
+          save point
+            call size
+              read digits
+        hook test
+          call and
+            call is-minimum
+              read c
+              code 48
+            call is-maximum
+              read c
+              code 57
+        hook hold
+          fork test
+            hook test
+              read in-exponent
+            hook hold
+              save exponent
+                call add
+                  call multiply
+                    read exponent
+                    code 10
+                  call subtract
+                    read c
+                    code 48
+            hook miss
+              call digits/push
+                call subtract
+                  read c
+                  code 48
+      save i
+        call add
+          read i
+          code 1
+  fork test
+    hook test
+      call is-below
+        read point
+        code 0
+    hook hold
+      save point
+        call size
+          read digits
+  fork test
+    hook test
+      read exponent-negative
+    hook hold
+      save exponent
+        call subtract
+          code 0
+          read exponent
+  # the value is the kept digits, read as a whole number, times 10 to the minus `places`
+  save keep
+    call add
+      call add
+        read point
+        read exponent
+      read places
+  save kept
+    make list
+  save k, code 0
+  walk test
+    down
+      call subtract
+        read keep
+        read k
+    hook test
+      call is-below
+        read k
+        read keep
+    hook step
+      fork test
+        hook test
+          call is-below
+            read k
+            call size
+              read digits
+        hook hold
+          call kept/push
+            call get
+              read digits
+              read k
+        hook miss
+          call kept/push, code 0
+      save k
+        call add
+          read k
+          code 1
+  save next, code 0
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read keep
+          code 0
+        call is-below
+          read keep
+          call size
+            read digits
+    hook hold
+      save next
+        call get
+          read digits
+          read keep
+  # half away from zero: carry a one in from the right
+  fork test
+    hook test
+      call is-minimum
+        read next
+        code 5
+    hook hold
+      save carry, true
+      save j
+        call size
+          read kept
+      walk test
+        down, read j
+        hook test
+          call and
+            read carry
+            call is-above
+              read j
+              code 0
+        hook step
+          save j
+            call subtract
+              read j
+              code 1
+          save d
+            call add
+              call get
+                read kept
+                read j
+              code 1
+          fork test
+            hook test
+              call is-equal
+                read d
+                code 10
+            hook hold
+              call kept/set
+                read j
+                code 0
+            hook miss
+              call kept/set
+                read j
+                read d
+              save carry, false
+      fork test
+        hook test
+          read carry
+        hook hold
+          call kept/unshift, code 1
+  # at least places + 1 digits, so there is a whole part
+  walk test
+    down
+      call subtract
+        call add
+          read places
+          code 1
+        call size
+          read kept
+    hook test
+      call is-below
+        call size
+          read kept
+        call add
+          read places
+          code 1
+    hook step
+      call kept/unshift, code 0
+  save whole-count
+    call subtract
+      call size
+        read kept
+      read places
+  save whole, text <>
+  save fraction, text <>
+  save started, false
+  save nonzero, false
+  save k, code 0
+  walk list, read kept
+    hook next
+      take site, name d
+      fork test
+        hook test
+          call is-unequal
+            read d
+            code 0
+        hook hold
+          save nonzero, true
+      save written
+        call rune-to-text
+          call add
+            read d
+            code 48
+      fork test
+        hook test
+          call is-below
+            read k
+            read whole-count
+        hook hold
+          # no leading zeros in the whole part, but its last digit always
+          fork test
+            hook test
+              call or
+                call or
+                  read started
+                  call is-unequal
+                    read d
+                    code 0
+                call is-equal
+                  read k
+                  call subtract
+                    read whole-count
+                    code 1
+            hook hold
+              save started, true
+              save whole, text <{{whole}}{{written}}>
+        hook miss
+          save fraction, text <{{fraction}}{{written}}>
+      save k
+        call add
+          read k
+          code 1
+  save sign, text <>
+  fork test
+    hook test
+      call and
+        read negative
+        read nonzero
+    hook hold
+      save sign, text <->
+  fork test
+    hook test
+      call is-equal
+        read places
+        code 0
+    hook hold
+      send back, text <{{sign}}{{whole}}>
+  send back, text <{{sign}}{{whole}}.{{fraction}}>

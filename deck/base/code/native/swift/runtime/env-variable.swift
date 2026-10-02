@@ -1,9 +1,9 @@
 // Environment variable runtime. Reached only through the public environment API.
 import Foundation
 
-enum variable {
+enum envVariable {
     static func get(_ name: String) -> String {
-        ProcessInfo.processInfo.environment[name] ?? ""
+        Foundation.ProcessInfo.processInfo.environment[name] ?? ""
     }
 
     static func set(_ name: String, _ value: String) {
@@ -16,10 +16,10 @@ enum variable {
 
     // sorted by name, so a walk over the variables is the same on every run and every backend
     static func list() -> SeedMap<String, String> {
-        SeedMap(pairs: ProcessInfo.processInfo.environment.sorted { $0.key < $1.key }.map { ($0.key, $0.value) })
+        SeedMap(pairs: Foundation.ProcessInfo.processInfo.environment.sorted { $0.key < $1.key }.map { ($0.key, $0.value) })
     }
 
     static func check(_ name: String) -> Bool {
-        ProcessInfo.processInfo.environment[name] != nil
+        Foundation.ProcessInfo.processInfo.environment[name] != nil
     }
 }

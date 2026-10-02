@@ -10,6 +10,9 @@ load @term/base/code/network/tcp
 load @term/base/code/text
   find contains
 
+load @term/base/code/network/http
+  find fetch
+
 test <loopback echo round-trips a message>
   save server
     call listen
@@ -49,3 +52,30 @@ test <loopback echo round-trips a message>
     call contains
       read reply
       text <pong>
+
+# a listener that accepts and never answers: an HTTP request to it raises `timeout` once its wait is spent, on every
+# backend (the request side is network/http.tree)
+test <an http request nobody answers times out>
+  save silent
+    call listen
+      code 47925
+      text <127.0.0.1>
+      false
+      text <>
+      text <>
+      wait true
+  save outcome, text <answered>
+  note unsafe
+    call fetch
+      text <http://127.0.0.1:47925/>
+      bind timeout, code 300
+      wait true
+  halt take
+    take problem
+    fork case, read problem
+      case timeout
+        save outcome, text <timeout {{waited}}>
+  want hold
+    call is-equal
+      read outcome
+      text <timeout 300>

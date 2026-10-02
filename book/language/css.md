@@ -1,6 +1,6 @@
 # Look (CSS)
 
-Term styles are written in the `look` DSL and compiled to a plain CSS stylesheet at build time. There is no runtime: a `.tree` look sheet lowers to a static `.css` file the same way a `zone` lowers to a component. The DSL is a structured tree, so a selector, a value, a media query, and a keyframe are all just nested nodes instead of a flat string you have to parse.
+Term styles are written in the `look` DSL and compiled to a plain CSS stylesheet at build time. There is no runtime: a `.tree` look sheet lowers to a static `.css` file the same way a `view` lowers to a component. The DSL is a structured tree, so a selector, a value, a media query, and a keyframe are all just nested nodes instead of a flat string you have to parse.
 
 Maps to: a CSS stylesheet (`.css`). Every construct below has one exact CSS shape.
 
@@ -31,9 +31,9 @@ The rule in one breath: **the tree shape is the CSS shape**. Nesting a `link` un
 A value follows the comma on a `have` line, or hangs as children below it.
 
 - **Bare text** is a keyword, dimension, or number: `have font-size, 17px`, `have font-weight, 400`, `have color, red`. Quote with `<...>` when it holds spaces or characters the tree parser would eat: `have content, <↗>`.
-- **A list** is many children, joined by the property's natural separator — commas for list properties (`font-family`, `transition`, `animation`, `grid-template-areas`), spaces otherwise.
+- **A list** is many children, joined by the property's natural separator: commas for list properties (`font-family`, `transition`, `animation`, `grid-template-areas`), spaces otherwise. The samples in this list are pieces of a rule, shown on their own.
 
-  ```tree
+  ```tree fragment
   have font-family
     <CrowMark>
     <ui-monospace>
@@ -43,7 +43,7 @@ A value follows the comma on a `have` line, or hangs as children below it.
 
   → `font-family: CrowMark, ui-monospace, SFMono-Regular, monospace`
 
-  ```tree
+  ```tree fragment
   have grid-template-columns
     1fr
     2fr
@@ -53,7 +53,7 @@ A value follows the comma on a `have` line, or hangs as children below it.
 
 - **A function** is a nested `have` whose head is the function name:
 
-  ```tree
+  ```tree fragment
   have src
     have url, </base/text/CrowMark-Regular.otf>
     have format, <opentype>
@@ -61,24 +61,24 @@ A value follows the comma on a `have` line, or hangs as children below it.
 
   → `src: url("/base/text/CrowMark-Regular.otf") format("opentype")`
 
-- **`tint`** is the color constructor: `tint <space>, ...args` builds a color in that space. Written head-first with no parentheses (parentheses are not `.tree` syntax), so the space is the first argument and the components follow:
+- **`tint`** is the color constructor: the space is the first argument and the components follow. Write it with parentheses, `tint(rgb, 63, 63, 70)`, or stacked, with `tint rgb` on its own line under the `have` and each component on its own line beneath. Never `have color, tint rgb, 63, 63, 70`: a comma pops one level, so the components land under `rgb` and the stylesheet gets `rgb(63) 63 70`.
 
   | Write | Means |
   | --- | --- |
-  | `tint rgb, 63, 63, 70` | `rgb(63, 63, 70)` |
-  | `tint hex, <f5f5f5>` | `#f5f5f5` |
-  | `tint oklch, <72%>, 0.18, 250` | `oklch(72% 0.18 250)` |
+  | `tint(rgb, 63, 63, 70)` | `rgb(63, 63, 70)` |
+  | `tint(hex, <f5f5f5>)` | `#f5f5f5` |
+  | `tint(oklch, <72%>, 0.18, 250)` | `oklch(72% 0.18 250)` |
 
 - **`transform`** takes axis children: `have y, 8px` → `translateY(8px)`, `have x, 8px` → `translateX(8px)`, `have scale, 0.9` → `scale(0.9)`.
 
-  ```tree
+  ```tree fragment
   have transform
     have y, 8px
   ```
 
   → `transform: translateY(8px)`
 
-## `face` — a utility class
+## `face`: a utility class
 
 `face <name>` is a single utility class, with `have` declarations and optional `case` variant blocks. This is the Tailwind-style atom: components carry class names, and the compiler emits only the classes actually used (a JIT).
 
@@ -93,7 +93,7 @@ face landing-h1
   have text-transform, uppercase
 ```
 
-A `case` is a variant on the same class — a responsive breakpoint (`sm`, `tablet`, `desktop`), a state (`hover`, `focus`), or a theme (`dark`):
+A `case` is a variant on the same class: a responsive breakpoint (`sm`, `tablet`, `desktop`), a state (`hover`, `focus`), or a theme (`dark`):
 
 ```tree
 face landing-h1
@@ -104,9 +104,9 @@ face landing-h1
 
 → `.landing-h1 { font-size: 44px } @media (min-width: 640px) { .landing-h1 { font-size: 56px } }`
 
-## `base style` — a style rule
+## `base style`: a style rule
 
-`base style` is a full CSS rule. Its selector is built from a `find` (the root element) with nested `link` children (combined elements); its declarations are the trailing `have <property>, <value>` lines.
+`base style` is a full CSS rule. Its selector is built from a `find` (the root element) with nested `link` children (combined elements). Its declarations are the trailing `have <property>, <value>` lines.
 
 ```tree
 base style
@@ -120,7 +120,7 @@ base style
   have font-size, 17px
   have font-weight, 500
   have line-height, 1.5
-  have color, tint rgb, 63, 63, 70
+  have color, tint(rgb, 63, 63, 70)
 ```
 
 Two `find`s at the same level are a selector list (comma-separated):
@@ -148,7 +148,7 @@ Inside a `find` or `link`, a `have` qualifies that element rather than declaring
 
 ### Combinators
 
-`link` combines a new element onto the selector. The `like` child names the combinator; with no `like`, it is a descendant:
+`link` combines a new element onto the selector. The `like` child names the combinator. With no `like`, it is a descendant:
 
 | Write | Combinator | Means |
 | --- | --- | --- |
@@ -250,7 +250,7 @@ main#app.theme-dark
 }
 ```
 
-## `base font-face` — `@font-face`
+## `base font-face`: `@font-face`
 
 ```tree
 base font-face
@@ -275,9 +275,9 @@ base font-face
 }
 ```
 
-## `base media` — `@media`
+## `base media`: `@media`
 
-A media query is its conditions, then the rules it wraps. Each condition is a `have`; `lack` negates (`not`).
+A media query is its conditions, then the rules it wraps. Each condition is a `have`, and `lack` negates (`not`).
 
 | Write | Means |
 | --- | --- |
@@ -305,7 +305,7 @@ base media
     find main
       have id, <app>
     have content, <↗>
-    have color, tint oklch, <72%>, 0.18, 250
+    have color, tint(oklch, <72%>, 0.18, 250)
 ```
 
 →
@@ -347,7 +347,7 @@ base media
 
 → `@media not print and (width >= 900px)`
 
-## `base container` — `@container`
+## `base container`: `@container`
 
 A container query mirrors `base media`, plus `have style` for style queries. The container is set up on the parent with a `have container` declaration:
 
@@ -379,9 +379,9 @@ base container
 }
 ```
 
-## `base layers` / `base layer` — `@layer`
+## `base layers` / `base layer`: `@layer`
 
-`base layers` declares the layer order; `base layer, name <x>` opens a layer block:
+`base layers` declares the layer order, and `base layer, name <x>` opens a layer block:
 
 ```tree
 base layers
@@ -404,7 +404,7 @@ base layer, name <components>
 }
 ```
 
-## `base keyframes` — `@keyframes`
+## `base keyframes`: `@keyframes`
 
 Each `case` is a stop (`from`, `to`, or a `<percent>`):
 
@@ -432,20 +432,20 @@ base keyframes, name <fade-slide>
 }
 ```
 
-## `tone` — theme tokens
+## `tone`: theme tokens
 
-`tone base` emits custom properties on `:root`; `tone dark` scopes them to `.dark`. The scope is always named (`base` for the default), so the two blocks read as a matched pair:
+`tone base` emits custom properties on `:root`, and `tone dark` scopes them to `.dark`. The scope is always named (`base` for the default), so the two blocks read as a matched pair:
 
 ```tree
 tone base
-  have color-ink, tint rgb, 24, 24, 27
+  have color-ink, tint(rgb, 24, 24, 27)
 
 tone dark
-  have color-ink, tint rgb, 244, 244, 245
+  have color-ink, tint(rgb, 244, 244, 245)
 ```
 
 → `:root { --color-ink: rgb(24, 24, 27) } .dark { --color-ink: rgb(244, 244, 245) }`
 
 ## Implementation
 
-The grammar is a self-hosted mill at `deck/mill/code/look/` (`mine` parses the tree into the look AST, `mint` prints it back). The AST forms live in `@term/base/code/look`. A static-output pass lowers that AST to a `.css` string at build time — no runtime, Tailwind-style JIT for `face` classes (only used classes are emitted; `base` / at-rule blocks always emit).
+The grammar is a self-hosted mill at `deck/mill/code/look/` (`mine` parses the tree into the look AST, `mint` prints it back). The AST forms live in `@term/base/code/look`. A static-output pass lowers that AST to a `.css` string at build time. There is no runtime, and a Tailwind-style JIT runs for `face` classes (only used classes are emitted, and `base` / at-rule blocks always emit).

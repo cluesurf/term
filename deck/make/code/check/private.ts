@@ -150,14 +150,22 @@ export function checkPrivateFinds(program: Program, scope: ImportScope | undefin
 
 // every variable under a node with the statement-level file it sits in. Generic over the tree so no statement or
 // expression form is missed; types, spans and signatures hold no references a definition could be named by.
-function eachReference(node: unknown, visit: (variable: Extract<Expression, { form: 'variable' }>) => void): void {
-  if (!node || typeof node !== 'object') {
+// Each object is visited once: a lowered program SHARES subtrees (a fallback cloned into many calls, a template's
+// expansion), and a walk that re-enters them is exponential in the nesting.
+function eachReference(
+  node: unknown,
+  visit: (variable: Extract<Expression, { form: 'variable' }>) => void,
+  seen: WeakSet<object> = new WeakSet(),
+): void {
+  if (!node || typeof node !== 'object' || seen.has(node)) {
     return
   }
 
+  seen.add(node)
+
   if (Array.isArray(node)) {
     for (const item of node) {
-      eachReference(item, visit)
+      eachReference(item, visit, seen)
     }
 
     return
@@ -179,7 +187,7 @@ function eachReference(node: unknown, visit: (variable: Extract<Expression, { fo
       key !== 'binding' &&
       key !== 'privateNote'
     ) {
-      eachReference(value, visit)
+      eachReference(value, visit, seen)
     }
   }
 }

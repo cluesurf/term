@@ -15,18 +15,22 @@ load @term/base/code/process/current
 
 load @term/base/code/list
   find size
+  find contains
 
 load @term/base/code/text
   find char-count
 
-test <a program run with no arguments has none>
+# a test runs inside whatever started it, so the arguments are that runner's: what holds everywhere is that they never
+# include the program or its runtime, which node's argv and the JVM's command line both lead with
+test <a program's arguments never include its executable>
   save info
     call read
   want hold
     call is-equal
-      call size
+      call contains
         read info/arguments
-      code 0
+        read info/executable
+      false
 
 test <the working directory is named>
   want hold

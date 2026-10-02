@@ -106,6 +106,24 @@ const RESERVED = new Set([
   // not keywords, but illegal as binding names in an ES module / strict mode
   'eval',
   'arguments',
+  // not reserved, but the platform globals the runtime shims read by name. A page bundle is a classic script, so a
+  // top-level Term task named `window` (list's sliding windows) shadowed the real one for the whole bundle, and the
+  // cask bridge's `window.term` read a property of that function: every cask page failed on its first call
+  'window',
+  'document',
+  'globalThis',
+  'navigator',
+  // the same for the globals the shims call: a Term `fetch` (http's GET) made the http shim's `fetch(url)` call itself
+  'fetch',
+  'crypto',
+  'performance',
+  'console',
+  'atob',
+  'btoa',
+  'setTimeout',
+  'clearTimeout',
+  'queueMicrotask',
+  'structuredClone',
 ])
 
 // acronyms that the host APIs spell in all caps (randomUUID, toJSON, parseURL). A whole kebab segment matching one of
@@ -332,6 +350,11 @@ const LIST_HELPER: Record<string, string> = {
 }
 // the `note shared` forms: references by design, compared and keyed by identity as on the other backends
 let tsSharedForms = new Set<string>()
+
+// every function's declared parameters, so a left-out trailing `need false` argument is filled with its type's empty
+// value, as the Rust, Swift and Kotlin backends fill it: left as `undefined`, a left-out text printed "undefined" here
+// and nothing there
+let tsFunctionParams = new Map<string, { type?: Type; optional?: boolean }[]>()
 
 // does a value of this type compare by its structure rather than by `==`? A record (`form`), a list, a map and bytes
 // do, so `is-equal` on two records with equal fields is true here as it is on Rust, Swift and Kotlin
@@ -1213,9 +1236,22 @@ function makeEmitter(
           return `Array.from(${expression(collected.target)}.${collected.name}())`
         }
 
-        return `${expression(node.callee)}(${node.args
-          .map(arg => expression(arg))
-          .join(', ')})`
+        const rendered = node.args.map(arg => expression(arg))
+        const declared = node.callee.form === 'variable' ? tsFunctionParams.get(node.callee.name) : undefined
+
+        if (declared) {
+          for (let i = rendered.length; i < declared.length && declared[i]!.optional; i++) {
+            const empty = tsEmptyOf(declared[i]!.type)
+
+            if (empty.startsWith('undefined')) {
+              break
+            }
+
+            rendered.push(empty)
+          }
+        }
+
+        return `${expression(node.callee)}(${rendered.join(', ')})`
       }
 
       case 'array': {
@@ -2171,6 +2207,9 @@ export function emitTypeScript(
   tsListUsed = false
   tsSharedForms = new Set(
     program.flatMap(n => (n.form === 'record-type' && n.shared ? [n.name] : [])),
+  )
+  tsFunctionParams = new Map(
+    program.flatMap(n => (n.form === 'function' ? [[n.name, n.params] as const] : [])),
   )
 
   for (const node of program) {

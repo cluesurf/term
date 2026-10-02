@@ -1,22 +1,29 @@
 import Foundation
 
+// The one HTTP primitive over URLSession. Answers a flat list of text: `ok`, the status, the body, then each response
+// header as a lower-case name and its value; or `timeout` / `outage` and the host's message. The public http module
+// (base/code/network/http.tree) builds the response from it, so every backend answers alike.
 enum http {
-    // `header` is a map of name to value and may be empty. Written to match
-    // the node runtime, and NOT exercised here: this repository builds and
-    // tests the node target only.
-    static func request(_ method: String, _ url: String, _ body: String, _ header: SeedMap<String, String>) async -> HttpResponse {
-        let header = header.data
-        guard let u = URL(string: url) else { return HttpResponse(status: 0, body: "") }
-        var req = URLRequest(url: u)
-        req.httpMethod = method
-        for (name, value) in header { req.setValue(value, forHTTPHeaderField: name) }
-        if !body.isEmpty { req.httpBody = body.data(using: .utf8) }
+    static func request(_ method: String, _ url: String, _ body: String, _ header: SeedMap<String, String>, _ timeout: Int) async -> [String] {
+        guard let address = URL(string: url) else { return ["outage", "not a url: \(url)"] }
+        var request = URLRequest(url: address)
+        request.httpMethod = method
+        request.timeoutInterval = Double(max(0, timeout)) / 1000
+        for (name, value) in header.data { request.setValue(value, forHTTPHeaderField: name) }
+        if !body.isEmpty { request.httpBody = body.data(using: .utf8) }
         do {
-            let (data, response) = try await URLSession.shared.data(for: req)
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            return HttpResponse(status: status, body: String(data: data, encoding: .utf8) ?? "")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let answer = response as? HTTPURLResponse
+            var out = ["ok", String(answer?.statusCode ?? 0), String(decoding: data, as: UTF8.self)]
+            for (name, value) in answer?.allHeaderFields ?? [:] {
+                out.append(String(describing: name).lowercased())
+                out.append(String(describing: value))
+            }
+            return out
+        } catch let error as URLError where error.code == .timedOut {
+            return ["timeout", "\(error)"]
         } catch {
-            return HttpResponse(status: 0, body: "")
+            return ["outage", "\(error)"]
         }
     }
 }

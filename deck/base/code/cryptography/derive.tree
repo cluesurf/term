@@ -1,0 +1,162 @@
+# Keys from secrets, and passwords stored so they can be checked and not read back. PBKDF2 (RFC 8018) and HKDF
+# (RFC 5869), both over HMAC-SHA256, the same bytes on every backend: Rust, Swift and Kotlin write them out over each
+# platform's HMAC, node and the browser use the platform's own.
+#
+# A stored password is `pbkdf2-sha256$<iterations>$<salt>$<hash>`, salt and hash in base64: everything `verify-password`
+# needs travels with it, so the iteration count can rise later without breaking hashes already stored.
+
+load @term/base/code/native/{platform}/cryptography/derive
+  find pbkdf2-sha256
+  find hkdf-sha256
+
+load @term/base/code/native/{platform}/cryptography/random
+  find random-bytes
+
+load @term/base/code/cryptography/hmac
+  find is-equal-secret
+
+load @term/base/code/bytes
+  find from-text
+  find to-base64
+  find from-base64
+  find count
+
+load @term/base/code/text
+  find split
+
+load @term/base/code/list
+  find list
+  find size
+  find get
+
+load @term/base/code/text/number
+  find read-number
+
+load @term/base/code/maybe
+  find unwrap-or
+
+load @term/base/code/float
+  find to-number
+
+
+# `length` bytes from a password and a salt, `iterations` rounds of HMAC-SHA256 each
+task pbkdf2
+  note async
+  take password, like bytes
+  take salt, like bytes
+  take iterations, like number
+  take length, like number
+  like bytes
+  send back
+    call pbkdf2-sha256
+      read password
+      read salt
+      read iterations
+      read length
+      wait true
+
+# `length` bytes of key from a secret that already has enough entropy (a shared secret, a master key), bound to
+# `info`, so one secret yields independent keys for independent uses
+task hkdf
+  note async
+  take secret, like bytes
+  take salt, like bytes
+  take info, like bytes
+  take length, like number
+  like bytes
+  send back
+    call hkdf-sha256
+      read secret
+      read salt
+      read info
+      read length
+      wait true
+
+# a password stored for checking: a fresh 16-byte salt and, unless told otherwise, 600,000 rounds
+# (OWASP's figure for PBKDF2-HMAC-SHA256 as of 2023). `verify-password`
+# reads the rounds back from the stored text, so raising the default later leaves older hashes checkable.
+task hash-password
+  note async
+  take password, like text
+  take rounds, like(number), fall 600000
+  like text
+  save salt
+    call random-bytes
+      code 16
+  save hash
+    call pbkdf2-sha256
+      call from-text
+        read password
+      read salt
+      read rounds
+      code 32
+      wait true
+  save salt-text
+    call to-base64
+      read salt
+  save hash-text
+    call to-base64
+      read hash
+  send back, text <pbkdf2-sha256${{rounds}}${{salt-text}}${{hash-text}}>
+
+# whether `password` is the one `stored` was made from, compared in constant time; false for a stored text that is
+# not one `hash-password` writes
+task verify-password
+  note async
+  take password, like text
+  take stored, like text
+  like boolean
+  save parts
+    call split
+      read stored
+      text <$>
+  fork test
+    hook test
+      call or
+        call is-unequal
+          call size
+            read parts
+          code 4
+        call is-unequal
+          call get
+            read parts
+            code 0
+          text <pbkdf2-sha256>
+    hook hold
+      send back, false
+  save iterations
+    call to-number
+      call unwrap-or
+        call read-number
+          call get
+            read parts
+            code 1
+        0.0
+  fork test
+    hook test
+      call is-below
+        read iterations
+        code 1
+    hook hold
+      send back, false
+  save expected
+    call from-base64
+      call get
+        read parts
+        code 3
+  save actual
+    call pbkdf2-sha256
+      call from-text
+        read password
+      call from-base64
+        call get
+          read parts
+          code 2
+      read iterations
+      call count
+        read expected
+      wait true
+  send back
+    call is-equal-secret
+      read actual
+      read expected

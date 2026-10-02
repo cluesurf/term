@@ -4,7 +4,8 @@
 dock load
   load <global:clock>, name clock
 
-task get
+# named for what it is: a top-level `get` shadowed list `get` in every browser build, since names are package-global
+task clock-reading
   take
     precise
     like boolean

@@ -18,9 +18,10 @@
 // A type with no generator (a form, a closure, a native handle) refuses admission with the type named, rather than
 // running a test that never reaches the twin.
 
+import { spawnSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { compile } from '@term/make/code/compile/compile'
 import { CompileCache } from '@term/make/code/compile/cache'
 import type { Resolver } from '@term/make/code/compile/load'
@@ -327,26 +328,118 @@ const camel = (name: string): string => name.replace(/-([a-z0-9])/g, (_, c: stri
 // stdlib closure is read and milled once, not once per mutant (a 2026-10-02 run took fifteen minutes without it)
 export const cache = new CompileCache()
 
-// build the module with its twins exposed, and load the TypeScript in this process
-async function load(
+// build the module with its twins exposed, and write its TypeScript where a child process can load it
+function load(
   source: { file: string; text: string },
   resolve: Resolver,
   dir: string,
   adjust?: (twins: Twin[]) => Twin[],
-): Promise<{ module: Record<string, (...args: unknown[]) => unknown>; program: Statement[]; twins: Twin[] } | string> {
+): { module: string; program: Statement[]; twins: Twin[] } | string {
   const built = compile(source, { resolve, cache, exposeTwins: true, ...(adjust ? { adjustTwins: adjust } : {}) })
 
   if (!built.ok) {
     return built.diagnostics.map(d => d.message).join(' | ')
   }
 
-  const file = join(dir, `module-${Math.random().toString(36).slice(2)}.ts`)
-  writeFileSync(file, built.typescript)
+  const module = join(dir, `module-${Math.random().toString(36).slice(2)}.ts`)
+  writeFileSync(module, built.typescript)
 
-  return {
-    module: (await import(pathToFileURL(file).href)) as Record<string, (...args: unknown[]) => unknown>,
-    program: built.program,
-    twins: built.twins ?? [],
+  return { module, program: built.program, twins: built.twins ?? [] }
+}
+
+export type Comparison = { compared: number; first?: unknown[]; disagreement?: Omit<Disagreement, 'literal'> }
+
+// compare a built twin with its task on `cases`, wherever the twin's conditions hold, and shrink the first
+// disagreement when asked. Runs in the CHILD process (`compareInChild`), never in the one that called admit
+export async function compareModule(input: {
+  module: string
+  of: string
+  label: string
+  cases: unknown[][]
+  shrink: boolean
+}): Promise<Comparison> {
+  const module = (await import(pathToFileURL(input.module).href)) as Record<string, (...args: unknown[]) => unknown>
+  const ref = module[camel(input.of)]!
+  const alt = module[camel(twinTask(input.of, input.label))]!
+  const guard = module[camel(guardTask(input.of, input.label))]!
+  const holds = (args: unknown[]): boolean => {
+    const admitted = outcomeOf(() => guard(...structuredClone(args)))
+
+    return 'value' in admitted && admitted.value === true
+  }
+  const fails = (args: unknown[]): boolean =>
+    holds(args) && !agree(outcomeOf(() => ref(...structuredClone(args))), outcomeOf(() => alt(...structuredClone(args))))
+  let compared = 0
+
+  for (const args of input.cases) {
+    if (!holds(args)) {
+      continue
+    }
+
+    compared++
+
+    if (fails(args)) {
+      if (!input.shrink) {
+        return { compared, first: args }
+      }
+
+      const small = shrink(args, fails)
+
+      return {
+        compared,
+        first: args,
+        disagreement: {
+          input: small,
+          reference: show(outcomeOf(() => ref(...structuredClone(small)))),
+          twin: show(outcomeOf(() => alt(...structuredClone(small)))),
+        },
+      }
+    }
+  }
+
+  return { compared }
+}
+
+// run `compareModule` in a child process with a time limit. One that does not finish in time is reported as such: a
+// twin, or a mutant, that never returns where its task returns is a wrong answer, never a pass
+function compareInChild(
+  dir: string,
+  input: Parameters<typeof compareModule>[0],
+  seconds: number,
+): Comparison | { timedOut: true } | { failed: string } {
+  // `.mts`: an ES module whatever the directory around it says, so its top-level `await` runs
+  const runner = join(dir, 'compare-runner.mts')
+  const request = join(dir, `request-${Math.random().toString(36).slice(2)}.json`)
+
+  writeFileSync(
+    runner,
+    `import { readFileSync } from 'node:fs'
+import { compareModule } from ${JSON.stringify(fileURLToPath(import.meta.url))}
+const result = await compareModule(JSON.parse(readFileSync(process.argv[2]!, 'utf8')))
+process.stdout.write(JSON.stringify(result))
+`,
+  )
+  writeFileSync(request, JSON.stringify(input))
+
+  const ran = spawnSync('npx', ['tsx', runner, request], {
+    encoding: 'utf8',
+    timeout: seconds * 1000,
+    maxBuffer: 64 * 1024 * 1024,
+    cwd: join(fileURLToPath(import.meta.url), '../../../..'),
+  })
+
+  if (ran.error && (ran.error as NodeJS.ErrnoException).code === 'ETIMEDOUT') {
+    return { timedOut: true }
+  }
+
+  if (ran.signal) {
+    return { timedOut: true }
+  }
+
+  try {
+    return JSON.parse(ran.stdout.trim().split('\n').pop() ?? '') as Comparison
+  } catch {
+    return { failed: (ran.stderr || ran.stdout).split('\n').filter(l => /Error|error/.test(l)).slice(0, 3).join(' | ').slice(0, 300) }
   }
 }
 
@@ -359,13 +452,17 @@ export async function admit(input: {
   seed?: number
   // how many of the cases replay on each native toolchain (0 skips the native replay)
   native?: number
+  // seconds one comparison may take before it counts as not returning
+  limit?: number
+  // how many deliberately wrong copies of each twin to build (each is a whole compile); default 8
+  mutants?: number
   // the native build for one env: emitted source text and how to run it, supplied by the caller so this module does
   // not reach into the CLI's toolchain handling
   nativeRun?: (env: 'rust' | 'swift' | 'kotlin', text: string) => { ok: true; out: string } | { ok: false; why: string }
 }): Promise<{ ok: true; verdicts: Verdict[] } | { ok: false; reason: string }> {
   mkdirSync(input.dir, { recursive: true })
 
-  const loaded = await load(input.source, input.resolve, input.dir)
+  const loaded = load(input.source, input.resolve, input.dir)
 
   if (typeof loaded === 'string') {
     return { ok: false, reason: `the module does not build: ${loaded}` }
@@ -373,6 +470,9 @@ export async function admit(input: {
 
   const verdicts: Verdict[] = []
   const count = input.cases ?? 2000
+  const limit = input.limit ?? 120
+
+  const pending: { verdict: Verdict; twin: Twin; reference: Fn; cases: unknown[][] }[] = []
 
   for (const twin of loaded.twins) {
     const reference = loaded.program.find((s): s is Fn => s.form === 'function' && s.name === twin.of)
@@ -406,53 +506,24 @@ export async function admit(input: {
     const inputs = Array.from({ length: count }, () => (gens as Gen[]).map(g => g(next)))
     verdict.cases = inputs.length
 
-    // compare one build of the twin against the reference on the inputs its conditions admit
-    const compareOn = (
-      module: Record<string, (...args: unknown[]) => unknown>,
-      cases: unknown[][],
-    ): { compared: number; first?: unknown[] } => {
-      const ref = module[camel(twin.of)]!
-      const alt = module[camel(twinTask(twin.of, twin.name))]!
-      const guard = module[camel(guardTask(twin.of, twin.name))]!
-      let compared = 0
+    process.stderr.write(`admit: ${twin.of}/${twin.name}: comparing ${inputs.length} inputs\n`)
 
-      for (const args of cases) {
-        const admitted = outcomeOf(() => guard(...structuredClone(args)))
+    const result = compareInChild(input.dir, { module: loaded.module, of: twin.of, label: twin.name, cases: inputs, shrink: true }, limit)
 
-        if (!('value' in admitted) || admitted.value !== true) {
-          continue
-        }
-
-        compared++
-
-        if (!agree(outcomeOf(() => ref(...structuredClone(args))), outcomeOf(() => alt(...structuredClone(args))))) {
-          return { compared, first: args }
-        }
-      }
-
-      return { compared }
+    if ('timedOut' in result) {
+      verdict.reason = `did not finish comparing in ${limit} s: a twin that never returns where its task does is a wrong answer`
+      continue
     }
 
-    const result = compareOn(loaded.module, inputs)
+    if ('failed' in result) {
+      verdict.reason = `the comparison could not run: ${result.failed}`
+      continue
+    }
+
     verdict.compared = result.compared
 
-    if (result.first) {
-      const ref = loaded.module[camel(twin.of)]!
-      const alt = loaded.module[camel(twinTask(twin.of, twin.name))]!
-      const guard = loaded.module[camel(guardTask(twin.of, twin.name))]!
-      const fails = (args: unknown[]): boolean => {
-        const admitted = outcomeOf(() => guard(...structuredClone(args)))
-
-        return 'value' in admitted && admitted.value === true && !agree(outcomeOf(() => ref(...structuredClone(args))), outcomeOf(() => alt(...structuredClone(args))))
-      }
-      const small = shrink(result.first, fails)
-
-      verdict.disagreement = {
-        input: small,
-        literal: small.map(literal).join(', '),
-        reference: show(outcomeOf(() => ref(...structuredClone(small)))),
-        twin: show(outcomeOf(() => alt(...structuredClone(small)))),
-      }
+    if (result.disagreement) {
+      verdict.disagreement = { ...result.disagreement, literal: result.disagreement.input.map(literal).join(', ') }
       verdict.reason = `disagrees on ${verdict.disagreement.literal}: \`${twin.of}\` gives ${verdict.disagreement.reference}, \`${twin.name}\` gives ${verdict.disagreement.twin}`
       continue
     }
@@ -462,11 +533,13 @@ export async function admit(input: {
       continue
     }
 
-    // the mutants: a comparison that cannot catch a wrong twin proves nothing
-    const mutants = mutantsOf(twin)
+    // the mutants: a comparison that cannot catch a wrong twin proves nothing. One that never returns is caught
+    const mutants = mutantsOf(twin).slice(0, input.mutants ?? 8)
+
+    process.stderr.write(`admit: ${twin.of}/${twin.name}: ${mutants.length} mutants\n`)
 
     for (const mutate of mutants) {
-      const mutant = await load(input.source, input.resolve, input.dir, twins =>
+      const mutant = load(input.source, input.resolve, input.dir, twins =>
         twins.map(t => {
           if (t.of === twin.of && t.name === twin.name) {
             mutate(t)
@@ -482,7 +555,9 @@ export async function admit(input: {
 
       verdict.mutants.built++
 
-      if (compareOn(mutant.module, inputs).first) {
+      const judged = compareInChild(input.dir, { module: mutant.module, of: twin.of, label: twin.name, cases: inputs, shrink: false }, Math.min(limit, 30))
+
+      if ('timedOut' in judged || ('first' in judged && judged.first)) {
         verdict.mutants.caught++
       }
     }
@@ -492,37 +567,53 @@ export async function admit(input: {
       continue
     }
 
-    // the native replay: the same inputs, on each toolchain
+    // replayed natively below, with every other twin of the module, in one build per toolchain
     if (input.nativeRun && (input.native ?? 40) > 0) {
-      const replay = inputs.slice(0, input.native ?? 40)
-
-      for (const env of ['rust', 'swift', 'kotlin'] as const) {
-        const driver = nativeDriver(input.source.text, twin, reference, replay)
-
-        if (typeof driver !== 'string' || driver.startsWith('\0')) {
-          verdict.native[env] = `not replayed: ${String(driver).slice(1)}`
-          continue
-        }
-
-        const ran = input.nativeRun(env, driver)
-
-        verdict.native[env] = ran.ok
-          ? ran.out.trim() === `disagree=0`
-            ? `agreed on ${replay.length}`
-            : `DISAGREED: ${ran.out.trim()}`
-          : `not replayed: ${ran.why}`
-      }
-
-      const native = Object.entries(verdict.native).find(([, v]) => v.startsWith('DISAGREED'))
-
-      if (native) {
-        verdict.reason = `agrees in TypeScript and not on ${native[0]}: ${native[1]}`
-        continue
-      }
+      pending.push({ verdict, twin, reference, cases: inputs.slice(0, input.native ?? 40) })
     }
 
     verdict.admitted = true
     verdict.reason = `agreed on ${verdict.compared} of ${verdict.cases} inputs that met its conditions, caught ${verdict.mutants.caught} of ${verdict.mutants.built} mutants`
+  }
+
+  // the native replay: every twin still admitted, the same inputs, ONE build per toolchain
+  const replaying = pending.filter(p => p.verdict.admitted)
+
+  if (input.nativeRun && replaying.length > 0) {
+    const driver = nativeDriver(input.source.text, replaying)
+
+    for (const env of ['rust', 'swift', 'kotlin'] as const) {
+      if (driver.startsWith('\0')) {
+        replaying.forEach(p => (p.verdict.native[env] = `not replayed: ${driver.slice(1)}`))
+        continue
+      }
+
+      process.stderr.write(`admit: replaying ${replaying.length} twin(s) on ${env}\n`)
+
+      const ran = input.nativeRun(env, driver)
+      const counts = new Map(
+        ran.ok ? [...ran.out.matchAll(/d(\d+)=(\d+)/g)].map(m => [Number(m[1]), Number(m[2])] as const) : [],
+      )
+
+      replaying.forEach((p, i) => {
+        const disagreed = counts.get(i)
+
+        p.verdict.native[env] = !ran.ok
+          ? `not replayed: ${ran.why}`
+          : disagreed === 0
+            ? `agreed on ${p.cases.length}`
+            : `DISAGREED on ${disagreed ?? '?'} of ${p.cases.length}`
+      })
+    }
+
+    for (const p of replaying) {
+      const native = Object.entries(p.verdict.native).find(([, v]) => v.startsWith('DISAGREED'))
+
+      if (native) {
+        p.verdict.admitted = false
+        p.verdict.reason = `agrees in TypeScript and not on ${native[0]}: ${native[1]}`
+      }
+    }
   }
 
   return { ok: true, verdicts }
@@ -533,62 +624,77 @@ export async function admit(input: {
 // and numbers only: anything else is not replayed natively, and says so ("\0" + why)
 export const REPLAY_TASK = 'replay-compute'
 
-export function nativeDriver(module: string, twin: Twin, reference: Fn, cases: unknown[][]): string {
-  const kinds = reference.params.map(p =>
-    p.type?.kind === 'number'
-      ? 'number'
-      : (p.type?.kind === 'array' && p.type.element.kind === 'number') ||
-          (p.type?.kind === 'named' && p.type.name === 'list' && p.type.args?.[0]?.kind === 'number')
-        ? 'list'
-        : undefined,
-  )
+export function nativeDriver(
+  module: string,
+  entries: { twin: Twin; reference: Fn; cases: unknown[][] }[],
+): string {
+  // each case is a task of its own answering 1 when the twin's conditions hold and the two disagree, else 0: a few
+  // lines each, so the checker's work stays proportional to the cases rather than to their square
+  const tasks: string[] = []
+  const sums: string[] = []
 
-  if (kinds.some(k => k === undefined)) {
-    return '\0the native replay covers numbers and lists of numbers'
-  }
+  for (const [k, { twin, reference, cases }] of entries.entries()) {
+    const kinds = reference.params.map(p =>
+      p.type?.kind === 'number'
+        ? 'number'
+        : (p.type?.kind === 'array' && p.type.element.kind === 'number') ||
+            (p.type?.kind === 'named' && p.type.name === 'list' && p.type.args?.[0]?.kind === 'number')
+          ? 'list'
+          : undefined,
+    )
 
-  const lines: string[] = ['', `task ${REPLAY_TASK}`, '  like text', '  save disagree, code 0']
+    if (kinds.some(kind => kind === undefined)) {
+      return '\0the native replay covers numbers and lists of numbers'
+    }
 
-  cases.forEach((args, i) => {
-    const names = args.map((_, p) => `a${i}-${p}`)
+    const names: string[] = []
 
-    args.forEach((value, p) => {
-      if (kinds[p] === 'number') {
-        lines.push(`  host ${names[p]}, code ${value as number}`)
-      } else {
-        lines.push(`  save ${names[p]}`, '    make list')
+    cases.forEach((args, i) => {
+      const name = `replay-${k}-${i}`
+      names.push(name)
+      const values = args.map((_, p) => `a${p}`)
+      const lines = [`task ${name}`, '  like number']
 
-        for (const item of value as number[]) {
-          lines.push(`  call push`, `    bind list, read ${names[p]}`, `    bind item, code ${item}`)
+      args.forEach((value, p) => {
+        if (kinds[p] === 'number') {
+          lines.push(`  host ${values[p]}, code ${value as number}`)
+        } else {
+          lines.push(`  save ${values[p]}`, '    make list')
+
+          for (const item of value as number[]) {
+            lines.push('  call push', `    bind list, read ${values[p]}`, `    bind item, code ${item}`)
+          }
         }
-      }
+      })
+
+      // a call of `task` on this case's values, its first line at `depth` spaces
+      const call = (task: string, depth: number): string[] => [
+        `${' '.repeat(depth)}call ${task}`,
+        ...values.map(v => `${' '.repeat(depth + 2)}read ${v}`),
+      ]
+
+      lines.push(
+        '  fork test',
+        '    hook test',
+        ...call(guardTask(twin.of, twin.name), 6),
+        '    hook hold',
+        '      fork test',
+        '        hook test',
+        '          call is-unequal',
+        ...call(twin.of, 12),
+        ...call(twinTask(twin.of, twin.name), 12),
+        '        hook hold',
+        '          send back, code 1',
+        '  send back, code 0',
+      )
+
+      tasks.push(lines.join('\n'))
     })
 
-    // a call of `name` on this case's values, its first line at `depth` spaces
-    const call = (name: string, depth: number): string[] => [
-      `${' '.repeat(depth)}call ${name}`,
-      ...names.map(n => `${' '.repeat(depth + 2)}read ${n}`),
-    ]
+    sums.push(`  save d${k}, code 0`, ...names.flatMap(name => [`  save d${k}`, '    call add', `      read d${k}`, `      call ${name}`]))
+  }
 
-    lines.push(
-      '  fork test',
-      '    hook test',
-      ...call(guardTask(twin.of, twin.name), 6),
-      '    hook hold',
-      '      fork test',
-      '        hook test',
-      '          call is-unequal',
-      ...call(twin.of, 12),
-      ...call(twinTask(twin.of, twin.name), 12),
-      '        hook hold',
-      '          save disagree',
-      '            call add',
-      '              read disagree',
-      '              code 1',
-    )
-  })
+  const main = [`task ${REPLAY_TASK}`, '  like text', ...sums, `  send back, text <${entries.map((_, k) => `d${k}={{d${k}}}`).join(' ')}>`]
 
-  lines.push('  send back, text <disagree={{disagree}}>')
-
-  return `${module}\n${lines.join('\n')}\n`
+  return `${module}\n${tasks.join('\n\n')}\n\n${main.join('\n')}\n`
 }

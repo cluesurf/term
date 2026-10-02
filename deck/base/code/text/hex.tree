@@ -4,14 +4,14 @@ load @term/base/code/native/{platform}/text/hex
   find to-hex
   find from-hex
 
-task encode
+task encode-hex
   take input, like text
   like text
   send back
     call to-hex
       read input
 
-task decode
+task decode-hex
   take input, like text
   like text
   send back

@@ -1,0 +1,120 @@
+# A sort is the same on every backend: stable (equal items keep their order), and text by code point. Held by
+# `pnpm term:base-gate`.
+
+load @term/base/code/list
+  find list
+  find sort
+  find join
+  find size
+  find map
+
+load @term/base/code/ordering
+  find ordering
+  find from-numbers
+  find from-texts
+
+form entry
+  link key, like number
+  link name, like text
+
+task by-key
+  take left, like entry
+  take right, like entry
+  like ordering
+  send back
+    call from-numbers
+      read left/key
+      read right/key
+
+task name-of
+  take item, like entry
+  like text
+  send back, read item/name
+
+task numbers
+  like list
+    like number
+  save out
+    make list
+  call out/push, code 5
+  call out/push, code 1
+  call out/push, code 4
+  call out/push, code 1
+  call out/push, code 9
+  call out/push, code 0
+  call out/push, code 3
+  send back, read out
+
+test <numbers sort ascending>
+  want hold
+    call is-equal
+      call join
+        call sort
+          call numbers
+          read from-numbers
+        text <,>
+      text <0,1,1,3,4,5,9>
+
+test <an empty list sorts to an empty list>
+  save empty
+    make list
+  call empty/push, code 1
+  call empty/pop
+  want hold
+    call is-equal
+      call size
+        call sort
+          read empty
+          read from-numbers
+      code 0
+
+test <equal keys keep the order they came in>
+  save items
+    make list
+  call items/push
+    make entry
+      bind key, code 2
+      bind name, text <b1>
+  call items/push
+    make entry
+      bind key, code 1
+      bind name, text <a1>
+  call items/push
+    make entry
+      bind key, code 2
+      bind name, text <b2>
+  call items/push
+    make entry
+      bind key, code 1
+      bind name, text <a2>
+  call items/push
+    make entry
+      bind key, code 2
+      bind name, text <b3>
+  want hold
+    call is-equal
+      call join
+        call map
+          call sort
+            read items
+            read by-key
+          read name-of
+        text <,>
+      text <a1,a2,b1,b2,b3>
+
+test <texts sort by code point>
+  save words
+    make list
+  call words/push, text <b>
+  call words/push, text <𝄞>
+  call words/push, text <～>
+  call words/push, text <A>
+  call words/push, text <a>
+  want hold
+    call is-equal
+      call join
+        call sort
+          read words
+          read from-texts
+        text <,>
+      text <A,a,b,～,𝄞>

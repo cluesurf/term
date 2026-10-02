@@ -1,35 +1,506 @@
-# Regular expressions. The clean uniform interface; the per-env native implementation wraps the platform's regex engine and is selected at build time, hidden behind the API.
+# Regular expressions in one dialect (regex/dialect.tree). A pattern is checked and rewritten in Term, the host engine
+# runs one primitive (search from a code point position), and everything else is written here once, so a pattern
+# matches the same text with the same groups on every backend. Positions are code points, as everywhere in `text`.
+# A replacement is literal text: no $1 or \1 is read in it, because each engine reads those differently. To build the
+# replacement from the match, use `rewrite-matches`.
 
 load @term/base/code/native/{platform}/regex
-  find do-matches
-  find do-replace
-  find do-find
+  find do-search
+  find end-anchor
 
+load @term/base/code/regex/dialect
+  find canonical-pattern
+  find regex-literal
+  find regex-mismatch
+
+load @term/base/code/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/base/code/list
+  find list
+  find size
+  find get
+
+load @term/base/code/maybe
+  find maybe
+
+# one match: the text it covers, where it starts and ends (code points, end exclusive), and each capturing group's text
+# in order, the empty text for a group that took no part (`match-group` tells the two apart)
+form regex-match
+  link text, like text
+  link start, like number
+  link end, like number
+  link groups
+    like list
+      like text
+  # the start and end of each group in turn, -1 for a group that took no part
+  link spans
+    like list
+      like number
+
+# the pattern as the host engine runs it; raises regex-mismatch when it is not in the dialect
+task compile-pattern
+  mark private
+  take pattern, like text
+  like text
+  save canonical
+    call canonical-pattern
+      read pattern
+      call end-anchor
+  send back, read canonical/text
+
+# the first match at or after `from`, or none
+task search-from
+  mark private
+  take engine, like text
+  take runes
+    like list
+      like number
+  take input, like text
+  take from, like number
+  like maybe
+    head regex-match
+  save found
+    call do-search
+      read engine
+      read input
+      read from
+  fork test
+    hook test
+      call is-below
+        call size
+          read found
+        code 2
+    hook hold
+      send back, make none
+  save start
+    call get
+      read found
+      code 0
+  save end
+    call get
+      read found
+      code 1
+  save groups
+    make list
+  save spans
+    make list
+  save k, code 2
+  walk test
+    down
+      call subtract
+        call size
+          read found
+        read k
+    hook test
+      call is-below
+        call add
+          read k
+          code 1
+        call size
+          read found
+    hook step
+      save a
+        call get
+          read found
+          read k
+      save b
+        call get
+          read found
+          call add
+            read k
+            code 1
+      call spans/push
+        read a
+      call spans/push
+        read b
+      fork test
+        hook test
+          call is-below
+            read a
+            code 0
+        hook hold
+          call groups/push, text <>
+        hook miss
+          call groups/push
+            call rune-slice
+              read runes
+              read a
+              read b
+      save k
+        call add
+          read k
+          code 2
+  send back
+    make some
+      bind value
+        make regex-match
+          bind text
+            call rune-slice
+              read runes
+              read start
+              read end
+          bind start, read start
+          bind end, read end
+          bind groups, read groups
+          bind spans, read spans
+
+task rune-slice
+  mark private
+  take runes
+    like list
+      like number
+  take from, like number
+  take to, like number
+  like text
+  save part
+    make list
+  save k, read from
+  walk test
+    down
+      call subtract
+        read to
+        read k
+    hook test
+      call is-below
+        read k
+        read to
+    hook step
+      call part/push
+        call get
+          read runes
+          read k
+      save k
+        call add
+          read k
+          code 1
+  send back
+    call from-runes
+      read part
+
+# whether the pattern matches anywhere in the input
 task matches
   take pattern, like text
   take input, like text
   like boolean
+  save engine
+    call compile-pattern
+      read pattern
+  save found
+    call do-search
+      read engine
+      read input
+      code 0
   send back
-    call do-matches
+    call is-minimum
+      call size
+        read found
+      code 2
+
+# the first match, or none
+task find-match
+  take pattern, like text
+  take input, like text
+  like maybe
+    head regex-match
+  send back
+    call search-from
+      call compile-pattern
+        read pattern
+      call to-runes
+        read input
+      read input
+      code 0
+
+# every match, left to right, none overlapping. After an empty match the search moves on one code point, so a
+# pattern that can match nothing still ends.
+task find-matches
+  take pattern, like text
+  take input, like text
+  like list
+    like regex-match
+  save engine
+    call compile-pattern
+      read pattern
+  save runes
+    call to-runes
+      read input
+  save n
+    call size
+      read runes
+  save out
+    make list
+  save at, code 0
+  walk test
+    down
+      call subtract
+        call add
+          read n
+          code 1
+        read at
+    hook test
+      call is-maximum
+        read at
+        read n
+    hook step
+      save next
+        call search-from
+          read engine
+          read runes
+          read input
+          read at
+      fork case, read next
+        case some
+          link hit
+          call out/push
+            read hit
+          fork test
+            hook test
+              call is-equal
+                read hit/end
+                read hit/start
+            hook hold
+              save at
+                call add
+                  read hit/end
+                  code 1
+            hook miss
+              save at, read hit/end
+        case none
+          save at
+            call add
+              read n
+              code 1
+  send back, read out
+
+# group `index` of a match (1 is the first group, 0 the whole match), or none when the group took no part
+task match-group
+  take match, like regex-match
+  take index, like number
+  like maybe
+    head text
+  fork test
+    hook test
+      call is-equal
+        read index
+        code 0
+    hook hold
+      send back
+        make some
+          bind value, read match/text
+  fork test
+    hook test
+      call or
+        call is-below
+          read index
+          code 0
+        call is-above
+          read index
+          call size
+            read match/groups
+    hook hold
+      send back, make none
+  fork test
+    hook test
+      call is-below
+        call get
+          read match/spans
+          call multiply
+            call subtract
+              read index
+              code 1
+            code 2
+        code 0
+    hook hold
+      send back, make none
+  send back
+    make some
+      bind value
+        call get
+          read match/groups
+          call subtract
+            read index
+            code 1
+
+# the input with each match replaced by what `make` returns for it
+task rewrite-matches
+  take pattern, like text
+  take input, like text
+  take make
+    like task
+      take match, like regex-match
+      like text
+  like text
+  save runes
+    call to-runes
+      read input
+  save out, text <>
+  save at, code 0
+  walk list
+    call find-matches
       read pattern
       read input
+    hook next
+      take site, name hit
+      save before
+        call rune-slice
+          read runes
+          read at
+          read hit/start
+      save made
+        call make
+          read hit
+      save out, text <{{out}}{{before}}{{made}}>
+      save at, read hit/end
+  save rest
+    call rune-slice
+      read runes
+      read at
+      call size
+        read runes
+  send back, text <{{out}}{{rest}}>
 
-task replace
+# the input with every match replaced by the literal replacement
+task replace-matches
   take pattern, like text
   take input, like text
   take replacement, like text
   like text
-  send back
-    call do-replace
+  save runes
+    call to-runes
+      read input
+  save out, text <>
+  save at, code 0
+  walk list
+    call find-matches
       read pattern
       read input
-      read replacement
+    hook next
+      take site, name hit
+      save before
+        call rune-slice
+          read runes
+          read at
+          read hit/start
+      save out, text <{{out}}{{before}}{{replacement}}>
+      save at, read hit/end
+  save rest
+    call rune-slice
+      read runes
+      read at
+      call size
+        read runes
+  send back, text <{{out}}{{rest}}>
 
-task find
+# the input with the first match replaced by the literal replacement
+task replace-first-match
   take pattern, like text
   take input, like text
+  take replacement, like text
   like text
-  send back
-    call do-find
+  save runes
+    call to-runes
+      read input
+  save hit
+    call search-from
+      call compile-pattern
+        read pattern
+      read runes
+      read input
+      code 0
+  fork case, read hit
+    case some
+      link first
+      save before
+        call rune-slice
+          read runes
+          code 0
+          read first/start
+      save after
+        call rune-slice
+          read runes
+          read first/end
+          call size
+            read runes
+      send back, text <{{before}}{{replacement}}{{after}}>
+    case none
+      send back, read input
+
+# the pieces of the input between matches. An empty match at the very start or end splits nothing off, so `split-at-matches` of
+# an empty pattern gives the code points one by one.
+task split-at-matches
+  take pattern, like text
+  take input, like text
+  like list
+    like text
+  save runes
+    call to-runes
+      read input
+  save n
+    call size
+      read runes
+  save out
+    make list
+  save at, code 0
+  walk list
+    call find-matches
       read pattern
       read input
+    hook next
+      take site, name hit
+      fork test
+        hook test
+          call and
+            call is-equal
+              read hit/start
+              read hit/end
+            call or
+              call is-equal
+                read hit/start
+                code 0
+              call is-equal
+                read hit/start
+                read n
+        hook hold
+          turn next
+      call out/push
+        call rune-slice
+          read runes
+          read at
+          read hit/start
+      save at, read hit/end
+  call out/push
+    call rune-slice
+      read runes
+      read at
+      read n
+  send back, read out
+
+# a pattern that matches the text exactly, every syntax character escaped
+task escape-pattern
+  take value, like text
+  like text
+  save out, text <>
+  walk list
+    call to-runes
+      read value
+    hook next
+      take site, name c
+      save written
+        call regex-literal
+          read c
+      save out, text <{{out}}{{written}}>
+  send back, read out
+
+# whether the pattern is in the dialect
+task is-valid-pattern
+  take pattern, like text
+  like boolean
+  note unsafe
+    call compile-pattern
+      read pattern
+    send back, true
+  halt take
+    take e
+    send back, false

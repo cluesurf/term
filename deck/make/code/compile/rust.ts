@@ -1443,11 +1443,19 @@ export function emitRust(
               }`,
           )
 
+          // a type argument nothing constrains (the error type of `make okay` handed straight to a generic task) is
+          // left for rustc to infer, and it cannot: it is any type, so it is named the unit type, the others `_`
+          const args = node.type?.kind === 'named' ? (node.type.args ?? []) : []
+          const free = (a: Type): boolean => a.kind === 'variable' && !rustVarNames.has(a.id)
+          const named = args.some(free)
+            ? `${pascal(owner)}::<${args.map(a => (free(a) ? '()' : '_')).join(', ')}>`
+            : pascal(owner)
+
           return fields.length > 0
-            ? `${pascal(owner)}::${pascal(node.name)} { ${fields.join(
+            ? `${named}::${pascal(node.name)} { ${fields.join(
                 ', ',
               )} }`
-            : `${pascal(owner)}::${pascal(node.name)}`
+            : `${named}::${pascal(node.name)}`
         }
 
         // a field the construction leaves out (`need false`, or one the runtime fills on another backend) takes its
@@ -1503,7 +1511,8 @@ export function emitRust(
           /^\d+$/.test(node.name) &&
           node.target.type?.kind === 'array'
         ) {
-          return `${expr(node.target)}.borrow()[${node.name}]`
+          // cloned, as a dynamic index read is: a bare `v.borrow()[1]` moves a String out of the Vec and is refused
+          return `${expr(node.target)}.borrow()[${node.name}].clone()`
         }
 
         return memberPath(node)
@@ -1691,7 +1700,9 @@ export function emitRust(
       case 'get':
         return `${data}[${asUsize(arg[0]!)}].clone()`
       case 'set':
-        return `{ ${target}.borrow_mut()[${asUsize(arg[0]!)}] = ${arg[1]}; }`
+        // the value and the index first: a value that reads the same list (`set(at, or(get(at), bit))`) would
+        // otherwise find it already borrowed mutably, and RefCell panics
+        return `{ let __set_value = ${arg[1]}; let __set_index = ${asUsize(arg[0]!)}; ${target}.borrow_mut()[__set_index] = __set_value; }`
       case 'includes':
         return `${data}.contains(&${arg[0]})`
       case 'indexOf':
@@ -1813,6 +1824,12 @@ export function emitRust(
       }
 
       return `${memberPath(node.target)}${separator}${snake(node.name)}`
+    }
+
+    // a field read straight off a construction (`(Duration { nanoseconds: 0 }).nanoseconds`): bare, a struct literal
+    // in an `if` condition is refused by rustc
+    if (node.form === 'record') {
+      return `(${expr(node)})`
     }
 
     return expr(node)

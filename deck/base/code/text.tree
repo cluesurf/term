@@ -96,13 +96,14 @@ task split
     call value/split
       read delimiter
 
+# the code points from `start-index` up to, not including, `end-index`; left out, the end is the end of the text.
+# Positions past either end are clamped, and a start after the end swaps the two. The end used to be `need false`,
+# which every native backend filled with 0, so `substring(word, 2)` read the first two code points there and the rest
+# of the word on JavaScript. The fallback is the largest integer JavaScript holds exactly, clamped like any other.
 task substring
   take value, like text
   take start-index, like integer
-  take
-    end-index
-    like integer
-    need false
+  take end-index, like(integer), fall 9007199254740991
   like text
   send back
     call value/substring

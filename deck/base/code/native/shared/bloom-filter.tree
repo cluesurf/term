@@ -21,8 +21,10 @@ load @term/base/code/bit
 load @term/base/code/hold/hash/fnv
   find fnv-hash-32-1a
 
-load @term/base/code/math
-  find logarithm
+load @term/base/code/float
+  find natural-logarithm
+  find to-decimal
+  find to-number
 
 form bloom-filter
   link m, like number
@@ -264,18 +266,27 @@ form bloom-filter
           read self/m
       hook hold
         send back, read self/m
-    send back
+    # m (ln m - ln (m - bits)) / k, worked in floats and truncated, so every backend rounds the same estimate
+    save m
+      call to-decimal
+        read self/m
+    save estimate
       call divide
         call multiply
-          read self/m
+          read m
           call subtract
-            call logarithm
-              read self/m
-            call logarithm
+            call natural-logarithm
+              read m
+            call natural-logarithm
               call subtract
-                read self/m
-                read bits
-        read self/k
+                read m
+                call to-decimal
+                  read bits
+        call to-decimal
+          read self/k
+    send back
+      call to-number
+        read estimate
 
 # a filter with at least m bits (rounded up to whole 32-bit buckets) and k hashes per value. An m of zero or less
 # made every lookup take a remainder by zero, and a k of zero or less divided by it in `get-size`: both `have` lines

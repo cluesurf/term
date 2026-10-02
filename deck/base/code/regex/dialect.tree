@@ -1,0 +1,1060 @@
+# The one regex dialect: a pattern is read here, in Term, and written back in a canonical form every host engine reads
+# the same way (JavaScript with the u flag, Rust's regex crate, Java's java.util.regex, ICU through Swift). A pattern
+# outside the dialect raises `regex-mismatch` with the code point position and the reason, on every backend, before
+# any engine sees it (note/term/stdlib/semantics.md).
+#
+#   literals, any code point; escaped punctuation (\. \* \/ ...)       \t \n \r \f \v
+#   .   any code point but a line feed (written [^\n]: the engines disagreed on \r, U+2028 and U+2029)
+#   [abc] [^a-z] ranges; \d \w \s inside a class                       \d \w \s \D \W \S, ASCII only
+#   ^ $  the start and the end of the text (Java and ICU let $ match before a final line break, so they get \z)
+#   ( )  a capturing group    (?: )  a group that does not capture    a|b  either
+#   * + ? {n} {n,} {n,m}  greedy, and lazy with a ? after
+#
+# Refused, because the engines disagree or one lacks it: lookaround, backreferences, named groups, \b and \B (four
+# meanings of "word" across the four engines), \x \u \p escapes, and inline flags.
+
+load @term/base/code/text/unicode
+  find to-runes
+  find rune-to-text
+
+load @term/base/code/list
+  find size
+  find get
+
+load @term/base/code/exception
+  find mismatch
+
+form regex-mismatch
+  like mismatch
+    bind note, <Not in the regex dialect>
+    link at, like number
+    link reason, like text
+
+task refuse-regex
+  take at, like number
+  take reason, like text
+  like text
+  halt regex-mismatch
+    bind thing, text <regex>
+    bind at, read at
+    bind reason, read reason
+
+task regex-rune-at
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read at
+          code 0
+        call is-below
+          read at
+          call size
+            read runes
+    hook hold
+      send back
+        call get
+          read runes
+          read at
+  send back
+    call subtract
+      code 0
+      code 1
+
+task regex-is-digit
+  take c, like number
+  like boolean
+  send back
+    call and
+      call is-minimum
+        read c
+        code 48
+      call is-maximum
+        read c
+        code 57
+
+# the position just past the run of ASCII digits that starts at `at`
+task regex-digits-end
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  save i, read at
+  walk test
+    down
+      call subtract
+        call size
+          read runes
+        read i
+    hook test
+      call regex-is-digit
+        call regex-rune-at
+          read runes
+          read i
+    hook step
+      save i
+        call add
+          read i
+          code 1
+  send back, read i
+
+# the count the digits from `from` to `to` spell; above 1000 is refused, the largest count every engine accepts alike
+task regex-number
+  take runes
+    like list
+      like number
+  take from, like number
+  take to, like number
+  like number
+  save value, code 0
+  save i, read from
+  walk test
+    down
+      call subtract
+        read to
+        read i
+    hook test
+      call is-below
+        read i
+        read to
+    hook step
+      save value
+        call add
+          call multiply
+            read value
+            code 10
+          call subtract
+            call regex-rune-at
+              read runes
+              read i
+            code 48
+      fork test
+        hook test
+          call is-above
+            read value
+            code 1000
+        hook hold
+          call refuse-regex
+            read from
+            text <a count above 1000 is not in the dialect>
+      save i
+        call add
+          read i
+          code 1
+  send back, read value
+
+# a literal code point as the canonical form writes it outside a class: the syntax characters escaped, the controls
+# that have a letter escape written so, everything else as itself
+task regex-literal
+  take c, like number
+  like text
+  save backslash
+    call rune-to-text, code 92
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 9
+    hook hold
+      send back, text <{{backslash}}t>
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 10
+    hook hold
+      send back, text <{{backslash}}n>
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 13
+    hook hold
+      send back, text <{{backslash}}r>
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 12
+    hook hold
+      send back, text <{{backslash}}f>
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 11
+    hook hold
+      send back, text <{{backslash}}x0B>
+  save char
+    call rune-to-text
+      read c
+  # \ ^ $ . | ? * + ( ) [ ] { } (JavaScript's u flag refuses an escape of anything else outside a class)
+  fork test
+    hook test
+      call or
+        call or
+          call or
+            call or
+              call is-equal
+                read c
+                code 92
+              call is-equal
+                read c
+                code 94
+            call or
+              call is-equal
+                read c
+                code 36
+              call is-equal
+                read c
+                code 46
+          call or
+            call or
+              call is-equal
+                read c
+                code 124
+              call is-equal
+                read c
+                code 63
+            call or
+              call is-equal
+                read c
+                code 42
+              call is-equal
+                read c
+                code 43
+        call or
+          call or
+            call or
+              call is-equal
+                read c
+                code 40
+              call is-equal
+                read c
+                code 41
+            call or
+              call is-equal
+                read c
+                code 91
+              call is-equal
+                read c
+                code 93
+          call or
+            call is-equal
+              read c
+              code 123
+            call is-equal
+              read c
+              code 125
+    hook hold
+      send back, text <{{backslash}}{{char}}>
+  send back, read char
+
+# a literal code point as written inside a class: \ ] [ ^ - $ escaped, and & ~ written by number, because Rust, Java
+# and ICU read && and ~~ inside a class as set operations and JavaScript's u flag refuses \& and \~
+task regex-class-literal
+  take c, like number
+  like text
+  save backslash
+    call rune-to-text, code 92
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 38
+    hook hold
+      send back, text <{{backslash}}x26>
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 126
+    hook hold
+      send back, text <{{backslash}}x7E>
+  fork test
+    hook test
+      call or
+        call or
+          call or
+            call is-equal
+              read c
+              code 92
+            call is-equal
+              read c
+              code 93
+          call or
+            call is-equal
+              read c
+              code 91
+            call is-equal
+              read c
+              code 94
+        call or
+          call is-equal
+            read c
+            code 45
+          call is-equal
+            read c
+            code 36
+    hook hold
+      save char
+        call rune-to-text
+          read c
+      send back, text <{{backslash}}{{char}}>
+  send back
+    call regex-literal
+      read c
+
+# the class body (without brackets) an escape letter stands for, ASCII; empty for a letter that is not one
+task regex-class-body
+  take letter, like number
+  like text
+  save backslash
+    call rune-to-text, code 92
+  fork test
+    hook test
+      call or
+        call is-equal
+          read letter
+          code 100
+        call is-equal
+          read letter
+          code 68
+    hook hold
+      send back, text <0-9>
+  fork test
+    hook test
+      call or
+        call is-equal
+          read letter
+          code 119
+        call is-equal
+          read letter
+          code 87
+    hook hold
+      send back, text <A-Za-z0-9_>
+  fork test
+    hook test
+      call or
+        call is-equal
+          read letter
+          code 115
+        call is-equal
+          read letter
+          code 83
+    hook hold
+      send back, text <{{backslash}}t{{backslash}}n{{backslash}}x0B{{backslash}}f{{backslash}}r >
+  send back, text <>
+
+# the code point an escape letter names when it is a plain character escape (\t \n \r \f \v or punctuation), else -1
+task regex-escaped
+  take letter, like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        read letter
+        code 116
+    hook hold
+      send back, code 9
+  fork test
+    hook test
+      call is-equal
+        read letter
+        code 110
+    hook hold
+      send back, code 10
+  fork test
+    hook test
+      call is-equal
+        read letter
+        code 114
+    hook hold
+      send back, code 13
+  fork test
+    hook test
+      call is-equal
+        read letter
+        code 102
+    hook hold
+      send back, code 12
+  fork test
+    hook test
+      call is-equal
+        read letter
+        code 118
+    hook hold
+      send back, code 11
+  # punctuation escapes as itself; a letter or digit escape that is not one of the above is not in the dialect
+  fork test
+    hook test
+      call or
+        call or
+          call and
+            call is-minimum
+              read letter
+              code 48
+            call is-maximum
+              read letter
+              code 57
+          call and
+            call is-minimum
+              read letter
+              code 65
+            call is-maximum
+              read letter
+              code 90
+        call or
+          call and
+            call is-minimum
+              read letter
+              code 97
+            call is-maximum
+              read letter
+              code 122
+          call is-below
+            read letter
+            code 33
+    hook hold
+      send back
+        call subtract
+          code 0
+          code 1
+  send back, read letter
+
+form regex-canonical
+  link text, like text
+  link groups, like number
+
+# the pattern in the canonical form, and its count of capturing groups
+# `end` is how the engine writes the very end of the text: $ for JavaScript and Rust, \z for Java and ICU, whose $ also
+# matches before a final line break
+task canonical-pattern
+  take pattern, like text
+  take end, like text
+  like regex-canonical
+  save r
+    call to-runes
+      read pattern
+  save n
+    call size
+      read r
+  save out, text <>
+  save groups, code 0
+  save depth, code 0
+  # whether the last thing written can take a quantifier
+  save repeatable, false
+  # per open group, the count of capturing groups once it opened, and whether the group that just closed held one
+  save opened
+    make list
+  save held, false
+  save i, code 0
+  walk test
+    down
+      call subtract
+        read n
+        read i
+    hook test
+      call is-below
+        read i
+        read n
+    hook step
+      save c
+        call regex-rune-at
+          read r
+          read i
+      save at, read i
+      save i
+        call add
+          read i
+          code 1
+      save prior-held, read held
+      save held, false
+      fork test
+        # a group opens
+        hook test
+          call is-equal
+            read c
+            code 40
+        hook hold
+          fork test
+            hook test
+              call is-equal
+                call regex-rune-at
+                  read r
+                  read i
+                code 63
+            hook hold
+              fork test
+                hook test
+                  call is-equal
+                    call regex-rune-at
+                      read r
+                      call add
+                        read i
+                        code 1
+                    code 58
+                hook hold
+                  save out, text <{{out}}(?:>
+                  save i
+                    call add
+                      read i
+                      code 2
+                hook miss
+                  call refuse-regex
+                    read at
+                    text <lookaround, named groups and inline flags are not in the dialect>
+            hook miss
+              save out, text <{{out}}(>
+              save groups
+                call add
+                  read groups
+                  code 1
+          call opened/push
+            read groups
+          save depth
+            call add
+              read depth
+              code 1
+          save repeatable, false
+        # a group closes
+        hook test
+          call is-equal
+            read c
+            code 41
+        hook hold
+          fork test
+            hook test
+              call is-equal
+                read depth
+                code 0
+            hook hold
+              call refuse-regex
+                read at
+                text <a closing parenthesis has no group to close>
+          save depth
+            call subtract
+              read depth
+              code 1
+          save top
+            call get
+              read opened
+              read depth
+          call opened/pop
+          save held
+            call is-above
+              read groups
+              read top
+          save out, text <{{out}})>
+          save repeatable, true
+        # alternation and the anchors
+        hook test
+          call is-equal
+            read c
+            code 124
+        hook hold
+          save out, text <{{out}}|>
+          save repeatable, false
+        hook test
+          call or
+            call is-equal
+              read c
+              code 94
+            call is-equal
+              read c
+              code 36
+        hook hold
+          fork test
+            hook test
+              call is-equal
+                read c
+                code 94
+            hook hold
+              save out, text <{{out}}^>
+            hook miss
+              save out, text <{{out}}{{end}}>
+          save repeatable, false
+        # any code point but a line feed
+        hook test
+          call is-equal
+            read c
+            code 46
+        hook hold
+          save backslash
+            call rune-to-text, code 92
+          save out, text <{{out}}[^{{backslash}}n]>
+          save repeatable, true
+        # a quantifier
+        hook test
+          call or
+            call or
+              call is-equal
+                read c
+                code 42
+              call is-equal
+                read c
+                code 43
+            call or
+              call is-equal
+                read c
+                code 63
+              call is-equal
+                read c
+                code 123
+        hook hold
+          fork test
+            hook test
+              read repeatable
+            hook miss
+              call refuse-regex
+                read at
+                text <a quantifier has nothing to repeat>
+          # JavaScript forgets what a group caught on an earlier turn of a repetition and the others keep it
+          fork test
+            hook test
+              call and
+                read prior-held
+                call is-unequal
+                  read c
+                  code 63
+            hook hold
+              call refuse-regex
+                read at
+                text <a repeated group may not hold a capturing group, because the engines disagree on what it keeps: write the inner group as (?:...)>
+          fork test
+            hook test
+              call is-equal
+                read c
+                code 123
+            hook hold
+              # {n}, {n,} or {n,m}
+              save low-end
+                call regex-digits-end
+                  read r
+                  read i
+              fork test
+                hook test
+                  call is-equal
+                    read low-end
+                    read i
+                hook hold
+                  call refuse-regex
+                    read at
+                    text <a brace must open a count such as \{2\} or \{1,3\}, and a literal brace is escaped>
+              save low
+                call regex-number
+                  read r
+                  read i
+                  read low-end
+              save shape, text <{{low}}>
+              save i, read low-end
+              fork test
+                hook test
+                  call is-equal
+                    call regex-rune-at
+                      read r
+                      read i
+                    code 44
+                hook hold
+                  save high-end
+                    call regex-digits-end
+                      read r
+                      call add
+                        read i
+                        code 1
+                  fork test
+                    hook test
+                      call is-above
+                        read high-end
+                        call add
+                          read i
+                          code 1
+                    hook hold
+                      save high
+                        call regex-number
+                          read r
+                          call add
+                            read i
+                            code 1
+                          read high-end
+                      fork test
+                        hook test
+                          call is-below
+                            read high
+                            read low
+                        hook hold
+                          call refuse-regex
+                            read at
+                            text <a count runs backward>
+                      save shape, text <{{low}},{{high}}>
+                    hook miss
+                      save shape, text <{{low}},>
+                  save i, read high-end
+              fork test
+                hook test
+                  call is-unequal
+                    call regex-rune-at
+                      read r
+                      read i
+                    code 125
+                hook hold
+                  call refuse-regex
+                    read at
+                    text <a count is not closed>
+              save i
+                call add
+                  read i
+                  code 1
+              save out, text <{{out}}\{{{shape}}\}>
+            hook miss
+              save quantifier
+                call rune-to-text
+                  read c
+              save out, text <{{out}}{{quantifier}}>
+          # a ? after a quantifier makes it lazy
+          fork test
+            hook test
+              call is-equal
+                call regex-rune-at
+                  read r
+                  read i
+                code 63
+            hook hold
+              save out, text <{{out}}?>
+              save i
+                call add
+                  read i
+                  code 1
+          save repeatable, false
+        # a class
+        hook test
+          call is-equal
+            read c
+            code 91
+        hook hold
+          save body, text <>
+          save negated, false
+          fork test
+            hook test
+              call is-equal
+                call regex-rune-at
+                  read r
+                  read i
+                code 94
+            hook hold
+              save negated, true
+              save i
+                call add
+                  read i
+                  code 1
+          save closed, false
+          save first, true
+          walk test
+            down
+              call subtract
+                read n
+                read i
+            hook test
+              call and
+                call is-equal
+                  read closed
+                  false
+                call is-below
+                  read i
+                  read n
+            hook step
+              save d
+                call regex-rune-at
+                  read r
+                  read i
+              fork test
+                hook test
+                  call and
+                    call is-equal
+                      read d
+                      code 93
+                    call is-equal
+                      read first
+                      false
+                hook hold
+                  save closed, true
+                  save i
+                    call add
+                      read i
+                      code 1
+                hook miss
+                  save first, false
+                  # one member: an escape, or a code point, either of which may open a range
+                  save member, code 0
+                  fork test
+                    hook test
+                      call is-equal
+                        read d
+                        code 92
+                    hook hold
+                      save letter
+                        call regex-rune-at
+                          read r
+                          call add
+                            read i
+                            code 1
+                      save expanded
+                        call regex-class-body
+                          read letter
+                      save i
+                        call add
+                          read i
+                          code 2
+                      fork test
+                        hook test
+                          call is-unequal
+                            read expanded
+                            text <>
+                        hook hold
+                          fork test
+                            hook test
+                              call or
+                                call or
+                                  call is-equal
+                                    read letter
+                                    code 68
+                                  call is-equal
+                                    read letter
+                                    code 87
+                                call is-equal
+                                  read letter
+                                  code 83
+                            hook hold
+                              call refuse-regex
+                                read at
+                                text <a negated escape such as \D cannot sit inside a class>
+                          save body, text <{{body}}{{expanded}}>
+                          save member
+                            call subtract
+                              code 0
+                              code 2
+                        hook miss
+                          save member
+                            call regex-escaped
+                              read letter
+                          fork test
+                            hook test
+                              call is-below
+                                read member
+                                code 0
+                            hook hold
+                              call refuse-regex
+                                read at
+                                text <this escape is not in the dialect>
+                    hook miss
+                      save member, read d
+                      save i
+                        call add
+                          read i
+                          code 1
+                  # a range: member - member
+                  fork test
+                    hook test
+                      call is-minimum
+                        read member
+                        code 0
+                    hook hold
+                      save written
+                        call regex-class-literal
+                          read member
+                      fork test
+                        hook test
+                          call and
+                            call is-equal
+                              call regex-rune-at
+                                read r
+                                read i
+                              code 45
+                            call and
+                              call is-unequal
+                                call regex-rune-at
+                                  read r
+                                  call add
+                                    read i
+                                    code 1
+                                code 93
+                              call is-below
+                                call add
+                                  read i
+                                  code 1
+                                read n
+                        hook hold
+                          save upper
+                            call regex-rune-at
+                              read r
+                              call add
+                                read i
+                                code 1
+                          fork test
+                            hook test
+                              call is-equal
+                                read upper
+                                code 92
+                            hook hold
+                              save upper
+                                call regex-escaped
+                                  call regex-rune-at
+                                    read r
+                                    call add
+                                      read i
+                                      code 2
+                              save i
+                                call add
+                                  read i
+                                  code 1
+                          fork test
+                            hook test
+                              call or
+                                call is-below
+                                  read upper
+                                  code 0
+                                call is-below
+                                  read upper
+                                  read member
+                            hook hold
+                              call refuse-regex
+                                read at
+                                text <a range runs backward or ends in an escape that is not a character>
+                          save top
+                            call regex-class-literal
+                              read upper
+                          save body, text <{{body}}{{written}}-{{top}}>
+                          save i
+                            call add
+                              read i
+                              code 2
+                        hook miss
+                          save body, text <{{body}}{{written}}>
+          fork test
+            hook test
+              read closed
+            hook miss
+              call refuse-regex
+                read at
+                text <a class is not closed>
+          fork test
+            hook test
+              read negated
+            hook hold
+              save out, text <{{out}}[^{{body}}]>
+            hook miss
+              save out, text <{{out}}[{{body}}]>
+          save repeatable, true
+        # an escape outside a class
+        hook test
+          call is-equal
+            read c
+            code 92
+        hook hold
+          save letter
+            call regex-rune-at
+              read r
+              read i
+          save i
+            call add
+              read i
+              code 1
+          fork test
+            hook test
+              call is-below
+                read letter
+                code 0
+            hook hold
+              call refuse-regex
+                read at
+                text <a pattern cannot end in a backslash>
+          save expanded
+            call regex-class-body
+              read letter
+          fork test
+            hook test
+              call is-unequal
+                read expanded
+                text <>
+            hook hold
+              fork test
+                hook test
+                  call or
+                    call or
+                      call is-equal
+                        read letter
+                        code 68
+                      call is-equal
+                        read letter
+                        code 87
+                    call is-equal
+                      read letter
+                      code 83
+                hook hold
+                  save out, text <{{out}}[^{{expanded}}]>
+                hook miss
+                  save out, text <{{out}}[{{expanded}}]>
+            hook miss
+              fork test
+                hook test
+                  call or
+                    call is-equal
+                      read letter
+                      code 98
+                    call is-equal
+                      read letter
+                      code 66
+                hook hold
+                  call refuse-regex
+                    read at
+                    text <word boundaries are not in the dialect: each engine reads a word differently>
+              save named
+                call regex-escaped
+                  read letter
+              fork test
+                hook test
+                  call is-below
+                    read named
+                    code 0
+                hook hold
+                  call refuse-regex
+                    read at
+                    text <this escape is not in the dialect>
+              save written
+                call regex-literal
+                  read named
+              save out, text <{{out}}{{written}}>
+          save repeatable, true
+        # any other code point is itself
+        hook miss
+          save written
+            call regex-literal
+              read c
+          save out, text <{{out}}{{written}}>
+          save repeatable, true
+  fork test
+    hook test
+      call is-above
+        read depth
+        code 0
+    hook hold
+      call refuse-regex
+        read n
+        text <a group is not closed>
+  # ICU refuses an empty pattern, and an empty group means the same to every engine
+  fork test
+    hook test
+      call is-equal
+        read out
+        text <>
+    hook hold
+      save out, text <(?:)>
+  send back
+    make regex-canonical
+      bind text, read out
+      bind groups, read groups

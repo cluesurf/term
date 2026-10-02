@@ -5,6 +5,18 @@ load @term/base/code/maybe
 load @term/base/code/side
   find side
 
+load @term/base/code/pair
+  find pair
+
+load @term/base/code/hash
+  find hash
+  find get-or-default
+
+load @term/base/code/ordering
+  find ordering
+  find is-greater
+  find is-less
+
 form list
   # List: the stdlib source of truth for the list type. The compiler uses the native array representation, so a list value is built with `make list`. Each method delegates to the native array operation.
 
@@ -522,3 +534,671 @@ task flatten
           call out/push
             read item
   send back, read out
+
+# a new list holding the items in the order `compare` gives, STABLE: items it calls equal keep the order they came in.
+# A bottom-up merge sort written in Term, so it is the same algorithm, the same comparisons in the same order and the
+# same answer on every backend, which a host sort does not promise (none of them says which equal item comes first,
+# and their text orders differ). `ordering/from-numbers` and `ordering/from-texts` are the usual comparators; text
+# sorts by code point. The input is left as it was
+task sort
+  head t
+  take items
+    like list
+      like t
+  take compare
+    like task
+      take left, like t
+      take right, like t
+      like ordering
+  like list
+    like t
+  save source
+    make list
+  walk list, read items
+    hook next
+      take site, name item
+      call source/push
+        read item
+  save n
+    call size
+      read source
+  save width, code 1
+  walk test
+    hook test
+      call is-below
+        read width
+        read n
+    hook step
+      save merged
+        make list
+      save low, code 0
+      walk test
+        hook test
+          call is-below
+            read low
+            read n
+        hook step
+          save middle
+            call add
+              read low
+              read width
+          fork test
+            hook test
+              call is-above
+                read middle
+                read n
+            hook hold
+              save middle, read n
+          save high
+            call add
+              read middle
+              read width
+          fork test
+            hook test
+              call is-above
+                read high
+                read n
+            hook hold
+              save high, read n
+          save i, read low
+          save j, read middle
+          walk test
+            hook test
+              call and
+                call is-below
+                  read i
+                  read middle
+                call is-below
+                  read j
+                  read high
+            hook step
+              save left
+                call get
+                  read source
+                  read i
+              save right
+                call get
+                  read source
+                  read j
+              fork test
+                hook test
+                  call is-greater
+                    call compare
+                      read left
+                      read right
+                hook hold
+                  call merged/push
+                    read right
+                  save j
+                    call add
+                      read j
+                      code 1
+                hook miss
+                  call merged/push
+                    read left
+                  save i
+                    call add
+                      read i
+                      code 1
+          walk test
+            hook test
+              call is-below
+                read i
+                read middle
+            hook step
+              call merged/push
+                call get
+                  read source
+                  read i
+              save i
+                call add
+                  read i
+                  code 1
+          walk test
+            hook test
+              call is-below
+                read j
+                read high
+            hook step
+              call merged/push
+                call get
+                  read source
+                  read j
+              save j
+                call add
+                  read j
+                  code 1
+          save low, read high
+      save source, read merged
+      save width
+        call multiply
+          read width
+          code 2
+  send back, read source
+
+# pairs of the items at the same position, as long as the shorter list
+task zip
+  head a
+  head b
+  take left
+    like list
+      like a
+  take right
+    like list
+      like b
+  like list
+    like pair
+      head a
+      head b
+  save out
+    make list
+  save count
+    call size
+      read left
+  fork test
+    hook test
+      call is-below
+        call size
+          read right
+        read count
+    hook hold
+      save count
+        call size
+          read right
+  save at, code 0
+  walk test
+    hook test
+      call is-below
+        read at
+        read count
+    hook step
+      call out/push
+        make pair
+          bind first
+            call get
+              read left
+              read at
+          bind second
+            call get
+              read right
+              read at
+      save at
+        call add
+          read at
+          code 1
+  send back, read out
+
+# each item paired with its position, from zero
+task enumerate
+  head t
+  take items
+    like list
+      like t
+  like list
+    like pair
+      head number
+      head t
+  save out
+    make list
+  save at, code 0
+  walk list, read items
+    hook next
+      take site, name item
+      call out/push
+        make pair
+          bind first, read at
+          bind second, read item
+      save at
+        call add
+          read at
+          code 1
+  send back, read out
+
+# the items in runs of `count`, the last run shorter when they do not divide evenly; a count below one is one
+task chunk
+  head t
+  take items
+    like list
+      like t
+  take count, like number
+  like list
+    like list
+      like t
+  save width, read count
+  fork test
+    hook test
+      call is-below
+        read width
+        code 1
+    hook hold
+      save width, code 1
+  save out
+    make list
+  save run
+    call take-first
+      read items
+      code 0
+  walk list, read items
+    hook next
+      take site, name item
+      call run/push
+        read item
+      fork test
+        hook test
+          call is-equal
+            call size
+              read run
+            read width
+        hook hold
+          call out/push
+            read run
+          save run
+            call take-first
+              read items
+              code 0
+  fork test
+    hook test
+      call is-above
+        call size
+          read run
+        code 0
+    hook hold
+      call out/push
+        read run
+  send back, read out
+
+# every run of `count` neighbors, one per starting position; none when the list is shorter than `count`
+task window
+  head t
+  take items
+    like list
+      like t
+  take count, like number
+  like list
+    like list
+      like t
+  save out
+    make list
+  save start, code 0
+  walk test
+    hook test
+      call and
+        call is-above
+          read count
+          code 0
+        call is-maximum
+          call add
+            read start
+            read count
+          call size
+            read items
+    hook step
+      save run
+        call take-first
+          read items
+          code 0
+      save k, code 0
+      walk test
+        hook test
+          call is-below
+            read k
+            read count
+        hook step
+          call run/push
+            call get
+              read items
+              call add
+                read start
+                read k
+          save k
+            call add
+              read k
+              code 1
+      call out/push
+        read run
+      save start
+        call add
+          read start
+          code 1
+  send back, read out
+
+# the items gathered by the key each one gives, in the order each key first appeared; each group keeps the items' order
+task group-by
+  head t
+  head k
+  take items
+    like list
+      like t
+  take key-of
+    like task
+      take item, like t
+      like k
+  like hash
+    like k
+    like list
+      like t
+  save out
+    make find
+  walk list, read items
+    hook next
+      take site, name item
+      save key
+        call key-of
+          read item
+      fork test
+        hook test
+          call out/has
+            read key
+        hook miss
+          call out/set
+            read key
+            call take-first
+              read items
+              code 0
+      # read back through the typed `get-or-default`, so the group is a list on every backend; the host `get`
+      # left it untyped and Swift could not push to it
+      save group
+        call get-or-default
+          read out
+          read key
+          call take-first
+            read items
+            code 0
+      call group/push
+        read item
+  send back, read out
+
+# the items that pass the test (first) and those that do not (second), each in order
+task partition
+  head t
+  take items
+    like list
+      like t
+  take test
+    like task
+      take item, like t
+      like boolean
+  like list
+    like list
+      like t
+  save yes
+    call take-first
+      read items
+      code 0
+  save no
+    call take-first
+      read items
+      code 0
+  walk list, read items
+    hook next
+      take site, name item
+      fork test
+        hook test
+          call test
+            read item
+        hook hold
+          call yes/push
+            read item
+        hook miss
+          call no/push
+            read item
+  save out
+    make list
+  call out/push
+    read yes
+  call out/push
+    read no
+  send back, read out
+
+# each item's list, all in one list, in order
+task flat-map
+  head t
+  head s
+  take items
+    like list
+      like t
+  take call
+    like task
+      take item, like t
+      like list
+        like s
+  like list
+    like s
+  save out
+    make list
+  walk list, read items
+    hook next
+      take site, name item
+      walk list
+        call call
+          read item
+        hook next
+          take site, name inner
+          call out/push
+            read inner
+  send back, read out
+
+# a new list with `item` at `at`, clamped to the ends
+task insert-at
+  head t
+  take items
+    like list
+      like t
+  take at, like number
+  take item, like t
+  like list
+    like t
+  save out
+    make list
+  save k, code 0
+  save placed, false
+  walk list, read items
+    hook next
+      take site, name existing
+      fork test
+        hook test
+          call and
+            call is-equal
+              read placed
+              false
+            call is-minimum
+              read k
+              read at
+        hook hold
+          call out/push
+            read item
+          save placed, true
+      call out/push
+        read existing
+      save k
+        call add
+          read k
+          code 1
+  fork test
+    hook test
+      read placed
+    hook miss
+      call out/push
+        read item
+  send back, read out
+
+# a new list without the item at `at`; the same items when `at` is outside the list
+task remove-at
+  head t
+  take items
+    like list
+      like t
+  take at, like number
+  like list
+    like t
+  save out
+    make list
+  save k, code 0
+  walk list, read items
+    hook next
+      take site, name existing
+      fork test
+        hook test
+          call is-unequal
+            read k
+            read at
+        hook hold
+          call out/push
+            read existing
+      save k
+        call add
+          read k
+          code 1
+  send back, read out
+
+# the first item no other comes before by `compare`, or none from an empty list
+task min-by
+  head t
+  take items
+    like list
+      like t
+  take compare
+    like task
+      take left, like t
+      take right, like t
+      like ordering
+  like maybe
+    head t
+  fork test
+    hook test
+      call is-equal
+        call size
+          read items
+        code 0
+    hook hold
+      send back, make none
+  save best
+    call get
+      read items
+      code 0
+  walk list, read items
+    hook next
+      take site, name item
+      fork test
+        hook test
+          call is-greater
+            call compare
+              read best
+              read item
+        hook hold
+          save best, read item
+  send back
+    make some
+      bind value, read best
+
+# the first item no other comes after by `compare`, or none from an empty list
+task max-by
+  head t
+  take items
+    like list
+      like t
+  take compare
+    like task
+      take left, like t
+      take right, like t
+      like ordering
+  like maybe
+    head t
+  fork test
+    hook test
+      call is-equal
+        call size
+          read items
+        code 0
+    hook hold
+      send back, make none
+  save best
+    call get
+      read items
+      code 0
+  walk list, read items
+    hook next
+      take site, name item
+      fork test
+        hook test
+          call is-greater
+            call compare
+              read item
+              read best
+        hook hold
+          save best, read item
+  send back
+    make some
+      bind value, read best
+
+# the position of an item `compare` calls equal to `target` in a list sorted by `compare`, or none; the lowest such
+# position when several are equal
+task binary-search
+  head t
+  take items
+    like list
+      like t
+  take target, like t
+  take compare
+    like task
+      take left, like t
+      take right, like t
+      like ordering
+  like maybe
+    head number
+  save low, code 0
+  save high
+    call size
+      read items
+  walk test
+    down
+      call subtract
+        read high
+        read low
+    hook test
+      call is-below
+        read low
+        read high
+    hook step
+      save middle
+        call add
+          read low
+          call divide
+            call subtract
+              read high
+              read low
+            code 2
+      fork test
+        hook test
+          call is-less
+            call compare
+              call get
+                read items
+                read middle
+              read target
+        hook hold
+          save low
+            call add
+              read middle
+              code 1
+        hook miss
+          save high, read middle
+  fork test
+    hook test
+      call and
+        call is-below
+          read low
+          call size
+            read items
+        call is-equal
+          call compare
+            call get
+              read items
+              read low
+            read target
+          make equal
+    hook hold
+      send back
+        make some
+          bind value, read low
+  send back, make none

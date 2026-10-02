@@ -1,0 +1,208 @@
+# Command-line words parse the same on every backend: command.tree is pure Term. Held by `pnpm term:base-gate`.
+
+load @term/base/code/command
+  find schema
+  find command-flag
+  find command-argument
+  find parsed-command
+  find define
+  find flag
+  find argument
+  find parse
+  find help
+
+load @term/base/code/list
+  find list
+  find size
+  find get
+  find join
+
+load @term/base/code/hash
+  find get-or-default
+
+task tool
+  like schema
+  save choices
+    make list
+  call choices/push, text <json>
+  call choices/push, text <text>
+  save flags
+    make list
+  call flags/push
+    call flag
+      bind name, text <verbose>
+      bind short, text <v>
+      bind kind, text <boolean>
+      bind choices, make list
+  call flags/push
+    call flag
+      bind name, text <count>
+      bind short, text <n>
+      bind kind, text <number>
+      bind fallback, text <1>
+      bind choices, make list
+  call flags/push
+    call flag
+      bind name, text <format>
+      bind short, text <f>
+      bind choices, read choices
+  save arguments
+    make list
+  call arguments/push
+    call argument
+      bind name, text <input>
+  call arguments/push
+    call argument
+      bind name, text <output>
+      bind required, false
+      bind fallback, text <out.txt>
+  send back
+    call define
+      bind name, text <tool>
+      bind version, text <1.0>
+      bind flags, read flags
+      bind arguments, read arguments
+
+task words
+  take line, like text
+  like list
+    like text
+  save out
+    make list
+  save word, text <>
+  save k, code 0
+  save count
+    call char-count
+      read line
+  walk test
+    hook test
+      call is-below
+        read k
+        read count
+    hook step
+      save c
+        call char-at
+          read line
+          read k
+      fork test
+        hook test
+          call is-equal
+            read c
+            text < >
+        hook hold
+          call out/push
+            read word
+          save word, text <>
+        hook miss
+          save word, text <{{word}}{{c}}>
+      save k
+        call add
+          read k
+          code 1
+  call out/push
+    read word
+  send back, read out
+
+load @term/base/code/text
+  find char-count
+  find char-at
+  find contains, name contains-text
+
+task value-of
+  take parsed, like parsed-command
+  take name, like text
+  like text
+  send back
+    call get-or-default
+      read parsed/flags
+      read name
+      text <unset>
+
+test <long and short flags, an inline value, and fallbacks>
+  save p
+    call parse
+      call tool
+      call words, text <-v --format=json in.txt>
+  want hold
+    call and
+      call and
+        read p/ok
+        call is-equal
+          call value-of
+            read p
+            text <verbose>
+          text <true>
+      call and
+        call is-equal
+          call value-of
+            read p
+            text <format>
+          text <json>
+        call and
+          call is-equal
+            call value-of
+              read p
+              text <count>
+            text <1>
+          call is-equal
+            call join
+              read p/arguments
+              text <,>
+            text <in.txt,out.txt>
+
+test <a separate value, bundled shorts and the end of flags>
+  save p
+    call parse
+      call tool
+      call words, text <-vn 3 -- -x>
+  want hold
+    call and
+      read p/ok
+      call and
+        call is-equal
+          call value-of
+            read p
+            text <count>
+          text <3>
+        call is-equal
+          call get
+            read p/arguments
+            code 0
+          text <-x>
+
+test <a negated boolean is false>
+  save p
+    call parse
+      call tool
+      call words, text <--no-verbose a>
+  want hold
+    call is-equal
+      call value-of
+        read p
+        text <verbose>
+      text <false>
+
+test <what is wrong is reported in order>
+  save p
+    call parse
+      call tool
+      call words, text <--count x --format yaml --size 2>
+  want hold
+    call is-equal
+      call join
+        read p/errors
+        text <; >
+      text <--count takes a number, not "x"; --format is one of the listed choices, not "yaml"; --size is not a flag>
+
+test <help lays out the usage>
+  save shown
+    call help
+      call tool
+  want hold
+    call and
+      call contains-text
+        read shown
+        text <usage: tool [flags] input [output]>
+      call contains-text
+        read shown
+        text <-n, --count=number (default 1)>

@@ -1,33 +1,24 @@
-# node regex implementation. Forwards to the linked regex runtime shim, which wraps the platform's regex engine. Internal: reached only through the public regex API.
+# node regex primitive: the one search the public regex API is built on (regex.tree). Internal: reached only through
+# that API, which hands it a pattern already rewritten into the canonical dialect.
 
 dock load
   load <global:regex>, name regex
 
-task do-matches
+# the match at or after code point `from`: its start and end, then each group's start and end (-1 for a group that
+# took no part), all in code points; empty when nothing matches
+task do-search
   take pattern, like text
   take input, like text
-  like boolean
+  take from, like number
+  like list
+    like number
   send back
-    call regex/matches
+    call regex/search
       read pattern
       read input
+      read from
 
-task do-replace
-  take pattern, like text
-  take input, like text
-  take replacement, like text
+# how this engine writes the very end of the text
+task end-anchor
   like text
-  send back
-    call regex/replace
-      read pattern
-      read input
-      read replacement
-
-task do-find
-  take pattern, like text
-  take input, like text
-  like text
-  send back
-    call regex/find
-      read pattern
-      read input
+  send back, text <$>

@@ -1,0 +1,31 @@
+# An HTTP request that cannot be answered fails the same way on every backend. Held by `pnpm term:base-gate`. The
+# timeout case needs a listener that never answers, so it is in test/tree/tcp.tree.
+
+load @term/base/code/network/http
+  find fetch
+
+task outcome
+  note async
+  take url, like text
+  like text
+  note unsafe
+    save got
+      call fetch
+        read url
+        wait true
+    send back, text <answered {{got/status}}>
+  halt take
+    take problem
+    fork case, read problem
+      case outage
+        send back, text <outage {{thing}}>
+      case timeout
+        send back, text <timeout>
+
+test <a port nobody listens on is an outage, not a status>
+  want hold
+    call is-equal
+      call outcome
+        text <http://127.0.0.1:1/>
+        wait true
+      text <outage http://127.0.0.1:1/>

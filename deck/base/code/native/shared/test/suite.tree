@@ -53,7 +53,6 @@ host group-stack
   make list
 
 task init
-  mark private
 
   call hive-clear
     text <test>
@@ -64,7 +63,6 @@ task init
 task register
   take name, like text
   take work, like task
-  mark private
 
   save group, text <>
   save stack-size

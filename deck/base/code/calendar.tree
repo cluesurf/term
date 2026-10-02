@@ -1,8 +1,11 @@
 # Calendar: formatting, components, construction, and arithmetic over a UTC timestamp (epoch milliseconds, an integer). The clean uniform interface; the per-env native implementation is selected at build time and hidden. Each platform delegates to its best date library (node / browser the host Date, rust chrono, swift Foundation, kotlin java.time). Everything is UTC, so results are deterministic across hosts. Formatting and parsing use ISO 8601 with millisecond precision and a Z suffix (2026-06-19T12:34:56.000Z). Fixed-length units (second / minute / hour / day) are pure integer arithmetic on the timestamp; calendar-aware units (month / year) delegate to the platform, which handles month lengths and leap years.
 
+load @term/base/code/calendar/time-text
+  find parse-rfc-3339
+  find time-mismatch
+
 load @term/base/code/native/{platform}/calendar
   find do-format
-  find do-parse
   find do-year
   find do-month
   find do-day
@@ -30,11 +33,15 @@ task format
     call do-format
       read millis
 
+# milliseconds since the epoch for an RFC 3339 timestamp, read in Term so every backend accepts the same texts and
+# gives the same answer; a text that is not one raises `time-mismatch` with the position and the reason
+# (calendar/time-text.tree). The host parsers disagreed: node's took nearly anything, and node and Rust answered a bad
+# text with NaN and the epoch
 task parse
   take text, like text
   like number
   send back
-    call do-parse
+    call parse-rfc-3339
       read text
 
 task year

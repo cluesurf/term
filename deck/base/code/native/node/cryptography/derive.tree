@@ -1,0 +1,36 @@
+# Node.js key derivation (the host node:crypto). Internal: reached only through the public derive API.
+
+dock load
+  load <node:crypto>, name crypto
+  load <global:Buffer>, name buffer
+
+task pbkdf2-sha256
+  note async
+  take password, like bytes
+  take salt, like bytes
+  take iterations, like number
+  take length, like number
+  like bytes
+  send back
+    call crypto/pbkdf2-sync
+      read password
+      read salt
+      read iterations
+      read length
+      text <sha256>
+
+task hkdf-sha256
+  note async
+  take secret, like bytes
+  take salt, like bytes
+  take info, like bytes
+  take length, like number
+  like bytes
+  send back
+    call buffer/from
+      call crypto/hkdf-sync
+        text <sha256>
+        read secret
+        read salt
+        read info
+        read length

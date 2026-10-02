@@ -1,5 +1,13 @@
-# An HTTP response: the status code and the body text. Shared by the public http interface and every native impl.
+# An HTTP response: the status code, the body text, and the headers, each name in lower case and the names in code
+# point order, a header the server sent twice joined with ", ". Built by network/http.tree on every backend.
+
+load @term/base/code/hash
+  find hash
 
 form http-response
   link status, like number
   link body, like text
+  link headers
+    like hash
+      like text
+      like text

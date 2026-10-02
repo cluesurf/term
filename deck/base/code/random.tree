@@ -4,8 +4,9 @@ load @term/base/code/native/{platform}/random
   find random-number
   find random-integer
 
+# a fraction from zero up to, and never reaching, one
 task number
-  like number
+  like float
   send back
     call random-number
 

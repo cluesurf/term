@@ -1,0 +1,156 @@
+# A sorted map walks in key order on every backend. Held by `pnpm term:base-gate`.
+
+load @term/base/code/sorted-map
+  find sorted-map
+  find make-sorted-map
+
+load @term/base/code/ordering
+  find ordering
+  find from-numbers
+  find from-texts
+
+load @term/base/code/list
+  find list
+  find join
+  find size
+
+load @term/base/code/maybe
+  find unwrap-or
+
+test <keys come back in order whatever order they went in>
+  save m
+    call make-sorted-map
+      read from-texts
+  call put
+    read m
+    text <pear>
+    code 3
+  call put
+    read m
+    text <apple>
+    code 1
+  call put
+    read m
+    text <𝄞>
+    code 9
+  call put
+    read m
+    text <mango>
+    code 2
+  want hold
+    call is-equal
+      call join
+        read m/keys
+        text <,>
+      text <apple,mango,pear,𝄞>
+
+test <putting an existing key replaces its value in place>
+  save m
+    call make-sorted-map
+      read from-numbers
+  call put
+    read m
+    code 5
+    text <five>
+  call put
+    read m
+    code 1
+    text <one>
+  call put
+    read m
+    code 5
+    text <FIVE>
+  want hold
+    call and
+      call is-equal
+        call count
+          read m
+        code 2
+      call is-equal
+        call unwrap-or
+          call lookup
+            read m
+            code 5
+          text <none>
+        text <FIVE>
+
+test <lookup of a missing key is none>
+  save m
+    call make-sorted-map
+      read from-numbers
+  call put
+    read m
+    code 2
+    text <two>
+  want hold
+    call is-equal
+      call unwrap-or
+        call lookup
+          read m
+          code 3
+        text <none>
+      text <none>
+
+test <drop removes and reports>
+  save m
+    call make-sorted-map
+      read from-numbers
+  call put
+    read m
+    code 2
+    text <two>
+  call put
+    read m
+    code 4
+    text <four>
+  save gone
+    call drop
+      read m
+      code 2
+  save again
+    call drop
+      read m
+      code 2
+  want hold
+    call and
+      call and
+        read gone
+        call is-equal
+          read again
+          false
+      call is-equal
+        call join
+          read m/values
+          text <,>
+        text <four>
+
+test <least and greatest read the ends>
+  save m
+    call make-sorted-map
+      read from-numbers
+  call put
+    read m
+    code 7
+    text <seven>
+  call put
+    read m
+    code 3
+    text <three>
+  call put
+    read m
+    code 9
+    text <nine>
+  want hold
+    call and
+      call is-equal
+        call unwrap-or
+          call least
+            read m
+          code 0
+        code 3
+      call is-equal
+        call unwrap-or
+          call greatest
+            read m
+          code 0
+        code 9

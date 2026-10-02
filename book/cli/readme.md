@@ -16,13 +16,14 @@ A command is a `hook`. Its children declare the command and its inputs.
 | `note <text>` | child of `hook` or `take` | help text for the command or option |
 | `task <name>` | child of `hook` | the task to run when the command is invoked |
 | `take <name>` | child of `hook` | declare an argument or option |
-| `like <type>` | child of `take` | the option's type (`text`, `number`, `wave` for a boolean) |
+| `like <type>` | child of `take` | the option's type (`text`, `number`, `boolean`) |
+| `need true` | child of `take` | the argument is required |
 | `code <letter>` | child of `take` | a short flag alias (`-t`) |
 | `bind <value>` | child of `take` | the default value when the flag is absent |
 | `pick <value>` | child of `take`, repeatable | restrict to a fixed set of allowed values |
 | `many` | child of `take` | collect the remaining positionals into a list |
 
-A `take` with no `bind` is required. A `take, like wave` is a boolean flag, and the dispatcher accepts its `--no-` form automatically.
+A `take` is optional unless it says `need true`. A `take, like boolean` is a boolean flag, and the dispatcher accepts its `--no-` form automatically. The `#` comment above a `hook` or a `take` is also read as its help text, and an explicit `note` wins over it.
 
 ## A minimal command
 
@@ -44,13 +45,14 @@ greet --help
 The named task receives the parsed arguments.
 
 ```tree
+load @term/base/code/console
+  find log
+
 task run-greet
   take name, like text
   like number
-  call write-line
-    call join
-      text <hello, >
-      read name
+  call log
+    text <hello, {{name}}>
   send back, code 0
 ```
 
@@ -77,16 +79,16 @@ serve -p 8080
 serve              # port falls back to 3000, host to localhost
 ```
 
-A number flag is coerced from text to a number. A missing flag with a `bind` default fills in. A missing flag without a default is an error.
+A number flag is coerced from text to a number. A missing flag with a `bind` default fills in. A missing argument marked `need true` is an error.
 
 ## Boolean flags
 
-A `take, like wave` is a switch. Present means true. The dispatcher also accepts the `--no-` form for false, with no extra declaration.
+A `take, like boolean` is a switch. Present means true. The dispatcher also accepts the `--no-` form for false, with no extra declaration.
 
 ```tree
 hook build
   task run-build
-  take watch, like wave
+  take watch, like boolean
     note <Rebuild on change>
 ```
 
@@ -98,9 +100,9 @@ build                # watch is unset
 
 ## Defaults
 
-A `bind` child sets the value used when the flag is absent. It shows up in `--help` as the default.
+A `bind` child sets the value used when the flag is absent. It shows up in `--help` as the default. These two samples are `take` lines under a `hook`.
 
-```tree
+```tree fragment
 take runs, like number
   note <Fuzz inputs per seed>
   bind 3000
@@ -110,7 +112,7 @@ take runs, like number
 
 Repeat `pick` to list the allowed values. The dispatcher rejects anything outside the set with a clear message.
 
-```tree
+```tree fragment
 take mode
   note <Build mode>
   pick <dev>
@@ -172,7 +174,7 @@ Common flags (a `--verbose`, a `--config`) repeat across commands. Define them o
 ```tree
 tree common-flags
   hook fuse
-    take verbose, like wave
+    take verbose, like boolean
       note <Print extra output>
       code v
     take config, like text
@@ -202,7 +204,7 @@ hook hunt
   take seeds, like number
     note <Distinct fuzz seeds>
     bind 4
-  take json, like wave
+  take json, like boolean
     note <Machine-readable output>
 ```
 
@@ -213,7 +215,7 @@ task call-hunt
   take glob, like text
   take runs, like number
   take seeds, like number
-  take json, like wave
+  take json, like boolean
   like number
   # ... run the hunt, print the report ...
   send back, code 0

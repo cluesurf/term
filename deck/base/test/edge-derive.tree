@@ -1,0 +1,85 @@
+# Key derivation gives the same bytes on every backend, held to the published vectors: PBKDF2-HMAC-SHA256 for
+# "password" / "salt" (RFC 7914 section 11's inputs, the widely published outputs for 1, 2 and 4096 rounds) and HKDF's
+# RFC 5869 test case 1. A stored password verifies and a wrong one does not. Held by `pnpm term:base-gate`.
+
+load @term/base/code/cryptography/derive
+  find pbkdf2
+  find hkdf
+  find hash-password
+  find verify-password
+
+load @term/base/code/bytes
+  find from-text
+  find from-hex
+  find to-hex
+
+test <pbkdf2 with one round>
+  want hold
+    call is-equal
+      call to-hex
+        call pbkdf2
+          call from-text, text <password>
+          call from-text, text <salt>
+          code 1
+          code 32
+          wait true
+      text <120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b>
+
+test <pbkdf2 with 4096 rounds>
+  want hold
+    call is-equal
+      call to-hex
+        call pbkdf2
+          call from-text, text <password>
+          call from-text, text <salt>
+          code 4096
+          code 32
+          wait true
+      text <c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a>
+
+test <hkdf matches RFC 5869 case one>
+  want hold
+    call is-equal
+      call to-hex
+        call hkdf
+          call from-hex, text <0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b>
+          call from-hex, text <000102030405060708090a0b0c>
+          call from-hex, text <f0f1f2f3f4f5f6f7f8f9>
+          code 42
+          wait true
+      text <3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865>
+
+test <a stored password verifies>
+  save stored
+    call hash-password
+      text <correct horse>
+      code 1000
+      wait true
+  want hold
+    call verify-password
+      text <correct horse>
+      read stored
+      wait true
+
+test <a wrong password does not verify>
+  save stored
+    call hash-password
+      text <correct horse>
+      code 1000
+      wait true
+  want hold
+    call is-equal
+      call verify-password
+        text <wrong horse>
+        read stored
+        wait true
+      false
+
+test <a stored text from elsewhere does not verify>
+  want hold
+    call is-equal
+      call verify-password
+        text <x>
+        text <md5$abc>
+        wait true
+      false

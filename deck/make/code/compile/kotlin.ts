@@ -336,14 +336,30 @@ export function emitKotlin(
     )
   }
 
-  // a `let` bound to a call with no arguments whose type the checker knows concretely as a generic application
+  // generic tasks with a type parameter that no parameter mentions (`make-sorted-map` names `v` only in its result):
+  // the call alone cannot tell Kotlin what it is
+  const hiddenGeneric = new Set<string>(
+    program
+      .filter(
+        (n): n is Extract<Statement, { form: 'function' }> =>
+          n.form === 'function' && n.generics.length > 0,
+      )
+      .filter(n => {
+        const seen = JSON.stringify(n.params.map(p => p.type ?? null))
+        return n.generics.some(g => !seen.includes(`"name":"${g.name}"`))
+      })
+      .map(n => n.name),
+  )
+
+  // a `let` bound to a call that cannot name its own type arguments (no arguments at all, or a task with a hidden
+  // type parameter) whose type the checker knows concretely as a generic application
   const uninferableCall = (node: Extract<Statement, { form: 'let' }>): boolean => {
     const call =
       node.init.form === 'call' ? node.init : node.init.form === 'await' && node.init.expr.form === 'call' ? node.init.expr : undefined
 
     return (
       call !== undefined &&
-      call.args.length === 0 &&
+      (call.args.length === 0 || (call.callee.form === 'variable' && hiddenGeneric.has(call.callee.name))) &&
       node.type?.kind === 'named' &&
       (node.type.args?.length ?? 0) > 0 &&
       !node.type.args!.some(a => a.kind === 'variable' || a.kind === 'unknown' || genericLetter(a))
@@ -729,7 +745,8 @@ export function emitKotlin(
       case 'boolean':
         return node.value ? 'true' : 'false'
       case 'string':
-        return JSON.stringify(node.value)
+        // a `$` would open a Kotlin string template
+        return JSON.stringify(node.value).replace(/\$/g, '\\$')
       case 'template':
         // `"a${x}b"`: chunks escaped as a Kotlin string with `$` escaped, expressions interpolated
         // a float interpolates as `termNumber` lays it out, the same text as every other backend
@@ -997,8 +1014,14 @@ export function emitKotlin(
               : t.kind === 'map'
                 ? strayGeneric(t.key) || strayGeneric(t.value)
                 : false
+        // nor when the checker left an argument open (unknown, dynamic, a free variable): pinned, it reads `Any`, and
+        // `Pair<K, Any>` is refused where `Pair<K, V>` is wanted, which Kotlin would have inferred from the values
+        const open = (t: Type): boolean => t.kind === 'unknown' || t.kind === 'dynamic' || t.kind === 'variable'
         const args =
-          node.type?.kind === 'named' && node.type.args?.length && !node.type.args.some(strayGeneric)
+          node.type?.kind === 'named' &&
+          node.type.args?.length &&
+          !node.type.args.some(strayGeneric) &&
+          !node.type.args.some(open)
             ? `<${node.type.args.map(kotlinType).join(', ')}>`
             : ''
 

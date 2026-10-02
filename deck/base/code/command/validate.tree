@@ -1,8 +1,5 @@
+note draft
 
-load @term/base/code/command
-  find result
-
-task check
-  take result, like result
-  take rules, like list
-  like list
+# SHELVED 2026-10-02 (base-v1-0030): superseded by `parse` in code/command.tree, whose `errors` already hold every
+# check (unknown flags, missing values, choices, required flags and arguments). This module declared `check` and
+# bound nothing.

@@ -1,0 +1,206 @@
+# Numbers read from text and written to it the same way on every backend. Held by `pnpm term:base-gate`.
+
+load @term/base/code/text/number
+  find parse-integer
+  find parse-float
+  find to-radix
+  find to-fixed
+  find number-mismatch
+
+# why a text is not a whole number in the radix, as `at reason`, or the value
+task integer-why
+  take text, like text
+  take radix, like number
+  like text
+  note unsafe
+    save got
+      call parse-integer
+        read text
+        read radix
+    send back, text <{{got}}>
+  halt take
+    take problem
+    fork case, read problem
+      case number-mismatch
+        send back, text <{{at}} {{reason}}>
+
+task float-why
+  take text, like text
+  like text
+  note unsafe
+    save got
+      call parse-float
+        read text
+    send back, text <{{got}}>
+  halt take
+    take problem
+    fork case, read problem
+      case number-mismatch
+        send back, text <{{at}} {{reason}}>
+
+test <whole numbers in any radix>
+  want hold
+    call and
+      call and
+        call is-equal
+          call parse-integer
+            text <ff>
+            code 16
+          code 255
+        call is-equal
+          call parse-integer
+            text <-101>
+            code 2
+          call subtract
+            code 0
+            code 5
+      call and
+        call is-equal
+          call parse-integer
+            text <+42>
+          code 42
+        call is-equal
+          call parse-integer
+            text <Zz>
+            code 36
+          code 1295
+
+test <what is not a whole number is refused with its place>
+  want hold
+    call and
+      call and
+        call is-equal
+          call integer-why
+            text <>
+            code 10
+          text <0 no digits>
+        call is-equal
+          call integer-why
+            text <->
+            code 10
+          text <1 no digits>
+      call and
+        call is-equal
+          call integer-why
+            text <12a>
+            code 10
+          text <2 not a digit in base 10>
+        call is-equal
+          call integer-why
+            text <1 2>
+            code 10
+          text <1 not a digit in base 10>
+
+test <floats read to the nearest double>
+  want hold
+    call and
+      call and
+        call is-equal
+          call float-why
+            text <6.02e23>
+          text <6.02e+23>
+        call is-equal
+          call float-why
+            text <-0.5>
+          text <-0.5>
+      call and
+        call is-equal
+          call float-why
+            text <0.1>
+          text <0.1>
+        call is-equal
+          call float-why
+            text <1E-7>
+          text <1e-7>
+
+test <what is not a float is refused with its place>
+  want hold
+    call and
+      call and
+        call is-equal
+          call float-why
+            text <.5>
+          text <0 a digit was expected>
+        call is-equal
+          call float-why
+            text <5.>
+          text <2 a digit was expected after the point>
+      call and
+        call is-equal
+          call float-why
+            text <1e>
+          text <2 a digit was expected in the exponent>
+        call is-equal
+          call float-why
+            text <1.5x>
+          text <3 the number ends before this>
+
+test <radix output>
+  want hold
+    call and
+      call and
+        call is-equal
+          call to-radix
+            code 255
+            code 16
+          text <ff>
+        call is-equal
+          call to-radix
+            call subtract
+              code 0
+              code 5
+            code 2
+          text <-101>
+      call is-equal
+        call to-radix
+          code 0
+          code 7
+        text <0>
+
+test <fixed places round the shown digits half away from zero>
+  want hold
+    call and
+      call and
+        call and
+          call is-equal
+            call to-fixed
+              1.005
+              code 2
+            text <1.01>
+          call is-equal
+            call to-fixed
+              2.5
+              code 0
+            text <3>
+        call and
+          call is-equal
+            call to-fixed
+              call subtract
+                0.0
+                2.5
+              code 0
+            text <-3>
+          call is-equal
+            call to-fixed
+              call subtract
+                0.0
+                0.001
+              code 2
+            text <0.00>
+      call and
+        call and
+          call is-equal
+            call to-fixed
+              0.000000123
+              code 9
+            text <0.000000123>
+          call is-equal
+            call to-fixed
+              99.96
+              code 1
+            text <100.0>
+        call is-equal
+          call to-fixed
+            1000000000000000000000.0
+            code 1
+          text <1000000000000000000000.0>

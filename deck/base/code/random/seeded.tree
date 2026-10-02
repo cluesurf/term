@@ -22,6 +22,9 @@ load @term/base/code/list
 load @term/base/code/maybe
   find maybe
 
+load @term/base/code/float
+  find to-decimal
+
 form random-source
   link state
     like list
@@ -203,8 +206,9 @@ task next-fraction
   like float
   send back
     call divide
-      call next-word
-        read source
+      call to-decimal
+        call next-word
+          read source
       4294967296.0
 
 # the next whole number from `low` to `high`, both included, without the bias a remainder alone gives: words from the

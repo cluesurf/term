@@ -2,7 +2,7 @@
 # (a bare word, a literal, or a nested group). Indentation and parentheses both nest. This is the data dialect's
 # own small parser, so a Term program on any backend reads data without the compiler. See note/term/host/01-grammar.md.
 
-form node
+form scan-node
   case word
     link word, like text
   case text
@@ -15,7 +15,7 @@ form node
     link head, like text
     link kids
       like list
-        like node
+        like scan-node
 
 # a name in a message, the way the compiler's reader spells it: in double quotes
 task quote

@@ -1,0 +1,55 @@
+# Base64 and hex read the same on every backend, the browser's included, and the host random stays in range. Held by
+# `pnpm term:base-gate`, whose browser leg is what reaches native/browser/text/{base64,hex}.tree and random.tree.
+
+load @term/base/code/text/base64
+  find encode-base64
+  find decode-base64
+
+load @term/base/code/text/hex
+  find encode-hex
+  find decode-hex
+
+load @term/base/code/random
+  find number
+
+load @term/base/code/log
+  find info
+
+test <base64 encodes UTF-8 text>
+  want hold
+    call is-equal
+      call encode-base64, text <héllo 𝄞>
+      text <aMOpbGxvIPCdhJ4=>
+
+test <base64 round trips>
+  want hold
+    call is-equal
+      call decode-base64
+        call encode-base64, text <a𝄞b>
+      text <a𝄞b>
+
+test <hex encodes UTF-8 text>
+  want hold
+    call is-equal
+      call encode-hex, text <é>
+      text <c3a9>
+
+test <hex round trips>
+  want hold
+    call is-equal
+      call decode-hex
+        call encode-hex, text <naïve>
+      text <naïve>
+
+test <a host random number is at least zero and below one>
+  save r
+    call number
+  call info, text <edge-codec ran>
+  want hold
+    call and
+      call is-minimum
+        read r
+        0.0
+      call is-below
+        read r
+        1.0

@@ -1,0 +1,306 @@
+# One regex dialect, the same matches and groups on every backend. Held by `pnpm term:base-gate`.
+
+load @term/base/code/regex
+  find matches
+  find find-match
+  find find-matches
+  find match-group
+  find replace-matches
+  find replace-first-match
+  find rewrite-matches
+  find split-at-matches
+  find escape-pattern
+  find is-valid-pattern
+  find regex-match
+
+load @term/base/code/text/unicode
+  find rune-to-text
+
+load @term/base/code/list
+  find list
+  find join
+  find size
+
+load @term/base/code/maybe
+  find unwrap-or
+
+# the first match as start:end:text|group|group, with ~ for a group that took no part, or `none`
+task describe-hit
+  take pattern, like text
+  take input, like text
+  like text
+  save found
+    call find-match
+      read pattern
+      read input
+  fork case, read found
+    case some
+      link hit
+      save out, text <{{hit/start}}:{{hit/end}}:{{hit/text}}>
+      save k, code 1
+      walk test
+        hook test
+          call is-maximum
+            read k
+            call size
+              read hit/groups
+        hook step
+          save part
+            call unwrap-or
+              call match-group
+                read hit
+                read k
+              text <~>
+          save out, text <{{out}}|{{part}}>
+          save k
+            call add
+              read k
+              code 1
+      send back, read out
+    case none
+      send back, text <none>
+
+# every match's text, joined with commas
+task all-texts
+  take pattern, like text
+  take input, like text
+  like text
+  save texts
+    make list
+  walk list
+    call find-matches
+      read pattern
+      read input
+    hook next
+      take site, name hit
+      call texts/push
+        read hit/text
+  send back
+    call join
+      read texts
+      text <,>
+
+task bracket
+  take hit, like regex-match
+  like text
+  send back, text <[{{hit/text}}]>
+
+test <the patterns the command line uses>
+  want hold
+    call and
+      call and
+        call is-equal
+          call replace-matches
+            text <^\s+>
+            text <   indented>
+            text <>
+          text <indented>
+        call is-equal
+          call replace-matches
+            text <[^a-z0-9]+>
+            text <hello, wide world!>
+            text <->
+          text <hello-wide-world->
+      call and
+        call is-equal
+          call replace-matches
+            text <^-+|-+$>
+            text <--slug--here-->
+            text <>
+          text <slug--here>
+        call is-equal
+          call replace-matches
+            text <^<.+>$>
+            text <<free text>>
+            text <>
+          text <>
+
+test <groups, and a group that took no part>
+  want hold
+    call and
+      call is-equal
+        call describe-hit
+          text <(\d+)-(\d+)?x>
+          text <ab 12-x cd>
+        text <3:7:12-x|12|~>
+      call is-equal
+        call describe-hit
+          text <q>
+          text <abc>
+        text <none>
+
+test <positions are code points>
+  want hold
+    call and
+      call is-equal
+        call describe-hit
+          text <b(.)d>
+          text <𝄞ab𝄞d>
+        text <2:5:b𝄞d|𝄞>
+      call is-equal
+        call all-texts
+          text <[^a]>
+          text <a𝄞a😀>
+        text <𝄞,😀>
+
+test <empty matches move on one code point>
+  want hold
+    call and
+      call is-equal
+        call all-texts
+          text <x*>
+          text <axxb>
+        text <,xx,,>
+      call is-equal
+        call join
+          call split-at-matches
+            text <>
+            text <a𝄞c>
+          text <,>
+        text <a,𝄞,c>
+
+test <split keeps empty pieces between separators>
+  want hold
+    call is-equal
+      call join
+        call split-at-matches
+          text <,\s*>
+          text <a, b,,c>
+        text <|>
+      text <a|b||c>
+
+test <the end anchor is the very end, and dot skips only a line feed>
+  save lf
+    call rune-to-text, code 10
+  save cr
+    call rune-to-text, code 13
+  want hold
+    call and
+      call and
+        call is-equal
+          call matches
+            text <a$>
+            text <a{{lf}}>
+          false
+        call matches
+          text <a$>
+          text <ba>
+      call and
+        call is-equal
+          call matches
+            text <^a.b$>
+            text <a{{lf}}b>
+          false
+        call matches
+          text <^a.b$>
+          text <a{{cr}}b>
+
+test <digits, word and space are ASCII>
+  want hold
+    call and
+      call is-equal
+        call matches
+          text <^\d+$>
+          text <١٢٣>
+        false
+      call and
+        call is-equal
+          call matches
+            text <^\w+$>
+            text <é>
+          false
+        call matches
+          text <^[\w-]+$>
+          text <snake_case-and-kebab>
+
+test <lazy and counted repetition>
+  want hold
+    call and
+      call is-equal
+        call all-texts
+          text <<.+?>>
+          text <<a><bb>>
+        text <<a>,<bb>>
+      call is-equal
+        call all-texts
+          text <\d{2,3}>
+          text <1 12 1234 12345>
+        text <12,123,123,45>
+
+test <a replacement is literal text>
+  want hold
+    call and
+      call is-equal
+        call replace-matches
+          text <(o)>
+          text <foo>
+          text <$1\1$&>
+        text <f$1\1$&$1\1$&>
+      call is-equal
+        call replace-first-match
+          text <o>
+          text <foo>
+          text <0>
+        text <f0o>
+
+test <rewrite builds each replacement from its match>
+  want hold
+    call is-equal
+      call rewrite-matches
+        text <\d+>
+        text <a1b22c>
+        read bracket
+      text <a[1]b[22]c>
+
+test <escape makes a pattern of literal text>
+  want hold
+    call and
+      call matches
+        call escape-pattern
+          text <a.b*c(d)[e]\{f\}|$^>
+        text <xa.b*c(d)[e]\{f\}|$^y>
+      call is-equal
+        call matches
+          call escape-pattern
+            text <a.b>
+          text <axb>
+        false
+
+test <what is not in the dialect is refused on every backend>
+  want hold
+    call and
+      call and
+        call and
+          call is-equal
+            call is-valid-pattern
+              text <(?=a)>
+            false
+          call is-equal
+            call is-valid-pattern
+              text <\bword>
+            false
+        call and
+          call is-equal
+            call is-valid-pattern
+              text <(a)\1>
+            false
+          call is-equal
+            call is-valid-pattern
+              text <(?:(a)|b)+>
+            false
+      call and
+        call and
+          call is-equal
+            call is-valid-pattern
+              text <[a>
+            false
+          call is-equal
+            call is-valid-pattern
+              text <a{3,1}>
+            false
+        call and
+          call is-valid-pattern
+            text <(a|b)+[&~-]>
+          call matches
+            text <^[&~]+$>
+            text <&~&>

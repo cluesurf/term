@@ -1,7 +1,7 @@
 // Working directory runtime. Reached only through the public environment API.
 import Foundation
 
-enum directory {
+enum workDirectory {
     static func get() -> String {
         FileManager.default.currentDirectoryPath
     }

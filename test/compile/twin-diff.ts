@@ -142,7 +142,9 @@ twin count-each, name skips-first
         bind item, read count
   send back, read counts
 `
-  const bad = await admit({ source: { file: join(dir, 'wrong.tree'), text: wrong }, resolve: stdlib, dir, cases: 2000, native: 0 })
+  // a few mutants per twin: what this case holds is the refusal and the shrink, and a right twin still needs one of
+  // its mutants caught to be admitted (the first of `dense`'s means the same thing as the twin, so one is not enough)
+  const bad = await admit({ source: { file: join(dir, 'wrong.tree'), text: wrong }, resolve: stdlib, dir, cases: 2000, native: 0, mutants: 3 })
 
   if (!bad.ok) {
     ok('the module with a wrong twin builds for admission', false, bad.reason)
@@ -156,7 +158,12 @@ twin count-each, name skips-first
       input !== undefined && input[0]!.length === 1 && input[1]!.length === 1,
       verdict?.disagreement ? `${verdict.disagreement.literal}: ${verdict.reason}` : 'no disagreement recorded',
     )
-    ok('the right twins in the same module are still admitted', bad.verdicts.filter(v => v.twin !== 'skips-first').every(v => v.admitted))
+    const right = bad.verdicts.filter(v => v.twin !== 'skips-first')
+    ok(
+      'the right twins in the same module are still admitted',
+      right.length === 2 && right.every(v => v.admitted),
+      right.map(v => `${v.twin}: ${v.reason}`).join(' | '),
+    )
   }
 
   // 3. a twin whose task takes a form: no generator, so it is refused with the type named, never tested on nothing

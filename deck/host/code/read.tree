@@ -13,7 +13,7 @@ load @term/base/code/text/string
   find concat
 
 load ./node
-  find node
+  find scan-node
   find quote
   find integer-text
 
@@ -176,7 +176,7 @@ task read-raw
 # the data head a group's head word means, or empty text
 task head-kind
   note private
-  take root, like node
+  take root, like scan-node
   like text
   save head
     call head-of
@@ -240,7 +240,7 @@ task head-kind
 
 task head-of
   note private
-  take root, like node
+  take root, like scan-node
   like text
   fork case, read root
     case group
@@ -259,7 +259,7 @@ task head-of
 # the key of `host <key>`: the first child, a bare word or a text
 task key-of
   note private
-  take root, like node
+  take root, like scan-node
   like text
   fork case, read root
     case group
@@ -305,9 +305,9 @@ task key-of
 # the children after the key
 task rest-of
   note private
-  take root, like node
+  take root, like scan-node
   like list
-    like node
+    like scan-node
   save out
     make list
   fork case, read root
@@ -342,7 +342,7 @@ task rest-of
 # a bare `true` / `false` / `void`, or a literal
 task is-scalar
   note private
-  take one, like node
+  take one, like scan-node
   like boolean
   fork case, read one
     case word
@@ -385,7 +385,7 @@ task is-scalar
 
 task read-scalar
   note private
-  take one, like node
+  take one, like scan-node
   like data
   fork case, read one
     case text
@@ -442,7 +442,7 @@ task read-word
 # `host <key>, <scalar>` / `host <key>` + entries / `list <key>` + items
 task read-entry
   note private
-  take root, like node
+  take root, like scan-node
   take kind, like text
   like data-entry
   save name
@@ -577,7 +577,7 @@ task read-entries
   note private
   take blocks
     like list
-      like node
+      like scan-node
   take owner, like text
   like list
     like data-entry
@@ -663,7 +663,7 @@ task read-items
   note private
   take rest
     like list
-      like node
+      like scan-node
   take owner, like text
   like list
     like data
@@ -761,9 +761,9 @@ task read-items
 
 task kids-of
   note private
-  take root, like node
+  take root, like scan-node
   like list
-    like node
+    like scan-node
   fork case, read root
     case group
       link kids
@@ -783,7 +783,7 @@ task kids-of
 
 task read-mesh
   note private
-  take root, like node
+  take root, like scan-node
   like data
   send back
     make hash
@@ -795,7 +795,7 @@ task read-mesh
 
 task read-tree
   note private
-  take root, like node
+  take root, like scan-node
   like data-tree
   save name
     call key-of
@@ -943,7 +943,7 @@ task check-keys
 # a bare word where a value belongs is text without its brackets; a head with children is code, not data
 task not-value-rule
   note private
-  take one, like node
+  take one, like scan-node
   like text
   fork case, read one
     case group
@@ -985,7 +985,7 @@ task not-value-rule
 # is the key of `host <key>` / `list <key>` written as a bare word (not as `<text>`)?
 task key-is-word
   note private
-  take root, like node
+  take root, like scan-node
   like boolean
   fork case, read root
     case group

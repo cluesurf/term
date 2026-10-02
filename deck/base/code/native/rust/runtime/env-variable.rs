@@ -1,6 +1,6 @@
 // Environment variable runtime. Reached only through the public environment API, which is why the platform idioms
 // (the `Result` from `env::var`, the borrow at each call) stay here rather than leaking into the seed source.
-mod variable {
+mod env_variable {
     pub fn get(name: String) -> String {
         std::env::var(&name).unwrap_or_default()
     }

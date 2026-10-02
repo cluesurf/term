@@ -1,0 +1,154 @@
+# A timestamp reads the same on every backend: calendar/parse is RFC 3339 read in Term, so a good text gives the same
+# milliseconds and a bad one the same refusal everywhere. The expected values are the Unix epoch arithmetic, checked
+# against `new Date(...).getTime()` once by hand. Held by `pnpm term:base-gate`.
+
+load @term/base/code/calendar
+  find parse
+
+load @term/base/code/calendar/time-text
+  find time-mismatch
+
+load @term/base/code/clock
+  find now
+
+load @term/base/code/timezone
+  find offset-minutes
+  find zone-absence
+
+task zone-why
+  take zone, like text
+  like text
+  note unsafe
+    call offset-minutes
+      code 0
+      read zone
+    send back, text <ok>
+  halt take
+    take problem
+    fork case, read problem
+      case zone-absence
+        send back, text <no zone {{zone}}>
+
+test <Tokyo is nine hours east>
+  want hold
+    call is-equal
+      call offset-minutes
+        call parse, text <2026-01-15T12:00:00Z>
+        text <Asia/Tokyo>
+      code 540
+
+test <Paris keeps daylight saving in summer and not in winter>
+  want hold
+    call and
+      call is-equal
+        call offset-minutes
+          call parse, text <2026-07-01T12:00:00Z>
+          text <Europe/Paris>
+        code 120
+      call is-equal
+        call offset-minutes
+          call parse, text <2026-01-01T12:00:00Z>
+          text <Europe/Paris>
+        code 60
+
+test <half-hour and quarter-hour zones>
+  want hold
+    call and
+      call is-equal
+        call offset-minutes
+          code 0
+          text <Asia/Kolkata>
+        code 330
+      call is-equal
+        call offset-minutes
+          call parse, text <2026-01-01T00:00:00Z>
+          text <Asia/Kathmandu>
+        code 345
+
+test <a zone the database does not name is refused>
+  want hold
+    call is-equal
+      call zone-why, text <Mars/Olympus>
+      text <no zone Mars/Olympus>
+
+task why
+  take text, like text
+  like text
+  note unsafe
+    call parse, read text
+    send back, text <ok>
+  halt take
+    take problem
+    fork case, read problem
+      case time-mismatch
+        send back, text <{{at}} {{reason}}>
+
+test <the epoch is zero>
+  want hold
+    call is-equal
+      call parse, text <1970-01-01T00:00:00Z>
+      code 0
+
+test <a fraction is read to the millisecond>
+  want hold
+    call is-equal
+      call parse, text <2026-10-02T14:05:09.2509Z>
+      code 1790949909250
+
+test <an offset is taken back to UTC>
+  want hold
+    call is-equal
+      call parse, text <2026-10-02T16:05:09+02:00>
+      call parse, text <2026-10-02T14:05:09Z>
+
+test <a lowercase t and z are read>
+  want hold
+    call is-equal
+      call parse, text <2000-02-29t12:00:00z>
+      code 951825600000
+
+test <a time before the epoch is negative>
+  want hold
+    call is-equal
+      call parse, text <1969-12-31T23:59:59Z>
+      call subtract
+        code 0
+        code 1000
+
+test <a day outside its month is refused>
+  want hold
+    call is-equal
+      call why, text <2025-02-29T00:00:00Z>
+      text <8 the day is outside the month>
+
+test <a missing zone is refused>
+  want hold
+    call is-equal
+      call why, text <2026-10-02T14:05:09>
+      text <19 a zone must be Z or a signed offset>
+
+test <a leap second is refused>
+  want hold
+    call is-equal
+      call why, text <2016-12-31T23:59:60Z>
+      text <17 the second is outside 00 to 59>
+
+test <text after the time is refused>
+  want hold
+    call is-equal
+      call why, text <1970-01-01T00:00:00Zjunk>
+      text <20 text follows the time>
+
+test <the clock never goes backward>
+  save a
+    call now
+  save b
+    call now
+  want hold
+    call and
+      call is-minimum
+        read a
+        code 0
+      call is-minimum
+        read b
+        read a

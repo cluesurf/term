@@ -326,6 +326,110 @@ task render
 `,
   )
 
+  // NESTED NAMED TASK: the language has none (a task is top-level, a local function is a closure in value
+  // position). Under a `hook hold` it reached checkFunction with no registered signature and THREW
+  // `Cannot read properties of undefined (reading 'bounds')` (found by `term hunt`, 2026-10-02); directly under a
+  // task it was dropped in silence. Each position is now one `unexpected-node` and never a throw.
+  const nested: [string, string][] = [
+    [
+      'nested task under hook hold is refused, not a crash',
+      `task pick
+  take a, like number
+  take b, like number
+  like number
+  fork test
+    hook test
+      call is-above
+        read a
+        read b
+    hook hold
+      task back
+        read a
+    hook miss
+      send back
+        read b
+`,
+    ],
+    [
+      'nested task directly under a task is refused, not dropped',
+      `task pick
+  take a, like number
+  like number
+  task twice
+    take n, like number
+    like number
+    send back
+      call add
+        read n
+        read n
+  send back
+    read a
+`,
+    ],
+    [
+      'nested task inside a walk body is refused, not a crash',
+      `task total
+  take items, like list, like number
+  like number
+  save sum, code 0
+  walk list, read items
+    hook next
+      take site, name item
+      task inner
+        read item
+  send back, read sum
+`,
+    ],
+  ]
+
+  for (const [name, source] of nested) {
+    try {
+      const result = compile({ file: 'i.tree', text: source })
+      const hit = result.ok
+        ? undefined
+        : result.diagnostics.find(
+            d =>
+              d.name === 'unexpected-node' &&
+              d.message.includes('cannot be defined inside a body'),
+          )
+
+      if (hit) {
+        pass++
+        console.log(`ok    ${name}  (${hit.message})`)
+      } else {
+        fail++
+        console.log(
+          `FAIL  ${name}  (ok=${result.ok}, codes=${
+            result.ok ? '' : result.diagnostics.map(d => d.name).join(',')
+          })`,
+        )
+      }
+    } catch (error) {
+      fail++
+      console.log(`FAIL  ${name}  (threw: ${(error as Error).message})`)
+    }
+  }
+
+  // the control: the same helper written at the top level compiles and is called
+  expectOk(
+    'the helper at the top level compiles',
+    `task twice
+  take n, like number
+  like number
+  send back
+    call add
+      read n
+      read n
+
+task pick
+  take a, like number
+  like number
+  send back
+    call twice
+      read a
+`,
+  )
+
   console.log(`\ninfer: ${pass} pass, ${fail} fail`)
 }
 

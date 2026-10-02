@@ -1,16 +1,4 @@
+note draft
 
-load @term/base/code/command
-  find schema
-
-task generate
-  take schema, like schema
-  take
-    command
-    like text
-    need false
-  like text
-
-task format
-  take title, like text
-  take items, like list
-  like text
+# SHELVED 2026-10-02 (base-v1-0030): superseded by `help` in code/command.tree, which lays out a schema's usage. This
+# module declared `generate` and `format` and bound neither.

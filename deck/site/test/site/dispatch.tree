@@ -367,7 +367,7 @@ task run-command
 
 # one message in, one reply out. A command that raises answers the exception by name and note, so the page
 # gets a rejection and the cask keeps running
-task dispatch
+task answer
   note async
   take message, like text
   like text
@@ -424,3 +424,28 @@ task dispatch
   send back
     call stringify
       read reply
+
+# every message answered, whatever it holds: one that is not JSON (`parse` raises `json-mismatch`) answers the
+# exception with no id, rather than raising out of the bridge and taking the cask down with it
+task dispatch
+  note async
+  take message, like text
+  like text
+  note unsafe
+    send back
+      call answer
+        wait true
+        read message
+  halt take
+    take problem
+    send back
+      call stringify
+        call set-field
+          call set-field
+            call make-object
+            text <id>
+            call from-text
+              text <>
+          text <exception>
+          call from-text
+            text <{{problem/form}}: {{problem/note}}>

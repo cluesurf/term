@@ -853,6 +853,43 @@ task go
 `,
   },
   {
+    // A BOUND WORD IS A VARIABLE, NEVER A FLAG. Only a word the resolver could not bind is read as a boolean
+    // parameter set to true. Before 2026-10-02 any word naming a boolean parameter was, so passing the caller's own
+    // `secure` to a callee's `secure` always passed true: deck/base/code/network/{server,http2,tcp}.tree and eight
+    // file modules, found by `pnpm term:lean-equal`
+    name: 'a variable named like a boolean parameter is passed by value',
+    lean: `
+task pick-flag
+  take n, like number
+  take loud, like boolean, fall false
+  like number
+  send back, read n
+
+task go
+  take loud, like boolean
+  like number
+  send back
+    pick-flag
+      2
+      loud
+`,
+    long: `
+task pick-flag
+  take n, like number
+  take loud, like boolean, fall false
+  like number
+  send back, read n
+
+task go
+  take loud, like boolean
+  like number
+  send back
+    call pick-flag
+      code 2
+      read loud
+`,
+  },
+  {
     // A PROPERTY HEAD WITH `bind` CHILDREN IS A CALL. Only a property's plain children become its value, so read
     // as a label `read-env / bind name, <x>` under another call lost both of its arguments and the call ran on its
     // defaults (deck/zone/code/config/machine.tree, `ZONE_SAVE` read as "")

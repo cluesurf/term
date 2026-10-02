@@ -13,7 +13,7 @@ enum clock {
 
   // monotonic, and so unaffected by the wall clock being adjusted under a measurement
   static func precise() -> Int {
-    Int(ProcessInfo.processInfo.systemUptime * 1000)
+    Int(Foundation.ProcessInfo.processInfo.systemUptime * 1000)
   }
 
   // what `clock/now` reads: monotonic milliseconds on every backend (note/term/stdlib/semantics.md). Every caller

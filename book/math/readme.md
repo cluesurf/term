@@ -59,7 +59,7 @@ The simplest use is not even a separate proof. A `hold` written inside a `task` 
 
 ```tree
 task safe-step
-  take n, like nat
+  take n, like natural-number
   hold
     call is-minimum
       call add
@@ -72,7 +72,7 @@ task safe-step
       code 1
 ```
 
-The `hold` says `n + 1 ≥ 1`. The compiler decides it once and for all `n`, before the task ever runs. A claim that did not hold for some `n` would be a compile error here, not a runtime surprise.
+The `hold` says `n + 1 ≥ 1`. `like natural-number` tells the prover that `n` is at least zero, which is the fact the claim rests on. The compiler decides it once and for all `n`, before the task ever runs. A claim that did not hold for some `n` would be a compile error here, not a runtime surprise.
 
 A full `rule` is the same idea given a name so other proofs can `cite` it.
 

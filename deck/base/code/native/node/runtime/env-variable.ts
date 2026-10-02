@@ -1,5 +1,5 @@
 // Environment variable runtime for node. Reached only through the public environment API.
-const variable = {
+const envVariable = {
   get: (name: string): string => process.env[name] ?? '',
   set: (name: string, value: string): void => {
     process.env[name] = value

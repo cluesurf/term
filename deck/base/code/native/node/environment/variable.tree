@@ -3,28 +3,28 @@
 # environment API.
 
 dock load
-  load <global:variable>, name variable
+  load <global:env-variable>, name env-variable
 
 task fetch-variable
   take name, like text
   like text
 
   send back
-    call variable/get
+    call env-variable/get
       read name
 
 task store-variable
   take name, like text
   take value, like text
 
-  call variable/set
+  call env-variable/set
     read name
     read value
 
 task drop-variable
   take name, like text
 
-  call variable/remove
+  call env-variable/remove
     read name
 
 task gather-variables
@@ -33,12 +33,12 @@ task gather-variables
     like text
 
   send back
-    call variable/list
+    call env-variable/list
 
 task holds-variable
   take name, like text
   like boolean
 
   send back
-    call variable/check
+    call env-variable/check
       read name

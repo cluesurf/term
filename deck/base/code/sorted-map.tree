@@ -1,0 +1,288 @@
+# A map kept in key order, and a set kept in order, by a comparator: `ordering/from-numbers`, `ordering/from-texts` (code
+# point order) or any task that returns an ordering. Pure Term over two parallel lists, so it walks in the same order on
+# every backend. A lookup is a binary search; an insert or a removal moves the later entries along, so this suits maps
+# that are read far more than they are written. `hash` is the map to reach for when order does not matter.
+
+load @term/base/code/list
+  find list
+  find size
+  find get
+
+load @term/base/code/maybe
+  find maybe
+
+load @term/base/code/pair
+  find pair
+
+load @term/base/code/ordering
+  find ordering
+  find is-less
+  find is-equal
+
+form sorted-map
+  head k
+  head v
+  link keys
+    like list
+      like k
+  link values
+    like list
+      like v
+  link compare
+    like task
+      take left, like k
+      take right, like k
+      like ordering
+
+  # the first position whose key does not come before `key`
+  task place
+    take self
+    take key, like k
+    like number
+    save low, code 0
+    save high
+      call size
+        read self/keys
+    walk test
+      down
+        call subtract
+          read high
+          read low
+      hook test
+        call is-below
+          read low
+          read high
+      hook step
+        save middle
+          call add
+            read low
+            call divide
+              call subtract
+                read high
+                read low
+              code 2
+        fork test
+          hook test
+            call is-less
+              call self/compare
+                call get
+                  read self/keys
+                  read middle
+                read key
+          hook hold
+            save low
+              call add
+                read middle
+                code 1
+          hook miss
+            save high, read middle
+    send back, read low
+
+  # whether the key at `at` is `key`
+  task holds-at
+    take self
+    take at, like number
+    take key, like k
+    like boolean
+    fork test
+      hook test
+        call is-below
+          read at
+          call size
+            read self/keys
+      hook hold
+        send back
+          call is-equal
+            call self/compare
+              call get
+                read self/keys
+                read at
+              read key
+    send back, false
+
+  task put
+    take self
+    take key, like k
+    take value, like v
+    like sorted-map
+    save at
+      call place
+        read self
+        read key
+    fork test
+      hook test
+        call holds-at
+          read self
+          read at
+          read key
+      hook hold
+        call self/values/set
+          read at
+          read value
+      hook miss
+        call self/keys/splice
+          read at
+          code 0
+          read key
+        call self/values/splice
+          read at
+          code 0
+          read value
+    send back, read self
+
+  task lookup
+    take self
+    take key, like k
+    like maybe
+      head v
+    save at
+      call place
+        read self
+        read key
+    fork test
+      hook test
+        call holds-at
+          read self
+          read at
+          read key
+      hook hold
+        send back
+          make some
+            bind value
+              call get
+                read self/values
+                read at
+    send back, make none
+
+  task holds
+    take self
+    take key, like k
+    like boolean
+    send back
+      call holds-at
+        read self
+        call place
+          read self
+          read key
+        read key
+
+  # remove the key and its value, returning whether it was there
+  task drop
+    take self
+    take key, like k
+    like boolean
+    save at
+      call place
+        read self
+        read key
+    fork test
+      hook test
+        call holds-at
+          read self
+          read at
+          read key
+      hook hold
+        call self/keys/splice
+          read at
+          code 1
+        call self/values/splice
+          read at
+          code 1
+        send back, true
+    send back, false
+
+  task count
+    take self
+    like number
+    send back
+      call size
+        read self/keys
+
+  # every entry as a pair of key and value, in key order
+  task entries
+    take self
+    like list
+      like pair
+        head k
+        head v
+    save out
+      make list
+    save at, code 0
+    walk list, read self/keys
+      hook next
+        take site, name key
+        call out/push
+          make pair
+            bind first, read key
+            bind second
+              call get
+                read self/values
+                read at
+        save at
+          call add
+            read at
+            code 1
+    send back, read out
+
+  # the entry with the least key, or none when empty
+  task least
+    take self
+    like maybe
+      head k
+    fork test
+      hook test
+        call is-equal
+          call size
+            read self/keys
+          code 0
+      hook hold
+        send back, make none
+    send back
+      make some
+        bind value
+          call get
+            read self/keys
+            code 0
+
+  # the entry with the greatest key, or none when empty
+  task greatest
+    take self
+    like maybe
+      head k
+    fork test
+      hook test
+        call is-equal
+          call size
+            read self/keys
+          code 0
+      hook hold
+        send back, make none
+    send back
+      make some
+        bind value
+          call get
+            read self/keys
+            call subtract
+              call size
+                read self/keys
+              code 1
+
+# an empty map ordered by `compare`
+task make-sorted-map
+  head k
+  head v
+  take compare
+    like task
+      take left, like k
+      take right, like k
+      like ordering
+  like sorted-map
+    head k
+    head v
+  send back
+    make sorted-map
+      bind keys
+        make list
+      bind values
+        make list
+      bind compare, read compare

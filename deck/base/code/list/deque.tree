@@ -1,8 +1,13 @@
 
-# Deque (double-ended queue), backed by the native array. Push and pop at either end. Pops return `maybe` so an empty deque is total, never a fault.
+# Deque (double-ended queue): push and pop at either end in constant time, a ring buffer over `items` with `start` the
+# position of the front and `filled` how many it holds. It used to shift and unshift a native array, which moves every
+# item on each front operation. Pops return `maybe`, so an empty deque is total. Build one with `make deque` and an
+# empty `items` list (or `make-deque`); `start` and `filled` begin at zero.
 
 load @term/base/code/list
   find list
+  find size
+  find get
 
 load @term/base/code/maybe
   find maybe
@@ -12,92 +17,234 @@ form deque
   link items
     like list
       like t
+  link start, like number
+  link filled, like number
+
+  # the item at the ring position `at` counted from the front
+  task slot
+    take self
+    take at, like number
+    like number
+    send back
+      call modulo
+        call add
+          read self/start
+          read at
+        call size
+          read self/items
+
+  # room for one more: when the ring is full, its items are laid out front to back in a list twice the size, the
+  # spare places holding `filler` until a push writes over them
+  task grow
+    take self
+    take filler, like t
+    save capacity
+      call size
+        read self/items
+    fork test
+      hook test
+        call is-below
+          read self/filled
+          read capacity
+      hook hold
+        send back, read self
+    save next
+      make list
+    save k, code 0
+    walk test
+      hook test
+        call is-below
+          read k
+          read self/filled
+      hook step
+        call next/push
+          call get
+            read self/items
+            call slot
+              read self
+              read k
+        save k
+          call add
+            read k
+            code 1
+    save room
+      call add
+        call multiply
+          read capacity
+          code 2
+        code 1
+    walk test
+      hook test
+        call is-below
+          call size
+            read next
+          read room
+      hook step
+        call next/push
+          read filler
+    save self/items, read next
+    save self/start, code 0
+    send back, read self
 
   task push-back
     take self
     take item, like t
     like deque
-    call push
-      read self/items
+    call grow
+      read self
       read item
+    call self/items/set
+      call slot
+        read self
+        read self/filled
+      read item
+    save self/filled
+      call add
+        read self/filled
+        code 1
     send back, read self
 
   task push-front
     take self
     take item, like t
     like deque
-    call self/items/unshift
+    call grow
+      read self
       read item
+    save self/start
+      call modulo
+        call add
+          call subtract
+            read self/start
+            code 1
+          call size
+            read self/items
+        call size
+          read self/items
+    call self/items/set
+      read self/start
+      read item
+    save self/filled
+      call add
+        read self/filled
+        code 1
     send back, read self
 
   task pop-back
     take self
     like maybe
       head t
-      like t
     fork test
       hook test
-        call is-above
-          read self/items/length
+        call is-equal
+          read self/filled
           code 0
       hook hold
-        send back
-          make some
-            bind value
-              call pop
-                read self/items
-      hook miss
-        send back
-          make none
+        send back, make none
+    save last
+      call get
+        read self/items
+        call slot
+          read self
+          call subtract
+            read self/filled
+            code 1
+    save self/filled
+      call subtract
+        read self/filled
+        code 1
+    send back
+      make some
+        bind value, read last
 
   task pop-front
     take self
     like maybe
       head t
-      like t
     fork test
       hook test
-        call is-above
-          read self/items/length
+        call is-equal
+          read self/filled
           code 0
       hook hold
-        send back
-          make some
-            bind value
-              call self/items/shift
-      hook miss
-        send back
-          make none
+        send back, make none
+    save first-item
+      call get
+        read self/items
+        read self/start
+    save self/start
+      call slot
+        read self
+        code 1
+    save self/filled
+      call subtract
+        read self/filled
+        code 1
+    send back
+      make some
+        bind value, read first-item
 
   task front
     take self
     like maybe
       head t
-      like t
+    fork test
+      hook test
+        call is-equal
+          read self/filled
+          code 0
+      hook hold
+        send back, make none
     send back
-      call first
-        read self/items
+      make some
+        bind value
+          call get
+            read self/items
+            read self/start
 
   task back
     take self
     like maybe
       head t
-      like t
+    fork test
+      hook test
+        call is-equal
+          read self/filled
+          code 0
+      hook hold
+        send back, make none
     send back
-      call last
-        read self/items
+      make some
+        bind value
+          call get
+            read self/items
+            call slot
+              read self
+              call subtract
+                read self/filled
+                code 1
 
   task count
     take self
     like number
-    send back
-      call size
-        read self/items
+    send back, read self/filled
 
   task is-empty
     take self
     like boolean
     send back
       call is-equal
-        read self/items/length
+        read self/filled
         code 0
+
+# an empty deque
+task make-deque
+  head t
+  like deque
+    head t
+  send back
+    make deque
+      bind items
+        make list
+      bind start, code 0
+      bind filled, code 0

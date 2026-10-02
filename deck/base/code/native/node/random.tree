@@ -4,7 +4,7 @@ dock load
   load <global:Math>, name math
 
 task random-number
-  like number
+  like float
   send back
     call math/random
 

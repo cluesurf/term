@@ -181,6 +181,13 @@ test <substring clamps an end past the length>
         code 99
       text <bc>
 
+test <substring without an end runs to the end>
+  want hold
+    call is-equal
+      call substring
+        text <a𝄞cd>
+        code 1
+      text <𝄞cd>
 test <to-upper-case maps sharp s to SS>
   want hold
     call is-equal

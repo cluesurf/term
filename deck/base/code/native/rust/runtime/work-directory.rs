@@ -1,5 +1,5 @@
 // Working directory runtime. Reached only through the public environment API.
-mod directory {
+mod work_directory {
     pub fn get() -> String {
         std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())

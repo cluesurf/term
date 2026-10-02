@@ -3,16 +3,16 @@
 # environment API.
 
 dock load
-  load <global:directory>, name directory
+  load <global:work-directory>, name work-directory
 
 task working-directory
   like text
 
   send back
-    call directory/get
+    call work-directory/get
 
 task enter-directory
   take path, like text
 
-  call directory/set
+  call work-directory/set
     read path

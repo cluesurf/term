@@ -4,6 +4,22 @@
 
 dock load
   load <global:machine>, name machine
+  load <global:work-directory>, name work-directory
+  load <global:env-variable>, name env-variable
+
+# the page's stand-ins, as environment/directory and environment/variable use them: the URL path, and localStorage.
+# Without these two the public `environment` module could not build for a browser at all
+task current-directory
+  like text
+  send back
+    call work-directory/get
+
+task get-variable
+  take name, like text
+  like text
+  send back
+    call env-variable/get
+      read name
 
 task read
   send back

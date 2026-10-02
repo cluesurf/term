@@ -17,7 +17,11 @@ load @term/base/code/boolean
 load @term/base/code/hold/hash
   find hash-djb2-xor, name hash
 
+load @term/base/code/maybe
+  find maybe
+
 form hash-table
+  head v
   link capacity, like number
   link size, like number
   link state
@@ -28,7 +32,7 @@ form hash-table
       like text
   link values
     like list
-      like unknown
+      like v
 
   task is-full
     take self
@@ -318,7 +322,7 @@ form hash-table
   task set
     take self
     take key, like text
-    take value, like unknown
+    take value, like v
     have
       call is-above
         read self/capacity
@@ -401,7 +405,8 @@ form hash-table
       call is-equal
         read self/values/length
         read self/capacity
-    like unknown
+    like maybe
+      head v
     save i
       call seek
         read self
@@ -412,8 +417,10 @@ form hash-table
           read i
           code 0
       hook hold
-        send back, make void
-    send back, read self/values/{i}
+        send back, make none
+    send back
+      make some
+        bind value, read self/values/{i}
 
   task remove
     take self
@@ -468,16 +475,19 @@ form hash-table
       call decrement
         bind value, read self/size
 
-# a table with `capacity` slots, each starting empty. A capacity of zero or less made every later operation take
+# a table with `capacity` slots, each starting empty. `blank` fills the value of an empty slot and is never read back. A capacity of zero or less made every later operation take
 # a remainder by zero (`locate`, `probe`), which tier 0 found on 2026-10-02 with nothing written: the `have` below
 # is owed by every caller now. The `must` lines are the invariant every method relies on.
 task make-hash-table
+  head v
   take capacity, like number
+  take blank, like v
   have
     call is-above
       read capacity
       code 0
   like hash-table
+    head v
   must
     call is-equal
       read back/capacity
@@ -516,7 +526,7 @@ task make-hash-table
       call table/keys/push
         text <>
       call table/values/push
-        make void
+        read blank
       save j
         call increment
           bind value, read j

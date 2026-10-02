@@ -1,6 +1,6 @@
 
 # Well-known directories of the running environment: the user's home, the system temporary directory, and the
-# others each platform names. `get <home>` rather than a task per directory, because the set differs by platform
+# others each platform names. `known-directory <home>` rather than a task per directory, because the set differs by platform
 # and a name is data.
 #
 # WIRED 2026-09-02. This module DECLARED `get` and loaded nothing from 2026-03-05 until then, while all five
@@ -17,7 +17,8 @@
 load @term/base/code/native/{platform}/environment/path
   find read-path
 
-task get
+# RENAMED 2026-10-02 from `get` (base-v1-0038): a top-level `get` shadows list `get` in every build that loads this.
+task known-directory
   take kind, like text
   like text
   send back

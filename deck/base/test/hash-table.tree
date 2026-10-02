@@ -7,13 +7,14 @@
 load @term/base/code/native/shared/hash-table/quadratic-probing
   find make-hash-table
 
-load @term/base/code/void
-  find void
+load @term/base/code/maybe
+  find unwrap-or
 
 test hash-table-finds-what-was-set
   save table
     call make-hash-table
       code 8
+      code 0
   call set
     read table
     text <alpha>
@@ -36,15 +37,18 @@ test hash-table-finds-what-was-set
     code 5
   want hold
     call is-equal
-      call find
-        read table
-        text <gamma>
+      call unwrap-or
+        call find
+          read table
+          text <gamma>
+        code 99
       code 3
 
 test hash-table-counts-what-it-holds
   save table
     call make-hash-table
       code 8
+      code 0
   call set
     read table
     text <alpha>
@@ -66,6 +70,7 @@ test hash-table-overwrites-a-key
   save table
     call make-hash-table
       code 8
+      code 0
   call set
     read table
     text <alpha>
@@ -76,30 +81,36 @@ test hash-table-overwrites-a-key
     code 9
   want hold
     call is-equal
-      call find
-        read table
-        text <alpha>
+      call unwrap-or
+        call find
+          read table
+          text <alpha>
+        code 99
       code 9
 
 test hash-table-misses-an-absent-key
   save table
     call make-hash-table
       code 8
+      code 0
   call set
     read table
     text <alpha>
     code 1
   want hold
     call is-equal
-      call find
-        read table
-        text <omega>
-      make void
+      call unwrap-or
+        call find
+          read table
+          text <omega>
+        code 99
+      code 99
 
 test hash-table-forgets-a-removed-key
   save table
     call make-hash-table
       code 8
+      code 0
   call set
     read table
     text <alpha>
@@ -113,15 +124,18 @@ test hash-table-forgets-a-removed-key
     text <alpha>
   want hold
     call is-equal
-      call find
-        read table
-        text <alpha>
-      make void
+      call unwrap-or
+        call find
+          read table
+          text <alpha>
+        code 99
+      code 99
 
 test hash-table-keeps-the-others-after-a-remove
   save table
     call make-hash-table
       code 8
+      code 0
   call set
     read table
     text <alpha>
@@ -135,7 +149,9 @@ test hash-table-keeps-the-others-after-a-remove
     text <alpha>
   want hold
     call is-equal
-      call find
-        read table
-        text <beta>
+      call unwrap-or
+        call find
+          read table
+          text <beta>
+        code 99
       code 2

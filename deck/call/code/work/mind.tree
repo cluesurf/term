@@ -54,7 +54,7 @@ load @term/base/code/text
   find ends-with
 
 load @term/base/code/regex
-  find replace, name replace-pattern
+  find replace-matches, name replace-pattern
 
 dock load
   load <global:console>, name console

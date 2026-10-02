@@ -1,3 +1,8 @@
+note draft
+
+# SHELVED 2026-10-02 (base-v1-0019): a stub with no body. It declared tasks that bound nothing, so a call built clean and
+# threw `stub` at run time; out of the build until it has bodies.
+
 
 form state
   link input, like text

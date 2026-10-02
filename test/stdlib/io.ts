@@ -469,40 +469,40 @@ task red-lightness
 
 // base64 + hex text encodings, delegating to the host Buffer (round-trip + a known vector)
 const ENCODE = `load @term/base/code/text/base64
-  find encode
-  find decode
+  find encode-base64
+  find decode-base64
 
 task b64
   take m, like text
   like text
   send back
-    call encode
+    call encode-base64
       read m
 
 task un-b64
   take m, like text
   like text
   send back
-    call decode
+    call decode-base64
       read m
 `
 
 const HEXCODE = `load @term/base/code/text/hex
-  find encode
-  find decode
+  find encode-hex
+  find decode-hex
 
 task hexed
   take m, like text
   like text
   send back
-    call encode
+    call encode-hex
       read m
 
 task un-hexed
   take m, like text
   like text
   send back
-    call decode
+    call decode-hex
       read m
 `
 
@@ -722,8 +722,11 @@ task ranged
 // regex, delegating to the host engine via the regex shim (wraps new RegExp on node)
 const REGEX = `load @term/base/code/regex
   find matches
-  find replace
-  find find
+  find replace-matches
+  find find-match
+
+load @term/base/code/maybe
+  find maybe
 
 task is-digits
   take m, like text
@@ -737,7 +740,7 @@ task strip-vowels
   take m, like text
   like text
   send back
-    call replace
+    call replace-matches
       text <[aeiou]>
       read m
       text <*>
@@ -745,10 +748,16 @@ task strip-vowels
 task first-number
   take m, like text
   like text
-  send back
-    call find
+  save found
+    call find-match
       text <[0-9]+>
       read m
+  fork case, read found
+    case some
+      link hit
+      send back, read hit/text
+    case none
+      send back, text <>
 `
 
 // json: parse the host JSON to the opaque dynamic value, navigate it, read leaves; round-trip via stringify
@@ -1360,14 +1369,17 @@ task all
 
 // network/http: GET through the host fetch (a data: URL needs no server), reading status + body off the response
 const HTTP = `load @term/base/code/network/http
-  find get
+  find fetch
+
+load @term/base/code/hash
+  find get-or-default
 
 task fetch-body
   note async
   take url, like text
   like text
   save response
-    call get
+    call fetch
       read url
       wait true
   send back
@@ -1378,11 +1390,25 @@ task fetch-status
   take url, like text
   like number
   save response
-    call get
+    call fetch
       read url
       wait true
   send back
     read response/status
+
+task fetch-type
+  note async
+  take url, like text
+  like text
+  save response
+    call fetch
+      read url
+      wait true
+  send back
+    call get-or-default
+      read response/headers
+      text <content-type>
+      text <none>
 `
 
 // float: real floating-point math (host float library) + fractional division that does NOT truncate
@@ -1439,6 +1465,11 @@ async function main(): Promise<void> {
     'network/http: get reads the status',
     await ht.fetchStatus('data:text/plain,x'),
     200,
+  )
+  expect(
+    'network/http: the response carries its headers, by lower-case name',
+    await ht.fetchType('data:text/plain,x'),
+    'text/plain',
   )
 
   const dns = await loadProgram(DNS)
@@ -2253,7 +2284,7 @@ async function main(): Promise<void> {
     (() => {
       const r = regexFor('node')
 
-      return r.ok && r.typescript.includes('regex.matches')
+      return r.ok && r.typescript.includes('regex.search')
     })(),
     true,
   )
@@ -2262,7 +2293,7 @@ async function main(): Promise<void> {
     (() => {
       const r = regexFor('rust')
 
-      return r.ok && emitRust(r.program).includes('regex::matches')
+      return r.ok && emitRust(r.program).includes('regex::search')
     })(),
     true,
   )
@@ -2271,7 +2302,7 @@ async function main(): Promise<void> {
     (() => {
       const r = regexFor('swift')
 
-      return r.ok && emitSwift(r.program).includes('regex.matches')
+      return r.ok && emitSwift(r.program).includes('regex.search')
     })(),
     true,
   )
@@ -2280,7 +2311,7 @@ async function main(): Promise<void> {
     (() => {
       const r = regexFor('kotlin')
 
-      return r.ok && emitKotlin(r.program).includes('regex.matches')
+      return r.ok && emitKotlin(r.program).includes('regex.search')
     })(),
     true,
   )

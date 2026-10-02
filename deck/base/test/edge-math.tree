@@ -1,0 +1,116 @@
+# The math surface reads the same on every backend: the constants, the exponential and logarithm family, hyperbolic
+# trig, truncation, the float predicates and the least common multiple. Each float answer is compared as text, which
+# note/term/stdlib/semantics.md makes identical everywhere. Held by `pnpm term:base-gate`.
+
+load @term/base/code/float
+  find pi
+  find tau
+  find euler-number
+  find exponent
+  find logarithm-2
+  find logarithm-10
+  find hypotenuse
+  find hyperbolic-tangent
+  find truncate
+  find is-not-a-number
+  find is-infinite
+  find is-finite
+
+load @term/base/code/math
+  find least-common-multiple
+
+task show
+  take value, like float
+  like text
+  send back, text <{{value}}>
+
+test <pi and tau are the nearest doubles>
+  want hold
+    call and
+      call is-equal
+        call show
+          call pi
+        text <3.141592653589793>
+      call is-equal
+        call show
+          call tau
+        text <6.283185307179586>
+
+test <exponent of zero is one>
+  want hold
+    call is-equal
+      call show
+        call exponent, 0.0
+      text <1>
+
+test <logarithms of exact powers are exact>
+  want hold
+    call and
+      call is-equal
+        call show
+          call logarithm-2, 1024.0
+        text <10>
+      call is-equal
+        call show
+          call logarithm-10, 1000.0
+        text <3>
+
+test <hypotenuse of three and four is five>
+  want hold
+    call is-equal
+      call show
+        call hypotenuse
+          3.0
+          4.0
+      text <5>
+
+test <hyperbolic tangent of zero is zero>
+  want hold
+    call is-equal
+      call show
+        call hyperbolic-tangent, 0.0
+      text <0>
+
+test <truncate drops the fraction toward zero>
+  want hold
+    call is-equal
+      call show
+        call truncate, -2.75
+      text <-2>
+
+test <the float predicates tell NaN, infinity and a number apart>
+  save nan
+    call divide
+      0.0
+      0.0
+  save big
+    call divide
+      1.0
+      0.0
+  want hold
+    call and
+      call and
+        call is-not-a-number
+          read nan
+        call is-infinite
+          read big
+      call and
+        call is-finite, 1.5
+        call is-equal
+          call is-finite
+            read nan
+          false
+
+test <the least common multiple of four and six is twelve>
+  want hold
+    call and
+      call is-equal
+        call least-common-multiple
+          code 4
+          code 6
+        code 12
+      call is-equal
+        call least-common-multiple
+          code 0
+          code 9
+        code 0

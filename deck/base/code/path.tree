@@ -1,6 +1,15 @@
 
 # Filesystem path manipulation: join, directory, file name, file extension, and absoluteness. The per-env native implementation wraps the platform's own path library (node path, rust std::path, swift Foundation, kotlin java.io.File), selected at build time and hidden. The file extension carries its leading dot, an empty string when there is none.
 
+load @term/base/code/text
+  find split
+  find starts-with
+
+load @term/base/code/list
+  find list
+  find size
+  find get
+
 load @term/base/code/native/{platform}/path
   find do-join
   find do-directory
@@ -44,3 +53,215 @@ task is-absolute
   send back
     call do-is-absolute
       read target
+
+# The four below are pure Term over `/`, so a path means the same on every backend, including Windows, where the
+# host libraries would read `\` too (note/term/stdlib/semantics.md). A segment is a run between slashes.
+
+# the segments of a path once `.` and empty runs are dropped and each `..` has taken back the segment before it. A
+# relative path keeps the `..` it cannot take back; an absolute one drops them at the root
+task path-segments
+  take target, like text
+  like list
+    like text
+  save absolute
+    call starts-with
+      read target
+      text </>
+  save out
+    make list
+  walk list
+    call split
+      read target
+      text </>
+    hook next
+      take site, name segment
+      fork test
+        hook test
+          call or
+            call is-equal
+              read segment
+              text <>
+            call is-equal
+              read segment
+              text <.>
+        hook miss
+          fork test
+            hook test
+              call is-equal
+                read segment
+                text <..>
+            hook hold
+              save count
+                call size
+                  read out
+              fork test
+                hook test
+                  call and
+                    call is-above
+                      read count
+                      code 0
+                    call is-unequal
+                      call get
+                        read out
+                        call subtract
+                          read count
+                          code 1
+                      text <..>
+                hook hold
+                  call out/pop
+                hook miss
+                  fork test
+                    hook test
+                      read absolute
+                    hook miss
+                      call out/push
+                        read segment
+            hook miss
+              call out/push
+                read segment
+  send back, read out
+
+# segments laid out with slashes, led by one when the path is absolute; `.` for an empty relative path
+task path-of-segments
+  take segments
+    like list
+      like text
+  take absolute, like boolean
+  like text
+  save out, text <>
+  save first, true
+  walk list, read segments
+    hook next
+      take site, name segment
+      fork test
+        hook test
+          read first
+        hook hold
+          save out, read segment
+          save first, false
+        hook miss
+          save out, text <{{out}}/{{segment}}>
+  fork test
+    hook test
+      read absolute
+    hook hold
+      send back, text </{{out}}>
+  fork test
+    hook test
+      call is-equal
+        read out
+        text <>
+    hook hold
+      send back, text <.>
+  send back, read out
+
+# the shortest path naming the same place: `a/./b/../c/` is `a/c`, `//x` is `/x`, an empty path is `.`
+task normalize-path
+  take target, like text
+  like text
+  send back
+    call path-of-segments
+      call path-segments
+        read target
+      call starts-with
+        read target
+        text </>
+
+# `target` as seen from `base`: itself, normalized, when absolute, else the two joined and normalized
+task resolve-path
+  take base, like text
+  take target, like text
+  like text
+  fork test
+    hook test
+      call starts-with
+        read target
+        text </>
+    hook hold
+      send back
+        call normalize-path
+          read target
+  send back
+    call normalize-path
+      text <{{base}}/{{target}}>
+
+# the path that leads from `from` to `target`, both normalized first: `..` for each segment of `from` past the part
+# they share, then the rest of `target`. `.` when they are the same place
+task relative-path
+  take from, like text
+  take target, like text
+  like text
+  save a
+    call path-segments
+      read from
+  save b
+    call path-segments
+      read target
+  save shared, code 0
+  save more, true
+  walk test
+    hook test
+      call and
+        read more
+        call and
+          call is-below
+            read shared
+            call size
+              read a
+          call is-below
+            read shared
+            call size
+              read b
+    hook step
+      fork test
+        hook test
+          call is-equal
+            call get
+              read a
+              read shared
+            call get
+              read b
+              read shared
+        hook hold
+          save shared
+            call add
+              read shared
+              code 1
+        hook miss
+          save more, false
+  save out
+    make list
+  save k, read shared
+  walk test
+    hook test
+      call is-below
+        read k
+        call size
+          read a
+    hook step
+      call out/push
+        text <..>
+      save k
+        call add
+          read k
+          code 1
+  save k, read shared
+  walk test
+    hook test
+      call is-below
+        read k
+        call size
+          read b
+    hook step
+      call out/push
+        call get
+          read b
+          read k
+      save k
+        call add
+          read k
+          code 1
+  send back
+    call path-of-segments
+      read out
+      false

@@ -1,0 +1,33 @@
+# kotlin key derivation. Forwards to the linked crypto runtime shim (PBKDF2 and HKDF over HMAC-SHA256). Internal: reached
+# only through the public derive API.
+
+dock load
+  load <global:crypto>, name crypto
+
+task pbkdf2-sha256
+  note async
+  take password, like bytes
+  take salt, like bytes
+  take iterations, like number
+  take length, like number
+  like bytes
+  send back
+    call crypto/pbkdf2-sha256
+      read password
+      read salt
+      read iterations
+      read length
+
+task hkdf-sha256
+  note async
+  take secret, like bytes
+  take salt, like bytes
+  take info, like bytes
+  take length, like number
+  like bytes
+  send back
+    call crypto/hkdf-sha256
+      read secret
+      read salt
+      read info
+      read length

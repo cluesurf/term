@@ -26,7 +26,7 @@ load @term/base/code/environment
   find directory, name working-directory
 
 load @term/base/code/environment/path
-  find get
+  find known-directory
 
 # the directory under `.base`, scoped the way the packages are
 host home, text <@cluesurf/term>
@@ -62,7 +62,7 @@ task user-home
   send back
     call join
       call join
-        call get
+        call known-directory
           text <home>
         text <.base>
       read home
@@ -73,7 +73,7 @@ task legacy-user-home
   send back
     call join
       call join
-        call get
+        call known-directory
           text <home>
         text <.base>
       read legacy-home

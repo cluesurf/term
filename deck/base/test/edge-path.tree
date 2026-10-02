@@ -1,0 +1,80 @@
+# Paths read the same on every backend: normalize, resolve and relative are pure Term over `/`. Held by
+# `pnpm term:base-gate`.
+
+load @term/base/code/path
+  find normalize-path
+  find resolve-path
+  find relative-path
+  find path-segments
+
+load @term/base/code/list
+  find size
+
+test <normalize drops dot segments and takes back dot-dot>
+  want hold
+    call is-equal
+      call normalize-path, text <a/./b/../c/>
+      text <a/c>
+
+test <normalize collapses repeated slashes and keeps the root>
+  want hold
+    call is-equal
+      call normalize-path, text <//x///y>
+      text </x/y>
+
+test <normalize of an empty path is dot>
+  want hold
+    call is-equal
+      call normalize-path, text <>
+      text <.>
+
+test <a relative path keeps the dot-dot it cannot take back>
+  want hold
+    call is-equal
+      call normalize-path, text <../a/../../b>
+      text <../../b>
+
+test <an absolute path drops dot-dot at the root>
+  want hold
+    call is-equal
+      call normalize-path, text </../a>
+      text </a>
+
+test <resolve joins a relative path to its base>
+  want hold
+    call is-equal
+      call resolve-path
+        text </home/user>
+        text <../docs/./x>
+      text </home/docs/x>
+
+test <resolve keeps an absolute path>
+  want hold
+    call is-equal
+      call resolve-path
+        text </home/user>
+        text </etc/hosts>
+      text </etc/hosts>
+
+test <relative climbs out of what differs>
+  want hold
+    call is-equal
+      call relative-path
+        text </a/b/c>
+        text </a/d>
+      text <../../d>
+
+test <relative to the same place is dot>
+  want hold
+    call is-equal
+      call relative-path
+        text </a/b>
+        text </a/b/>
+      text <.>
+
+test <segments drop empty runs>
+  want hold
+    call is-equal
+      call size
+        call path-segments, text </a//b/>
+      code 2

@@ -5,7 +5,7 @@ dock load
   load <global:clock>, name clock
 
 load ./clock/now
-  find get
+  find clock-reading
 
 task delay
   note async
@@ -17,7 +17,7 @@ task delay
 
 task now
   send back
-    call get
+    call clock-reading
 
 # what the public `clock/now` reads: monotonic whole milliseconds, as on every backend
 # (note/term/stdlib/semantics.md)

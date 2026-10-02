@@ -1,8 +1,12 @@
-
-# Queue (FIFO), backed by the native array.
+# Queue (first in, first out). `front` is the position of the next item to leave: a dequeue moves it forward rather
+# than shifting every item down, and once the spent prefix is half the list the rest is copied to a fresh one, so each
+# operation is constant time on average. It used to shift a native array, which moves every item on each dequeue.
+# Build one with `make queue` and an empty `items` list; `front` begins at zero.
 
 load @term/base/code/list
   find list
+  find size
+  find get
 
 load @term/base/code/maybe
   find maybe
@@ -12,13 +16,13 @@ form queue
   link items
     like list
       like t
+  link front, like number
 
   task enqueue
     take self
     take item, like t
     like queue
-    call push
-      read self/items
+    call self/items/push
       read item
     send back, read self
 
@@ -28,29 +32,78 @@ form queue
       head t
     fork test
       hook test
-        call is-above
-          read self/items/length
-          code 0
+        call is-maximum
+          call size
+            read self/items
+          read self/front
       hook hold
-        send back
-          make some
-            bind value
-              call self/items/shift
-      hook miss
-        send back
-          make none
+        send back, make none
+    save item
+      call get
+        read self/items
+        read self/front
+    save self/front
+      call add
+        read self/front
+        code 1
+    # drop the spent prefix once it is half the list
+    fork test
+      hook test
+        call is-minimum
+          call multiply
+            read self/front
+            code 2
+          call size
+            read self/items
+      hook hold
+        save rest
+          make list
+        save k, read self/front
+        walk test
+          hook test
+            call is-below
+              read k
+              call size
+                read self/items
+          hook step
+            call rest/push
+              call get
+                read self/items
+                read k
+            save k
+              call add
+                read k
+                code 1
+        save self/items, read rest
+        save self/front, code 0
+    send back
+      make some
+        bind value, read item
 
   task peek
     take self
     like maybe
       head t
+    fork test
+      hook test
+        call is-maximum
+          call size
+            read self/items
+          read self/front
+      hook hold
+        send back, make none
     send back
-      call first
-        read self/items
+      make some
+        bind value
+          call get
+            read self/items
+            read self/front
 
   task size
     take self
     like number
     send back
-      call size
-        read self/items
+      call subtract
+        call size
+          read self/items
+        read self/front

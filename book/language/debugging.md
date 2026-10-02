@@ -9,9 +9,9 @@ Maps to: `console.log`, a linter, and a formatter.
 | Write | Means |
 | --- | --- |
 | `call info` / `call warn` / `call error` / `call debug` | log a message (from `@term/base/code/log`) |
-| `call write-line` / `call write-error` | print a raw line (from `@term/base/code/native/console`) |
-| `# lint off L0xx` | suppress one lint rule on the next definition |
-| `# text` | a comment, on its own line |
+| `call write-line` / `call write-error` | print a raw line (from `@term/base/code/native/{platform}/console`) |
+| `# lint off L0xx` | suppress one lint rule on the line below |
+| `# text` | a comment, on its own line or after code on a line |
 
 | Command | Does |
 | --- | --- |
@@ -53,7 +53,7 @@ task charge
 For raw output with no level prefix, drop to the native console:
 
 ```tree
-load @term/base/code/native/console
+load @term/base/code/native/{platform}/console
   find write-line
 
 task trace
@@ -102,19 +102,19 @@ term scan src/user.tree --back json
 
 Two tools clean up problems the type checker does not care about.
 
-`term lint` reports style and correctness issues: a redundant suffix on a form name, a task prefixed by its module, a dead branch. `--fix` applies the safe ones.
+`term lint` reports style and correctness issues: a branch whose condition is a constant (`L006`), a statement after `send back` that can never run, a name that is not kebab-case, a `save` that is never reassigned and should be a `host`. `--fix` applies the safe ones.
 
 ```bash
 term lint                # report problems
 term lint --fix          # apply safe autofixes
 ```
 
-When a lint warning is a false positive for your case, silence that one rule on the next definition with a comment. Prefer fixing the cause.
+When a lint warning is a false positive for your case, silence that one rule on the line below with a comment. Prefer fixing the cause. `L008` flags a native import whose alias is never used:
 
 ```tree
 # lint off L008
-load @term/base/code/clock
-  find now
+dock load
+  load <node:fs>, name fs
 ```
 
 `term form` rewrites files into the canonical layout: child order, indentation, spacing. Run it before committing. `--check` makes it a CI gate that writes nothing and reports which files differ.

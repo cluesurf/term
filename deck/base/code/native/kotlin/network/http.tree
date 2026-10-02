@@ -1,14 +1,14 @@
-# kotlin HTTP client. Forwards to the linked http runtime shim, which wraps the platform's HTTP library. Internal: reached only through the public http API.
+# kotlin HTTP client primitive. Internal: reached only through the public http API (network/http.tree), which builds
+# the response, orders its headers and raises `timeout` or `outage`, so every backend answers alike.
 
 load @term/base/code/hash
   find hash
 
-load @term/base/code/network/response
-  find http-response
-
 dock load
   load <global:http>, name http
 
+# `ok`, the status and the body, then each response header as a lower-case name and its value; or `timeout` or
+# `outage` and the host's own message
 task do-request
   note async
   take method, like text
@@ -18,11 +18,14 @@ task do-request
     like hash
       like text
       like text
-  like http-response
+  take timeout, like number
+  like list
+    like text
   send back
     call http/request
       read method
       read url
       read body
       read header
+      read timeout
       wait true

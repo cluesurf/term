@@ -2,6 +2,7 @@ note <Tests for the deque (double-ended queue). Push and pop at both ends; pops 
 
 load @term/base/code/list/deque
   find deque
+  find make-deque
 
 load @term/base/code/list
   find list
@@ -11,9 +12,7 @@ load @term/base/code/maybe
 
 test <push-back then pop-front gives FIFO order>
   save d
-    make deque
-      bind items
-        make list
+    call make-deque
   call push-back
     read d
     code 1
@@ -30,9 +29,7 @@ test <push-back then pop-front gives FIFO order>
 
 test <push-front then pop-front gives LIFO order>
   save d
-    make deque
-      bind items
-        make list
+    call make-deque
   call push-front
     read d
     code 1
@@ -49,9 +46,7 @@ test <push-front then pop-front gives LIFO order>
 
 test <pop-back removes from the back>
   save d
-    make deque
-      bind items
-        make list
+    call make-deque
   call push-back
     read d
     code 1
@@ -68,9 +63,7 @@ test <pop-back removes from the back>
 
 test <count reflects the number of items>
   save d
-    make deque
-      bind items
-        make list
+    call make-deque
   call push-back
     read d
     code 7
@@ -85,18 +78,14 @@ test <count reflects the number of items>
 
 test <a fresh deque is empty>
   save d
-    make deque
-      bind items
-        make list
+    call make-deque
   want hold
     call is-empty
       read d
 
 test <pop-front on an empty deque is none>
   save d
-    make deque
-      bind items
-        make list
+    call make-deque
   want hold
     call is-equal
       call unwrap-or
@@ -104,3 +93,66 @@ test <pop-front on an empty deque is none>
           read d
         code 99
       code 99
+
+# pushes at both ends with pops between, so the front wraps past the start of the ring and the ring grows three times;
+# draining from the front must give back exactly the order the pushes built (read off by hand: 1 to 19 pushed, two
+# popped after every third, so 1 to 12 are gone; then 23, 22, 21, 20 in front of 13 to 19)
+test <a deque that wraps and grows keeps its order>
+  save d
+    call make-deque
+  save k, code 1
+  walk test
+    hook test
+      call is-below
+        read k
+        code 20
+    hook step
+      call push-back
+        read d
+        read k
+      fork test
+        hook test
+          call is-equal
+            call modulo
+              read k
+              code 3
+            code 0
+        hook hold
+          call pop-front
+            read d
+          call pop-front
+            read d
+      save k
+        call add
+          read k
+          code 1
+  call push-front
+    read d
+    code 20
+  call push-front
+    read d
+    code 21
+  call push-front
+    read d
+    code 22
+  call push-front
+    read d
+    code 23
+  save seen, text <>
+  walk test
+    hook test
+      call is-above
+        call count
+          read d
+        code 0
+    hook step
+      save next
+        call unwrap-or
+          call pop-front
+            read d
+          code 0
+      save seen, text <{{seen}},{{next}}>
+  want hold
+    call is-equal
+      read seen
+      text <,23,22,21,20,13,14,15,16,17,18,19>

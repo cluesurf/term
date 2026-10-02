@@ -97,6 +97,10 @@ task load-config
 ## Reading into a form
 
 ```tree
+load @term/host/code/base
+  find read
+  find fill
+
 form service
   link env, like text
   link retries, like number
@@ -115,10 +119,17 @@ The `like` names the form and the compiler walks its fields: the result is a `se
 ## Checking a value against a shape
 
 ```tree
-save config
-  call fill
-    call read(read text)
-    call read(text <host env, \<text\>\nhost retries, \<number\>\nhost region, \<text?\>\n>)
+load @term/host/code/base
+  find read
+  find fill
+
+task check-config
+  take text, like text
+  like dynamic
+  send back
+    call fill
+      call read(read text)
+      call read(text <host env, \<text\>\nhost retries, \<number\>\nhost region, \<text?\>\n>)
 ```
 
 The shape is data too: each key names a kind (`<text>`, `<number>`, `<decimal>`, `<flag>`, `<blank>`, `<map>`, `<list>`, `<any>`), a `?` lets the key be absent, a nested map checks a nested map, a list holds one item shape. `fill` gives the value as a host value for the json module's accessors, or raises `data-mismatch` with `path` (`limits/burst`) and `reason` (`is text where number belongs`). `melt` takes a host value back to data.
@@ -126,17 +137,25 @@ The shape is data too: each key names a kind (`<text>`, `<number>`, `<decimal>`,
 ## Streams
 
 ```tree
-save reader
-  call make-reader
-save found
-  call feed(read reader, read line)
+load @term/host/code/base
+  find make-reader
+  find feed
+
+task read-one
+  take line, like text
+  save reader
+    call make-reader
+  save found
+    call feed
+      read reader
+      read line
 ```
 
 `feed` takes one compact line and gives `some` data or `none` (a blank line, a comment, a `t(` anchor line). A writer (`make-writer`, `emit`) sends a `t(` line the first time a value fuses an anchor. `read-lines` and `write-lines` do the same for a stream held as one text, and `term mold file --lines` prints a stream as the long form.
 
 ## The tools
 
-`term form` lays a data file out canonically and keeps its comments. `term lint` reports the grammar's rules (`L031`). `term look` lists the keys as paths. `term make` compiles it to a module. A `role.tree` in the project can name which files are data over what their content says.
+`term form` lays a data file out canonically and keeps its comments. `term lint` reports the grammar's rules (`L040`). `term look` lists the keys as paths. `term make` compiles it to a module. A `role.tree` in the project can name which files are data over what their content says.
 
 ## What it is not
 

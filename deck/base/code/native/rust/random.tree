@@ -4,7 +4,7 @@ dock load
   load <global:random>, name random
 
 task random-number
-  like number
+  like float
   send back
     call random/number
 

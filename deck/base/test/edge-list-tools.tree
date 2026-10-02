@@ -1,0 +1,249 @@
+# The list tools give the same answer on every backend: they are walks in Term. Held by `pnpm term:base-gate`.
+
+load @term/base/code/list
+  find list
+  find size
+  find join
+  find get
+  find zip
+  find enumerate
+  find chunk
+  find window
+  find group-by
+  find partition
+  find flat-map
+  find insert-at
+  find remove-at
+  find min-by
+  find max-by
+  find binary-search
+
+load @term/base/code/hash
+  find hash
+  find keys
+  find get-or-default
+
+load @term/base/code/pair
+  find pair
+
+load @term/base/code/ordering
+  find ordering
+  find from-numbers
+
+load @term/base/code/maybe
+  find unwrap-or
+
+task numbers
+  like list
+    like number
+  save out
+    make list
+  call out/push, code 3
+  call out/push, code 1
+  call out/push, code 4
+  call out/push, code 1
+  call out/push, code 5
+  send back, read out
+
+task is-odd
+  take n, like number
+  like boolean
+  send back
+    call is-equal
+      call modulo
+        read n
+        code 2
+      code 1
+
+task parity
+  take n, like number
+  like text
+  fork test
+    hook test
+      call is-odd
+        read n
+    hook hold
+      send back, text <odd>
+  send back, text <even>
+
+task twice
+  take n, like number
+  like list
+    like number
+  save out
+    make list
+  call out/push, read n
+  call out/push, read n
+  send back, read out
+
+test <zip stops at the shorter list>
+  save letters
+    make list
+  call letters/push, text <a>
+  call letters/push, text <b>
+  save zipped
+    call zip
+      call numbers
+      read letters
+  save second
+    call get
+      read zipped
+      code 1
+  want hold
+    call and
+      call is-equal
+        call size, read zipped
+        code 2
+      call is-equal
+        read second/second
+        text <b>
+
+test <enumerate counts from zero>
+  save numbered
+    call enumerate
+      call numbers
+  save last
+    call get
+      read numbered
+      code 4
+  want hold
+    call and
+      call is-equal
+        read last/first
+        code 4
+      call is-equal
+        read last/second
+        code 5
+
+test <chunk leaves a short last run>
+  save runs
+    call chunk
+      call numbers
+      code 2
+  want hold
+    call and
+      call is-equal
+        call size, read runs
+        code 3
+      call is-equal
+        call size
+          call get
+            read runs
+            code 2
+        code 1
+
+test <window gives one run per start>
+  want hold
+    call is-equal
+      call size
+        call window
+          call numbers
+          code 3
+      code 3
+
+test <group-by keeps first-seen key order>
+  save groups
+    call group-by
+      call numbers
+      read parity
+  want hold
+    call is-equal
+      call join
+        call keys, read groups
+        text <,>
+      text <odd,even>
+
+test <partition splits by the test>
+  save split
+    call partition
+      call numbers
+      read is-odd
+  want hold
+    call and
+      call is-equal
+        call size
+          call get
+            read split
+            code 0
+        code 4
+      call is-equal
+        call size
+          call get
+            read split
+            code 1
+        code 1
+
+test <flat-map joins each item's list>
+  want hold
+    call is-equal
+      call size
+        call flat-map
+          call numbers
+          read twice
+      code 10
+
+test <insert-at clamps past the end>
+  want hold
+    call is-equal
+      call join
+        call insert-at
+          call numbers
+          code 99
+          code 9
+        text <,>
+      text <3,1,4,1,5,9>
+
+test <remove-at leaves the list alone outside it>
+  want hold
+    call is-equal
+      call join
+        call remove-at
+          call numbers
+          code 7
+        text <,>
+      text <3,1,4,1,5>
+
+test <min-by and max-by take the first extreme>
+  want hold
+    call and
+      call is-equal
+        call unwrap-or
+          call min-by
+            call numbers
+            read from-numbers
+          code 0
+        code 1
+      call is-equal
+        call unwrap-or
+          call max-by
+            call numbers
+            read from-numbers
+          code 0
+        code 5
+
+test <binary-search finds the lowest equal position>
+  save sorted
+    make list
+  call sorted/push, code 1
+  call sorted/push, code 2
+  call sorted/push, code 2
+  call sorted/push, code 2
+  call sorted/push, code 7
+  want hold
+    call and
+      call is-equal
+        call unwrap-or
+          call binary-search
+            read sorted
+            code 2
+            read from-numbers
+          code 99
+        code 1
+      call is-equal
+        call unwrap-or
+          call binary-search
+            read sorted
+            code 5
+            read from-numbers
+          code 99
+        code 99

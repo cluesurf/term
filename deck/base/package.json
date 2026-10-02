@@ -1,16 +1,11 @@
 {
   "name": "@term/base",
-  "main": "./host",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.0.16",
+  "private": true,
   "scripts": {
     "make": "tsc && tsc-alias",
-    "scan": "concurrently --kill-others \"tsc -w\" \"tsc-alias -w\"",
-    "lint": "eslint --ext .ts ./make",
-    "lint:fix": "npm run lint -- --fix",
-    "test": "tsx make/test",
-    "test:fill": "tsx hack/look/test.ts",
-    "host": "pnpm make && npm publish --access=public"
+    "scan": "concurrently --kill-others \"tsc -w\" \"tsc-alias -w\""
   },
   "prettier": "@cluesurf/wash/flow.json",
   "devDependencies": {

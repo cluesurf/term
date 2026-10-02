@@ -1,11 +1,46 @@
+# Command-line arguments: declare a command's flags and arguments, then `parse` the words a program was given
+# (`process/current` `read` / `arguments`) into their values, or the errors a person should see. Pure Term, so a
+# command reads its arguments the same way on every backend (note/term/stdlib/semantics.md).
+#
+#   --name=value   --name value   a flag that takes a value
+#   --name         a flag of kind `boolean`: true          --no-name   false
+#   -n value       a flag by its short name                -abc        three short boolean flags
+#   --             every word after it is an argument, even one that starts with a dash
+#
+# Every value is text; a flag of kind `number` must read as a whole number. `parse` never throws: what is wrong is in
+# `errors`, in the order it was found, and `ok` is whether there is none. `help` lays out the usage. A command with
+# subcommands reads the first argument and parses the rest against that subcommand's schema.
+
+load @term/base/code/text
+  find starts-with
+  find substring
+  find index-of
+  find char-count
+
+load @term/base/code/list
+  find list
+  find size
+  find get
+  find contains
+
+load @term/base/code/hash
+  find hash
+  find has
+  find get-or-default
+
+load @term/base/code/text/number
+  find read-number
+
+load @term/base/code/maybe
+  find is-some
+
+load @term/base/code/text/unicode
+  find rune-to-text
 
 form schema
   link name, like text
   link description, like text
   link version, like text
-  link commands
-    like list
-      like unknown
   link flags
     like list
       like command-flag
@@ -16,10 +51,11 @@ form schema
 form command-flag
   link name, like text
   link short, like text
+  # `text`, `number` or `boolean`
   link kind, like text
   link description, like text
   link required, like boolean
-  link fallback
+  link fallback, like text
   link choices
     like list
       like text
@@ -28,15 +64,14 @@ form command-argument
   link name, like text
   link description, like text
   link required, like boolean
-  link fallback
+  link fallback, like text
 
-form result
+form parsed-command
   link ok, like boolean
-  link command, like text
   link flags
     like hash
       like text
-      like unknown
+      like text
   link arguments
     like list
       like text
@@ -44,43 +79,28 @@ form result
     like list
       like text
 
-task parse
-  take schema, like schema
-  take arguments
-    like list
-      like text
-    need false
-  like result
-
 task define
   take name, like text
   take
     description
     like text
-    need false
+    fall text <>
   take
     version
     like text
-    need false
-  take commands
-    like list
-      like unknown
-    need false
+    fall text <>
   take flags
     like list
       like command-flag
-    need false
   take arguments
     like list
       like command-argument
-    need false
   like schema
   send back
     make schema
       bind name, read name
       bind description, read description
       bind version, read version
-      bind commands, read commands
       bind flags, read flags
       bind arguments, read arguments
 
@@ -89,7 +109,7 @@ task flag
   take
     short
     like text
-    need false
+    fall text <>
   take
     kind
     like text
@@ -97,16 +117,18 @@ task flag
   take
     description
     like text
-    need false
+    fall text <>
   take
     required
     like boolean
     fall false
-  take fallback, need false
   take
-    choices
+    fallback
+    like text
+    fall text <>
+  take choices
     like list
-    need false
+      like text
   like command-flag
   send back
     make command-flag
@@ -123,12 +145,15 @@ task argument
   take
     description
     like text
-    need false
+    fall text <>
   take
     required
     like boolean
     fall true
-  take fallback, need false
+  take
+    fallback
+    like text
+    fall text <>
   like command-argument
   send back
     make command-argument
@@ -136,3 +161,538 @@ task argument
       bind description, read description
       bind required, read required
       bind fallback, read fallback
+
+# the position of the flag named `name` (long, or short when `short` is true) in the schema, or -1
+task flag-at
+  take schema, like schema
+  take name, like text
+  take short, like boolean
+  like number
+  save at, code 0
+  walk list, read schema/flags
+    hook next
+      take site, name each
+      fork test
+        hook test
+          call or
+            call and
+              call is-equal
+                read short
+                false
+              call is-equal
+                read each/name
+                read name
+            call and
+              read short
+              call is-equal
+                read each/short
+                read name
+        hook hold
+          send back, read at
+      save at
+        call add
+          read at
+          code 1
+  send back
+    call subtract
+      code 0
+      code 1
+
+# the errors a value gives for its flag: a number that does not read, a choice outside the list
+task flag-value-errors
+  take each, like command-flag
+  take value, like text
+  take errors
+    like list
+      like text
+  fork test
+    hook test
+      call and
+        call is-equal
+          read each/kind
+          text <number>
+        call is-equal
+          call is-some
+            call read-number
+              read value
+          false
+    hook hold
+      call errors/push
+        text <--{{each/name}} takes a number, not "{{value}}">
+  fork test
+    hook test
+      call and
+        call is-above
+          call size
+            read each/choices
+          code 0
+        call is-equal
+          call contains
+            read each/choices
+            read value
+          false
+    hook hold
+      call errors/push
+        text <--{{each/name}} is one of the listed choices, not "{{value}}">
+
+# the words a program was given, read against its schema
+task parse
+  take schema, like schema
+  take words
+    like list
+      like text
+  like parsed-command
+  save flags
+    make find
+  save positional
+    make list
+  save errors
+    make list
+  save count
+    call size
+      read words
+  save i, code 0
+  save rest, false
+  walk test
+    down
+      call subtract
+        read count
+        read i
+    hook test
+      call is-below
+        read i
+        read count
+    hook step
+      save word
+        call get
+          read words
+          read i
+      save i
+        call add
+          read i
+          code 1
+      fork test
+        hook test
+          call or
+            read rest
+            call or
+              call is-equal
+                call starts-with
+                  read word
+                  text <->
+                false
+              call is-equal
+                read word
+                text <->
+        hook hold
+          call positional/push
+            read word
+        hook miss
+          fork test
+            hook test
+              call is-equal
+                read word
+                text <-->
+            hook hold
+              save rest, true
+            hook miss
+              fork test
+                hook test
+                  call starts-with
+                    read word
+                    text <-->
+                hook hold
+                  save body
+                    call substring
+                      read word
+                      code 2
+                  save equals
+                    call index-of
+                      read body
+                      text <=>
+                  save name, read body
+                  save inline, text <>
+                  save has-inline, false
+                  fork test
+                    hook test
+                      call is-minimum
+                        read equals
+                        code 0
+                    hook hold
+                      save name
+                        call substring
+                          read body
+                          code 0
+                          read equals
+                      save inline
+                        call substring
+                          read body
+                          call add
+                            read equals
+                            code 1
+                      save has-inline, true
+                  save at
+                    call flag-at
+                      read schema
+                      read name
+                      false
+                  save negated, false
+                  fork test
+                    hook test
+                      call and
+                        call is-below
+                          read at
+                          code 0
+                        call starts-with
+                          read name
+                          text <no->
+                    hook hold
+                      save at
+                        call flag-at
+                          read schema
+                          call substring
+                            read name
+                            code 3
+                          false
+                      save negated, true
+                  fork test
+                    hook test
+                      call is-below
+                        read at
+                        code 0
+                    hook hold
+                      call errors/push
+                        text <--{{name}} is not a flag>
+                    hook miss
+                      save each
+                        call get
+                          read schema/flags
+                          read at
+                      fork test
+                        hook test
+                          call is-equal
+                            read each/kind
+                            text <boolean>
+                        hook hold
+                          save value, text <true>
+                          fork test
+                            hook test
+                              read negated
+                            hook hold
+                              save value, text <false>
+                          fork test
+                            hook test
+                              read has-inline
+                            hook hold
+                              save value, read inline
+                          call flags/set
+                            read each/name
+                            read value
+                        hook miss
+                          fork test
+                            hook test
+                              read has-inline
+                            hook hold
+                              call flag-value-errors
+                                read each
+                                read inline
+                                read errors
+                              call flags/set
+                                read each/name
+                                read inline
+                            hook miss
+                              fork test
+                                hook test
+                                  call is-below
+                                    read i
+                                    read count
+                                hook hold
+                                  save value
+                                    call get
+                                      read words
+                                      read i
+                                  save i
+                                    call add
+                                      read i
+                                      code 1
+                                  call flag-value-errors
+                                    read each
+                                    read value
+                                    read errors
+                                  call flags/set
+                                    read each/name
+                                    read value
+                                hook miss
+                                  call errors/push
+                                    text <--{{each/name}} needs a value>
+                hook miss
+                  # one or more short flags: -n value, or -abc for three booleans
+                  save shorts
+                    call substring
+                      read word
+                      code 1
+                  save letters
+                    call char-count
+                      read shorts
+                  save k, code 0
+                  walk test
+                    down
+                      call subtract
+                        read letters
+                        read k
+                    hook test
+                      call is-below
+                        read k
+                        read letters
+                    hook step
+                      save letter
+                        call substring
+                          read shorts
+                          read k
+                          call add
+                            read k
+                            code 1
+                      save k
+                        call add
+                          read k
+                          code 1
+                      save at
+                        call flag-at
+                          read schema
+                          read letter
+                          true
+                      fork test
+                        hook test
+                          call is-below
+                            read at
+                            code 0
+                        hook hold
+                          call errors/push
+                            text <-{{letter}} is not a flag>
+                        hook miss
+                          save each
+                            call get
+                              read schema/flags
+                              read at
+                          fork test
+                            hook test
+                              call is-equal
+                                read each/kind
+                                text <boolean>
+                            hook hold
+                              call flags/set
+                                read each/name
+                                text <true>
+                            hook miss
+                              fork test
+                                hook test
+                                  call and
+                                    call is-equal
+                                      read k
+                                      read letters
+                                    call is-below
+                                      read i
+                                      read count
+                                hook hold
+                                  save value
+                                    call get
+                                      read words
+                                      read i
+                                  save i
+                                    call add
+                                      read i
+                                      code 1
+                                  call flag-value-errors
+                                    read each
+                                    read value
+                                    read errors
+                                  call flags/set
+                                    read each/name
+                                    read value
+                                hook miss
+                                  call errors/push
+                                    text <-{{letter}} needs a value>
+  # flags left out: their fallback, or an error when they are required
+  walk list, read schema/flags
+    hook next
+      take site, name each
+      fork test
+        hook test
+          call has
+            read flags
+            read each/name
+        hook miss
+          fork test
+            hook test
+              read each/required
+            hook hold
+              call errors/push
+                text <--{{each/name}} is required>
+            hook miss
+              fork test
+                hook test
+                  call is-equal
+                    read each/kind
+                    text <boolean>
+                hook hold
+                  call flags/set
+                    read each/name
+                    text <false>
+                hook miss
+                  fork test
+                    hook test
+                      call is-above
+                        call char-count
+                          read each/fallback
+                        code 0
+                    hook hold
+                      call flags/set
+                        read each/name
+                        read each/fallback
+  # arguments: each declared one takes the next word, its fallback, or is reported missing; extra words are refused
+  save args
+    make list
+  save taken, code 0
+  walk list, read schema/arguments
+    hook next
+      take site, name each
+      fork test
+        hook test
+          call is-below
+            read taken
+            call size
+              read positional
+        hook hold
+          call args/push
+            call get
+              read positional
+              read taken
+          save taken
+            call add
+              read taken
+              code 1
+        hook miss
+          fork test
+            hook test
+              read each/required
+            hook hold
+              call errors/push
+                text <the argument {{each/name}} is missing>
+            hook miss
+              call args/push
+                read each/fallback
+  fork test
+    hook test
+      call is-below
+        read taken
+        call size
+          read positional
+    hook hold
+      save given
+        call size
+          read positional
+      save allowed
+        call size
+          read schema/arguments
+      call errors/push
+        text <{{given}} arguments were given and {{allowed}} are taken>
+  send back
+    make parsed-command
+      bind ok
+        call is-equal
+          call size
+            read errors
+          code 0
+      bind flags, read flags
+      bind arguments, read args
+      bind errors, read errors
+
+# the usage text: the name and version, the description, the arguments in order (an optional one in brackets), then
+# each flag with its short name, what it takes (`=number`), and its fallback
+task help
+  take schema, like schema
+  like text
+  save nl
+    call rune-to-text, code 10
+  save out, text <{{schema/name}}>
+  fork test
+    hook test
+      call is-above
+        call char-count
+          read schema/version
+        code 0
+    hook hold
+      save out, text <{{out}} {{schema/version}}>
+  fork test
+    hook test
+      call is-above
+        call char-count
+          read schema/description
+        code 0
+    hook hold
+      save out, text <{{out}}{{nl}}{{nl}}{{schema/description}}>
+  save usage, text <{{schema/name}}>
+  fork test
+    hook test
+      call is-above
+        call size
+          read schema/flags
+        code 0
+    hook hold
+      save usage, text <{{usage}} [flags]>
+  walk list, read schema/arguments
+    hook next
+      take site, name each
+      fork test
+        hook test
+          read each/required
+        hook hold
+          save usage, text <{{usage}} {{each/name}}>
+        hook miss
+          save usage, text <{{usage}} [{{each/name}}]>
+  save out, text <{{out}}{{nl}}{{nl}}usage: {{usage}}>
+  fork test
+    hook test
+      call is-above
+        call size
+          read schema/flags
+        code 0
+    hook hold
+      save out, text <{{out}}{{nl}}{{nl}}flags:>
+      walk list, read schema/flags
+        hook next
+          take site, name each
+          save line, text <  --{{each/name}}>
+          fork test
+            hook test
+              call is-above
+                call char-count
+                  read each/short
+                code 0
+            hook hold
+              save line, text <  -{{each/short}}, --{{each/name}}>
+          fork test
+            hook test
+              call is-unequal
+                read each/kind
+                text <boolean>
+            hook hold
+              save line, text <{{line}}={{each/kind}}>
+          fork test
+            hook test
+              call is-above
+                call char-count
+                  read each/description
+                code 0
+            hook hold
+              save line, text <{{line}}  {{each/description}}>
+          fork test
+            hook test
+              call is-above
+                call char-count
+                  read each/fallback
+                code 0
+            hook hold
+              save line, text <{{line}} (default {{each/fallback}})>
+          save out, text <{{out}}{{nl}}{{line}}>
+  send back, read out

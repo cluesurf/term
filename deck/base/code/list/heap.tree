@@ -1,5 +1,5 @@
 
-# Binary min-heap of numbers, backed by the native array. The smallest value is always at the root. `push` sifts up, `pop` removes the root and sifts down. Pops return `maybe`, so an empty heap is total. In-place index writes go through the native `splice`, which lowers on every backend (JS splice, rust Vec::splice, swift replaceSubrange, kotlin subList). The parent index `(i-1)/2` floors uniformly (integer division on the compiled backends; the native `at` / `splice` truncate the fractional index on node).
+# Binary heap of any item, ordered by `compare`: the item `compare` puts first is always at the root, so `from-numbers` makes a min-heap and its `reverse` a max-heap. `push` sifts up, `pop` removes the root and sifts down. Pops return `maybe`, so an empty heap is total. In-place index writes go through the native `set`, which lowers on every backend. The parent index `(i-1)/2` truncates, as integer division does everywhere. `make-heap` starts an empty one.
 
 load @term/base/code/list
   find list
@@ -8,17 +8,28 @@ load @term/base/code/list
 load @term/base/code/maybe
   find maybe
 
+load @term/base/code/ordering
+  find ordering
+  find is-greater
+  find is-less
+
 form heap
+  head t
   link items
     like list
-      like number
+      like t
+  link compare
+    like task
+      take left, like t
+      take right, like t
+      like ordering
 
   # write value at an index in place: the native `set`, which replaces and never grows the list (`splice` past the end
   # appended), and lowers on every backend. The index is inside the list, and the caller shows it
   task put
     take self
     take index, like number
-    take value, like number
+    take value, like t
     have
       call is-minimum
         read index
@@ -33,7 +44,7 @@ form heap
 
   task push
     take self
-    take value, like number
+    take value, like t
     like heap
     call push
       read self/items
@@ -65,13 +76,14 @@ form heap
             code 2
         fork test
           hook test
-            call is-above
-              call get
-                read self/items
-                read parent
-              call get
-                read self/items
-                read i
+            call is-greater
+              call self/compare
+                call get
+                  read self/items
+                  read parent
+                call get
+                  read self/items
+                  read i
           hook hold
             save tmp
               call get
@@ -95,7 +107,7 @@ form heap
   task peek
     take self
     like maybe
-      head number
+      head t
     fork test
       hook test
         call is-above
@@ -115,7 +127,7 @@ form heap
   task pop
     take self
     like maybe
-      head number
+      head t
     fork test
       hook test
         call is-equal
@@ -179,13 +191,14 @@ form heap
                       call is-below
                         read left
                         read self/items/length
-                      call is-below
-                        call get
-                          read self/items
-                          read left
-                        call get
-                          read self/items
-                          read small
+                      call is-less
+                        call self/compare
+                          call get
+                            read self/items
+                            read left
+                          call get
+                            read self/items
+                            read small
                   hook hold
                     save small, read left
                 fork test
@@ -194,13 +207,14 @@ form heap
                       call is-below
                         read right
                         read self/items/length
-                      call is-below
-                        call get
-                          read self/items
-                          read right
-                        call get
-                          read self/items
-                          read small
+                      call is-less
+                        call self/compare
+                          call get
+                            read self/items
+                            read right
+                          call get
+                            read self/items
+                            read small
                   hook hold
                     save small, read right
                 fork test
@@ -245,3 +259,19 @@ form heap
       call is-equal
         read self/items/length
         code 0
+
+# an empty heap ordered by `compare`
+task make-heap
+  head t
+  take compare
+    like task
+      take left, like t
+      take right, like t
+      like ordering
+  like heap
+    head t
+  send back
+    make heap
+      bind items
+        make list
+      bind compare, read compare

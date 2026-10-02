@@ -8,15 +8,41 @@ load @term/base/code/calendar
   find to-parts
   find date-parts
 
-# the zone's offset from UTC, in minutes, at the given instant (positive east of UTC; accounts for daylight saving)
-bind offset-minutes
+load @term/base/code/exception
+  find absence
+
+form zone-absence
+  like absence
+    bind note, <No such time zone>
+    link zone, like text
+
+# whether the platform's zone database names this zone
+bind is-known-zone
+  take zone, like text
+  like boolean
+  case node
+    text <(function () \{ try \{ new Intl.DateTimeFormat("en-US", \{ timeZone: $zone \}); return true \} catch \{ return false \} \})()>
+  case browser
+    text <(function () \{ try \{ new Intl.DateTimeFormat("en-US", \{ timeZone: $zone \}); return true \} catch \{ return false \} \})()>
+  case swift
+    load <Foundation>
+    text <(TimeZone(identifier: $zone) != nil)>
+  case kotlin
+    text <java.time.ZoneId.getAvailableZoneIds().contains($zone)>
+  case rust
+    text <$zone.parse::<chrono_tz::Tz>().is_ok()>
+
+# the zone's offset from UTC, in minutes, at the given instant (positive east of UTC; accounts for daylight saving), for
+# a zone `is-known-zone` has accepted. JavaScript formats the instant's wall-clock parts in the zone and subtracts:
+# parsing a locale string back into a Date, as it used to, lost the answer near a transition
+bind zone-offset-minutes
   take millis, like number
   take zone, like text
   like number
   case node
-    text <(new Date(new Date($millis).toLocaleString("en-US", \{ timeZone: $zone \})).getTime() - new Date(new Date($millis).toLocaleString("en-US", \{ timeZone: "UTC" \})).getTime()) / 60000>
+    text <(function () \{ const at = Math.floor($millis / 1000) * 1000; const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", \{ timeZone: $zone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" \}).formatToParts(new Date(at)).map(function (p) \{ return [p.type, p.value] \})); return Math.round((Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second)) - at) / 60000) \})()>
   case browser
-    text <(new Date(new Date($millis).toLocaleString("en-US", \{ timeZone: $zone \})).getTime() - new Date(new Date($millis).toLocaleString("en-US", \{ timeZone: "UTC" \})).getTime()) / 60000>
+    text <(function () \{ const at = Math.floor($millis / 1000) * 1000; const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", \{ timeZone: $zone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" \}).formatToParts(new Date(at)).map(function (p) \{ return [p.type, p.value] \})); return Math.round((Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second)) - at) / 60000) \})()>
   case swift
     load <Foundation>
     text <((TimeZone(identifier: $zone)?.secondsFromGMT(for: Date(timeIntervalSince1970: Double($millis) / 1000.0)) ?? 0) / 60)>
@@ -26,6 +52,25 @@ bind offset-minutes
     load <chrono::Offset>
     load <chrono::TimeZone>
     text <$zone.parse::<chrono_tz::Tz>().unwrap().offset_from_utc_datetime(&chrono::DateTime::from_timestamp_millis($millis).unwrap().naive_utc()).fix().local_minus_utc() as i64 / 60>
+
+# the zone's offset from UTC in minutes at the instant, the same on every backend; a zone the database does not name
+# raises `zone-absence` everywhere (it was 0 on Swift and an exception only on Kotlin)
+task offset-minutes
+  take millis, like number
+  take zone, like text
+  like number
+  fork test
+    hook test
+      call is-known-zone
+        read zone
+    hook miss
+      halt zone-absence
+        bind thing, text <time zone>
+        bind zone, read zone
+  send back
+    call zone-offset-minutes
+      read millis
+      read zone
 
 # the wall-clock instant in `zone`: the UTC timestamp shifted by the zone offset, so reading it as UTC yields local time
 task local-millis

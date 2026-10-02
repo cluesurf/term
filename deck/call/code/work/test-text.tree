@@ -21,7 +21,7 @@ load @term/base/code/text
   find starts-with
 
 load @term/base/code/regex
-  find replace, name replace-pattern
+  find replace-matches, name replace-pattern
 
 # how many spaces a line is indented by
 task indent-of

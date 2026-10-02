@@ -1712,14 +1712,21 @@ export function check(
       case 'instance':
       case 'native':
         break
-      case 'function': {
-        // a nested task is its own control-flow scope: an enclosing `walk` does not reach into it
-        const outer = loopDepth
-        loopDepth = 0
-        checkFunction(node)
-        loopDepth = outer
+      case 'function':
+        // A NAMED task inside a body is not a construct the language has. A task is defined at the top level of a
+        // file, and a local function is a closure: a `task` in VALUE position (`save twice` over `task`, or an
+        // argument). Only top-level tasks are registered as signatures, resolve never declares a nested name (so
+        // nothing could call it), and directly under a task the bridge refuses it the same way. This used to reach
+        // checkFunction with no signature and crash with `reading 'bounds'` (found by `term hunt`, 2026-10-02).
+        diagnostics.push(
+          diagnose('unexpected-node', {
+            file: currentFile,
+            span: node.span,
+            message: `\`task ${node.name.replace(/__\d+__\d+$/, '')}\` cannot be defined inside a body: a named task is defined at the top level of a file`,
+            hint: 'move it to the top level of the file and call it from here',
+          }),
+        )
         break
-      }
     }
   }
 
@@ -2631,7 +2638,14 @@ export function check(
       return
     }
 
-    const signature = functions.get(node.name)!
+    // only a top-level task is registered, so a definition with no signature has nothing to be checked against.
+    // The caller reports why (a nested task is refused in checkStatement); here it must not throw.
+    const signature = functions.get(node.name)
+
+    if (!signature) {
+      return
+    }
+
     // the generics of this function carry their declared `need` bounds, available to discharge bounded calls
     currentBounds = [...signature.bounds].map(([id, mask]) => ({
       variable: { kind: 'variable', id },
@@ -2639,8 +2653,13 @@ export function check(
     }))
 
     const env: Env = new Map(moduleEnv)
+    // a same-arity redefinition keeps the first signature, but a merged program can still hand this body more
+    // params than the kept signature has: type the extra ones from their own annotation rather than `undefined`
     node.params.forEach((param, i) =>
-      env.set(param.name, { vars: [], type: signature.params[i]! }),
+      env.set(param.name, {
+        vars: [],
+        type: signature.params[i] ?? seedType(param.type, new Map()),
+      }),
     )
     checkBody(node.body, env, signature.result)
   }

@@ -1,7 +1,14 @@
-note <Tests for the binary min-heap. push/pop keep the smallest value at the root regardless of insertion order.>
+note <Tests for the binary heap: with the number comparator push/pop keep the smallest value at the root regardless of insertion order; any comparator orders any item.>
 
 load @term/base/code/list/heap
   find heap
+  find make-heap
+
+load @term/base/code/ordering
+  find ordering
+  find from-numbers
+  find from-texts
+  find reverse
 
 load @term/base/code/list
   find list
@@ -11,9 +18,8 @@ load @term/base/code/maybe
 
 test <pop returns the smallest pushed value>
   save h
-    make heap
-      bind items
-        make list
+    call make-heap
+      read from-numbers
   call push
     read h
     code 5
@@ -36,9 +42,8 @@ test <pop returns the smallest pushed value>
 
 test <successive pops come out in sorted order>
   save h
-    make heap
-      bind items
-        make list
+    call make-heap
+      read from-numbers
   call push
     read h
     code 9
@@ -63,9 +68,8 @@ test <successive pops come out in sorted order>
 
 test <peek shows the minimum without removing it>
   save h
-    make heap
-      bind items
-        make list
+    call make-heap
+      read from-numbers
   call push
     read h
     code 6
@@ -82,9 +86,8 @@ test <peek shows the minimum without removing it>
 
 test <count tracks the size>
   save h
-    make heap
-      bind items
-        make list
+    call make-heap
+      read from-numbers
   call push
     read h
     code 1
@@ -102,18 +105,16 @@ test <count tracks the size>
 
 test <a fresh heap is empty>
   save h
-    make heap
-      bind items
-        make list
+    call make-heap
+      read from-numbers
   want hold
     call is-empty
       read h
 
 test <pop on an empty heap is none>
   save h
-    make heap
-      bind items
-        make list
+    call make-heap
+      read from-numbers
   want hold
     call is-equal
       call unwrap-or
@@ -121,3 +122,52 @@ test <pop on an empty heap is none>
           read h
         code 99
       code 99
+
+task larger-first
+  take left, like number
+  take right, like number
+  like ordering
+  send back
+    call reverse
+      call from-numbers
+        read left
+        read right
+
+test <a reversed comparator makes a max-heap>
+  save h
+    call make-heap
+      read larger-first
+  call push
+    read h
+    code 2
+  call push
+    read h
+    code 9
+  call push
+    read h
+    code 4
+  want hold
+    call is-equal
+      call unwrap-or
+        call pop
+          read h
+        code 0
+      code 9
+
+test <a heap of text pops by code point>
+  save h
+    call make-heap
+      read from-texts
+  call push
+    read h
+    text <pear>
+  call push
+    read h
+    text <apple>
+  want hold
+    call is-equal
+      call unwrap-or
+        call pop
+          read h
+        text <none>
+      text <apple>

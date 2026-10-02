@@ -1656,22 +1656,22 @@ const SHA256_ABC =
 
 // base64 / hex / hmac through the public interfaces, forwarding to each target's shim (prelude auto-collected)
 const BASE64_PROG = `load @term/base/code/text/base64
-  find encode
+  find encode-base64
 
 task compute
   like text
   send back
-    call encode
+    call encode-base64
       text <hello>
 `
 
 const HEX_PROG = `load @term/base/code/text/hex
-  find encode
+  find encode-hex
 
 task compute
   like text
   send back
-    call encode
+    call encode-hex
       text <hi>
 `
 

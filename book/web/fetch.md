@@ -1,6 +1,6 @@
 # Fetch
 
-Loading remote data is an async [call](../language/async.md) whose result you hold in a [signal](state.md). A request is in one of three states: loading, done, or failed. A [view](components.md) reads the state and renders the matching branch. The request is a call to `@term/base/code/network/http`, and its answer is an `http-response` with a `status` and a `body`.
+Loading remote data is an async [call](../language/async.md) whose result you hold in a [signal](state.md). A request is in one of three states: loading, done, or failed. A [view](components.md) reads the state and renders the matching branch. The request is a call to `@term/base/code/network/http`, and its answer is an `http-response` with a `status`, a `body` and `headers` (lower-case names, in code point order). A request waits 30,000 milliseconds unless given a `timeout`, then raises `timeout`; a server that cannot be reached raises `outage`. Any status is an answer, not a raise.
 
 Maps to: a hand-written `fetch` plus `useState`. There is no query layer, cache, or retry on top of it yet.
 
@@ -8,7 +8,7 @@ Maps to: a hand-written `fetch` plus `useState`. There is no query layer, cache,
 
 | Piece | How |
 | --- | --- |
-| Issue a request | `call get` with the URL, and `wait true` under the call |
+| Issue a request | `call fetch` with the URL, and `wait true` under the call |
 | Mark the loader | `note async` on the task that makes the request |
 | Hold the result | a [signal](state.md) of the body, and one of the status |
 | Loading, done, failed | a `fork test` on the status signal |
@@ -23,7 +23,7 @@ A loader is an async task. It writes a loading state, awaits the request, then w
 
 ```tree
 load @term/base/code/network/http
-  find get
+  find fetch
 
 load @term/site/code/view/reactive
   find signal
@@ -37,7 +37,7 @@ task load-users
     bind self, read status
     bind value, text <loading>
   save answer
-    call get
+    call fetch
       text </api/users>
       wait true
   fork test
@@ -109,14 +109,14 @@ Build the URL from props or signals before the call.
 
 ```tree
 load @term/base/code/network/http
-  find get
+  find fetch
 
 task load-user
   take user-id, like text
   like text
   note async
   save answer
-    call get
+    call fetch
       text </api/users/{{user-id}}>
       wait true
   send back, read answer/body
@@ -161,7 +161,7 @@ Pass headers, for example a bearer token, as a `hash` of text to text.
 
 ```tree
 load @term/base/code/network/http
-  find get
+  find fetch
 
 task load-protected
   take token, like text
@@ -173,7 +173,7 @@ task load-protected
     text <authorization>
     text <Bearer {{token}}>
   save answer
-    call get
+    call fetch
       text </api/protected>
       read header
       wait true

@@ -84,6 +84,15 @@ const crypto = (() => {
       }
       return out
     },
+    // PBKDF2 and HKDF over HMAC-SHA256, through Web Crypto's deriveBits (asynchronous, as every Web Crypto call is)
+    pbkdf2Sha256: async (password, salt, iterations, length) => {
+      const key = await globalThis.crypto.subtle.importKey('raw', password, 'PBKDF2', false, ['deriveBits'])
+      return new Uint8Array(await globalThis.crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: Math.max(iterations, 1) }, key, length * 8))
+    },
+    hkdfSha256: async (secret, salt, info, length) => {
+      const key = await globalThis.crypto.subtle.importKey('raw', secret, 'HKDF', false, ['deriveBits'])
+      return new Uint8Array(await globalThis.crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: salt.length ? salt : new Uint8Array(32), info }, key, length * 8))
+    },
     // equal without leaking where they differ: every byte is read whatever the earlier ones held. A length difference
     // is answered at once, as everywhere (a length is not the secret)
     equalSecret: (a, b) => {

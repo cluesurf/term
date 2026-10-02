@@ -246,14 +246,14 @@ task factorial
 
 ```tree
 load @term/base/code/network/http
-  find get
+  find fetch
 
 task load-page
   note async
   take url, like text
   like text
   save answer
-    call get
+    call fetch
       read url
       wait true
   send back, read answer/body
