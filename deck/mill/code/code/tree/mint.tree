@@ -7,7 +7,7 @@ load @term/mill/code/code/task/mint
 load @term/mill/code/code/tool/flow/mint
   find flow
 
-load @term/seed/code/lang
+load @term/base/code/lang
   find code-tree
   find code-tree-take
   find code-tree-body

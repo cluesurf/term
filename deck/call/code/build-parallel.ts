@@ -99,12 +99,20 @@ type Reply = {
   isCss?: boolean
   output?: string
   error?: string
+  openClaims?: string[]
+  obligations?: { total: number; proven: number }
 }
 
 export function compileProjectParallel(
   root: string,
   options?: { concurrency?: number; env?: string; platform?: string },
-): Promise<{ compiled: number; failed: number; errors: string[] }> {
+): Promise<{
+  compiled: number
+  failed: number
+  errors: string[]
+  open: string[]
+  obligations: { total: number; proven: number }
+}> {
   // the SAME selection the sequential build makes. A build targets one platform, and the
   // other platforms' native trees are not compiled: without this filter the pool picks up
   // every `native/<other>` tree and fails on code that was never meant to build here.
@@ -113,7 +121,13 @@ export function compileProjectParallel(
   const files = findTreeFiles(root, [], platform)
 
   if (files.length === 0) {
-    return Promise.resolve({ compiled: 0, failed: 0, errors: [] })
+    return Promise.resolve({
+      compiled: 0,
+      failed: 0,
+      errors: [],
+      open: [],
+      obligations: { total: 0, proven: 0 },
+    })
   }
 
   const size = Math.max(
@@ -144,10 +158,19 @@ export function compileProjectParallel(
   let compiled = 0
   let failed = 0
   const errors: string[] = []
+  const open = new Set<string>()
+  const obligations = { total: 0, proven: 0 }
   let next = 0
   let done = 0
 
   const write = (reply: Reply): void => {
+    for (const claim of reply.openClaims ?? []) {
+      open.add(claim)
+    }
+
+    obligations.total += reply.obligations?.total ?? 0
+    obligations.proven += reply.obligations?.proven ?? 0
+
     if (reply.ok) {
       const outPath = path.join(
         root,
@@ -209,5 +232,11 @@ export function compileProjectParallel(
 
   return run
     .then(() => Promise.all(workers.map(worker => worker.terminate())))
-    .then(() => ({ compiled, failed, errors }))
+    .then(() => ({
+      compiled,
+      failed,
+      errors,
+      open: [...open].sort(),
+      obligations,
+    }))
 }

@@ -1,8 +1,0 @@
-
-load @term/seed/code/process
-  find child
-
-task connect
-  note async
-  take from, like child
-  take to, like child

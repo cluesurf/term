@@ -11,8 +11,8 @@
 //
 // See note/library/base/design/content-types.md.
 
-import { changeHunks, tokenize, detokenize } from '@term/base/code/text/diff'
-import type { ChangeHunk } from '@term/base/code/text/diff'
+import { changeHunks, tokenize, detokenize } from '@cluesurf/save/text/diff'
+import type { ChangeHunk } from '@cluesurf/save/text/diff'
 
 import { hashObject } from './hash'
 

@@ -1,0 +1,128 @@
+
+dock load
+  load <node:fs/promises>, name fs
+
+load @term/base/code/native/shared/test/snapshot
+  find resolve
+  find serialize
+  find deserialize
+
+load @term/base/code/native/shared/test/context
+  find get-context
+  find fail
+
+load @term/base/code/native/shared/test
+  find make-failure
+
+load @term/base/code/native/shared/test/compare
+  find deep-equal
+
+task match
+  note async
+  take value
+  take name, like text
+  take
+    format
+    like text
+    fall text <json>
+
+  save path
+    call resolve
+      bind name, read name
+      bind format, read format
+
+  save exists, true
+  save raw, text <>
+  call fs/access
+    wait true
+    bind path, read path
+    halt kink
+      save exists, false
+
+  fork test
+    hook test, read exists
+    hook miss
+      save dir
+        call resolve
+          bind name, text <>
+          bind format, read format
+      call fs/mkdir
+        wait true
+        bind path, text <.seed/snapshot>
+        bind options
+          make object
+            bind recursive, true
+        halt kink
+      save data
+        call serialize
+          bind value, read value
+          bind format, read format
+      call fs/write-file
+        wait true
+        bind path, read path
+        bind data, read data
+        bind encoding, text <utf8>
+      send back
+
+  save raw
+    call fs/read-file
+      wait true
+      bind path, read path
+      bind encoding, text <utf8>
+
+  save stored
+    call deserialize
+      bind raw, read raw
+      bind format, read format
+
+  save eq
+    call deep-equal
+      bind a, read value
+      bind b, read stored
+
+  fork test
+    hook test, read eq
+    hook miss
+      save ctx
+        call get-context
+      call fail
+        bind ctx, read ctx
+        bind failure
+          call make-failure
+            bind name, read ctx/name
+            bind message, text <Snapshot mismatch>
+            bind expected, read stored
+            bind actual, read value
+
+task update
+  note async
+  take value
+  take name, like text
+  take
+    format
+    like text
+    fall text <json>
+
+  save path
+    call resolve
+      bind name, read name
+      bind format, read format
+
+  call fs/mkdir
+    wait true
+    bind path, text <.seed/snapshot>
+    bind options
+      make object
+        bind recursive, true
+    halt kink
+
+  save data
+    call serialize
+      bind value, read value
+      bind format, read format
+
+  call fs/write-file
+    wait true
+    bind path, read path
+    bind data, read data
+    bind encoding, text <utf8>

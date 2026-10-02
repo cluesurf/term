@@ -1,5 +1,5 @@
 // The @term/feed package on the native backends: hex, json, gzip and three flat OTF tables (head/hhea/maxp),
-// plus each dialect's @term/seed closure, compiled for Rust, Swift and Kotlin, built with the real toolchain, and
+// plus each dialect's @term/base closure, compiled for Rust, Swift and Kotlin, built with the real toolchain, and
 // run against fixed fixtures matching deck/feed/test/*.tree's own expectations. A backend whose toolchain is not
 // installed is skipped, never failed. Adapted directly from host-native.ts, whose compiler-API plumbing
 // (parse/mill/resolve/check/emit) is package-agnostic. Run: npx tsx test/compile/feed-native.ts
@@ -57,7 +57,7 @@ function have(tool: string): boolean {
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-const PACKS: Record<string, string> = { seed: join(TERM, 'deck/seed'), feed: join(TERM, 'deck/feed') }
+const PACKS: Record<string, string> = { seed: join(TERM, 'deck/base'), feed: join(TERM, 'deck/feed') }
 
 // the stdlib and the package by name, and relative loads from the file that makes them
 const resolver = (path: string, from: string): Source | undefined => {
@@ -221,7 +221,7 @@ const OTF_HEAD: Suite = {
   id: 'otf-head',
   label: 'otf head',
   root: 'round-otf-head',
-  entry: `load @term/seed/code/list
+  entry: `load @term/base/code/list
   find size
 
 load @term/feed/code/base
@@ -274,7 +274,7 @@ const OTF_HHEA: Suite = {
   id: 'otf-hhea',
   label: 'otf hhea',
   root: 'round-otf-hhea',
-  entry: `load @term/seed/code/list
+  entry: `load @term/base/code/list
   find size
 
 load @term/feed/code/base
@@ -323,7 +323,7 @@ const OTF_MAXP: Suite = {
   id: 'otf-maxp',
   label: 'otf maxp',
   root: 'round-otf-maxp',
-  entry: `load @term/seed/code/list
+  entry: `load @term/base/code/list
   find size
 
 load @term/feed/code/base
@@ -373,11 +373,11 @@ const OTF_OS2: Suite = {
   id: 'otf-os2',
   label: 'otf os2',
   root: 'round-otf-os2',
-  entry: `load @term/seed/code/list
+  entry: `load @term/base/code/list
   find push
   find size
 
-load @term/seed/code/maybe
+load @term/base/code/maybe
   find none
 
 load @term/feed/code/base
@@ -485,7 +485,7 @@ const OTF_LOCA: Suite = {
   id: 'otf-loca',
   label: 'otf loca',
   root: 'round-otf-loca',
-  entry: `load @term/seed/code/list
+  entry: `load @term/base/code/list
   find push
   find get
   find size
@@ -534,7 +534,7 @@ const OTF_GLYF: Suite = {
   id: 'otf-glyf',
   label: 'otf glyf',
   root: 'round-otf-glyf',
-  entry: `load @term/seed/code/list
+  entry: `load @term/base/code/list
   find push
   find get
   find size
@@ -624,7 +624,7 @@ const OTF_CMAP: Suite = {
   id: 'otf-cmap',
   label: 'otf cmap',
   root: 'round-otf-cmap',
-  entry: `load @term/seed/code/list
+  entry: `load @term/base/code/list
   find get
   find size
 

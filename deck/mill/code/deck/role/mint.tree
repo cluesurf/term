@@ -1,5 +1,5 @@
 
-load @term/seed/code/deck
+load @term/base/code/deck
   find deck-role
   find deck-take
   find deck-miss

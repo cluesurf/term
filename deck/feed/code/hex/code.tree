@@ -3,20 +3,20 @@
 # mirrored. Input is `text`, not a byte cursor — hex digits are already characters, so the stdlib's own `char-at` /
 # `char-code-at` read them directly, no UTF-8 decode step needed. See note/term/feed/05-parser-and-mill.md.
 
-load @term/seed/code/boolean
+load @term/base/code/boolean
   find and
 
-load @term/seed/code/text
+load @term/base/code/text
   find char-at
   find char-code-at
 
-load @term/seed/code/text/string
+load @term/base/code/text/string
   find concat
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
 
-load @term/seed/code/bit
+load @term/base/code/bit
   find shift-left
   find shift-right
   find bitwise-and

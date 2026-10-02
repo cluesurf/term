@@ -27,7 +27,7 @@ The rules in one breath:
 `note async` sits with the other configuration children of a `task`, before the parameters and return type.
 
 ```tree
-load @cluesurf/seed/code/native/file
+load @term/base/code/native/file
   find read-file
 
 task read
@@ -121,7 +121,7 @@ task kick-off
 To run tasks concurrently and join them, spawn each and wait for all. The standard `task` library gives you `spawn` and `gather`.
 
 ```tree
-load @cluesurf/seed/code/task
+load @term/base/code/task
   find gather
 
 task read-all

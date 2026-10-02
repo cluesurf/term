@@ -1,6 +1,6 @@
 # The cursor and writer against each other. Run: term test, from deck/feed.
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
 
 load ../code/base

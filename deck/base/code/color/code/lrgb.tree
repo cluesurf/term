@@ -1,0 +1,20 @@
+load @term/base/code/color/rgb
+  find rgb-color
+
+load @term/base/code/mixin/access
+  find access
+
+form lrgb
+  fuse access, term r
+  fuse access, term g
+  fuse access, term b
+  fuse access, term alpha
+
+  task convert-to-rgb
+    like rgb-color
+
+form channel
+  case r
+  case g
+  case b
+  case alpha

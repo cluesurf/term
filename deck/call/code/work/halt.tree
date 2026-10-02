@@ -21,7 +21,7 @@ load @term/call/code/work/tint
 #
 # Ported from deck/call/code/halt.ts (cli-in-term-0004).
 
-load @term/seed/code/text
+load @term/base/code/text
   find split
   find contains
   find trim

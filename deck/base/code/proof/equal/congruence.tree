@@ -1,0 +1,40 @@
+load @term/base/code/proof/equal
+  find equal
+
+# a function sends equal values to equal values
+rule congruence
+  head a
+  head b
+  take f
+    like task
+      take value, like a
+      like b
+  take x, like a
+  take y, like a
+  take proof
+    like equal a
+      head
+        read x
+      head
+        read y
+  like equal b
+    head
+      call f
+        read x
+    head
+      call f
+        read y
+
+task congruence
+  take f
+  take x
+  take y
+  take proof
+  fork case, read proof
+    case refl
+      link c
+      send back
+        make equal/refl
+          bind c
+            call f
+              read c

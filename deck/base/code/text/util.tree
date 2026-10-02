@@ -1,0 +1,120 @@
+# Text utilities built on the string primitives: `join` concatenates a list of strings with a separator, `count-occurrences` counts non-overlapping matches of a substring. Pure (over `concat` / `index-of`), so they lower to every backend.
+
+load @term/base/code/text/string
+  find concat
+
+load @term/base/code/text
+  find index-of
+  find char-at
+  find substring
+  find contains
+
+load @term/base/code/list
+  find list
+
+# join the items into one string, placing the separator between each
+task join
+  take items, like list
+  take separator, like text
+  like text
+  save out, text <>
+  save first, true
+  walk list
+    read items
+    hook next
+      take site, name item
+      fork test
+        hook test
+          read first
+        hook hold
+          save out, read item
+          save first, false
+        hook miss
+          save out
+            call concat
+              call concat
+                read out
+                read separator
+              read item
+  send back, read out
+
+# count how many non-overlapping times `part` occurs in `input`
+task count-occurrences
+  take input, like text
+  take part, like text
+  like number
+  save total, code 0
+  save from, code 0
+  walk test
+    hook test
+      true
+    hook step
+      save found
+        call index-of
+          read input
+          read part
+          read from
+      fork test
+        hook test
+          call is-below
+            read found
+            code 0
+        hook hold
+          halt
+        hook miss
+          save total
+            call add
+              read total
+              code 1
+          save from
+            call add
+              read found
+              read part/length
+  send back, read total
+
+# strip any leading and trailing characters that appear in `chars`
+task trim-characters
+  take input, like text
+  take chars, like text
+  like text
+  save start, code 0
+  save end, read input/length
+  walk test
+    hook test
+      call and
+        call is-below
+          read start
+          read end
+        call contains
+          read chars
+          call char-at
+            read input
+            read start
+    hook step
+      save start
+        call add
+          read start
+          code 1
+  walk test
+    hook test
+      call and
+        call is-below
+          read start
+          read end
+        call contains
+          read chars
+          call char-at
+            read input
+            call subtract
+              read end
+              code 1
+    hook step
+      save end
+        call subtract
+          read end
+          code 1
+  send back
+    call substring
+      read input
+      read start
+      read end

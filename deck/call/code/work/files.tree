@@ -14,21 +14,21 @@
 #
 # This is the Term port of deck/call/code/files.ts (cli-in-term-0003).
 
-load @term/seed/code/path
+load @term/base/code/path
   find join
 
-load @term/seed/code/file
+load @term/base/code/file
   find read, name read-file
 
-load @term/seed/code/file/directory
+load @term/base/code/file/directory
   find walk, name walk-directory
   find exists, name directory-exists
 
-load @term/seed/code/file/metadata
+load @term/base/code/file/metadata
   find is-directory
   find is-file
 
-load @term/seed/code/text
+load @term/base/code/text
   find contains
   find ends-with
   find substring
@@ -38,7 +38,7 @@ load @term/seed/code/text
 
 # `link` is where `term link` puts a DEPENDENCY's source. Walking into it means formatting, linting and timing
 # another package's files, which is never what a command run in this project was asked to do: the three
-# `deck/zone/link/@term/seed/...` entries in `term form deck --check` were @term/seed's own files reported twice.
+# `deck/zone/link/@term/base/...` entries in `term form deck --check` were @term/base's own files reported twice.
 task is-skipped
   take name, like text
   like boolean

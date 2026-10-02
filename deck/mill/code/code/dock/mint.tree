@@ -11,10 +11,10 @@ load @term/mill/code/code/take/mint
   find take
 
 
-# Builder for the dock (routing + CLI) DSL: map parsed slots onto the dock AST forms in @term/seed/code/dock.
+# Builder for the dock (routing + CLI) DSL: map parsed slots onto the dock AST forms in @term/base/code/dock.
 # Handlers (`call`) build the clean seed-call value form. Shared builders (take, bind, seed) come from the code mills.
 
-load @term/seed/code/lang
+load @term/base/code/lang
   find code-dock
   find dock-task
   find seed-call

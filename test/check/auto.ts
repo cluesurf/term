@@ -74,7 +74,7 @@ rule use-auto
       make succ
         bind prior
           read a
-  auto
+  seek
 `),
 )
 
@@ -93,7 +93,7 @@ rule use-auto-wrong
             read a
             make zero
       read a
-  auto
+  seek
 `),
 )
 

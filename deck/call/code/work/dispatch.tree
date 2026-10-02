@@ -23,7 +23,7 @@
 #
 # Ported from deck/call/code/hook-dispatch.ts (cli-in-term-0004).
 
-load @term/seed/code/text
+load @term/base/code/text
   find starts-with
   find substring
   find char-count

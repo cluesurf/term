@@ -7,7 +7,7 @@
  * valid Seed code. Spec in -> verified, compilable Seed function out.
  * This is the codegen system the verification results feed.
  *
- * Needs the install resolver (the emitted code loads @cluesurf/seed/
+ * Needs the install resolver (the emitted code loads @term/base/
  * code/math), so run from the seed install dir.
  */
 

@@ -574,6 +574,11 @@ export async function callBoot(input: {
   /** arguments forwarded to a command-line program (an entry whose
    * top level declares `hook` commands). Ignored for servers. */
   args?: string[]
+  /** write a command-line program's runnable bundle (`app.mjs`, `dock.mjs`,
+   * `run.mjs`) into this directory and stop, instead of running it. The
+   * bundle is anchored at itself rather than at this machine's project, so
+   * it runs wherever it is copied: this is how a Term CLI ships to npm. */
+  out?: string
 }): Promise<void> {
   logStep('Booting app...')
 
@@ -728,6 +733,18 @@ export async function callBoot(input: {
 
       const source = `${prelude}\n${result.typescript}`
 
+      // a bundle written with `--out` ships, so it cannot name this machine's project: its `require` is anchored at
+      // the bundle's own file, and a package it needs resolves through the dependencies of whatever package carries it
+      const anchor = input.out
+        ? 'import.meta.url'
+        : JSON.stringify(path.join(projectRoot, 'index.js'))
+
+      if (input.out && !cli) {
+        logFail('--out writes a command-line program, and this entry declares no `hook` commands')
+
+        return null
+      }
+
       const bundleConfig = {
         bundle: true,
         format: 'esm' as const,
@@ -757,9 +774,7 @@ export async function callBoot(input: {
                 // resolves through the project's dependencies.
                 js:
                   `import { createRequire as __createRequire } from 'node:module'\n` +
-                  `const require = __createRequire(${JSON.stringify(
-                    path.join(projectRoot, 'index.js'),
-                  )})`,
+                  `const require = __createRequire(${anchor})`,
               },
             }),
       }
@@ -776,31 +791,36 @@ export async function callBoot(input: {
         ].join('\n'),
       )
 
-      const out = path.join(projectRoot, '.base/@cluesurf/term', 'boot', key)
+      // the boot cache always holds the bundler's input, `app.ts`. The bundle itself goes there too, unless `--out`
+      // names a directory for it, which then holds only what runs: `app.mjs`, `dock.mjs` and `run.mjs`
+      const cached = path.join(projectRoot, '.base/@cluesurf/term', 'boot', key)
+      const out = input.out ? path.resolve(cwd, input.out) : cached
       const bundle = path.join(out, 'app.mjs')
+      const shown = input.out
+        ? path.relative(cwd, out) || '.'
+        : `.base/@cluesurf/term/boot/${key.slice(0, 8)}`
 
-      if (existsSync(bundle)) {
-        logGood(
-          `Cached ${path.relative(cwd, entry)} (.base/@cluesurf/term/boot/${key.slice(0, 8)})`,
-        )
+      // an `--out` directory is always rewritten: it is somebody's published copy, not a cache keyed by its input
+      if (!input.out && existsSync(bundle)) {
+        logGood(`Cached ${path.relative(cwd, entry)} (${shown})`)
       } else {
+        mkdirSync(cached, { recursive: true })
         mkdirSync(out, { recursive: true })
-        writeFileSync(path.join(out, 'app.ts'), source)
+        writeFileSync(path.join(cached, 'app.ts'), source)
         buildSync({
-          entryPoints: [path.join(out, 'app.ts')],
+          entryPoints: [path.join(cached, 'app.ts')],
           outfile: bundle,
           ...bundleConfig,
         })
-        logGood(
-          `Built ${path.relative(cwd, entry)} -> .base/@cluesurf/term/boot/${key.slice(0, 8)}`,
-        )
+        logGood(`Built ${path.relative(cwd, entry)} -> ${shown}`)
       }
 
       // link the CLI install's node_modules next to the bundle so ESM resolves the external bare specifiers
       const bundleModules = path.join(out, 'node_modules')
       const installModules = path.join(installRoot, 'node_modules')
 
-      if (!existsSync(bundleModules) && existsSync(installModules)) {
+      // not for `--out`: a shipped bundle resolves through the package that carries it
+      if (!input.out && !existsSync(bundleModules) && existsSync(installModules)) {
         try {
           symlinkSync(installModules, bundleModules, 'dir')
         } catch {
@@ -884,6 +904,13 @@ export async function callBoot(input: {
     }
 
     const runPath = built.run
+
+    // `--out`: the bundle is the product. Nothing runs.
+    if (input.out) {
+      logGood(`Wrote ${path.relative(cwd, path.dirname(runPath)) || '.'}/run.mjs, app.mjs and dock.mjs`)
+
+      return
+    }
 
     // a command-line program runs ONCE with the forwarded arguments and
     // exits with the command's own code. No port, no watcher, no server

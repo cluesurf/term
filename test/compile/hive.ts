@@ -24,11 +24,11 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const SOURCE = `load @term/seed/code/exception
+const SOURCE = `load @term/base/code/exception
   find exception
   find absence
 
-load @term/seed/code/hive
+load @term/base/code/hive
   find hive-wake
   find hive-tell
   find hive-roll
@@ -110,7 +110,7 @@ async function main(): Promise<void> {
 
   const ts = result.typescript
   ok('the wake chain is emitted', ts.includes('export function wakeHive()'))
-  ok('the chain wakes the stdlib deck', ts.includes('hiveWake("@term/seed"'))
+  ok('the chain wakes the stdlib deck', ts.includes('hiveWake("@term/base"'))
   ok('the chain hooks raises into the hive', ts.includes('__termRaise'))
 
   const dir = mkdtempSync(join(tmpdir(), 'term-hive-'))

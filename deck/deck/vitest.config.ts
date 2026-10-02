@@ -18,10 +18,11 @@ export default defineConfig({
       // resolves its sibling compiler exactly as the parent tsconfig does. There is no
       // cycle: the compiler does not import the package manager.
       '@term/make': path.resolve(__dirname, '../make'),
-      // the package manager is built ON @term/base: content addressing, the prolly
+      // the package manager is built ON @cluesurf/save: content addressing, the prolly
       // tree, chunk / object / ref stores, commits, sync. It used to reimplement all
-      // of that in code/object/.
-      '@term/base': path.resolve(__dirname, '../base'),
+      // of that in code/object/. save lives in mesh/deck/save, outside this repository,
+      // and is resolved from its source here until @term/deck takes it from npm.
+      '@cluesurf/save': path.resolve(__dirname, '../../../../../../mesh/deck/save/code'),
     },
   },
 })

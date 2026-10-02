@@ -1,7 +1,7 @@
 /**
  * A Postgres engine for the CLI, loaded only if it is asked for.
  *
- * `@term/base` is transport-free and driver-free on purpose, and that is why a projection
+ * `@cluesurf/save` is transport-free and driver-free on purpose, and that is why a projection
  * could be described from the command line and never written: the package that knows about
  * databases lives in mesh, which is an application rather than a tool anyone can install.
  *
@@ -20,7 +20,7 @@
  * than a second projector.
  */
 
-import type { Engine, Transaction } from '@term/base/code/project/projector'
+import type { Engine, Transaction } from '@cluesurf/save/project/projector'
 
 /** What `pg` gives us, narrowed to what an engine needs. */
 type Client = {

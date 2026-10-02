@@ -283,7 +283,7 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
   )
   const roleFile = parse({
     file: 'role-base.tree',
-    text: readFileSync(join(TERM, 'deck/seed/role/base.tree'), 'utf8'),
+    text: readFileSync(join(TERM, 'deck/base/role/base.tree'), 'utf8'),
   })
 
   if (roleFile.ok) {
@@ -316,8 +316,8 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
   )
 
   const want: Record<string, string[]> = {
-    'deck/seed/code/test/mint/ansi.tree': ['make-ansi-text-from-zone'],
-    'deck/seed/code/test/view/tint.tree': ['gray', 'green', 'red', 'test-case', 'side'],
+    'deck/base/code/test/mint/ansi.tree': ['make-ansi-text-from-zone'],
+    'deck/base/code/test/view/tint.tree': ['gray', 'green', 'red', 'test-case', 'side'],
   }
 
   for (const [file, names] of Object.entries(want)) {
@@ -516,10 +516,10 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
       version: 1,
       decks: [
         {
-          name: '@term/seed',
+          name: '@term/base',
           code: { major: 0, minor: 0, patch: 16, wild: false },
           hash: 'kvmtnhbs-rzdxfwlc-mnbdtkhs-fvzxcwlr-kvmtnhbs-rzdxfwlc-mnbdtkhs-fvzxcwlr',
-          site: 'link/@term/seed',
+          site: 'link/@term/base',
           link: [{ name: '@term/bind', code: '0.0.x' }],
         },
         {

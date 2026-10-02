@@ -13,6 +13,10 @@ load @term/mill/code/code/take/mint
 load @term/mill/code/code/tool/flow/mint
   find flow
 
+load @term/mill/code/code/must/mint
+  find must
+  find down
+
 mint walk
   case mode
     site mode
@@ -26,6 +30,10 @@ mint walk
     site take
   case flow, mint flow
     site flow
+  case must
+    site must
+  case down
+    site down
   hook make
     make walk
       bind mode, read mode
@@ -34,6 +42,8 @@ mint walk
       bind hook, read hook
       bind take, read take
       bind flow, read flow
+      bind must, read must
+      bind down, read down
 
 mint walk-hook
   case name

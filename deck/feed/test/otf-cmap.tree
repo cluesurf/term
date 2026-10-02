@@ -2,7 +2,7 @@
 # group. Run: term test, from deck/feed. Proves mine at (offset relative to the cmap table's own start) composed
 # with a format-discriminated union (04-otf-case-study.md).
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
   find get
 

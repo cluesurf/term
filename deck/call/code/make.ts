@@ -70,7 +70,7 @@ function isDraftTree(file: string): boolean {
 }
 
 // is this file a package MANIFEST (a `deck @scope/name` statement), as opposed to a code module that merely shares
-// the name? Parsed, never matched: deck/seed/code/deck.tree is a module, and telling them apart by filename skipped
+// the name? Parsed, never matched: deck/base/code/deck.tree is a module, and telling them apart by filename skipped
 // the entire stdlib.
 function isPackageManifest(file: string): boolean {
   return existsSync(file) && manifestNameOf(file) !== undefined
@@ -160,8 +160,8 @@ export function findTreeFiles(
       // names. The same files compile clean from the term root, which is how test/site/{serve,router,blog}.ts build.
       //
       // It has to be a MANIFEST, not merely a file called deck.tree. The stdlib has a code module at
-      // deck/seed/code/deck.tree (`load ./text ...`, the manifest's own shape as Term), so a filename test skipped
-      // the whole of deck/seed/code — 803 files, the entire stdlib — and the build cheerfully reported success on
+      // deck/base/code/deck.tree (`load ./text ...`, the manifest's own shape as Term), so a filename test skipped
+      // the whole of deck/base/code — 803 files, the entire stdlib — and the build cheerfully reported success on
       // the 20 that were left. manifestNameOf parses it and answers only for a real `deck @scope/name`.
       if (isPackageManifest(path.join(full, 'deck.tree'))) {
         continue
@@ -175,7 +175,7 @@ export function findTreeFiles(
       // root manifest happened to compile clean because its heads (`deck`, `load`, `bear`) are also code heads, so
       // the rule looked like it worked. The manifest grammar is checked where it is read, not here.
       //
-      // Again: MANIFEST, not filename. deck/seed/code/deck.tree is an ordinary stdlib module.
+      // Again: MANIFEST, not filename. deck/base/code/deck.tree is an ordinary stdlib module.
       if (entry === 'deck.tree' && isPackageManifest(full)) {
         continue
       }
@@ -190,7 +190,7 @@ export function findTreeFiles(
 
       // the LOCKFILE is data the package manager writes, not Term code. `lock <1>` is not a statement, so before
       // this a project failed to build with `the name "lock" is not defined` the moment any dependency verb ran.
-      // Content, not filename: deck/seed/code/task/lock.tree is an ordinary module.
+      // Content, not filename: deck/base/code/task/lock.tree is an ordinary module.
       if (entry === 'lock.tree' && isLockfileAt(full)) {
         continue
       }
@@ -531,8 +531,11 @@ export function compileProject(
   // the claims this project states that nobody has proven: every `rule` carrying `note open`. Reported on the
   // build line so an open claim is visible rather than silent. See note/term/project/law-proof-gate.md.
   open: string[]
+  // tier 0 over the project's own tasks: obligations written and proven. `term hold` holds the rest to hold.json.
+  obligations: { total: number; proven: number }
 } {
   const files = findTreeFiles(root, [], platform)
+  const obligations = { total: 0, proven: 0 }
   const resolve = projectResolver(root)
   const deckOf = projectDeckOf()
   const roleOf = projectRoleOf(root)
@@ -626,6 +629,9 @@ export function compileProject(
       open.add(claim)
     }
 
+    obligations.total += result.obligations?.total ?? 0
+    obligations.proven += result.obligations?.proven ?? 0
+
     // a look stylesheet emits CSS, not TypeScript: write it to a sibling `.css` under host/
     const isCss = typeof result.css === 'string'
     const outPath = path.join(
@@ -654,7 +660,14 @@ export function compileProject(
     }
   }
 
-  return { compiled, written, failed, errors, open: [...open].sort() }
+  return {
+    compiled,
+    written,
+    failed,
+    errors,
+    open: [...open].sort(),
+    obligations,
+  }
 }
 
 // Separate compilation for the whole project (`term make --separate`): every module of every entry's closure is
@@ -921,7 +934,7 @@ export async function callMake(input: {
   // compile the .tree files even when package.json carries a `make` script.
   //
   // A package.json `make` script normally REPLACES the .tree build entirely, which is right when the script IS the
-  // build, and a blind spot when the package has both: @term/seed's script builds its 62 TypeScript runtime shims
+  // build, and a blind spot when the package has both: @term/base's script builds its 62 TypeScript runtime shims
   // while 825 .tree files sat uncompiled by anything, and nothing said so. This flag asks for the .tree half, and
   // task/term/build-all.ts uses it so no package can hide behind a script again.
   trees?: boolean
@@ -979,6 +992,8 @@ export async function callMake(input: {
         failed: number
         errors: string[]
         written?: number
+        open?: string[]
+        obligations?: { total: number; proven: number }
       }
 
       if (input.separate) {
@@ -1042,6 +1057,23 @@ export async function callMake(input: {
             `${openClaims.length} claim${
               openClaims.length === 1 ? '' : 's'
             } open: ${openClaims.join(', ')}`,
+          )
+        }
+
+        // TIER 0, counted on every build: what the project's tasks are proven free of with nothing written. The
+        // build never fails on it; `term hold` is the gate, against hold.json. note/term/proof-by-default/.
+        const obligations =
+          'obligations' in result &&
+          result.obligations &&
+          typeof result.obligations === 'object'
+            ? (result.obligations as { total: number; proven: number })
+            : undefined
+
+        if (obligations && obligations.total > 0) {
+          console.log(
+            fade(
+              `  tier 0: ${obligations.proven} of ${obligations.total} obligations proven (list reads in bounds, no division by zero). \`term hold\` gates the rest`,
+            ),
           )
         }
 

@@ -11,7 +11,7 @@
 //   warm   7.27s
 //   cold/warm 1.48x
 //
-// It builds a COPY of the stdlib in a temporary directory rather than `deck/seed` itself, and points
+// It builds a COPY of the stdlib in a temporary directory rather than `deck/base` itself, and points
 // TERM_CACHE_HOME at a fresh dir, so both cache levels start genuinely empty. Measuring in place would mean moving
 // the real project's cache aside, and `pnpm term:test` runs suites CONCURRENTLY: another suite building the stdlib
 // at that moment would see the cache vanish under it. Nothing the user owns is touched.
@@ -26,7 +26,7 @@ import { join } from 'node:path'
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const LINE = join(TERM, 'host/line.js')
-const SEED = join(TERM, 'deck/seed')
+const SEED = join(TERM, 'deck/base')
 
 // warm must be at least this much faster than cold. The measured ratio was 1.48x; 1.20 is clear of noise, and a
 // cache that stopped working entirely would sit at 1.0.

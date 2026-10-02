@@ -140,7 +140,7 @@ const taken: StreamResult[] = []
 walkGroups(
   {
     file: 'x.tree',
-    text: 'load @term/seed/code/list\n  find get\n\ntask a\n  call b\n\ntask c\n  call d\n',
+    text: 'load @term/base/code/list\n  find get\n\ntask a\n  call b\n\ntask c\n  call d\n',
   },
   result => {
     taken.push(result)

@@ -1,7 +1,7 @@
 load @term/mill/code/code/like/mint
   find like
 
-load @term/seed/code/lang
+load @term/base/code/lang
   find code-slot
 
 mint slot, like code-slot

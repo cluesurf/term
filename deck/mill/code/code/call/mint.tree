@@ -19,7 +19,7 @@ load @term/mill/code/code/seed/mint
 load @term/mill/code/code/wait/mint
   find wait
 
-load @term/seed/code/lang
+load @term/base/code/lang
   find code-call
 
 mint call, like code-call

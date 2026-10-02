@@ -33,7 +33,7 @@ mine hold-claim
         site step
 
 # One step of a proof INSIDE A RULE. Unlike the steps under a `hold`, which may be headed by anything, a rule
-# reads only these ten words as tactics and passes silently over any other child, so this rule is anchored on
+# reads only these ten words (all from hold/base/terms.json) as tactics and passes silently over any other child, so this rule is anchored on
 # them. Anchoring also keeps it from shadowing the value alternative that follows it, which an open head would.
 mine rule-step
   mine any
@@ -109,7 +109,9 @@ mine rule-step
       mine list
         mine form, like proof
           site child
-    mine term, term auto
+    # `seek`: a depth-bounded search over proven lemmas. It was `auto` until 2026-10-02, a head outside
+    # hold/base/terms.json (proof-by-default-0021).
+    mine term, term seek
       site head
       mine maybe
         mine word

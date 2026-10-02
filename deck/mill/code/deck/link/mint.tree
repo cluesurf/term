@@ -1,5 +1,5 @@
 
-load @term/seed/code/deck
+load @term/base/code/deck
   find deck-link
   find deck-term
   find deck-part

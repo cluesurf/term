@@ -25,7 +25,7 @@ load @term/call/code/work/tint
 load @term/call/code/work/files
   find walk-trees
 
-load @term/seed/code/file
+load @term/base/code/file
   find read, name read-file
   find write, name write-file
 

@@ -134,23 +134,72 @@ matching, loops, traits, templates, modules, and more),
 ## Packages
 
 This repository is a monorepo. Each part of the ecosystem is a deck (a
-package) under `deck/`, and the decks reference each other by name
-(`@cluesurf/<deck>/code/...`), linked locally through `term link`.
+package) under `deck/`. A deck's name comes from the `deck <name>` line
+in its own `deck.tree`, not from `package.json`, and the decks import
+each other by that name (`@term/base/code/list`), linked locally through
+`term link`.
 
-| Deck                                                      | Purpose                                                                                   |
-| --------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| [`@cluesurf/make`](./deck/make)                           | The compiler: parse, mill, resolve, check, emit                                           |
-| [`@cluesurf/call`](./deck/call)                           | The CLI: `term make`, `term test`, `term serve`, and more                                 |
-| [`@cluesurf/flow`](./deck/flow)                           | The language server (LSP over stdio)                                                      |
-| [`@cluesurf/deck`](./deck/deck)                           | The package manager: install, link, lockfile, store                                       |
-| [`@cluesurf/seed`](./deck/base)                           | The standard library, written in `.tree`                                                  |
-| [`@cluesurf/site`](./deck/site)                           | App framework: reactive zones, DOM, render runtime                                        |
-| [`@cluesurf/term`](./deck/term)                           | The 4-letter term vocabulary that backs the DSLs                                          |
-| [`@cluesurf/form`](https://github.com/cluesurf/form.tree) | Math and physics as kernel-proven `.tree` proofs (algebra, quantum, geometry, relativity) |
+The compiler, CLI, language server and package manager are written in
+TypeScript (under each deck's `code/`). The standard library, the app
+framework and everything else are written in `.tree` and compiled by the
+compiler itself.
 
-The compiler, CLI, and language server are written in TypeScript (under
-each deck's `code/`). The standard library, site framework, and terms
-are written in `.tree` and compiled by the compiler itself.
+## Finding your way around
+
+```
+.
+├── deck/                 every package
+│   ├── make/             @term/make   the compiler (TypeScript)
+│   │   └── code/
+│   │       ├── parser/   .tree text to a generic tree, and diagnostic codes
+│   │       ├── compile/  mill to typed AST, then one emitter per backend
+│   │       │             (typescript.ts, rust.ts, kotlin.ts, swift.ts, wgsl.ts)
+│   │       ├── check/    type inference, the kernel, the prover, contracts
+│   │       ├── lint/     lint rules
+│   │       └── format/   the formatter
+│   ├── mill/             @term/mill   the DSL grammars, one mine.tree and
+│   │   └── code/<name>/  mint.tree per dialect (code, view, host, zone, ...)
+│   ├── call/             @term/call   the CLI, built to host/line.js
+│   │   └── code/         line.ts is the entry, make.ts the build driver,
+│   │                     test.ts the test runner, hold.ts the proof gate
+│   ├── flow/             @term/flow   the language server
+│   ├── deck/             @term/deck   the package manager
+│   ├── base/             @term/base   the standard library, all .tree
+│   │   ├── code/         one file per type (list.tree, text.tree, ...)
+│   │   │   ├── mask/     traits
+│   │   │   ├── proof/    equality and proof lemmas
+│   │   │   └── native/   per-platform impls (node, browser, rust, swift, kotlin, shared)
+│   │   ├── test/         stdlib tests
+│   │   └── hold.json     the proof baseline `term hold` reads
+│   ├── site/             @term/site   app framework: DOM, http, graphics
+│   ├── face/             @term/face   headless UI components
+│   ├── bind/             @term/bind   typed platform bindings, the largest deck
+│   ├── host/             @term/host   the data dialect, read at run time
+│   ├── feed/             @term/feed   text and binary format grammars
+│   ├── cask/             @term/cask   native app shell: window, WebView, bridge
+│   ├── scan/             @term/scan   dependency and advisory scanning
+│   └── test/             @term/test   fuzzing, benchmarks, model checking
+├── book/                 the language guide, one cheatsheet page per topic
+├── test/                 the TypeScript suites, by area (parser/, check/,
+│                         compile/, call/, native/, ...)
+├── host/line.js          the built CLI. Rebuild it after editing any .ts
+├── link/                 locally linked decks
+└── deck.tree             this workspace's own declaration
+```
+
+Where to start digging:
+
+| you want | open |
+| --- | --- |
+| what a keyword means | `book/`, then the dialect in `deck/mill/code/` |
+| why a file fails to compile | `deck/make/code/check/` |
+| what a backend emits | `deck/make/code/compile/<target>.ts` |
+| what a CLI command does | `deck/call/code/line.ts`, then the file it dispatches to |
+| a stdlib type or task | `deck/base/code/<name>.tree` |
+| the tests for any of it | `test/<area>/` |
+
+Design notes, plans and the roadmap live outside this tree, in the
+parent repository's `note/term/`.
 
 ## How It Works
 

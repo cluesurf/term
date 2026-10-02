@@ -1,0 +1,26 @@
+load @term/mill/code/code/seed/mint
+  find seed
+
+# The binds for a contract's three sites. A site with a `mine` half and no `mint` bind parses and then vanishes
+# with no error, so the two land together. See mine.tree beside this file.
+
+mint task-have
+  case seed
+    site seed
+  hook make
+    make task-have
+      bind seed, read seed
+
+mint must
+  case seed
+    site seed
+  hook make
+    make must
+      bind seed, read seed
+
+mint down
+  case seed
+    site seed
+  hook make
+    make down
+      bind seed, read seed

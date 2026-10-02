@@ -11,10 +11,10 @@ load @term/cask/code/cask
 load @term/site/code/http/local
   find ask
 
-load @term/seed/code/file
+load @term/base/code/file
   find read
 
-load @term/seed/code/text
+load @term/base/code/text
   find trim
 
 # what the driver writes into <bundle>/smoke.txt

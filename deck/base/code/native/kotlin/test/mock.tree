@@ -1,0 +1,44 @@
+
+load @term/base/code/native/shared/test/mock
+  find make-mock, name shared-make
+  find read, name shared-read
+  find reset, name shared-reset
+load @term/base/code/test/mock
+  find mock
+
+task make
+  take returns
+    like unknown
+    need false
+  take
+    handler
+    like task
+    need false
+  like mock
+
+  send back
+    call shared-make
+      bind returns, read returns
+      bind handler, read handler
+
+task replace
+  take target, like task
+  take mock, like mock
+
+task read
+  take mock, like mock
+  take
+    field
+    like text
+    fall text <calls>
+
+  send back
+    call shared-read
+      bind mock, read mock
+      bind field, read field
+
+task reset
+  take mock, like mock
+
+  call shared-reset
+    bind mock, read mock

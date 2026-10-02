@@ -8,7 +8,7 @@ note draft
 #
 # https://ghostscript.com/~robin/pdf_reference17.pdf
 
-load @term/seed/code/content/pdf
+load @term/base/code/content/pdf
   take form document
   take form reference
 

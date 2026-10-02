@@ -8,7 +8,7 @@
 # small task instead, `send back` inside the fork, called from a plain `save` at the point of use — the shape
 # ../../../gzip/code.tree's `read-gzip-extra` already used successfully.
 
-load @term/seed/code/maybe
+load @term/base/code/maybe
   find maybe
   find some
   find none

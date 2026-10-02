@@ -1,0 +1,76 @@
+# kotlin HTTP server: forwards to the linked `server` runtime shim, which is Ktor's CIO engine. Internal: reached
+# only through the public network/server API.
+#
+# `serve` blocks for the life of the process; `start` binds and answers without blocking, and `stop` shuts the
+# engine down. See note/term/stdlib/native-async-file-and-server.md.
+
+dock type
+  load <runtime.Running>, name server-dock
+
+dock load
+  load <global:server>, name runtime
+
+load @term/base/code/network/server/request
+  find request
+
+load @term/base/code/network/server/response
+  find response
+
+load @term/base/code/network/server
+  find server
+
+# run the server on (host, port), blocking for the life of the process (the entry point of a server binary)
+task do-serve
+  take port, like size
+  take host, like text
+  take handler
+    like task
+      take request, like request
+      like response
+  take secure, like boolean
+  take certificate, like text
+  take key, like text
+  like void
+  call runtime/serve
+    read port
+    read host
+    read handler
+    read secure
+    read certificate
+    read key
+
+# bind the port and answer, without blocking. The returned server is what `do-stop` shuts down.
+task do-start
+  note async
+  take port, like size
+  take host, like text
+  take handler
+    like task
+      take request, like request
+      like response
+  take secure, like boolean
+  take certificate, like text
+  take key, like text
+  like server
+  save raw
+    call runtime/start
+      read port
+      read host
+      read handler
+      read secure
+      read certificate
+      read key
+      wait true
+  send back
+    make server
+      bind dock, read raw
+      bind host, read host
+      bind port, read port
+
+task do-stop
+  note async
+  take server, like server
+  like void
+  call runtime/stop
+    read server/dock
+    wait true

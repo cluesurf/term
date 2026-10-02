@@ -13,10 +13,10 @@ load @term/cask/code/cask
   find bundle-path
   find data-path
 
-load @term/seed/code/console
+load @term/base/code/console
   find log
 
-load @term/seed/code/json
+load @term/base/code/json
   find parse
   find stringify
   find field-text
@@ -30,7 +30,7 @@ load @term/seed/code/json
   find from-number
   find make-null
 
-load @term/seed/code/float
+load @term/base/code/float
   find to-number
   find to-decimal
 

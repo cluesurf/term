@@ -80,7 +80,7 @@ function flatten(node: Node, nested = false): string {
     case 'name':
       // an interpolation is re-emitted at ITS OWN brace depth, never a fixed `{{...}}`. A single brace is
       // compile-time SUBSTITUTION and a double brace is RUNTIME interpolation, so hardcoding two turned
-      // `load @term/seed/code/native/{platform}/atomic` into `{{platform}}` and changed what the line means:
+      // `load @term/base/code/native/{platform}/atomic` into `{{platform}}` and changed what the line means:
       // every platform-slot import in the stdlib, silently, the moment anyone ran `term form` over it.
       return node.parts
         .map(p =>

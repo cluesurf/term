@@ -1,5 +1,5 @@
 
-load @term/seed/code/book
+load @term/base/code/book
   find book-code
 
 mint code, like book-code

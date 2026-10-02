@@ -1,0 +1,141 @@
+
+# Hash map: the stdlib map type, backed by the native map. Build a value with `make find`.
+
+load @term/base/code/maybe
+  find maybe
+  find unwrap-or
+
+form hash
+  head k
+  head v
+
+  task get
+    take self
+    take key, like k
+    like maybe
+      head v
+    fork test
+      hook test
+        call self/has
+          read key
+      hook hold
+        send back
+          make some
+            bind value
+              call self/get
+                read key
+      hook miss
+        send back
+          make none
+
+  task set
+    take self
+    take key, like k
+    take value, like v
+    like hash
+      like k
+      like v
+    send back
+      call self/set
+        read key
+        read value
+
+  task has
+    take self
+    take key, like k
+    like boolean
+    send back
+      call self/has
+        read key
+
+  task remove
+    take self
+    take key, like k
+    like boolean
+    send back
+      call self/delete
+        read key
+
+  task size
+    take self
+    like number
+    send back, read self/size
+
+  task is-empty
+    take self
+    like boolean
+    send back
+      call is-equal
+        read self/size
+        code 0
+
+  task keys
+    take self
+    like list
+      like k
+    send back
+      call self/keys
+
+  task values
+    take self
+    like list
+      like v
+    send back
+      call self/values
+
+  # the canonical length verb (alias of size)
+  task count
+    take self
+    like number
+    send back, read self/size
+
+  # read a key, falling back to a default when it is absent
+  task get-or-default
+    take self
+    take key, like k
+    take fallback, like v
+    like v
+    send back
+      call unwrap-or
+        call get
+          read self
+          read key
+        read fallback
+
+  # empty the map in place, returning it. Removes each key, using only the cross-backend remove primitive.
+  task clear
+    take self
+    like hash
+      like k
+      like v
+    walk list
+      call keys
+        read self
+      hook next
+        take site, name key
+        call remove
+          read self
+          read key
+    send back, read self
+
+  # copy every entry of `other` into `self`, overwriting on key collision, returning `self`
+  task merge
+    take self
+    take other
+      like hash
+        like k
+        like v
+    like hash
+      like k
+      like v
+    walk list
+      call keys
+        read other
+      hook next
+        take site, name key
+        call set
+          read self
+          read key
+          call other/get
+            read key
+    send back, read self

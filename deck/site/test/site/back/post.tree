@@ -9,7 +9,7 @@ load @term/site/code/base/db
   find field
   find row
 
-load @term/seed/code/list
+load @term/base/code/list
   find list
   find push
 

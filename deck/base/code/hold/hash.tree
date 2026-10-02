@@ -1,0 +1,31 @@
+
+load @term/base/code/bit
+  find unsigned-shift-right
+
+task hash-djb2-xor
+  like u32
+  take text, like text
+  save size, read text/length
+  save hash, code 5381
+  save mark, code 0
+
+  walk test
+    hook step
+      call is-below
+        read mark
+        read size
+    hook hold
+      save hash
+        call bitwise-exclusive-or
+          call multiply
+            read hash
+            code 33
+          call text/char-code-at(read i)
+      save mark
+        call increment
+          read mark
+
+  send back
+    call unsigned-shift-right
+      read hash
+      code 0

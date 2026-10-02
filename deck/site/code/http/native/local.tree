@@ -10,7 +10,7 @@ load ../http
   find response
   find handle-request
 
-load @term/seed/code/hash
+load @term/base/code/hash
   find hash
   find get
   find set

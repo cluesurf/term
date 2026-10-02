@@ -1,0 +1,16 @@
+# Arbitrary-precision floating point. There is no binary arbitrary-precision float that is exact and portable, and the
+# value most code reaching for a "big float" actually wants is exact base-10: prices, sums of fractions, anything where
+# 0.1 + 0.2 must equal 0.3. That is the `decimal` module (an unbounded big-integer mantissa with a scale), so big-float
+# IS big-decimal -- this module is the named entry point that builds one from text or from a platform float.
+
+load @term/base/code/decimal
+  find big-decimal
+  find make-big-decimal
+
+# an arbitrary-precision (exact base-10) float from its text, e.g. "3.14159265358979323846"
+task make-big-float
+  take value, like text
+  like big-decimal
+  send back
+    call make-big-decimal
+      read value

@@ -11,29 +11,29 @@
 # struct copy, so it doesn't touch `feedback_term_rust_swift_struct_field_mutation_bug` at all) if that
 # continuation doesn't pan out.
 
-load @term/seed/code/boolean
+load @term/base/code/boolean
   find and
   find or
   find not
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
   find get
   find set
   find size
   find join
 
-load @term/seed/code/text
+load @term/base/code/text
   find char-at
   find char-code-at
 
-load @term/seed/code/text/string
+load @term/base/code/text/string
   find pad-left
 
-load @term/seed/code/rune
+load @term/base/code/rune
   find rune-to-text
 
-load @term/seed/code/float
+load @term/base/code/float
   find to-decimal
   find to-number
 

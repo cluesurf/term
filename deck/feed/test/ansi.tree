@@ -3,10 +3,10 @@
 # `\x1b` isn't a valid Term text escape (only \< \> \{ \} \n \r \t \\ are), so the expected strings below build ESC
 # through `rune-to-text` too, the same way ./code/ansi/code.tree itself has to.
 
-load @term/seed/code/rune
+load @term/base/code/rune
   find rune-to-text
 
-load @term/seed/code/text/string
+load @term/base/code/text/string
   find concat
 
 load ../code/ansi/code

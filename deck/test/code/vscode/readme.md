@@ -15,7 +15,7 @@ The proof IDE for Seed: the InfoView goal panel (live proof state) and the hamme
 This is a standard VSCode extension. It cannot run in a headless sandbox - it needs the editor runtime - but it is complete and openable:
 
 ```sh
-cd deck/seed/deck/seed/deck/test/code/vscode
+cd deck/base/deck/base/deck/test/code/vscode
 pnpm install          # or npm install
 pnpm compile          # tsc -> out/
 code .                # open in VSCode, press F5 to launch the Extension Host

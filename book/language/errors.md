@@ -46,14 +46,14 @@ Every exception is named for the **failure**, as a noun. The thing it happened t
 | do nothing | `failure` | |
 | several at once | `bundle` | `list` |
 
-Load the ones you raise from `@term/seed/code/exception`.
+Load the ones you raise from `@term/base/code/exception`.
 
 ## Raising
 
 `halt` names the form and binds its props. `thing` says what the failure is about.
 
 ```tree
-load @term/seed/code/exception
+load @term/base/code/exception
   find excess
   find absence
 
@@ -199,7 +199,7 @@ Absent means private. A `tell` for an exception nothing in the app can raise is 
 Every exception, tell and deck in the build wakes into the runtime **hive** at boot, and every raise is told to it. Read the roster with `hive-roll`, subscribe with `hive-hear`.
 
 ```tree
-load @term/seed/code/hive
+load @term/base/code/hive
   find hive-roll
   find hive-hear
 

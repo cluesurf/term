@@ -22,11 +22,11 @@ import type { Source } from '@term/make/code/compile/load'
 import { emitTypeScript } from '@term/make/code/compile/typescript'
 import type { Program } from '@term/make/code/compile/node'
 
-const baseTree = join(process.cwd(), 'deck', 'seed')
+const baseTree = join(process.cwd(), 'deck', 'base')
 
-// the stdlib's own modules import each other as `@term/seed/...` (the Term rename); older test programs still say
-// `@cluesurf/seed/...`. Both spell the same package, so the resolver accepts either prefix.
-const STDLIB_PREFIX = /^@(?:cluesurf|term)\/seed\//
+// the stdlib's own modules import each other as `@term/base/...` (the Term rename); older test programs still say
+// `@term/base/...`. Both spell the same package, so the resolver accepts either prefix.
+const STDLIB_PREFIX = /^@term\/base\//
 
 const stdlib = (path: string): Source | undefined => {
   if (!STDLIB_PREFIX.test(path)) {
@@ -135,7 +135,7 @@ async function runProgram(
 }
 
 // spawn a task, wait for its result
-const SPAWN = `load @cluesurf/seed/code/task
+const SPAWN = `load @term/base/code/task
   find spawn
 
 task run
@@ -154,7 +154,7 @@ task run
 `
 
 // gather two tasks: both complete before gather returns, results in source order, joined -> "AB"
-const GATHER = `load @cluesurf/seed/code/task
+const GATHER = `load @term/base/code/task
   find gather
 
 task run

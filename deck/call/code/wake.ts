@@ -2,7 +2,7 @@
 // and a .gitignore. With a name it makes a new directory; without one it scaffolds the current directory (if empty).
 //
 // WHAT IT SCAFFOLDS HAS TO BE CLEAN, because it is the first Term anyone reads. It said `seed` throughout (the
-// language was renamed), imported `@cluesurf/seed` (the legacy prefix, which resolves but is not the name any more),
+// language was renamed), imported `@term/base` (the legacy prefix, which resolves but is not the name any more),
 // and its entry comment was 87 characters, so a new project failed `term lint` on the line the scaffold itself
 // wrote. test/call/lifecycle.ts runs `wake` then `lint` and holds it.
 
@@ -26,7 +26,7 @@ const DECK_TREE = (project: string): string => `deck ${project}
 const BOOT_TREE = `# The application entry point. \`term boot\` compiles and runs
 # this module's \`boot\` task.
 
-load @term/seed/code/console
+load @term/base/code/console
   find log
 
 task boot

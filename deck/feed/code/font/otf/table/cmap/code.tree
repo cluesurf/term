@@ -7,7 +7,7 @@
 # subtable is written, so every subtable is serialized first (to know its byte length), then the directory is
 # written with a running offset total, then the subtable bytes follow in order — two passes, not one.
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
   find get
   find size

@@ -12,7 +12,7 @@
  *   term base import rows.jsonl --form word --mark id
  *   term base import ./data --form word --key slug
  *
- * THE PARSING AND THE LIFTING ARE NOT HERE. They are `@term/base/code/bridge/from-data`,
+ * THE PARSING AND THE LIFTING ARE NOT HERE. They are `@cluesurf/save/bridge/from-data`,
  * pure and tested without a disk. This file is the IO and the wiring, which is the same
  * split every other verb follows, so a bug here is a file-reading bug.
  *
@@ -34,10 +34,10 @@ import {
   parseJsonRows,
   recordsFrom,
   type Row,
-} from '@term/base/code/bridge/from-data'
-import { diffDataset } from '@term/base/code/diff/diff'
+} from '@cluesurf/save/bridge/from-data'
+import { diffDataset } from '@cluesurf/save/diff/diff'
 import { need } from './base'
-import type { Dataset } from '@term/base/code/diff/change'
+import type { Dataset } from '@cluesurf/save/diff/change'
 
 // What a source's extension says it is. A directory is walked for these and nothing else,
 // so a readme or a licence beside the data is skipped rather than failing the run.

@@ -14,10 +14,10 @@ load @term/cask/code/cask
   find bundle-path
   find data-path
 
-load @term/seed/code/console
+load @term/base/code/console
   find log
 
-load @term/seed/code/file
+load @term/base/code/file
   find read, name file-read
   find write, name file-write
   find append, name file-append
@@ -33,7 +33,7 @@ load @term/site/code/base/db
   find field, name db-field
   find row
 
-load @term/seed/code/json
+load @term/base/code/json
   find parse
   find stringify
   find field-text
@@ -54,23 +54,23 @@ load @term/seed/code/json
   find get-item
   find array-size
 
-load @term/seed/code/float
+load @term/base/code/float
   find to-number
   find to-decimal
 
-load @term/seed/code/list
+load @term/base/code/list
   find list
   find push
 
-load @term/seed/code/hash
+load @term/base/code/hash
   find hash
   find get
   find set
 
-load @term/seed/code/uuid
+load @term/base/code/uuid
   find version4
 
-load @term/seed/code/maybe
+load @term/base/code/maybe
   find maybe
   find unwrap
 

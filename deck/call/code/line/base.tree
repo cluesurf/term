@@ -443,6 +443,9 @@ hook boot
   # Bearer token for the remote cache
   take remote-token
     like text
+  # Write a command-line program to this directory (run.mjs, app.mjs, dock.mjs) instead of running it
+  take out
+    like text
   task boot
 
 # Build an SSR app into a deployable Cloudflare Worker (work/index.ts + build/)
@@ -628,16 +631,19 @@ hook lint
     like boolean
   task lint
 
-# Verify .tree files hold: report gaps, run the cross-backend differential, gate CI (incremental)
+# The proof gate: every file compiles, no claim is open, every tier-0 obligation is proven or baselined. One line,
+# non-zero exit
 hook hold
   # Files or directories to verify (default: current directory)
   take paths
     like text
     many
-  # Run the cross-backend differential
+  # Also run the cross-backend differential
   take cross
     like boolean
-    bind true
+  # Rewrite hold.json to the obligations not proven today, and print how many that added
+  take commit
+    like boolean
   # Skip files unchanged since they last held
   take cache
     like boolean

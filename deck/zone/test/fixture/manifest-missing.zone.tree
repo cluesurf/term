@@ -1,6 +1,0 @@
-zone <1>
-name talk
-sort development
-  hold bitwarden
-  bind cluesurf-talk-development
-  need nonexistent-secret

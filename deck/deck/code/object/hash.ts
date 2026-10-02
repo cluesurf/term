@@ -14,7 +14,7 @@
 import {
   HASH_FUNCTION,
   hashCanonicalBytes,
-} from '@term/base/code/canon/hash'
+} from '@cluesurf/save/canon/hash'
 import { createHash } from 'crypto'
 
 /**
@@ -25,7 +25,7 @@ import { createHash } from 'crypto'
  */
 export type ObjectKind = 'chunk' | 'blob' | 'tree' | 'commit' | 'pack'
 
-// The hash function comes from @term/base so there is ONE definition of it. The
+// The hash function comes from @cluesurf/save so there is ONE definition of it. The
 // SHAPE differs deliberately: base addresses records by their canonical bytes, while
 // an object id here is kinded, hashing `<kind> <length>\0` before the bytes exactly as
 // git does. That is what the registry spec means by `H(pack, bytes)`, and it stops a
@@ -37,7 +37,7 @@ const ID_PREFIX = `${HASH_FUNCTION}:`
  *
  * ONE addressing scheme, base's: the digest of the raw bytes. An earlier version
  * prefixed a git-style `<kind> <length>\0` header so a blob and a tree with identical
- * bytes could not collide, but that made deck's ids and @term/base's ids two different
+ * bytes could not collide, but that made deck's ids and @cluesurf/save's ids two different
  * functions producing the same `sha256:<hex>` SHAPE. A tree node written by base and
  * verified by deck then failed as a hash mismatch, and nothing in the format said why.
  *

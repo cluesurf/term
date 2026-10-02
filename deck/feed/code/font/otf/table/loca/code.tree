@@ -3,7 +3,7 @@
 # bit, resolved by the caller — loca stays single-responsibility, like every other table here, rather than
 # depending on `head`'s form directly.
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
 
 load ../../../../base

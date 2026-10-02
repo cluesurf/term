@@ -4,10 +4,10 @@
 # child, so a lookup is O(path-depth) regardless of how many routes are registered. Params are resolved by index after
 # a match (clean backtracking). The transport (`serve`) delegates to native per env. See book/site/routes.md.
 
-load @term/seed/code/maybe
+load @term/base/code/maybe
   find unwrap-or
 
-load @term/seed/code/list
+load @term/base/code/list
   find count
   find list
   find push
@@ -15,15 +15,15 @@ load @term/seed/code/list
   find join
   find drop-first
 
-load @term/seed/code/hash
+load @term/base/code/hash
   find hash
   find set
   find has
 
-load @term/seed/code/text
+load @term/base/code/text
   find split
 
-load @term/seed/code/text/string
+load @term/base/code/text/string
   find starts-with
   find replace
 

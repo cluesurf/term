@@ -26,11 +26,11 @@ import type { Source } from '@term/make/code/compile/load'
 import { render } from '@term/make/code/parser/diagnostic'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const baseTree = join(here, '..', '..', 'deck', 'seed')
+const baseTree = join(here, '..', '..', 'deck', 'base')
 
 const stdlib = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/seed/'
-  path = path.replace(/^@term\/seed\//, prefix)
+  const prefix = '@term/base/'
+  path = path.replace(/^@term\/base\//, prefix)
 
   if (!path.startsWith(prefix)) {return undefined}
 
@@ -63,8 +63,8 @@ function expect(name: string, got: unknown, want: unknown): void {
 
 // read a native runtime shim's raw source from base.tree (the path carries its real extension, no `.tree`)
 const readRuntime = (path: string): string | undefined => {
-  const prefix = '@cluesurf/seed/'
-  path = path.replace(/^@term\/seed\//, prefix)
+  const prefix = '@term/base/'
+  path = path.replace(/^@term\/base\//, prefix)
 
   if (!path.startsWith(prefix)) {return undefined}
 
@@ -106,7 +106,7 @@ async function loadProgram(
 }
 
 // the program only ever names `file` — the node platform is hidden behind the API
-const PROGRAM = `load @cluesurf/seed/code/file
+const PROGRAM = `load @term/base/code/file
   find file
 
 task round-trip
@@ -133,7 +133,7 @@ task exists
 `
 
 // clock: forwards to node:perf_hooks (now) + node:timers/promises (sleep), hidden behind the API
-const CLOCK = `load @cluesurf/seed/code/clock
+const CLOCK = `load @term/base/code/clock
   find clock
 
 task get-now
@@ -153,7 +153,7 @@ task sleep-then-now
 `
 
 // process + console: forward to host globals via the `<global:X>` dock (no import), hidden behind the API
-const PROCESS = `load @cluesurf/seed/code/process
+const PROCESS = `load @term/base/code/process
   find process
 
 task plat
@@ -162,7 +162,7 @@ task plat
     call platform
 `
 
-const CONSOLE = `load @cluesurf/seed/code/console
+const CONSOLE = `load @term/base/code/console
   find console
 
 task say
@@ -171,7 +171,7 @@ task say
     read m
 `
 
-const ENVIRONMENT = `load @cluesurf/seed/code/environment
+const ENVIRONMENT = `load @term/base/code/environment
   find environment
 
 task cwd
@@ -188,7 +188,7 @@ task var-of
 `
 
 // file metadata: size and kind, over the host stat. Total (missing path reads 0 and false).
-const FILE_META = `load @cluesurf/seed/code/file/metadata
+const FILE_META = `load @term/base/code/file/metadata
   find size
   find is-directory
   find is-file
@@ -216,7 +216,7 @@ task file-check
 `
 
 // directory operations: make, exists, remove. make and remove are recursive and best effort.
-const FILE_DIR = `load @cluesurf/seed/code/file/directory
+const FILE_DIR = `load @term/base/code/file/directory
   find make
   find remove
   find exists
@@ -259,7 +259,7 @@ task walk-dir
 `
 
 // path: filesystem path string manipulation over the host path library. Scalar text/boolean, no list involved.
-const PATH = `load @cluesurf/seed/code/path
+const PATH = `load @term/base/code/path
   find join
   find directory
   find file-name
@@ -304,7 +304,7 @@ task absolute-of
       read target
 `
 
-const TIME = `load @cluesurf/seed/code/time
+const TIME = `load @term/base/code/time
   find time
 
 task epoch
@@ -314,7 +314,7 @@ task epoch
 `
 
 // log: leveled logger forwarding to the host console (info/warn/error/debug), hidden behind the API
-const LOG = `load @cluesurf/seed/code/log
+const LOG = `load @term/base/code/log
   find log
 
 task note-info
@@ -329,7 +329,7 @@ task note-warn
 `
 
 // math: the clean interface delegating to the host Math (absolute/minimum/power/...), plus pure clamp/gcd/factorial
-const MATH = `load @cluesurf/seed/code/math
+const MATH = `load @term/base/code/math
   find absolute
   find power
   find square-root
@@ -381,12 +381,12 @@ task fact-of
 `
 
 // color HSL: convert RGB to HSL through the math interface (max/min), integer-scaled
-const HSL = `load @cluesurf/seed/code/color/hsl
+const HSL = `load @term/base/code/color/hsl
   find from-rgb
   find to-rgb
   find hsl-color
 
-load @cluesurf/seed/code/color/rgb
+load @term/base/code/color/rgb
   find rgb-color
 
 task blue-hue
@@ -468,7 +468,7 @@ task red-lightness
 `
 
 // base64 + hex text encodings, delegating to the host Buffer (round-trip + a known vector)
-const ENCODE = `load @cluesurf/seed/code/text/base64
+const ENCODE = `load @term/base/code/text/base64
   find encode
   find decode
 
@@ -487,7 +487,7 @@ task un-b64
       read m
 `
 
-const HEXCODE = `load @cluesurf/seed/code/text/hex
+const HEXCODE = `load @term/base/code/text/hex
   find encode
   find decode
 
@@ -507,13 +507,13 @@ task un-hexed
 `
 
 // sha256 / md5 digests, delegating to the host node:crypto (async interface, uniform across platforms)
-const DIGEST = `load @cluesurf/seed/code/cryptography/digest
+const DIGEST = `load @term/base/code/cryptography/digest
   find sha256
   find md5
   find digest
   find digest-algorithm
 
-load @cluesurf/seed/code/bytes
+load @term/base/code/bytes
   find from-text
   find to-hex
 
@@ -554,10 +554,10 @@ task sha-via-verb
 `
 
 // rgb -> hex color string, the byte formatting delegated to the host Buffer
-const HEXCOLOR = `load @cluesurf/seed/code/color/hex
+const HEXCOLOR = `load @term/base/code/color/hex
   find from-rgb
 
-load @cluesurf/seed/code/color/rgb
+load @term/base/code/color/rgb
   find rgb-color
 
 task hex-of
@@ -571,10 +571,10 @@ task hex-of
 `
 
 // hmac-sha256, delegating to the host node:crypto (async interface)
-const HMAC = `load @cluesurf/seed/code/cryptography/hmac
+const HMAC = `load @term/base/code/cryptography/hmac
   find sha256
 
-load @cluesurf/seed/code/bytes
+load @term/base/code/bytes
   find from-text
   find to-hex
 
@@ -594,11 +594,11 @@ task mac
 `
 
 // rgb -> hsv, pure-logic on the math interface
-const HSV = `load @cluesurf/seed/code/color/hsv
+const HSV = `load @term/base/code/color/hsv
   find from-rgb
   find hsv-color
 
-load @cluesurf/seed/code/color/rgb
+load @term/base/code/color/rgb
   find rgb-color
 
 task red-value
@@ -636,7 +636,7 @@ task gray-saturation
 `
 
 // string utilities, native-delegated (node uses host String methods directly)
-const STRING = `load @cluesurf/seed/code/text/string
+const STRING = `load @term/base/code/text/string
   find to-upper
   find trim
   find repeat
@@ -685,7 +685,7 @@ task swapped
 `
 
 // uuid v4, delegating to the host crypto.randomUUID
-const UUID = `load @cluesurf/seed/code/uuid
+const UUID = `load @term/base/code/uuid
   find version4
 
 task make-id
@@ -695,7 +695,7 @@ task make-id
 `
 
 // random, delegating to the host Math (integer(n,n) is deterministic, so it is the testable case)
-const RANDOM = `load @cluesurf/seed/code/random
+const RANDOM = `load @term/base/code/random
   find number
   find integer
 
@@ -720,7 +720,7 @@ task ranged
 `
 
 // regex, delegating to the host engine via the regex shim (wraps new RegExp on node)
-const REGEX = `load @cluesurf/seed/code/regex
+const REGEX = `load @term/base/code/regex
   find matches
   find replace
   find find
@@ -752,7 +752,7 @@ task first-number
 `
 
 // json: parse the host JSON to the opaque dynamic value, navigate it, read leaves; round-trip via stringify
-const JSON_PROG = `load @cluesurf/seed/code/json
+const JSON_PROG = `load @term/base/code/json
   find parse
   find stringify
   find get-field
@@ -818,7 +818,7 @@ task literal-object
 `
 
 // typed JSON decode: a `form` schema's fields read straight out of the parsed JSON via the field accessors
-const JSON_DECODE = `load @cluesurf/seed/code/json
+const JSON_DECODE = `load @term/base/code/json
   find parse
   find field-text
   find field-number
@@ -872,7 +872,7 @@ task age-of
 // typed JSON encode: a `form`'s fields are assembled into the opaque dynamic value (make-object + set-field +
 // from-*), then stringified through the host JSON. Symmetric with the field-accessor decode above, and cross-platform
 // (every backend builds the native JSON value, no derive macros). Verified by parsing the output back out.
-const JSON_ENCODE = `load @cluesurf/seed/code/json
+const JSON_ENCODE = `load @term/base/code/json
   find parse
   find stringify
   find field-text
@@ -955,10 +955,10 @@ task encoded-active
 
 // secure random: cryptographically secure raw bytes (the currency). A request for 16 bytes rendered to hex is a
 // 32-char string. The generator is OS-backed (node randomBytes); two draws differ. Synchronous on every host.
-const SECURE_RANDOM = `load @cluesurf/seed/code/cryptography/random
+const SECURE_RANDOM = `load @term/base/code/cryptography/random
   find bytes
 
-load @cluesurf/seed/code/bytes
+load @term/base/code/bytes
   find to-hex
 
 task draw
@@ -972,7 +972,7 @@ task draw
 
 // the bytes currency type: text/hex/base64 codecs at the edges, length and concat over the native Uint8Array. The
 // data stays a raw buffer the whole way through, no hex tax between operations.
-const BYTES = `load @cluesurf/seed/code/bytes
+const BYTES = `load @term/base/code/bytes
   find from-text
   find to-text
   find to-hex
@@ -1076,11 +1076,11 @@ task hex-round-trip
 
 // zero-copy file IO: write a byte buffer and read it back as bytes. node fs returns a Buffer (a Uint8Array) with no
 // utf8 round-trip. The text codec is applied only at the very edge to check the result.
-const BYTES_FILE = `load @cluesurf/seed/code/file
+const BYTES_FILE = `load @term/base/code/file
   find write-bytes
   find read-bytes
 
-load @cluesurf/seed/code/bytes
+load @term/base/code/bytes
   find from-text
   find to-text
   find length
@@ -1120,11 +1120,11 @@ task byte-size-on-disk
 
 // AES-256-GCM authenticated encryption: encrypt then decrypt round-trips back to the plaintext (via SubtleCrypto on
 // node). Key and nonce are hex; the ciphertext (with the appended tag) is hex.
-const CIPHER = `load @cluesurf/seed/code/cryptography/cipher
+const CIPHER = `load @term/base/code/cryptography/cipher
   find encrypt
   find decrypt
 
-load @cluesurf/seed/code/bytes
+load @term/base/code/bytes
   find from-text
   find to-text
   find from-hex
@@ -1171,12 +1171,12 @@ task open
 
 // Ed25519 signatures: generate a key pair, sign a message with the private key, verify with the public key (via
 // SubtleCrypto on node). Keys and signatures are hex. A tampered message must fail verification.
-const SIGNATURE = `load @cluesurf/seed/code/cryptography/signature
+const SIGNATURE = `load @term/base/code/cryptography/signature
   find make-key-pair
   find sign
   find verify
 
-load @cluesurf/seed/code/bytes
+load @term/base/code/bytes
   find from-text
 
 task round-trip
@@ -1225,7 +1225,7 @@ task tampered
 
 // calendar: UTC formatting / components / construction / arithmetic over an epoch-millis timestamp (via the host
 // Date). Formatting is ISO 8601 with millisecond precision; arithmetic on fixed units is pure, months delegate.
-const CALENDAR = `load @cluesurf/seed/code/calendar
+const CALENDAR = `load @term/base/code/calendar
   find make-utc
   find format
   find parse
@@ -1298,11 +1298,11 @@ task parts-weekday
 // X25519 ECDH key agreement: two parties generate key pairs, exchange public keys, and derive the same shared secret
 // (via SubtleCrypto on node). The agreement property -- secret(a.private, b.public) == secret(b.private, a.public) --
 // is what makes a shared key possible.
-const KEY_AGREEMENT = `load @cluesurf/seed/code/cryptography/key-agreement
+const KEY_AGREEMENT = `load @term/base/code/cryptography/key-agreement
   find make-key-pair
   find shared-secret
 
-load @cluesurf/seed/code/bytes
+load @term/base/code/bytes
   find to-hex
 
 task agree
@@ -1334,7 +1334,7 @@ task agree
 
 // network/dns: resolve a host to its addresses via the platform resolver. A numeric IP resolves to itself with no
 // network round trip, so the assertion is deterministic and offline.
-const DNS = `load @cluesurf/seed/code/network/dns
+const DNS = `load @term/base/code/network/dns
   find resolve
   find resolve-one
 
@@ -1359,7 +1359,7 @@ task all
 `
 
 // network/http: GET through the host fetch (a data: URL needs no server), reading status + body off the response
-const HTTP = `load @cluesurf/seed/code/network/http
+const HTTP = `load @term/base/code/network/http
   find get
 
 task fetch-body
@@ -1386,7 +1386,7 @@ task fetch-status
 `
 
 // float: real floating-point math (host float library) + fractional division that does NOT truncate
-const FLOAT = `load @cluesurf/seed/code/float
+const FLOAT = `load @term/base/code/float
   find square-root
   find round-down
   find power
@@ -2066,7 +2066,7 @@ async function main(): Promise<void> {
 
   // cross-target: the SAME public `file` module compiles for every platform, each forwarding to its own native impl,
   // emitting that platform's file API. The program only ever names `file`.
-  const fileSrc = stdlib('@cluesurf/seed/code/file')!.text
+  const fileSrc = stdlib('@term/base/code/file')!.text
   const compileFor = (env: 'node' | 'rust' | 'swift' | 'kotlin') =>
     compile(
       { file: 'file.tree', text: fileSrc },
@@ -2126,7 +2126,7 @@ async function main(): Promise<void> {
   // the public digest interface compiles for every target. digest is a declarative `bind`: it inlines each platform's
   // built-in crypto call directly at the use site (no hand-written shim), so the emit shows the native expression.
   const digestSrc = stdlib(
-    '@cluesurf/seed/code/cryptography/digest',
+    '@term/base/code/cryptography/digest',
   )!.text
 
   const digestFor = (env: 'node' | 'rust' | 'swift' | 'kotlin') =>
@@ -2183,7 +2183,7 @@ async function main(): Promise<void> {
   )
 
   // the public string interface compiles for every target, each using that platform's string ops
-  const stringSrc = stdlib('@cluesurf/seed/code/text/string')!.text
+  const stringSrc = stdlib('@term/base/code/text/string')!.text
   const stringFor = (
     env: 'node' | 'browser' | 'rust' | 'swift' | 'kotlin',
   ) =>
@@ -2239,7 +2239,7 @@ async function main(): Promise<void> {
   )
 
   // the public regex interface compiles for every target, each wrapping that platform's regex engine
-  const regexSrc = stdlib('@cluesurf/seed/code/regex')!.text
+  const regexSrc = stdlib('@term/base/code/regex')!.text
   const regexFor = (
     env: 'node' | 'browser' | 'rust' | 'swift' | 'kotlin',
   ) =>
@@ -2286,7 +2286,7 @@ async function main(): Promise<void> {
   )
 
   // the public http interface compiles for every target, each wrapping that platform's HTTP library
-  const httpSrc = stdlib('@cluesurf/seed/code/network/http')!.text
+  const httpSrc = stdlib('@term/base/code/network/http')!.text
   const httpFor = (
     env: 'node' | 'browser' | 'rust' | 'swift' | 'kotlin',
   ) =>

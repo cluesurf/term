@@ -24,10 +24,10 @@ load @term/call/code/work/tint
 # Ported from deck/call/code/{work,report}.ts (cli-in-term-0004). Both dock the compiler, which is TypeScript, so
 # both are complete on the TypeScript target and neither is native until the compiler is Term.
 
-load @term/seed/code/file
+load @term/base/code/file
   find read, name read-file
 
-load @term/seed/code/text
+load @term/base/code/text
   find split
 
 dock load

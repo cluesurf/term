@@ -1,40 +1,30 @@
 {
-  "name": "@cluesurf/base.tree",
-  "version": "0.0.2",
-  "license": "MIT",
-  "description": "Version control for structured knowledge data: the base protocol library.",
+  "name": "@term/base",
+  "main": "./host",
   "type": "module",
-  "main": "./host/index.js",
+  "version": "0.1.0",
   "scripts": {
-    "make": "rm -rf host && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.alias.json",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "lint": "eslint \"code/**/*.ts\" \"test/**/*.ts\"",
-    "format": "prettier --write \"code/**/*.ts\" \"test/**/*.ts\"",
-    "check:base-format": "tsx task/format-check.ts",
-    "check:base-transfer": "tsx task/transfer-check.ts"
+    "make": "tsc && tsc-alias",
+    "scan": "concurrently --kill-others \"tsc -w\" \"tsc-alias -w\"",
+    "lint": "eslint --ext .ts ./make",
+    "lint:fix": "npm run lint -- --fix",
+    "test": "tsx make/test",
+    "test:fill": "tsx hack/look/test.ts",
+    "host": "pnpm make && npm publish --access=public"
   },
   "prettier": "@cluesurf/wash/flow.json",
   "devDependencies": {
-    "@types/node": "^22.15.3",
-    "prettier": "^3.6.2",
-    "tsc-alias": "^1.8.15",
-    "tsx": "^4.22.4",
-    "typescript": "^5.8.3",
+    "@cluesurf/wash": "0.9.0",
+    "@types/lodash": "4.17.23",
+    "@types/node": "25.2.3",
+    "concurrently": "10.0.3",
+    "ts-node": "^10.9.2",
+    "tsc-alias": "1.8.17",
+    "tsx": "4.22.4",
+    "typescript": "5.9.3",
+    "prettier": "3.8.4",
+    "lodash": "4.18.1",
+    "vite": "^7.3.5",
     "vitest": "^4.1.11"
-  },
-  "types": "./host/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./host/index.d.ts",
-      "import": "./host/index.js"
-    },
-    "./*": {
-      "types": "./host/*.d.ts",
-      "import": "./host/*.js"
-    }
-  },
-  "files": [
-    "host"
-  ]
+  }
 }

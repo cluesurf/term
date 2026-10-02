@@ -1,0 +1,87 @@
+
+# Running a command. Forwards to the linked process runtime shim. A page cannot spawn a process, so `command` is read
+# as a worker script URL and a Worker stands in for the child. Internal: reached only through the public process API.
+
+dock load
+  load <global:process>, name process
+
+load @term/base/code/process
+  find child
+
+load @term/base/code/process/run
+  find run-result
+
+task run
+  note async
+  take command, like text
+  take
+    arguments
+    like list
+    need false
+  take
+    directory
+    like text
+    need false
+  take
+    environment
+    like hash
+    need false
+  take
+    shell
+    like boolean
+    fall false
+  take
+    timeout
+    like size
+    need false
+  take
+    input
+    like text
+    need false
+  like run-result
+
+  save worker
+    call process/make-worker
+      read command
+
+  save output
+    call process/run-worker
+      wait true
+      read worker
+      read input
+      read timeout
+
+  send back, read output
+
+task spawn
+  note async
+  take command, like text
+  take
+    arguments
+    like list
+    need false
+  take
+    directory
+    like text
+    need false
+  take
+    environment
+    like hash
+    need false
+  take
+    shell
+    like boolean
+    fall false
+  like child
+
+  save id
+    call process/next-worker-id
+
+  save worker
+    call process/make-worker
+      read command
+
+  send back
+    make child
+      bind dock, read worker
+      bind id, read id

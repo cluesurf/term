@@ -1,0 +1,78 @@
+
+# Ordered set: unique values in insertion order, backed by the native array.
+# Membership compares structurally through the compare runtime, so the element type needs no
+# equality mask on the native backends (rust would otherwise demand PartialEq on `t`).
+
+dock load
+  load <global:compare>, name compare-runtime
+
+load @term/base/code/list
+  find list
+  find get
+
+form ordered-set
+  head t
+  link items
+    like list
+      like t
+
+  task insert
+    take self
+    take item, like t
+    like ordered-set t
+    fork test
+      hook test
+        call has
+          read self
+          read item
+      hook hold
+        send back, read self
+      hook miss
+        call push
+          read self/items
+          read item
+        send back, read self
+
+  task has
+    take self
+    take item, like t
+    like boolean
+    save count
+      call size
+        read self/items
+    save i, code 0
+    walk test
+      hook test
+        call is-below
+          read i
+          read count
+      hook hold
+        save entry
+          call get
+            read self/items
+            read i
+        fork test
+          hook test
+            call compare-runtime/deep-equal
+              read entry
+              read item
+          hook hold
+            send back, true
+        save i
+          call add
+            read i
+            code 1
+    send back, false
+
+  task size
+    take self
+    like number
+    send back
+      call size
+        read self/items
+
+  task to-list
+    take self
+    like list
+      like t
+    send back, read self/items

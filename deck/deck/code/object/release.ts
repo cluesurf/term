@@ -1,4 +1,4 @@
-// A release: one published version of a package, committed on `@term/base`.
+// A release: one published version of a package, committed on `@cluesurf/save`.
 //
 // This replaces `build.ts`'s `buildCommit` and `graph.ts`'s `commitClosure`. A version
 // is a base `Dataset` of file records (`dataset.ts`), built by `version.ts`, and
@@ -9,11 +9,11 @@
 // the tree's own nodes, plus every chunk of every file. It is what gets negotiated
 // against the registry with `findMissing`, so only what is absent moves.
 
-import { Repository } from '@term/base/code/repo/repo'
-import { MemoryChunkStore } from '@term/base/code/store/chunk-store'
-import { treeNodeRefs } from '@term/base/code/store/tree'
-import { MemoryRefStore } from '@term/base/code/store/ref-store'
-import type { CommitMeta } from '@term/base/code/repo/repo'
+import { Repository } from '@cluesurf/save/repo/repo'
+import { MemoryChunkStore } from '@cluesurf/save/store/chunk-store'
+import { treeNodeRefs } from '@cluesurf/save/store/tree'
+import { MemoryRefStore } from '@cluesurf/save/store/ref-store'
+import type { CommitMeta } from '@cluesurf/save/repo/repo'
 
 import { datasetOfFiles } from './dataset'
 import type { PackageFile } from './dataset'

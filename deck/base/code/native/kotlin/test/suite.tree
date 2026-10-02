@@ -1,0 +1,41 @@
+
+load @term/base/code/native/shared/test/suite
+  find init
+  find suite-describe, name shared-describe
+  find register
+  find suite-run, name shared-run
+load @term/base/code/test/suite
+  find report
+
+task describe
+  take name, like text
+  take work, like task
+
+  call shared-describe
+    bind name, read name
+    bind work, read work
+
+task run
+  note async
+  take
+    filter
+    like text
+    need false
+  take
+    timeout
+    like size
+    fall 5000
+  take
+    parallel
+    like boolean
+    fall false
+  like report
+
+  call init
+
+  send back
+    call shared-run
+      wait true
+      bind filter, read filter
+      bind timeout, read timeout
+      bind parallel, read parallel

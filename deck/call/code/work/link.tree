@@ -20,10 +20,10 @@ load @term/call/code/work/tint
 #
 # Ported from deck/call/code/link.ts (cli-in-term-0004).
 
-load @term/seed/code/path
+load @term/base/code/path
   find join
 
-load @term/seed/code/file
+load @term/base/code/file
   find test, name file-test
 
 dock load

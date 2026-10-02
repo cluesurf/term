@@ -16,11 +16,11 @@ import type { Resolver, Source } from '@term/make/code/compile/load'
 import { parse, renderHead } from '@term/make/code/parser/tree'
 import { spanOfNode } from '@term/make/code/compile/mill-run'
 
-// resolve `@cluesurf/seed/...` imports to the stdlib that ships with this package, if it can be found on disk. The
-// stdlib is `deck/base` under the seed package root. We walk up from this module's directory looking for it, rather
+// resolve `@term/base/...` imports to the stdlib that ships with this package, if it can be found on disk. The
+// stdlib is `deck/base` under the term package root. We walk up from this module's directory looking for it, rather
 // than assuming a fixed depth, so it is found whether this code runs from source (deck/make/code) or from the bundled
 // CLI (host/line.js) -- the two sit at different depths under the package root.
-// the stdlib package directory (`deck/seed`, next to the compiler), found by walking up from this file. Undefined
+// the stdlib package directory (`deck/base`, next to the compiler), found by walking up from this file. Undefined
 // when the compiler runs somewhere without its stdlib.
 export function stdlibBase(): string | undefined {
   // a bundle that runs from somewhere else (the build worker under /tmp) cannot walk up to the stdlib from its own
@@ -37,14 +37,10 @@ export function stdlibBase(): string | undefined {
   let dir = here
 
   for (let depth = 0; depth < 10; depth++) {
-    // the canonical stdlib (deck/seed/code), the pre-rename location (deck/base/code), and the legacy sibling
-    // (base.tree/code). deck/seed is probed first: after the Term rename the stdlib package is `@term/seed` at
-    // deck/seed, while deck/base may still exist holding something else entirely.
-    for (const candidate of [
-      join(dir, 'deck', 'seed'),
-      join(dir, 'deck', 'base'),
-      join(dir, 'base.tree'),
-    ]) {
+    // the stdlib, `@term/base` at deck/base/code. It was named `seed` and lived at deck/seed until 2026-10-02, when the
+    // record system that held deck/base moved out to mesh/deck/save. There is ONE candidate on purpose: a second
+    // probe is how a stale directory left behind by a rename quietly becomes the stdlib.
+    for (const candidate of [join(dir, 'deck', 'base')]) {
       if (existsSync(join(candidate, 'code'))) {
         base = candidate
         break
@@ -67,9 +63,10 @@ export function stdlibBase(): string | undefined {
   return base
 }
 
-// the stdlib's own modules import each other as `@term/seed/...` (the Term rename); older programs still say
-// `@cluesurf/seed/...`. Both spell the same package.
-const STDLIB_PREFIXES = ['@term/seed/', '@cluesurf/seed/']
+// the stdlib's one name. Its two older spellings, `seed` under the term scope and under the cluesurf scope, are NOT
+// kept as aliases: the term-scoped `seed` now names the math library, and an alias here would hand every stale
+// import the stdlib instead of failing where it is written.
+const STDLIB_PREFIXES = ['@term/base/']
 const STDLIB_PACKAGES = STDLIB_PREFIXES.map(p => p.slice(0, -1))
 
 export function stdlibResolver(): Resolver | undefined {
@@ -98,7 +95,7 @@ export function stdlibResolver(): Resolver | undefined {
 
 // Every package that lives in the SAME tree as the stdlib, resolved without a `link/` entry.
 //
-// `@term/seed` used to be the only package that resolved on its own (STDLIB_PREFIXES above named it and nothing
+// `@term/base` used to be the only package that resolved on its own (STDLIB_PREFIXES above named it and nothing
 // else), so every other in-tree `@term/*` import needed a `link/@term/<name>` symlink in the importing package. Those
 // symlinks are gitignored and were written with ABSOLUTE paths, so on any other checkout they do not exist and the
 // import resolves to NOTHING - and an import that resolves to nothing fails silently, as a pile of unknown names in
@@ -114,7 +111,7 @@ export function siblingResolver(): Resolver | undefined {
     return undefined
   }
 
-  // the directory holding every in-tree package: the stdlib's own parent (`.../deck/seed` -> `.../deck`)
+  // the directory holding every in-tree package: the stdlib's own parent (`.../deck/base` -> `.../deck`)
   const deckRoot = dirname(stdlib)
 
   return (importPath: string): Source | undefined => {
@@ -149,7 +146,7 @@ export function siblingResolver(): Resolver | undefined {
 
 // resolve any `@scope/pkg/sub/path` import via the package manager's link dir (`<root>/link/@scope/pkg/...`), where
 // `term link` symlinks each dependency. Follows the file-resolution rules (foo.tree, then foo/base.tree, foo/note.tree).
-// This is how a project resolves its linked packages (@cluesurf/seed, @cluesurf/bind, @cluesurf/term, @cluesurf/site).
+// This is how a project resolves its linked packages (@term/base, @cluesurf/bind, @cluesurf/term, @cluesurf/site).
 export function linkResolver(root: string): Resolver {
   const linkDir = join(root, 'link')
 
@@ -381,7 +378,7 @@ function treeFilesIn(
 }
 
 // find a linked package module that defines `name` at top level, for the auto-import code action. Searches the
-// project's `link/` packages and returns the import path to load it by (e.g. `@cluesurf/seed/code/text`) plus the kind.
+// project's `link/` packages and returns the import path to load it by (e.g. `@term/base/code/text`) plus the kind.
 // On-demand only (a code-action invocation), so a full scan is acceptable; it stops at the first match.
 export function findModuleExporting(
   root: string,
@@ -400,7 +397,7 @@ export function findModuleExporting(
       if (def) {
         const rel = file.rel.replace(/\.tree$/, '').split(sep).join('/')
 
-        return { importPath: `@term/seed/${rel}`, kind: def.kind }
+        return { importPath: `@term/base/${rel}`, kind: def.kind }
       }
     }
   }

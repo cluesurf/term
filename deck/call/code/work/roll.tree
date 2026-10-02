@@ -24,7 +24,7 @@ load @term/call/code/work/tint
 #
 # Ported from deck/call/code/roll.ts (cli-in-term-0004).
 
-load @term/seed/code/text
+load @term/base/code/text
   find contains
 
 dock load

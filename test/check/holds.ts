@@ -217,15 +217,34 @@ function main(): void {
 `,
   )
 
-  // a reassignable binding does NOT propagate (its value can change): m >= 1 is unproven
+  // a reassignable binding propagates its value UNTIL it is written again. Before 2026-10-02 a `save` contributed
+  // nothing here because nothing retracted it on reassignment; now an assignment retracts it (check/facts.ts), so the
+  // value is a fact for exactly as long as it is true. The case after this one is the control.
+  expectOk(
+    'mutable binding propagates until reassigned',
+    `task bound
+  take n, like natural-number
+  save m
+    call add
+      loan n
+      code 1
+  hold
+    call is-minimum
+      loan m
+      code 1
+`,
+  )
+
+  // once reassigned, the old value is gone: m >= 1 is unproven after m = 0
   expectUnproven(
-    'mutable binding does not propagate',
+    'mutable binding stops propagating once reassigned',
     `task unbound
   take n, like natural-number
   save m
     call add
       loan n
       code 1
+  save m, code 0
   hold
     call is-minimum
       loan m
@@ -247,11 +266,13 @@ function main(): void {
 `,
   )
 
-  // and the lower bound: n mod 3 >= 0
+  // and the lower bound: n mod 3 >= 0, for a NATURAL n. Every backend truncates, so the remainder of a negative
+  // number is negative (-1 % 3 is -1). This case used to take any integer n and pass, which was a false theorem;
+  // test/check/soundness.ts holds the refusal.
   expectOk(
-    'mod result is non-negative (n mod 3 >= 0)',
+    'mod result is non-negative for a natural (n mod 3 >= 0)',
     `task wrap
-  take n
+  take n, like natural-number
   hold
     call is-minimum
       call modulo

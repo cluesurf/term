@@ -11,8 +11,8 @@ import { buildVersion } from '../code/object/version'
 import { restoreVersion } from '../code/object/restore'
 import { localObjectStore } from '../code/object/store'
 import type { ObjectStore } from '../code/object/store'
-import { diffRecord } from '@term/base/code/diff/diff'
-import { parseTree } from '@term/base/code/tree/parse'
+import { diffRecord } from '@cluesurf/save/diff/diff'
+import { parseTree } from '@cluesurf/save/tree/parse'
 
 describe('classify', () => {
   it('sends `.tree` down the structured path by name alone', () => {

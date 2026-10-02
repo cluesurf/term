@@ -4,11 +4,11 @@
 # genuinely needs random access (OTF's offset tables) uses a materialized cursor exactly as before; `seek` halts
 # outright if called against a streaming one, rather than silently producing a wrong answer.
 
-load @term/seed/code/boolean
+load @term/base/code/boolean
   find and
   find not
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
   find get
   find set
@@ -18,21 +18,21 @@ load @term/seed/code/list
   find slice
   find reverse
 
-load @term/seed/code/bit
+load @term/base/code/bit
   find bitwise-and
 
-load @term/seed/code/float
+load @term/base/code/float
   find round-down
   find to-decimal
   find to-number
 
-load @term/seed/code/text
+load @term/base/code/text
   find char-count
   find char-at
   find char-code-at
   find substring
 
-load @term/seed/code/text/string
+load @term/base/code/text/string
   find concat, name text-concat
 
 # a byte order for a multi-byte integer field
@@ -68,7 +68,7 @@ form integer-sign
 # `pull` is `none` for a cursor built from an already-materialized buffer (`make-cursor`) and `some` for one
 # built from a streaming source (`make-streaming-cursor`) — a zero-argument task that hands back `some(chunk)`
 # for more bytes or `none` at end of input, the same shape `catch`'s `take work, like task` already uses
-# elsewhere in the stdlib (`@term/seed/code/error.tree`). The cursor knows nothing about WHERE those bytes come
+# elsewhere in the stdlib (`@term/base/code/error.tree`). The cursor knows nothing about WHERE those bytes come
 # from — a real file, a socket, an in-memory list of pre-split chunks for testing — that's `./source.tree`'s
 # concern, layered on top. See note/term/feed/08-streaming.md.
 form feed-cursor
@@ -824,7 +824,7 @@ task write-bytes
 # 256 between neighbours. `int-bytes` below carries the place forward instead, so the whole encode is linear.
 #
 # `to-decimal` around the division, `to-number` around the floor: `round-down` is `like decimal` in and out
-# (`@term/seed/code/float.tree`), and Rust does not implicitly convert an `i64` division result into the `f64`
+# (`@term/base/code/float.tree`), and Rust does not implicitly convert an `i64` division result into the `f64`
 # it expects, the same class of gap `feedback_term_decimal_vs_number_no_implicit_conversion` (memory) documents
 # for JSON's number parser. `to-number` truncates toward zero rather than flooring, but `round-down`'s own output
 # is already integer-valued by the time it gets there, so the distinction never matters at this call site.

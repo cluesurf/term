@@ -5,4 +5,4 @@ deck @term/feed
   lock mit
   bear ./code
   test ./test
-  link @term/seed, code <0.0.x>
+  link @term/base, code <0.0.x>

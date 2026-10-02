@@ -28,7 +28,7 @@ load @term/mill/code/code/tag/mint
 load @term/mill/code/code/task/mint
   find task
 
-load @term/seed/code/lang
+load @term/base/code/lang
   find link-take
 
 mint link

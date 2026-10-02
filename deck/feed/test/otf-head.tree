@@ -71,5 +71,5 @@ test <the 8-byte created timestamp round trips>
       code 3610281600
 
 # A "bad magic number halts" test belongs here too, once the right assertion syntax for an expected exception is
-# confirmed — every `test` block seen so far in @term/seed uses `want hold` against a boolean, no example of
+# confirmed — every `test` block seen so far in @term/base uses `want hold` against a boolean, no example of
 # expecting a `halt` to fire. Not guessed at rather than risk a fourth wrong syntax guess this session.

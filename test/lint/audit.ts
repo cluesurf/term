@@ -32,7 +32,7 @@ const TERM = join(HERE, '../..')
 
 // the packages to lint. Enough Term to be representative, small enough to run inside a gate: the stdlib, the app
 // framework, the UI library and the data package.
-const PACKAGES = ['seed', 'site', 'face', 'host']
+const PACKAGES = ['base', 'site', 'face', 'host']
 
 // every test in the tree, not just test/lint: L040 (the data grammar) is exercised by test/compile/mold.ts and
 // test/compile/host-tools.ts, and reading only test/lint reported it as untested.

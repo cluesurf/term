@@ -1,0 +1,83 @@
+load @term/base/code/proof/equal
+  find equal
+
+# Substitution (the eliminator `J` in its non-dependent form): if x equals y and `p` holds of x, it holds of y.
+#
+# `p` is a FAMILY OF TYPES, one for each value: a task from `a` to `type`, used as a type by `like p / head / read x`.
+# Until 2026-10-02 the kernel could not read a type built that way and this claim stood open. Reading it is
+# proof-by-default-0031.
+rule substitution
+  head a
+  take p
+    like task
+      take value, like a
+      like type
+  take x, like a
+  take y, like a
+  take proof
+    like equal a
+      head
+        read x
+      head
+        read y
+  take px
+    like p
+      head
+        read x
+  like p
+    head
+      read y
+
+task substitution
+  take p
+  take x
+  take y
+  take proof
+  take px
+  save along
+    call carry
+      read p
+      read x
+      read y
+      read proof
+  send back
+    call along
+      read px
+
+# THE CONVOY, as for `chain` beside transitivity: `px : p x` is in scope before the match, so the match cannot rewrite
+# it, and the function `p x -> p y` returned from the match is rewritten instead, to `p c -> p c`.
+task carry
+  head a
+  take p
+    like task
+      take value, like a
+      like type
+  take x, like a
+  take y, like a
+  take proof
+    like equal a
+      head
+        read x
+      head
+        read y
+  like task
+    take w
+      like p
+        head
+          read x
+    like p
+      head
+        read y
+  fork case, read proof
+    case refl
+      link c
+      send back
+        task id
+          take w
+            like p
+              head
+                read c
+          like p
+            head
+              read c
+          send back, read w

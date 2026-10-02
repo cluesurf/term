@@ -1,9 +1,0 @@
-zone <1>
-name talk
-
-sort development
-  hold bitwarden
-  bind cluesurf-talk-development
-  need openai-api-key
-  need database-url
-  want sentry-dsn

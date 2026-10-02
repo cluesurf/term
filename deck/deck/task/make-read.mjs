@@ -16,7 +16,8 @@ import { writeFileSync } from 'fs'
 import path from 'path'
 
 const here = path.dirname(new URL('.', import.meta.url).pathname)
-const out = path.join(here, '..', 'zone', 'code', 'tool', 'runtime', 'mill.ts')
+// zone sits at the repository's deck/zone, beside deck/term, since 2026-10-02: five levels up from this package
+const out = path.join(here, '..', '..', '..', '..', '..', 'zone', 'code', 'tool', 'runtime', 'mill.ts')
 
 const made = await build({
   entryPoints: [path.join(here, 'code', 'read.ts')],
@@ -106,7 +107,7 @@ const mill = (() => {
     // refuses yields NO leaves rather than an exit. \`read\` above is the
     // declaration, where a parse error is a bug in a file we own and
     // must stop the run. A note is not ours, and one unparseable note
-    // must not take every \`term zone read\` down, which it did once.
+    // must not take every \`zone read\` down, which it did once.
     note: (text: string): any[] => {
       const got = (__read as any).readTree({
         file: 'note.tree',

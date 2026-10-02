@@ -25,11 +25,11 @@ import {
 import { render } from '@term/make/code/parser/diagnostic'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const baseTree = join(here, '..', '..', 'deck', 'seed')
+const baseTree = join(here, '..', '..', 'deck', 'base')
 
 const stdlib = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/seed/'
-  path = path.replace(/^@term\/seed\//, prefix)
+  const prefix = '@term/base/'
+  path = path.replace(/^@term\/base\//, prefix)
 
   if (!path.startsWith(prefix)) {
     return undefined
@@ -47,8 +47,8 @@ const readRuntime = (path: string): string | undefined => {
     return readFileSync(path, 'utf8')
   }
 
-  const prefix = '@cluesurf/seed/'
-  path = path.replace(/^@term\/seed\//, prefix)
+  const prefix = '@term/base/'
+  path = path.replace(/^@term\/base\//, prefix)
 
   if (!path.startsWith(prefix)) {
     return undefined
@@ -61,14 +61,14 @@ const readRuntime = (path: string): string | undefined => {
 
 // the Seed program: a server whose handler routes on the request path -- `/` greets, anything else echoes the path,
 // proving the request's parsed method / path / query reach the handler.
-const SOURCE = `load @cluesurf/seed/code/network/server
+const SOURCE = `load @term/base/code/network/server
   find start
   find stop
 
-load @cluesurf/seed/code/network/server/request
+load @term/base/code/network/server/request
   find request
 
-load @cluesurf/seed/code/network/server/response
+load @term/base/code/network/server/response
   find response
   find make-ok
   find make-status

@@ -64,10 +64,10 @@ export function huntSeedCompiler(input: {
 }): HuntResult {
   const { root, resolve } = input
   // the stdlib, at its CURRENT path. This defaulted to `deck/base/code`, the pre-rename location, which has not
-  // existed since the package became `deck/seed`: `find` failed, the catch below set the corpus to empty, and the
+  // existed since the package became `deck/base`: `find` failed, the catch below set the corpus to empty, and the
   // run reported `no oracle violations` having read nothing at all. A check that passes on an empty corpus is
   // worse than no check, because it answers the question it was asked.
-  const glob = input.glob ?? 'deck/seed/code'
+  const glob = input.glob ?? 'deck/base/code'
   const runs = input.runs ?? 3000
   const seeds = input.seeds ?? 4
   const fuzzTimeoutSec = input.fuzzTimeoutSec ?? 90

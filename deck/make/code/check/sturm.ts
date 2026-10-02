@@ -97,6 +97,13 @@ function toRPoly(p: Poly): RPoly {
   return rtrim(p.map(c => rat(BigInt(Math.round(c)))))
 }
 
+// every coefficient a safe integer. The DECISIONS below (positive everywhere, non-negative everywhere, positive on an
+// interval) refuse a polynomial that is not, rather than rounding it: a rounded coefficient is a different polynomial,
+// and a sign decided for that one is not a sign for this. proof-by-default-0034.
+function integral(p: Poly): boolean {
+  return p.every(c => Number.isSafeInteger(c))
+}
+
 function rEval(p: RPoly, x: Rat): Rat {
   let acc = RZERO
 
@@ -337,6 +344,10 @@ export function hasRealRoot(p: Poly): boolean {
 
 // does `p(x) > 0` for ALL real x? (strictly positive: no real root, positive sign)
 export function positiveEverywhere(p: Poly): boolean {
+  if (!integral(p)) {
+    return false
+  }
+
   const t = toRPoly(p)
 
   if (t.length === 0) {
@@ -355,6 +366,10 @@ export function positiveEverywhere(p: Poly): boolean {
 // the touching-zero non-negative polynomials (e.g. `(x-1)^2 (x-2)^2`) that strict positivity cannot, and rejects any
 // polynomial that dips below zero on some interval.
 export function nonNegativeEverywhere(p: Poly): boolean {
+  if (!integral(p)) {
+    return false
+  }
+
   const t = toRPoly(p)
 
   if (t.length === 0) {
@@ -411,6 +426,11 @@ export function rationalNonNegativeEverywhere(
 // `(a, b)` (an interior root would make it zero, and a sign change would make it negative) and `p` is positive at the
 // midpoint. Sound for a < b.
 export function positiveOnInterval(p: Poly, a: number, b: number): boolean {
+  // the interval's ends are rounded below too, so they are held to the same rule as the coefficients
+  if (!integral(p) || !Number.isSafeInteger(a) || !Number.isSafeInteger(b)) {
+    return false
+  }
+
   const t = toRPoly(p)
   const lo = rat(BigInt(Math.round(a)))
   const hi = rat(BigInt(Math.round(b)))

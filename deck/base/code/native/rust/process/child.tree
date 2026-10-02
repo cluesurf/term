@@ -1,0 +1,76 @@
+dock load
+  load <global:child>, name child-runtime
+
+load @term/base/code/process
+  find child
+
+task wait
+  note async
+  take child, like child
+  like size
+
+  send back
+    call child-runtime/wait
+      read child/dock
+
+task stop
+  take child, like child
+  take
+    form
+    like text
+    fall text <gentle>
+
+  fork test
+    hook test
+      call is-equal
+        bind a, read form
+        bind b, text <force>
+    hook hold
+      call child-runtime/kill
+        read child/dock
+    hook miss
+      call child-runtime/stop
+        read child/dock
+
+task write
+  note async
+  take child, like child
+  take data, like text
+
+  call child-runtime/write
+    read child/dock
+    read data
+
+task close
+  note async
+  take child, like child
+
+  call child-runtime/close
+    read child/dock
+
+task read
+  note async
+  take child, like child
+  take
+    kind
+    like text
+    fall text <stdout>
+  take
+    format
+    like text
+    fall text <text>
+  like text
+
+  fork
+    test
+    call is-equal
+      read kind
+      text <stderr>
+    hook hold
+      send back
+        call child-runtime/read-error
+          read child/dock
+    hook miss
+      send back
+        call child-runtime/read-out
+          read child/dock

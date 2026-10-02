@@ -71,7 +71,7 @@ export async function publishPackage(input: {
   const log = (message: string): void =>
     console.error(`  [publish ${input.package}] ${message} (${since()})`)
 
-  // The version is a @term/base dataset of file records, committed through base's
+  // The version is a @cluesurf/save dataset of file records, committed through base's
   // Repository, so a release carries history rather than a bare commit object. The
   // tree is computed in memory and its chunks are shipped below.
   const release = await buildRelease({

@@ -160,8 +160,9 @@ ok('`feed` starts and serves the scaffolded app', served !== undefined && served
 
 // ---- zone: the secret console, which is a Term app ----
 //
-// With no command it prints its commands. Running it at all compiles deck/zone/code/line/base.tree through the
-// compiler and runs the emitted module, so a compile regression anywhere under zone fails here.
+// With no command it prints its commands. Running it at all compiles the repository's deck/zone/code/line/base.tree
+// through the compiler and runs the emitted module, so a compile regression anywhere under zone fails here. `term
+// zone` only forwards now, and the console names the command people should type, so its usage says `zone`.
 
 const zone = spawnSync('node', [LINE, 'zone'], {
   cwd: root,
@@ -171,7 +172,7 @@ const zone = spawnSync('node', [LINE, 'zone'], {
 })
 const zoneOut = `${zone.stdout ?? ''}${zone.stderr ?? ''}`
 
-ok('`zone` boots and prints its usage', /usage: term zone/.test(zoneOut), zoneOut)
+ok('`zone` boots and prints its usage', /usage: zone\b/.test(zoneOut), zoneOut)
 
 // every command the usage advertises. A console that lists a command it does not have is worse than one that
 // lists none, and this is the list a person reads first.

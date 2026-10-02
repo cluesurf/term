@@ -27,10 +27,34 @@ import { buildRoll } from '@term/make/code/compile/roll'
 import type { Roll } from '@term/make/code/compile/roll'
 import { elaborateReport } from '@term/make/code/check/elaborate'
 import { checkHolds } from '@term/make/code/check/holds'
+import type { Tally } from '@term/make/code/check/holds'
 import { checkTraits } from '@term/make/code/check/traits'
 import { checkEffects } from '@term/make/code/check/effects'
 import { checkClaims, fillClaims } from '@term/make/code/check/claim'
-import { checkTotality } from '@term/make/code/check/totality'
+import {
+  checkTotality,
+  terminatingFunctions,
+} from '@term/make/code/check/totality'
+import {
+  lengthKeepingFunctions,
+  pureFunctions,
+  returnsFreshFunctions,
+  stateFreeFunctions,
+} from '@term/make/code/check/facts'
+import { uncertifiedCount } from '@term/make/code/check/refine'
+import {
+  hasContracts,
+  lowerContracts,
+} from '@term/make/code/check/contract'
+
+// the terminating tasks, or none when the analysis fails: a crash there must cost proofs, never pass one
+function safeTerminating(program: Program): Set<string> {
+  try {
+    return terminatingFunctions(program)
+  } catch {
+    return new Set()
+  }
+}
 import { findUnused } from '@term/make/code/check/unused'
 import { pruneToReachable } from '@term/make/code/ir/prune'
 import { simplify } from '@term/make/code/ir/simplify'
@@ -101,6 +125,21 @@ export type CompileResult =
       // because an unfilled claim without it is an error and never reaches here. The build line reports the count
       // and a gate refuses on it: a book with an open claim compiles, but it is not proven. See check/claim.ts.
       openClaims?: string[]
+      // TIER 0: what this file's own tasks were proven free of with nothing written (every list read inside its
+      // list, every division by something other than zero), counted rather than failed. `failed` is what the gate
+      // (`term hold`) holds to a baseline. note/term/proof-by-default/obligations.md
+      obligations?: Tally
+      // what the KERNEL did with this file's own tasks: proved the whole body as one term, checked it statement by
+      // statement, or declined it (with the reason). A task nothing checked and a task the kernel proved looked the
+      // same from outside until this was counted (proof-by-default-0005, 0012).
+      kernel?: {
+        proven: number
+        commands: number
+        declined: { name: string; reason: string }[]
+      }
+      // linear refutations the search found and the certificate checker refused during THIS compile. Carried on the
+      // result so a cached compile still reports what its provers did (check/certificate.ts)
+      uncertified?: number
       // present when `options.roll` was set: the roll of this entry's closure (compile/roll.ts)
       roll?: Roll
     }
@@ -431,6 +470,9 @@ export function compileProgram(
   wantRoll?: boolean,
   deckOf?: (file: string) => { name: string; root: string } | undefined,
 ): CompileResult {
+  // the certificate checker's refusals so far, so this compile can report its own
+  const uncertifiedBefore = uncertifiedCount()
+
   // form extension: resolve every `form x` that is `like <base>` with children into an ordinary record, and finish
   // every `halt <form>` raise, before any name is bound. See code/check/extend.ts.
   const extendDiagnostics = extendForms(program, file, { deckOf })
@@ -494,6 +536,20 @@ export function compileProgram(
   // written once, on the rule. Runs BEFORE the checker so the fill's body is checked against the claim. claim.ts.
   fillClaims(program)
 
+  // the types as written, before the surface pass seeds them (lossily, on purpose), for the kernel. node.ts `declared`
+  for (const statement of program) {
+    if (statement.form === 'function') {
+      statement.declared = {
+        params: statement.params.map(p =>
+          p.type ? structuredClone(p.type) : undefined,
+        ),
+        ...(statement.result
+          ? { result: structuredClone(statement.result) }
+          : {}),
+      }
+    }
+  }
+
   // formal type checking: the surface pass (gradual bidirectional inference) annotates the AST with types
   const checkDiagnostics = check(program, file, merged)
   // the checker's warnings (an unknown type name) ride with the build's other warnings; only its errors stop it
@@ -541,7 +597,12 @@ export function compileProgram(
   // the claim wall: a `rule` states a claim and a `task` of the same name proves it. An unfilled claim is refused,
   // and code that runs may not call one. `note open` leaves a claim deliberately open, counted here so the build
   // line and the gate can report it rather than pass it in silence. See check/claim.ts.
-  const claims = checkClaims(program, file)
+  const claims = checkClaims(program, file, {
+    verified: new Set(elaboration.proven),
+    terminating: safeTerminating(program),
+    pure: pureFunctions(program),
+    declined: new Map(elaboration.declined.map(d => [d.name, d.reason])),
+  })
 
   if (claims.diagnostics.length) {
     return { ok: false, diagnostics: claims.diagnostics }
@@ -551,14 +612,68 @@ export function compileProgram(
   // holds the kernel already proved by definitional equality are dropped. BOTH remaining outcomes are errors since
   // 2026-09-18: a hold the prover refutes, and a hold it could not reach. Not proven is not proven, and a claim
   // nobody checked must not compile as though somebody had. See note/term/project/law-proof-gate.md.
-  const holdDiagnostics = checkHolds(program, file).filter(
-    d =>
-      !d.markers.some(m =>
-        kernelDischarged.has(
-          `${m.span.start.line}:${m.span.start.column}`,
-        ),
-      ),
+  const undischarged = (d: Diagnostic): boolean =>
+    !d.markers.some(m =>
+      kernelDischarged.has(`${m.span.start.line}:${m.span.start.column}`),
+    )
+
+  // THIS FILE'S OWN TASKS are checked in the checker's copy below, where a task's `have` wraps its body and a
+  // callee's `must` follows its call, so the holds the programmer wrote may use both. Every other task (an import,
+  // whose own file checks its contracts) is checked here, as written.
+  const checked = lowerContracts(program, { file, tier0: true })
+  const holdDiagnostics = checkHolds(program, file, {
+    skip: checked.lowered,
+  }).filter(undischarged)
+
+  // contracts: every `have` / `must` / `down` lowered into holds in a copy of the program only the checker reads,
+  // and discharged by the same provers. A contract the programmer wrote is owed like a hold they wrote, so an
+  // unproven one fails the build. check/contract.ts.
+  //
+  // TIER 0 rides in the same copy: every list read and division in this file's own tasks owes a hold, counted in
+  // `obligations` rather than failed. The copy is skipped only when there is neither a contract nor a task of this
+  // file to write obligations for.
+  const obligations: Tally = { total: 0, proven: 0, failed: [] }
+
+  // the kernel's verdict on this file's own tasks, by name
+  const stampedProgram = program.some(
+    s => s.form === 'function' && s.span.file !== undefined,
   )
+  const ownNames = new Set(
+    program
+      .filter(
+        s =>
+          s.form === 'function' &&
+          !s.claim &&
+          !s.stub &&
+          (stampedProgram ? s.span.file === file : true),
+      )
+      .map(s => (s as { name: string }).name),
+  )
+  const provenSet = new Set(elaboration.proven)
+  const kernel = {
+    proven: elaboration.proven.filter(n => ownNames.has(n)).length,
+    commands: elaboration.verified.filter(
+      n => ownNames.has(n) && !provenSet.has(n),
+    ).length,
+    declined: elaboration.declined.filter(d => ownNames.has(d.name)),
+  }
+
+  holdDiagnostics.push(
+    ...checkHolds(checked.program, file, {
+      tally: obligations,
+      // this file's own tasks, every hold in them: the programmer's and the checker's
+      only: checked.lowered,
+      // the holds written into the copy call nothing the real tasks did not, so purity is the real program's
+      pure: pureFunctions(program),
+      stateFree: stateFreeFunctions(program),
+      keeping: lengthKeepingFunctions(program),
+      returning: returnsFreshFunctions(program),
+    }).filter(undischarged),
+  )
+
+  // the running counter is how ordinals were assigned, not part of the answer, and a Map does not survive the
+  // output cache's JSON anyway
+  delete obligations.seen
 
   const holdErrors = holdDiagnostics.filter(d => d.severity === 'error')
 
@@ -646,6 +761,9 @@ export function compileProgram(
       modules: emitModules(tsProgram, modulesUrl),
       warnings,
       ...(claims.open.length ? { openClaims: claims.open } : {}),
+    obligations,
+    kernel,
+    uncertified: uncertifiedCount() - uncertifiedBefore,
       ...(roll ? { roll } : {}),
     }
   }
@@ -662,6 +780,9 @@ export function compileProgram(
       typescript: emitTypeScript(lowerZones(program)),
       warnings,
       ...(claims.open.length ? { openClaims: claims.open } : {}),
+    obligations,
+    kernel,
+    uncertified: uncertifiedCount() - uncertifiedBefore,
       ...(roll ? { roll } : {}),
     }
   }
@@ -689,6 +810,9 @@ export function compileProgram(
     typescript: emitTypeScript(loweredTs, { env, wake }),
     warnings,
     ...(claims.open.length ? { openClaims: claims.open } : {}),
+    obligations,
+    kernel,
+    uncertified: uncertifiedCount() - uncertifiedBefore,
     ...(roll ? { roll } : {}),
   }
 }

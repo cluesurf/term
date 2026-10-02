@@ -61,10 +61,10 @@ function have(tool: string): boolean {
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const TERM = resolvePath(HERE, '..', '..')
-const SEED = join(TERM, 'deck/seed')
+const SEED = join(TERM, 'deck/base')
 
 const resolver = (path: string): Source | undefined => {
-  const rest = path.replace(/^@(?:term|cluesurf)\/seed\//, '')
+  const rest = path.replace(/^@term\/base\//, '')
 
   if (rest === path) {
     return undefined
@@ -83,15 +83,15 @@ const readRuntime = (path: string): string | undefined => (existsSync(path) ? re
 
 // the exception raised, and a probe that reads the hive after a caught raise: decks woken, exception entries,
 // and the last entry's name (the raise the tell appended)
-const PROGRAM = `load @term/seed/code/exception
+const PROGRAM = `load @term/base/code/exception
   find absence
 
-load @term/seed/code/hive
+load @term/base/code/hive
   find hive-roll
   find hive-size
   find hive-entry
 
-load @term/seed/code/list
+load @term/base/code/list
   find size
   find get
 

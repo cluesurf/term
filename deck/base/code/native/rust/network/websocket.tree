@@ -1,0 +1,23 @@
+# rust WebSocket implementation. Forwards to the linked websocket runtime shim (tokio-tungstenite). Declares the opaque handle type a socket holds (an Arc-Mutex-wrapped WebSocketStream). Internal: reached only through the public WebSocket API.
+
+dock type
+  load <std::sync::Arc<tokio::sync::Mutex<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>>>, name websocket-handle
+
+dock load
+  load <global:websocket>, name websocket
+
+load @term/base/code/network/websocket
+  find socket
+
+task do-connect
+  note async
+  take url, like text
+  like socket
+  save raw
+    call websocket/connect
+      read url
+      wait true
+  send back
+    make socket
+      bind dock, read raw
+      bind url, read url

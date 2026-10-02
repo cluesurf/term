@@ -14,7 +14,7 @@
 //                      the mill comparison above is blind to it. That blindness hid a real, meaning-changing bug
 //                      for as long as the sweep has existed: the formatter re-emitted every name interpolation as
 //                      `{{...}}` regardless of its actual brace depth, turning the compile-time substitution in
-//                      `load @term/seed/code/native/{platform}/atomic` into a runtime interpolation. Every
+//                      `load @term/base/code/native/{platform}/atomic` into a runtime interpolation. Every
 //                      platform-slot import in the stdlib, silently, the moment anyone ran `term form`.
 //
 //   IDEMPOTENT         format(format(x)) equals format(x). A formatter that keeps changing its mind cannot be

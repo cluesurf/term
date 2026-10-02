@@ -5,30 +5,30 @@
 # its occurrence code, nothing else. The status is a table of seventeen rows, written once here. See
 # note/term/hive/06-tell.md.
 
-load @term/seed/code/hive
+load @term/base/code/hive
   find hive-roll
   find hive-entry
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
 
-load @term/seed/code/json
+load @term/base/code/json
   find make-object
   find set-field
   find from-text
   find from-number
   find stringify
 
-load @term/seed/code/text
+load @term/base/code/text
   find replace-all
   find last-index-of
   find substring
   find char-count
 
-load @term/seed/code/text/string
+load @term/base/code/text/string
   find concat
 
-load @term/seed/code/exception
+load @term/base/code/exception
   find exception
 
 load ./http

@@ -11,7 +11,7 @@
 # A name that lands on a TypeScript reserved word gets a trailing underscore, because `class` is a fine Term task
 # name and an impossible TypeScript one.
 
-load @term/seed/code/text
+load @term/base/code/text
   find split
   find substring
   find char-count

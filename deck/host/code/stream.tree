@@ -3,25 +3,25 @@
 # value fuses an anchor, and the compact line for the value. Text channels carry lines, so a reader over a channel
 # hands every received line to `feed`. See note/term/host/07-streaming.md.
 
-load @term/seed/code/boolean
+load @term/base/code/boolean
   find not
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
   find size
   find get
   find set
   find contains
 
-load @term/seed/code/text
+load @term/base/code/text
   find trim
   find starts-with
   find split
 
-load @term/seed/code/text/string
+load @term/base/code/text/string
   find concat
 
-load @term/seed/code/maybe
+load @term/base/code/maybe
   find maybe
 
 load ./base

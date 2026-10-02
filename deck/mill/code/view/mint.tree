@@ -1,5 +1,5 @@
 
-load @term/seed/code/view-file
+load @term/base/code/view-file
   find view-file
 
 load @term/mill/code/view/load/mint

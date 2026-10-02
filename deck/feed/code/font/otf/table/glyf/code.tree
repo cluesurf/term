@@ -13,15 +13,15 @@
 # it means the writer needs no flag/coordinate-choice heuristics to be correct, matching how `write-int` always
 # uses one representation regardless of what a real font tool might pick to save space.
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
   find get
   find size
 
-load @term/seed/code/boolean
+load @term/base/code/boolean
   find and
 
-load @term/seed/code/bit
+load @term/base/code/bit
   find bitwise-and
 
 load ../../../../base

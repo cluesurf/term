@@ -240,7 +240,7 @@ expect(
 )
 
 // A COMPILER CHANGE STRANDS A NAMESPACE, and the strand is what has to be reclaimed. This is the whole 73 GB:
-// `deck/seed` held 20,216 output entries for a 532-file package, 38 stranded copies of every file.
+// `deck/base` held 20,216 output entries for a 532-file package, 38 stranded copies of every file.
 for (const version of ['v2', 'v3', 'v4']) {
   diskCacheStore(gzDir, version).save('output', 'aabbcc', '{}')
 }

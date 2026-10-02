@@ -78,7 +78,7 @@ async function main(): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), 'term-fill-'))
   mkdirSync(join(root, 'link/@term'), { recursive: true })
   mkdirSync(join(root, 'code'), { recursive: true })
-  symlinkSync(join(TERM, 'deck/seed'), join(root, 'link/@term/seed'))
+  symlinkSync(join(TERM, 'deck/base'), join(root, 'link/@term/base'))
   symlinkSync(join(TERM, 'deck/host'), join(root, 'link/@term/host'))
   writeFileSync(join(root, 'deck.tree'), 'deck @probe/fill\n  code <0.0.0>\n')
   const entry = join(root, 'code/fill.tree')

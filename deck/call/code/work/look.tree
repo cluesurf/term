@@ -23,11 +23,11 @@ load @term/call/code/work/tint
 #
 # Ported from deck/call/code/look.ts (cli-in-term-0004).
 
-load @term/seed/code/file
+load @term/base/code/file
   find read, name read-file
   find test, name file-test
 
-load @term/seed/code/text
+load @term/base/code/text
   find starts-with
 
 dock load

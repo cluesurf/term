@@ -73,7 +73,7 @@ task found-text
       send back
         call write(read value)
 
-load @term/seed/code/maybe
+load @term/base/code/maybe
   find maybe
 
 test <get-at follows a path>

@@ -1,0 +1,86 @@
+# Making a response safe to send over HTTP/2.
+#
+# RFC 9113 forbids the connection-specific header fields HTTP/1.1 relies on: `connection`, `keep-alive`,
+# `proxy-connection`, `transfer-encoding` and `upgrade`. A response carrying one of them is MALFORMED, and a
+# conforming peer must treat it as a stream error rather than ignoring the header. HTTP/1.1 middleware adds them
+# without being asked, so a handler shared between an h1 and an h2 server grows them by accident.
+#
+# `clean` takes them out. It is the one thing an HTTP/2 response needs that an HTTP/1.1 one does not.
+#
+# Internal: reached only through the public network/http2 API.
+
+load @term/base/code/network/server/response
+  find response
+  find header
+
+# the header names h2 refuses, lower-cased, which is how every shim stores them
+host banned-connection, text <connection>
+host banned-keep-alive, text <keep-alive>
+host banned-proxy, text <proxy-connection>
+host banned-transfer, text <transfer-encoding>
+host banned-upgrade, text <upgrade>
+
+# strip the connection-specific headers h2 forbids, and answer the response
+task http2-clean
+  take response, like response
+  like response
+  save keep, make list
+
+  walk list
+    read response/headers
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call http2-allows
+            read one/name
+        hook hold
+          call keep/push
+            read one
+
+  send back
+    make response
+      bind status, read response/status
+      bind headers, read keep
+      bind body, read response/body
+
+# is this header name one HTTP/2 permits
+task http2-allows
+  take name, like text
+  like boolean
+  fork test
+    hook test
+      call is-equal
+        read name
+        read banned-connection
+    hook hold
+      send back, false
+  fork test
+    hook test
+      call is-equal
+        read name
+        read banned-keep-alive
+    hook hold
+      send back, false
+  fork test
+    hook test
+      call is-equal
+        read name
+        read banned-proxy
+    hook hold
+      send back, false
+  fork test
+    hook test
+      call is-equal
+        read name
+        read banned-transfer
+    hook hold
+      send back, false
+  fork test
+    hook test
+      call is-equal
+        read name
+        read banned-upgrade
+    hook hold
+      send back, false
+  send back, true

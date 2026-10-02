@@ -5,8 +5,8 @@ import path from 'node:path'
 import { buildVersion } from '../code/object/version'
 import { filesOfDataset, markOfPath } from '../code/object/dataset'
 import { localObjectStore } from '../code/object/store'
-import { readDataset, diffRoots } from '@term/base/code/store/tree'
-import { MemoryChunkStore } from '@term/base/code/store/chunk-store'
+import { readDataset, diffRoots } from '@cluesurf/save/store/tree'
+import { MemoryChunkStore } from '@cluesurf/save/store/chunk-store'
 
 let root = ''
 let store = localObjectStore({ root: '' })

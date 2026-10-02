@@ -21,7 +21,7 @@ deck @term/term
   deck ./deck/make
   deck ./deck/mill
   deck ./deck/scan
-  deck ./deck/seed
+  deck ./deck/base
   deck ./deck/site
   deck ./deck/test
   deck ./deck/zone

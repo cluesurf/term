@@ -29,7 +29,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 const TERM = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
 // an app: two exceptions under `excess`, one told with a prop and a public name, one private, and a route
-const APP = `load @term/seed/code/exception
+const APP = `load @term/base/code/exception
   find excess
 
 load @term/site/code/http/tell
@@ -89,7 +89,7 @@ async function main(): Promise<void> {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'term-tell-'))
   fs.mkdirSync(path.join(root, 'link/@term'), { recursive: true })
   fs.mkdirSync(path.join(root, 'code'), { recursive: true })
-  fs.symlinkSync(path.join(TERM, 'deck/seed'), path.join(root, 'link/@term/seed'))
+  fs.symlinkSync(path.join(TERM, 'deck/base'), path.join(root, 'link/@term/base'))
   fs.symlinkSync(path.join(TERM, 'deck/site'), path.join(root, 'link/@term/site'))
   fs.writeFileSync(path.join(root, 'deck.tree'), 'deck @probe/tell\n  code <0.0.0>\n')
   const entry = path.join(root, 'code/app.tree')

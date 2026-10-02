@@ -1,10 +1,10 @@
 # read/write round trips for the OTF OS/2 table, both an unversioned (0) and a fully versioned (2) table. Run:
 # term test, from deck/feed. Proves mine maybe / test is-minimum (04-otf-case-study.md) against real code.
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
 
-load @term/seed/code/maybe
+load @term/base/code/maybe
   find some
   find none
 

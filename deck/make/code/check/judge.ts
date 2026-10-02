@@ -286,9 +286,13 @@ function unfoldRigid(value: Extract<Value, { v: 'rigid' }>): Value {
 // reduce a value to weak head normal form, unfolding transparent definitions at the head (the same delta step the
 // converter takes at lines 1116/1120) and following metavariable solutions. Bounded by the unfold fuel so a
 // self-referential definition cannot loop. Lets the elaborator see the literal a closed numeric expression computes to.
+// head unfolds `whnf` takes in its loop. They cost no stack, so the budget is far above the nesting cap: a long finite
+// computation's head chain runs to its end, and only a self-referential head spins it out.
+const WHNF_FUEL = 1 << 18
+
 export function whnf(value: Value): Value {
   let current = force(value)
-  let fuel = MAX_UNFOLD
+  let fuel = WHNF_FUEL
 
   while (
     current.v === 'rigid' &&
@@ -1207,12 +1211,29 @@ function convert(level: number, a: Value, b: Value): boolean {
     return true
   }
 
+  // unfold the whole chain of transparent heads in one step (`whnf` loops where a nested convert per unfold would
+  // recurse), so a long computation costs one level of the host's stack rather than one level per definition it passes
+  // through. The same delta steps, taken iteratively: a chain of a few thousand unfolds used to exhaust the stack.
+  // A head still unfoldable after `whnf` means `whnf` spent its fuel on it: a self-referential definition, which is
+  // stuck (not equal), never a reason to recurse further.
   if (a.v === 'rigid' && definition.has(a.name)) {
-    return convertUnfolding(level, unfoldRigid(a), b)
+    const unfolded = whnf(a)
+
+    if (unfolded.v === 'rigid' && definition.has(unfolded.name)) {
+      return false
+    }
+
+    return convertUnfolding(level, unfolded, b)
   }
 
   if (b.v === 'rigid' && definition.has(b.name)) {
-    return convertUnfolding(level, a, unfoldRigid(b))
+    const unfolded = whnf(b)
+
+    if (unfolded.v === 'rigid' && definition.has(unfolded.name)) {
+      return false
+    }
+
+    return convertUnfolding(level, a, unfolded)
   }
 
   return false
@@ -1226,10 +1247,13 @@ function convertUnfolding(level: number, a: Value, b: Value): boolean {
 
   unfoldFuel++
 
-  const result = convert(level, a, b)
-  unfoldFuel--
-
-  return result
+  // restored on the way out even when the conversion throws (a deep one can exhaust the host's stack), or the fuel
+  // stays spent and every later conversion in the same run is quietly refused for want of it
+  try {
+    return convert(level, a, b)
+  } finally {
+    unfoldFuel--
+  }
 }
 
 // public: are two values definitionally equal? (used by the refinement layer to discharge a non-linear hold via
@@ -1360,10 +1384,12 @@ function convertModUnfolding(
 
   unfoldFuel++
 
-  const result = convertMod(level, a, b, hyps)
-  unfoldFuel--
-
-  return result
+  // restored even when the conversion throws, for the reason given at `convertUnfolding`
+  try {
+    return convertMod(level, a, b, hyps)
+  } finally {
+    unfoldFuel--
+  }
 }
 
 function convertMod(

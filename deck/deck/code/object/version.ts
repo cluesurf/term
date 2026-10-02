@@ -1,4 +1,4 @@
-// Building a package version on `@term/base`.
+// Building a package version on `@cluesurf/save`.
 //
 // This replaces the hand-written directory walk in `build.ts` and the nested prolly
 // tree in `tree.ts`. A version is a base `Dataset` of file records (see `dataset.ts`),
@@ -13,12 +13,12 @@
 
 import fsp from 'fs/promises'
 import path from 'path'
-import { writeDataset } from '@term/base/code/store/tree'
-import { MemoryChunkStore } from '@term/base/code/store/chunk-store'
+import { writeDataset } from '@cluesurf/save/store/tree'
+import { MemoryChunkStore } from '@cluesurf/save/store/chunk-store'
 
 import { chunkBuffer } from './chunk'
 import { classify } from './classify'
-import { parseTree } from '@term/base/code/tree/parse'
+import { parseTree } from '@cluesurf/save/tree/parse'
 import type { ChunkParams } from './chunk'
 import { hashObject } from './hash'
 import type { ObjectStore } from './store'

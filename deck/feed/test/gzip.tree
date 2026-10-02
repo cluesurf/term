@@ -4,11 +4,11 @@
 # lists do (02-cursor.md) — every check below goes through `fork case` to pull out a primitive first, never compares
 # a `maybe` or a `gzip-file` directly.
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
   find size
 
-load @term/seed/code/maybe
+load @term/base/code/maybe
   find some
   find none
 

@@ -3,7 +3,7 @@ load @term/mill/code/code/rule/hold/mint
 
 
 # `like load` references the import form
-load @term/seed/code/lang
+load @term/base/code/lang
   find code-import
   find import-reference
 

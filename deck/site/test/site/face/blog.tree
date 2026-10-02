@@ -19,11 +19,11 @@ load @term/site/code/view/reactive
   find read-signal
   find write-signal
 
-load @term/seed/code/list
+load @term/base/code/list
   find list
   find push
 
-load @term/seed/code/uuid
+load @term/base/code/uuid
   find version4
 
 # read the two inputs, make a post, keep it through `on-add`, append it to the list signal, then clear the inputs.

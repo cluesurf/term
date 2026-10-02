@@ -1,0 +1,87 @@
+load @term/base/code/proof/equal
+  find equal
+
+# if x equals y and y equals z, x equals z
+rule transitivity
+  head a
+  take x, like a
+  take y, like a
+  take z, like a
+  take left
+    like equal a
+      head
+        read x
+      head
+        read y
+  take right
+    like equal a
+      head
+        read y
+      head
+        read z
+  like equal a
+    head
+      read x
+    head
+      read z
+
+task transitivity
+  take x
+  take y
+  take z
+  take left
+  take right
+  save along
+    call chain
+      read x
+      read y
+      read z
+      read left
+  send back
+    call along
+      read right
+
+# THE CONVOY. Matching `left` makes x and y the same value `c`, but `right : equal a y z` is already in scope and a
+# match does not rewrite what is in scope, so the branch cannot see that `right` now says `c == z`. Returning a
+# FUNCTION from the match fixes it: its type `equal a y z -> equal a x z` mentions both indices, so the match rewrites
+# it to `equal a c z -> equal a c z` in the branch, which the identity inhabits.
+task chain
+  head a
+  take x, like a
+  take y, like a
+  take z, like a
+  take left
+    like equal a
+      head
+        read x
+      head
+        read y
+  like task
+    take r
+      like equal a
+        head
+          read y
+        head
+          read z
+    like equal a
+      head
+        read x
+      head
+        read z
+  fork case, read left
+    case refl
+      link c
+      send back
+        task id
+          take r
+            like equal a
+              head
+                read c
+              head
+                read z
+          like equal a
+            head
+              read c
+            head
+              read z
+          send back, read r

@@ -1,0 +1,893 @@
+
+load @term/base/code/math
+  find absolute
+  find power
+
+load @term/base/code/bit
+  find bitwise-and
+  find bitwise-or
+  find bitwise-exclusive-or
+  find bitwise-not
+  find shift-left
+  find shift-right
+  find unsigned-shift-right
+
+# Generic BigUint.
+
+# http://supertech.csail.mit.edu/papers/debruijn.pdf
+# https://github.com/brix/crypto-js/tree/develop/src
+# https://github.com/brix/crypto-js/blob/develop/src/md5.js
+
+form integer
+  link list, list integer-32
+    note private
+
+task round-down-to-power-of-two-8
+  take x
+  save x
+    call mix-for-power-rounding
+      read x
+      code 1
+  save x
+    call mix-for-power-rounding
+      read x
+      code 2
+  save x
+    call mix-for-power-rounding
+      read x
+      code 4
+  call subtract
+    read x
+    call shift-right
+      read x
+      code 1
+
+task round-down-to-power-of-two-16
+  take x
+  save x
+    call mix-for-power-rounding
+      read x
+      code 1
+  save x
+    call mix-for-power-rounding
+      read x
+      code 2
+  save x
+    call mix-for-power-rounding
+      read x
+      code 4
+  save x
+    call mix-for-power-rounding
+      read x
+      code 8
+  call subtract
+    read x
+    call shift-right
+      read x
+      code 1
+
+task round-down-to-power-of-two-32
+  take x
+  save x
+    call mix-for-power-rounding
+      read x
+      code 1
+  save x
+    call mix-for-power-rounding
+      read x
+      code 2
+  save x
+    call mix-for-power-rounding
+      read x
+      code 4
+  save x
+    call mix-for-power-rounding
+      read x
+      code 8
+  save x
+    call mix-for-power-rounding
+      read x
+      code 16
+  call subtract
+    read x
+    call shift-right
+      read x
+      code 1
+
+task round-up-to-power-of-two-8
+  take x
+  save x
+    call subtract
+      read x
+      code 1
+  save x
+    call mix-for-power-rounding
+      read x
+      code 1
+  save x
+    call mix-for-power-rounding
+      read x
+      code 2
+  save x
+    call mix-for-power-rounding
+      read x
+      code 4
+  call add
+    read x
+    code 1
+
+task round-up-to-power-of-two-16
+  take x
+  save x
+    call subtract
+      read x
+      code 1
+  save x
+    call mix-for-power-rounding
+      read x
+      code 1
+  save x
+    call mix-for-power-rounding
+      read x
+      code 2
+  save x
+    call mix-for-power-rounding
+      read x
+      code 4
+  save x
+    call mix-for-power-rounding
+      read x
+      code 8
+  call add
+    read x
+    code 1
+
+task round-up-to-power-of-two-32
+  take x
+  save x
+    call subtract
+      read x
+      code 1
+  save x
+    call mix-for-power-rounding
+      read x
+      code 1
+  save x
+    call mix-for-power-rounding
+      read x
+      code 2
+  save x
+    call mix-for-power-rounding
+      read x
+      code 4
+  save x
+    call mix-for-power-rounding
+      read x
+      code 8
+  save x
+    call mix-for-power-rounding
+      read x
+      code 16
+  call add
+    read x
+    code 1
+
+task mix-for-power-rounding
+  take a
+  take b
+  note private
+  like number
+  send back
+    call bitwise-or
+      read a
+      call shift-right
+        read a
+        read b
+
+# Euclidean algorithm. The swaps were written as assignments nested inside call arguments, which is not an
+# expression, so each is now its own statement through a temporary.
+task gcd
+  take a
+  take b
+
+  fork test
+    hook test
+      call is-above
+        read b
+        read a
+    hook hold
+      save swap, read a
+      save a, read b
+      save b, read swap
+
+  walk test
+    hook test
+      true
+    hook hold
+      fork test
+        hook test
+          call is-equal
+            call modulo
+              read a
+              read b
+            code 0
+        hook hold
+          send back
+            call absolute
+              read b
+      save rest
+        call modulo
+          read a
+          read b
+      save a, read b
+      save b, read rest
+
+task lcm
+  take a
+  take b
+  send back
+    call absolute
+      call multiply
+        call divide
+          read a
+          call gcd
+            read a
+            read b
+        read b
+
+tree is-even
+  take size, like mark-8
+
+  task is-even
+    take n, like mark-{size}
+    call is-equal
+      call bitwise-and
+        read n
+        code 1
+      code 0
+
+tree is-odd
+  take size, like mark-8
+
+  task is-odd
+    take n, like mark-{size}
+    call is-unequal
+      call bitwise-and
+        read n
+        code 1
+      code 0
+
+tree is-power-of-two
+  take size, like mark-8
+
+  hook bind
+    task is-power-of-two
+      take n, like mark-{size}
+      call and
+        call is-unequal
+          read n
+          code 0
+        call is-equal
+          call bitwise-and
+            read n
+            call subtract
+              read n
+              code 1
+          code 0
+
+tree rotate
+  take size, like mark-8
+
+  hook bind
+    task rotate-base
+      take a, like mark-{size}
+      take b, like mark-{size}
+
+      call bitwise-or
+        call shift-left
+          read a
+          read b
+        call shift-right
+          read a
+          call subtract
+            read size
+            read b
+
+    task rotate-head
+      take a, like mark-{size}
+      take b, like mark-{size}
+
+      call bitwise-or
+        call shift-right
+          read a
+          read b
+        call shift-left
+          read a
+          call subtract
+            read size
+            read b
+
+host binary-reversal-table, call make-reversal-table
+
+task make-reversal-table
+  save table
+    make list
+  save fill, code 0
+  walk test
+    hook test
+      call is-below
+        read fill
+        code 256
+    hook hold
+      call table/push
+        code 0
+      save fill, call increment(read fill)
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        code 256
+    hook hold
+      save v
+        call unsigned-shift-right
+          read i
+          code 1
+      save r, read i
+      save s, code 7
+      walk test
+        hook test
+          call is-unequal
+            read v
+            code 0
+        hook hold
+          save r
+            call shift-left
+              read r
+              code 1
+          save r
+            call bitwise-or
+              read r
+              call bitwise-and
+                read v
+                code 1
+          save s
+            call subtract
+              read s
+              code 1
+          save v
+            call unsigned-shift-right
+              read v
+              code 1
+      call table/set
+        read i
+        call bitwise-and
+          call shift-left
+            read r
+            read s
+          code 255
+      save i, call increment(read i)
+  send back, read table
+
+save binary-trailing-zero-magic-number, code 0x077cb531
+save binary-leading-zero-table, call make-leading-zero-table
+save binary-trailing-zero-table
+  call make-de-bruijn-trailing-zero-table
+    code 5
+    read binary-trailing-zero-magic-number
+
+task count-trailing-zeroes-32
+  take n
+  call binary-trailing-zero-table/get
+    call unsigned-shift-right
+      call multiply
+        call bitwise-and
+          read n
+          call subtract
+            code 0
+            read n
+        read binary-trailing-zero-magic-number
+      code 27
+
+task count-trailing-zeroes-16
+  take n
+  call count-trailing-zeroes-32
+    read n
+
+task count-trailing-zeroes-8
+  take n
+  call count-trailing-zeroes-32
+    read n
+
+task count-trailing-ones-32
+  take x
+  call count-trailing-zeroes-32
+    call unsigned-shift-right
+      call bitwise-not
+        read x
+      code 0
+
+task count-trailing-ones-16
+  take x
+  call count-trailing-zeroes-32
+    call unsigned-shift-right
+      call bitwise-not
+        read x
+      code 0
+
+task count-trailing-ones-8
+  take x
+  call count-trailing-zeroes-32
+    call unsigned-shift-right
+      call bitwise-not
+        read x
+      code 0
+
+task count-leading-zeroes-32
+  take n
+  like number
+
+  save r
+    call binary-leading-zero-table/get
+      call unsigned-shift-right
+        read n
+        code 24
+
+  fork test
+    hook test
+      call is-equal
+        read r
+        code 8
+    hook hold
+      save r
+        call add
+          read r
+          call binary-leading-zero-table/get
+            call unsigned-shift-right
+              read n
+              code 16
+
+  fork test
+    hook test
+      call is-equal
+        read r
+        code 16
+    hook hold
+      save r
+        call add
+          read r
+          call binary-leading-zero-table/get
+            call unsigned-shift-right
+              read n
+              code 8
+
+  fork test
+    hook test
+      call is-equal
+        read r
+        code 24
+    hook hold
+      save r
+        call add
+          read r
+          call binary-leading-zero-table/get
+            read n
+
+  send back, read r
+
+task count-leading-zeroes-16
+  take n
+  like number
+  save r
+    call binary-leading-zero-table/get
+      call unsigned-shift-right
+        read n
+        code 8
+
+  fork test
+    hook test
+      call is-equal
+        read r
+        code 8
+    hook hold
+      save r
+        call add
+          read r
+          call binary-leading-zero-table/get
+            read n
+
+  send back, read r
+
+task count-leading-zeroes-8
+  take n
+  like number
+  send back
+    call binary-leading-zero-table/get
+      read n
+
+task count-leading-ones-32
+  take n
+  like number
+  send back
+    call count-leading-zeroes-32
+      call bitwise-and
+        call unsigned-shift-right
+          call bitwise-not
+            read n
+          code 0
+        code 0xffffffff
+
+task count-leading-ones-16
+  take n
+
+  call count-leading-zeroes-16
+    call bitwise-and
+      call unsigned-shift-right
+        call bitwise-not
+          read n
+        code 0
+      code 0xffff
+
+task count-leading-ones-8
+  take n
+
+  call count-leading-zeroes-8
+    call bitwise-and
+      call unsigned-shift-right
+        call bitwise-not
+          read n
+        code 0
+      code 0xff
+
+task make-leading-zero-table
+  save i
+    code 0
+  save table
+    make list
+  save fill, code 0
+  walk test
+    hook test
+      call is-below
+        read fill
+        code 256
+    hook hold
+      call table/push
+        code 0
+      save fill, call increment(read fill)
+  walk test
+    hook test
+      call is-below
+        read i
+        code 256
+    hook hold
+      save count, code 8
+      save index, read i
+      walk test
+        hook test
+          call is-above
+            read index
+            code 0
+        hook hold
+          save index
+            call bitwise-or
+              call divide
+                read index
+                code 2
+              code 0
+          save count, call decrement(read count)
+      call table/set
+        read i
+        read count
+      save i, call increment(read i)
+  send back, read table
+
+task make-de-bruijn-trailing-zero-table
+  take exponent
+  take de-bruijn-constant
+  save n
+    call power
+      code 2
+      read exponent
+  save table
+    make hash
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        read n
+    hook hold
+      call table/set
+        call unsigned-shift-right
+          call shift-left
+            read de-bruijn-constant
+            read i
+          call subtract
+            read n
+            read exponent
+        read i
+      save i, call increment(read i)
+
+  send back, read table
+
+host binary-count-one-table, call make-binary-count-one-table
+
+task make-binary-count-one-table
+  save table
+    make list
+  save fill, code 0
+  walk test
+    hook test
+      call is-below
+        read fill
+        code 256
+    hook hold
+      call table/push
+        code 0
+      save fill, call increment(read fill)
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        code 256
+    hook hold
+      call table/set
+        read i
+        call add
+          call bitwise-and
+            read i
+            code 1
+          call table/get
+            call bitwise-or
+              call divide
+                read i
+                code 2
+              code 0
+      save i, call increment(read i)
+  send back, read table
+
+task count-one-bits-32
+  take x
+  like number
+  send back
+    call add
+      call add
+        call add
+          call binary-count-one-table/get
+            call bitwise-and
+              read x
+              code 0xff
+          call binary-count-one-table/get
+            call bitwise-and
+              call shift-right
+                read x
+                code 8
+              code 0xff
+        call binary-count-one-table/get
+          call bitwise-and
+            call shift-right
+              read x
+              code 16
+            code 0xff
+      call binary-count-one-table/get
+        call bitwise-and
+          call shift-right
+            read x
+            code 24
+          code 0xff
+
+task count-one-bits-16
+  take x
+  call add
+    call binary-count-one-table/get
+      call bitwise-and
+        read x
+        code 0xff
+    call binary-count-one-table/get
+      call bitwise-and
+        call shift-right
+          read x
+          code 8
+        code 0xff
+
+task count-one-bits-8
+  take x
+  call binary-count-one-table/get
+    call bitwise-and
+      read x
+      code 0xff
+
+task count-zero-bits-32
+  take x
+  call count-one-bits-32
+    call unsigned-shift-right
+      call bitwise-not
+        read x
+      code 0
+
+task count-zero-bits-16
+  take x
+  call count-one-bits-16
+    call unsigned-shift-right
+      call bitwise-not
+        read x
+      code 0
+
+task count-zero-bits-8
+  take x
+  call count-one-bits-8
+    call unsigned-shift-right
+      call bitwise-not
+        read x
+      code 0
+
+task reverse-bits-8
+  take n
+
+  # swap nibbles, then pairs, then adjacent bits
+  save a
+    call bitwise-or
+      call shift-right
+        call bitwise-and
+          read n
+          code 0xF0
+        code 4
+      call shift-left
+        call bitwise-and
+          read n
+          code 0x0F
+        code 4
+  save b
+    call bitwise-or
+      call shift-right
+        call bitwise-and
+          read a
+          code 0xCC
+        code 2
+      call shift-left
+        call bitwise-and
+          read a
+          code 0x33
+        code 2
+  send back
+    call bitwise-or
+      call shift-right
+        call bitwise-and
+          read b
+          code 0xAA
+        code 1
+      call shift-left
+        call bitwise-and
+          read b
+          code 0x55
+        code 1
+
+task reverse-bits-16
+  take n
+  call bitwise-or
+    call reverse-bits-8
+      call bitwise-and
+        call shift-right
+          read n
+          code 8
+        code 0xff
+    call shift-left
+      call reverse-bits-8
+        call bitwise-and
+          read n
+          code 0xff
+      code 8
+
+task reverse-bits-32
+  take n
+  call add
+    call add
+      call add
+        call multiply
+          call reverse-bits-8
+            call bitwise-and
+              read n
+              code 0xff
+          call power
+            code 2
+            code 24
+        call multiply
+          call reverse-bits-8
+            call bitwise-and
+              call unsigned-shift-right
+                read n
+                code 8
+              code 0xff
+          call power
+            code 2
+            code 16
+      call multiply
+        call reverse-bits-8
+          call bitwise-and
+            call unsigned-shift-right
+              read n
+              code 16
+            code 0xff
+        call power
+          code 2
+          code 8
+    call reverse-bits-8
+      call bitwise-and
+        call unsigned-shift-right
+          read n
+          code 24
+        code 0xff
+
+task has-flag
+  take flags
+  take flag
+
+  call is-equal
+    call bitwise-and
+      read flags
+      read flag
+    read flag
+
+task add-flag
+  take flags
+  take flag
+
+  call bitwise-or
+    read flags
+    read flag
+
+task remove-flag
+  take flags
+  take flag
+
+  call bitwise-and
+    read flags
+    call bitwise-not
+      read flag
+
+task toggle-flag
+  take flags
+  take flag
+
+  call bitwise-exclusive-or
+    read flags
+    read flag
+
+task walk-bits
+  take self
+  # the callback the walk hands each bit to; it was called but never declared
+  take step
+    like task
+      take value
+      take index
+  save i, code 0
+  # a 32-bit mask: the module's bit vocabulary is 32-wide throughout
+  save n, code 32
+  walk test
+    hook test
+      call is-below
+        read i
+        read n
+    hook hold
+      save v
+        call is-bit-set
+          read self
+          read i
+      call step
+        read v
+        read i
+      save i, call increment(read i)
+
+task is-bit-set
+  take mark
+  take position
+  like boolean
+  send back
+    call is-unequal
+      call bitwise-and
+        read mark
+        call shift-left
+          code 1
+          read position
+      code 0

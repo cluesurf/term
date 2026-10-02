@@ -20,8 +20,8 @@ import { filesOfDataset } from './dataset'
 import {
   readDataset,
   treeNodeRefs,
-} from '@term/base/code/store/tree'
-import { MemoryChunkStore } from '@term/base/code/store/chunk-store'
+} from '@cluesurf/save/store/tree'
+import { MemoryChunkStore } from '@cluesurf/save/store/chunk-store'
 import { Registry, Ref, objectMatches } from './registry'
 import { Blob } from './model'
 
@@ -78,7 +78,7 @@ export async function installPackage(input: {
   const before = await countLocal(input.local)
 
   // Pull the release's whole closure, then read the version out of it. A commit and its
-  // prolly-tree nodes are @term/base chunks now, so the walk is base's, not a
+  // prolly-tree nodes are @cluesurf/save chunks now, so the walk is base's, not a
   // hand-written recursion over directory objects.
   const chunks = await pullRelease({
     commitId,

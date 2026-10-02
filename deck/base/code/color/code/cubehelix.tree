@@ -1,0 +1,31 @@
+load @term/base/code/color/rgb
+  find rgb-color
+
+load @term/base/code/mixin/access
+  find access
+
+form cubehelix
+  fuse access, term h
+  fuse access, term s
+  fuse access, term l
+  fuse access, term alpha
+
+  task convert-to-rgb
+    like rgb-color
+
+form channel
+  case h
+  case s
+  case l
+  case alpha
+
+host range
+  host h
+    host start, code 0
+    host end, code 360
+  host s
+    host start, code 0
+    host end, code 4.614
+  host l
+    host start, code 0
+    host end, code 1

@@ -98,7 +98,7 @@ export function manifestNameOf(file: string): string | undefined {
 // any dependency verb failed with `the name "lock" is not defined` on a file the user never wrote. A scaffolded
 // project would build, take one `term toss`, and stop building.
 //
-// BY CONTENT, never by name, for the third time in this file: `deck/seed/code/task/lock.tree` is an ordinary Term
+// BY CONTENT, never by name, for the third time in this file: `deck/base/code/task/lock.tree` is an ordinary Term
 // module (`form lock`, `task make`), so a filename test would take the stdlib out of the build the same way a
 // filename test for the manifest once did.
 export function isLockfileText(text: string, file: string): boolean {
@@ -123,7 +123,7 @@ export function isLockfileText(text: string, file: string): boolean {
 // A role file says which mill reads which file, and -- for `hook` -- whether a file's statements are CLI commands
 // or URL routes. It is configuration read by deck/deck/code/role.ts through the role mill, not a program: `role`
 // is not a code statement, so compiling one reports `the name "role" is not defined` on a file nobody wrote as
-// code. deck/seed/role/base.tree carries `note draft` for exactly that reason, which shelves a LIVE file to
+// code. deck/base/role/base.tree carries `note draft` for exactly that reason, which shelves a LIVE file to
 // silence an error that should never have been raised.
 //
 // BY CONTENT, never by name, the same as the manifest and the lockfile: `role.tree` is a strong hint and nothing

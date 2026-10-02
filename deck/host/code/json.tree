@@ -1,20 +1,20 @@
 # Data to JSON and back, through the stdlib json module. Keys are kebab in the file and snake in JSON, converted here
 # and nowhere else; `keep true` leaves them alone. See note/term/host/04-model-and-json.md.
 
-load @term/seed/code/boolean
+load @term/base/code/boolean
   find not
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
   find size
   find get
 
-load @term/seed/code/text
+load @term/base/code/text
   find replace-all
   find char-at
   find char-code-at
 
-load @term/seed/code/json
+load @term/base/code/json
   find parse
   find stringify
   find make-object
@@ -340,6 +340,6 @@ task is-snake
           code 1
   send back, true
 
-load @term/seed/code/float
+load @term/base/code/float
   find to-decimal
   find to-number

@@ -9,11 +9,11 @@ import { Repl } from '@term/call/code/walk'
 import type { Source } from '@term/make/code/compile/load'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const baseTree = join(here, '..', '..', 'deck', 'seed')
+const baseTree = join(here, '..', '..', 'deck', 'base')
 
 const resolver = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/seed/'
-  path = path.replace(/^@term\/seed\//, prefix)
+  const prefix = '@term/base/'
+  path = path.replace(/^@term\/base\//, prefix)
 
   if (!path.startsWith(prefix)) {return undefined}
 
@@ -84,7 +84,7 @@ async function main(): Promise<void> {
 
   // load the stdlib and use it
   const load = await repl.feed(
-    'load @cluesurf/seed/code/maybe\n  find maybe',
+    'load @term/base/code/maybe\n  find maybe',
   )
 
   expect('accepts a stdlib load', load.kind, 'definition')

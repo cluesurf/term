@@ -52,7 +52,7 @@ export type Roll = {
   [declared: string]: RollEntry[]
 }
 
-// the deck a source file belongs to: its name (`@term/seed`) and its root directory, from the nearest `deck.tree`
+// the deck a source file belongs to: its name (`@term/base`) and its root directory, from the nearest `deck.tree`
 export type DeckOf = (file: string) => { name: string; root: string } | undefined
 
 export type RollOptions = {

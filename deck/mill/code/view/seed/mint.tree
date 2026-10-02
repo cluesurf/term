@@ -1,18 +1,18 @@
 
-load @term/seed/code/seed
+load @term/base/code/seed
   find seed
   find seed-text
   find seed-mark
   find seed-wave
   find seed-call
 
-load @term/seed/code/bind
+load @term/base/code/bind
   find bind
 
-load @term/seed/code/road
+load @term/base/code/road
   find road
 
-load @term/seed/code/like
+load @term/base/code/like
   find like
 
 mint view-seed, like seed

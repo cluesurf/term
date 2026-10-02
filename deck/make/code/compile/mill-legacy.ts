@@ -12,7 +12,7 @@
 // Do not fix a bug here. Fix it in the grammar or the bridge, where the compiler will see it.
 
 // The code mill: recognizes tree groups by their head keyword (the mine) and mints compile-AST records (the
-// mint). Organized as a registry of per-keyword mills, mirroring deck/seed/deck/term.tree/code. Each record
+// mint). Organized as a registry of per-keyword mills, mirroring deck/base/deck/term.tree/code. Each record
 // carries a source span. Unresolved names are left as `variable` nodes for the resolver to bind or turn into
 // holes. See note/research/vibe/computation/plans/03-build-mill.md and 11-elaboration.md.
 
@@ -1525,7 +1525,7 @@ export function millByHand(
   // collect hook bodies (hook test, hook hold, hook miss, hook step)
   // Every `hook <name>` under a construct, by name. `allowed` names the hooks the construct understands: a hook
   // outside that set is REFUSED rather than ignored. Silently dropping one is how
-  // `deck/seed/code/native/node/file/asynchronous/directory.tree` shipped two `hook tick` loops whose entire
+  // `deck/base/code/native/node/file/asynchronous/directory.tree` shipped two `hook tick` loops whose entire
   // bodies vanished, so `list` with `deep` returned an empty list and `walk` returned nothing, for as long as
   // that file has existed. The body compiled to `for (const item of entries) {}` and nothing said a word.
   function hooks(group: GroupNode, allowed?: readonly string[]): Map<string, Node[]> {

@@ -22,7 +22,7 @@
     "paths": {
       "@/*": ["./code/*"],
       "@term/make/*": ["../make/*"],
-      "@term/base/*": ["../base/*"]
+      "@cluesurf/save/*": ["../../../../../../mesh/deck/save/code/*"]
     }
   },
   "include": ["code/**/*.ts"],

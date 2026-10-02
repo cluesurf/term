@@ -122,8 +122,8 @@ ok('`form` is idempotent on its own output', readFileSync(ugly, 'utf8') === form
 // `lint`: the SCAFFOLD ITSELF lints clean, and a real mistake is reported by rule name and code.
 //
 // The first half is the point of the second: `term wake` wrote a comment 87 characters long, so a brand new project
-// failed its own linter on a line the scaffold had just written, and the entry imported `@cluesurf/seed` rather than
-// `@term/seed`. Both are fixed in deck/call/code/wake.ts and this is what keeps them fixed.
+// failed its own linter on a line the scaffold had just written, and the entry imported `@term/base` rather than
+// `@term/base`. Both are fixed in deck/call/code/wake.ts and this is what keeps them fixed.
 const cleanLint = term(root, 'lint')
 
 ok(
@@ -186,10 +186,14 @@ const noted = term(root, 'note')
 
 ok('`note` names the package and version', /demo/.test(noted) && /0\.0\.1/.test(noted), noted)
 
-// `hold`: checks each file's obligations and counts what it checked
+// `hold`: the gate. One line counting the files and the tier-0 obligations it proved
 const held = term(root, 'hold')
 
-ok('`hold` counts what it checked', /\d+ checked/.test(held), held)
+ok(
+  '`hold` counts what it checked',
+  /\d+ file\(s\), \d+ of \d+ obligation\(s\) proven/.test(held),
+  held,
+)
 
 // `fill`: writes a shell completion script
 const filled = term(root, 'fill')
@@ -212,7 +216,7 @@ writeFileSync(
   join(root, 'test/base.tree'),
   [
     '',
-    'load @term/seed/code/number',
+    'load @term/base/code/number',
     '  find number',
     '',
     'test one-plus-one',
@@ -233,7 +237,7 @@ ok('`test` runs a test file and counts it', /1 test passed/.test(tested), tested
 // `hunt`: an EMPTY corpus says so rather than passing.
 //
 // It defaulted to `deck/base/code`, the pre-rename stdlib path, which has not existed since the package became
-// `deck/seed`. `find` failed, the catch set the corpus to empty, and every run reported `no oracle violations`
+// `deck/base`. `find` failed, the catch set the corpus to empty, and every run reported `no oracle violations`
 // having read nothing at all - a check that answers the question it was asked while testing nothing. It reads 803
 // files on the real tree now, and an empty one is reported as empty.
 const hunted = term(root, 'hunt')

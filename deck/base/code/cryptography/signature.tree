@@ -1,0 +1,57 @@
+# Digital signatures (Ed25519). The generic interface; each public verb delegates to the per-backend native implementation, which lives in its own file (`native/<env>/cryptography/signature`). Input and output stay in the currency types.
+
+load @term/base/code/native/{platform}/cryptography/signature
+  find make-key-pair-bytes
+  find sign-message
+  find verify-message
+
+load @term/base/code/bytes
+  find slice
+
+form key-pair
+  link private-key, like bytes
+  link public-key, like bytes
+
+# generate a matched private / public key pair
+task make-key-pair
+  note async
+  like key-pair
+  save raw
+    call make-key-pair-bytes
+      wait true
+  send back
+    make key-pair
+      bind private-key
+        call slice
+          read raw
+          code 0
+          code 32
+      bind public-key
+        call slice
+          read raw
+          code 32
+          code 64
+
+task sign
+  note async
+  take private-key, like bytes
+  take message, like bytes
+  like bytes
+  send back
+    call sign-message
+      read private-key
+      read message
+      wait true
+
+task verify
+  note async
+  take public-key, like bytes
+  take message, like bytes
+  take signature, like bytes
+  like boolean
+  send back
+    call verify-message
+      read public-key
+      read message
+      read signature
+      wait true

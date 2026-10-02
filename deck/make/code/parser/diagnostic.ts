@@ -191,6 +191,28 @@ export const CATALOG = {
     severity: 'error',
     fix: 'prove it with a `task` of the same name, or stop calling it',
   },
+  // A proof is a task, and a task the kernel never checked proves nothing. Until 2026-10-02 a claim was filled by
+  // ANY task of its name: one that recursed forever proved `any x equals any y` with a warning (proof-by-default-0003),
+  // and one whose type did not resolve proved a gradual nothing. A fill must be verified by the kernel, terminate,
+  // and touch nothing outside itself, or it is not a proof.
+  'unverified-proof': {
+    code: 0x17,
+    message: 'this proof was not verified by the kernel',
+    severity: 'error',
+    fix: 'state the claim at types the kernel can read (load the forms it names), and write the proof in the pure fragment: no loops, no mutation, no native calls',
+  },
+  'looping-proof': {
+    code: 0x18,
+    message: 'this proof is not shown to terminate',
+    severity: 'error',
+    fix: 'a proof that never ends proves anything, so recurse only on a structurally smaller argument',
+  },
+  'impure-proof': {
+    code: 0x19,
+    message: 'this proof calls something impure',
+    severity: 'error',
+    fix: 'a proof may call only pure tasks: no native calls, no async, no writes through a record it did not make',
+  },
 } satisfies Record<string, CatalogEntry>
 
 export type DiagnosticName = keyof typeof CATALOG

@@ -1,5 +1,5 @@
 
-load @term/seed/code/zone-file
+load @term/base/code/zone-file
   find zone-hold
 
 load @term/mill/code/zone/need/mint

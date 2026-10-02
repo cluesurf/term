@@ -1,0 +1,294 @@
+# SHELVED 2026-08-31: a SwiftUI-binding sketch. Its calls do not line up with the real SwiftUI signatures
+# (`alignmentGuide` takes an alignment plus a compute closure, and the sketch reads enum variants as bare
+# values), so it has never typechecked against the framework. Nothing loads it. Un-shelve by writing the
+# bindings against the real API, method by method, the way the camera and light modules are written.
+note draft
+
+dock type
+  load <SwiftUI.AnyView>, name native-view
+
+load @term/base/code/color/rgb
+  find rgb-color
+
+
+form decimal
+  dock cg-float
+
+form alignment
+  link anchor
+  link offset
+
+form vertical-align
+  case top
+  case center
+  case bottom
+  case first-text-baseline
+  case last-text-baseline
+
+form horizontal-align
+  case leading
+  case center
+  case trailing
+
+form blend-mode
+  case normal
+  case darken
+  case multiply
+  case color-burn
+  case plus-darker
+  case lighten
+  case screen
+  case color-dodge
+  case plus-lighter
+  case overlay
+  case soft-light
+  case hard-light
+  case difference
+  case exclusion
+  case hue
+  case saturation
+  case color
+  case luminosity
+  case source-atop
+  case destination-over
+  case destination-out
+
+form dock
+  link dock, like native-view
+
+  task set-vertical-align-top
+    take self
+    call self/dock/alignment-guide
+      read vertical-align/top
+
+  task set-vertical-align-center
+    take self
+    call self/dock/alignment-guide
+      read vertical-align/center
+
+  task set-vertical-align-bottom
+    take self
+    call self/dock/alignment-guide
+      read vertical-align/bottom
+
+  task set-vertical-align-first-text-baseline
+    take self
+    call self/dock/alignment-guide
+      read vertical-align/first-text-baseline
+
+  task set-vertical-align-last-text-baseline
+    take self
+    call self/dock/alignment-guide
+      read vertical-align/last-text-baseline
+
+  task set-horizontal-align-leading
+    take self
+    call self/dock/alignment-guide
+      read horizontal-align/leading
+
+  task set-horizontal-align-center
+    take self
+    call self/dock/alignment-guide
+      read horizontal-align/center
+
+  task set-horizontal-align-trailing
+    take self
+    call self/dock/alignment-guide
+      read horizontal-align/trailing
+
+  task set-blend-mode-normal
+    take self
+    call self/dock/blend-mode
+      read blend-mode/normal
+
+  task set-blend-mode-darken
+    take self
+    call self/dock/blend-mode
+      read blend-mode/darken
+
+  task set-blend-mode-multiply
+    take self
+    call self/dock/blend-mode
+      read blend-mode/multiply
+
+  task set-blend-mode-color-burn
+    take self
+    call self/dock/blend-mode
+      read blend-mode/color-burn
+
+  task set-blend-mode-plus-darker
+    take self
+    call self/dock/blend-mode
+      read blend-mode/plus-darker
+
+  task set-blend-mode-lighten
+    take self
+    call self/dock/blend-mode
+      read blend-mode/lighten
+
+  task set-blend-mode-screen
+    take self
+    call self/dock/blend-mode
+      read blend-mode/screen
+
+  task set-blend-mode-color-dodge
+    take self
+    call self/dock/blend-mode
+      read blend-mode/color-dodge
+
+  task set-blend-mode-plus-lighter
+    take self
+    call self/dock/blend-mode
+      read blend-mode/plus-lighter
+
+  task set-blend-mode-overlay
+    take self
+    call self/dock/blend-mode
+      read blend-mode/overlay
+
+  task set-blend-mode-soft-light
+    take self
+    call self/dock/blend-mode
+      read blend-mode/soft-light
+
+  task set-blend-mode-hard-light
+    take self
+    call self/dock/blend-mode
+      read blend-mode/hard-light
+
+  task set-blend-mode-difference
+    take self
+    call self/dock/blend-mode
+      read blend-mode/difference
+
+  task set-blend-mode-exclusion
+    take self
+    call self/dock/blend-mode
+      read blend-mode/exclusion
+
+  task set-blend-mode-hue
+    take self
+    call self/dock/blend-mode
+      read blend-mode/hue
+
+  task set-blend-mode-saturation
+    take self
+    call self/dock/blend-mode
+      read blend-mode/saturation
+
+  task set-blend-mode-color
+    take self
+    call self/dock/blend-mode
+      read blend-mode/color
+
+  task set-blend-mode-luminosity
+    take self
+    call self/dock/blend-mode
+      read blend-mode/luminosity
+
+  task set-blend-mode-source-atop
+    take self
+    call self/dock/blend-mode
+      read blend-mode/source-atop
+
+  task set-blend-mode-destination-over
+    take self
+    call self/dock/blend-mode
+      read blend-mode/destination-over
+
+  task set-blend-mode-destination-out
+    take self
+    call self/dock/blend-mode
+      read blend-mode/destination-out
+
+  task set-blur
+    take self
+    take radius, like decimal
+    call self/dock/blur
+      bind radius, read radius
+      bind opaque, term true
+
+  task set-border
+    take self
+    take color, like rgb-color
+    take width, like decimal
+    call self/dock/border
+      make native-color
+        read native-color/rgb-color-space/srgb
+        bind red, read color/red
+        bind green, read color/green
+        bind blue, read color/blue
+      read width
+
+  task set-brightness
+#     func brightness(Double)
+  task set-clip-shape
+#     func clipShape<S>(_ shape: S, style: FillStyle = FillStyle()) -> some View where S : Shape
+  task set-color-invert
+#     func colorInvert()
+  task set-color-multiply
+#     func colorMultiply(Color)
+  task set-container-shape
+  task set-context-menu
+#     func contextMenu<MenuItems>(menuItems: () -> MenuItems)
+  task set-contrast
+#     func contrast(Double)
+  task set-coordinate-space
+  task set-corner-radius
+#     func cornerRadius(CGFloat, antialiased: Bool)
+  task set-disabled
+#     func disabled(Bool)
+  task set-file-exporter
+  task set-fixed-size
+#     func fixedSize()
+  task set-focusable
+#     func focusable(Bool)
+  task set-focused
+#     func focused(FocusState<Bool>.Binding)
+  task set-font
+#     func font(Font?)
+  task set-foreground-color
+#     func foregroundColor(Color?)
+#     func foregroundStyle<S>(_ style: S) -> some View where S : ShapeStyle
+  task set-grayscale
+#     func grayscale(Double)
+  task set-help
+#     func help(Text)
+  task set-hidden
+#     func hidden()
+  task set-hue-rotation
+#     func hueRotation(Angle)
+  task set-line-spacing
+#     func lineSpacing(CGFloat)
+
+#   luminanceToAlpha
+#     func luminanceToAlpha()
+  task set-mask
+#     func mask<Mask>(alignment: Alignment, () -> Mask)
+#   func menuIndicator(Visibility)
+#   func offset(CGSize)
+#   func offset(x: CGFloat, y: CGFloat)
+#   func onAppear(perform: (() -> Void)?)
+#   func onDisappear(perform: (() -> Void)?)
+#   func onDrag(() -> NSItemProvider)
+#   func onDrop(of: [UTType], delegate: DropDelegate)
+#   func onHover(perform: (Bool) -> Void)
+#   func onLongPressGesture(minimumDuration: Double, maximumDistance: CGFloat, perform: () -> Void, onPressingChanged: ((Bool) -> Void)?)
+#   func onMoveCommand(perform: ((MoveCommandDirection) -> Void)?)
+#   func onPasteCommand(of: [UTType], perform: ([NSItemProvider]) -> Void)
+#   func onTapGesture(count: Int, perform: () -> Void)
+#   func opacity(Double)
+#   func overlay<S>(S, ignoresSafeAreaEdges: Edge.Set)
+#   func padding(CGFloat)
+#   func padding(EdgeInsets)
+#   func popover<Content>(isPresented: Binding<Bool>, attachmentAnchor: PopoverAttachmentAnchor, arrowEdge: Edge, content: () -> Content)
+#   func position(CGPoint)
+#   func refreshable(action: () async -> Void)
+#   func saturation(Double)
+#   func scaledToFill()
+#   func scaledToFit()
+#   func shadow(color: Color, radius: CGFloat, x: CGFloat, y: CGFloat)
+#   func sheet<Content>(isPresented: Binding<Bool>, onDismiss: (() -> Void)?, content: () -> Content)
+#   func sheet<Item, Content>(item: Binding<Item?>, onDismiss: (() -> Void)?, content: (Item) -> Content)
+#   func tint(Color?)
+#   func zIndex(Double)

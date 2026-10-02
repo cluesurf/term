@@ -39,7 +39,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-const PACKS: Record<string, string> = { seed: join(TERM, 'deck/seed'), feed: join(TERM, 'deck/feed') }
+const PACKS: Record<string, string> = { seed: join(TERM, 'deck/base'), feed: join(TERM, 'deck/feed') }
 
 const resolver = (path: string, from: string): Source | undefined => {
   if (path.startsWith('./') || path.startsWith('../')) {

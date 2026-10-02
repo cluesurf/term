@@ -14,18 +14,18 @@
 # This is the Term port of deck/call/code/home.ts (cli-in-term-0003). It is the first CLI module in Term, and it
 # was chosen first because everything else in the CLI depends on it and it needs nothing from the compiler.
 
-load @term/seed/code/path
+load @term/base/code/path
   find join
 
 # aliased: `test` is a keyword head in this dialect, and a task named for one cannot be called
-load @term/seed/code/file
+load @term/base/code/file
   find test, name file-test
 
-load @term/seed/code/environment
+load @term/base/code/environment
   find variable
   find directory, name working-directory
 
-load @term/seed/code/environment/path
+load @term/base/code/environment/path
   find get
 
 # the directory under `.base`, scoped the way the packages are

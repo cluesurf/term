@@ -284,25 +284,37 @@ rule secret-is-identity
 
 // ---- a fill inherits its claim's signature ----
 
-{
-  const out = run(`form equal
+// `equal` as the stdlib states it since 2026-10-02: an indexed family over its two values. The older shape (x and y
+// as fields, used as `equal a x y`) was read by the kernel as `equal a`, so these cases proved nothing about which
+// values were equal. test/check/soundness.ts holds the false claims that shape let through.
+const EQUAL = `form equal
   head a
-  link x, like a
-  link y, like a
-
+  head x, like a
+  head y, like a
   case refl
-    hold same
-      like equal a x x
+    link c, like a
+    head
+      read c
+    head
+      read c
+`
 
+{
+  const out = run(`${EQUAL}
 rule refl
   head a
   take x, like a
-  like equal a x x
+  like equal a
+    head
+      read x
+    head
+      read x
 
 task refl
   take x
   send back
     make equal/refl
+      bind c, read x
 `)
 
   ok(
@@ -313,19 +325,15 @@ task refl
 }
 
 {
-  const out = run(`form equal
-  head a
-  link x, like a
-  link y, like a
-
-  case refl
-    hold same
-      like equal a x x
-
+  const out = run(`${EQUAL}
 rule refl
   head a
   take x, like a
-  like equal a x x
+  like equal a
+    head
+      read x
+    head
+      read x
 
 task refl
   take x

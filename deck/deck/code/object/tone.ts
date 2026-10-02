@@ -1,7 +1,7 @@
 import {
   TONE_ALPHABET,
   canonicalExtension,
-} from '@term/base/code/canon/mark'
+} from '@cluesurf/save/canon/mark'
 /**
  * Tone-encoded, dash-grouped storage paths for object ids.
  *

@@ -1,0 +1,18 @@
+# Equality as an indexed family: `equal a / head / read x / head / read y` is the type of proofs that the two values
+# `x` and `y` of type `a` are the same, and its one constructor `refl` only builds `equal a c c`.
+#
+# `x` and `y` are VALUE INDICES (`head x, like a`), and every use writes them as `head` children. Until 2026-10-02
+# they were fields (`link x, like a`) and uses wrote `like equal a x y`, which the checker read as `equal a` with two
+# extra type arguments it quietly dropped. So `equal a x y` and `equal a u v` were the same type, and the kernel
+# proved "any x equals any y" by `make equal/refl` (proof-by-default-0031). Every proof under proof/equal/ was
+# rewritten against this, and test/check/soundness.ts holds the false ones refused.
+form equal
+  head a
+  head x, like a
+  head y, like a
+  case refl
+    link c, like a
+    head
+      read c
+    head
+      read c

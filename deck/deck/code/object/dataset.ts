@@ -1,6 +1,6 @@
-// A package version, as a `@term/base` dataset.
+// A package version, as a `@cluesurf/save` dataset.
 //
-// This is the join between the package manager and the substrate. `@term/base` stores
+// This is the join between the package manager and the substrate. `@cluesurf/save` stores
 // a DATASET: records keyed by mark, written into a prolly tree by `writeDataset`, and
 // diffed by `diffRoots` in time proportional to the CHANGE rather than the dataset
 // (measured at 21 to 41 chunk reads for a one-record edit across a 16x size range).
@@ -14,20 +14,20 @@
 // subdirectories, which the prolly tree now does by content, and it cost a second kind
 // of tree to maintain. A path is just a field.
 
-import { hashBytes } from '@term/base/code/canon/hash'
-import { bytesToMark } from '@term/base/code/canon/mark'
+import { hashBytes } from '@cluesurf/save/canon/hash'
+import { bytesToMark } from '@cluesurf/save/canon/mark'
 import {
   text,
   integer,
   blob,
   list,
-} from '@term/base/code/base/make'
+} from '@cluesurf/save/base/make'
 import type {
   Mark,
   RecordNode,
   Value,
-} from '@term/base/code/base/type'
-import type { Dataset } from '@term/base/code/diff/change'
+} from '@cluesurf/save/base/type'
+import type { Dataset } from '@cluesurf/save/diff/change'
 
 import type { EntryMode } from './model'
 

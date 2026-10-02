@@ -8,7 +8,7 @@
 // The parser hands back a concrete syntax tree. This module flattens the part of it a
 // manifest uses into one uniform shape:
 //
-//   deck @term/seed          -> { head: 'deck', terms: ['@term/seed'] }
+//   deck @term/base          -> { head: 'deck', terms: ['@term/base'] }
 //   code <0.0.4>             -> { head: 'code', value: '0.0.4' }
 //   bear ./code              -> { head: 'bear', terms: ['./code'] }
 //   link @term/bind, code <0.0.x>

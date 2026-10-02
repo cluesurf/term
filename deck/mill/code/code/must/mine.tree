@@ -1,0 +1,36 @@
+load @term/mill/code/code/seed/mine
+  find seed
+
+# A task's CONTRACT, and a walk's. Three words, all from hold/base/terms.json, each holding one expression the way
+# a `hold` does. See note/term/proof-by-default/vocabulary.md.
+#
+#   task find-index           on a task signature:
+#     have <claim>              a precondition. The body may assume it, and every caller must prove it
+#     must <claim>              a postcondition over `read back`, the value being returned
+#
+#   walk test                 as the first children of a walk:
+#     must <claim>              an invariant: true on entry, and again at the end of every turn
+#     down <measure>            a natural number that falls on every turn, so the walk ends
+#
+# None of the three is code that runs. The checker lowers them into `hold`s in a copy of the program it alone
+# reads (check/contract.ts), and every backend erases them.
+
+# `have <claim>` on a task. A rule's `have` names its hypothesis (`have h, <claim>`), which is rule/def's own site;
+# a task's is unnamed, because a precondition is cited by nothing.
+mine task-have
+  mine term, term have
+    mine list
+      mine form, like seed
+        site seed
+
+mine must
+  mine term, term must
+    mine list
+      mine form, like seed
+        site seed
+
+mine down
+  mine term, term down
+    mine list
+      mine form, like seed
+        site seed

@@ -1,18 +1,18 @@
 # Reaching into a value: `get-at` follows a path like `<vars/dev-service/config/version>` (a list index is a
 # number segment), `to-hash` gives a map's entries as a stdlib hash keyed by name.
 
-load @term/seed/code/list
+load @term/base/code/list
   find size
   find get
 
-load @term/seed/code/text
+load @term/base/code/text
   find split
   find char-code-at
 
-load @term/seed/code/maybe
+load @term/base/code/maybe
   find maybe
 
-load @term/seed/code/hash
+load @term/base/code/hash
   find hash
   find set
 

@@ -3,7 +3,7 @@ import path from 'path'
 
 // `link` is where `term link` puts a DEPENDENCY's source. Walking into it means formatting, linting and timing
 // another package's files, which is never what a command run in this project was asked to do: the three
-// `deck/zone/link/@term/seed/...` entries in `term form deck --check` were @term/seed's own files reported twice.
+// `deck/zone/link/@term/base/...` entries in `term form deck --check` were @term/base's own files reported twice.
 const SKIP = new Set(['node_modules', 'host', 'tail', 'link', '.git'])
 
 // does this file declare itself unfinished? `note draft` on its own line near the top. Read cheaply, only the head

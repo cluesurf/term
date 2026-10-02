@@ -1,4 +1,4 @@
-load @term/seed/code/lang
+load @term/base/code/lang
   find lock-link
   find lock-link-load
 

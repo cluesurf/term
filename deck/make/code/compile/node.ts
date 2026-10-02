@@ -207,6 +207,22 @@ export type Expression =
       deferred?: boolean
     }
 
+// what a checker-written `hold` stands for. The contract kinds fail the build when unproven, because a programmer
+// wrote them. The tier-0 kinds are counted against a baseline, because nobody did. note/term/proof-by-default/.
+export type HoldOrigin =
+  // contracts
+  | 'must' // a task's postcondition, at one `send back`
+  | 'need' // a callee's `have`, at one call
+  | 'keep-entry' // a walk's invariant, on entry
+  | 'keep-turn' // a walk's invariant, at the end of a turn
+  | 'down' // a walk's measure falls, and stays a natural number
+  // tier 0
+  | 'index' // a list read inside its bounds
+  | 'zero' // a division or remainder by something other than zero
+  | 'ends' // a walk with no `down` ends: a measure inferred from its condition stays natural and falls
+  // not owed at all
+  | 'given' // a callee's `must`, ASSUMED after the call: proven where the callee is checked, so nothing to prove here
+
 export type Statement =
   // `foreign` is the host name an ambient binding maps to (`host document, name <document>`): a value-less `host`
   // with a foreign name is a host global, emitted as an alias to that global (or nothing when the names match)
@@ -239,6 +255,10 @@ export type Statement =
       cond: Expression
       body: Statement[]
       span: Span
+      // the walk's contract: invariants true on entry and at the end of every turn, and a measure that falls on
+      // every turn. Read only by the checker (check/contract.ts); every backend ignores them.
+      must?: Expression[]
+      down?: Expression
     }
   // a pattern match on an enum value (fork case): each case is a variant label, with optional `binds` renaming the
   // variant's fields (in declaration order) so a nested match on the same enum can name both without collision
@@ -267,6 +287,8 @@ export type Statement =
       iterable: Expression
       body: Statement[]
       span: Span
+      // the walk's invariants (see `while`). A walk over a list ends by itself, so it takes no measure.
+      must?: Expression[]
     }
   | { form: 'break'; span: Span }
   | { form: 'continue'; span: Span }
@@ -298,6 +320,10 @@ export type Statement =
       name?: string
       proof?: Proof[]
       span: Span
+      // set on a hold the CHECKER wrote rather than the programmer: which contract or which tier-0 obligation it
+      // stands for, so a failure says what was owed. Only in the checker's own copy of the program
+      // (check/contract.ts), never in the program a backend emits.
+      origin?: HoldOrigin
     }
   // a `method` tag marks a function desugared from a form's nested `task`: its `name` is mangled (`<form>_<method>`)
   // to avoid cross-module clashes, and `method` records the form and the bare method name for receiver dispatch.
@@ -333,10 +359,27 @@ export type Statement =
       // See note/term/project/law-proof-gate.md.
       claim?: boolean
       open?: boolean
+      // a `rule` with `base true`: its goal is POSTULATED, not proven. Listed by name in the trust ledger.
+      axiom?: boolean
+      // `note roam`: the task is MEANT to run forever (a server, an event loop). Its walks owe no termination, it is
+      // never a function (so no proof or claim may use it), and the trust ledger lists it. proof-by-default-0035
+      roam?: boolean
       method?: { form: string; name: string }
       // `halt <form>` lines with no children on the signature: the exceptions the task declares it can raise. Absent
       // means inferred. Present means checked: the inferred raise set must be a subset (03-exception.md, bounding).
       raises?: string[]
+      // the task's contract: `have` lines (preconditions the body assumes and every caller proves), `must` lines
+      // (postconditions over `read back`, proven at every `send back`), and `down` (a measure for a recursive task).
+      // Read only by the checker (check/contract.ts); every backend ignores them.
+      have?: Expression[]
+      must?: Expression[]
+      down?: Expression
+      // the parameter and result types AS WRITTEN, snapshotted before the surface checker seeds them. Seeding is
+      // lossy on purpose (a form gets only as many type arguments as it declares, and a name it does not know becomes
+      // an inference variable), which is right for inference and for every backend and wrong for the kernel: it made
+      // `equal a x y` read as `equal a`, so a claim about which two values are equal was checked as a claim about
+      // nothing (proof-by-default-0031). The kernel reads these where seeding lost something.
+      declared?: { params: (Type | undefined)[]; result?: Type }
       span: Span
     }
   | {

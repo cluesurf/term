@@ -25,7 +25,7 @@ export type Source = { file: string; text: string }
 // parsed once per build instead of the two or three times it was before.
 type ImportScan = { paths: string[]; hasZone: boolean }
 
-// the parser's own renderer, so an interpolated path keeps its braces: `load @term/seed/code/native/{platform}/float`
+// the parser's own renderer, so an interpolated path keeps its braces: `load @term/base/code/native/{platform}/float`
 // has to reach the resolver with `{platform}` intact for `withNativeEnv` to fill it in. Reading only the chunks drops
 // the interpolation and asks for `.../native//float`, which resolves to nothing.
 function headName(group: GroupNode): string | undefined {
@@ -131,7 +131,7 @@ function scanImports(tree: RootNode): ImportScan {
   return { paths, hasZone }
 }
 
-// resolve an import path (e.g. `@cluesurf/seed/code/maybe`) from the importing file to its source, or undefined
+// resolve an import path (e.g. `@term/base/code/maybe`) from the importing file to its source, or undefined
 export type Resolver = (
   importPath: string,
   fromFile: string,

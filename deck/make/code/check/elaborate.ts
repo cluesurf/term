@@ -62,6 +62,20 @@ import {
   nonNegativeDifference,
 } from '@term/make/code/check/ring'
 import { checkFold } from '@term/make/code/check/induct'
+import { unfoldDefinitions } from '@term/make/code/check/unfold'
+import {
+  callsImpure,
+  EVERYTHING,
+  functionNames,
+  localNames,
+  pureFunctions,
+  readNames,
+  readsAny,
+  readsState,
+  rootName,
+  volatileNames,
+  writtenNames,
+} from '@term/make/code/check/facts'
 
 // ---- term builders ----
 const constant = (name: string): Term => ({ tag: 'const', name })
@@ -321,6 +335,35 @@ function indexTermAt(
       return term
     }
 
+    // a call to a FUNCTION VALUE in scope (`take f, like task ...`, then an index `call f / read x`): the parameter
+    // applied to its arguments. This is what lets `congruence` state `equal b (f x) (f y)`. A call to a task of the
+    // program is not read here, since this has no table of them, so such a type stays unreadable rather than wrong.
+    case 'call': {
+      if (expr.callee.form !== 'variable') {
+        return null
+      }
+
+      const level = valueScope.get(expr.callee.name)
+
+      if (level === undefined) {
+        return null
+      }
+
+      let term: Term = variable(depth - level - 1)
+
+      for (const arg of expr.args) {
+        const argument = indexTermAt(arg, depth, valueScope, known, resolveCtor)
+
+        if (!argument) {
+          return null
+        }
+
+        term = apply(term, argument)
+      }
+
+      return term
+    }
+
     default:
       return null
   }
@@ -360,6 +403,34 @@ function kernelTypeAt(
       if (position !== undefined) {
         return variable(depth - position - 1)
       } // a generic type parameter, by de Bruijn index
+
+      // A TYPE FAMILY: a VALUE parameter used as a type, applied to values (`take p / like task / take v, like a /
+      // like type`, then `like p / head / read y` is the type `p y`). The parameter is in scope as a variable whose
+      // kernel type is a function into `type`, and the kernel checks the application like any other, so a `p` that
+      // is not such a function is refused there. This is what lets `substitution` (J) be stated, and proven.
+      const valueLevel = valueScope.get(type.name)
+
+      if (valueLevel !== undefined && (type.args ?? []).length === 0) {
+        let family: Term = variable(depth - valueLevel - 1)
+
+        for (const valueArg of type.valueArgs ?? []) {
+          const argTerm = indexTermAt(
+            valueArg,
+            depth,
+            valueScope,
+            known,
+            resolveCtor,
+          )
+
+          if (!argTerm) {
+            return null
+          }
+
+          family = apply(family, argTerm)
+        }
+
+        return family
+      }
 
       if (!known.has(type.name)) {
         return null
@@ -488,6 +559,74 @@ function kernelTypeAt(
   }
 }
 
+// The type the kernel should read for one parameter or result: the one AS WRITTEN when the surface checker's seeding
+// lost something from it, the checked one otherwise. Seeding keeps a form's declared number of type arguments and
+// turns a name it does not know into an inference variable. Both are right for inference and for the backends, and
+// both made the kernel check a weaker statement than the one written: `equal a x y` became `equal a`, and the family
+// `p y` became a variable.
+function faithful(
+  declared: Type | undefined,
+  checked: Type | undefined,
+): Type | undefined {
+  return declared && lostIn(declared, checked) ? declared : checked
+}
+
+// did seeding lose anything from `declared` on its way to `checked`: a dropped type argument, a dropped value
+// argument, or a written name with value arguments that became something else
+function lostIn(declared: Type, checked: Type | undefined): boolean {
+  if (!checked) {
+    return true
+  }
+
+  if (declared.kind === 'named') {
+    if (checked.kind !== 'named' || checked.name !== declared.name) {
+      return (declared.valueArgs?.length ?? 0) > 0 || (declared.args?.length ?? 0) > 0
+    }
+
+    const dArgs = declared.args ?? []
+    const cArgs = checked.args ?? []
+
+    if (dArgs.length > cArgs.length) {
+      return true
+    }
+
+    // value arguments are expressions the programmer wrote, and seeding must never change them. Unification has been
+    // seen to write a DIFFERENT one back (`p x` became `p c`, a name from another task's branch), so any change at
+    // all, not only a shorter list, means the written type is the faithful one
+    if (!sameValueArgs(declared.valueArgs, checked.valueArgs)) {
+      return true
+    }
+
+    return dArgs.some((a, i) => lostIn(a, cArgs[i]))
+  }
+
+  if (declared.kind === 'function' && checked.kind === 'function') {
+    return (
+      declared.params.some((p, i) => lostIn(p, checked.params[i])) ||
+      lostIn(declared.result, checked.result)
+    )
+  }
+
+  if (declared.kind === 'array' && checked.kind === 'array') {
+    return lostIn(declared.element, checked.element)
+  }
+
+  return false
+}
+
+// two lists of value arguments, compared as written (spans, resolved types and bindings set aside)
+function sameValueArgs(
+  a: Expression[] | undefined,
+  b: Expression[] | undefined,
+): boolean {
+  const text = (e: Expression[] | undefined): string =>
+    JSON.stringify(e ?? [], (key, value) =>
+      key === 'span' || key === 'type' || key === 'binding' ? undefined : value,
+    )
+
+  return text(a) === text(b)
+}
+
 // the closed kernel case (no generics in scope), for signatures of named types and the like
 const kernelType = (
   type: Type | undefined,
@@ -498,12 +637,17 @@ const isUnit = (term: Term): boolean =>
   term.tag === 'const' && term.name === 'Unit'
 
 // thrown to abandon checking a construct the effect layer cannot represent yet (distinct from a real type error,
-// which surfaces as the kernel's TypeError). A declined function is left to the surface checker, with no diagnostic.
-class Decline extends Error {}
+// which surfaces as the kernel's TypeError). A declined function is left to the surface checker and counted, with
+// the reason, in the report's `declined`.
+class Decline extends Error {
+  constructor(readonly reason: string = 'an expression the kernel cannot represent') {
+    super(reason)
+  }
+}
 
-function need<T>(value: T | null): T {
+function need<T>(value: T | null, reason?: string): T {
   if (value === null) {
-    throw new Decline()
+    throw new Decline(reason)
   }
 
   return value
@@ -514,6 +658,14 @@ function need<T>(value: T | null): T {
 export type ElaborationReport = {
   diagnostics: Diagnostic[]
   verified: string[]
+  // the tasks whose WHOLE BODY elaborated to one kernel term checked against the declared type. This is the only
+  // kind of verification that is a proof: a body the command checker accepts is type-safe statement by statement,
+  // but nothing there checks that every path returns a value, so a body with no return at all passed it. A claim's
+  // fill must be in this set (check/claim.ts).
+  proven: string[]
+  // every task the kernel did not verify, with the reason, so "the kernel checked it" and "the kernel never looked"
+  // can be told apart and counted (proof-by-default-0005)
+  declined: { name: string; reason: string }[]
   discharged: Span[]
 }
 
@@ -629,8 +781,17 @@ export function elaborateReport(
     terminating = new Set<string>()
   }
 
+  // which tasks are pure, and for the task being checked, the names it binds itself and the names a closure inside it
+  // may write at any time. The command checker reads these to decide which path facts survive. check/facts.ts.
+  const factsPure = pureFunctions(program)
+  const factsFunctions = functionNames(program)
+  let factsLocal = new Set<string>()
+  let factsVolatile = new Set<string>()
+
   const diagnostics: Diagnostic[] = []
   const verified: string[] = []
+  const proven: string[] = []
+  const declined: { name: string; reason: string }[] = []
   const discharged: Span[] = [] // holds the kernel proved by definitional equality (the non-linear fallback)
   const lemmas = new Map<string, { left: string; right: string }>() // named, proven `a == b` holds, for `cite`
   // named, proven UNIVERSAL equational lemmas, stored as rewrite rules: `binderCount` leading universal binders (the
@@ -740,9 +901,16 @@ export function elaborateReport(
       // output `succ count`). A field f_j is bound at level m + j.
       const declaredIndices = statement.indices ?? []
       const l = declaredIndices.length
-      const indexTypes = declaredIndices.map(ix =>
-        kernelTypeAt(ix.type, 0, dataGenerics, namedTypes),
-      )
+      // index t's type AT A DEPTH. It must be built where it is used: an index whose type is a type parameter
+      // (`equal`'s `x, like a`) refers to that parameter by de Bruijn index, which shifts with every binder. These were
+      // built once at depth 0 and reused at depth m + t and m + 1 + n + t, which pointed past the environment the
+      // moment an index type was not a closed constant: every generic indexed family's `fork case` crashed the kernel
+      // (proof-by-default-0031). A closed index type (`nat`) is the same at every depth, which is why `eq` over `nat`
+      // in test/check/transport.ts never showed it.
+      const indexTypeAt = (t: number, depth: number): Term | null =>
+        kernelTypeAt(declaredIndices[t]!.type, depth, dataGenerics, namedTypes)
+      // at the type former's kind: index t sits after the m type parameters and the t earlier indices
+      const indexTypes = declaredIndices.map((_, t) => indexTypeAt(t, m + t))
       const fieldLevels = (variant: { fields: { name: string }[] }) =>
         new Map(variant.fields.map((f, j) => [f.name, m + j]))
 
@@ -1012,8 +1180,9 @@ export function elaborateReport(
           TYPE0,
         )
 
+        // the motive is built at depth m, so its binder i_t sits at m + t
         for (let t = l - 1; t >= 0; t--) {
-          motiveType = arrow(indexTypes[t]!, motiveType)
+          motiveType = arrow(indexTypeAt(t, m + t)!, motiveType)
         }
 
         // branch types
@@ -1134,8 +1303,9 @@ export function elaborateReport(
           dependentElim,
         )
 
+        // (i_t : I_t), past the type parameters, the motive and the n branches
         for (let t = l - 1; t >= 0; t--) {
-          dependentElim = arrow(indexTypes[t]!, dependentElim) // (i_t : I_t)
+          dependentElim = arrow(indexTypeAt(t, m + 1 + n + t)!, dependentElim)
         }
 
         for (let v = n - 1; v >= 0; v--) {
@@ -1509,6 +1679,8 @@ export function elaborateReport(
   const functionType = new Map<string, Term>()
   const functionGenerics = new Map<string, number>() // function name -> number of leading type parameters
   const representable = new Set<string>()
+  // for a task whose signature the kernel cannot read, which part it could not read
+  const unreadable = new Map<string, string>()
   // the context levels of the CURRENT function's erased generic binders, while its body elaborates. A generic call
   // in the body mints its type metas abstracted over these (contextual metavariables), so a meta can solve to the
   // enclosing generic itself (a bounded generic FORWARDING to another bounded generic) without a scope escape.
@@ -1535,9 +1707,11 @@ export function elaborateReport(
           .map((q, k) => [q.name, statement.generics.length + k]),
       )
 
-    // result is at full depth (after all generic + value binders); each param at the depth before its own binder
+    // result is at full depth (after all generic + value binders); each param at the depth before its own binder.
+    // Each type is the one AS WRITTEN wherever the surface pass's seeding lost something the kernel needs (node.ts
+    // `declared`), and the checked one everywhere else.
     const resultType = kernelTypeAt(
-      statement.result,
+      faithful(statement.declared?.result, statement.result),
       arity,
       generics,
       namedTypes,
@@ -1547,7 +1721,7 @@ export function elaborateReport(
 
     const paramTypes = statement.params.map((p, i) =>
       kernelTypeAt(
-        p.type,
+        faithful(statement.declared?.params[i], p.type),
         statement.generics.length + i,
         generics,
         namedTypes,
@@ -1557,6 +1731,12 @@ export function elaborateReport(
     )
 
     if (!resultType || paramTypes.some(t => t === null)) {
+      // which part, so the decline can say where to look
+      const unread = paramTypes.findIndex(t => t === null)
+      unreadable.set(
+        statement.name,
+        unread >= 0 ? `parameter \`${statement.params[unread]!.name}\`` : 'the result',
+      )
       continue
     }
 
@@ -2061,9 +2241,12 @@ export function elaborateReport(
           // the EXPECTED type is the parameterised type former applied to concrete arguments (e.g. a field-less `empty`
           // checked at `stack natural`), use those actual arguments as the witnesses so the element type resolves even
           // with no field to infer it from; otherwise a fresh meta solved by unification from the field values.
+          // contextual, like a generic call's: inside a generic task the witness may be that task's own generic (`refl`
+          // at `equal a x x` inside `task refl / head a`), and only a meta abstracted over the enclosing generic
+          // binders can be solved to one
           const arity = typeFormerArity.get(enumName) ?? 0
           let typeWitnesses: Term[] = Array.from({ length: arity }, () =>
-            freshMeta(TYPE0_VALUE),
+            contextualTypeMeta(context),
           )
 
           if (arity > 0 && expected) {
@@ -2075,12 +2258,14 @@ export function elaborateReport(
               expectedHead = expectedHead.fun
             }
 
+            // an INDEXED family's expected type carries its value indices after the type arguments (`equal a x x`),
+            // so the witnesses are the first `arity` arguments, not all of them
             if (
               expectedHead.tag === 'const' &&
               expectedHead.name === enumName &&
-              expectedArgs.length === arity
+              expectedArgs.length >= arity
             ) {
-              typeWitnesses = expectedArgs
+              typeWitnesses = expectedArgs.slice(0, arity)
             }
           }
 
@@ -2763,6 +2948,12 @@ export function elaborateReport(
     let sc = scope
     let ctx = context
 
+    // a path assumption is an equation over NAMES, and a name can be given a new value. Every write below drops the
+    // facts that read the name it writes, every compound statement drops afterwards the facts about what its bodies
+    // may have written, and a loop drops them before its body too. Without this, `save x 0 / save x 5 / hold x == 0`
+    // was proven. See check/facts.ts.
+    assumptions = forgetPairs(assumptions, factsVolatile)
+
     for (const statement of statements) {
       switch (statement.form) {
         case 'let': {
@@ -2770,17 +2961,26 @@ export function elaborateReport(
           const type = infer(ctx, term).type
           sc = new Map(sc).set(statement.name, ctx.level)
           ctx = bind(ctx, 'many', type)
-          // a `let x = e` (this is also how an existential witness `find x / e` is bound) genuinely makes `x` equal to
-          // `e`, so record `x == e` as a path assumption. A later `hold` referencing `x` then discharges through the
-          // hypothesis congruence closure (e.g. the existential goal `x == a` witnessed by `a`). Sound: the equation is
-          // definitionally true, so it only adds discharge power, never a false one.
-          assumptions = [
-            ...assumptions,
-            [
-              { form: 'variable', name: statement.name, span: statement.span },
-              statement.init,
-            ],
-          ]
+          // a `let x = e` (this is also how an existential witness `find x / e` is bound) makes `x` equal to `e` until
+          // `x` is written again, so record `x == e` as a path assumption, after dropping every fact about the name's
+          // previous value (a rebinding in a loop, or a shadowing). A later `hold` referencing `x` then discharges
+          // through the hypothesis congruence closure (e.g. the existential goal `x == a` witnessed by `a`).
+          assumptions = forgetPairs(assumptions, new Set([statement.name]))
+
+          if (stableDefinition(statement.name, statement.init)) {
+            assumptions = [
+              ...assumptions,
+              [
+                {
+                  form: 'variable',
+                  name: statement.name,
+                  span: statement.span,
+                },
+                statement.init,
+              ],
+            ]
+          }
+
           break
         }
 
@@ -2797,6 +2997,32 @@ export function elaborateReport(
             check(ctx, value, NUMBER_VALUE)
           }
 
+          const root = rootName(statement.target) ?? EVERYTHING
+          assumptions = forgetPairs(assumptions, new Set([root]))
+
+          // a write through a member may land in a record another name also holds, so every fact about any member
+          // goes, not only those under this root
+          if (statement.target.form === 'member') {
+            assumptions = assumptions.filter(
+              ([left, right]) => !readsMember(left) && !readsMember(right),
+            )
+          } else if (
+            statement.op === '=' &&
+            stableDefinition(root, statement.value)
+          ) {
+            assumptions = [
+              ...assumptions,
+              [
+                {
+                  form: 'variable',
+                  name: root,
+                  span: statement.span,
+                },
+                statement.value,
+              ],
+            ]
+          }
+
           break
         }
 
@@ -2811,7 +3037,7 @@ export function elaborateReport(
               resultValue,
             )
           } else if (!isUnitValue(resultValue)) {
-            throw new Decline()
+            throw new Decline('a bare return from a task that returns a value')
           }
 
           break
@@ -2822,12 +3048,20 @@ export function elaborateReport(
             // an equation guard (`have a == b`, a branch condition `a == b`) is assumed true inside its branch. Both
             // the binary `==` form and the surface `call is-equal a b` form (how a `have` equality is written) count,
             // so a `have` antecedent licenses substitution (`a == b -> f a == f b`, the content of `subst` / `J`).
+            // A condition that calls something impure is not a fact: evaluating it again could answer differently.
             const branchAssumptions = [...assumptions]
             const cond = branch.cond
+            const stableCond = !callsImpure(
+              cond,
+              factsPure,
+              factsFunctions,
+              factsLocal,
+            )
 
-            if (cond.form === 'binary' && cond.op === '==') {
+            if (stableCond && cond.form === 'binary' && cond.op === '==') {
               branchAssumptions.push([cond.left, cond.right])
             } else if (
+              stableCond &&
               cond.form === 'call' &&
               cond.callee.form === 'variable' &&
               cond.callee.name === 'is-equal' &&
@@ -2855,8 +3089,13 @@ export function elaborateReport(
             )
           }
 
+          assumptions = forgetPairs(assumptions, writtenNames(statement))
           break
-        case 'while':
+        case 'while': {
+          // a later turn sees what an earlier turn wrote, so facts about those names are gone before the body too,
+          // and so is every fact about state when the body changes state
+          assumptions = forgetPairs(assumptions, writtenNames(statement.body))
+          assumptions = forgetStateFor(statement.body, assumptions)
           check(ctx, need(expr(statement.cond, sc, ctx)), BOOLEAN_VALUE)
           checkCommands(
             statement.body,
@@ -2866,8 +3105,11 @@ export function elaborateReport(
             assumptions,
           )
           break
+        }
 
         case 'for-each': {
+          assumptions = forgetPairs(assumptions, writtenNames(statement))
+          assumptions = forgetStateFor(statement.body, assumptions)
           const iterable = need(expr(statement.iterable, sc, ctx))
           const iterableType = quote(
             ctx.level,
@@ -2879,7 +3121,7 @@ export function elaborateReport(
             iterableType.fun.tag !== 'const' ||
             iterableType.fun.name !== 'Array'
           ) {
-            throw new Decline()
+            throw new Decline('a walk over something that is not a list')
           }
 
           const elementType = evaluate(ctx.env, iterableType.arg)
@@ -2902,7 +3144,7 @@ export function elaborateReport(
             subjectType.tag !== 'const' ||
             !variantNames.has(subjectType.name)
           ) {
-            throw new Decline()
+            throw new Decline('a match on something that is not an enum')
           }
 
           for (const branch of statement.cases) {
@@ -2925,6 +3167,7 @@ export function elaborateReport(
             )
           }
 
+          assumptions = forgetPairs(assumptions, writtenNames(statement))
           break
         }
 
@@ -2946,9 +3189,129 @@ export function elaborateReport(
         case 'continue':
           break
         default:
-          throw new Decline() // a nested declaration or anything else unhandled
+          // a nested declaration or anything else unhandled
+          throw new Decline(`a \`${statement.form}\` statement`)
+      }
+
+      // a statement that calls something impure may have written through any record or changed what a call
+      // answers, so every fact that reads a member or a call goes
+      if (callsImpure(statement, factsPure, factsFunctions, factsLocal)) {
+        assumptions = assumptions.filter(
+          ([left, right]) => !readsState(left) && !readsState(right),
+        )
       }
     }
+  }
+
+  // a loop body that calls anything impure or writes through a member changes state between turns, so no fact that
+  // reads a member or a call survives into the body
+  function forgetStateFor(
+    body: Statement[],
+    pairs: [Expression, Expression][],
+  ): [Expression, Expression][] {
+    const changes =
+      callsImpure(body, factsPure, factsFunctions, factsLocal) ||
+      containsMemberWrite(body)
+
+    return changes
+      ? pairs.filter(([left, right]) => !readsState(left) && !readsState(right))
+      : pairs
+  }
+
+  function containsMemberWrite(body: Statement[]): boolean {
+    let found = false
+    const stack: unknown[] = [body]
+
+    while (stack.length > 0 && !found) {
+      const node = stack.pop()
+
+      if (node === null || typeof node !== 'object') {
+        continue
+      }
+
+      if (Array.isArray(node)) {
+        stack.push(...node)
+        continue
+      }
+
+      const record = node as Record<string, unknown>
+
+      if (
+        record.form === 'assign' &&
+        (record.target as { form?: string } | undefined)?.form === 'member'
+      ) {
+        found = true
+      }
+
+      for (const key of Object.keys(record)) {
+        if (key !== 'type' && key !== 'span' && key !== 'binding') {
+          stack.push(record[key])
+        }
+      }
+    }
+
+    return found
+  }
+
+  // drop every assumption that reads one of these names
+  function forgetPairs(
+    pairs: [Expression, Expression][],
+    names: Set<string>,
+  ): [Expression, Expression][] {
+    if (names.size === 0) {
+      return pairs
+    }
+
+    if (names.has(EVERYTHING)) {
+      return []
+    }
+
+    return pairs.filter(
+      ([left, right]) => !readsAny(left, names) && !readsAny(right, names),
+    )
+  }
+
+  // is `name == value` a fact worth keeping: the value does not read the old value of the name, does not read a
+  // volatile name, and does not call anything two calls may disagree on
+  function stableDefinition(name: string, value: Expression): boolean {
+    return (
+      !factsVolatile.has(name) &&
+      !readNames(value).has(name) &&
+      !readsAny(value, factsVolatile) &&
+      !callsImpure(value, factsPure, factsFunctions, factsLocal)
+    )
+  }
+
+  function readsMember(expression: Expression): boolean {
+    let found = false
+    const stack: unknown[] = [expression]
+
+    while (stack.length > 0 && !found) {
+      const node = stack.pop()
+
+      if (node === null || typeof node !== 'object') {
+        continue
+      }
+
+      if (Array.isArray(node)) {
+        stack.push(...node)
+        continue
+      }
+
+      const record = node as Record<string, unknown>
+
+      if (record.form === 'member') {
+        found = true
+      }
+
+      for (const key of Object.keys(record)) {
+        if (key !== 'type' && key !== 'span') {
+          stack.push(record[key])
+        }
+      }
+    }
+
+    return found
   }
 
   // discharge `left == right` modulo a set of induction-hypothesis equalities, by the kernel. With no hypotheses this
@@ -4437,6 +4800,49 @@ export function elaborateReport(
   // constructor, the induction hypothesis is the goal with all of them stepped to their fields at once (the diagonal),
   // which is exactly the recursion of a function that matches several arguments together (min, max, the order `at-most`).
   // Sound: this is well-founded induction on the product order. Returns false (never throws) for anything outside it.
+  // is an inductive type FINITE: no variant reaches the type again through its fields, and every field's type is itself
+  // finite. A finite type has finitely many closed values, so splitting a variable of that type into every constructor,
+  // and every field of that constructor in turn, is exhaustive case analysis. Memoized per type name.
+  const finiteTypes = new Map<string, boolean>()
+
+  function isFiniteType(name: string, visiting = new Set<string>()): boolean {
+    const known = finiteTypes.get(name)
+
+    if (known !== undefined) {
+      return known
+    }
+
+    const variants = variantNames.get(name)
+
+    if (!variants || variants.length === 0 || visiting.has(name)) {
+      return false
+    }
+
+    visiting.add(name)
+
+    let finite = true
+
+    for (const variant of variants) {
+      for (const field of variantFieldInfo.get(ctorKey(name, variant)) ?? []) {
+        if (
+          field.type.tag !== 'const' ||
+          !isFiniteType(field.type.name, visiting)
+        ) {
+          finite = false
+        }
+      }
+    }
+
+    visiting.delete(name)
+    finiteTypes.set(name, finite)
+
+    return finite
+  }
+
+  // `deep`: also case-split every field whose type is finite, so a variable of a record type (a pair of tones, a
+  // matrix of residues) is split all the way down to its closed values rather than leaving its fields as neutral
+  // variables the goal cannot compute on. Only tried after the shallow split fails, so a proof that closes today closes
+  // the same way.
   function multiInduction(
     goal: Extract<Expression, { form: 'binary' }>,
     scope: Scope,
@@ -4444,6 +4850,7 @@ export function elaborateReport(
     inductVars: string[],
     citedLemmas: string[],
     assumptions: [Expression, Expression][] = [],
+    deep = false,
   ): boolean {
     if (goal.op !== '==') {
       return false
@@ -4494,7 +4901,9 @@ export function elaborateReport(
       const dischargeLeaf = (ctx: Context): boolean => {
         const caseEnv = [...ctx.env]
 
-        for (const choice of chosen) {
+        // a deep split chose constructors for FIELDS too, and those choices come after their parent's, so the
+        // environment is rebuilt from the last choice back: a field is assigned before the record built from it
+        for (const choice of deep ? [...chosen].reverse() : chosen) {
           const consTerm = apply(
             constant(ctorKey(choice.enumName, choice.variant)),
             ...choice.fields.map((_, j) =>
@@ -4503,7 +4912,7 @@ export function elaborateReport(
           )
 
           caseEnv[ctx.level - choice.level - 1] = evaluate(
-            ctx.env,
+            deep ? caseEnv : ctx.env,
             consTerm,
           )
         }
@@ -4579,13 +4988,22 @@ export function elaborateReport(
         )
       }
 
+      // the variables still to split: the folded ones, and under `deep` every finite-typed field of a chosen
+      // constructor, appended as it is chosen and removed again on the way back out
+      const pending: { level: number; enumName: string; variants: string[] }[] =
+        infos.map(info => ({
+          level: info!.level,
+          enumName: info!.enumName,
+          variants: info!.variants,
+        }))
+
       // pick a constructor for variable `i`, extend the context with its fields, and recurse to the next variable
       const pick = (i: number, ctx: Context): boolean => {
-        if (i === infos.length) {
+        if (i === pending.length) {
           return dischargeLeaf(ctx)
         }
 
-        const info = infos[i]!
+        const info = pending[i]!
 
         for (const variant of info.variants) {
           const fields =
@@ -4608,7 +5026,28 @@ export function elaborateReport(
             fieldLevels,
           })
 
+          const added: typeof pending = []
+
+          if (deep) {
+            fields.forEach((field, j) => {
+              if (
+                field.type.tag === 'const' &&
+                isFiniteType(field.type.name)
+              ) {
+                added.push({
+                  level: fieldLevels[j]!,
+                  enumName: field.type.name,
+                  variants: variantNames.get(field.type.name)!,
+                })
+              }
+            })
+          }
+
+          pending.push(...added)
+
           const ok = pick(i + 1, inner)
+
+          pending.splice(pending.length - added.length, added.length)
           chosen.pop()
 
           if (!ok) {
@@ -4733,6 +5172,13 @@ export function elaborateReport(
   ): void {
     const goal = statement.expr
 
+    // a goal that calls something two calls may disagree on is not the kernel's to decide: every task is a constant
+    // in the signature, so `roll() == roll()` would be convertible by construction. Leave it to the linear prover,
+    // which reports it as outside the fragment. See check/facts.ts.
+    if (callsImpure(goal, factsPure, factsFunctions, factsLocal)) {
+      return
+    }
+
     // `calm miss`: a `show miss` over an equality is lowered by the mill to `! (a == b)`. Discharge it by definitional
     // DISTINCTNESS (no confusion): if `a` and `b` reduce to different constructors of the same enum, the equality is
     // impossible, so its negation holds by computation. This is the refutation companion of `calm hold`. Sound: it reuses
@@ -4846,11 +5292,12 @@ export function elaborateReport(
     // Sound by the kernel's observational equality (Id at a function type IS the pointwise identity), so the pointwise
     // proof IS the function-equality proof. Discharges a NON-definitional function equality (e.g. two recursive
     // definitions of the same function) that `calm` cannot.
-    // `auto` / firstorder: discharge the goal by rewriting BOTH sides with EVERY proven lemma (the hint database is
+    // `seek` / firstorder: discharge the goal by rewriting BOTH sides with EVERY proven lemma (the hint database is
     // `lemmaRules`) to a fixed point, then checking convertibility (which also runs computation). Additive and SOUND --
     // it only uses already-proven equalities and definitional reduction, so it can never prove a falsehood; it just
-    // automates "cite each lemma + calm" with a depth-bounded search, so the user need not name the lemmas.
-    if (tactic?.head === 'auto' && goal.form === 'binary' && goal.op === '==') {
+    // automates "cite each lemma + calm" with a depth-bounded search, so the user need not name the lemmas. It was
+    // `auto` until 2026-10-02, a head outside hold/base/terms.json (proof-by-default-0021).
+    if (tactic?.head === 'seek' && goal.form === 'binary' && goal.op === '==') {
       const rules = [...lemmaRules.values()]
       const [l, r] = elaborateGoalSides(
         goal.left,
@@ -4974,7 +5421,22 @@ export function elaborateReport(
               assumptions,
             )
 
-      if (byInduction || checkFold(program, goal, tactic.arg)) {
+      // when the split above leaves a record's fields standing as variables the goal cannot compute on, split those
+      // too, down to closed values (exhaustive over finite types, so sound). Tried only after the shallow attempt
+      // fails, so every proof that closed before closes the same way.
+      const byDeepSplit =
+        !byInduction &&
+        multiInduction(
+          goal,
+          scope,
+          context,
+          inductVars,
+          cited,
+          assumptions,
+          true,
+        )
+
+      if (byInduction || byDeepSplit || checkFold(program, goal, tactic.arg)) {
         discharged.push(statement.span)
         recordLemmaRule(statement.name, goal, scope, context)
       } else {
@@ -4996,9 +5458,13 @@ export function elaborateReport(
     // discharge in general, live in the linear prover `holds.ts`, which owns every comparison goal regardless of an
     // attached `calm hold`.)
     if (!hasProof) {
+      // a polynomial named as a task (a norm) is unfolded first, the same as for a ring identity (see unfold.ts)
+      const orderLeft = unfoldDefinitions(goal.left, program)
+      const orderRight = unfoldDefinitions(goal.right, program)
+
       if (
         goal.op === '>=' &&
-        nonNegativeDifference(goal.left, goal.right)
+        nonNegativeDifference(orderLeft, orderRight)
       ) {
         discharged.push(statement.span)
 
@@ -5007,7 +5473,7 @@ export function elaborateReport(
 
       if (
         goal.op === '<=' &&
-        nonNegativeDifference(goal.right, goal.left)
+        nonNegativeDifference(orderRight, orderLeft)
       ) {
         discharged.push(statement.span)
 
@@ -5024,7 +5490,12 @@ export function elaborateReport(
     // multiplicative norm, the four-square and doubling identities) that the linear prover (degree one) and the
     // kernel's opaque arithmetic cannot. Sound: a zero polynomial is identically zero over any commutative ring. With
     // an explicit proof present, the kernel validates that proof instead, so a bogus tactic is still caught.
-    if (!hasProof && ringEqual(goal.left, goal.right)) {
+    // the sides with every non-recursive single-expression task unfolded, so a polynomial defined once as a task
+    // (a norm, a product's coordinates) can be named in a ring identity rather than written out (see unfold.ts)
+    const ringLeft = unfoldDefinitions(goal.left, program)
+    const ringRight = unfoldDefinitions(goal.right, program)
+
+    if (!hasProof && ringEqual(ringLeft, ringRight)) {
       discharged.push(statement.span)
       // a named ring identity becomes a citable lemma (and rewrite rule), so `cite` / `link` (calc chains) can use it,
       // the same as an induction- or kernel-discharged hold. Sound: it is a proven universal equality.
@@ -5042,7 +5513,16 @@ export function elaborateReport(
     if (
       goal.op === '==' &&
       assumptions.length > 0 &&
-      ringEqualModulo(goal.left, goal.right, assumptions)
+      ringEqualModulo(
+        ringLeft,
+        ringRight,
+        assumptions.map(
+          ([l, r]): [Expression, Expression] => [
+            unfoldDefinitions(l, program),
+            unfoldDefinitions(r, program),
+          ],
+        ),
+      )
     ) {
       discharged.push(statement.span)
       recordLemmaRule(statement.name, goal, scope, context)
@@ -5240,11 +5720,23 @@ export function elaborateReport(
         // commutative-ring identity (`add a b == add b a`) or holds modulo the path hypotheses, so `calm hold`
         // robustly discharges a linear / ring law the user need not rewrite as a bare hold. Sound: `ringEqual` and
         // `ringEqualModulo` are decision procedures, firing only on genuine identities.
+        const unfoldedLeft = unfoldDefinitions(goal.left, program)
+        const unfoldedRight = unfoldDefinitions(goal.right, program)
+
         if (
           goal.op === '==' &&
-          (ringEqual(goal.left, goal.right) ||
+          (ringEqual(unfoldedLeft, unfoldedRight) ||
             (assumptions.length > 0 &&
-              ringEqualModulo(goal.left, goal.right, assumptions)))
+              ringEqualModulo(
+                unfoldedLeft,
+                unfoldedRight,
+                assumptions.map(
+                  ([l, r]): [Expression, Expression] => [
+                    unfoldDefinitions(l, program),
+                    unfoldDefinitions(r, program),
+                  ],
+                ),
+              )))
         ) {
           discharged.push(statement.span)
           // register it as a citable lemma too, so a ring identity proven with `calm hold` is reusable like one proven
@@ -5267,13 +5759,17 @@ export function elaborateReport(
   }
 
   for (const statement of program) {
-    if (
-      statement.form !== 'function' ||
-      !representable.has(statement.name) ||
+    if (statement.form !== 'function' || statement.stub || statement.claim) {
       // a separate-compilation stub has no body to elaborate: its signature is already registered above (so calls
-      // against it kernel-check), and its body was verified in its owning unit
-      statement.stub
-    ) {
+      // against it kernel-check), and its body was verified in its owning unit. A claim is a signature, not a body.
+      continue
+    }
+
+    if (!representable.has(statement.name)) {
+      declined.push({
+        name: statement.name,
+        reason: `its signature names a type the kernel cannot read (${unreadable.get(statement.name) ?? 'the signature'})`,
+      })
       continue
     }
 
@@ -5321,6 +5817,8 @@ export function elaborateReport(
     // first try a pure term (proof-relevant); if the body is outside the pure fragment, type-check it as effectful
     // commands. Either way the kernel is the authority for the expression types.
     enclosingGenericLevels = genericLevels
+    factsLocal = localNames(statement)
+    factsVolatile = volatileNames(statement.body)
 
     const term = body(statement.body, scope, context, resultValue)
 
@@ -5332,7 +5830,8 @@ export function elaborateReport(
         // see through its calls. Termination is the gate: a function whose recursion is not verified stays opaque,
         // so it can never make the checker loop (fuel-bounded delta is the additional backstop). Recursive
         // verified functions are included.
-        if (terminating.has(statement.name)) {
+        // and purity is the second gate: an impure task's body is one run of it, not what every call answers
+        if (terminating.has(statement.name) && factsPure.has(statement.name)) {
           let lambda: Term = term
 
           for (
@@ -5345,12 +5844,33 @@ export function elaborateReport(
 
           defineConstant(statement.name, evaluate([], lambda))
         }
+
+        proven.push(statement.name)
       } else {
         checkCommands(statement.body, scope, context, resultValue)
       }
 
       verified.push(statement.name)
     } catch (error) {
+      // TERM_KERNEL_TRACE=1 prints where the kernel failed on a task, which the decline reason alone cannot say
+      if (
+        typeof process !== 'undefined' &&
+        process.env?.TERM_KERNEL_TRACE &&
+        !(error instanceof Decline)
+      ) {
+        console.error(`kernel trace for ${statement.name}:`, error)
+      }
+
+      declined.push({
+        name: statement.name,
+        reason:
+          error instanceof Decline
+            ? error.reason
+            : error instanceof TypeError
+              ? `a kernel type error: ${error.message}`
+              : `the kernel failed on it: ${error instanceof Error ? error.message : String(error)}`,
+      })
+
       if (error instanceof TypeError) {
         diagnostics.push(
           diagnose('type-mismatch', {
@@ -5363,6 +5883,8 @@ export function elaborateReport(
       // Decline (unrepresentable) or any other error: leave this function to the surface checker, no diagnostic
     } finally {
       enclosingGenericLevels = []
+      factsLocal = new Set()
+      factsVolatile = new Set()
     }
   }
 
@@ -5376,5 +5898,5 @@ export function elaborateReport(
     }
   }
 
-  return { diagnostics, verified, discharged }
+  return { diagnostics, verified, proven, declined, discharged }
 }

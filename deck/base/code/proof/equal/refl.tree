@@ -1,0 +1,18 @@
+load @term/base/code/proof/equal
+  find equal
+
+# every value equals itself
+rule refl
+  head a
+  take x, like a
+  like equal a
+    head
+      read x
+    head
+      read x
+
+task refl
+  take x
+  send back
+    make equal/refl
+      bind c, read x

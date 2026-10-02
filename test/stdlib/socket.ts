@@ -22,11 +22,11 @@ import {
 import { render } from '@term/make/code/parser/diagnostic'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const baseTree = join(here, '..', '..', 'deck', 'seed')
+const baseTree = join(here, '..', '..', 'deck', 'base')
 
 const stdlib = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/seed/'
-  path = path.replace(/^@term\/seed\//, prefix)
+  const prefix = '@term/base/'
+  path = path.replace(/^@term\/base\//, prefix)
 
   if (!path.startsWith(prefix)) {
     return undefined
@@ -44,8 +44,8 @@ const readRuntime = (path: string): string | undefined => {
     return readFileSync(path, 'utf8')
   }
 
-  const prefix = '@cluesurf/seed/'
-  path = path.replace(/^@term\/seed\//, prefix)
+  const prefix = '@term/base/'
+  path = path.replace(/^@term\/base\//, prefix)
 
   if (!path.startsWith(prefix)) {
     return undefined
@@ -103,7 +103,7 @@ async function loadModule(
   >
 }
 
-const TCP = `load @cluesurf/seed/code/network/tcp
+const TCP = `load @term/base/code/network/tcp
   find connect
 
 task ping
@@ -133,7 +133,7 @@ task ping
     read reply
 `
 
-const UDP = `load @cluesurf/seed/code/network/udp
+const UDP = `load @term/base/code/network/udp
   find open
 
 task round-trip

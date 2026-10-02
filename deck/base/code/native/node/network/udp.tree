@@ -1,0 +1,26 @@
+# node UDP implementation. Forwards to the linked udp runtime shim (node:dgram). Declares the opaque handle type a socket holds (the raw node dgram Socket). Internal: reached only through the public UDP API.
+
+dock type
+  load <any>, name udp-handle
+
+dock load
+  load <global:udp>, name udp
+
+load @term/base/code/network/udp
+  find socket
+
+task do-open
+  note async
+  take port, like number
+  take host, like text
+  like socket
+  save raw
+    call udp/open
+      read port
+      read host
+      wait true
+  send back
+    make socket
+      bind dock, read raw
+      bind host, read host
+      bind port, read port

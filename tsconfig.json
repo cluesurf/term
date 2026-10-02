@@ -22,7 +22,7 @@
     "paths": {
       "@/*": ["./*"],
       "@term/make/*": ["./deck/make/*"],
-      "@term/base/*": ["./deck/base/*"],
+      "@cluesurf/save/*": ["../../../../mesh/deck/save/code/*"],
       "@term/call/*": ["./deck/call/*"],
       "@term/scan/*": ["./deck/scan/*"],
       "@term/test/*": ["./deck/test/*"],

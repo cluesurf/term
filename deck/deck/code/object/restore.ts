@@ -7,11 +7,11 @@
 
 import fsp from 'fs/promises'
 import path from 'path'
-import { readDataset } from '@term/base/code/store/tree'
-import type { ChunkStore } from '@term/base/code/store/chunk-store'
+import { readDataset } from '@cluesurf/save/store/tree'
+import type { ChunkStore } from '@cluesurf/save/store/chunk-store'
 
 import { filesOfDataset } from './dataset'
-import { formatTree } from '@term/base/code/tree/format'
+import { formatTree } from '@cluesurf/save/tree/format'
 import type { PackageFile } from './dataset'
 import type { ObjectStore } from './store'
 

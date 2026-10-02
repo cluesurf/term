@@ -7,7 +7,7 @@
  * the same `proveFile`. Usage:
  *   npx tsx deck/test/code/prove-cli.ts <file.tree> [--cross] [--json]
  *
- * Run from the seed install root so @cluesurf/seed imports resolve.
+ * Run from the seed install root so @term/base imports resolve.
  */
 
 import yargs from 'yargs'

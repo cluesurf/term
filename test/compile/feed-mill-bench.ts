@@ -67,7 +67,7 @@ import {
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const PACKS: Record<string, string> = {
-  seed: join(TERM, 'deck/seed'),
+  seed: join(TERM, 'deck/base'),
   feed: join(TERM, 'deck/feed'),
 }
 

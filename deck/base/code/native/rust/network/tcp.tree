@@ -1,0 +1,59 @@
+# rust TCP implementation. Forwards to the linked tcp runtime shim (tokio::net). Declares the opaque handle types a connection / listener hold (an Arc-wrapped tokio TcpStream / TcpListener). Internal: reached only through the public TCP API.
+
+dock type
+  load <std::sync::Arc<tokio::net::TcpStream>>, name tcp-stream
+  load <std::sync::Arc<tokio::net::TcpListener>>, name tcp-server
+
+dock load
+  load <global:tcp>, name tcp
+
+load @term/base/code/network/tcp
+  find connection
+  find listener
+
+task do-connect
+  note async
+  take host, like text
+  take port, like number
+  take secure, like boolean
+  like connection
+  save raw
+    call tcp/connect
+      read host
+      read port
+      read secure
+      wait true
+  send back
+    make connection
+      bind dock, read raw
+      bind host, read host
+      bind port, read port
+      bind secure, read secure
+
+task do-listen
+  note async
+  take port, like number
+  take host, like text
+  take secure, like boolean
+  take
+    certificate
+    like text
+    need false
+  take
+    key
+    like text
+    need false
+  like listener
+  save raw
+    call tcp/listen
+      read port
+      read host
+      read secure
+      read certificate
+      read key
+      wait true
+  send back
+    make listener
+      bind dock, read raw
+      bind host, read host
+      bind port, read port

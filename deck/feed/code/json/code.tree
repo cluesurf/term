@@ -5,32 +5,32 @@
 # real streaming source (`make-streaming-text-cursor`) can parse a JSON document far larger than memory a chunk
 # at a time. See note/term/feed/08-streaming.md.
 
-load @term/seed/code/boolean
+load @term/base/code/boolean
   find and
   find or
   find not
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
   find join
   find get
   find set
 
-load @term/seed/code/text
+load @term/base/code/text
   find char-count
   find char-at
   find char-code-at
 
-load @term/seed/code/text/string
+load @term/base/code/text/string
   find concat
 
-load @term/seed/code/rune
+load @term/base/code/rune
   find rune-to-text
 
 load ../hex/code
   find hex-digit-value
 
-load @term/seed/code/float
+load @term/base/code/float
   find to-decimal
   find to-number
 

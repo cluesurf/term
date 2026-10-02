@@ -1,0 +1,23 @@
+# `never` is a type with no values. Its one case needs a `never` to build, so there is no first one, and
+# `absurd` recurses on that field structurally, which the kernel checks as a proof.
+#
+# This was stated over `void` until 2026-10-02. `void` is NOT empty: the stdlib builds `make void` as a unit
+# value (hold/list.tree, native/node/cryptography.tree), so `absurd` over it claimed that one ordinary value
+# proves anything. It compiled as proven because any task of a claim's name counted as its proof. Since
+# proof-by-default-0003 a proof must be verified by the kernel, and the kernel refused this one.
+form never
+  case later
+    link next, like never
+
+rule absurd
+  head a
+  take proof, like never
+  like a
+
+task absurd
+  take proof
+  fork case, read proof
+    case later
+      send back
+        call absurd
+          read next

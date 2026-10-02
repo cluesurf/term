@@ -776,6 +776,11 @@ const cli = yargs(hideBin(process.argv))
         .option('remote-token', {
           type: 'string',
           description: 'Bearer token for the remote cache',
+        })
+        .option('out', {
+          type: 'string',
+          description:
+            'Write a command-line program to this directory (run.mjs, app.mjs, dock.mjs) instead of running it',
         }),
     async argv => {
       // arguments for a command-line program: everything after a literal
@@ -799,6 +804,7 @@ const cli = yargs(hideBin(process.argv))
         remote: argv.remote,
         remoteToken: argv['remote-token'],
         args,
+        out: argv.out,
       })
     },
   )
@@ -1130,7 +1136,7 @@ const cli = yargs(hideBin(process.argv))
   )
   .command(
     'hold [paths..]',
-    'Verify .tree files hold: report gaps, run the cross-backend differential, gate CI (incremental)',
+    'The proof gate: every file compiles, no claim is open, every tier-0 obligation is proven or baselined. One line, non-zero exit',
     yargs =>
       yargs
         .positional('paths', {
@@ -1140,8 +1146,13 @@ const cli = yargs(hideBin(process.argv))
         })
         .option('cross', {
           type: 'boolean',
-          default: true,
-          description: 'Run the cross-backend differential',
+          default: false,
+          description: 'Also run the cross-backend differential',
+        })
+        .option('commit', {
+          type: 'boolean',
+          description:
+            'Rewrite hold.json to the obligations not proven today, and print how many that added',
         })
         .option('cache', {
           type: 'boolean',
@@ -1164,6 +1175,7 @@ const cli = yargs(hideBin(process.argv))
         cache: argv.cache,
         force: argv.force,
         json: argv.json,
+        commit: argv.commit,
       })
     },
   )

@@ -247,7 +247,7 @@ export function crateOf(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '_')
 }
 
-// the manifest of the app's cargo project: the stdlib's own crate list (deck/seed/code/native/rust/Cargo.toml) read
+// the manifest of the app's cargo project: the stdlib's own crate list (deck/base/code/native/rust/Cargo.toml) read
 // at build time so the two cannot drift, plus SQLite, plus each platform's toolkit under its own `cfg`, so a
 // project written on one platform checks on any other with the runtime's stub half
 function cargoManifest(crate: string, source: string): string {

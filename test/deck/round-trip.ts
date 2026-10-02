@@ -28,8 +28,9 @@ const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 
 // how many distinct field heads the tree's own manifests use, of the 27 the grammar knows. A new one is welcome;
-// it just has to survive the trip.
-const CHECKED = 14
+// it just has to survive the trip. 14 until 2026-10-02, when the record system left the tree for mesh/deck/save
+// and took the only `sort` with it.
+const CHECKED = 13
 
 let pass = 0
 let fail = 0
@@ -66,9 +67,9 @@ function manifests(dir: string, out: string[] = []): string[] {
 // one parser, so this cannot disagree with the compiler about what the file contains, and top-level only, because
 // a child word (`sort tool`) is a value and not a field.
 //
-// THE FIRST TWO NODES ARE NOT FIELDS. Every word after a head is a head of its own, so `deck @term/seed` parses as
-// `deck > @term/seed`: node 0 is the head word and node 1 is the PACKAGE NAME, which read as a field called
-// `@term/seed` and put fifteen package names into the count before this skipped them.
+// THE FIRST TWO NODES ARE NOT FIELDS. Every word after a head is a head of its own, so `deck @term/base` parses as
+// `deck > @term/base`: node 0 is the head word and node 1 is the PACKAGE NAME, which read as a field called
+// `@term/base` and put fifteen package names into the count before this skipped them.
 function fieldsOf(file: string, text: string): Set<string> {
   const parsed = parse({ file, text })
   const out = new Set<string>()
@@ -108,7 +109,7 @@ for (const file of files) {
   const text = readFileSync(file, 'utf8')
   const before = fieldsOf(file, text)
 
-  // a `deck.tree` that is an ordinary code module rather than a manifest (deck/seed/code/deck.tree is one) has no
+  // a `deck.tree` that is an ordinary code module rather than a manifest (deck/base/code/deck.tree is one) has no
   // `deck @name` declaration and is not this test's business
   if (before.size === 0) {
     continue
@@ -173,7 +174,7 @@ const WHOLE = `deck @scope/whole
   make <security>
   make <parser>
   deck ./deck/load
-  link @term/seed, code <0.x.x>
+  link @term/base, code <0.x.x>
   host <https://registry.example.com>
     link @other/thing, code <1.x.x>
   case work

@@ -4,7 +4,7 @@ load @term/mill/code/code/bind/mint
 load @term/mill/code/code/wait/mint
   find wait
 
-load @term/seed/code/lang
+load @term/base/code/lang
   find code-hold
   find hold-hook
 

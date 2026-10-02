@@ -2008,6 +2008,28 @@ const WALK_MODES = new Set(['list', 'size', 'test'])
 
 // `walk list, <seq>` iterates; `walk test` loops while a condition holds. Both arrive as one `walk` form
 // distinguished by its mode word, which is the only thing that tells them apart.
+// a contract's lines: every `must <claim>` (an invariant on a walk, a postcondition on a task), every `have <claim>`
+// (a task's precondition), and the one `down <measure>`. Read only by the checker. See check/contract.ts.
+function contractOf(
+  bridge: Bridge,
+  value: Form,
+): { have?: Expression[]; must?: Expression[]; down?: Expression } {
+  const linesAt = (site: string): Expression[] =>
+    formsAt(value, site)
+      .map(line => expressionOf(bridge, firstAt(line, 'seed')))
+      .filter((e): e is Expression => e !== undefined)
+
+  const have = linesAt('have')
+  const must = linesAt('must')
+  const down = linesAt('down')[0]
+
+  return {
+    ...(have.length > 0 ? { have } : {}),
+    ...(must.length > 0 ? { must } : {}),
+    ...(down ? { down } : {}),
+  }
+}
+
 function loopOf(
   bridge: Bridge,
   value: Form,
@@ -2015,6 +2037,11 @@ function loopOf(
   const span = spanOf(value)
   const written = wordAt(value, 'mode')
   const hooks = formsAt(value, 'hook')
+  const { must, down } = contractOf(bridge, value)
+  const contract = {
+    ...(must ? { must } : {}),
+    ...(down ? { down } : {}),
+  }
 
   // The mode is a closed set, so anything outside it is the SEQUENCE: `walk one/stem` is `walk list, ...`.
   // An unrecognized mode used to fall through to a loop that never runs, silently. lean-0023.
@@ -2069,6 +2096,7 @@ function loopOf(
       ...(index ? { index } : {}),
       iterable,
       body,
+      ...(must ? { must } : {}),
       span,
     }
   }
@@ -2092,6 +2120,7 @@ function loopOf(
       form: 'while',
       cond,
       body: step ? scopedFlow(bridge, at(step, 'flow')) : [],
+      ...contract,
       span,
     }
   }
@@ -2144,6 +2173,7 @@ function loopOf(
           span,
         },
       ],
+      ...contract,
       span,
       },
     ]
@@ -2525,10 +2555,14 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
     generics,
     // the bound on what this task may raise, from the leading `halt <form>` lines
     ...(raises.length > 0 ? { raises } : {}),
+    // `have` / `must` / `down`: the task's contract, which only the checker reads
+    ...contractOf(bridge, value),
     // `wait true` on a DEFINITION marks it async, the same as `note async`. The two are not alternatives in
     // the reader, they are two spellings of one fact, and a task that says only `wait true` is async too.
     ...(marked(value, 'async') || waitsTrue(value) ? { async: true } : {}),
     ...(marked(value, 'private') ? { private: true } : {}),
+    // `note roam`: meant to run forever (a server, an event loop)
+    ...(marked(value, 'roam') ? { roam: true } : {}),
     ...(owner ? { method: { form: owner, name: bare } } : {}),
     span: spanOf(value),
   }
@@ -3248,7 +3282,18 @@ function ruleOf(bridge: Bridge, value: Form): Statement[] {
     span,
   })
 
-  return [{ form: 'function', name, params, body, generics: [], span }]
+  // an axiom is postulated, not proven: the trust ledger (`term hold`) lists every one by name
+  return [
+    {
+      form: 'function',
+      name,
+      params,
+      body,
+      generics: [],
+      ...(goal && axiom ? { axiom: true } : {}),
+      span,
+    },
+  ]
 }
 
 // a statement builder may answer with none, one, or several (a counted walk is a counter plus its loop)

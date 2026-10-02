@@ -1,9 +1,9 @@
 
-load @term/seed/code/import
+load @term/base/code/import
   find import
   find import-reference
 
-load @term/seed/code/deck
+load @term/base/code/deck
   find deck-load
   find deck-find
 

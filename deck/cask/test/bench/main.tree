@@ -10,7 +10,7 @@ load @term/cask/code/cask
   find on-ready
   find run
 
-load @term/seed/code/console
+load @term/base/code/console
   find log
 
 load ./dispatch

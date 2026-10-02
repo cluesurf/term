@@ -1,0 +1,31 @@
+# kotlin TCP listener operations. Forwards to the linked tcp runtime shim, operating on the listener's java ServerSocket handle. accept wraps the incoming socket as a connection. Internal: reached only through the public TCP API.
+
+dock load
+  load <global:tcp>, name tcp
+
+load @term/base/code/network/tcp
+  find listener
+  find connection
+
+task do-accept
+  note async
+  take listener, like listener
+  like connection
+  save raw
+    call tcp/accept
+      read listener/dock
+      wait true
+  send back
+    make connection
+      bind dock, read raw
+      bind host, read listener/host
+      bind port, read listener/port
+      bind secure, false
+
+task do-close-listener
+  note async
+  take listener, like listener
+  like void
+  call tcp/close-server
+    read listener/dock
+    wait true

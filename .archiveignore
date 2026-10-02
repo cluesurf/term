@@ -1,0 +1,40 @@
+# What NOT to publish to the Internet Archive. gitignore syntax.
+# Everything else in this folder goes into the published zip.
+# `.git/` and `.env*` are always left out.
+
+# build output, dependencies, caches (as in .gitignore)
+node_modules/
+/host/
+deck/*/host/
+deck/*/test/*/host/
+/hold/
+/.seed/
+.base/
+.build/
+tmp/
+/link/
+!/link/lock.tree
+deck/flow/editor/vscode/host/
+
+# work in progress, not yet in git
+deck/bind/code/android/
+deck/bind/code/macos/
+deck/bind/code/raspberry/
+deck/bind/code/swift/
+deck/bind/code/windows/
+deck/face/link/
+deck/feed/code/http/base.note/
+deck/feed/code/tree/lace/
+deck/mill/test/
+deck/site/code/dom/native/webview/
+
+# editor and agent settings
+.vscode/
+.claude/
+.DS_Store
+*.bak
+
+# credentials
+.npmrc
+*.pem
+*.key

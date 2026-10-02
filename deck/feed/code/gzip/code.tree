@@ -3,26 +3,26 @@
 # note/term/feed/03-worked-examples.md field for field: the flags-byte bitwise tests, the NUL-terminated latin1
 # name/comment fields, the trailer.
 
-load @term/seed/code/boolean
+load @term/base/code/boolean
   find and
   find not
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
   find size
   find join
 
-load @term/seed/code/text
+load @term/base/code/text
   find char-at
   find char-code-at
 
-load @term/seed/code/rune
+load @term/base/code/rune
   find rune-to-text
 
-load @term/seed/code/bit
+load @term/base/code/bit
   find bitwise-and
 
-load @term/seed/code/maybe
+load @term/base/code/maybe
   find maybe
   find some
   find none

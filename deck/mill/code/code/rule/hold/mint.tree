@@ -13,7 +13,7 @@ load @term/mill/code/code/like/mint
 load @term/mill/code/code/seed/mint
   find seed
 
-load @term/seed/code/lang
+load @term/base/code/lang
   find code-hold
   find code-show
   find code-mark

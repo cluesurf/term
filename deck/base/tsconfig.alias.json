@@ -1,9 +1,0 @@
-{
-  "extends": "./tsconfig.build.json",
-  "compilerOptions": {
-    "paths": {
-      "@/*": ["./*"],
-      "@term/base/code/*": ["./*"]
-    }
-  }
-}

@@ -16,23 +16,23 @@ load @term/call/code/work/tint
 # With a name it makes a directory; without one it scaffolds where you are.
 #
 # WHAT IT SCAFFOLDS HAS TO BE CLEAN, because it is the first Term anyone reads. It once said `seed` throughout (the
-# language was renamed), imported `@cluesurf/seed` (the legacy prefix, which resolves but is not the name any more),
+# language was renamed), imported `@term/base` (the legacy prefix, which resolves but is not the name any more),
 # and wrote an 87-character comment, so a new project failed `term lint` on a line the scaffold itself wrote.
 # test/call/lifecycle.ts runs `wake` then `lint` and holds it.
 #
 # Ported from deck/call/code/wake.ts (cli-in-term-0004).
 
-load @term/seed/code/path
+load @term/base/code/path
   find join
 
-load @term/seed/code/file
+load @term/base/code/file
   find write, name write-file
 
-load @term/seed/code/file/directory
+load @term/base/code/file/directory
   find make, name make-directory
   find exists, name directory-exists
 
-load @term/seed/code/text
+load @term/base/code/text
   find trim
 
 dock load
@@ -59,7 +59,7 @@ task boot-text
     text <# The application entry point. `term boot` compiles and runs
 # this module's `boot` task.
 
-load @term/seed/code/console
+load @term/base/code/console
   find log
 
 task boot

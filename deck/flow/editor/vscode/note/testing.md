@@ -53,7 +53,7 @@ The server attaches to every open `.tree` file. Test each feature:
 | **Document symbols** | Cmd/Ctrl+Shift+O | Outline of every `task` / `form` / `mask` |
 | **Signature help** | Inside a call's arguments | Shows the parameter list, current arg highlighted |
 
-> Note: until the stdlib resolver is wired into the server (see the plan), a `load @cluesurf/seed/...` import will show as unresolved. Test semantic features on a **self-contained** file first.
+> Note: until the stdlib resolver is wired into the server (see the plan), a `load @term/base/...` import will show as unresolved. Test semantic features on a **self-contained** file first.
 
 ## 4. Test the server in isolation (no VS Code)
 
@@ -72,7 +72,7 @@ setTimeout(() => { console.log(out); p.kill() }, 600)
 
 You should see an `initialize` result listing the server's capabilities.
 
-The server logic itself is unit-tested in the monorepo: from `deck/seed/deck/seed`, run `pnpm tsx test/server/run.ts` and `pnpm tsx test/server/incremental.ts`.
+The server logic itself is unit-tested in the monorepo: from `deck/base/deck/base`, run `pnpm tsx test/server/run.ts` and `pnpm tsx test/server/incremental.ts`.
 
 ## 5. Package + install locally
 

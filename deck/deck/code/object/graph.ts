@@ -15,8 +15,8 @@ import { readDirEntries, dirNodeIds } from './tree'
 import { ObjectStore } from './store'
 import { reachableFromCommit } from './release'
 import { filesOfDataset } from './dataset'
-import { readDataset } from '@term/base/code/store/tree'
-import { MemoryChunkStore } from '@term/base/code/store/chunk-store'
+import { readDataset } from '@cluesurf/save/store/tree'
+import { MemoryChunkStore } from '@cluesurf/save/store/chunk-store'
 
 async function readJson<T>(store: ObjectStore, id: string): Promise<T> {
   const bytes = await store.get(id)
@@ -188,7 +188,7 @@ export async function buildManifest(input: {
   package: string
   store: ObjectStore
 }): Promise<Manifest> {
-  // A version is a @term/base dataset now, so the manifest is read out of the prolly
+  // A version is a @cluesurf/save dataset now, so the manifest is read out of the prolly
   // tree rather than walked over nested directory objects. Every chunk the commit
   // reaches is already in this store, so the read is local.
   const reachable = await reachableFromCommit({

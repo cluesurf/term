@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'; import { join } from 'node:path'; import { pat
 import * as http from 'node:http'; import * as crypto from 'node:crypto'; import type { Duplex } from 'node:stream'
 import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
 const baseTree=join(process.cwd(),'deck','base')
-const STDLIB_PREFIX=/^@(?:cluesurf|term)\/seed\//
+const STDLIB_PREFIX=/^@term\/base\//
 const stdlib=(p:string):any=>{if(!STDLIB_PREFIX.test(p))return undefined;const f=join(baseTree,p.replace(STDLIB_PREFIX,'')+'.tree');return existsSync(f)?{file:f,text:readFileSync(f,'utf8')}:undefined}
 const readRuntime=(p:string):any=>{if(existsSync(p))return readFileSync(p,'utf8');if(!STDLIB_PREFIX.test(p))return undefined;const f=join(baseTree,p.replace(STDLIB_PREFIX,''));return existsSync(f)?readFileSync(f,'utf8'):undefined}
 // minimal raw WebSocket echo server (handshake + unmask client text frame + echo unmasked)
@@ -23,7 +23,7 @@ function wsEcho(port:number):http.Server{
   })
   return srv
 }
-const SRC=`load @cluesurf/seed/code/network/websocket
+const SRC=`load @term/base/code/network/websocket
   find connect
 
 task echo

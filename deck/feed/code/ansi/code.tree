@@ -1,10 +1,10 @@
 # The full ANSI/SGR/cursor escape catalog, real and compiling, ported field for field from the old
 # `feed/code/ansi/mint.tree` draft (dead syntax, real 362-line catalog — see note/term/feed/03-worked-examples.md).
 # ESC (0x1b) has no printable escape in a Term text literal (only \< \> \{ \} \n \r \t \\ are recognized, confirmed
-# by reading deck/make/code/compile/mill.ts's unescapeText), so it's built once through @term/seed/code/rune's
+# by reading deck/make/code/compile/mill.ts's unescapeText), so it's built once through @term/base/code/rune's
 # rune-to-text, added for exactly this.
 
-load @term/seed/code/rune
+load @term/base/code/rune
   find rune-to-text
 
 task escape

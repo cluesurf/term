@@ -25,7 +25,7 @@ load @term/site/code/dom/dom
   find remove-class
 load ./native/{platform}/text-format
   find now-ms
-load @term/seed/code/list
+load @term/base/code/list
   find list
   find push
 

@@ -22,7 +22,7 @@ load @term/mill/code/code/tool/flow/mint
 load @term/mill/code/code/view/mint
   find view-def
 
-load @term/seed/code/lang
+load @term/base/code/lang
   find code-hook
 
 mint hook, like code-hook

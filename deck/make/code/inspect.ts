@@ -15,7 +15,7 @@ export type FormSymbol = {
   kind: 'form'
   name: string
   module: string
-  // the deck the module belongs to (`@term/seed`), from its nearest deck.tree; the roll names hosts the same way
+  // the deck the module belongs to (`@term/base`), from its nearest deck.tree; the roll names hosts the same way
   deck: string
   fields: { name: string; type: string }[]
   variants: string[]

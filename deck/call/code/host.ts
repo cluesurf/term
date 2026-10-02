@@ -48,7 +48,7 @@ export async function callHost(input: {
     const version = showCode(manifest.code)
 
     // Build the release locally first. This walks and chunks the package, writes the
-    // @term/base prolly tree, and commits it, without contacting anything.
+    // @cluesurf/save prolly tree, and commits it, without contacting anything.
     const local = localObjectStore()
     const release = await buildRelease({
       dir: input.root,

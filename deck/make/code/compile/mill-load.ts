@@ -312,7 +312,7 @@ function collect(
       if (resolved) {
         walk(resolved)
       }
-      // an unresolvable import is not a problem here: a mill loads stdlib forms (`@term/seed/code/lang`) for
+      // an unresolvable import is not a problem here: a mill loads stdlib forms (`@term/base/code/lang`) for
       // its `like` annotations, and those are not grammar files. test/compile/mill-grammar.ts is what checks
       // that every load names something real.
     }

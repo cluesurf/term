@@ -1,7 +1,7 @@
 # Measured throughput, not claimed throughput: each block runs its codec many times and logs elapsed ms to the
 # console. Run: term test, from deck/feed (shown in the runner's output, not asserted against a fixed threshold —
 # wall-clock time is environment-dependent, so this is evidence to read, not a pass/fail gate). One concrete task
-# per dialect rather than a higher-order "run N times" helper — no confirmed precedent anywhere in @term/seed for
+# per dialect rather than a higher-order "run N times" helper — no confirmed precedent anywhere in @term/base for
 # an inline anonymous task literal passed as an argument, and this session already spent enough turns on
 # unconfirmed syntax guesses that a plain, verbose loop is the safer choice here. `show <text>` (CLAUDE.md's
 # metadata list) turned out not to be a callable statement — `console/log` is the real one.
@@ -19,10 +19,10 @@
 # normalized; pdf's plain template substitution is the cheapest at ~56ns per 4-operator call, as expected for the
 # simplest dialect in the package).
 
-load @term/seed/code/clock
+load @term/base/code/clock
   find now
 
-load @term/seed/code/console
+load @term/base/code/console
   find log
 
 load ../code/hex/code
@@ -33,7 +33,7 @@ load ../code/json/code
   find read-json
   find write-json
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
 
 load ../code/gzip/code

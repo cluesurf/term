@@ -1025,7 +1025,7 @@ export function compileFeedMine(
   }
 
   lines.push('')
-  lines.push('load @term/seed/code/list')
+  lines.push('load @term/base/code/list')
   lines.push('  find push')
   // `size` is how a COUNT-DIRECTED list knows how many it has read: the list's own length is the counter, so the
   // loop needs no reassignment
@@ -1037,10 +1037,10 @@ export function compileFeedMine(
   lines.push('')
   // `unwrap-or` is how a SPAN turns an optional part into text: absent means the empty string, which is exactly
   // what "the text these rules consumed" means for a part that matched nothing.
-  lines.push('load @term/seed/code/maybe')
+  lines.push('load @term/base/code/maybe')
   lines.push('  find unwrap-or')
   lines.push('')
-  lines.push('load @term/seed/code/boolean')
+  lines.push('load @term/base/code/boolean')
   lines.push('  find and')
   lines.push('  find not')
   lines.push('')
@@ -2013,7 +2013,7 @@ function freeReads(node: Node, out: Set<string> = new Set()): Set<string> {
   return out
 }
 
-// `mine maybe / test <expr> / <body> / send <name>`: a real `maybe` (this package's own `@term/seed/code/maybe`
+// `mine maybe / test <expr> / <body> / send <name>`: a real `maybe` (this package's own `@term/base/code/maybe`
 // tagged union, matching every dialect's hand-written reader), gated by the embedded boolean `test` expression.
 // `some`'s payload is the body's own last capture, or the `mine value` expression if the body has one.
 // the condition for a `maybe` with no explicit test: the next character is within its own FIRST set. Falls back to

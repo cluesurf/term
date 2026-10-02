@@ -5,7 +5,7 @@
 // resolves before rendering, and `view` defines the document. `tree` and `fuse` never arrive: the expander
 // removes them on the parse tree before any mill runs.
 //
-// This produces the forms `@term/seed/code/view-file` declares, and `deck/mill/code/view/` is the grammar that
+// This produces the forms `@term/base/code/view-file` declares, and `deck/mill/code/view/` is the grammar that
 // says the same thing declaratively. The two are held against each other by test/compile/view-grammar.ts, which
 // is what keeps the grammar true while the mill executor is being built. When that executor lands this file is
 // deleted and the gate becomes a differential. Same shape the `host` dialect used, for the same reason.
@@ -42,7 +42,7 @@ import type { ViewCaps } from '@term/make/code/compile/view-cap'
 import { VIEW_CAPS, capMessage } from '@term/make/code/compile/view-cap'
 
 // ---- the forms ----
-// One per form in @term/seed/code/view-file, plus the ones reused from zone, seed, bind, road, like and take.
+// One per form in @term/base/code/view-file, plus the ones reused from zone, seed, bind, road, like and take.
 // A `span` rides along on everything an error can point at; the Term-side forms carry no such field, and the
 // lowering is what needs it.
 

@@ -53,7 +53,7 @@ function refusal(text: string): string | undefined {
 const RETIRED: [string, string, string][] = [
   ['bust', 'task t\n  like void\n  bust <nope>\n', 'halt'],
   ['send kink', 'task t\n  like void\n  send kink, text <nope>\n', 'halt'],
-  ['find X as Y', 'load @term/seed/code/list\n  find get as list-get\n', 'name'],
+  ['find X as Y', 'load @term/base/code/list\n  find get as list-get\n', 'name'],
   // retired 2026-08-31: one word meant both the native FFI binding and a URL route
   ['dock </path>', 'view page\n  view text, text <hi>\n\ndock /\n  view page\n', 'hook </path>'],
 ]

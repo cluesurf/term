@@ -1,5 +1,5 @@
 // `term look` names the deck of every symbol it lists, from the module's nearest `deck.tree` (the same answer the
-// roll gives an exception's `host`). A stdlib module is `@term/seed`, a data-package module is `@term/host`, and the
+// roll gives an exception's `host`). A stdlib module is `@term/base`, a data-package module is `@term/host`, and the
 // table, csv and json outputs all carry it. Run: npx tsx test/call/look.ts
 
 import { readFileSync } from 'node:fs'
@@ -33,12 +33,12 @@ function look(root: string, file: string) {
   return inspectModule(entry, projectResolver(root), deckOf)
 }
 
-const seedRoot = join(TERM, 'deck/seed')
+const seedRoot = join(TERM, 'deck/base')
 const maybe = look(seedRoot, join(seedRoot, 'code/maybe.tree'))
 const maybeForm = maybe.symbols.find(s => s.kind === 'form' && s.name === 'maybe')
 
 ok('a stdlib module lists its form', maybeForm !== undefined)
-ok('the stdlib form belongs to @term/seed', maybeForm?.deck === '@term/seed', maybeForm?.deck)
+ok('the stdlib form belongs to @term/base', maybeForm?.deck === '@term/base', maybeForm?.deck)
 ok(
   'every symbol of the stdlib closure names a deck',
   maybe.symbols.every(s => s.deck.startsWith('@')),
@@ -51,7 +51,7 @@ const own = node.symbols.filter(s => s.module === 'code/node')
 const pulled = node.symbols.filter(s => s.module === 'text/string')
 
 ok('a data-package module belongs to @term/host', own.length > 0 && own.every(s => s.deck === '@term/host'), own.map(s => s.deck).join(','))
-ok('the stdlib it pulls in stays @term/seed', pulled.length > 0 && pulled.every(s => s.deck === '@term/seed'), pulled.map(s => s.deck).join(','))
+ok('the stdlib it pulls in stays @term/base', pulled.length > 0 && pulled.every(s => s.deck === '@term/base'), pulled.map(s => s.deck).join(','))
 
 const table = toTable(own)
 ok('the table prints the deck beside the module', /@term\/host\s+code\/node/.test(table), table.split('\n')[0])

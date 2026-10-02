@@ -32,19 +32,19 @@ load @term/call/code/work/home
   find legacy-project-home
   find kept-at
 
-load @term/seed/code/path
+load @term/base/code/path
   find join
 
-load @term/seed/code/file
+load @term/base/code/file
   find read, name read-file
   find write, name write-file
 
-load @term/seed/code/file/directory
+load @term/base/code/file/directory
   find make, name make-directory
   find list, name list-directory
   find exists, name directory-exists
 
-load @term/seed/code/text
+load @term/base/code/text
   find split
   find trim
   find contains
@@ -53,7 +53,7 @@ load @term/seed/code/text
   find char-count
   find ends-with
 
-load @term/seed/code/regex
+load @term/base/code/regex
   find replace, name replace-pattern
 
 dock load

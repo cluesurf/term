@@ -1,0 +1,31 @@
+load @term/base/code/color/rgb
+  find rgb-color
+
+load @term/base/code/mixin/access
+  find access
+
+form oklab
+  fuse access, term l
+  fuse access, term a
+  fuse access, term b
+  fuse access, term alpha
+
+  task convert-to-rgb
+    like rgb-color
+
+form channel
+  case l
+  case a
+  case b
+  case alpha
+
+host range
+  host l
+    host start, code 0
+    host end, code 0.999
+  host a
+    host start, code -0.233
+    host end, code 0.276
+  host b
+    host start, code -0.311
+    host end, code 0.198

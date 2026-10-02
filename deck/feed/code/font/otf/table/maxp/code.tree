@@ -1,7 +1,7 @@
 # The real, compiling reader/writer for the OTF maxp table, version 1.0 only (TrueType outlines). Refuses any
 # other version rather than silently returning a struct with zeroed fields for the bytes past version 0.5's 6.
 
-load @term/seed/code/boolean
+load @term/base/code/boolean
   find not
 
 load ../../../../base

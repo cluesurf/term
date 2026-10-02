@@ -6,7 +6,7 @@ Maps to: the JavaScript `String` methods plus `Array.join`, or Rust's `format!` 
 
 ## Cheatsheet
 
-### text (`@cluesurf/seed/code/text`)
+### text (`@term/base/code/text`)
 
 | Task | Does |
 | --- | --- |
@@ -20,13 +20,13 @@ Maps to: the JavaScript `String` methods plus `Array.join`, or Rust's `format!` 
 | `index-of` / `last-index-of` | find a substring's position |
 | `char-at` / `char-code-at` | a single character or its code |
 
-### list (`@cluesurf/seed/code/list`)
+### list (`@term/base/code/list`)
 
 | Task | Does |
 | --- | --- |
 | `join` | join items into one text with a separator |
 
-### rune (`@cluesurf/seed/code/rune`)
+### rune (`@term/base/code/rune`)
 
 | Task | Does |
 | --- | --- |
@@ -39,7 +39,7 @@ Maps to: the JavaScript `String` methods plus `Array.join`, or Rust's `format!` 
 `pad-left` and `pad-right` grow a string to a target width with a fill. This is how you right-align numbers or left-align labels in a table.
 
 ```tree
-load @cluesurf/seed/code/text
+load @term/base/code/text
   find pad-left
   find pad-right
 
@@ -61,7 +61,7 @@ host label
 ## Casing
 
 ```tree
-load @cluesurf/seed/code/text
+load @term/base/code/text
   find to-upper-case
 
 host shout
@@ -72,7 +72,7 @@ host shout
 For a single character, `rune` does Unicode-correct case mapping and category tests over the whole code space.
 
 ```tree
-load @cluesurf/seed/code/rune
+load @term/base/code/rune
   find make-rune
 
 host is-digit
@@ -86,7 +86,7 @@ host is-digit
 Build a line by collecting parts into a list and joining them. `join` puts the separator between items and nothing on the ends.
 
 ```tree
-load @cluesurf/seed/code/list
+load @term/base/code/list
   find list
 
 task path-of
@@ -103,7 +103,7 @@ task path-of
 Combine the pieces to format a display string. `split` and `join` together let you reshape delimited text.
 
 ```tree
-load @cluesurf/seed/code/text
+load @term/base/code/text
   find split
 
 # turn "a,b,c" into "a | b | c"
@@ -126,4 +126,4 @@ Locale-aware number formatting (grouping separators, compact notation like `1.5M
 - A **measure** pairs a numeric value with a unit, and a conversion maps it to a compatible unit. Mixing incompatible dimensions (length and weight) is a type error.
 - A **money** value holds an amount in the currency's smallest unit (cents for USD, whole yen for JPY) as an integer, so arithmetic never drifts. Formatting applies the currency's symbol and decimal places.
 
-These follow the same delegate-to-the-host pattern as `json` and `rune`: a clean Term-level API on top of each platform's locale library. Until a given formatter is part of `@cluesurf/seed`, compose the display yourself from `pad-left`, casing, and `join`, which are exact and identical on every backend.
+These follow the same delegate-to-the-host pattern as `json` and `rune`: a clean Term-level API on top of each platform's locale library. Until a given formatter is part of `@term/base`, compose the display yourself from `pad-left`, casing, and `join`, which are exact and identical on every backend.

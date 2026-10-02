@@ -1,7 +1,7 @@
 # The real, compiling reader/writer for the OTF head table. 54 bytes, flat, no conditions — matches
 # note/term/feed/04-otf-case-study.md's "head table: the boring baseline" case.
 
-load @term/seed/code/boolean
+load @term/base/code/boolean
   find not
 
 load ../../../../base

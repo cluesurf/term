@@ -102,10 +102,10 @@ ok(
 // The fetch fails here (no registry to reach, on purpose: a test does not go to the network), and the manifest is
 // written before the fetch either way. What is asserted is the manifest edit, which is `save`'s own work.
 
-const saved = term(root, 'save', '@term/seed')
+const saved = term(root, 'save', '@term/base')
 const afterSave = parseManifest({ text: readFileSync(join(root, 'deck.tree'), 'utf8') })
 
-ok('`save` records the dependency', afterSave.link.some(l => l.name === '@term/seed'), saved)
+ok('`save` records the dependency', afterSave.link.some(l => l.name === '@term/base'), saved)
 
 ok(
   '`save` keeps `bear` and `boot`',
@@ -114,13 +114,13 @@ ok(
 )
 
 // and `toss` takes back what `save` put in
-term(root, 'toss', '@term/seed')
+term(root, 'toss', '@term/base')
 
 const afterUndo = parseManifest({ text: readFileSync(join(root, 'deck.tree'), 'utf8') })
 
 ok(
   '`toss` removes the dependency `save` added',
-  !afterUndo.link.some(l => l.name === '@term/seed'),
+  !afterUndo.link.some(l => l.name === '@term/base'),
 )
 
 // ---- move: the version bump ----

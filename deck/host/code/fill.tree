@@ -5,20 +5,20 @@
 # nested map for a nested map, a list holding one item shape for a list. Keys stay as written. See
 # note/term/host/04-model-and-json.md.
 
-load @term/seed/code/boolean
+load @term/base/code/boolean
   find not
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
   find size
   find get
   find contains
 
-load @term/seed/code/text
+load @term/base/code/text
   find ends-with
   find substring
 
-load @term/seed/code/text/string
+load @term/base/code/text/string
   find concat
 
 load ./base

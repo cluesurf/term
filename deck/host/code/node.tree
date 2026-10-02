@@ -28,7 +28,7 @@ task quote
         read name
         text <">
 
-load @term/seed/code/text/string
+load @term/base/code/text/string
   find concat
 
 # an integer as digits, with its sign. Host-free, so every backend spells a count the same way
@@ -138,7 +138,7 @@ task parse-integer
         call subtract(code 0, read value)
   send back, read value
 
-load @term/seed/code/text
+load @term/base/code/text
   find char-at
   find char-code-at
   find starts-with

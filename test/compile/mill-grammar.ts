@@ -64,7 +64,7 @@ function topLevel(file: string, text: string, head: string): string[] {
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const MILL = join(TERM, 'deck/mill/code')
-const SEED = join(TERM, 'deck/seed/code')
+const SEED = join(TERM, 'deck/base/code')
 
 // the roles held to zero problems
 const HELD = new Set(['host', 'mill', 'deck', 'note', 'code', 'test', 'view'])
@@ -87,8 +87,8 @@ function walk(dir: string, into: string[] = []): string[] {
 function resolveLoad(target: string, from: string): string | undefined {
   let base: string
 
-  if (target.startsWith('@term/seed/code/')) {
-    base = join(SEED, target.slice('@term/seed/code/'.length))
+  if (target.startsWith('@term/base/code/')) {
+    base = join(SEED, target.slice('@term/base/code/'.length))
   } else if (target.startsWith('@term/mill/code/')) {
     base = join(MILL, target.slice('@term/mill/code/'.length))
   } else if (target.startsWith('@term/host/code/')) {

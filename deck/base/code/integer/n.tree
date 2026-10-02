@@ -1,0 +1,345 @@
+# Fixed-width integers (signed and unsigned) as one template. A sized integer is a plain `number` held within its width:
+# every operation reduces its result back into range with `((value & mask) ^ sign) - sign`, where `sign` is the width's
+# sign bit for a signed type and `0` for an unsigned one (so the same masking yields both). Wrapping, checked, and
+# saturating arithmetic all build on that, so the whole tower is the platform's native number + bitwise operations -- one
+# implementation for every backend, no per-width native code and no runtime shim. Each width fuses this once, passing its
+# name, mask, sign bit, and bounds. See `8` / `16` / `32` (signed) and `unsigned` (u8 / u16 / u32).
+
+load @term/base/code/bit
+  find bitwise-and
+  find bitwise-or
+  find bitwise-exclusive-or
+  find bitwise-not
+  find shift-left
+  find shift-right
+
+load @term/base/code/maybe
+  find maybe
+  find some
+  find none
+
+tree integer
+  take name
+  take mask
+  take sign
+  take min
+  take max
+
+  hook fuse
+    # constrain a number to this width: mask to the low bits, then sign-extend (a no-op when sign is 0, i.e. unsigned).
+    # This is the one primitive every other operation funnels through.
+    task {name}-wrap
+      take value, like number
+      like number
+      send back
+        call subtract
+          call bitwise-exclusive-or
+            call bitwise-and
+              read value
+              code {mask}
+            code {sign}
+          code {sign}
+
+    # build a value of this width from any number (an out-of-range input wraps in)
+    task {name}-from-number
+      take value, like number
+      like number
+      send back
+        call {name}-wrap
+          read value
+
+    # the smallest and largest representable values
+    task {name}-minimum-value
+      like number
+      send back
+        code {min}
+
+    task {name}-maximum-value
+      like number
+      send back
+        code {max}
+
+    # wrapping arithmetic: an overflowing result wraps around the width, like hardware
+    task {name}-add
+      take a, like number
+      take b, like number
+      like number
+      send back
+        call {name}-wrap
+          call add
+            read a
+            read b
+
+    task {name}-subtract
+      take a, like number
+      take b, like number
+      like number
+      send back
+        call {name}-wrap
+          call subtract
+            read a
+            read b
+
+    task {name}-multiply
+      take a, like number
+      take b, like number
+      like number
+      send back
+        call {name}-wrap
+          call multiply
+            read a
+            read b
+
+    task {name}-negate
+      take a, like number
+      like number
+      send back
+        call {name}-wrap
+          call subtract
+            code 0
+            read a
+
+    # bitwise (the result is re-wrapped so an unsigned type stays in range and a signed one keeps its sign)
+    task {name}-bitwise-and
+      take a, like number
+      take b, like number
+      like number
+      send back
+        call {name}-wrap
+          call bitwise-and
+            read a
+            read b
+
+    task {name}-bitwise-or
+      take a, like number
+      take b, like number
+      like number
+      send back
+        call {name}-wrap
+          call bitwise-or
+            read a
+            read b
+
+    task {name}-bitwise-exclusive-or
+      take a, like number
+      take b, like number
+      like number
+      send back
+        call {name}-wrap
+          call bitwise-exclusive-or
+            read a
+            read b
+
+    task {name}-bitwise-not
+      take a, like number
+      like number
+      send back
+        call {name}-wrap
+          call bitwise-not
+            read a
+
+    task {name}-shift-left
+      take a, like number
+      take count, like number
+      like number
+      send back
+        call {name}-wrap
+          call shift-left
+            read a
+            read count
+
+    task {name}-shift-right
+      take a, like number
+      take count, like number
+      like number
+      send back
+        call {name}-wrap
+          call shift-right
+            read a
+            read count
+
+    # predicates
+    task {name}-is-negative
+      take a, like number
+      like boolean
+      send back
+        call is-below
+          read a
+          code 0
+
+    task {name}-is-positive
+      take a, like number
+      like boolean
+      send back
+        call is-above
+          read a
+          code 0
+
+    task {name}-is-zero
+      take a, like number
+      like boolean
+      send back
+        call is-equal
+          read a
+          code 0
+
+    # checked arithmetic: the exact result when it fits the width, otherwise none
+    task {name}-checked-add
+      take a, like number
+      take b, like number
+      like maybe
+        head number
+      save sum
+        call add
+          read a
+          read b
+      fork test
+        hook test
+          call is-equal
+            call {name}-wrap
+              read sum
+            read sum
+        hook hold
+          send back
+            make some
+              bind value
+                read sum
+        hook miss
+          send back
+            make none
+
+    task {name}-checked-subtract
+      take a, like number
+      take b, like number
+      like maybe
+        head number
+      save diff
+        call subtract
+          read a
+          read b
+      fork test
+        hook test
+          call is-equal
+            call {name}-wrap
+              read diff
+            read diff
+        hook hold
+          send back
+            make some
+              bind value
+                read diff
+        hook miss
+          send back
+            make none
+
+    task {name}-checked-multiply
+      take a, like number
+      take b, like number
+      like maybe
+        head number
+      save product
+        call multiply
+          read a
+          read b
+      fork test
+        hook test
+          call is-equal
+            call {name}-wrap
+              read product
+            read product
+        hook hold
+          send back
+            make some
+              bind value
+                read product
+        hook miss
+          send back
+            make none
+
+    # saturating arithmetic: an overflowing result clamps to the nearest bound instead of wrapping
+    task {name}-saturating-add
+      take a, like number
+      take b, like number
+      like number
+      save sum
+        call add
+          read a
+          read b
+      fork test
+        hook test
+          call is-above
+            read sum
+            code {max}
+        hook hold
+          send back
+            code {max}
+        hook miss
+          fork test
+            hook test
+              call is-below
+                read sum
+                code {min}
+            hook hold
+              send back
+                code {min}
+            hook miss
+              send back
+                read sum
+
+    task {name}-saturating-subtract
+      take a, like number
+      take b, like number
+      like number
+      save diff
+        call subtract
+          read a
+          read b
+      fork test
+        hook test
+          call is-above
+            read diff
+            code {max}
+        hook hold
+          send back
+            code {max}
+        hook miss
+          fork test
+            hook test
+              call is-below
+                read diff
+                code {min}
+            hook hold
+              send back
+                code {min}
+            hook miss
+              send back
+                read diff
+
+    task {name}-saturating-multiply
+      take a, like number
+      take b, like number
+      like number
+      save product
+        call multiply
+          read a
+          read b
+      fork test
+        hook test
+          call is-above
+            read product
+            code {max}
+        hook hold
+          send back
+            code {max}
+        hook miss
+          fork test
+            hook test
+              call is-below
+                read product
+                code {min}
+            hook hold
+              send back
+                code {min}
+            hook miss
+              send back
+                read product

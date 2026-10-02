@@ -28,6 +28,12 @@ import { armLocals } from '@term/make/code/check/arm'
 const guardStart = (text: string): string =>
   /^[([`]/.test(text) ? `;${text}` : text
 
+// a division of two integers: both operands typed `number` (a `float` or an unresolved operand keeps JavaScript's
+// float quotient, since its meaning is not known to be the integer one)
+function integerDivision(node: { left: { type?: { kind: string } }; right: { type?: { kind: string } } }): boolean {
+  return node.left.type?.kind === 'number' && node.right.type?.kind === 'number'
+}
+
 const PRECEDENCE: Record<BinaryOp, number> = {
   '||': 1,
   '&&': 2,
@@ -937,6 +943,12 @@ function makeEmitter(
         const left = expression(node.left, precedence)
         const right = expression(node.right, precedence + 1)
         const text = `${left} ${node.op} ${right}`
+
+        // `number` is an integer, and its quotient truncates toward zero on every backend: `7 / 2` is 3, as it is on
+        // Rust, Swift and Kotlin. JavaScript's `/` is the float quotient. note/term/proof-by-default/numbers.md
+        if (node.op === '/' && integerDivision(node)) {
+          return `Math.trunc(${text})`
+        }
 
         return precedence < parentPrecedence ? `(${text})` : text
       }

@@ -1,8 +1,8 @@
 
-load @term/seed/code/view
+load @term/base/code/view
   find view-def
 
-load @term/seed/code/take
+load @term/base/code/take
   find take
 
 load @term/mill/code/view/node/mint

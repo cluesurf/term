@@ -12,9 +12,9 @@ import {
   writeDataset,
   readDataset,
   diffRoots,
-} from '@term/base/code/store/tree'
-import { MemoryChunkStore } from '@term/base/code/store/chunk-store'
-import { isMark } from '@term/base/code/base/mark'
+} from '@cluesurf/save/store/tree'
+import { MemoryChunkStore } from '@cluesurf/save/store/chunk-store'
+import { isMark } from '@cluesurf/save/base/mark'
 
 function files(count: number, edit?: number): Array<PackageFile> {
   return Array.from({ length: count }, (_, i) => ({

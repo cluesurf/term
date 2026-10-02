@@ -9,7 +9,7 @@ load @term/site/code/view/reactive
   find make-signal
   find read-signal
   find write-signal
-load @term/seed/code/list
+load @term/base/code/list
   find list
 
 # a named verb. `scope` is one of cell | row | list | section | surface | global. `run` is the impl.

@@ -1,0 +1,236 @@
+# A Bloom filter over 32-bit buckets: k locations per value by double hashing (two FNV-1a passes), each location
+# one bit in the bucket array. `add` sets the bits, `test` reads them (a false stops early), `get-size` estimates
+# the count from the popcount of the buckets. Restored 2026-08-30 from the mangled draft, on the hold/ utilities
+# (count-one-bits-32, fnv-hash-32-1a) now that they are in the build.
+
+load @term/base/code/hold/integer
+  find count-one-bits-32
+
+load @term/base/code/bit
+  find shift-left
+  find bitwise-and
+  find bitwise-or
+
+load @term/base/code/hold/hash/fnv
+  find fnv-hash-32-1a
+
+load @term/base/code/math
+  find round-down
+  find round-up
+  find logarithm
+
+form bloom-filter
+  link m, like number
+  link k, like number
+  link locations
+    like list
+      like number
+  link buckets
+    like list
+      like number
+
+  # the k bit locations for a value: double hashing with two FNV-1a passes
+  task get-locations
+    take self
+    take v
+    like list
+      like number
+    save k, read self/k
+    save m, read self/m
+    save r, read self/locations
+    save a
+      call fnv-hash-32-1a
+        read v
+        code 0
+    save b
+      call fnv-hash-32-1a
+        read v
+        code 1576284489
+    save x
+      call modulo
+        read a
+        read m
+    save i, code 0
+    walk test
+      hook test
+        call is-below
+          read i
+          read k
+      hook hold
+        fork test
+          hook test
+            call is-below
+              read x
+              code 0
+          hook hold
+            save x
+              call add
+                read x
+                read m
+        call r/set
+          read i
+          read x
+        save x
+          call modulo
+            call add
+              read x
+              read b
+            read m
+        save i
+          call increment
+            bind value, read i
+    send back, read r
+
+  # set the value's k bits
+  task put
+    take self
+    take v
+    save l
+      call get-locations
+        read self
+        read v
+    save k, read self/k
+    save buckets, read self/buckets
+    save i, code 0
+    walk test
+      hook test
+        call is-below
+          read i
+          read k
+      hook hold
+        save at
+          call round-down
+            call divide
+              read l/{i}
+              code 32
+        call buckets/set
+          read at
+          call bitwise-or
+            read buckets/{at}
+            call shift-left
+              code 1
+              call modulo
+                read l/{i}
+                code 32
+        save i
+          call increment
+            bind value, read i
+
+  # are all k bits set? A clear bit answers false at once
+  task test
+    take self
+    take v
+    like boolean
+    save l
+      call get-locations
+        read self
+        read v
+    save k, read self/k
+    save buckets, read self/buckets
+    save i, code 0
+    walk test
+      hook test
+        call is-below
+          read i
+          read k
+      hook hold
+        save b, read l/{i}
+        save at
+          call round-down
+            call divide
+              read b
+              code 32
+        fork test
+          hook test
+            call is-equal
+              call bitwise-and
+                read buckets/{at}
+                call shift-left
+                  code 1
+                  call modulo
+                    read b
+                    code 32
+              code 0
+          hook hold
+            send back, false
+        save i
+          call increment
+            bind value, read i
+    send back, true
+
+  # the estimated count: -m/k * ln(1 - bits/m), bits the popcount over the buckets
+  task get-size
+    take self
+    like number
+    save buckets, read self/buckets
+    save bits, code 0
+    save i, code 0
+    save n, read buckets/length
+    walk test
+      hook test
+        call is-below
+          read i
+          read n
+      hook hold
+        save bits
+          call add
+            read bits
+            call count-one-bits-32
+              read buckets/{i}
+        save i
+          call increment
+            bind value, read i
+    send back
+      call divide
+        call multiply
+          call subtract
+            code 0
+            read self/m
+          call logarithm
+            call subtract
+              code 1
+              call divide
+                read bits
+                read self/m
+        read self/k
+
+# a filter with m bits (rounded up to whole 32-bit buckets) and k hashes per value. An m of zero or less stored a
+# filter of zero bits, and every lookup then took a remainder by zero (`get-locations`), which tier 0 found on
+# 2026-10-02 with nothing written: the `have` below is owed by every caller now.
+task make-bloom-filter
+  take m
+  take k
+  have
+    call is-above
+      read m
+      code 0
+  like bloom-filter
+  save n
+    call round-up
+      call divide
+        read m
+        code 32
+  save bloom
+    make bloom-filter
+      bind m
+        call multiply
+          read n
+          code 32
+      bind k, read k
+      bind locations
+        make list
+      bind buckets
+        make list
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        read n
+    hook hold
+      call bloom/buckets/push
+        code 0
+      save i
+        call increment
+          bind value, read i
+  send back, read bloom

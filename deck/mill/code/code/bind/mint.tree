@@ -16,7 +16,7 @@ load @term/mill/code/code/seed/mint
 load @term/mill/code/code/take/mint
   find take
 
-load @term/seed/code/lang
+load @term/base/code/lang
   find code-bind
 
 mint bind, like code-bind

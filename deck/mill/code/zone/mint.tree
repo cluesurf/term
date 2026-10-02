@@ -1,5 +1,5 @@
 
-load @term/seed/code/zone-file
+load @term/base/code/zone-file
   find zone-file
   find zone-hold
 

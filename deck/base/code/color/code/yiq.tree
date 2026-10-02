@@ -1,0 +1,28 @@
+load @term/base/code/color/rgb
+  find rgb-color
+
+load @term/base/code/mixin/access
+  find access
+
+form yiq
+  fuse access, term y
+  fuse access, term i
+  fuse access, term q
+  fuse access, term alpha
+
+  task convert-to-rgb
+    like rgb-color
+
+form channel
+  case y
+  case i
+  case q
+  case alpha
+
+host range
+  host i
+    host start, code -0.595
+    host end, code 0.595
+  host q
+    host start, code -0.522
+    host end, code 0.522

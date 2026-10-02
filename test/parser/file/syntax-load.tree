@@ -1,12 +1,12 @@
 
-load @term/seed/code/list
+load @term/base/code/list
   find get, name list-get
   find push
 
 ---
 
 load
-  @term/seed/code/list
+  @term/base/code/list
   find
     get
     name

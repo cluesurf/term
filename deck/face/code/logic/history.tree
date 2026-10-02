@@ -10,7 +10,7 @@ load @term/site/code/view/reactive
   find make-signal
   find read-signal
   find write-signal
-load @term/seed/code/list
+load @term/base/code/list
   find list
 
 # a reversible operation: forward op + inverse + a human label ("Renamed pala to palata")

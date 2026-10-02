@@ -149,9 +149,25 @@ export function fillClaims(program: Program): void {
   }
 }
 
+// What the rest of the checker learned about the program's tasks, which a fill is held to. Absent only in callers
+// that check claims alone (tests of the open-claim rules), where the third rule is not asked.
+export type ClaimEvidence = {
+  // the tasks whose whole body the kernel checked as ONE TERM against the declared type (elaborate.ts
+  // ElaborationReport.proven). Not `verified`, which also holds bodies checked statement by statement, where a body
+  // with no return at all passes
+  verified: Set<string>
+  // the tasks shown to terminate (totality.ts terminatingFunctions)
+  terminating: Set<string>
+  // the pure tasks (facts.ts pureFunctions)
+  pure: Set<string>
+  // why the kernel declined a task, when it did (elaborate.ts ElaborationReport.declined)
+  declined?: Map<string, string>
+}
+
 export function checkClaims(
   program: Program,
   file: string,
+  evidence?: ClaimEvidence,
 ): ClaimReport {
   const diagnostics: Diagnostic[] = []
 
@@ -216,6 +232,54 @@ export function checkClaims(
         }),
       )
     })
+  }
+
+  // rule 3: a fill is a proof only if the kernel checked it, it ends, and it is pure. A fill the kernel declined
+  // proves nothing (its type may be gradual, or its body outside the fragment), a fill that may not end proves
+  // anything, and a fill that touches the world is a different value on every run.
+  if (evidence) {
+    for (const statement of program) {
+      if (
+        statement.form !== 'function' ||
+        statement.claim ||
+        statement.stub ||
+        !claims.has(statement.name)
+      ) {
+        continue
+      }
+
+      const name = statement.name
+
+      if (!evidence.pure.has(name)) {
+        diagnostics.push(
+          diagnose('impure-proof', {
+            file,
+            span: statement.span,
+            message: `the proof of \`${name}\` calls something impure`,
+          }),
+        )
+      } else if (!evidence.terminating.has(name)) {
+        diagnostics.push(
+          diagnose('looping-proof', {
+            file,
+            span: statement.span,
+            message: `the proof of \`${name}\` is not shown to terminate, and a proof that never ends proves anything`,
+          }),
+        )
+      } else if (!evidence.verified.has(name)) {
+        const reason = evidence.declined?.get(name)
+
+        diagnostics.push(
+          diagnose('unverified-proof', {
+            file,
+            span: statement.span,
+            message: reason
+              ? `the proof of \`${name}\` was not verified by the kernel (${reason}), so it proves nothing`
+              : `the proof of \`${name}\` was not verified by the kernel as one term, so it proves nothing`,
+          }),
+        )
+      }
+    }
   }
 
   const open: string[] = []

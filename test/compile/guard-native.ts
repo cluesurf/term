@@ -59,11 +59,11 @@ function have(tool: string): boolean {
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const TERM = resolvePath(HERE, '..', '..')
-const SEED = join(TERM, 'deck/seed')
+const SEED = join(TERM, 'deck/base')
 
 // the stdlib, by its import path
 const resolver = (path: string): Source | undefined => {
-  const rest = path.replace(/^@(?:term|cluesurf)\/seed\//, '')
+  const rest = path.replace(/^@term\/base\//, '')
 
   if (rest === path) {
     return undefined
@@ -89,7 +89,7 @@ function errorsOf(e: unknown): string {
 const readRuntime = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, 'utf8') : undefined)
 
 // a guarded lookup and an unguarded one, over an exception with a prop of its own
-const PROGRAM = `load @term/seed/code/exception
+const PROGRAM = `load @term/base/code/exception
   find absence
 
 form user-absence

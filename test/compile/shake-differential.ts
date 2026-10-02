@@ -15,11 +15,11 @@ import { compile } from '@term/make/code/compile/compile'
 import type { Source } from '@term/make/code/compile/load'
 import type { Statement } from '@term/make/code/compile/node'
 
-const baseTree = join(process.cwd(), 'deck', 'seed')
+const baseTree = join(process.cwd(), 'deck', 'base')
 
-// the stdlib's own modules import each other as `@term/seed/...` (the Term rename); older test programs still say
-// `@cluesurf/seed/...`. Both spell the same package, so the resolver accepts either prefix.
-const STDLIB_PREFIX = /^@(?:cluesurf|term)\/seed\//
+// the stdlib's own modules import each other as `@term/base/...` (the Term rename); older test programs still say
+// `@term/base/...`. Both spell the same package, so the resolver accepts either prefix.
+const STDLIB_PREFIX = /^@term\/base\//
 
 const stdlib = (path: string): Source | undefined => {
   if (!STDLIB_PREFIX.test(path)) {

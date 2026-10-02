@@ -7,7 +7,7 @@
 #
 # Run: term test, from deck/feed.
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
   find get
   find set
@@ -15,12 +15,12 @@ load @term/seed/code/list
   find slice
   find join
 
-load @term/seed/code/maybe
+load @term/base/code/maybe
   find maybe
   find some
   find none
 
-load @term/seed/code/text
+load @term/base/code/text
   find substring
   find char-count
 

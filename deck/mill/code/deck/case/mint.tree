@@ -1,5 +1,5 @@
 
-load @term/seed/code/deck
+load @term/base/code/deck
   find deck-case
 
 load @term/mill/code/deck/link/mint

@@ -1,0 +1,26 @@
+
+# Process: platform info and lifecycle. Platform implementation is selected at build time and hidden behind this API.
+
+load @term/base/code/native/{platform}/process
+  find get-platform
+  find exit-with
+
+task platform
+  like text
+  send back
+    call get-platform
+
+task exit
+  take code, like number
+  like void
+  call exit-with
+    read code
+
+# a spawned child process: the platform process object lives in the opaque `dock` handle, typed per backend.
+# `id` is the worker number on the browser backend, where a Worker stands in for the process
+form child
+  link dock, mark private
+  link
+    id
+    like size
+    need false

@@ -17,13 +17,13 @@ load @term/site/code/base/db
   find field
   find row
 
-load @term/seed/code/file
+load @term/base/code/file
   find read
 
-load @term/seed/code/text
+load @term/base/code/text
   find trim
 
-load @term/seed/code/list
+load @term/base/code/list
   find list
   find count
   find get

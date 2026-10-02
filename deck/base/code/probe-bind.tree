@@ -1,0 +1,16 @@
+
+load @term/base/code/list
+  find push
+
+form box
+  link tag, like text
+  link items
+    like list
+      like text
+
+task add
+  take b, like box
+  take item, like text
+  call push
+    read b/items
+    read item

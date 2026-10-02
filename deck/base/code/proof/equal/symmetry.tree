@@ -1,0 +1,30 @@
+load @term/base/code/proof/equal
+  find equal
+
+# if x equals y, y equals x
+rule symmetry
+  head a
+  take x, like a
+  take y, like a
+  take proof
+    like equal a
+      head
+        read x
+      head
+        read y
+  like equal a
+    head
+      read y
+    head
+      read x
+
+task symmetry
+  take x
+  take y
+  take proof
+  fork case, read proof
+    case refl
+      link c
+      send back
+        make equal/refl
+          bind c, read c

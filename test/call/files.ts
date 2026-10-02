@@ -3,11 +3,11 @@
 // `collectTreeFiles` is what `term form`, `term lint`, `term time` and `term hold` walk with, and it did not
 // honour either of the two ways this codebase shelves a file. So `term form deck --check` reported 33 files it
 // COULD NOT PARSE, and 32 of them were deliberately shelved drafts — several not written in Term at all
-// (`deck/feed/code/ansi/mine.tree` is a regex, `deck/seed/code/native/browser/motion.tree` is JavaScript). A
+// (`deck/feed/code/ansi/mine.tree` is a regex, `deck/base/code/native/browser/motion.tree` is JavaScript). A
 // check that cannot reach zero is a check nobody can put in a gate, which is what lint-and-format needs of it.
 //
 // It also walked into `link/`, where `term link` puts a DEPENDENCY's source, so three of those 33 were
-// @term/seed's own files reported a second time through @term/zone's link directory. Formatting another
+// @term/base's own files reported a second time through @term/zone's link directory. Formatting another
 // package's source is never what a command run in this project was asked to do.
 //
 // A FILE NAMED EXPLICITLY IS STILL TAKEN, draft or not. Walking a directory means "everything here that counts";
@@ -104,7 +104,7 @@ ok(
 //
 // A role file says which mill reads which file, and for `hook` whether a file holds CLI commands or URL routes.
 // It is configuration, read through the role mill, and `role` is not a code statement — so the build compiling
-// one reports `the name "role" is not defined` on a file nobody wrote as code. deck/seed/role/base.tree carries
+// one reports `the name "role" is not defined` on a file nobody wrote as code. deck/base/role/base.tree carries
 // `note draft` for exactly that reason, which shelves a LIVE file to silence an error that should not exist.
 //
 // BY CONTENT, like the manifest and the lockfile before it. That matters here more than usual: this package's own

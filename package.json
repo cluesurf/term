@@ -2,19 +2,32 @@
   "name": "@cluesurf/term",
   "main": "./host/line.js",
   "type": "module",
-  "version": "2.5.20",
+  "version": "2.5.22",
+  "description": "A reactive modeling language Ψ",
+  "license": "MIT",
+  "repository": "github:cluesurf/term",
+  "keywords": [
+    "programming language",
+    "modeling language",
+    "compiler",
+    "tree"
+  ],
+  "archive": {
+    "identifier": "term-code",
+    "title": "Term",
+    "cover": "view/term.svg"
+  },
   "bin": {
     "term": "./host/line.js"
   },
   "scripts": {
-    "make": "pnpm run make:base && pnpm run make:line",
+    "make": "pnpm run make:line",
     "scan": "concurrently --kill-others \"tsc -w\" \"tsc-alias -w\"",
     "test": "vitest run",
     "lint": "bash task/lint.sh",
     "format": "prettier --write \"deck/**/code/**/*.ts\" \"test/**/*.ts\" \"*.ts\"",
     "host": "pnpm run make && pnpm publish --access public",
-    "install:all": "pnpm install && (cd deck/base && pnpm install) && (cd deck/deck && pnpm install) && (cd deck/mill && pnpm install) && (cd deck/seed && pnpm install) && (cd deck/flow/editor/vscode && pnpm install)",
-    "make:base": "cd deck/base && pnpm make",
+    "install:all": "pnpm install && (cd deck/deck && pnpm install) && (cd deck/mill && pnpm install) && (cd deck/base && pnpm install) && (cd deck/flow/editor/vscode && pnpm install)",
     "make:line": "pnpm exec esbuild deck/call/code/line.ts --bundle --platform=node --format=esm --packages=external --outfile=host/line.js --banner:js='#!/usr/bin/env node' && pnpm exec esbuild deck/call/code/hook-dispatch.ts --bundle --platform=node --format=esm --packages=external --outfile=host/dock.mjs",
     "prepublishOnly": "pnpm run make"
   },
@@ -46,24 +59,13 @@
     ".": {
       "types": "./host/line.d.ts",
       "default": "./host/line.js"
-    },
-    "./base": {
-      "types": "./deck/base/host/index.d.ts",
-      "default": "./deck/base/host/index.js"
-    },
-    "./base/*": {
-      "types": "./deck/base/host/*.d.ts",
-      "default": "./deck/base/host/*.js"
     }
   },
   "files": [
     "host",
-    "deck/base/host",
-    "deck/zone/code",
-    "deck/zone/deck.tree",
-    "deck/seed/code",
-    "!deck/seed/code/native/*/.build",
-    "!deck/seed/code/native/*/target",
+    "deck/base/code",
+    "!deck/base/code/native/*/.build",
+    "!deck/base/code/native/*/target",
     "!**/*.tsbuildinfo*"
   ]
 }

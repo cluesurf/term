@@ -14,13 +14,13 @@
 # different number, so the hash would not have been cyrb53. `bit/multiply-32` was added for this and is the first
 # language gap the self-hosting port closed.
 
-load @term/seed/code/bit
+load @term/base/code/bit
   find bitwise-exclusive-or
   find unsigned-shift-right
   find multiply-32
   find bitwise-and
 
-load @term/seed/code/text
+load @term/base/code/text
   find char-count
   find char-code-at
 

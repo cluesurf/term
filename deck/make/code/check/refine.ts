@@ -6,6 +6,11 @@
 // This is the proof engine. Wiring `hold` clauses from the mill into verification conditions is the next surface
 // step; this module is the discharger and is tested directly on constraints.
 
+import {
+  checkRefutation,
+  refutation,
+} from '@term/make/code/check/certificate'
+
 // a linear expression: sum of coefficient * variable, plus a constant
 export type Linear = { terms: Map<string, number>; constant: number }
 
@@ -327,11 +332,37 @@ function unsatisfiable(ineqs: Inequality[]): boolean {
   return remember(false)
 }
 
+// how often the search said "proven" and its refutation then failed to replay through the certificate checker. Each
+// is a goal reported unproven rather than trusted, and a nonzero count is a bug in the search worth chasing.
+let uncertified = 0
+
+export function uncertifiedCount(): number {
+  return uncertified
+}
+
 // does the conjunction of assumptions imply the goal? (the verification condition is valid)
+//
+// Valid iff assumptions AND not(goal) is unsatisfiable. The search below decides that, and then the refutation it
+// stands for is REBUILT as a derivation (certificate.ts) and replayed by a checker that shares nothing with the
+// search. Only a refutation that replays counts. So the trusted part of the linear prover is the checker, not the
+// search. proof-by-default-0022.
 export function proves(
   assumptions: Inequality[],
   goal: Inequality,
 ): boolean {
-  // valid iff assumptions AND not(goal) is unsatisfiable
-  return unsatisfiable([...assumptions, negate(goal)])
+  const system = [...assumptions, negate(goal)]
+
+  if (!unsatisfiable(system)) {
+    return false
+  }
+
+  const derivation = refutation(system)
+
+  if (derivation && checkRefutation(system, derivation)) {
+    return true
+  }
+
+  uncertified++
+
+  return false
 }

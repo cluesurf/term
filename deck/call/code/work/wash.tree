@@ -21,7 +21,7 @@ load @term/call/code/work/tint
 #
 # THE FIRST COMPILER-COUPLED CLI MODULE IN TERM, and the point it proves. `wash.ts` imports its colours from
 # `@term/make/code/tint`, a TypeScript module, and that looked like a reason it could not be ported. It is not: a
-# `dock load` takes a PACKAGE PATH as readily as a `<node:fs>`, which `@cluesurf/seed/word` in the stdlib already
+# `dock load` takes a PACKAGE PATH as readily as a `<node:fs>`, which `@term/base/word` in the stdlib already
 # relies on. So a Term module can reach the existing toolchain on the TypeScript target and lose nothing.
 #
 # WHAT THAT DOES AND DOES NOT BUY. On TypeScript this is complete. On Rust the dock resolves to a module that does
@@ -29,10 +29,10 @@ load @term/call/code/work/tint
 # conversion: the source becomes `.tree` first, and each dock is then a named thing to replace, in one place, rather
 # than a TypeScript file nobody is looking at. See note/term/project/cli-in-term.md.
 
-load @term/seed/code/path
+load @term/base/code/path
   find join
 
-load @term/seed/code/file/directory
+load @term/base/code/file/directory
   find remove, name remove-directory
   find exists, name directory-exists
 

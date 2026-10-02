@@ -18,11 +18,11 @@ import type { Source } from '@term/make/code/compile/load'
 import { render } from '@term/make/code/parser/diagnostic'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const baseTree = join(here, '..', '..', 'deck', 'seed')
+const baseTree = join(here, '..', '..', 'deck', 'base')
 
 const stdlib = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/seed/'
-  path = path.replace(/^@term\/seed\//, prefix)
+  const prefix = '@term/base/'
+  path = path.replace(/^@term\/base\//, prefix)
 
   if (!path.startsWith(prefix)) {return undefined}
 
@@ -82,7 +82,7 @@ async function load(
   >
 }
 
-const HASH = `load @cluesurf/seed/code/hash
+const HASH = `load @term/base/code/hash
   find hash
 
 task build
@@ -116,7 +116,7 @@ task values-of
       call build
 `
 
-const SET = `load @cluesurf/seed/code/set
+const SET = `load @term/base/code/set
   find set
 
 task set-a
@@ -183,7 +183,7 @@ task difference-list
         call set-b
 `
 
-const RANGE = `load @cluesurf/seed/code/range
+const RANGE = `load @term/base/code/range
   find range
 
 task list-of

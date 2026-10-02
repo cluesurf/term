@@ -3,13 +3,13 @@
 # page-element record (tag, text, attributes, styles, classes, children, listeners, parent), so the full DOM API works
 # without a browser: build a tree, mutate it, fire stored listeners, remove and replace nodes. Conforms to ../../dom.
 
-load @term/seed/code/list
+load @term/base/code/list
   find list
   find push
   find filter
   find find
 
-load @term/seed/code/maybe
+load @term/base/code/maybe
   find maybe
 
 load ../../view

@@ -1,9 +1,0 @@
-
-form equal
-  head a
-  link x, like a
-  link y, like a
-
-  case refl
-    hold same
-      like equal a x x

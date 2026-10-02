@@ -11,7 +11,7 @@
 //
 // **`<version>`: a compiler change strands the whole cache, and nothing reclaimed it.** The version is a content
 // hash of the running compiler, so every rebuild opens a new namespace and every entry written under the old one
-// becomes unreachable forever. `deck/seed` held 20,216 output entries for a 532-file package: 38 stranded copies per
+// becomes unreachable forever. `deck/base` held 20,216 output entries for a 532-file package: 38 stranded copies per
 // file, 97% of it dead. Making the version a DIRECTORY rather than a fold into the key means a stale namespace is a
 // directory to remove, which `reclaimStaleVersions` does on startup, keeping `KEEP_VERSIONS` of them so switching
 // between two binaries does not cold-start either.
@@ -28,7 +28,7 @@
 // `enforceBudget` holds each kind under a byte budget by dropping the least recently used.
 //
 // THE CACHE IS WORTH HAVING, which is worth stating because the size made it look otherwise. Measured the same day
-// on `deck/seed`, 532 files, second build of identical sources: **5.8s to 2.9s**, with the output level answering
+// on `deck/base`, 532 files, second build of identical sources: **5.8s to 2.9s**, with the output level answering
 // 532 of 532 reads and writing nothing. An output hit short-circuits the entire pipeline for that entry, which is
 // why it is the level that matters and the level that grew.
 
@@ -61,7 +61,7 @@ import { CACHE_SCOPE } from '@term/make/code/compile/cache-scope.generated'
 export const KEEP_VERSIONS = 2
 
 // The byte budget per kind, enforced once per process against the CURRENT version's directory. Generous on purpose:
-// with the layout above, `deck/bind`'s live output namespace is about a hundred megabytes and `deck/seed`'s is under
+// with the layout above, `deck/bind`'s live output namespace is about a hundred megabytes and `deck/base`'s is under
 // one, so a project that trips this is doing something the author should hear about rather than something routine.
 export const OUTPUT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024
 export const MILL_BUDGET_BYTES = 4 * 1024 * 1024 * 1024

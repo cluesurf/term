@@ -22,11 +22,11 @@ import {
 import type { Source } from '@term/make/code/compile/load'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const baseTree = join(here, '..', '..', 'deck', 'seed')
+const baseTree = join(here, '..', '..', 'deck', 'base')
 
 const stdlib = (path: string): Source | undefined => {
-  const prefix = '@cluesurf/seed/'
-  path = path.replace(/^@term\/seed\//, prefix)
+  const prefix = '@term/base/'
+  path = path.replace(/^@term\/base\//, prefix)
 
   if (!path.startsWith(prefix)) {return undefined}
 
@@ -38,8 +38,8 @@ const stdlib = (path: string): Source | undefined => {
 }
 
 const readRuntime = (path: string): string | undefined => {
-  const prefix = '@cluesurf/seed/'
-  path = path.replace(/^@term\/seed\//, prefix)
+  const prefix = '@term/base/'
+  path = path.replace(/^@term\/base\//, prefix)
 
   if (!path.startsWith(prefix)) {return undefined}
 
@@ -113,7 +113,7 @@ class MemoryDirectory {
 async function loadBrowserFile(): Promise<
   Record<string, (...a: unknown[]) => Promise<unknown>>
 > {
-  const source = `load @cluesurf/seed/code/file
+  const source = `load @term/base/code/file
   find file
 
 task put

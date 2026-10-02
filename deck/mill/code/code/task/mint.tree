@@ -44,13 +44,18 @@ load @term/mill/code/code/tree/slot/mint
 load @term/mill/code/code/wait/mint
   find wait
 
+load @term/mill/code/code/must/mint
+  find task-have
+  find must
+  find down
+
 
 # `head` and `take` are NOT redefined here. `mine task` matches them with `mine form, like head` and
 # `like take`, so the canonical rules in head/ and take/ are what fill those sites; the local copies this file
 # used to carry read a different set of sites and silently won the merge (mint-bridge-0001).
 
 
-load @term/seed/code/lang
+load @term/base/code/lang
   find code-task
 
 mint task, like code-task
@@ -88,6 +93,12 @@ mint task, like code-task
     site nick
   case drop
     site drop
+  case have, mint task-have
+    site have
+  case must
+    site must
+  case down
+    site down
   hook make
     make task
       bind name, read name
@@ -107,3 +118,6 @@ mint task, like code-task
       bind mark, read mark
       bind nick, read nick
       bind drop, read drop
+      bind have, read have
+      bind must, read must
+      bind down, read down

@@ -1,5 +1,5 @@
 # The deck manifest grammar, written against the REAL deck.tree files of this tree and the manifest reader's
-# whole field surface (deck/deck/test/manifest.test.ts): the name is a path word (`deck @term/seed`), the fields
+# whole field surface (deck/deck/test/manifest.test.ts): the name is a path word (`deck @term/base`), the fields
 # come in any order, and an unknown field passes over with `mine node` the way the hand-rolled reader ignores it.
 # The executor (compile/mill-run.ts) reads a manifest through this; test/compile/mill-run.ts holds it against
 # deck/deck/code/manifest.ts on every manifest in the tree, and deck/deck/code/manifest.ts itself reads through
@@ -114,7 +114,7 @@ mine deck-lock
       mine term
         site term
 
-# `link @term/seed, code <0.0.x>` (or the older `mark <0.0.x>`), with an optional `have <n>`
+# `link @term/base, code <0.0.x>` (or the older `mark <0.0.x>`), with an optional `have <n>`
 mine deck-link
   mine term, term link
     mine path

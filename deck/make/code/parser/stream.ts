@@ -32,7 +32,7 @@ export type StreamResult =
 //
 // A COMMENT NEVER OPENS ONE, whatever column it sits in. A `#` line before a group is that group's leading
 // trivia and the parser attaches it there; a `#` line at column 0 in the middle of an indented block is a note
-// about the code around it. deck/seed/code/native/swift/view.tree is written that way throughout — column-0
+// about the code around it. deck/base/code/native/swift/view.tree is written that way throughout — column-0
 // comments quoting Swift signatures, between indented `task` lines — and treating them as boundaries cut a group
 // in half and reported the file as truncated.
 function opensGroup(line: string): boolean {

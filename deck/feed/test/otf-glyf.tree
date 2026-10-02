@@ -2,7 +2,7 @@
 # glyph's header (bounding box only — deliberately unsupported past that, see form.tree). Run: term test, from
 # deck/feed.
 
-load @term/seed/code/list
+load @term/base/code/list
   find push
   find get
   find size

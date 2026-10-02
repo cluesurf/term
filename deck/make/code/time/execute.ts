@@ -21,7 +21,7 @@ export class CompileFailure extends Error {
 // The RESOLVER is what makes this work on a real project rather than only on a file with no imports. Without one
 // `compile` never collects the module graph, so every imported name is undefined: `term time` on a freshly
 // scaffolded project reported `the name "log" is not defined` for the entry `term make` compiles without
-// complaint, because the scaffold's `load @term/seed/code/console` was never followed. It is optional so a caller
+// complaint, because the scaffold's `load @term/base/code/console` was never followed. It is optional so a caller
 // with a genuinely self-contained file (the benchmark fixtures) can still leave it out.
 export function compileToModule(input: {
   text: string
