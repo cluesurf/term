@@ -1,4 +1,13 @@
-# A text message-passing channel between concurrent tasks: the portable communication default (message passing over shared memory). The clean uniform interface; each backend wraps its platform channel (node async queue, rust tokio mpsc, swift buffered queue, kotlin BlockingQueue) behind this API, selected at build time. The platform channel lives in the opaque `dock` handle, typed per backend. send / receive are async; a buffered channel holds a value sent before receive is called, so send-then-receive never races.
+# A message-passing channel between concurrent tasks, typed by what it carries: the portable communication default
+# (message passing over shared memory). Each backend wraps its platform channel (node async queue, rust tokio mpsc,
+# swift buffered queue, kotlin BlockingQueue) behind this API, selected at build time, and carries the message boxed as
+# `unknown`, so one shim serves every message type. send / receive are async; a buffered channel holds a value sent
+# before receive is called, so send-then-receive never races.
+#
+# THE MESSAGE IS A TYPE. `make-channel` answers `channel t` for whatever the first `send` or the declared `like` says,
+# and a message that is a form with `case` variants is received with a `fork case`, which the checker holds to every
+# variant. A message the receiver has no case for is a build error, which is what Erlang's untyped `receive` cannot
+# give (note/term/research/beam-otp-lessons.md, design 2). `make-text-channel` is the old text channel by name.
 
 load @term/base/code/native/{platform}/channel
   find do-make
@@ -6,18 +15,20 @@ load @term/base/code/native/{platform}/channel
   find do-receive
   find do-close
 
-# a channel carrying text messages
+# a channel carrying messages of type `t` (one letter, as every stdlib generic is: the native emitters spell a
+# generic by upper-casing it, and a longer name reads differently where it is declared and where it is used)
 form channel
+  head t
   link dock, like channel-handle
 
   # send a message (buffered; never blocks for an unbounded channel)
   task send
     note async
     take self
-    take item, like text
+    take item, like t
     like void
     call do-send
-      read self
+      read self/dock
       read item
       wait true
 
@@ -25,10 +36,10 @@ form channel
   task receive
     note async
     take self
-    like text
+    like t
     send back
       call do-receive
-        read self
+        read self/dock
         wait true
 
   # close the channel
@@ -37,13 +48,20 @@ form channel
     take self
     like void
     call do-close
-      read self
+      read self/dock
       wait true
 
-# make a new text channel
+# make a new channel. Its message type comes from how it is used
 task make-channel
-  like channel
+  head t
+  like channel t
   send back
     make channel
       bind dock
         call do-make
+
+# make a new channel of text, the old default, spelled out
+task make-text-channel
+  like channel text
+  send back
+    call make-channel

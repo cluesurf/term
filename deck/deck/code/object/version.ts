@@ -35,9 +35,9 @@ const DEFAULT_EXCLUDE = new Set([
   '.base',
 ])
 
-// Excluded at the package root only: `link/` there is where `term load` links installed dependencies, and a package
+// Excluded at the package's top level only: `link/` there is where `term load` links installed dependencies, and a package
 // never carries another package's install. A `code/link/` deeper down is source and ships.
-const ROOT_EXCLUDE = new Set(['link'])
+const TOP_EXCLUDE = new Set(['link'])
 
 export type BuiltVersion = {
   // the prolly-tree root naming this version's file set
@@ -78,7 +78,7 @@ export async function readVersionFiles(input: {
         continue
       }
 
-      if (exclude.has(entry.name) || (prefix === '' && ROOT_EXCLUDE.has(entry.name))) {
+      if (exclude.has(entry.name) || (prefix === '' && TOP_EXCLUDE.has(entry.name))) {
         if (included(relative)) {
           // shipped whole, below
         } else if (entry.isDirectory() && leadsTo(relative)) {

@@ -207,6 +207,28 @@ export function emitKotlin(
       .map(n => [n.name, n.fields]),
   )
 
+  // a generic type parameter (`like t`), as opposed to a form the program declares
+  const genericLetter = (type: Type | undefined): boolean =>
+    type?.kind === 'variable' ||
+    (type?.kind === 'named' && /^[a-z]$/.test(type.name) && !type.args?.length && !recordFields.has(type.name))
+  // a call, awaited or not: what answers the unknown at a generic boundary
+  const isCallValue = (value: Expression): boolean =>
+    value.form === 'call' || (value.form === 'await' && value.expr.form === 'call')
+
+  // a `let` bound to a call with no arguments whose type the checker knows concretely as a generic application
+  const uninferableCall = (node: Extract<Statement, { form: 'let' }>): boolean => {
+    const call =
+      node.init.form === 'call' ? node.init : node.init.form === 'await' && node.init.expr.form === 'call' ? node.init.expr : undefined
+
+    return (
+      call !== undefined &&
+      call.args.length === 0 &&
+      node.type?.kind === 'named' &&
+      (node.type.args?.length ?? 0) > 0 &&
+      !node.type.args!.some(a => a.kind === 'variable' || a.kind === 'unknown' || genericLetter(a))
+    )
+  }
+
   // the empty value of a type: what a left-out field holds
   const emptyOf = (type: Type | undefined): string => {
     switch (type?.kind) {
@@ -698,6 +720,16 @@ export function emitKotlin(
           }
         }
 
+        // a generic value handed to an `unknown` parameter: a Kotlin `T` is nullable by default and `Any` is not, so
+        // it crosses as `Any` explicitly. This is how a typed channel hands its message to the one untyped shim
+        if (declaredParams) {
+          node.args.forEach((arg, i) => {
+            if (declaredParams[i]?.kind === 'unknown' && genericLetter(arg.type)) {
+              rendered[i] = `(${rendered[i]} as Any)`
+            }
+          })
+        }
+
         // a callee is called, never referenced: a bare name here, whatever `expr` would make of it as a value
         const callee = node.callee.form === 'variable' ? camel(node.callee.name) : expr(node.callee)
 
@@ -1115,7 +1147,11 @@ export function emitKotlin(
                 variantClassOf.has(node.init.name)
               ? // a variant construction is bound as its sealed type, so the binding can later hold another variant
                 `: ${kotlinType(node.init.type)}`
-              : ''
+              : uninferableCall(node)
+                ? // a call with no arguments to a generic task (`make-channel`): nothing at the call says what `T` is,
+                  // so the binding says it, when the checker knows it concretely
+                  `: ${kotlinType(node.type!)}`
+                : ''
 
         // a valueless typed module slot (`host current, like context`, filled later by a `save`): kotlin's
         // lateinit var, so reads get the declared class type rather than Unit
@@ -1149,16 +1185,21 @@ export function emitKotlin(
           return currentResult?.kind === 'unknown' ? 'return Unit' : 'return'
         }
 
-        // the gradual boundary: an unknown-typed value returned at a DECLARED FORM type casts explicitly.
-        // Only for a form the program declares: a generic letter (`like t`) is not a cast target.
-        const valueKind = node.value.type?.kind
+        // the gradual boundary: an unknown-typed value returned at a DECLARED FORM type casts explicitly. A generic
+        // letter (`like t`) is a cast target only for a CALL that answers the unknown, which is a typed channel's
+        // `receive` or a typed task's `wait` taking its value back out of the one untyped shim
+        const valueKind =
+          node.value.form === 'await' ? (node.value.type ?? node.value.expr.type)?.kind : node.value.type?.kind
+        const unknownValue = valueKind === 'unknown' || valueKind === 'dynamic'
         const cast =
           node.value.form === 'member' &&
-          (valueKind === 'unknown' || valueKind === 'dynamic') &&
+          unknownValue &&
           currentResult?.kind === 'named' &&
           recordFields.has(currentResult.name)
             ? ` as ${kotlinType(currentResult)}`
-            : ''
+            : unknownValue && isCallValue(node.value) && genericLetter(currentResult)
+              ? ` as ${kotlinType(currentResult!)}`
+              : ''
 
         return `return ${expr(node.value)}${cast}`
       }

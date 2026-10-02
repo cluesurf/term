@@ -93,8 +93,8 @@ twin count-each, name dense
       bind head, code 65536
   ease float-order
   mark width, like number
-  note platform, name rust
-  note trust
+  mark platform, name rust
+  mark trust
   send back
     make list
 `
@@ -138,8 +138,8 @@ if (alone.ok && both.ok) {
   ok('`hook test` is read', dense?.test.length === 1 && dense.test[0]?.form === 'call')
   ok('`ease` names a relaxation', JSON.stringify(dense?.ease) === '["float-order"]')
   ok('`mark` declares a knob with its type', dense?.knobs[0]?.name === 'width' && dense.knobs[0]?.type?.kind === 'number')
-  ok('`note platform, name rust` names the target', JSON.stringify(dense?.platform) === '["rust"]', JSON.stringify(dense?.platform))
-  ok('`note trust` is read', dense?.trust === true && tally?.trust === false)
+  ok('`mark platform, name rust` names the target', JSON.stringify(dense?.platform) === '["rust"]', JSON.stringify(dense?.platform))
+  ok('`mark trust` is read', dense?.trust === true && tally?.trust === false)
   ok('a twin with nothing said is eligible everywhere and trusts nothing', JSON.stringify(tally?.platform) === '[]' && tally?.ease.length === 0)
 }
 
@@ -215,9 +215,9 @@ for (const [label, want, text] of cases) {
   ok(`${label} is refused as \`${want}\``, got.includes(want), `got ${JSON.stringify(got)}`)
 }
 
-// `note trust` admits an impure twin: trust excuses a proof, never the check that it is admitted as trusted
-const trusted = accepted(`${IMPURE}\n${PURE}\ntwin double, name x\n  take n\n  note trust\n  send back\n    call stamp\n      read n\n`)
-ok('an impure twin that says `note trust` compiles', trusted.ok && trusted.twins === 1, JSON.stringify(trusted))
+// `mark trust` admits an impure twin: trust excuses a proof, never the check that it is admitted as trusted
+const trusted = accepted(`${IMPURE}\n${PURE}\ntwin double, name x\n  take n\n  mark trust\n  send back\n    call stamp\n      read n\n`)
+ok('an impure twin that says `mark trust` compiles', trusted.ok && trusted.twins === 1, JSON.stringify(trusted))
 
 console.log(`\ntwin: ${pass} pass, ${fail} fail`)
 

@@ -7,20 +7,12 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { parse } from '@term/make/code/parser/tree'
-import { mill } from '@term/make/code/compile/mill'
-import { resolve as resolveNames } from '@term/make/code/check/resolve'
-import { check } from '@term/make/code/check/infer'
-import { resolveAsync } from '@term/make/code/check/async-resolve'
-import { simplify } from '@term/make/code/ir/simplify'
-import { collectModules } from '@term/make/code/compile/load'
+import { compile } from '@term/make/code/compile/compile'
 import {
   withNativeEnv,
   nativePrelude,
 } from '@term/make/code/compile/native'
 import type { Source } from '@term/make/code/compile/load'
-import { emitTypeScript } from '@term/make/code/compile/typescript'
-import type { Program } from '@term/make/code/compile/node'
 
 const baseTree = join(process.cwd(), 'deck', 'base')
 
@@ -57,49 +49,6 @@ const readRuntime = (path: string): string | undefined => {
   return existsSync(file) ? readFileSync(file, 'utf8') : undefined
 }
 
-function frontEnd(text: string): Program {
-  const sources = collectModules(
-    { file: 'main.tree', text },
-    withNativeEnv('node', stdlib),
-  ).sources
-
-  const program: Program = []
-  const roots = new Set<string>()
-
-  for (const unit of sources) {
-    const parsed = parse(unit)
-
-    if (!parsed.ok) {
-      throw new Error('parse failed: ' + unit.file)
-    }
-
-    const built = mill(parsed.tree, unit.file)
-
-    if (!built.ok) {
-      throw new Error(
-        'mill failed: ' +
-          built.diagnostics.map(d => d.message).join(', '),
-      )
-    }
-
-    if (unit.file === 'main.tree') {
-      for (const node of built.program) {
-        if (node.form === 'function') {
-          roots.add(node.name)
-        }
-      }
-    }
-
-    program.push(...built.program)
-  }
-
-  resolveNames(program, 'main.tree')
-  check(program, 'main.tree')
-  resolveAsync(program)
-
-  return simplify(program, roots)
-}
-
 let pass = 0
 let fail = 0
 
@@ -119,11 +68,23 @@ async function runProgram(
   name: string,
   source: string,
 ): Promise<string> {
-  const program = frontEnd(source)
-  const ts =
-    nativePrelude(program, 'node', readRuntime) +
-    '\n' +
-    emitTypeScript(program)
+  return (await loadProgram(name, source))()
+}
+
+// compile and load, without running: the timing cases measure the run alone
+async function loadProgram(
+  name: string,
+  source: string,
+): Promise<() => Promise<string>> {
+  // the whole compiler, not a hand-picked list of its passes: a `halt <form>` is filled with its exception's
+  // `form`, `note` and `host` by passes a partial front end skips, and these tests read those fields
+  const compiled = compile({ file: 'main.tree', text: source }, { resolve: withNativeEnv('node', stdlib) })
+
+  if (!compiled.ok) {
+    throw new Error(compiled.diagnostics.map(d => `${d.file}:${d.span.start.line + 1} ${d.message}`).join('\n'))
+  }
+
+  const ts = nativePrelude(compiled.program, 'node', readRuntime) + '\n' + compiled.typescript
   const file = join(dir, `${name}.ts`)
   writeFileSync(file, ts)
 
@@ -131,7 +92,7 @@ async function runProgram(
     run: () => Promise<string>
   }
 
-  return mod.run()
+  return mod.run
 }
 
 // spawn a task, wait for its result
@@ -157,6 +118,9 @@ task run
 const GATHER = `load @term/base/code/task
   find gather
 
+load @term/base/code/list
+  find join
+
 task run
   note async
   like text
@@ -177,11 +141,9 @@ task run
       read works
       wait true
   send back
-    call add
-      call results/at
-        code 0
-      call results/at
-        code 1
+    call join
+      read results
+      text <>
 `
 
 // the imports every failure case below shares
@@ -305,15 +267,82 @@ task run
     text <quiet>
 `
 
+// a task's result is typed: a number comes back a number, and arithmetic on it type-checks
+const TYPED_RESULT = `load @term/base/code/task
+  find spawn
+
+task run
+  note async
+  like number
+  save job
+    call spawn
+      task work
+        like number
+        send back, code 40
+  send back
+    call add
+      call wait
+        read job
+        wait true
+      code 2
+`
+
+// a channel carries a form with variants, received with a `fork case`
+const typedChannel = (cases: string) => `load @term/base/code/channel
+  find make-channel
+  find send
+  find receive
+
+form ping
+  case ask
+    link question, like text
+  case stop
+
+task run
+  note async
+  like text
+  save gate
+    call make-channel
+  call send
+    read gate
+    make ask
+      bind question, text <hello>
+    wait true
+  save got
+    call receive
+      read gate
+      wait true
+  fork case, read got
+${cases}  send back, text <none>
+`
+
+const BOTH_CASES = `    case ask
+      send back, read question
+    case stop
+      send back, text <stopped>
+`
+
+const ONE_CASE = `    case ask
+      send back, read question
+`
+
+// the build's refusal, or undefined when it builds
+function refusal(source: string): string | undefined {
+  const compiled = compile({ file: 'main.tree', text: source }, { resolve: withNativeEnv('node', stdlib) })
+
+  return compiled.ok ? undefined : compiled.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | ')
+}
+
 // run a program expected to raise: the exception's form, its `link`, and how long it took
 async function raised(
   name: string,
   source: string,
 ): Promise<{ form?: string; link?: Record<string, unknown>; ms: number; value?: string; message?: string }> {
+  const run = await loadProgram(name, source)
   const start = Date.now()
 
   try {
-    const value = await runProgram(name, source)
+    const value = await run()
 
     return { ms: Date.now() - start, value }
   } catch (error) {
@@ -386,12 +415,34 @@ async function main(): Promise<void> {
     JSON.stringify({ ...quiet, unhandled }),
   )
 
+  ok('a task`s result is typed: a number waits back as a number', (await runProgram('typed-result', TYPED_RESULT)) === (42 as unknown as string))
+  ok(
+    'a channel carries a form with variants, received by fork case',
+    (await runProgram('typed-channel', typedChannel(BOTH_CASES))) === 'hello',
+  )
+
+  const missing = refusal(typedChannel(ONE_CASE))
+
+  ok(
+    'a message variant the receiver has no case for fails the build',
+    missing !== undefined && /non-exhaustive/.test(missing) && /stop/.test(missing),
+    missing ?? 'it built',
+  )
+
   // the slow jobs the failures above left behind settle within this, and none of them may surface either
   await new Promise(resolve => setTimeout(resolve, 500))
 
   ok('no job left behind by a failure becomes an unhandled rejection', unhandled === 0, `${unhandled}`)
 
   console.log(`\nconcurrency: ${pass} pass, ${fail} fail`)
+
+  if (fail > 0) {
+    process.exitCode = 1
+  }
 }
 
-main()
+// caught here, because the unhandled-rejection counter above would otherwise swallow the suite's own failure
+main().catch(error => {
+  console.log(`FAIL  the suite stopped: ${error instanceof Error ? error.message : String(error)}`)
+  process.exitCode = 1
+})

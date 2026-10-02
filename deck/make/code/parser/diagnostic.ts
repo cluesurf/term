@@ -231,7 +231,7 @@ export const CATALOG = {
     code: 0x1c,
     message: 'this twin is not pure',
     severity: 'error',
-    fix: 'a twin of a pure task must be pure itself, or say `note trust` to be admitted as trusted',
+    fix: 'a twin of a pure task must be pure itself, or say `mark trust` to be admitted as trusted',
   },
   'twin-signature': {
     code: 0x1d,
@@ -256,6 +256,12 @@ export const CATALOG = {
     message: "this twin's run-time check is not pure",
     severity: 'error',
     fix: 'a `hook test` decides which implementation runs, so it may not change anything or call native code',
+  },
+  'twin-choice': {
+    code: 0x22,
+    message: 'this choice of implementation cannot be made',
+    severity: 'error',
+    fix: 'choose a twin the task has, eligible on this target, whose conditions the selection pass can honor',
   },
   'ease-unknown': {
     code: 0x21,

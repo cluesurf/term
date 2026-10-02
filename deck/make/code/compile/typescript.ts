@@ -363,10 +363,16 @@ function mapKeyType(type: Type | undefined): Type | true | false {
 // representative for every structurally equal record, so a JavaScript `Map` (which keys objects by identity) finds
 // a record key by an equal record. The table is on globalThis so every emitted module shares one: a key interned in
 // one module and looked up in another must meet the same representative. A primitive is returned untouched.
-const EQUAL_PRELUDE = `function __termEqual(a: unknown, b: unknown): boolean {
+const EQUAL_PRELUDE = `const __termShared = Symbol.for('term.shared')
+function __termShare<T extends object>(value: T): T {
+  Object.defineProperty(value, __termShared, { value: true })
+  return value
+}
+function __termEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true
   if (a == null || b == null) return a == b
   if (typeof a !== 'object' || typeof b !== 'object') return false
+  if (__termShared in (a as object) || __termShared in (b as object)) return false
   if (Array.isArray(a)) {
     if (!Array.isArray(b) || a.length !== b.length) return false
     for (let i = 0; i < a.length; i++) if (!__termEqual(a[i], b[i])) return false
@@ -402,6 +408,7 @@ function __termKeyText(v: unknown): string {
     case 'object': break
     default: return 'i' + __termIdentity(v as object)
   }
+  if (__termShared in (v as object)) return 'i' + __termIdentity(v as object)
   if (Array.isArray(v)) return '[' + v.map(__termKeyText).join(',') + ']'
   if (v instanceof Map) return '{' + Array.from(v, ([k, x]) => __termKeyText(k) + ':' + __termKeyText(x)).sort().join(',') + '}'
   if (v instanceof Uint8Array) return 'y' + Array.from(v).join('.')
@@ -1052,10 +1059,20 @@ function makeEmitter(
 
         // a field the construction leaves out (`need false`, or one the runtime fills on another path) takes its
         // type's empty value, so the object satisfies its interface -- the rule the native backends already follow
-        return `{ ${[
+        const made = `{ ${[
           ...fields,
           ...emptyFor(tsRecordFields.get(node.name) ?? [], node.fields),
         ].join(', ')} }`
+
+        // a `mark shared` value carries a hidden marker, so a record holding it compares it by identity and a map
+        // keys it by identity, as Rust (`Rc::ptr_eq`), Swift (`===`) and Kotlin (a plain class) do
+        if (tsSharedForms.has(node.name)) {
+          tsEqualUsed = true
+
+          return `__termShare(${made})`
+        }
+
+        return made
       }
 
       case 'member':

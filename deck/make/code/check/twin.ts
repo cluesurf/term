@@ -172,7 +172,7 @@ export function checkTwins(program: Program, twins: Twin[], file: string): Diagn
       }
 
       if (!twin.trust && !pure.has(name)) {
-        refuse('twin-impure', twin, `\`${twin.name}\` is not pure: say \`note trust\` to admit it as trusted, or make it pure`)
+        refuse('twin-impure', twin, `\`${twin.name}\` is not pure: say \`mark trust\` to admit it as trusted, or make it pure`)
       }
 
       // the totality checker judges a task by its OWN recursion, so a twin ends only if it and every task it can

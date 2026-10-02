@@ -1527,11 +1527,19 @@ export function emitSwift(
         // A call (or awaited call) carries its own type, so no annotation there either: inside a nested
         // closure the checker can lose an enclosing generic and record a defaulted argument (`Maybe<Int>`
         // for `Maybe<T>`), and the call's native type is the correct one.
-        const carriesOwnType =
-          node.init.form === 'call' ||
-          (node.init.form === 'await' && node.init.expr.form === 'call')
+        const initCall =
+          node.init.form === 'call' ? node.init : node.init.form === 'await' && node.init.expr.form === 'call' ? node.init.expr : undefined
+        const carriesOwnType = initCall !== undefined
+        // except a call with NO arguments to a generic task (`make-channel`): nothing at the call says what `T` is, so
+        // the binding says it, when the checker knows it concretely
+        const uninferable =
+          initCall !== undefined &&
+          initCall.args.length === 0 &&
+          node.type?.kind === 'named' &&
+          (node.type.args?.length ?? 0) > 0 &&
+          !node.type.args!.some(a => a.kind === 'variable' || a.kind === 'unknown' || (a.kind === 'named' && /^[a-z]$/.test(a.name)))
         const annotation =
-          node.type?.kind === 'named' && node.type.name && !carriesOwnType
+          node.type?.kind === 'named' && node.type.name && (!carriesOwnType || uninferable)
             ? `: ${swiftType(node.type)}`
             : ''
 
@@ -1572,17 +1580,30 @@ export function emitSwift(
           return `return SeedList(${expr(node.value, bind)})`
         }
 
-        // the gradual boundary: an unknown-typed value returned at a DECLARED FORM type casts explicitly.
-        // Only for a form the program declares: a generic letter (`like t`) is not a cast target.
-        const valueKind = node.value.type?.kind
+        // the gradual boundary: an unknown-typed value returned at a DECLARED FORM type casts explicitly. A generic
+        // letter (`like t`) is a cast target only for a CALL that answers the unknown, which is a typed channel's
+        // `receive` or a typed task's `wait` taking its value back out of the one untyped shim
+        const valueKind =
+          node.value.form === 'await' ? (node.value.type ?? node.value.expr.type)?.kind : node.value.type?.kind
+        const unknownValue = valueKind === 'unknown' || valueKind === 'dynamic'
+        const callValue =
+          node.value.form === 'call' || (node.value.form === 'await' && node.value.expr.form === 'call')
+        const generic =
+          currentResult?.kind === 'variable' ||
+          (currentResult?.kind === 'named' &&
+            /^[a-z]$/.test(currentResult.name) &&
+            !currentResult.args?.length &&
+            !recordFields.has(currentResult.name))
         const cast =
           node.value.form === 'member' &&
-          (valueKind === 'unknown' || valueKind === 'dynamic') &&
+          unknownValue &&
           currentResult?.kind === 'named' &&
           currentResult.name &&
           recordFields.has(currentResult.name)
             ? ` as! ${swiftType(currentResult)}`
-            : ''
+            : unknownValue && callValue && generic
+              ? ` as! ${swiftType(currentResult!)}`
+              : ''
 
         return `return ${expr(node.value, bind)}${cast}`
       case 'throw': {
@@ -2196,6 +2217,11 @@ export function emitSwift(
           return true
         }
 
+        // a `mark shared` class is Equatable and Hashable by identity (below), wherever it sits
+        if (sharedForms.has(type.name)) {
+          return true
+        }
+
         return forms.has(type.name) && args.every(a => fieldTypeQualifies(a, params, forms, hash))
       }
       default:
@@ -2251,6 +2277,22 @@ export function emitSwift(
 
       conformances.push(`extension ${swiftName}: ${protocol}${where} {}`)
     }
+  }
+
+  // a `mark shared` form is a class, one object seen through every binding, so it is equal to itself alone and hashes
+  // by its identity: then a record holding one compares that field by identity, and it can be a map key, as on the
+  // other backends
+  for (const name of sharedForms) {
+    const swiftName = pascal(name)
+
+    if (!body.some(b => new RegExp(`^final class ${swiftName}\\b`).test(b))) {
+      continue
+    }
+
+    conformances.push(
+      `extension ${swiftName}: Equatable { static func == (a: ${swiftName}, b: ${swiftName}) -> Bool { a === b } }`,
+      `extension ${swiftName}: Hashable { func hash(into hasher: inout Hasher) { hasher.combine(ObjectIdentifier(self)) } }`,
+    )
   }
 
   body.push(...conformances)

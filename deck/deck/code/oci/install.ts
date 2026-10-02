@@ -35,6 +35,9 @@ import { trustedKeys, type TrustedKeys } from './keys'
 import { isDigest, versionOfTag } from './reference'
 import { OciError, sha256Digest, type OciTransport } from './transport'
 
+// The field of a @cluesurf/save commit object that names its tree. A stored format, so it is read as written
+const SAVE_COMMIT_TREE = 'root'
+
 export type OciVersion = {
   digest: string
   manifest: ParsedManifest
@@ -248,14 +251,15 @@ export async function installOciVersion(input: {
     bytes += object.length
   })
 
-  // the commit must name the tree root the signed config names, or the signature covered a different tree
+  // the commit must name the tree the signed config names, or the signature covered a different tree. The commit
+  // object is @cluesurf/save's, which spells that field its own way
   const commitBytes = await input.local.get(config.commit).catch(() => {
     throw new OciError(`closure incomplete: the commit ${config.commit} is in no layer of the artifact`)
   })
-  const root = (JSON.parse(commitBytes.toString('utf8')) as { root?: string }).root
+  const named = (JSON.parse(commitBytes.toString('utf8')) as Record<string, unknown>)[SAVE_COMMIT_TREE]
 
-  if (root !== config.root) {
-    throw new OciError(`commit ${config.commit} names root ${root ?? 'none'}, the signed config names ${config.root}`)
+  if (named !== config.tree) {
+    throw new OciError(`commit ${config.commit} names the tree ${String(named ?? 'none')}, the signed config names ${config.tree}`)
   }
 
   // keep what an offline install needs: the config, the files layer and the tagged manifest

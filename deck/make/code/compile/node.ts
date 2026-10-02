@@ -454,7 +454,7 @@ export type Statement =
       // a PROPOSITIONAL TRUNCATION (hProp): declared with `mark prop`, any two inhabitants are equal (proof
       // irrelevance). Its constructors are kept rigid (no reduction) and registered so `convert` equates them.
       truncation?: boolean
-      // `note shared`: a value of this form is ONE object, seen and written through every binding of it, as a signal
+      // `mark shared`: a value of this form is ONE object, seen and written through every binding of it, as a signal
       // or an effect in a reactive graph must be. A backend whose forms are values (Swift's `struct`) emits a reference
       // type instead; one whose forms are references already (TypeScript, Kotlin) emits what it always does. Absent
       // means a plain value form. See note/term/app/10-native-dom.md.
@@ -667,9 +667,9 @@ export type Twin = {
   cost?: Expression
   // knobs: compile-time values a `tour` chooses
   knobs: { name: string; type?: Type }[]
-  // the targets it is eligible on (`note platform, name rust`); empty is every target
+  // the targets it is eligible on (`mark platform, name rust`); empty is every target
   platform: string[]
-  // `note trust`: admitted as trusted, so it may call native code the kernel cannot see
+  // `mark trust`: admitted as trusted, so it may call native code the kernel cannot see
   trust: boolean
   body: Statement[]
   span: Span

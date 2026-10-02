@@ -503,7 +503,7 @@ describe('OCI image layout', () => {
     expect(await readTree(dest)).toEqual(await readTree(source))
   })
 
-  it('ships an empty .tree file, and never the installed dependencies under the root link/', async () => {
+  it('ships an empty .tree file, and never the installed dependencies under the top-level link/', async () => {
     const work = await scratch('edges')
     const source = path.join(work, 'src')
     await writePackage(source, {

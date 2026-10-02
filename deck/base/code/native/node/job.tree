@@ -1,6 +1,7 @@
 # node structured-concurrency implementation. Forwards to the linked job runtime shim, which reports a job's state and
-# keeps its outcome. What each state means is decided in code/task.tree. Declares the opaque handle type a job holds
-# (the runtime job object). Internal: reached only through the public task API.
+# keeps its outcome. What each state means is decided in code/task.tree. A result crosses as `unknown`, so one shim
+# serves every result type. Declares the opaque handle type a job holds (the runtime job object). Internal: reached
+# only through the public task API.
 
 dock type
   load <any>, name job-handle
@@ -8,13 +9,10 @@ dock type
 dock load
   load <global:job>, name job
 
-load @term/base/code/task
-  find handle
-
 task do-spawn
   take work
     like task
-      like text
+      like unknown
   like job-handle
   send back
     call job/spawn
@@ -23,21 +21,21 @@ task do-spawn
 # wait until the job is no longer running: settled, or cancelled
 task do-settle
   note async
-  take self, like handle
+  take dock, like job-handle
   like void
   call job/settle
-    read self/dock
+    read dock
     wait true
 
 # the same, giving up after `milliseconds`: true when it stopped running in time
 task do-settle-within
   note async
-  take self, like handle
+  take dock, like job-handle
   take milliseconds, like number
   like boolean
   send back
     call job/settle-within
-      read self/dock
+      read dock
       read milliseconds
       wait true
 
@@ -54,37 +52,37 @@ task do-settle-group
 
 # `running`, `done`, `failed` or `cancelled`
 task do-state
-  take self, like handle
+  take dock, like job-handle
   like text
   send back
     call job/state
-      read self/dock
+      read dock
 
 # the result of a job whose state is `done`
 task do-result
-  take self, like handle
-  like text
+  take dock, like job-handle
+  like unknown
   send back
     call job/result
-      read self/dock
+      read dock
 
 # raise what a `failed` job raised, unchanged, so a typed exception reaches the waiter as itself
 task do-rethrow
-  take self, like handle
-  like text
+  take dock, like job-handle
+  like unknown
   send back
     call job/rethrow
-      read self/dock
+      read dock
 
 task do-cancel
-  take self, like handle
+  take dock, like job-handle
   like void
   call job/cancel
-    read self/dock
+    read dock
 
 task do-alive
-  take self, like handle
+  take dock, like job-handle
   like boolean
   send back
     call job/alive
-      read self/dock
+      read dock

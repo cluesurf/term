@@ -65,14 +65,15 @@ export const KEYS_REPOSITORY = 'keys'
 
 /**
  * The OCI route of a package under a fetch config, or undefined when it is not on an `oci://` registry. The scope
- * is matched the way `resolveRegistry` matches it, the full space path and then the root space, and a scope no
+ * is matched the way `resolveRegistry` matches it, the full space path and then its leading space, and a scope no
  * project names comes from `ghcr.io/<scope>` (`resolveRegistry`).
  */
 export function ociRouteOf(input: { name: string; config: Pick<FetchConfig, 'registry' | 'scopeRegistries'> }): OciRoute | undefined {
   const { scope } = parseScope({ name: input.name })
   const map = input.config.scopeRegistries ?? {}
-  const root = rootScope(scope)
-  const key = scope && map[scope] ? scope : root && map[root] ? root : undefined
+  // the leading space of a nested scope, `@cluesurf` of `@cluesurf/@wordsurf`
+  const leading = rootScope(scope)
+  const key = scope && map[scope] ? scope : leading && map[leading] ? leading : undefined
   const registry = resolveRegistry({ name: input.name, registry: input.config.registry, scopeRegistries: map })
 
   if (!isOciRegistry(registry)) {
@@ -92,5 +93,5 @@ export function ociRouteOf(input: { name: string; config: Pick<FetchConfig, 'reg
     throw new Error(`${input.name}: \`${KEYS_REPOSITORY}\` is reserved for the scope's key set, so no package can be named it`)
   }
 
-  return { registry: reference, repository, scope: key ?? root, keysRepository }
+  return { registry: reference, repository, scope: key ?? leading, keysRepository }
 }

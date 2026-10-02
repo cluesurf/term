@@ -2646,10 +2646,14 @@ function twinOf(bridge: Bridge, value: Form): Twin | undefined {
       .map(line => expressionOf(bridge, firstAt(line, 'seed')))
       .filter((e): e is Expression => e !== undefined)
 
-  // `note platform, name rust`: the target words are whatever the note carries besides `platform`
-  const platform = formsAt(value, 'note')
-    .filter(note => wordAt(note, 'text') === 'platform')
-    .flatMap(note => wordsUnder(note).filter(word => word !== 'note' && word !== 'platform' && word !== 'name'))
+  // metadata is a `mark` (a `note` is documentation and nothing else): `mark platform, name rust`, `mark trust`
+  const marks = formsAt(value, 'mark').map(mark => ({
+    kind: wordAt(mark, 'kind'),
+    name: wordAt(firstAt(mark, 'name'), 'name'),
+  }))
+  const platform = marks
+    .filter(mark => mark.kind === 'platform' && mark.name !== undefined)
+    .map(mark => mark.name!)
 
   // the body is its own scope, with the parameters and the knobs bound
   const enclosing = bridge.declared
@@ -2669,29 +2673,10 @@ function twinOf(bridge: Bridge, value: Form): Twin | undefined {
     ...(cost ? { cost } : {}),
     knobs,
     platform,
-    trust: hasWord(value, 'note', 'trust'),
+    trust: marks.some(mark => mark.kind === 'trust'),
     body,
     span: spanOf(value),
   }
-}
-
-// every bare word under a minted value's source node, in order: what a `note platform, name rust` carries
-function wordsUnder(value: Minted): string[] {
-  const words: string[] = []
-  // a group's `nodes` and a name's chunks, never `parent`, which points back up
-  const visit = (node: GroupNode | GroupNode['nodes'][number]): void => {
-    if (node.kind === 'group') {
-      node.nodes.forEach(visit)
-    } else if (node.kind === 'name') {
-      words.push(node.parts.map(part => (part.kind === 'chunk' ? part.text : '')).join(''))
-    }
-  }
-
-  if (value.node) {
-    visit(value.node as GroupNode)
-  }
-
-  return words
 }
 
 // A top-level statement can lower to several compiler statements (a form and its methods), or to none at all
@@ -3938,9 +3923,11 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
       truncation: formsAt(value, 'mark').some(
         mark => wordAt(mark, 'kind') === 'prop',
       ),
-      // `note shared`: one object through every binding. Written only when present, so every form that does not
-      // say it builds the same Program it always did.
-      ...(formsAt(value, 'note').some(note => wordAt(note, 'text') === 'shared')
+      // `mark shared`: one object through every binding. Written only when present, so every form that does not
+      // say it builds the same Program it always did. `note shared`, the spelling from before `note` became text,
+      // is still read, so the files that say it keep their meaning until they are rewritten
+      ...(formsAt(value, 'mark').some(mark => wordAt(mark, 'kind') === 'shared') ||
+      formsAt(value, 'note').some(note => wordAt(note, 'text') === 'shared')
         ? { shared: true }
         : {}),
       ...(alias ? { alias } : {}),

@@ -68,25 +68,25 @@ describe('term load over OCI', () => {
   })
 
   const project = async (): Promise<string> => {
-    const root = path.join(work, 'app')
-    await fs.mkdir(root, { recursive: true })
+    const dir = path.join(work, 'app')
+    await fs.mkdir(dir, { recursive: true })
     await fs.writeFile(
-      path.join(root, 'deck.tree'),
+      path.join(dir, 'deck.tree'),
       `deck @alice/app\n  code <1.0.0>\n  base alice, <${server.host}/alice>\n  link @alice/demo, code <1.0.x>\n`,
     )
 
-    return root
+    return dir
   }
 
   it('routes a base line, installs, and pins the digest and the key in lock.tree', async () => {
-    const root = await project()
+    const dir = await project()
 
-    await install({ root })
+    await install({ root: dir })
 
-    const installed = path.join(root, 'link', '@alice', 'demo', 'code', 'demo.ts')
+    const installed = path.join(dir, 'link', '@alice', 'demo', 'code', 'demo.ts')
     expect(await fs.readFile(installed, 'utf8')).toBe('export const demo = 1\n')
 
-    const lock = await loadLockfile({ dir: root })
+    const lock = await loadLockfile({ dir: dir })
     const entry = lock!.decks.find(deck => deck.name === '@alice/demo')!
 
     expect(entry.site).toBe(`oci://${server.host}/alice/demo@${entry.hash}`)
@@ -94,13 +94,13 @@ describe('term load over OCI', () => {
   })
 
   it('installs again offline, from the store alone', async () => {
-    const root = await project()
-    await fs.rm(path.join(root, 'link'), { recursive: true, force: true })
+    const dir = await project()
+    await fs.rm(path.join(dir, 'link'), { recursive: true, force: true })
     const before = server.requests.length
 
-    await install({ root, offline: true })
+    await install({ root: dir, offline: true })
 
-    expect(await fs.readFile(path.join(root, 'link', '@alice', 'demo', 'code', 'demo.ts'), 'utf8')).toBe('export const demo = 1\n')
+    expect(await fs.readFile(path.join(dir, 'link', '@alice', 'demo', 'code', 'demo.ts'), 'utf8')).toBe('export const demo = 1\n')
     expect(server.requests.length).toBe(before)
   })
 

@@ -82,6 +82,8 @@ import type {
   Twin,
 } from '@term/make/code/compile/node'
 import { checkTwins } from '@term/make/code/check/twin'
+import { applyTwins } from '@term/make/code/ir/twin'
+import type { TwinChoices } from '@term/make/code/ir/twin'
 
 // The render-runtime helpers that `lowerZones` (compile/view-lower.ts)
 // synthesizes calls to when it lowers a `zone` component. Because that
@@ -224,6 +226,9 @@ export function compile(
     // arguments. Off for every file no marked rule matches, which is almost all of them. See note/term/lean.md
     // and deck/call/code/role-of.ts.
     leanOf?: (file: string) => boolean | undefined
+    // which implementation of a task to build, for this target (ir/twin.ts): the reference, a twin by label, or a size
+    // check between two. From `bake.json` (optimize-0014) or a test. Absent, every task is built as written
+    twins?: TwinChoices
   },
 ): CompileResult {
   // a look stylesheet (.tree whose top-level statements are all `face` / `tone` / `base`) is not a normal compile
@@ -292,6 +297,8 @@ export function compile(
     (options?.env ? `|env:${options.env}` : '') +
     (treeShake ? '|shake' : '') +
     (options?.roll ? '|roll' : '') +
+    // a different choice of implementation is a different program
+    (options?.twins && Object.keys(options.twins).length ? `|twins:${JSON.stringify(options.twins)}` : '') +
     (options?.entryPoints?.length
       ? `|entry:${[...options.entryPoints].sort().join(',')}`
       : '')
@@ -406,6 +413,7 @@ export function compile(
       options?.roll,
       options?.deckOf,
       collected?.scope,
+      options?.twins && Object.keys(options.twins).length > 0 ? { twins, choices: options.twins } : undefined,
     )
 
     // a twin is checked against the program it twins a task of: what can be refused without running anything
@@ -503,6 +511,8 @@ export function compileProgram(
   deckOf?: (file: string) => { name: string; root: string } | undefined,
   // what each module imports by name, so a call to a name two modules define binds to the one its file imported
   scope?: ImportScope,
+  // the chosen implementations, with the closure's twins (ir/twin.ts)
+  selected?: { twins: Twin[]; choices: TwinChoices },
 ): CompileResult {
   // the certificate checker's refusals so far, so this compile can report its own
   const uncertifiedBefore = uncertifiedCount()
@@ -522,6 +532,15 @@ export function compileProgram(
 
   if (ambiguities.length) {
     return { ok: false, diagnostics: ambiguities }
+  }
+
+  // the chosen implementations, BEFORE names are bound, so the twins and the dispatch are checked like any task
+  if (selected) {
+    const refused = applyTwins(program, selected.twins, selected.choices, env, file)
+
+    if (refused.length) {
+      return { ok: false, diagnostics: refused }
+    }
   }
 
   // hole-filling: bind names to definitions

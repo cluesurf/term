@@ -36,6 +36,8 @@ mint twin
     site cost
   case knob, mint twin-knob
     site knob
+  case mark, mint twin-mark
+    site mark
   case note
     site note
   case flow
@@ -50,6 +52,7 @@ mint twin
       bind ease, read ease
       bind cost, read cost
       bind knob, read knob
+      bind mark, read mark
       bind note, read note
       bind flow, read flow
 
@@ -90,3 +93,13 @@ mint twin-knob
     make twin-knob
       bind name, read name
       bind like, read like
+
+mint twin-mark
+  case kind
+    site kind
+  case name, mint twin-label
+    site name
+  hook make
+    make twin-mark
+      bind kind, read kind
+      bind name, read name

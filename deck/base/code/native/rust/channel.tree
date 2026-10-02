@@ -1,13 +1,13 @@
-# rust channel implementation. Forwards to the linked channel runtime shim (tokio mpsc). Declares the opaque handle type a channel holds (the SeedChannel sender/receiver pair). Internal: reached only through the public channel API.
+# rust channel implementation. Forwards to the linked channel runtime shim (tokio mpsc). Declares the opaque handle
+# type a channel holds (the SeedChannel sender/receiver pair). A message crosses as `unknown`, so one shim serves every
+# message type, and the public `channel` form types it on the way out. Internal: reached only through the public
+# channel API.
 
 dock type
   load <channel::SeedChannel>, name channel-handle
 
 dock load
   load <global:channel>, name channel
-
-load @term/base/code/channel
-  find channel
 
 task do-make
   like channel-handle
@@ -16,27 +16,27 @@ task do-make
 
 task do-send
   note async
-  take self, like channel
-  take item, like text
+  take target, like channel-handle
+  take item, like unknown
   like void
   call channel/send
-    read self/dock
+    read target
     read item
     wait true
 
 task do-receive
   note async
-  take self, like channel
-  like text
+  take source, like channel-handle
+  like unknown
   send back
     call channel/receive
-      read self/dock
+      read source
       wait true
 
 task do-close
   note async
-  take self, like channel
+  take target, like channel-handle
   like void
   call channel/close
-    read self/dock
+    read target
     wait true

@@ -27,8 +27,10 @@ load @term/mill/code/code/tool/flow/mine
 #       <claim>
 #     ease float-order               a relaxation of the meaning this twin needs, granted by `note ease` at the caller
 #     cost <expression>              an estimate of the work over the input sizes, for the static choice
-#     mark tile, like number         a knob: a compile-time value a `tour` chooses
-#     note platform, name rust       eligible on that target only (and `note trust`: admitted as trusted)
+#     mark tile, like number         a knob: a compile-time value a `tour` chooses (a `mark` WITH a `like`)
+#     mark platform, name rust       eligible on that target only (a `mark` with no `like` is metadata)
+#     mark trust                     admitted as trusted
+#     note <text>                    documentation, which is all `note` is
 #     ...                            the body, an ordinary task body
 #
 # The task's name is a bare word. `name <label>` is its sibling under `twin`, which is what the comma does, exactly
@@ -52,8 +54,11 @@ mine twin
           site ease
         mine form, like twin-cost
           site cost
+        # a knob carries its `like`, so it is tried first: a `mark` with none falls through to metadata
         mine form, like twin-knob
           site knob
+        mine form, like twin-mark
+          site mark
         mine form, like note
           site note
         # LAST. `mine flow` ends in the generic value fallback, which takes any headed group
@@ -89,7 +94,15 @@ mine twin-knob
   mine term, term mark
     mine word
       site name
+    mine form, like like
+      site like
+
+# `mark trust`, `mark platform, name rust`: metadata, a word and an optional `name`
+mine twin-mark
+  mine term, term mark
+    mine word
+      site kind
     mine list
       mine any
-        mine form, like like
-          site like
+        mine form, like twin-label
+          site name

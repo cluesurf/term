@@ -104,6 +104,15 @@ let rustVarNames = new Map<number, string>()
 // real handle type rather than a nonexistent `TcpHandle` struct.
 let rustOpaqueTypes = new Map<string, string>()
 
+// `mark shared` forms (native-dom-0020, optimize-0042): ONE object seen and written through every binding, so a value
+// of one is a `TermShared<Form>` handle (an `Rc<RefCell<Form>>` underneath, see `termShared`). Cloning the handle
+// shares the object, a field read borrows it, a field write borrows it mutably, and `==` and the hash are identity, as
+// on TypeScript, Swift and Kotlin, so a shared value can be a record's field and a map's key like any other
+let rustSharedForms = new Set<string>()
+
+const isSharedType = (type: Type | undefined): boolean =>
+  type?.kind === 'named' && rustSharedForms.has(type.name)
+
 function rustType(type: Type | undefined): string {
   switch (type?.kind) {
     case 'boolean':
@@ -138,17 +147,18 @@ function rustType(type: Type | undefined): string {
         return opaque
       }
 
-      if (type.args && type.args.length > 0) {
-        return `${pascal(type.name)}<${type.args.map(rustType).join(', ')}>`
-      }
-
       // a generic form named without its arguments (`like maybe`): each parameter is the unknown, i64, the same
       // default a free inference variable gets
       const arity = rustGenericArity.get(type.name) ?? 0
+      const plain =
+        type.args && type.args.length > 0
+          ? `${pascal(type.name)}<${type.args.map(rustType).join(', ')}>`
+          : arity > 0
+            ? `${pascal(type.name)}<${Array.from({ length: arity }, () => 'i64').join(', ')}>`
+            : pascal(type.name)
 
-      return arity > 0
-        ? `${pascal(type.name)}<${Array.from({ length: arity }, () => 'i64').join(', ')}>`
-        : pascal(type.name)
+      // a `mark shared` form is the handle, never the struct
+      return rustSharedForms.has(type.name) ? `TermShared<${plain}>` : plain
     }
 
     case 'function': {
@@ -250,6 +260,9 @@ export function emitRust(
     program
       .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type')
       .map(n => [n.name, n.params?.length ?? 0]),
+  )
+  rustSharedForms = new Set(
+    program.flatMap(n => (n.form === 'record-type' && n.shared && n.variants.length === 0 ? [n.name] : [])),
   )
   // opaque handle types declared by `dock type` shims: seed name -> concrete rust type
   rustOpaqueTypes = new Map(
@@ -861,6 +874,11 @@ export function emitRust(
           return true
         }
 
+        // a `mark shared` value compares and hashes by identity (`TermShared`), whatever it holds
+        if (rustSharedForms.has(type.name)) {
+          return true
+        }
+
         return forms.has(type.name) && args.every(a => fieldTypeQualifies(a, params, forms, hash))
       }
       default:
@@ -952,31 +970,38 @@ export function emitRust(
   // `PartialEq` written out for a form `keyParams` names, with the bound the derive cannot spell: every parameter
   // `PartialEq`, and a key parameter `Eq + Hash + Clone` too. Field by field for a struct, case by case for an enum.
   const keyedEquality = (
-    node: { name: string; params: string[]; fields: { name: string }[]; variants: { name: string; fields: { name: string }[] }[] },
+    node: {
+      name: string
+      params: string[]
+      fields: { name: string; type: Type }[]
+      variants: { name: string; fields: { name: string; type: Type }[] }[]
+    },
     keyed: Set<string>,
   ): string => {
     const name = pascal(node.name)
-    const generics = node.params
-      .map(p => `${p.toUpperCase()}: PartialEq${keyed.has(p) ? ' + Eq + std::hash::Hash + Clone' : ''}`)
-      .join(', ')
-    const applied = `<${node.params.map(p => p.toUpperCase()).join(', ')}>`
+    const generics = node.params.length
+      ? `<${node.params.map(p => `${p.toUpperCase()}: PartialEq${keyed.has(p) ? ' + Eq + std::hash::Hash + Clone' : ''}`).join(', ')}>`
+      : ''
+    const applied = node.params.length ? `<${node.params.map(p => p.toUpperCase()).join(', ')}>` : ''
+    // `a` and `b` are references in both uses below; a `TermShared` field compares by identity through its own `==`
+    const same = (_type: Type, a: string, b: string): string => `${a} == ${b}`
 
     if (node.variants.length === 0) {
-      const same = node.fields.map(f => `self.${snake(f.name)} == other.${snake(f.name)}`)
+      const each = node.fields.map(f => same(f.type, `&self.${snake(f.name)}`, `&other.${snake(f.name)}`))
 
-      return `impl<${generics}> PartialEq for ${name}${applied} { fn eq(&self, other: &Self) -> bool { ${same.length ? same.join(' && ') : 'true'} } }`
+      return `impl${generics} PartialEq for ${name}${applied} { fn eq(&self, other: &Self) -> bool { ${each.length ? each.join(' && ') : 'true'} } }`
     }
 
     const arms = node.variants.map(v => {
       const left = v.fields.map((f, i) => `${snake(f.name)}: a${i}`)
       const right = v.fields.map((f, i) => `${snake(f.name)}: b${i}`)
       const pattern = (binds: string[]) => `${name}::${pascal(v.name)}${binds.length ? ` { ${binds.join(', ')} }` : ''}`
-      const same = v.fields.map((_, i) => `a${i} == b${i}`)
+      const each = v.fields.map((f, i) => same(f.type, `a${i}`, `b${i}`))
 
-      return `(${pattern(left)}, ${pattern(right)}) => ${same.length ? same.join(' && ') : 'true'},`
+      return `(${pattern(left)}, ${pattern(right)}) => ${each.length ? each.join(' && ') : 'true'},`
     })
 
-    return `impl<${generics}> PartialEq for ${name}${applied} { fn eq(&self, other: &Self) -> bool { match (self, other) { ${arms.join(' ')} _ => false } } }`
+    return `impl${generics} PartialEq for ${name}${applied} { fn eq(&self, other: &Self) -> bool { match (self, other) { ${arms.join(' ')} _ => false } } }`
   }
 
   // for each form, which of its generic parameters (by index) flow into a map KEY position inside its fields. A `set<t>`
@@ -1343,7 +1368,7 @@ export function emitRust(
           .filter(f => !given.has(f.name))
           .map(f => `${snake(f.name)}: ${emptyOf(f.type)}`)
 
-        return `${pascal(node.name)} { ${[
+        const built = `${pascal(node.name)} { ${[
           ...node.fields.map(
             f =>
               `${snake(f.name)}: ${boxUnknown(declared.get(f.name), f.value, owned(f.value))}`,
@@ -1353,6 +1378,9 @@ export function emitRust(
             ? ['_marker: std::marker::PhantomData']
             : []),
         ].join(', ')} }`
+
+        // a `mark shared` form is made once and handed out as its handle
+        return rustSharedForms.has(node.name) ? `TermShared::new(${built})` : built
       }
 
       case 'member': {
@@ -1664,6 +1692,11 @@ export function emitRust(
       const root = rootVariable(node)
       const separator = root && aliases.has(root) ? '::' : '.'
 
+      // a field of a `mark shared` value is read through its handle
+      if (isSharedType(node.target.type)) {
+        return `${memberPath(node.target)}.borrow().${snake(node.name)}`
+      }
+
       return `${memberPath(node.target)}${separator}${snake(node.name)}`
     }
 
@@ -1788,6 +1821,12 @@ export function emitRust(
           return `{ let __slot_value = ${bare(owned(node.value))}; ${moduleConstName(node.target.name)}.with(|v| *v.borrow_mut() = Some(__slot_value)); }`
         }
 
+        // a write to a field of a `mark shared` value goes through its handle, the value computed first so no read
+        // borrow of the same object is alive at the write
+        if (node.target.form === 'member' && !node.target.index && isSharedType(node.target.target.type)) {
+          return `{ let __shared_value = ${bare(owned(node.value))}; ${memberPath(node.target.target)}.borrow_mut().${snake(node.target.name)} ${node.op} __shared_value; }`
+        }
+
         // a write to a list slot or a map entry by a COMPUTED key (`save slots/{value}, ...`): the read of the target
         // emits `slots.borrow()[i].clone()`, a value, which is no place to assign to (E0070). The write goes through
         // `borrow_mut`, with the value and the key computed first so no `borrow()` guard is alive at the write
@@ -1835,6 +1874,27 @@ export function emitRust(
             : node.value?.type?.kind
         // only a FIELD READ is certainly the boxed dynamic; a dock call's rust value is already concrete,
         // and downcasting a plain struct does not compile
+        // and a CALL that answers the unknown, returned at a generic letter (`like t`), downcasts too: a typed channel's
+        // `receive` or a typed task's `wait` taking its value back out of the one untyped shim. Every generic here is
+        // `Clone + 'static`, which is what the downcast needs
+        // NOT a native list or map operation on a typed receiver (`self/pop`, `self/get` in the stdlib's list): its
+        // rust value is already the element type, and downcasting a `T` does not compile (E0599), which broke every
+        // Rust program that used a list (found by test/compile/meaning-native.ts, 2026-10-02)
+        const callee = node.value?.form === 'call' ? node.value.callee : undefined
+        const collectionCall =
+          callee?.form === 'member' &&
+          (callee.target.type?.kind === 'array' ||
+            callee.target.type?.kind === 'map' ||
+            (callee.target.type?.kind === 'named' && (callee.target.type.name === 'list' || callee.target.type.name === 'hash')))
+        const callValue =
+          (node.value?.form === 'call' && !collectionCall) ||
+          (node.value?.form === 'await' && node.value.expr.form === 'call')
+        const generic =
+          currentResult?.kind === 'variable' ||
+          (currentResult?.kind === 'named' &&
+            /^[a-z]$/.test(currentResult.name) &&
+            !currentResult.args?.length &&
+            !recordFields.has(currentResult.name))
         const casted =
           node.value &&
           node.value.form === 'member' &&
@@ -1842,7 +1902,9 @@ export function emitRust(
           currentResult?.kind === 'named' &&
           recordFields.has(currentResult.name)
             ? `${value}.downcast_ref::<${rustType(currentResult)}>().unwrap().clone()`
-            : value
+            : node.value && callValue && (valueKind === 'unknown' || valueKind === 'dynamic') && generic
+              ? `${value}.downcast_ref::<${rustType(currentResult!)}>().unwrap().clone()`
+              : value
 
         // a bare `send back` in a task whose synthesized result is the boxed dynamic answers the boxed unit
         const boxedUnit =
@@ -2453,12 +2515,13 @@ export function emitRust(
         // cannot DERIVE it: the derive bounds `T: PartialEq`, and a map's equality needs its key `Eq + Hash`. That
         // form gets the impl written out with the bound the derive cannot spell (`keyedEquality` below).
         const keyed = equatableForms.has(node.name) ? keyParams(node) : new Set<string>()
+        const writeIt = equatableForms.has(node.name) && keyed.size > 0
         const derive = `#[derive(${[
           'Clone',
-          ...(equatableForms.has(node.name) && keyed.size === 0 ? ['PartialEq'] : []),
+          ...(equatableForms.has(node.name) && !writeIt ? ['PartialEq'] : []),
           ...(hashableForms.has(node.name) ? ['Eq', 'Hash'] : []),
         ].join(', ')})]\n${pad(d)}`
-        const written = keyed.size > 0 ? `\n${pad(d)}${keyedEquality(node, keyed)}` : ''
+        const written = writeIt ? `\n${pad(d)}${keyedEquality(node, keyed)}` : ''
 
         if (node.variants.length > 0) {
           const cases = node.variants.map(v => {
@@ -2723,6 +2786,21 @@ impl<K: std::hash::Hash + Eq + Clone, V: PartialEq> PartialEq for TermMap<K, V> 
 impl<K: std::hash::Hash + Eq + Clone + std::fmt::Debug, V: std::fmt::Debug> std::fmt::Debug for TermMap<K, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.debug_map().entries(self.iter()).finish() }
 }`,
+    // a value of a `mark shared` form: one object behind every binding. Equal, and hashed, by IDENTITY, the meaning
+    // on every backend, so it can be a record's field and a map's key. Derefs to the RefCell, so `.borrow()` and
+    // `.borrow_mut()` reach the object as through a bare `Rc<RefCell<..>>`
+    `// a value of a \`mark shared\` form (optimize-0042): one object, compared and hashed by identity
+#[allow(dead_code)]
+pub struct TermShared<T>(pub std::rc::Rc<std::cell::RefCell<T>>);
+#[allow(dead_code)]
+impl<T> TermShared<T> { pub fn new(value: T) -> Self { TermShared(std::rc::Rc::new(std::cell::RefCell::new(value))) } }
+impl<T> Clone for TermShared<T> { fn clone(&self) -> Self { TermShared(self.0.clone()) } }
+impl<T> PartialEq for TermShared<T> { fn eq(&self, other: &Self) -> bool { std::rc::Rc::ptr_eq(&self.0, &other.0) } }
+impl<T> Eq for TermShared<T> {}
+impl<T> std::hash::Hash for TermShared<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) { (std::rc::Rc::as_ptr(&self.0) as *const () as usize).hash(state) }
+}
+impl<T> std::ops::Deref for TermShared<T> { type Target = std::cell::RefCell<T>; fn deref(&self) -> &Self::Target { &self.0 } }`,
   ]
 
   const carrier = body.some(b => b.includes('TermException'))

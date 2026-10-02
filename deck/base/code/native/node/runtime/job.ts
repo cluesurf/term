@@ -17,7 +17,8 @@
 type SeedJob = {
   promise: Promise<void>
   state: 'running' | 'done' | 'failed' | 'cancelled'
-  result: string
+  // any Term value: the public `handle` form is what types it
+  result: unknown
   error: unknown
   // resolvers of every `settle` waiting on this job, released by settling OR by cancel
   waiting: (() => void)[]
@@ -37,11 +38,11 @@ const job = {
   // start `work` immediately. `work` may be a synchronous or async closure (the async-closure lowering makes an async
   // one return a promise); either way it is normalized to a promise, and the promise NEVER rejects: its outcome is
   // recorded on the job, so no job can become an unhandled rejection whoever stops waiting for it
-  spawn: (work: () => string | Promise<string>): SeedJob => {
+  spawn: (work: () => unknown): SeedJob => {
     const self: SeedJob = {
       promise: Promise.resolve(),
       state: 'running',
-      result: '',
+      result: undefined,
       error: undefined,
       waiting: [],
     }
@@ -124,10 +125,10 @@ const job = {
 
   state: (self: SeedJob): string => self.state,
 
-  result: (self: SeedJob): string => self.result,
+  result: (self: SeedJob): unknown => self.result,
 
   // raise what the job raised, unchanged
-  rethrow: (self: SeedJob): string => {
+  rethrow: (self: SeedJob): unknown => {
     throw self.error
   },
 

@@ -13,6 +13,7 @@ import { mill } from '@term/make/code/compile/mill'
 import { resolve as resolveNames } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
 import { resolveAsync } from '@term/make/code/check/async-resolve'
+import { extendForms } from '@term/make/code/check/extend'
 import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
 import type { Source } from '@term/make/code/compile/load'
@@ -164,6 +165,9 @@ function frontEnd(
     program.push(...built.program)
   }
 
+  // form extension, as compile() runs it first: an exception form (`like timeout`) gets its fields and every `halt
+  // <form>` is finished. Without it a raise of a stdlib exception emitted a class with no fields
+  extendForms(program, 'main.tree')
   resolveNames(program, 'main.tree')
   check(program, 'main.tree')
 
@@ -226,9 +230,17 @@ function run(command: string, argv: string[]): Promise<{ status: number | null; 
   })
 }
 
+// a compiler's error lines first: a build prints its warnings beside them, and the first 300 characters were often
+// only a warning that does not fail the build at all
+function errorLines(text: string): string {
+  const errors = text.split('\n').filter(line => /\berror\b/.test(line))
+
+  return errors.length > 0 ? errors.slice(0, 6).join('\n') : text.slice(0, 300)
+}
+
 function nativeFailure(name: string, tool: string, stderr: string): void {
   fail++
-  console.log(`FAIL  ${name}  (${tool} error: ${stderr.slice(0, 300)})`)
+  console.log(`FAIL  ${name}  (${tool} error: ${errorLines(stderr)})`)
 }
 
 // CARGO BUILDS ITS BINARIES TOGETHER. The programs with crate dependencies (http, websocket, json, fs, crypto) share one
@@ -346,7 +358,7 @@ function kotlinFailure(job: KotlinJob, e: unknown): void {
   }
 
   fail++
-  console.log(`FAIL  ${job.name}  (kotlinc error: ${text.slice(0, 300)})`)
+  console.log(`FAIL  ${job.name}  (kotlinc error: ${errorLines(text)})`)
 }
 
 function runKotlinJob(job: KotlinJob, jar: string, at: number): void {
@@ -2072,6 +2084,83 @@ task compute
       read got
       text <channel-ok>
 `
+// structured concurrency: a typed task result (a number waits back as a number) and a gather of two in source order
+const JOB_PROG = `load @term/base/code/task
+  find spawn
+  find gather
+
+task compute
+  note async
+  like boolean
+  save job
+    call spawn
+      task work
+        like number
+        send back, code 40
+  save got
+    call wait
+      read job
+      wait true
+  save works
+    make list
+  call works/push
+    task a
+      like text
+      send back, text <A>
+  call works/push
+    task b
+      like text
+      send back, text <B>
+  save both
+    call gather
+      read works
+      wait true
+  send back
+    call and
+      call is-equal
+        call add
+          read got
+          code 2
+        code 42
+      call is-equal
+        call both/at
+          code 1
+        text <B>
+`
+// a typed channel carrying a form with variants, received by fork case
+const VARIANT_CHANNEL_PROG = `load @term/base/code/channel
+  find make-channel
+  find send
+  find receive
+
+form ping
+  case ask
+    link question, like text
+  case stop
+
+task compute
+  note async
+  like boolean
+  save gate
+    call make-channel
+  call send
+    read gate
+    make ask
+      bind question, text <variant-ok>
+    wait true
+  save got
+    call receive
+      read gate
+      wait true
+  fork case, read got
+    case ask
+      send back
+        call is-equal
+          read question
+          text <variant-ok>
+    case stop
+      send back, false
+`
 // concurrency atomic: an atomic counter, increase then load (node Atomics/SAB, rust AtomicI64, swift lock-guarded,
 // kotlin AtomicLong). 10 + 5 = 15, and the cell reads back 15.
 const ATOMIC_PROG = `load @term/base/code/atomic
@@ -3486,6 +3575,14 @@ async function main(): Promise<void> {
     'true',
     true,
   )
+  // structured concurrency: a typed task result and a gather, on the job shim each backend now has
+  runRustCargo('rust + cargo: job spawn + wait + gather', frontEnd(JOB_PROG, true, 'rust'), 'true', true)
+  runKotlinText('kotlin + job: spawn + wait + gather', frontEnd(JOB_PROG, true, 'kotlin'), 'true', true)
+  runSwiftText('swift + job: spawn + wait + gather', frontEnd(JOB_PROG, true, 'swift'), 'true', true)
+  // a typed channel carrying a variant form
+  runRustCargo('rust + cargo: channel of a variant form', frontEnd(VARIANT_CHANNEL_PROG, true, 'rust'), 'true', true)
+  runKotlinText('kotlin + channel: a variant form', frontEnd(VARIANT_CHANNEL_PROG, true, 'kotlin'), 'true', true)
+  runSwiftText('swift + channel: a variant form', frontEnd(VARIANT_CHANNEL_PROG, true, 'swift'), 'true', true)
   // concurrency: atomic counter increase + load
   runRustCargo(
     'rust + cargo: atomic increase + load (AtomicI64)',

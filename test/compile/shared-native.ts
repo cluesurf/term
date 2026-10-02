@@ -1,9 +1,10 @@
-// `note shared` on the native backends (native-dom-0001): a form that says it is ONE object is seen and written
+// `mark shared` on the native backends (native-dom-0001): a form that says it is ONE object is seen and written
 // through every binding of it. A program binds one tally twice, bumps it through each binding and through a task
-// parameter, and must read 2. Swift's forms are structs, so without `note shared` the same program reads 0 there,
-// which is the negative control: it proves the test can tell a reference from a copy. Kotlin's forms are classes
-// already and read 2 either way. Rust is not lowered yet (native-dom-0020) and is not run here.
-// SN_ONLY=swift (or kotlin) runs one backend. Run: npx tsx test/compile/shared-native.ts
+// parameter, and must read 2. Swift's forms are structs and Rust's are values, so without `mark shared` the same
+// program reads 0 there, which is the negative control: it proves the test can tell a reference from a copy.
+// Kotlin's forms are classes already and read 2 either way. Rust lowers a shared form to an `Rc<RefCell<..>>`
+// handle (optimize-0042, 2026-10-02). `note shared`, the spelling from before `note` became text, still reads.
+// SN_ONLY=swift (or kotlin, rust) runs one backend. Run: npx tsx test/compile/shared-native.ts
 
 import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, writeFileSync } from 'node:fs'
@@ -21,6 +22,7 @@ import { disambiguateOverloads } from '@term/make/code/check/overload'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { emitTypeScript } from '@term/make/code/compile/typescript'
 import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
+import { emitRust } from '@term/make/code/compile/rust'
 import type { Program } from '@term/make/code/compile/node'
 
 let pass = 0
@@ -54,7 +56,7 @@ function have(tool: string): boolean {
 
 // one tally, two bindings, bumped once through each: one object reads 2, two copies leave the original at 0
 const program = (shared: boolean): string => `form tally
-${shared ? '  note shared\n' : ''}  link count, like number
+${shared ? '  mark shared\n' : ''}  link count, like number
 
 task bump
   take t, like tally
@@ -111,7 +113,7 @@ const only = process.env.SN_ONLY ?? ''
 {
   const marked = frontEnd(true).find(n => n.form === 'record-type' && n.name === 'tally')
   const plain = frontEnd(false).find(n => n.form === 'record-type' && n.name === 'tally')
-  ok('mill: `note shared` sets shared on the form', marked?.form === 'record-type' && marked.shared === true)
+  ok('mill: `mark shared` sets shared on the form', marked?.form === 'record-type' && marked.shared === true)
   ok('mill: a form without it is not shared', plain?.form === 'record-type' && plain.shared === undefined)
 }
 
@@ -181,6 +183,40 @@ function runKotlin(): void {
   )
 }
 
+// Rust: a shared form is an `Rc<RefCell<..>>` handle, so both bindings and the parameter reach one object and read
+// 2. Without it a form is a value, every binding a copy, and the original reads 0: the negative control
+function runRust(): void {
+  if (!have('rustc')) {
+    return skipped('rust: shared', 'rustc not installed')
+  }
+
+  for (const shared of [true, false]) {
+    const source = emitRust(frontEnd(shared))
+    const label = `rust (${shared ? 'shared' : 'value'})`
+
+    ok(
+      `${label}: the form is ${shared ? 'a TermShared handle' : 'a plain struct'}`,
+      shared ? source.includes('TermShared<Tally>') : !source.includes('TermShared<Tally>'),
+      source.slice(0, 300),
+    )
+
+    const main = join(dir, `main-${shared}.rs`)
+    writeFileSync(main, `${source}\nfn main() { println!("{}", run()); }\n`)
+
+    if (!build(label, ['rustc', '-A', 'warnings', '-o', join(dir, `rust-${shared}`), main])) {
+      continue
+    }
+
+    const result = spawnSync(join(dir, `rust-${shared}`), [], { encoding: 'utf8' })
+    const want = shared ? '2' : '0'
+    ok(
+      `${label}: reads ${want}`,
+      result.status === 0 && result.stdout.trim() === want,
+      `exit ${result.status}: ${(result.stdout + result.stderr).slice(0, 200)}`,
+    )
+  }
+}
+
 // TypeScript's forms are objects, so one is one object already: the emitted module runs under tsx and reads 2
 function runTypeScript(): void {
   const file = join(dir, 'main.ts')
@@ -191,6 +227,10 @@ function runTypeScript(): void {
     result.status === 0 && result.stdout.trim() === '2',
     `exit ${result.status}: ${(result.stdout + result.stderr).slice(0, 300)}`,
   )
+}
+
+if (!only || only === 'rust') {
+  runRust()
 }
 
 if (!only || only === 'typescript') {

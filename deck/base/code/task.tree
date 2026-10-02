@@ -1,7 +1,8 @@
 # Structured concurrency: spawn a task, wait for its result, cancel it, or gather a group of tasks so they all finish
-# before control returns. A task carries a text result (the portable payload, matching the channel default). Each
-# backend's shim reports a job's state (`running`, `done`, `failed`, `cancelled`) and keeps its outcome, and what a
-# state MEANS is decided here, once, so every backend raises the same typed exceptions:
+# before control returns. A task's result is typed (`handle r`), and crosses the backend's shim boxed as `unknown`,
+# so one shim serves every result type. Each backend's shim reports a job's state (`running`, `done`, `failed`,
+# `cancelled`) and keeps its outcome, and what a state MEANS is decided here, once, so every backend raises the same
+# typed exceptions:
 #
 #   wait          the result, the job's own raise unchanged, or `outage` when the job was cancelled
 #   wait-within   the same, or `timeout` after the given milliseconds, cancelling the job it gave up on
@@ -28,8 +29,9 @@ load @term/base/code/native/{platform}/job
   find do-cancel
   find do-alive
 
-# a running concurrent task carrying a text result. The platform job object lives in the opaque `dock` handle.
+# a running concurrent task whose result is an `r`. The platform job object lives in the opaque `dock` handle.
 form handle
+  head r
   link dock, like job-handle
 
   # wait for the task to finish and return its result. A task that raised raises the same exception here, and a
@@ -37,9 +39,9 @@ form handle
   task wait
     note async
     take self
-    like text
+    like r
     call do-settle
-      read self
+      read self/dock
       wait true
     send back
       call outcome
@@ -51,10 +53,10 @@ form handle
     note async
     take self
     take milliseconds, like number
-    like text
+    like r
     save settled
       call do-settle-within
-        read self
+        read self/dock
         read milliseconds
         wait true
     fork test
@@ -63,7 +65,7 @@ form handle
           read settled
       hook hold
         call do-cancel
-          read self
+          read self/dock
         halt timeout
           bind thing, text <task>
           bind waited, read milliseconds
@@ -76,7 +78,7 @@ form handle
     take self
     like void
     call do-cancel
-      read self
+      read self/dock
 
   # whether the task is still running
   task alive
@@ -84,15 +86,16 @@ form handle
     like boolean
     send back
       call do-alive
-        read self
+        read self/dock
 
 # what a task that is no longer running gives its waiter
 task outcome
-  take self, like handle
-  like text
+  head r
+  take self, like handle r
+  like r
   save state
     call do-state
-      read self
+      read self/dock
   fork test
     hook test
       call is-equal
@@ -101,7 +104,7 @@ task outcome
     hook hold
       send back
         call do-rethrow
-          read self
+          read self/dock
   fork test
     hook test
       call is-equal
@@ -112,20 +115,26 @@ task outcome
         bind thing, text <task>
   send back
     call do-result
-      read self
+      read self/dock
 
 # spawn `work` as a concurrent task and return its handle. `work` is started immediately; its result is collected with
 # `wait`. Use this when a task should outlive the current scope; use `gather` for structured fan-out / join.
 task spawn
+  head r
   take work
     like task
-      like text
-  like handle
+      like r
+  like handle r
+  # the shim takes a task answering the unknown, so the result is boxed here, in Term, where every backend already
+  # knows how to box a value into the unknown, rather than asking each shim to adapt a typed closure
   send back
     make handle
       bind dock
         call do-spawn
-          read work
+          task boxed
+            like unknown
+            send back
+              call work
 
 # run several tasks concurrently and wait for all of them, returning their results in source order. This is the
 # structured-concurrency join. The first task to raise is seen the moment it raises, not after every task before it in
@@ -133,12 +142,13 @@ task spawn
 # waiting for it
 task gather
   note async
+  head r
   take works
     like list
       like task
-        like text
+        like r
   like list
-    like text
+    like r
   save jobs
     make list
   save docks
@@ -146,13 +156,13 @@ task gather
   walk list, read works
     hook next
       take site, name work
-      save job
+      save started
         call spawn
           read work
       call jobs/push
-        read job
+        read started
       call docks/push
-        read job/dock
+        read started/dock
   call do-settle-group
     read docks
     wait true
@@ -160,10 +170,10 @@ task gather
   # because a LATER job failed. Every other job is cancelled, then that one's outcome raises
   walk list, read jobs
     hook next
-      take site, name job
+      take site, name started
       save state
         call do-state
-          read job
+          read started/dock
       fork test
         hook test
           call or
@@ -178,19 +188,19 @@ task gather
             hook next
               take site, name other
               call do-cancel
-                read other
+                read other/dock
           send back
             make list
               call outcome
-                read job
+                read started
   save results
     make list
   walk list, read jobs
     hook next
-      take site, name job
+      take site, name started
       call results/push
         call wait
-          read job
+          read started
           wait true
   send back
     read results

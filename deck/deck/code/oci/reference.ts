@@ -31,7 +31,7 @@ export const OCI_SCHEME = 'oci://'
 export type OciRegistryReference = {
   // `ghcr.io`, `localhost:5000`
   host: string
-  // `cluesurf/term`, or empty for a registry whose packages sit at the root
+  // `cluesurf/term`, or empty for a registry whose packages sit at its top level
   namespace: string
 }
 
@@ -69,9 +69,9 @@ export function parseOciRegistry(value: string): OciRegistryReference {
 
 /**
  * The repository a package lives in. `@term/bind` under `cluesurf/term` is `cluesurf/term/bind`. The scope the
- * registry was chosen by is the namespace, so it is not repeated: a nested scope routed by its root
- * (`@cluesurf/@wordsurf/x` under `@cluesurf`) keeps its inner spaces as path components below the namespace.
- * `scope` is the scope-map key that chose the registry, and defaults to the root scope.
+ * registry was chosen by is the namespace, so it is not repeated: a nested scope routed by its leading
+ * space (`@cluesurf/@wordsurf/x` under `@cluesurf`) keeps its inner spaces as path components below the
+ * namespace. `scope` is the scope-map key that chose the registry, and defaults to the leading space.
  */
 export function repositoryOf(input: {
   package: string

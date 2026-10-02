@@ -21,8 +21,11 @@ form shape
 form empty
 
 form handle
-  note shared
+  mark shared
   link id, like number
+
+form holder
+  link handle, like handle
 
 task make-points
   take n, like number
@@ -117,6 +120,35 @@ task compute
     call is-equal
       read handle-a
       read handle-a
+  host holders-same
+    call is-equal
+      make holder
+        bind handle, read handle-a
+      make holder
+        bind handle, read handle-a
+  host holders-other
+    call is-equal
+      make holder
+        bind handle, read handle-a
+      make holder
+        bind handle
+          make handle
+            bind id, code 1
+  save keyed
+    make find
+  call set
+    read keyed
+    read handle-a
+    code 5
+  host key-same
+    call has
+      read keyed
+      read handle-a
+  host key-other
+    call has
+      read keyed
+      make handle
+        bind id, code 1
   save m
     make find
   call set
@@ -141,4 +173,4 @@ task compute
         bind x, code 3
         bind y, code 4
       code 0
-  send back, text <equal-fields={{equal-fields}} different-fields={{different-fields}} same-name={{same-name}} lines-equal={{lines-equal}} lists-equal={{lists-equal}} lists-differ={{lists-differ}} variants-equal={{variants-equal}} variants-differ={{variants-differ}} empties-equal={{empties-equal}} shared-by-identity={{handles-identity}} shared-self={{handle-self}} key-c-found={{found-by-equal}} size={{size-after-equal-key}} value-by-equal-key={{value-by-equal}}>
+  send back, text <equal-fields={{equal-fields}} different-fields={{different-fields}} same-name={{same-name}} lines-equal={{lines-equal}} lists-equal={{lists-equal}} lists-differ={{lists-differ}} variants-equal={{variants-equal}} variants-differ={{variants-differ}} empties-equal={{empties-equal}} shared-by-identity={{handles-identity}} shared-self={{handle-self}} key-c-found={{found-by-equal}} size={{size-after-equal-key}} value-by-equal-key={{value-by-equal}} holders-same={{holders-same}} holders-other={{holders-other}} shared-key-same={{key-same}} shared-key-other={{key-other}}>

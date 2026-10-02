@@ -1740,6 +1740,68 @@ function countReferencesZone(
   }
 }
 
+// the variable a forwarder's target starts from: `job` for `job.state`, `abs` for `abs`
+function rootOf(node: Expression): string | undefined {
+  if (node.form === 'variable') {
+    return node.name
+  }
+
+  if (node.form === 'member') {
+    return rootOf(node.target)
+  }
+
+  return undefined
+}
+
+// every name a function binds anywhere in its body, nested closures included: parameters, `let`s, loop items and
+// indexes. Coarse on purpose: a name bound anywhere in the function blocks an inlining that could be captured by it
+function boundNames(fn: Extract<Statement, { form: 'function' }>): Set<string> {
+  const names = new Set<string>(fn.params.map(p => p.name))
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') {
+      return
+    }
+
+    if (Array.isArray(node)) {
+      node.forEach(visit)
+
+      return
+    }
+
+    const record = node as Record<string, unknown>
+
+    if (record.form === 'let' && typeof record.name === 'string') {
+      names.add(record.name)
+    }
+
+    if (record.form === 'for-each') {
+      if (typeof record.item === 'string') {
+        names.add(record.item)
+      }
+
+      if (typeof record.index === 'string') {
+        names.add(record.index)
+      }
+    }
+
+    if (record.form === 'closure' && Array.isArray(record.params)) {
+      for (const p of record.params as { name: string }[]) {
+        names.add(p.name)
+      }
+    }
+
+    for (const [key, value] of Object.entries(record)) {
+      if (key !== 'span' && key !== 'type') {
+        visit(value)
+      }
+    }
+  }
+
+  visit(fn.body)
+
+  return names
+}
+
 // `roots` are the entry module's public functions: kept even when unreferenced. Only internal (imported) wrappers are
 // eligible to be dropped once their calls are inlined away.
 function inlineForwarders(
@@ -1762,7 +1824,20 @@ function inlineForwarders(
     return program
   }
 
-  const rewritten = program.map(s => rewriteStatement(s, forwarders))
+  // HYGIENE. Inlining puts the forwarder's target, written in the WRAPPER's scope, into the caller's. When the target
+  // starts with a name the caller binds itself (a parameter, a `let`, a loop variable), the caller's binding captures
+  // it: `gather`'s loop variable `job` turned an inlined `job.state(dock)`, meant for the runtime object `job`, into a
+  // call on the loop's handle. Such a call keeps its wrapper, which then keeps its definition through the reference
+  const rewritten = program.map(s => {
+    if (s.form !== 'function') {
+      return rewriteStatement(s, forwarders)
+    }
+
+    const bound = boundNames(s)
+    const visible = new Map([...forwarders].filter(([, target]) => !bound.has(rootOf(target) ?? '')))
+
+    return rewriteStatement(s, visible.size === forwarders.size ? forwarders : visible)
+  })
   const counts = new Map<string, number>()
 
   for (const s of rewritten) {

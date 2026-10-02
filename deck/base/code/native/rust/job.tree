@@ -1,29 +1,38 @@
-# rust structured-concurrency surface: the opaque handle type and the job-state signatures code/task.tree
-# reads, so the task module builds on this backend (a signature-only task emits the backend's stub). The
-# node backend is the implemented one and carries the tests.
+# rust structured-concurrency implementation. Forwards to the linked job runtime shim. On this backend a task's
+# `work` is typed as a synchronous function, so a job runs to completion inside `spawn` and is settled before its handle
+# exists: `wait` answers at once, `cancel` finds nothing running, and a `gather` is correct and sequential. The states
+# and the exceptions they raise are code/task.tree's, the same as on node. Running work concurrently needs the work
+# typed as asynchronous, which is note/term/research/beam-otp-lessons.md design 1's later half. Internal: reached only
+# through the public task API.
 
 dock type
-  load <any>, name job-handle
+  load <job::SeedJob>, name job-handle
 
-load @term/base/code/task
-  find handle
+dock load
+  load <global:job>, name job
 
 task do-spawn
   take work
     like task
-      like text
+      like unknown
   like job-handle
+  send back
+    call job/spawn
+      read work
 
+# a job here is settled when its handle exists, so there is nothing to wait for
 task do-settle
   note async
-  take self, like handle
+  take dock, like job-handle
   like void
+  send back
 
 task do-settle-within
   note async
-  take self, like handle
+  take dock, like job-handle
   take milliseconds, like number
   like boolean
+  send back, true
 
 task do-settle-group
   note async
@@ -31,23 +40,37 @@ task do-settle-group
     like list
       like job-handle
   like void
+  send back
 
+# `done`, or `failed` when the work raised and this backend's shim caught it
 task do-state
-  take self, like handle
+  take dock, like job-handle
   like text
+  send back
+    call job/state
+      read dock
 
 task do-result
-  take self, like handle
-  like text
+  take dock, like job-handle
+  like unknown
+  send back
+    call job/result
+      read dock
 
 task do-rethrow
-  take self, like handle
-  like text
+  take dock, like job-handle
+  like unknown
+  send back
+    call job/rethrow
+      read dock
 
 task do-cancel
-  take self, like handle
+  take dock, like job-handle
   like void
+  call job/cancel
+    read dock
 
 task do-alive
-  take self, like handle
+  take dock, like job-handle
   like boolean
+  send back, false
