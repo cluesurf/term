@@ -186,45 +186,66 @@ task mix-for-power-rounding
 
 # Euclidean algorithm. The swaps were written as assignments nested inside call arguments, which is not an
 # expression, so each is now its own statement through a temporary.
+# Euclid over the absolute values: gcd(a, 0) is |a|, and gcd(0, 0) is 0. The walk runs while y > 0, so y is its
+# measure, and each turn replaces y by x % y, which is below y. It used to take `a % b` before testing b, so
+# gcd(5, 0) divided by zero, a panic on Rust and NaN on TypeScript.
 task gcd
   take a
   take b
-
+  save x, read a
   fork test
     hook test
-      call is-above
-        read b
-        read a
+      call is-below
+        read x
+        code 0
     hook hold
-      save swap, read a
-      save a, read b
-      save b, read swap
-
+      save x
+        call subtract
+          code 0
+          read x
+  save y, read b
+  fork test
+    hook test
+      call is-below
+        read y
+        code 0
+    hook hold
+      save y
+        call subtract
+          code 0
+          read y
   walk test
     hook test
-      true
+      call is-above
+        read y
+        code 0
     hook hold
-      fork test
-        hook test
-          call is-equal
-            call modulo
-              read a
-              read b
-            code 0
-        hook hold
-          send back
-            call absolute
-              read b
       save rest
         call modulo
-          read a
-          read b
-      save a, read b
-      save b, read rest
+          read x
+          read y
+      save x, read y
+      save y, read rest
+  send back, read x
 
+# lcm(a, 0) is 0, which it already was for a nonzero; lcm(0, 0) divided by gcd(0, 0) = 0 and is now 0 too
 task lcm
   take a
   take b
+  fork test
+    hook test
+      call is-equal
+        read a
+        code 0
+    hook hold
+      send back, code 0
+  fork test
+    hook test
+      call is-equal
+        read b
+        code 0
+    hook hold
+      send back, code 0
   send back
     call absolute
       call multiply

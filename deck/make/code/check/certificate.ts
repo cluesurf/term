@@ -298,3 +298,129 @@ export function refutation(
     rows = next
   }
 }
+
+// ===== GRAM CERTIFICATES for the polynomial provers =====
+//
+// `p >= 0` holds everywhere when p = zᵀ Q z for a vector of monomials z and a positive SEMIDEFINITE matrix Q: then p is
+// a sum of squares. `p > 0` holds everywhere when Q is positive DEFINITE and z contains the constant monomial 1, since
+// z is then never the zero vector. The searches in holds.ts (the quadratic test, the Gram search, the diagonal sum of
+// squares) each find such a Q. This checker is told z and M = 2Q and the polynomial 2p, and decides both facts again
+// with its own arithmetic: its own monomial product, its own BigInt expansion, and positive-semidefiniteness by exact
+// fraction-free symmetric elimination, which is a different algorithm from the searches' principal minors. A search
+// that finds a wrong Q costs a proof here and cannot forge one. proof-by-default-0034.
+
+export type Gram = {
+  // each monomial of z, as the list of its variables with repetition (x² is ['x', 'x'], the constant is [])
+  basis: string[][]
+  // M = 2Q, symmetric, integer
+  matrix: number[][]
+  // 2p, keyed by monomial as the checker keys it (`gramKey`)
+  target: Map<string, number>
+  // p > 0 rather than p >= 0
+  strict: boolean
+}
+
+// the checker's own key for a monomial: its variables sorted and joined
+export function gramKey(variables: string[]): string {
+  return [...variables].sort().join('*')
+}
+
+export function checkGram(certificate: Gram): boolean {
+  const { basis, matrix, target, strict } = certificate
+  const n = basis.length
+
+  if (
+    matrix.length !== n ||
+    matrix.some(row => row.length !== n || row.some(v => !Number.isSafeInteger(v)))
+  ) {
+    return false
+  }
+
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (matrix[i]![j] !== matrix[j]![i]) {
+        return false
+      }
+    }
+  }
+
+  // zᵀ M z, every ordered pair, in BigInt
+  const expanded = new Map<string, bigint>()
+
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const key = gramKey([...basis[i]!, ...basis[j]!])
+      expanded.set(key, (expanded.get(key) ?? 0n) + BigInt(matrix[i]![j]!))
+    }
+  }
+
+  for (const key of new Set([...expanded.keys(), ...target.keys()])) {
+    const want = target.get(key) ?? 0
+
+    if (!Number.isSafeInteger(want) || (expanded.get(key) ?? 0n) !== BigInt(want)) {
+      return false
+    }
+  }
+
+  if (strict && !basis.some(m => m.length === 0)) {
+    return false
+  }
+
+  return strict ? definite(matrix) : semidefinite(matrix)
+}
+
+// positive semidefinite, by symmetric elimination without division: a negative pivot refutes it, a zero pivot needs
+// its whole row to be zero, and a positive pivot p replaces the rest by p·A[i][j] - A[i][k]·A[k][j], which is p times
+// the Schur complement and so is semidefinite exactly when the complement is
+function semidefinite(matrix: number[][]): boolean {
+  const a = matrix.map(row => row.map(v => BigInt(v)))
+  const n = a.length
+
+  for (let k = 0; k < n; k++) {
+    const pivot = a[k]![k]!
+
+    if (pivot < 0n) {
+      return false
+    }
+
+    if (pivot === 0n) {
+      for (let j = k + 1; j < n; j++) {
+        if (a[k]![j] !== 0n) {
+          return false
+        }
+      }
+
+      continue
+    }
+
+    for (let i = k + 1; i < n; i++) {
+      for (let j = k + 1; j < n; j++) {
+        a[i]![j] = pivot * a[i]![j]! - a[i]![k]! * a[k]![j]!
+      }
+    }
+  }
+
+  return true
+}
+
+// positive definite: the same elimination, with every pivot strictly positive
+function definite(matrix: number[][]): boolean {
+  const a = matrix.map(row => row.map(v => BigInt(v)))
+  const n = a.length
+
+  for (let k = 0; k < n; k++) {
+    const pivot = a[k]![k]!
+
+    if (pivot <= 0n) {
+      return false
+    }
+
+    for (let i = k + 1; i < n; i++) {
+      for (let j = k + 1; j < n; j++) {
+        a[i]![j] = pivot * a[i]![j]! - a[i]![k]! * a[k]![j]!
+      }
+    }
+  }
+
+  return true
+}

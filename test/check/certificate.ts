@@ -4,7 +4,9 @@
 // A checker that accepted anything would pass every other suite, so this one holds the checker to its refusals.
 
 import {
+  checkGram,
   checkRefutation,
+  gramKey,
   refutation,
 } from '@term/make/code/check/certificate'
 import type { Step } from '@term/make/code/check/certificate'
@@ -111,6 +113,62 @@ ok(
 ok(
   'proves() refuses an invalid one (x >= 0 |- x >= 1)',
   !proves([atLeast(x, zero)], atLeast(x, linear({}, 1))),
+)
+
+// ---- Gram certificates for the polynomial provers ----
+
+// (x - y)² = x² - 2xy + y², so 2p = 2x² - 4xy + 2y², and over z = (x, y) the matrix M = 2Q is [[2, -2], [-2, 2]]
+const square = (matrix: number[][], strict = false, basis: string[][] = [['x'], ['y']]) =>
+  checkGram({
+    basis,
+    matrix,
+    target: new Map([
+      [gramKey(['x', 'x']), 2],
+      [gramKey(['x', 'y']), -4],
+      [gramKey(['y', 'y']), 2],
+    ]),
+    strict,
+  })
+
+ok('a Gram certificate for (x - y)² >= 0 replays', square([[2, -2], [-2, 2]]))
+ok('a matrix whose expansion is not the polynomial is refused', !square([[2, -1], [-1, 2]]))
+ok('an asymmetric matrix is refused, even with the right expansion', !square([[2, -3], [-1, 2]]))
+ok(
+  'the right expansion over a matrix that is not semidefinite is refused (x² - y²)',
+  !checkGram({
+    basis: [['x'], ['y']],
+    matrix: [[2, 0], [0, -2]],
+    target: new Map([
+      [gramKey(['x', 'x']), 2],
+      [gramKey(['y', 'y']), -2],
+    ]),
+    strict: false,
+  }),
+)
+ok(
+  'a strict claim needs a definite matrix: (x - y)² > 0 is refused',
+  !square([[2, -2], [-2, 2]], true),
+)
+ok(
+  'x² + 1 > 0 replays: definite, and the basis holds the constant',
+  checkGram({
+    basis: [['x'], []],
+    matrix: [[2, 0], [0, 2]],
+    target: new Map([
+      [gramKey(['x', 'x']), 2],
+      [gramKey([]), 2],
+    ]),
+    strict: true,
+  }),
+)
+ok(
+  'x² > 0 is refused: definite over z = (x), but zero at x = 0, and the basis has no constant',
+  !checkGram({
+    basis: [['x']],
+    matrix: [[2]],
+    target: new Map([[gramKey(['x', 'x']), 2]]),
+    strict: true,
+  }),
 )
 
 console.log(`\ncertificate: ${pass} pass, ${fail} fail`)

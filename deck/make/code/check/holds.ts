@@ -37,8 +37,10 @@ import {
   atMost,
   below,
   linear,
+  noteUncertified,
   proves,
 } from '@term/make/code/check/refine'
+import { checkGram, gramKey } from '@term/make/code/check/certificate'
 import {
   positiveEverywhere as sturmPositiveEverywhere,
   nonNegativeEverywhere as sturmNonNegativeEverywhere,
@@ -110,20 +112,42 @@ function extremaOf(program: Program): Map<string, 'max' | 'min'> {
   return table
 }
 
-// each remainder atom's dividend: a truncated remainder has the sign of its dividend, so where the dividend is
-// provably non-negative the remainder is too
+// each remainder atom's dividend, and its divisor when that is not a constant, each as a SNAPSHOT atom equal to the
+// value at the `%` (snapshot): a truncated remainder has the sign of its dividend, and is smaller than its divisor in
+// size
 const modDividends = new Map<string, Linear>()
+const modDivisors = new Map<string, Linear>()
 
-// the facts `m >= 0` for every remainder atom among these whose dividend the facts already show is non-negative
+// a fresh atom equal to `value` now, which no later write can change
+function snapshot(value: Linear, side: Inequality[]): Linear {
+  const atom = linear({ [`__was${modCounter++}`]: 1 })
+  side.push(atMost(atom, value), atLeast(atom, value))
+
+  return atom
+}
+
+// the facts the signs decide, for every remainder atom among these: `m >= 0` where the dividend was non-negative,
+// and `-(d - 1) <= m <= d - 1` where the divisor d was positive (`d + 1 <= m <= -d - 1` where it was negative)
 function signedRemainders(all: Inequality[]): Inequality[] {
   const extra: Inequality[] = []
+  const zero = linear({}, 0)
+  const one = linear({}, 1)
 
   for (const q of all) {
     for (const key of q.linear.terms.keys()) {
+      const m = linear({ [key]: 1 })
       const dividend = modDividends.get(key)
 
-      if (dividend && proves(all, atLeast(dividend, linear({}, 0)))) {
-        extra.push(atLeast(linear({ [key]: 1 }), linear({}, 0)))
+      if (dividend && proves(all, atLeast(dividend, zero))) {
+        extra.push(atLeast(m, zero))
+      }
+
+      const divisor = modDivisors.get(key)
+
+      if (divisor && proves(all, atLeast(divisor, one))) {
+        extra.push(atMost(m, add(divisor, linear({}, -1))), atLeast(m, add(scale(divisor, -1), one)))
+      } else if (divisor && proves(all, atMost(divisor, linear({}, -1)))) {
+        extra.push(atMost(m, add(scale(divisor, -1), linear({}, -1))), atLeast(m, add(divisor, one)))
       }
     }
   }
@@ -257,14 +281,23 @@ function toLinear(
         // sign of x. Until 2026-10-02 this said [0, k-1], and `n % 3 >= 0` was proven for an integer n that may be
         // negative (test/check/soundness.ts).
         const k = constantOf(right)
+        const key = `__mod${modCounter++}`
+        const m = linear({ [key]: 1 })
+        // the dividend AS IT WAS at this `%`: a fresh atom equal to it, so a later write to a name it reads cannot
+        // change what the remainder's sign is decided from. Keeping the expression itself let `x = 5` after
+        // `r = x % 3` with x < 0 prove r >= 0 (test/check/soundness.ts)
+        modDividends.set(key, snapshot(left, side))
 
         if (k !== undefined && Number.isInteger(k) && k > 0) {
-          const key = `__mod${modCounter++}`
-          const m = linear({ [key]: 1 })
-          // the dividend, so a goal can add `m >= 0` where the dividend is provably non-negative (signedRemainders)
-          modDividends.set(key, left)
           side.push(atLeast(m, linear({}, -(k - 1)))) // m >= -(k-1)
           side.push(atMost(m, linear({}, k - 1))) // m <= k-1
+
+          return m
+        }
+
+        // a divisor that is not a constant: |m| < |divisor|, decided where its sign is known (signedRemainders)
+        if (k === undefined) {
+          modDivisors.set(key, snapshot(right, side))
 
           return m
         }
@@ -759,7 +792,7 @@ function quadraticProves(expr: Expression): boolean {
 
   // a manifestly non-negative diagonal sum of squares works at ANY degree (a^4 + b^4, (a^2+b^2)^2, ...)
   if (evenMonomialNonNegative(difference, strict)) {
-    return true
+    return certified(diagonalGram(difference), difference, strict)
   }
 
   // the COMPLETE quadratic decision (positive-(semi)definiteness) applies only at degree <= 2; a higher-degree form
@@ -769,10 +802,60 @@ function quadraticProves(expr: Expression): boolean {
   }
 
   const matrix = quadraticMatrix(difference)
-
-  return strict
+  const found = strict
     ? isPositiveDefinite(matrix)
     : isPositiveSemidefinite(matrix)
+
+  // the matrix is over the variables in sorted order and then the constant, the order quadraticMatrix builds it in
+  const variables = new Set<string>()
+
+  for (const key of difference.keys()) {
+    for (const v of monomialVars(key)) {
+      variables.add(v)
+    }
+  }
+
+  return found && certified({ basis: [...[...variables].sort(), ''], matrix }, difference, strict)
+}
+
+// what a polynomial prover found, replayed by the Gram checker (certificate.ts): the basis as monomial keys, M = 2Q,
+// and the polynomial it claims is a sum of squares. A search whose answer does not replay is counted (refine.ts) and
+// the goal is reported unproven.
+function certified(
+  gram: { basis: string[]; matrix: number[][] },
+  poly: Poly,
+  strict: boolean,
+): boolean {
+  const target = new Map<string, number>()
+
+  for (const [key, coefficient] of poly) {
+    if (coefficient !== 0) {
+      const at = gramKey(monomialVars(key))
+      target.set(at, (target.get(at) ?? 0) + 2 * coefficient)
+    }
+  }
+
+  const ok = checkGram({
+    basis: gram.basis.map(monomialVars),
+    matrix: gram.matrix,
+    target,
+    strict,
+  })
+
+  if (!ok) {
+    noteUncertified()
+  }
+
+  return ok
+}
+
+// the diagonal Gram matrix of a sum of even monomials: each monomial is the square of its half, with weight 2c
+function diagonalGram(poly: Poly): { basis: string[]; matrix: number[][] } {
+  const terms = [...poly].filter(([, c]) => c !== 0)
+  const basis = terms.map(([key]) => halfMonomial(key) ?? key)
+  const matrix = terms.map((_, i) => terms.map(([, c], j) => (i === j ? 2 * c : 0)))
+
+  return { basis, matrix }
 }
 
 // the combined nonlinear non-negativity check: higher-degree sums/products of squares (`positivityProves`, e.g.
@@ -1032,7 +1115,7 @@ function multivariateSOS(poly: Poly): boolean {
     }
 
     if (identity && isPositiveSemidefinite(matrix)) {
-      return true
+      return certified({ basis, matrix }, p, false)
     }
   }
 
@@ -2930,9 +3013,10 @@ function walkHolds(
       const apart = (k: string): boolean => {
         const other = k.startsWith('@length:') ? k.slice('@length:'.length) : undefined
 
+        // a path is dotted (plainPath): `@length:rows.0`
         return (
           other !== undefined &&
-          !other.includes('/') &&
+          !other.includes('.') &&
           other !== grown &&
           walk.fresh?.has(grown) === true &&
           (walk.fresh.has(other) || walk.params?.has(other) === true)

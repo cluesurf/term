@@ -100,7 +100,50 @@ function main(): void {
     '(a * 8)',
   )
 
+  // congruence: once `a + 0` joins `a`'s class, `(a + 0) - b` and `a - b` are the same node and must share a class,
+  // so their difference cancels. `-` has no commutativity rule to re-key the parents by accident, so only a rebuild
+  // after the merge can find this.
+  expect(
+    '((a + 0) - b) - (a - b)',
+    optimize(
+      op(
+        '-',
+        op('-', op('+', v('a'), int(0)), v('b')),
+        op('-', v('a'), v('b')),
+      ),
+    ),
+    '0',
+  )
+  // the same, one level deeper: congruence must propagate up through a parent of a parent
+  expect(
+    '(((a + 0) - b) - c) - ((a - b) - c)',
+    optimize(
+      op(
+        '-',
+        op('-', op('-', op('+', v('a'), int(0)), v('b')), v('c')),
+        op('-', op('-', v('a'), v('b')), v('c')),
+      ),
+    ),
+    '0',
+  )
+  // guard: congruence must not merge parents whose children differ
+  expect(
+    '((a + 0) - b) - (a - c) stays',
+    optimize(
+      op(
+        '-',
+        op('-', op('+', v('a'), int(0)), v('b')),
+        op('-', v('a'), v('c')),
+      ),
+    ),
+    '((a - b) - (a - c))',
+  )
+
   console.log(`\negraph: ${pass} pass, ${fail} fail`)
+
+  if (fail > 0) {
+    process.exitCode = 1
+  }
 }
 
 main()

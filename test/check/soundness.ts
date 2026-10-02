@@ -884,6 +884,66 @@ ${handed}  hold
     proven,
   )
 
+  // ---- a remainder's sign and size ----
+
+  expect(
+    'a remainder keeps the sign its dividend had, not the sign of a later value under the same name',
+    `task t
+  take x, like number
+  have
+    call is-below
+      read x
+      code 0
+  save r
+    call modulo
+      read x
+      code 3
+  save x, code 5
+  hold
+    call is-minimum
+      read r
+      code 0
+`,
+    refused('unproven'),
+  )
+
+  expect(
+    'control: a remainder of a non-negative dividend is non-negative',
+    `task t
+  take x, like natural-number
+  save r
+    call modulo
+      read x
+      code 3
+  save x, code 5
+  hold
+    call is-minimum
+      read r
+      code 0
+`,
+    proven,
+  )
+
+  const remainder = (have: string): string => `task t
+  take x, like number
+  take y, like number
+${have}  save r
+    call modulo
+      read x
+      read y
+  hold
+    call is-below
+      read r
+      read y
+`
+
+  expect(
+    'a remainder by a positive divisor is below it',
+    remainder('  have\n    call is-above\n      read y\n      code 0\n'),
+    proven,
+  )
+  expect('not when the divisor may be negative', remainder(''), refused('unproven'))
+
   // ---- a disequality ----
 
   const otherwise = (value: string, goal: string): string => `task use

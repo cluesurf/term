@@ -340,6 +340,11 @@ export function uncertifiedCount(): number {
   return uncertified
 }
 
+// a polynomial prover's answer that its Gram certificate did not confirm (holds.ts certified), counted the same way
+export function noteUncertified(): void {
+  uncertified++
+}
+
 // does the conjunction of assumptions imply the goal? (the verification condition is valid)
 //
 // Valid iff assumptions AND not(goal) is unsatisfiable. The search below decides that, and then the refutation it

@@ -244,11 +244,72 @@ class EGraph {
     return out
   }
 
+  // restore congruence after merges: re-key every node by its children's canonical classes, and merge two classes that
+  // now hold the same node. Without this, `(a + 0) - b` and `a - b` stay apart after `a + 0` joins `a`'s class, because
+  // the parent was keyed by the child's old id. A missed merge, never a wrong one, so it lost rewrites rather than
+  // making false ones. This is egg's `rebuild`, done eagerly over the whole graph since these graphs are small.
+  private rebuild(): boolean {
+    let merged = false
+
+    for (;;) {
+      const hashcons = new Map<string, number>()
+      const classes = new Map<number, Set<string>>()
+      const pending: [number, number][] = []
+
+      for (const [id, keys] of this.classes) {
+        const root = this.find(id)
+        let set = classes.get(root)
+
+        if (!set) {
+          set = new Set()
+          classes.set(root, set)
+        }
+
+        for (const k of keys) {
+          const node = this.nodes.get(k)!
+          const canon: ENode = {
+            op: node.op,
+            args: node.args.map(a => this.find(a)),
+          }
+          const ck = key(canon)
+
+          this.nodes.set(ck, canon)
+          set.add(ck)
+
+          const seen = hashcons.get(ck)
+
+          if (seen === undefined) {
+            hashcons.set(ck, root)
+          } else if (seen !== root) {
+            pending.push([seen, root])
+          }
+        }
+      }
+
+      this.hashcons = hashcons
+      this.classes = classes
+
+      if (pending.length === 0) {
+        return merged
+      }
+
+      for (const [a, b] of pending) {
+        merged = this.union(a, b) || merged
+      }
+    }
+  }
+
   saturate(limit = 50): void {
     let i = 0
 
-    while (i++ < limit && this.step()) {
+    while (i++ < limit) {
+      const stepped = this.step()
+      const rebuilt = this.rebuild()
+
       // keep applying rules until no class merges (or the bound is hit)
+      if (!stepped && !rebuilt) {
+        break
+      }
     }
   }
 

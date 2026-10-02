@@ -783,6 +783,33 @@ ${rebind}  call m/push
 `
 
   expect('a push to a fresh list keeps a parameter length', paramAndFresh(''), proven)
+
+  // the fresh list is pushed INTO the parameter, so the parameter's last element IS the fresh list
+  expect(
+    'not the length of a list inside a parameter, which the fresh list may now be',
+    `task use
+  take rows, like list, like list, like number
+  have
+    call is-equal
+      read rows/length
+      code 1
+  have
+    call is-equal
+      read rows/0/length
+      code 0
+  save m, make list
+  call rows/set
+    code 0
+    read m
+  call m/push
+    code 1
+  hold
+    call is-equal
+      read rows/0/length
+      code 0
+`,
+    refused('unproven'),
+  )
   expect(
     'not once the parameter is rebound to that list',
     paramAndFresh('  save xs, read m\n'),
