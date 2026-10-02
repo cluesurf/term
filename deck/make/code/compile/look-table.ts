@@ -37,8 +37,9 @@ export type StyleState = { attribute: string; value?: string; rows: StyleRow[] }
 
 export type StyleClass = { name: string; rows: StyleRow[]; states: StyleState[] }
 
-// `at` is the class, with its variant when the variant is what failed (`control:focus-visible`)
-export type Unlowered = { at: string; what: string; why: string }
+// `at` is the class (or `base <kind>`), and `variant` the `case` it was under, when it was under one. Kept apart
+// because a class name may itself hold a colon (tailwind's `sm:p-0`)
+export type Unlowered = { at: string; variant?: string; what: string; why: string }
 
 export type StyleTable = {
   target: 'toolkit'
@@ -236,7 +237,12 @@ function valueOf(property: string, text: string): StyleValue {
 }
 
 // a block's direct `have` declarations as rows, naming each one that does not lower
-function rowsOf(group: GroupNode, at: string, tokens: Map<string, string>, unlowered: Unlowered[]): StyleRow[] {
+function rowsOf(
+  group: GroupNode,
+  place: { at: string; variant?: string },
+  tokens: Map<string, string>,
+  unlowered: Unlowered[],
+): StyleRow[] {
   const rows: StyleRow[] = []
 
   for (const have of childrenNamed(group, 'have')) {
@@ -246,7 +252,7 @@ function rowsOf(group: GroupNode, at: string, tokens: Map<string, string>, unlow
     try {
       rows.push({ property, value: valueOf(property, resolve(written, tokens)) })
     } catch (error) {
-      unlowered.push({ at, what: `${property}: ${written}`, why: (error as Error).message })
+      unlowered.push({ ...place, what: `${property}: ${written}`, why: (error as Error).message })
     }
   }
 
@@ -287,15 +293,15 @@ export function compileLookTable(
     }
 
     const name = argName(group, 0)
-    const entry: StyleClass = { name, rows: rowsOf(group, name, tokens, table.unlowered), states: [] }
+    const entry: StyleClass = { name, rows: rowsOf(group, { at: name }, tokens, table.unlowered), states: [] }
 
     for (const variant of childrenNamed(group, 'case')) {
       const which = argName(variant, 0)
-      const at = `${name}:${which}`
+      const place = { at: name, variant: which }
 
       if (which === 'dark') {
         if (scheme === 'dark') {
-          entry.rows.push(...rowsOf(variant, at, tokens, table.unlowered))
+          entry.rows.push(...rowsOf(variant, place, tokens, table.unlowered))
         }
         continue
       }
@@ -303,11 +309,11 @@ export function compileLookTable(
       const state = stateOf(which)
 
       if (!state) {
-        table.unlowered.push({ at, what: `case ${which}`, why: whyNotVariant(which) })
+        table.unlowered.push({ ...place, what: `case ${which}`, why: whyNotVariant(which) })
         continue
       }
 
-      entry.states.push({ ...state, rows: rowsOf(variant, at, tokens, table.unlowered) })
+      entry.states.push({ ...state, rows: rowsOf(variant, place, tokens, table.unlowered) })
     }
 
     table.classes.push(entry)
@@ -336,25 +342,26 @@ export function declarationOf(row: StyleRow): string {
   }
 }
 
-// the table as the text a host loads: one line per row, `<class>\t<state>\t<declaration>`, where state is empty for a
-// class's own rows and `attribute` or `attribute=value` for a state row. Tabs and newlines appear in no class name,
-// attribute or resolved value, so the host splits without a parser
+// the table as the text a host loads: rows joined by `;`, each `<class>|<state>|<declaration>`, where state is empty for
+// a class's own rows and `attribute` or `attribute=value` for a state row. A lowered value is a number, a length, a hex
+// color or a keyword, so neither separator can appear inside one, the host splits without a parser, and the whole
+// table is one line any text literal can carry
 export function styleTableText(table: StyleTable): string {
   const lines: string[] = []
 
   for (const entry of table.classes) {
     for (const row of entry.rows) {
-      lines.push(`${entry.name}\t\t${declarationOf(row)}`)
+      lines.push(`${entry.name}||${declarationOf(row)}`)
     }
 
     for (const state of entry.states) {
       const on = state.value === undefined ? state.attribute : `${state.attribute}=${state.value}`
 
       for (const row of state.rows) {
-        lines.push(`${entry.name}\t${on}\t${declarationOf(row)}`)
+        lines.push(`${entry.name}|${on}|${declarationOf(row)}`)
       }
     }
   }
 
-  return lines.join('\n')
+  return lines.join(';')
 }

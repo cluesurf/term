@@ -40,6 +40,14 @@ export type DeckHostGroup = {
   link: DeckLink[]
 }
 
+// `base alice, <ghcr.io/alice-gh/term>`: where one scope's packages come from, for this project only
+export type DeckBase = {
+  // with its `@`: `@alice`
+  scope: string
+  // `ghcr.io/alice-gh/term`, `oci://localhost:5000/x`, or an npm-style `https://` registry
+  registry: string
+}
+
 export type RoleRule = {
   name: string
   // `mark <name>` flags on the rule: how the files it matches are READ, rather than which mill reads them.
@@ -85,6 +93,7 @@ export type DeckManifest = {
   deck?: string[]
   devLink?: DeckLink[]
   hostLink?: DeckHostGroup[]
+  base?: DeckBase[]
   // A field the model does not carry is DELETED the next time anything writes the manifest, because the writer
   // emits the model and nothing else. Every dependency verb round-trips (`term save`, `term toss`, `term link`,
   // `term move`), so `term toss` on a dependency that was never there used to break the project: it dropped

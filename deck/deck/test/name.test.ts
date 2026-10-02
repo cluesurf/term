@@ -64,6 +64,12 @@ describe('resolveRegistry', () => {
     const scopeRegistries = { '@term': 'https://tool.base.surf', '@term/@lab': 'https://lab.example' }
     expect(resolveRegistry({ name: '@term/@wordsurf/x', registry: 'npm', scopeRegistries })).toBe('https://tool.base.surf')
     expect(resolveRegistry({ name: '@term/@lab/x', registry: 'npm', scopeRegistries })).toBe('https://lab.example')
-    expect(resolveRegistry({ name: '@other/x', registry: 'npm', scopeRegistries })).toBe('npm')
+    // a scope nobody names comes from ghcr.io/<scope>, and an unscoped name from the fallback registry
+    expect(resolveRegistry({ name: '@other/x', registry: 'npm', scopeRegistries })).toBe('oci://ghcr.io/other')
+    expect(resolveRegistry({ name: 'left-pad', registry: 'npm', scopeRegistries })).toBe('npm')
+    // a base line writes a bare host and path, which is an OCI registry
+    expect(resolveRegistry({ name: '@alice/x', registry: 'npm', scopeRegistries: { '@alice': 'ghcr.io/alice-gh/term' } })).toBe(
+      'oci://ghcr.io/alice-gh/term',
+    )
   })
 })

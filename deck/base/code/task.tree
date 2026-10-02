@@ -1,11 +1,30 @@
 # Structured concurrency: spawn a task, wait for its result, cancel it, or gather a group of tasks so they all finish
 # before control returns. A task carries a text result (the portable payload, matching the channel default). Each
-# backend wraps its platform runtime (node promise, rust tokio task, swift Task, kotlin coroutine) behind this one
-# interface, selected at build time. The platform job lives in the opaque `dock` handle, typed per backend.
+# backend's shim reports a job's state (`running`, `done`, `failed`, `cancelled`) and keeps its outcome, and what a
+# state MEANS is decided here, once, so every backend raises the same typed exceptions:
+#
+#   wait          the result, the job's own raise unchanged, or `outage` when the job was cancelled
+#   wait-within   the same, or `timeout` after the given milliseconds, cancelling the job it gave up on
+#   gather        every result in source order, or the FIRST raise, with every other job cancelled before it surfaces
+#
+# Erlang's `Task.await` and its links are the model (note/term/research/beam-otp-lessons.md, G6, G8, G13): a failure
+# is not left running beside the caller that stopped listening. Held by test/compile/concurrency.ts.
+
+load @term/base/code/boolean
+  find not
+
+load @term/base/code/exception
+  find outage
+  find timeout
 
 load @term/base/code/native/{platform}/job
   find do-spawn
-  find do-wait
+  find do-settle
+  find do-settle-within
+  find do-settle-group
+  find do-state
+  find do-result
+  find do-rethrow
   find do-cancel
   find do-alive
 
@@ -13,17 +32,46 @@ load @term/base/code/native/{platform}/job
 form handle
   link dock, like job-handle
 
-  # wait for the task to finish and return its result
+  # wait for the task to finish and return its result. A task that raised raises the same exception here, and a
+  # cancelled one raises `outage`, since its result will never come
   task wait
     note async
     take self
     like text
+    call do-settle
+      read self
+      wait true
     send back
-      call do-wait
+      call outcome
         read self
-        wait true
 
-  # request cancellation (cooperative: the task stops being awaited and is marked finished)
+  # wait at most `milliseconds`. Past it the task is cancelled, so nothing is left running that nobody waits for, and
+  # `timeout` is raised with the time waited
+  task wait-within
+    note async
+    take self
+    take milliseconds, like number
+    like text
+    save settled
+      call do-settle-within
+        read self
+        read milliseconds
+        wait true
+    fork test
+      hook test
+        call not
+          read settled
+      hook hold
+        call do-cancel
+          read self
+        halt timeout
+          bind thing, text <task>
+          bind waited, read milliseconds
+    send back
+      call outcome
+        read self
+
+  # stop waiting for the task. Its result, or its raise, is discarded when it arrives, and a `wait` raises `outage`
   task cancel
     take self
     like void
@@ -37,6 +85,34 @@ form handle
     send back
       call do-alive
         read self
+
+# what a task that is no longer running gives its waiter
+task outcome
+  take self, like handle
+  like text
+  save state
+    call do-state
+      read self
+  fork test
+    hook test
+      call is-equal
+        read state
+        text <failed>
+    hook hold
+      send back
+        call do-rethrow
+          read self
+  fork test
+    hook test
+      call is-equal
+        read state
+        text <cancelled>
+    hook hold
+      halt outage
+        bind thing, text <task>
+  send back
+    call do-result
+      read self
 
 # spawn `work` as a concurrent task and return its handle. `work` is started immediately; its result is collected with
 # `wait`. Use this when a task should outlive the current scope; use `gather` for structured fan-out / join.
@@ -52,7 +128,9 @@ task spawn
           read work
 
 # run several tasks concurrently and wait for all of them, returning their results in source order. This is the
-# structured-concurrency join: every spawned task has finished by the time gather returns, so no task outlives the call.
+# structured-concurrency join. The first task to raise is seen the moment it raises, not after every task before it in
+# the list, and every other task is cancelled before its exception surfaces, so no task is left running with nobody
+# waiting for it
 task gather
   note async
   take works
@@ -63,12 +141,48 @@ task gather
     like text
   save jobs
     make list
+  save docks
+    make list
   walk list, read works
     hook next
       take site, name work
-      call jobs/push
+      save job
         call spawn
           read work
+      call jobs/push
+        read job
+      call docks/push
+        read job/dock
+  call do-settle-group
+    read docks
+    wait true
+  # the first job, in source order, that failed or was cancelled. A job still running is not it: the group settled
+  # because a LATER job failed. Every other job is cancelled, then that one's outcome raises
+  walk list, read jobs
+    hook next
+      take site, name job
+      save state
+        call do-state
+          read job
+      fork test
+        hook test
+          call or
+            call is-equal
+              read state
+              text <failed>
+            call is-equal
+              read state
+              text <cancelled>
+        hook hold
+          walk list, read jobs
+            hook next
+              take site, name other
+              call do-cancel
+                read other
+          send back
+            make list
+              call outcome
+                read job
   save results
     make list
   walk list, read jobs

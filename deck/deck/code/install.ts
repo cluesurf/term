@@ -12,7 +12,7 @@ import { makeDefaultFetchConfig } from './fetch'
 import { findWorkspaces } from './workspace'
 import { parseCodeHold, showCode } from './code'
 import { initStore } from './store'
-import { parseScope, rootScope } from './name'
+import { normalizeRegistry, parseScope, rootScope } from './name'
 import fsp from 'fs/promises'
 import path from 'path'
 
@@ -80,12 +80,27 @@ export async function install(input: {
   console.log(`Installed ${resolution.decks.size} packages`)
 }
 
-// The scope -> registry routes a manifest's `host` groups declare. Every link in a group names the scope it routes,
-// and one scope routed to two registries is refused rather than decided by file order.
+// The scope -> registry routes a manifest declares: its `base` lines, and its `host` groups, where every link in a
+// group names the scope it routes. The routes are this project's alone and are never stored anywhere else. One
+// scope routed to two registries is refused rather than decided by file order.
 export function hostScopeRegistries(input: {
   manifest: DeckManifest
 }): Record<string, string> {
   const routes: Record<string, string> = {}
+
+  for (const entry of input.manifest.base ?? []) {
+    if (!entry.scope || !entry.registry) {
+      throw new Error(`base ${entry.scope}: a base line names a scope and a registry, \`base alice, <ghcr.io/alice/term>\``)
+    }
+
+    const registry = normalizeRegistry(entry.registry)
+
+    if (routes[entry.scope] && routes[entry.scope] !== registry) {
+      throw new Error(`${entry.scope} is routed to two registries in deck.tree: ${routes[entry.scope]} and ${registry}`)
+    }
+
+    routes[entry.scope] = registry
+  }
 
   for (const group of input.manifest.hostLink ?? []) {
     for (const link of group.link) {
@@ -97,13 +112,15 @@ export function hostScopeRegistries(input: {
         )
       }
 
-      if (routes[scope] && routes[scope] !== group.registry) {
+      const registry = normalizeRegistry(group.registry)
+
+      if (routes[scope] && routes[scope] !== registry) {
         throw new Error(
-          `${scope} is routed to two registries in deck.tree: ${routes[scope]} and ${group.registry}`,
+          `${scope} is routed to two registries in deck.tree: ${routes[scope]} and ${registry}`,
         )
       }
 
-      routes[scope] = group.registry
+      routes[scope] = registry
     }
   }
 

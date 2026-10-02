@@ -1,0 +1,11 @@
+
+# The style contract (abstract native module, native-dom-0008), and the fallback for every env with no `style` of its
+# own: a host whose classes are styled by CSS has nothing to do with a style table, so it is accepted and ignored.
+
+# load the style tables, the light one and the dark one (`.style` and `.dark.style` beside a sheet's CSS): rows joined
+# by `;`, each `<class>|<state>|<property>: <value>` (look-table.ts, styleTableText). An empty dark table means the
+# sheet has no dark scheme
+task use-styles
+  take light, like text
+  take dark, like text
+  save skip, code 0

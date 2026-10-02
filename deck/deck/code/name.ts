@@ -40,10 +40,29 @@ export const DEFAULT_SCOPE_REGISTRIES: Record<string, string> = {
   '@term': TERM_REGISTRY,
 }
 
-// pick the host for a given package name. a scoped package (`@scope/name`)
-// uses `scopeRegistries[@scope]` when present, else the fallback `registry`.
-// this is npm's `@scope:registry` routing, so `@term/*` hits the base API
-// while other scopes hit the default.
+// The OCI host a scope no project names comes from. `@alice/x` is `ghcr.io/alice/x`, which only the GitHub
+// account `alice` can push to: the registry's own ownership is the claim on the name, and nothing has to store a
+// mapping from scopes to registries.
+export const DEFAULT_OCI_HOST = 'ghcr.io'
+
+/**
+ * A registry as a `base` line or a scope map writes it. A bare `host/path` is an OCI registry, so
+ * `<ghcr.io/alice-gh/term>` is `oci://ghcr.io/alice-gh/term`. `oci://` and `https://` pass through unchanged.
+ */
+export function normalizeRegistry(value: string): string {
+  const trimmed = value.trim()
+
+  if (/^(oci|https?):\/\//.test(trimmed)) {
+    return trimmed
+  }
+
+  return `oci://${trimmed.replace(/^\/+/, '')}`
+}
+
+// pick the registry for a given package name. a scoped package (`@scope/name`)
+// uses `scopeRegistries[@scope]` when present, then its root space's entry,
+// then `oci://ghcr.io/<root space>`. an unscoped package uses the fallback
+// `registry` (npmjs.org), which is what keeps a plain npm dependency working.
 export function resolveRegistry(input: {
   name: string
   registry: string
@@ -52,14 +71,18 @@ export function resolveRegistry(input: {
   const { scope } = parseScope({ name: input.name })
 
   if (scope && input.scopeRegistries?.[scope]) {
-    return input.scopeRegistries[scope]
+    return normalizeRegistry(input.scopeRegistries[scope])
   }
 
   // a nested scope routes by its root space when the full path is not listed
   const root = rootScope(scope)
 
   if (root && root !== scope && input.scopeRegistries?.[root]) {
-    return input.scopeRegistries[root]
+    return normalizeRegistry(input.scopeRegistries[root])
+  }
+
+  if (root) {
+    return `oci://${DEFAULT_OCI_HOST}/${root.slice(1)}`
   }
 
   return input.registry
@@ -90,6 +113,13 @@ export function parseScope(input: { name: string }): {
     scope: parts.slice(0, at).join('/'),
     base: parts.slice(at).join('/'),
   }
+}
+
+/** A scope as a `base` line names it, `alice` or `@alice`, always written back with its `@`. */
+export function scopeName(word: string): string {
+  const bare = word.trim().replace(/^@/, '')
+
+  return bare ? `@${bare}` : ''
 }
 
 /** The root space of a scope, the segment a registry is chosen by: `@cluesurf` of `@cluesurf/@wordsurf`. */

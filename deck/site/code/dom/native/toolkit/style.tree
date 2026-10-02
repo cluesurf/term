@@ -1,0 +1,34 @@
+
+# The style table on the platform's own toolkit (native-dom-0008): AppKit, UIKit and Android views have no CSS engine,
+# so a class is styled by its rows, which the runtime applies when the class is added and again when a state attribute
+# it is keyed on changes. Conforms to ../style.
+#
+# THE SCHEME IS A DEVICE TRAIT (native-dom-0048). The host is handed both tables and follows the `color-scheme`
+# signal, which the platform's own watcher writes (../../../view/device), so the scheme is detected in one place and a
+# device turned dark restyles every styled node from the dark table.
+
+load @term/site/code/view/device
+  find device-trait
+
+load @term/site/code/view/reactive
+  find make-effect
+  find read-signal
+
+dock load
+  load <global:native-view>, name native-view
+  note native
+
+task use-styles
+  take light, like text
+  take dark, like text
+  call native-view/use-styles
+    read light
+    read dark
+  save scheme
+    call device-trait
+      text <color-scheme>
+  call make-effect
+    task follow
+      call native-view/use-scheme
+        call read-signal
+          bind self, read scheme

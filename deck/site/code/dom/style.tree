@@ -1,0 +1,6 @@
+
+# Public style API (native-dom-0008): hand a host the style table its `look` sheets compiled to (look-table.ts), once,
+# before the first mount. A host with a CSS engine (browser, node, memory) links the sheet's CSS instead and ignores
+# the table; a host without one (the toolkit views) applies a class by looking up its rows.
+
+bear @term/site/code/dom/native/{platform}/style

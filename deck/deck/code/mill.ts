@@ -23,10 +23,12 @@ import type {
   DeckLink,
   DeckMind,
   DeckHostGroup,
+  DeckBase,
   Lockfile,
   LockEntry,
 } from './form'
 import { parseCode, parseCodeHold } from './code'
+import { scopeName } from './name'
 
 let deckGrammar: MineGrammar | undefined
 let lockGrammar: MineGrammar | undefined
@@ -213,6 +215,13 @@ export function parseManifestMill(input: {
     ...(work ? matches(work.get('host')).map(toHostGroup) : []),
   ]
 
+  const base = matches(fields.get('base')).map(
+    (m): DeckBase => ({
+      scope: scopeName(word(first(m.get('scope'))) ?? ''),
+      registry: word(first(m.get('registry'))) ?? '',
+    }),
+  )
+
   const hook: Record<string, string> = {}
 
   for (const m of matches(fields.get('hook'))) {
@@ -273,6 +282,7 @@ export function parseManifestMill(input: {
     deck: deck.length > 0 ? deck : undefined,
     devLink: devLink.length > 0 ? devLink : undefined,
     hostLink: hostLink.length > 0 ? hostLink : undefined,
+    base: base.length > 0 ? base : undefined,
     // the fields this reader used to walk past. Anything read here has to be written back in writeManifest, or
     // the round trip DELETES it from the file. See the note on DeckManifest, and deck/deck/test/round-trip.ts.
     bear: dir('bear'),

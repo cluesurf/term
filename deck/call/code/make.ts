@@ -680,6 +680,31 @@ export function compileProject(
       writeFileSync(outPath, content)
       written++
     }
+
+    // and its style tables, light and dark, for a host with no CSS engine (native-dom-0008, 0048)
+    const tables: [string, string | undefined][] = isCss
+      ? [['.style', result.style], ['.dark.style', result.styleDark]]
+      : []
+
+    for (const [extension, table] of tables) {
+      if (table === undefined) {
+        continue
+      }
+
+      const stylePath = outPath.replace(/\.css$/, extension)
+      let held: string | undefined
+
+      try {
+        held = readFileSync(stylePath, 'utf8')
+      } catch {
+        held = undefined
+      }
+
+      if (held !== table) {
+        writeFileSync(stylePath, table)
+        written++
+      }
+    }
   }
 
   // an app's shadows of face's platform implementations take exactly face's contract, or the build fails: a shadow
@@ -804,6 +829,20 @@ export function compileProjectSeparate(
           ),
           sheet.css,
         )
+
+        // and its style tables, light and dark, for a host with no CSS engine (native-dom-0008, 0048)
+        for (const [extension, table] of [['.style', sheet.style], ['.dark.style', sheet.styleDark]] as const) {
+          if (table !== undefined) {
+            writeArtifact(
+              path.join(
+                root,
+                'host',
+                path.relative(root, file).replace(/\.tree$/, extension),
+              ),
+              table,
+            )
+          }
+        }
       }
 
       continue

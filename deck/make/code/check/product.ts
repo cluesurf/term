@@ -241,7 +241,11 @@ export function replay(facts: Fact[], certificate: Certificate): boolean {
 // the rows: every fact, every product of two facts, every product of the FOCUS (the negated goal) with two facts, and
 // the square of every variable they mention. The triples are what a square-root step whose root is itself a product
 // needs: `(s t) >= 0` and `x^2 <= (s t)^2` give `x <= s t` through `s t (s t - x)`, a product of three.
-function rowsOf(facts: Fact[], focus?: number, linearOnly = false): Row[] {
+// the LINEAR mode: the facts combined with non-negative multipliers and no products, except that an equation may be
+// multiplied by each of `multipliers` (the caller names them: an equation times anything is an equation)
+export type LinearMode = { multipliers: string[] }
+
+function rowsOf(facts: Fact[], focus?: number, linear?: LinearMode): Row[] {
   const rows: Row[] = []
   const variables = new Set<string>()
 
@@ -256,7 +260,18 @@ function rowsOf(facts: Fact[], focus?: number, linearOnly = false): Row[] {
   // the LINEAR mode: the facts themselves, combined with non-negative rational multipliers and nothing multiplied.
   // Farkas' lemma over an ordered field, for the many-facts case (instantiated hypotheses) where products would be
   // too many rows
-  if (linearOnly) {
+  if (linear) {
+    // so `c(n + 1, 0) = u(0) v(n + 1)` may enter as `(n + 1) c(n + 1, 0) = (n + 1) u(0) v(n + 1)` when n is a multiplier
+    const multipliers = [...new Set(linear.multipliers)].sort()
+
+    facts.forEach((fact, i) => {
+      if (fact.relation === 'zero') {
+        for (const v of multipliers) {
+          rows.push(rebuild({ fact: i, times: v }, facts)!)
+        }
+      }
+    })
+
     return rows
   }
 
@@ -436,12 +451,12 @@ function feasible(a: Rational[][], b: Rational[]): Rational[] | undefined {
 
 // search for a certificate that the facts are contradictory. Two shapes are tried: the combination is the constant
 // -1, or it is 0 with the strict rows' multipliers summing to 1.
-export function refute(facts: Fact[], focus?: number, linearOnly = false): Certificate | undefined {
-  if (facts.length === 0 || facts.length > (linearOnly ? 2000 : 14) || facts.some(f => degree(f.polynomial) > 4)) {
+export function refute(facts: Fact[], focus?: number, linear?: LinearMode): Certificate | undefined {
+  if (facts.length === 0 || facts.length > (linear ? 2000 : 14) || facts.some(f => degree(f.polynomial) > 4)) {
     return undefined
   }
 
-  const rows = rowsOf(facts, focus, linearOnly)
+  const rows = rowsOf(facts, focus, linear)
   const monomials = new Set<string>([''])
 
   for (const row of rows) {
@@ -505,13 +520,13 @@ export function refute(facts: Fact[], focus?: number, linearOnly = false): Certi
 
 // does the goal follow from the facts? The goal is `polynomial >= 0` (or `> 0` when strict), so its negation is
 // `-polynomial > 0` (or `-polynomial >= 0`), added as one more fact to refute.
-export function productProves(facts: Fact[], goal: Polynomial, strict: boolean, linearOnly = false): boolean {
+export function productProves(facts: Fact[], goal: Polynomial, strict: boolean, linear?: LinearMode): boolean {
   const negation: Fact = {
     polynomial: scaled(goal, rational(-1n)),
     relation: strict ? 'nonnegative' : 'positive',
   }
 
-  return refute([...facts, negation], facts.length, linearOnly) !== undefined
+  return refute([...facts, negation], facts.length, linear) !== undefined
 }
 
 // a number coefficient (from the integer-valued polynomial expansion in holds.ts) as an exact rational

@@ -2,7 +2,7 @@
 // in both directions (note/term/registry/18-oci-registry-default.md, "The artifact format").
 //
 //   manifest   an OCI 1.1 image manifest, `artifactType` application/vnd.cluesurf.term.deck.v1
-//   config     who published what: package, version, tag, commit, root, links, the key and the signature
+//   config     who published what: package, version, tag, commit, tree, links, the key and the signature
 //   layer 0    the files layer: every file's path, mode, size and chunks, and where each packed object sits
 //   layer 1..  packs, from `buildPacks`, byte for byte
 //   layer n..  loose objects: anything binary or of 64 KB or more, under its own id
@@ -11,7 +11,7 @@
 // garbage-collects a blob no manifest references, and `oras pull` must fetch a complete version, so a manifest that
 // leans on another version's layers is refused here when it is built and again when it is read.
 //
-// THE SIGNED STATEMENT. The signature covers the package, the version, the tag, the commit, the tree root and the
+// THE SIGNED STATEMENT. The signature covers the package, the version, the tag, the commit, the tree's top node and the
 // links, not the commit alone. A signature over the commit alone could be lifted onto another package's tag, onto
 // an older version's tag, or beside a config whose links were edited to pull in something else. Every field a
 // resolver acts on is in the statement, so none of them can be changed without the key.
@@ -69,7 +69,8 @@ export type DeckConfig = {
   // the tag this version was published under: the version, or `branch.<name>`
   tag: string
   commit: string
-  root: string
+  // the id of the prolly tree's top node, the file set the commit names
+  tree: string
   link: DeckLinkEntry[]
   key: string
   sig: string
@@ -106,7 +107,7 @@ export function deckStatement(input: Omit<DeckConfig, 'v' | 'key' | 'sig'>): str
     version: input.version,
     tag: input.tag,
     commit: input.commit,
-    root: input.root,
+    tree: input.tree,
     link: sortLinks(input.link).map(link => [link.deck, link.code]),
   })
 }
@@ -193,7 +194,7 @@ export async function buildArtifact(input: {
   }
 
   const link = sortLinks(input.link)
-  const body = { package: input.package, version: input.version, tag: input.tag, commit: input.release.commit, root: input.release.root, link }
+  const body = { package: input.package, version: input.version, tag: input.tag, commit: input.release.commit, tree: input.release.root, link }
   const config: DeckConfig = {
     v: 1,
     ...body,
@@ -352,7 +353,7 @@ export function parseDeckConfig(bytes: Buffer): DeckConfig {
     !text(config.version) ||
     !text(config.tag) ||
     !isDigest(config.commit) ||
-    !isDigest(config.root) ||
+    !isDigest(config.tree) ||
     !Array.isArray(config.link) ||
     config.link.length > 10_000 ||
     !config.link.every(link => text(link?.deck) && text(link?.code)) ||

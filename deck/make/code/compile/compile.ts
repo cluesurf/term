@@ -61,6 +61,7 @@ import { simplify } from '@term/make/code/ir/simplify'
 import { passDictionaries } from '@term/make/code/ir/dictionary'
 import { lowerZones } from '@term/make/code/compile/view-lower'
 import { compileLookCss } from '@term/make/code/compile/look-css'
+import { compileLookTable, styleTableText } from '@term/make/code/compile/look-table'
 import {
   expandData,
   isDataFile,
@@ -120,6 +121,12 @@ export type CompileResult =
       // present only for a look stylesheet (.tree of `face` / `tone` rules): the emitted static CSS. The build writes
       // it to a sibling `.css` instead of `.ts`. See compile/look-css.ts.
       css?: string
+      // beside `css`: the same sheet as the style table a host with no CSS engine applies, one line (look-table.ts,
+      // styleTableText). The build writes it to a sibling `.style` (native-dom-0008)
+      style?: string
+      // and the dark scheme's table: `tone dark` over the base tokens and every `case dark` merged in, written to a
+      // sibling `.dark.style` (native-dom-0048)
+      styleDark?: string
       // present only in per-module mode (`options.modules`): one emitted ESM module per source file (file -> emit)
       modules?: Map<string, ModuleEmit>
       warnings: Diagnostic[]
@@ -227,6 +234,8 @@ export function compile(
       program: [],
       typescript: '',
       css: compileLookCss(source),
+      style: styleTableText(compileLookTable(source)),
+      styleDark: styleTableText(compileLookTable(source, { scheme: 'dark' })),
       warnings: [],
     }
   }

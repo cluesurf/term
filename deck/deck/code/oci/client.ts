@@ -3,7 +3,7 @@
 import path from 'path'
 
 import type { FetchConfig } from '../form'
-import { parseScope, rootScope } from '../name'
+import { parseScope, resolveRegistry, rootScope } from '../name'
 import { getStoreRoot } from '../store'
 import { credentialsFor } from './auth'
 import { layoutObjectStore, layoutTransport } from './layout'
@@ -52,37 +52,45 @@ export function transportFor(input: { host: string; offline?: boolean }): OciTra
 export type OciRoute = {
   registry: OciRegistryReference
   repository: OciRepository
-  // the scope the registry was chosen by, which the namespace repository's key set governs
+  // the scope the registry was chosen by, which the namespace's key set governs
   scope: string
-  // the namespace repository: where the scope's key set lives
+  // `<namespace>/keys`: where the scope's key set lives
   keysRepository: string
 }
 
+// The repository below every namespace that holds the scope's key set, so no package may be called this. It sits
+// BELOW the namespace rather than at it because GHCR, like most registries, has no repository at the bare owner:
+// `ghcr.io/alice` is not a repository, and `ghcr.io/alice/keys` is.
+export const KEYS_REPOSITORY = 'keys'
+
 /**
- * The OCI route of a package under a fetch config, or undefined when its scope is not on an `oci://` registry. The
- * scope is matched the way `resolveRegistry` matches it: the full space path, then the root space.
+ * The OCI route of a package under a fetch config, or undefined when it is not on an `oci://` registry. The scope
+ * is matched the way `resolveRegistry` matches it, the full space path and then the root space, and a scope no
+ * project names comes from `ghcr.io/<scope>` (`resolveRegistry`).
  */
 export function ociRouteOf(input: { name: string; config: Pick<FetchConfig, 'registry' | 'scopeRegistries'> }): OciRoute | undefined {
   const { scope } = parseScope({ name: input.name })
   const map = input.config.scopeRegistries ?? {}
   const root = rootScope(scope)
   const key = scope && map[scope] ? scope : root && map[root] ? root : undefined
-  const registry = key ? map[key] : input.config.registry
+  const registry = resolveRegistry({ name: input.name, registry: input.config.registry, scopeRegistries: map })
 
   if (!isOciRegistry(registry)) {
     return undefined
   }
 
-  const reference = parseOciRegistry(registry!)
+  const reference = parseOciRegistry(registry)
 
   if (!reference.namespace) {
-    throw new Error(`OCI registry ${registry} needs a namespace, so its key set has a repository to live in`)
+    throw new Error(`OCI registry ${registry} needs a namespace, so its packages and key set have repositories to live in`)
   }
 
-  return {
-    registry: reference,
-    repository: repositoryOf({ package: input.name, registry: reference, scope: key }),
-    scope: key ?? root,
-    keysRepository: reference.namespace,
+  const repository = repositoryOf({ package: input.name, registry: reference, scope: key })
+  const keysRepository = `${reference.namespace}/${KEYS_REPOSITORY}`
+
+  if (repository.name === keysRepository) {
+    throw new Error(`${input.name}: \`${KEYS_REPOSITORY}\` is reserved for the scope's key set, so no package can be named it`)
   }
+
+  return { registry: reference, repository, scope: key ?? root, keysRepository }
 }

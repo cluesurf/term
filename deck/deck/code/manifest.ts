@@ -5,9 +5,11 @@ import {
   DeckLink,
   DeckMind,
   DeckHostGroup,
+  DeckBase,
   CodeHold,
 } from './form'
 import { parseCode, parseCodeHold, showCode } from './code'
+import { scopeName } from './name'
 import { parseManifestMill } from './mill'
 import {
   readTree,
@@ -122,6 +124,14 @@ export function parseManifestByHand(input: { text: string }): DeckManifest {
     ...(work ? formsWith(work, 'host').map(toHostGroup) : []),
   ]
 
+  // `base alice, <ghcr.io/alice-gh/term>`
+  const base = formsWith(root, 'base').map(
+    (f): DeckBase => ({
+      scope: scopeName(f.terms[0] ?? ''),
+      registry: f.value ?? '',
+    }),
+  )
+
   // `hook <name>, task <task>`
   const hook: Record<string, string> = {}
 
@@ -169,6 +179,7 @@ export function parseManifestByHand(input: { text: string }): DeckManifest {
     deck: deck.length > 0 ? deck : undefined,
     devLink: devLink.length > 0 ? devLink : undefined,
     hostLink: hostLink.length > 0 ? hostLink : undefined,
+    base: base.length > 0 ? base : undefined,
     // the fields the grammar knows that this reader used to walk past. Anything read here has to be written back
     // in writeManifest, or the round trip deletes it. See the note on DeckManifest.
     bear: dir('bear'),
@@ -293,6 +304,10 @@ export function writeManifest(input: {
     for (const d of m.deck) {
       lines.push(`  deck ${d}`)
     }
+  }
+
+  for (const entry of m.base ?? []) {
+    lines.push(`  base ${entry.scope.replace(/^@/, '')}, <${entry.registry}>`)
   }
 
   for (const dep of m.link) {

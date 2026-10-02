@@ -1,5 +1,6 @@
 export {
   install,
+  hostScopeRegistries,
   addDependency,
   removeDependency,
   verifyInstall,
@@ -64,6 +65,9 @@ export {
   parseScope,
   rootScope,
   resolveRegistry,
+  normalizeRegistry,
+  scopeName,
+  DEFAULT_OCI_HOST,
   TERM_REGISTRY,
   DEFAULT_SCOPE_REGISTRIES,
 } from './name'
@@ -79,6 +83,8 @@ export type {
   DeckManifest,
   DeckLink,
   DeckMind,
+  DeckBase,
+  DeckHostGroup,
   ResolvedDeck,
   ResolutionMap,
   LockEntry,

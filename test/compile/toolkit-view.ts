@@ -17,6 +17,7 @@ import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { projectResolver } from '@term/call/code/make'
+import { compileLookTable, styleTableText } from '@term/make/code/compile/look-table'
 import { LAYOUT_LABELS, LAYOUT_ROWS, judgeLayout } from './shared/layout-rows'
 import {
   androidDevice,
@@ -42,6 +43,20 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const ROOT = process.cwd()
 const dir = mkdtempSync(join(tmpdir(), 'term-toolkit-view-'))
+
+// native-dom-0008: face's own theme, compiled to the style table the app hands its host, light scheme
+const THEME = join(ROOT, 'deck/face/code/style/theme.tree')
+const STYLE_TABLE = styleTableText(compileLookTable({ file: THEME, text: readFileSync(THEME, 'utf8') }))
+const STYLE_TABLE_DARK = styleTableText(compileLookTable({ file: THEME, text: readFileSync(THEME, 'utf8') }, { scheme: 'dark' }))
+
+// what the platform must draw for it, read back off the views: the panel's fill, edge, corners and the text color its
+// children inherit, the overlay's opacity closed then open, a label's font, a fill set inline that the class's row does
+// not override while its edge still applies, and a kbd's fill gone once its class is removed
+const WANT_STYLES = 'styles #fafafa 1px #e4e4e7 8px #18181b 0 1 14px 500 #102030 1px #e4e4e7 #f4f4f5 none'
+
+// native-dom-0048: the same panel once the platform turns the device dark, restyled from the dark table: the theme's
+// dark surface and the dark text color its child inherits
+const WANT_DARK_STYLES = 'styles dark #09090b #f4f4f5'
 const png = process.env.SNAPSHOT ?? join(dir, 'window.png')
 
 const WANT = [
@@ -73,6 +88,14 @@ load @term/site/code/view/render
 load @term/site/code/dom/dom
   find view
   find append
+  find add-class
+  find remove-class
+  find set-attribute
+  find set-style
+  find create-text
+
+load @term/site/code/dom/style
+  find use-styles
 
 # the switch the author writes once; on these three platforms the build picks the platform's own control
 load @term/face/code/component/switch
@@ -118,6 +141,7 @@ load @term/site/code/view/native/toolkit/device
 load @term/site/code/dom/native/toolkit/dom
   find create-element
   find frame-of
+  find style-of
   find unsupported-styles
   find open-root
   find after-launch
@@ -319,6 +343,126 @@ task press-times
       call press
         read button
 
+# the panel style-run made, kept so the run after the dialog can read it once the device is dark (native-dom-0048)
+host styled-panels
+  make list
+  like list
+    like view
+
+# native-dom-0008: face's theme as a style table, applied by class and by state, read back off the platform's views.
+# The panel is mounted last on the root, so the screenshot shows it and no earlier child moves
+task style-run
+  take root, like view
+  save panel
+    call create-element
+      bind tag, text <div>
+  call add-class
+    read panel
+    text <panel>
+  save words
+    call create-text
+      text <Styled by face>
+  call append
+    read panel
+    read words
+  call append
+    read root
+    read panel
+  call push
+    bind list, read styled-panels
+    bind item, read panel
+  save panel-fill
+    call style-of
+      read panel
+      text <background>
+  save edge
+    call style-of
+      read panel
+      text <border>
+  save corner
+    call style-of
+      read panel
+      text <border-radius>
+  save ink
+    call style-of
+      read words
+      text <color>
+  save overlay
+    call create-element
+      bind tag, text <div>
+  call add-class
+    read overlay
+    text <overlay>
+  save hidden
+    call style-of
+      read overlay
+      text <opacity>
+  call set-attribute
+    read overlay
+    text <data-state>
+    text <open>
+  save shown
+    call style-of
+      read overlay
+      text <opacity>
+  save tag
+    call create-element
+      bind tag, text <span>
+  call add-class
+    read tag
+    text <label>
+  save tag-words
+    call create-text
+      text <Name>
+  call append
+    read tag
+    read tag-words
+  save size
+    call style-of
+      read tag-words
+      text <font-size>
+  save weight
+    call style-of
+      read tag-words
+      text <font-weight>
+  save pinned
+    call create-element
+      bind tag, text <div>
+  call set-style
+    read pinned
+    text <background>
+    text <#102030>
+  call add-class
+    read pinned
+    text <panel>
+  save kept
+    call style-of
+      read pinned
+      text <background>
+  save kept-edge
+    call style-of
+      read pinned
+      text <border>
+  save chip
+    call create-element
+      bind tag, text <div>
+  call add-class
+    read chip
+    text <kbd>
+  save chip-fill
+    call style-of
+      read chip
+      text <background>
+  call remove-class
+    read chip
+    text <kbd>
+  save cleared
+    call style-of
+      read chip
+      text <background>
+  call say
+    text <styles {{panel-fill}} {{edge}} {{corner}} {{ink}} {{hidden}} {{shown}} {{size}} {{weight}} {{kept}} {{kept-edge}} {{chip-fill}} {{cleared}}>
+
 # the run after the dialog, called once the platform has dismissed it
 task finish-run
   save missing, call unsupported-styles
@@ -349,6 +493,20 @@ task finish-run
       read box
   call say
     text <theme {{after}}>
+  save lit
+    read styled-panels/0
+  save dark-fill
+    call style-of
+      read lit
+      text <background>
+  save dark-ink
+    call style-of
+      call child-at
+        read lit
+        code 0
+      text <color>
+  call say
+    text <styles dark {{dark-fill}} {{dark-ink}}>
   # native-dom-0035: the platform turns the device, and the app hears it the way it hears a person turning it
   save turn-box
     call create-element
@@ -384,6 +542,10 @@ task finish-run
   call turn-device
 
 task main
+  # the style table goes to the host before anything is made, as an app's boot would hand it
+  call use-styles
+    text <${STYLE_TABLE}>
+    text <${STYLE_TABLE_DARK}>
   save root
     call open-root
       text <Term, natively>
@@ -555,6 +717,8 @@ ${LAYOUT_CALLS}      # native-dom-0026: the slider, two ways. Mounted off the wi
           read input-box
       call say
         text <input moved {{input-moved}}>
+      call style-run
+        read root
       # native-dom-0026: the dialog, presented by the platform and dismissed by the person
       save asking
         call make-disclosure
@@ -705,6 +869,11 @@ function judge(env: string, toolkit: string, output: string, shot: string): void
   for (const [name, passed, info] of judgeLayout(output)) {
     ok(`${env}: ${name}`, passed, info)
   }
+  // native-dom-0008: face's theme drawn by the platform, read back off the views
+  const styles = output.split('\n').map(l => l.trim()).find(l => l.includes('styles #'))
+  ok(`${env}: face's style table drawn by ${toolkit}: ${WANT_STYLES}`, !!styles && styles.endsWith(WANT_STYLES), String(styles))
+  const dark = output.split('\n').map(l => l.trim()).find(l => l.includes('styles dark '))
+  ok(`${env}: the device turned dark restyles the panel from the dark table: ${WANT_DARK_STYLES}`, !!dark && dark.endsWith(WANT_DARK_STYLES), String(dark))
   const missing = output.split('\n').map(l => l.trim()).find(l => l.includes('unsupported ['))
   ok(`${env}: every style mapped onto the platform`, missing !== undefined && missing.endsWith('unsupported []'), String(missing))
   ok(`${env}: a PNG of the screen was written`, existsSync(shot) && readFileSync(shot).subarray(1, 4).toString() === 'PNG', shot)

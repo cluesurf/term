@@ -98,6 +98,8 @@ type Reply = {
   ok: boolean
   isCss?: boolean
   output?: string
+  style?: string
+  styleDark?: string
   error?: string
   openClaims?: string[]
   obligations?: { total: number; proven: number }
@@ -182,6 +184,16 @@ export function compileProjectParallel(
 
       mkdirSync(path.dirname(outPath), { recursive: true })
       writeFileSync(outPath, reply.output ?? '')
+
+      // and a look sheet's style table beside its CSS, for a host with no CSS engine (native-dom-0008)
+      if (reply.isCss && reply.style !== undefined) {
+        writeFileSync(outPath.replace(/\.css$/, '.style'), reply.style)
+      }
+
+      if (reply.isCss && reply.styleDark !== undefined) {
+        writeFileSync(outPath.replace(/\.css$/, '.dark.style'), reply.styleDark)
+      }
+
       compiled++
     } else {
       failed++

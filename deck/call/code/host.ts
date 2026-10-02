@@ -12,8 +12,10 @@ import {
   buildOciArtifact,
   rotateKeys,
   isOciRegistry,
+  normalizeRegistry,
+  hostScopeRegistries,
 } from '@cluesurf/deck.tree'
-import type { Keypair, OciRoute } from '@cluesurf/deck.tree'
+import type { DeckManifest, Keypair, OciRoute } from '@cluesurf/deck.tree'
 
 import { existsSync } from 'fs'
 import nodePath from 'path'
@@ -59,7 +61,7 @@ export async function callHost(input: {
       ? `@${manifest.host}/${manifest.name}`
       : manifest.name
     const version = showCode(manifest.code)
-    const route = routeOf({ name, registry: input.registry })
+    const route = routeOf({ name, registry: input.registry, manifest })
 
     if (input.trust || input.untrust) {
       const keypair = await loadPublishKeypair({ mint: false })
@@ -192,17 +194,27 @@ export async function callHost(input: {
   }
 }
 
-// The registry a package publishes to: `--registry` when given, else the scope's default. Both must be `oci://`.
-function routeOf(input: { name: string; registry?: string }): OciRoute {
-  if (input.registry !== undefined && !isOciRegistry(input.registry)) {
+// The registry a package publishes to: `--registry` when given, else the package's own `base` line for its scope,
+// else the scope's default (`@term`'s built in, any other `ghcr.io/<scope>`). Every one must be OCI.
+function routeOf(input: { name: string; registry?: string; manifest: DeckManifest }): OciRoute {
+  const flag = input.registry === undefined ? undefined : normalizeRegistry(input.registry)
+
+  if (flag !== undefined && !isOciRegistry(flag)) {
     throw new Error(
-      `--registry must be oci://<host>/<namespace>. The custom https registry is retired (note/term/registry/18-oci-registry-default.md)`,
+      `--registry must be an OCI registry, <host>/<namespace>. The custom https registry is retired (note/term/registry/18-oci-registry-default.md)`,
     )
   }
 
-  const config = input.registry
-    ? { registry: input.registry, scopeRegistries: {} }
-    : makeDefaultFetchConfig()
+  const defaults = makeDefaultFetchConfig()
+  const config = flag
+    ? { registry: flag, scopeRegistries: {} }
+    : {
+        ...defaults,
+        scopeRegistries: {
+          ...defaults.scopeRegistries,
+          ...hostScopeRegistries({ manifest: input.manifest }),
+        },
+      }
   const route = ociRouteOf({ name: input.name, config })
 
   if (!route) {

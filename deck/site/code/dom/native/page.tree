@@ -20,6 +20,7 @@ task page-path
 # document shell; in the browser it sets document.title.
 task set-title
   take title, like text
+  save skip, code 0
 
 # set a SEO meta tag (per-route, from a route's `seed description` / `seed og:image` / etc. directives), declared
 # separately from the component. On the server it stashes the tag for the document shell <head>; in the browser it
@@ -27,11 +28,13 @@ task set-title
 task set-meta
   take name, like text
   take content, like text
+  save skip, code 0
 
 # a resource route's proxy source (e.g. /vibe.pdf). On the server it is stashed for the host to fetch + stream (the
 # page URL stays put); in the browser it triggers a full navigation so the server handles it.
 task set-proxy
   take url, like text
+  save skip, code 0
 
 # the proxy source stashed during this render, or empty (server only; the browser navigates immediately).
 task proxy-target
@@ -42,3 +45,4 @@ task proxy-target
 task listen-pop
   take handler
     like task
+  save skip, code 0

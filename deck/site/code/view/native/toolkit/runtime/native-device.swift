@@ -59,6 +59,19 @@ enum nativeDevice {
         observers.append(NotificationCenter.default.addObserver(
             forName: UIContentSizeCategory.didChangeNotification, object: nil, queue: .main
         ) { _ in recheck() })
+        // the window's own trait changes. A trait asked for before launch (a style table follows the color scheme from
+        // the first line of `main`, native-dom-0048) finds no window yet, so the watch waits for it rather than being
+        // skipped, which lost every rotation that run
+        if nativeView.window != nil {
+            watchWindow()
+        } else {
+            nativeView.onWindow.append { watchWindow() }
+        }
+        #endif
+    }
+
+    #if canImport(UIKit)
+    private static func watchWindow() {
         // every runtime call is on the main thread already (the program runs there), which the API cannot see
         if #available(iOS 17.0, *), let window = nativeView.window {
             MainActor.assumeIsolated {
@@ -70,8 +83,10 @@ enum nativeDevice {
                 }
             }
         }
-        #endif
+        // what the window reads now may differ from what was read without it
+        recheck()
     }
+    #endif
 
     static func unwatch() {
         handler = nil

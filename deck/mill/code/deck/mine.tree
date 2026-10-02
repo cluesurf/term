@@ -40,6 +40,8 @@ mine deck-def
           site link
         mine form, like deck-host
           site host
+        mine form, like deck-base
+          site base
         mine form, like deck-case
           site case
         mine form, like deck-mind
@@ -155,6 +157,18 @@ mine deck-host
     mine list
       mine form, like deck-link
         site link
+
+# `base alice, <ghcr.io/alice-gh/term>`: the registry a scope's packages come from. A scope with no `base` line
+# comes from `ghcr.io/<scope>`, so the mapping lives in the project that uses it and is never stored anywhere else
+mine deck-base
+  mine term, term base
+    mine any
+      mine path
+        site scope
+      mine term
+        site scope
+    mine text
+      site registry
 
 # `mind <Lance Pollard>, base <lp@elk.fm>` with an optional child `site <...>`
 mine deck-mind

@@ -96,6 +96,12 @@ final class TermNode {
     var value = ""
     var attributes: [(name: String, value: String)] = []
     var styles: [String: String] = [:]
+    // the properties set by `set-style` or a `style` attribute, which win over any class's row, as inline CSS does
+    var inline = Set<String>()
+    // the properties the style table set from this node's classes, so a class removed takes its rows with it
+    var fromClass = Set<String>()
+    // whether a color or font was ever drawn on this node's text, so one taken away can be drawn back as the default
+    var textStyled = false
     var classes: [String] = []
     var children: [TermNode] = []
     weak var parent: TermNode?
@@ -287,6 +293,11 @@ final class TermViewAppDelegate: NSObject, UIApplicationDelegate {
         window.makeKeyAndVisible()
         self.window = window
         nativeView.window = window
+        // what was waiting for the window to exist: a trait watch installed before launch (native-dom-0048)
+        for body in nativeView.onWindow {
+            body()
+        }
+        nativeView.onWindow = []
         for body in TermViewAppDelegate.afterLaunch {
             DispatchQueue.main.async(execute: body)
         }
@@ -304,6 +315,8 @@ enum nativeView {
     #endif
     #if canImport(UIKit)
     static var window: UIWindow?
+    // run once, when the window exists: a watch asked for before launch attaches here
+    static var onWindow: [() -> Void] = []
     #endif
 
     // the handle Term holds is `Any`, so every entry point takes `Any` and reads the node out of it
@@ -404,6 +417,11 @@ enum nativeView {
         default:
             break
         }
+
+        // a state attribute a style row is keyed on (`data-state`, `disabled`): the node's rows are chosen again
+        if styleRules.contains(where: { $0.attribute == name }) {
+            restyle(node)
+        }
     }
 
     static func getAttribute(_ handle: Any, _ name: String) -> String {
@@ -430,11 +448,33 @@ enum nativeView {
         Double(value.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "px", with: "")).map { CGFloat($0) }
     }
 
+    // CSS's one to four sides, expanded to top, right, bottom, left
+    private static func sides(_ value: String) -> [CGFloat]? {
+        let parts = value.split(separator: " ").map { points(String($0)) }
+        guard (1...4).contains(parts.count), parts.allSatisfy({ $0 != nil }) else { return nil }
+        let given = parts.map { $0! }
+        let top = given[0]
+        let right = given.count > 1 ? given[1] : top
+        let bottom = given.count > 2 ? given[2] : top
+        let left = given.count > 3 ? given[3] : right
+        return [top, right, bottom, left]
+    }
+
     static func setStyle(_ handle: Any, _ property: String, _ value: String) {
         let node = node(handle)
+        node.inline.insert(property)
+        applyStyle(node, property, value)
+    }
+
+    // one declaration onto the platform, from `set-style` or from a style-table row
+    private static func applyStyle(_ node: TermNode, _ property: String, _ value: String) {
         node.styles[property] = value
         let value = value.trimmingCharacters(in: .whitespaces)
         let stack = node.view as? TermStack
+
+        if drawLook(node, property, value) {
+            return
+        }
 
         switch (property, stack) {
         case ("display", _) where value == "flex" || value == "block":
@@ -504,13 +544,13 @@ enum nativeView {
             }
             return
         case ("padding", let stack?):
-            if let inset = points(value) {
+            if let inset = sides(value) {
                 #if canImport(AppKit)
-                stack.edgeInsets = NSEdgeInsets(top: inset, left: inset, bottom: inset, right: inset)
+                stack.edgeInsets = NSEdgeInsets(top: inset[0], left: inset[3], bottom: inset[2], right: inset[1])
                 #endif
                 #if canImport(UIKit)
                 stack.isLayoutMarginsRelativeArrangement = true
-                stack.directionalLayoutMargins = NSDirectionalEdgeInsets(top: inset, leading: inset, bottom: inset, trailing: inset)
+                stack.directionalLayoutMargins = NSDirectionalEdgeInsets(top: inset[0], leading: inset[3], bottom: inset[2], trailing: inset[1])
                 #endif
                 return
             }
@@ -559,6 +599,348 @@ enum nativeView {
         unsupported.sorted().joined(separator: "\n")
     }
 
+    // ---- the look (native-dom-0008): what a style-table row draws beyond layout ----
+    //
+    //   background, background-color   #rrggbb[aa]               the view's own fill
+    //   border                         <n>px solid #rrggbb[aa]   its layer's edge
+    //   border-width, border-color     <n>px | #rrggbb[aa]
+    //   border-radius                  <n>px                     its layer's corners
+    //   opacity                        <n>                       the view's alpha
+    //   color, font-size, font-weight  #hex | <n>px | 100..900   INHERITED, as in CSS: drawn on every text under the node
+    //
+    // Values arrive resolved: the build turned every token, rem and short hex into these forms (look-table.ts).
+
+    #if canImport(AppKit)
+    typealias Paint = NSColor
+    typealias Typeface = NSFont
+    typealias Weight = NSFont.Weight
+    #endif
+    #if canImport(UIKit)
+    typealias Paint = UIColor
+    typealias Typeface = UIFont
+    typealias Weight = UIFont.Weight
+    #endif
+
+    private static func paint(_ value: String) -> Paint? {
+        let digits = value.trimmingCharacters(in: .whitespaces).lowercased()
+        guard digits.hasPrefix("#"), digits.count == 7 || digits.count == 9, let number = UInt64(digits.dropFirst(), radix: 16) else {
+            return nil
+        }
+        let rgba = digits.count == 7 ? (number << 8) | 0xff : number
+        let channel = { (shift: UInt64) in CGFloat((rgba >> shift) & 0xff) / 255 }
+        #if canImport(AppKit)
+        return NSColor(srgbRed: channel(24), green: channel(16), blue: channel(8), alpha: channel(0))
+        #else
+        return UIColor(red: channel(24), green: channel(16), blue: channel(8), alpha: channel(0))
+        #endif
+    }
+
+    // a color as the table writes it, `#rrggbb`, with the alpha only when it is not opaque
+    private static func hex(_ paint: Paint?) -> String {
+        guard let paint else { return "" }
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        #if canImport(AppKit)
+        guard let srgb = paint.usingColorSpace(.sRGB) else { return "" }
+        srgb.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        #else
+        paint.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        #endif
+        let byte = { (part: CGFloat) in String(format: "%02x", Int((part * 255).rounded())) }
+        return "#" + byte(red) + byte(green) + byte(blue) + (alpha < 1 ? byte(alpha) : "")
+    }
+
+    // CSS's weights to the platform's, by the nearest step
+    private static let WEIGHTS: [(css: Double, weight: Weight)] = [
+        (100, .ultraLight), (200, .thin), (300, .light), (400, .regular), (500, .medium),
+        (600, .semibold), (700, .bold), (800, .heavy), (900, .black),
+    ]
+
+    private static func weight(_ css: Double) -> Weight {
+        WEIGHTS.min { abs($0.css - css) < abs($1.css - css) }!.weight
+    }
+
+    private static func cssWeight(_ typeface: Typeface?) -> String {
+        guard let typeface else { return "" }
+        #if canImport(AppKit)
+        let traits = typeface.fontDescriptor.object(forKey: .traits) as? [NSFontDescriptor.TraitKey: Any]
+        #else
+        let traits = typeface.fontDescriptor.object(forKey: .traits) as? [UIFontDescriptor.TraitKey: Any]
+        #endif
+        let raw = (traits?[.weight] as? CGFloat) ?? 0
+        let nearest = WEIGHTS.min { abs($0.weight.rawValue - raw) < abs($1.weight.rawValue - raw) }!
+        return String(Int(nearest.css))
+    }
+
+    // the layer as it stands, made or not: optional on AppKit, always there on UIKit
+    private static func drawnLayer(_ node: TermNode) -> CALayer? {
+        node.view.layer
+    }
+
+    private static func layer(_ node: TermNode) -> CALayer {
+        #if canImport(AppKit)
+        node.view.wantsLayer = true
+        return node.view.layer!
+        #else
+        return node.view.layer
+        #endif
+    }
+
+    // a number the way CSS writes it: `1`, `0.5`
+    private static func plain(_ number: CGFloat) -> String {
+        let rounded = (Double(number) * 100).rounded() / 100
+        return rounded == rounded.rounded() ? String(Int(rounded)) : String(rounded)
+    }
+
+    // draw one look declaration. False when the property is not a look property or the value does not read, which
+    // leaves it to the layout switch and, failing that, to `unsupported`
+    private static func drawLook(_ node: TermNode, _ property: String, _ value: String) -> Bool {
+        switch property {
+        case "background", "background-color":
+            guard let fill = paint(value) else { return false }
+            #if canImport(AppKit)
+            layer(node).backgroundColor = fill.cgColor
+            #else
+            node.view.backgroundColor = fill
+            #endif
+        case "border":
+            let parts = value.split(separator: " ").map(String.init)
+            guard parts.count == 3, parts[1] == "solid", let width = points(parts[0]), let edge = paint(parts[2]) else { return false }
+            layer(node).borderWidth = width
+            layer(node).borderColor = edge.cgColor
+        case "border-width":
+            guard let width = points(value) else { return false }
+            layer(node).borderWidth = width
+        case "border-color":
+            guard let edge = paint(value) else { return false }
+            layer(node).borderColor = edge.cgColor
+        case "border-radius":
+            guard let radius = points(value) else { return false }
+            layer(node).cornerRadius = radius
+        case "opacity":
+            guard let alpha = Double(value) else { return false }
+            #if canImport(AppKit)
+            node.view.alphaValue = CGFloat(alpha)
+            #else
+            node.view.alpha = CGFloat(alpha)
+            #endif
+        case "color":
+            guard paint(value) != nil else { return false }
+            restyleText(node)
+        case "font-size":
+            guard points(value) != nil else { return false }
+            restyleText(node)
+        case "font-weight":
+            guard Double(value) != nil else { return false }
+            restyleText(node)
+        default:
+            return false
+        }
+        return true
+    }
+
+    // a look property taken away: the view drawn as it was before any row set it
+    private static func eraseLook(_ node: TermNode, _ property: String) {
+        switch property {
+        case "background", "background-color":
+            #if canImport(AppKit)
+            node.view.layer?.backgroundColor = nil
+            #else
+            node.view.backgroundColor = nil
+            #endif
+        case "border", "border-width":
+            drawnLayer(node)?.borderWidth = 0
+        case "border-radius":
+            drawnLayer(node)?.cornerRadius = 0
+        case "opacity":
+            #if canImport(AppKit)
+            node.view.alphaValue = 1
+            #else
+            node.view.alpha = 1
+            #endif
+        case "color", "font-size", "font-weight":
+            restyleText(node)
+        default:
+            break
+        }
+    }
+
+    // a text property's value at a node: its own, else the nearest ancestor's, which is CSS inheritance
+    private static func inherited(_ node: TermNode, _ property: String) -> String? {
+        var at: TermNode? = node
+        while let here = at {
+            if let value = here.styles[property] {
+                return value
+            }
+            at = here.parent
+        }
+        return nil
+    }
+
+    // draw the inherited color and font on the text at and under a node
+    private static func restyleText(_ node: TermNode) {
+        drawText(node)
+        for child in node.children {
+            restyleText(child)
+        }
+    }
+
+    private static func drawText(_ node: TermNode) {
+        let ink = inherited(node, "color").flatMap { paint($0) }
+        let size = inherited(node, "font-size").flatMap { points($0) }
+        let heft = inherited(node, "font-weight").flatMap { Double($0) }
+
+        guard ink != nil || size != nil || heft != nil || node.textStyled else {
+            return
+        }
+
+        node.textStyled = ink != nil || size != nil || heft != nil
+        #if canImport(AppKit)
+        let face = Typeface.systemFont(ofSize: size ?? NSFont.systemFontSize, weight: heft.map(weight) ?? .regular)
+        if let field = node.view as? NSTextField {
+            field.textColor = ink ?? .labelColor
+            field.font = face
+        } else if let button = node.view as? NSButton {
+            button.contentTintColor = ink
+            button.font = face
+        }
+        #else
+        let face = Typeface.systemFont(ofSize: size ?? 17, weight: heft.map(weight) ?? .regular)
+        if let label = node.view as? UILabel {
+            label.textColor = ink ?? .label
+            label.font = face
+        } else if let field = node.view as? UITextField {
+            field.textColor = ink ?? .label
+            field.font = face
+        } else if let button = node.view as? UIButton {
+            button.setTitleColor(ink, for: .normal)
+            button.titleLabel?.font = face
+        }
+        #endif
+    }
+
+    // ---- the style table (native-dom-0008): a `look` sheet compiled at build time, one row per declaration ----
+    //
+    // `use-styles` loads it once, before the first mount: rows joined by `;`, each `<class>|<state>|<property>: <value>`,
+    // where state is empty, `attribute` or `attribute=value` (look-table.ts, styleTableText). A class added or removed,
+    // or a state attribute changed, re-applies the node's rows. Plain rows go first and state rows after, the order CSS
+    // specificity gives `.c` and `.c[data-state=open]`; within each, a later row wins, as a later rule does
+
+    private struct StyleRule {
+        let name: String
+        let attribute: String
+        let expected: String?
+        let property: String
+        let value: String
+    }
+
+    // the rows in force, and the two tables they are chosen from by the device's color scheme (native-dom-0048)
+    private static var styleRules: [StyleRule] = []
+    private static var lightRules: [StyleRule] = []
+    private static var darkRules: [StyleRule] = []
+    private static var darkScheme = false
+    // every node a class was ever added to, held weakly, so a scheme change can restyle them all
+    private static let styled = NSHashTable<TermNode>.weakObjects()
+
+    // the light table and the dark one. An empty dark table means the sheet has no dark scheme: light serves both
+    static func useStyles(_ light: String, _ dark: String) {
+        lightRules = rulesOf(light)
+        darkRules = dark.isEmpty ? lightRules : rulesOf(dark)
+        styleRules = darkScheme ? darkRules : lightRules
+    }
+
+    // the device's color scheme, `dark` or anything else for light: every styled node takes its rows from that table
+    static func useScheme(_ scheme: String) {
+        let dark = scheme == "dark"
+        guard dark != darkScheme else { return }
+        darkScheme = dark
+        styleRules = dark ? darkRules : lightRules
+        for node in styled.allObjects {
+            restyle(node)
+        }
+    }
+
+    private static func rulesOf(_ table: String) -> [StyleRule] {
+        table.split(separator: ";").compactMap { row in
+            let fields = row.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
+            guard fields.count == 3 else { return nil }
+            let declaration = fields[2].split(separator: ":", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+            guard declaration.count == 2 else { return nil }
+            let on = fields[1].split(separator: "=", maxSplits: 1).map(String.init)
+            return StyleRule(
+                name: fields[0],
+                attribute: on.first ?? "",
+                expected: on.count == 2 ? on[1] : nil,
+                property: declaration[0],
+                value: declaration[1]
+            )
+        }
+    }
+
+    private static func selects(_ node: TermNode, _ rule: StyleRule) -> Bool {
+        guard node.classes.contains(rule.name) else { return false }
+        if rule.attribute.isEmpty { return true }
+        guard let have = node.attributes.first(where: { $0.name == rule.attribute })?.value else { return false }
+        if let expected = rule.expected { return have == expected }
+        return have != "false"
+    }
+
+    private static func restyle(_ node: TermNode) {
+        guard !styleRules.isEmpty else { return }
+        var wanted: [String: String] = [:]
+        var order: [String] = []
+
+        for plain in [true, false] {
+            for rule in styleRules where rule.attribute.isEmpty == plain && selects(node, rule) && !node.inline.contains(rule.property) {
+                if wanted[rule.property] == nil {
+                    order.append(rule.property)
+                }
+                wanted[rule.property] = rule.value
+            }
+        }
+
+        for property in node.fromClass where wanted[property] == nil {
+            node.styles.removeValue(forKey: property)
+            eraseLook(node, property)
+        }
+
+        node.fromClass = Set(order)
+
+        for property in order where node.styles[property] != wanted[property] {
+            applyStyle(node, property, wanted[property]!)
+        }
+    }
+
+    // for tests: a look property as the PLATFORM holds it, read off the view or its layer, never off the table
+    static func styleOf(_ handle: Any, _ property: String) -> String {
+        let node = node(handle)
+        #if canImport(AppKit)
+        let typeface = (node.view as? NSTextField)?.font ?? (node.view as? NSButton)?.font
+        let ink = (node.view as? NSTextField)?.textColor
+        let fill = node.view.layer?.backgroundColor.flatMap { NSColor(cgColor: $0) }
+        let alpha = node.view.alphaValue
+        #else
+        let typeface = (node.view as? UILabel)?.font ?? (node.view as? UITextField)?.font
+        let ink = (node.view as? UILabel)?.textColor ?? (node.view as? UITextField)?.textColor
+        let fill = node.view.backgroundColor
+        let alpha = node.view.alpha
+        #endif
+        let edge = drawnLayer(node)?.borderColor.flatMap { Paint(cgColor: $0) }
+
+        switch property {
+        // no fill and a clear one are the same to a reader: `none` on every platform
+        case "background":
+            let drawn = hex(fill)
+            return drawn.isEmpty || (drawn.count == 9 && drawn.hasSuffix("00")) ? "none" : drawn
+        case "border": return "\(plain(drawnLayer(node)?.borderWidth ?? 0))px \(hex(edge))"
+        case "border-radius": return "\(plain(drawnLayer(node)?.cornerRadius ?? 0))px"
+        case "opacity": return plain(alpha)
+        case "color": return hex(ink)
+        case "font-size": return typeface.map { "\(plain($0.pointSize))px" } ?? ""
+        case "font-weight": return cssWeight(typeface)
+        default: return ""
+        }
+    }
+
     // where a node is drawn, in points from the window's content origin: `x,y,width,height`. What a layout test reads
     static func frameOf(_ handle: Any) -> String {
         let node = node(handle)
@@ -583,11 +965,15 @@ enum nativeView {
         let node = node(handle)
         if !node.classes.contains(name) {
             node.classes.append(name)
+            styled.add(node)
+            restyle(node)
         }
     }
 
     static func removeClass(_ handle: Any, _ name: String) {
-        node(handle).classes.removeAll { $0 == name }
+        let node = node(handle)
+        node.classes.removeAll { $0 == name }
+        restyle(node)
     }
 
     static func focus(_ handle: Any) {
@@ -718,6 +1104,8 @@ enum nativeView {
         detach(child)
         child.parent = parent
         parent.children.append(child)
+        // the color and font the new parent passes down, as CSS inherits them
+        restyleText(child)
         if let drawing = parent.drawingAncestor {
             drawing.refreshTitle()
         } else if child.kind == .sheet {

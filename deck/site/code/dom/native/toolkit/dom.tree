@@ -9,8 +9,9 @@
 # through the `toolkit` rung of their chains (compile/native.ts, NATIVE_ENV_FALLBACK).
 #
 # A node's handle is the runtime's own node object, opaque to Term. Every task forwards to `native-view` and passes
-# the handle through untouched; the runtime reads it back. Conforms to ../dom. The page tasks (title, meta, proxy,
-# path, pop) have no meaning in a native window and are no-ops, as on the server.
+# the handle through untouched; the runtime reads it back. Conforms to ../dom, the node contract. The page contract
+# (title, meta, proxy, path, pop) has no meaning in a native window, and this host does not implement it: ../page is
+# the no-op every such env reaches (native-dom-0003).
 
 load ../../view
   find view
@@ -343,6 +344,16 @@ task frame-of
   send back
     call native-view/frame-of
       read node/handle
+
+# for tests (native-dom-0008): a look property as the platform holds it, read off the view, never off the table
+task style-of
+  take node, like view
+  take property, like text
+  like text
+  send back
+    call native-view/style-of
+      read node/handle
+      read property
 
 # every style a host could not map onto its platform, one per line, empty when everything mapped
 task unsupported-styles

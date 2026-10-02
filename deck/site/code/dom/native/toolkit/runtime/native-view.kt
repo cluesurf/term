@@ -88,6 +88,16 @@ class TermNode(val key: Long, val tag: String, var text: String, context: Activi
     var value = ""
     val attributes = mutableListOf<Pair<String, String>>()
     val styles = mutableMapOf<String, String>()
+    // the properties set by `set-style` or a `style` attribute, which win over any class's row, as inline CSS does
+    val inline = mutableSetOf<String>()
+    // the properties the style table set from this node's classes, so a class removed takes its rows with it
+    var fromClass = setOf<String>()
+    // whether a color or font was ever drawn on this node's text, so one taken away can be drawn back as the default
+    var textStyled = false
+    // the fill, edge and corners a style row drew, made the first time one does: a View has one background
+    var surface: android.graphics.drawable.GradientDrawable? = null
+    // the edge as drawn, width in CSS pixels and color: a GradientDrawable keeps its stroke but has no getter for it
+    var stroke: Pair<Float, Int>? = null
     val classes = mutableListOf<String>()
     val children = mutableListOf<TermNode>()
     var parent: TermNode? = null
@@ -201,6 +211,8 @@ object nativeView {
             }
             "title" -> if (node.kind == TermNode.Kind.SHEET) node.dialog?.setTitle(value)
         }
+        // a state attribute a style row is keyed on (`data-state`, `disabled`): the node's rows are chosen again
+        if (styleRules.any { it.attribute == name }) restyle(node)
     }
 
     // ---- the dialog (native-dom-0026): an android.app.Dialog shows the sheet's content ----
@@ -303,10 +315,28 @@ object nativeView {
     private fun dp(value: String): Int? =
         value.trim().removeSuffix("px").toDoubleOrNull()?.let { (it * context().resources.displayMetrics.density).toInt() }
 
+    // CSS's one to four sides, expanded to top, right, bottom, left, in pixels
+    private fun sides(value: String): List<Int>? {
+        val given = value.trim().split(Regex("\\s+")).map { dp(it) }
+        if (given.size !in 1..4 || given.any { it == null }) return null
+        val top = given[0]!!
+        val right = given.getOrNull(1) ?: top
+        val bottom = given.getOrNull(2) ?: top
+        val left = given.getOrNull(3) ?: right
+        return listOf(top, right, bottom, left)
+    }
+
     fun setStyle(handle: Any, property: String, raw: String) {
         val node = node(handle)
+        node.inline.add(property)
+        applyStyle(node, property, raw)
+    }
+
+    // one declaration onto the platform, from `set-style` or from a style-table row
+    private fun applyStyle(node: TermNode, property: String, raw: String) {
         node.styles[property] = raw
         val value = raw.trim()
+        if (drawLook(node, property, value)) return
         val layout = node.view as? LinearLayout
         val ok: Boolean = when {
             property == "display" && (value == "flex" || value == "block") -> {
@@ -336,9 +366,9 @@ object nativeView {
                 applySpread(node)
                 true
             }
-            property == "padding" && dp(value) != null -> {
-                val inset = dp(value)!!
-                node.view.setPadding(inset, inset, inset, inset)
+            property == "padding" && sides(value) != null -> {
+                val (top, right, bottom, left) = sides(value)!!
+                node.view.setPadding(left, top, right, bottom)
                 true
             }
             (property == "width" || property == "height") && dp(value) != null -> {
@@ -439,6 +469,205 @@ object nativeView {
 
     fun unsupportedStyles(): String = unsupported.joinToString("\n")
 
+    // ---- the look (native-dom-0008): what a style-table row draws beyond layout. The same words as the Apple host:
+    // background, border, border-width, border-color, border-radius and opacity on the view, and color, font-size and
+    // font-weight INHERITED onto every text under it, as in CSS. Values arrive resolved (look-table.ts): hex colors and
+    // px lengths, which are dp here. The fill, edge and corners are one GradientDrawable, a View's one background
+
+    private fun paint(value: String): Int? {
+        val digits = value.trim().lowercase()
+        if (!digits.startsWith("#") || (digits.length != 7 && digits.length != 9)) return null
+        val number = digits.drop(1).toLongOrNull(16) ?: return null
+        val rgba = if (digits.length == 7) (number shl 8) or 0xffL else number
+        fun channel(shift: Int) = ((rgba shr shift) and 0xffL).toInt()
+        return Color.argb(channel(0), channel(24), channel(16), channel(8))
+    }
+
+    // a color as the table writes it, `#rrggbb`, with the alpha only when it is not opaque
+    private fun hex(color: Int): String =
+        "#%02x%02x%02x".format(Color.red(color), Color.green(color), Color.blue(color)) +
+            if (Color.alpha(color) < 255) "%02x".format(Color.alpha(color)) else ""
+
+    // a number the way CSS writes it: `1`, `0.5`
+    private fun plain(number: Float): String {
+        val rounded = Math.round(number * 100) / 100.0
+        return if (rounded == Math.floor(rounded)) rounded.toLong().toString() else rounded.toString()
+    }
+
+    private fun surface(node: TermNode): android.graphics.drawable.GradientDrawable =
+        node.surface ?: android.graphics.drawable.GradientDrawable().also {
+            it.setColor(Color.TRANSPARENT)
+            node.surface = it
+            node.view.background = it
+        }
+
+    // a length in CSS pixels, unrounded: a 1px edge at density 2.625 is 2.625 device pixels, which `dp` truncates
+    private fun css(value: String): Float? = value.trim().removeSuffix("px").toFloatOrNull()
+
+    private fun drawStroke(node: TermNode, width: Float, color: Int) {
+        node.stroke = width to color
+        surface(node).setStroke(Math.round(width * context().resources.displayMetrics.density), color)
+    }
+
+    // draw one look declaration. False when the property is not a look property or the value does not read, which
+    // leaves it to the layout rules and, failing those, to `unsupported`
+    private fun drawLook(node: TermNode, property: String, value: String): Boolean {
+        when (property) {
+            "background", "background-color" -> surface(node).setColor(paint(value) ?: return false)
+            "border" -> {
+                val parts = value.split(Regex("\\s+"))
+                if (parts.size != 3 || parts[1] != "solid") return false
+                drawStroke(node, css(parts[0]) ?: return false, paint(parts[2]) ?: return false)
+            }
+            "border-width" -> drawStroke(node, css(value) ?: return false, node.stroke?.second ?: Color.BLACK)
+            "border-color" -> drawStroke(node, node.stroke?.first ?: 0f, paint(value) ?: return false)
+            "border-radius" -> surface(node).cornerRadius = (css(value) ?: return false) * context().resources.displayMetrics.density
+            "opacity" -> node.view.alpha = value.toFloatOrNull() ?: return false
+            "color" -> { paint(value) ?: return false; restyleText(node) }
+            "font-size" -> { dp(value) ?: return false; restyleText(node) }
+            "font-weight" -> { value.toIntOrNull() ?: return false; restyleText(node) }
+            else -> return false
+        }
+        return true
+    }
+
+    // a look property taken away: the view drawn as it was before any row set it
+    private fun eraseLook(node: TermNode, property: String) {
+        when (property) {
+            "background", "background-color" -> node.surface?.setColor(Color.TRANSPARENT)
+            "border", "border-width" -> { node.stroke = null; node.surface?.setStroke(0, Color.TRANSPARENT) }
+            "border-radius" -> node.surface?.cornerRadius = 0f
+            "opacity" -> node.view.alpha = 1f
+            "color", "font-size", "font-weight" -> restyleText(node)
+        }
+    }
+
+    // a text property's value at a node: its own, else the nearest ancestor's, which is CSS inheritance
+    private fun inherited(node: TermNode, property: String): String? {
+        var at: TermNode? = node
+        while (at != null) {
+            at.styles[property]?.let { return it }
+            at = at.parent
+        }
+        return null
+    }
+
+    // draw the inherited color and font on the text at and under a node
+    private fun restyleText(node: TermNode) {
+        drawText(node)
+        for (child in node.children) restyleText(child)
+    }
+
+    private fun drawText(node: TermNode) {
+        val text = node.view as? TextView ?: return
+        val ink = inherited(node, "color")?.let { paint(it) }
+        val size = inherited(node, "font-size")?.trim()?.removeSuffix("px")?.toFloatOrNull()
+        val heft = inherited(node, "font-weight")?.trim()?.toIntOrNull()
+        if (ink == null && size == null && heft == null && !node.textStyled) return
+        node.textStyled = ink != null || size != null || heft != null
+        text.setTextColor(ink ?: Color.BLACK)
+        if (size != null) text.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, size)
+        else text.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 17f)
+        text.typeface = when {
+            heft == null -> android.graphics.Typeface.DEFAULT
+            android.os.Build.VERSION.SDK_INT >= 28 -> android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, heft, false)
+            heft >= 600 -> android.graphics.Typeface.DEFAULT_BOLD
+            else -> android.graphics.Typeface.DEFAULT
+        }
+    }
+
+    // ---- the style table (native-dom-0008): a `look` sheet compiled at build time, one row per declaration. The same
+    // format and the same rules as the Apple host: rows joined by `;`, each `<class>|<state>|<property>: <value>`;
+    // plain rows first and state rows after, as CSS specificity orders `.c` and `.c[data-state=open]`; a later row wins
+    // within each; a property set inline wins over every row. Loaded once, before the first mount
+
+    private class StyleRule(val name: String, val attribute: String, val expected: String?, val property: String, val value: String)
+
+    // the rows in force, and the two tables they are chosen from by the device's color scheme (native-dom-0048)
+    private var styleRules = listOf<StyleRule>()
+    private var lightRules = listOf<StyleRule>()
+    private var darkRules = listOf<StyleRule>()
+    private var darkScheme = false
+    // every node a class was ever added to, held weakly, so a scheme change can restyle them all
+    private val styled = java.util.Collections.newSetFromMap(java.util.WeakHashMap<TermNode, Boolean>())
+
+    // the light table and the dark one. An empty dark table means the sheet has no dark scheme: light serves both
+    fun useStyles(light: String, dark: String) {
+        lightRules = rulesOf(light)
+        darkRules = if (dark.isEmpty()) lightRules else rulesOf(dark)
+        styleRules = if (darkScheme) darkRules else lightRules
+    }
+
+    // the device's color scheme, `dark` or anything else for light: every styled node takes its rows from that table
+    fun useScheme(scheme: String) {
+        val dark = scheme == "dark"
+        if (dark == darkScheme) return
+        darkScheme = dark
+        styleRules = if (dark) darkRules else lightRules
+        for (node in styled.toList()) restyle(node)
+    }
+
+    private fun rulesOf(table: String): List<StyleRule> =
+        table.split(";").mapNotNull { row ->
+            val fields = row.split("|", limit = 3)
+            if (fields.size != 3) return@mapNotNull null
+            val declaration = fields[2].split(":", limit = 2).map { it.trim() }
+            if (declaration.size != 2) return@mapNotNull null
+            val on = fields[1].split("=", limit = 2)
+            StyleRule(fields[0], on[0], on.getOrNull(1), declaration[0], declaration[1])
+        }
+
+    private fun selects(node: TermNode, rule: StyleRule): Boolean {
+        if (rule.name !in node.classes) return false
+        if (rule.attribute.isEmpty()) return true
+        val have = node.attributes.firstOrNull { it.first == rule.attribute }?.second ?: return false
+        return rule.expected?.let { have == it } ?: (have != "false")
+    }
+
+    private fun restyle(node: TermNode) {
+        if (styleRules.isEmpty()) return
+        val wanted = linkedMapOf<String, String>()
+        for (plain in listOf(true, false)) {
+            for (rule in styleRules) {
+                if (rule.attribute.isEmpty() == plain && selects(node, rule) && rule.property !in node.inline) {
+                    wanted[rule.property] = rule.value
+                }
+            }
+        }
+        for (property in node.fromClass) {
+            if (property !in wanted) {
+                node.styles.remove(property)
+                eraseLook(node, property)
+            }
+        }
+        node.fromClass = wanted.keys.toSet()
+        for ((property, value) in wanted) {
+            if (node.styles[property] != value) applyStyle(node, property, value)
+        }
+    }
+
+    // for tests: a look property as the PLATFORM holds it, read off the view and its drawable, never off the table.
+    // The edge is the one exception: a GradientDrawable keeps its stroke but cannot be asked for it, so it is read from
+    // what was handed to it
+    fun styleOf(handle: Any, property: String): String {
+        val node = node(handle)
+        val density = context().resources.displayMetrics.density
+        val text = node.view as? TextView
+        return when (property) {
+            // no fill and a clear one are the same to a reader: `none` on every platform
+            "background" -> node.surface?.color?.defaultColor?.takeIf { Color.alpha(it) > 0 }?.let { hex(it) } ?: "none"
+            "border" -> node.stroke?.let { "${plain(it.first)}px ${hex(it.second)}" } ?: "0px "
+            "border-radius" -> "${plain((node.surface?.cornerRadius ?: 0f) / density)}px"
+            "opacity" -> plain(node.view.alpha)
+            "color" -> text?.let { hex(it.currentTextColor) } ?: ""
+            "font-size" -> text?.let { "${plain(it.textSize / density)}px" } ?: ""
+            "font-weight" -> text?.typeface?.let {
+                if (android.os.Build.VERSION.SDK_INT >= 28) it.weight.toString() else if (it.isBold) "700" else "400"
+            } ?: ""
+            else -> ""
+        }
+    }
+
     // where a node is drawn, in dp from the root's origin: `x,y,width,height`, what a layout test reads
     fun frameOf(handle: Any): String {
         val node = node(handle)
@@ -462,11 +691,17 @@ object nativeView {
 
     fun addClass(handle: Any, name: String) {
         val node = node(handle)
-        if (name !in node.classes) node.classes.add(name)
+        if (name !in node.classes) {
+            node.classes.add(name)
+            styled.add(node)
+            restyle(node)
+        }
     }
 
     fun removeClass(handle: Any, name: String) {
-        node(handle).classes.remove(name)
+        val node = node(handle)
+        node.classes.remove(name)
+        restyle(node)
     }
 
     fun focus(handle: Any) {
@@ -526,6 +761,8 @@ object nativeView {
         detach(child)
         child.parent = parent
         parent.children.add(child)
+        // the color and font the new parent passes down, as CSS inherits them
+        restyleText(child)
         val drawing = parent.drawingAncestor
         if (drawing != null) {
             drawing.refreshTitle()

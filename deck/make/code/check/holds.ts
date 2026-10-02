@@ -855,9 +855,27 @@ const monomialVars = (key: string): string[] =>
 
 // expand an arithmetic expression into its polynomial, or null if it is not a polynomial of degree <= 2 (a degree-3+
 // monomial appears). Coefficients stay exact integers.
-// the atom an application of a quantified function is: `@apply:x(<argument>)`, the argument written canonically from
-// its polynomial (sorted monomials, each `coefficient*var.var`), so equal arguments name one atom. Undefined for any
-// other expression, or an argument outside the polynomial fragment
+// THE ATOMS an application of a quantified function becomes. The linear and polynomial engines key their unknowns by
+// strings, so an application needs a key, and the key is built canonically from the function and its arguments'
+// polynomials so that equal arguments name one atom. Nothing reads structure back out of a key: what an atom IS (an
+// application, of which function, reading which variables) is recorded here when its key is made, and every question
+// about a key is a lookup in this table.
+type Atom = { function: string; variables: Set<string> }
+
+const applications = new Map<string, Atom>()
+
+// is this key an application of a quantified function
+function isApplication(key: string): boolean {
+  return applications.has(key)
+}
+
+// the variables an application's arguments read, through nested applications
+function applicationVariables(key: string): Set<string> {
+  return applications.get(key)?.variables ?? new Set()
+}
+
+// the key of an application, registered in `applications`, or undefined for any other expression or an argument outside
+// the polynomial fragment
 function applicationKey(expr: Expression): string | undefined {
   if (expr.form !== 'call' || expr.callee.form !== 'variable' || !appliedFunctions.has(expr.callee.name)) {
     return undefined
@@ -881,7 +899,27 @@ function applicationKey(expr: Expression): string | undefined {
     )
   }
 
-  return `@apply:${expr.callee.name}(${args.join(',')})`
+  const key = `@apply:${expr.callee.name}(${args.join(',')})`
+
+  if (!applications.has(key)) {
+    const variables = new Set<string>()
+
+    for (const arg of expr.args) {
+      for (const monomial of expandPolynomial(arg)!.keys()) {
+        for (const v of monomialVars(monomial)) {
+          if (isApplication(v)) {
+            applicationVariables(v).forEach(inner => variables.add(inner))
+          } else {
+            variables.add(v)
+          }
+        }
+      }
+    }
+
+    applications.set(key, { function: expr.callee.name, variables })
+  }
+
+  return key
 }
 
 function expandPolynomial(expr: Expression): Poly | null {
@@ -1898,7 +1936,7 @@ function appliedArguments(e: Expression, into: Map<string, Expression>): void {
 
         // an argument that is itself an application (`pt(n)` in `bigf(pt(n))`) is a value, not an index a binder
         // ranges over, and offering it would crowd the indices out of the bounded candidate list
-        if (poly && ![...poly.keys()].some(k => k.includes('@apply:'))) {
+        if (poly && ![...poly.keys()].some(k => monomialVars(k).some(isApplication))) {
           const key = [...poly].filter(([, c]) => c !== 0).map(([k, c]) => `${c}*${k}`).sort().join('+') || '0'
           into.set(key, arg)
         }
@@ -2006,6 +2044,10 @@ function universalGoal(expr: Expression, available: Inequality[], seeds: Express
   // and the goal's plain variables, which a hypothesis may need where no call names them (cosh(x + w) needs the
   // addition formula at x and w, and only x + w is an argument)
   plainVariables(expr).forEach(name => terms.set(`1*${name}`, { form: 'variable', name, span: expr.span }))
+  // and 0, where a recurrence starts: an induction's base names t(1) and needs the step from t(0)
+  if (!terms.has('0')) {
+    terms.set('0', { form: 'integer', value: 0, span: expr.span })
+  }
 
   // a first round over the goal's own terms, and a second over the terms its instances name, tried in that order so
   // the smaller fact set is asked first
@@ -2052,10 +2094,10 @@ function plainVariables(e: Expression): string[] {
   return [...out]
 }
 
-// the application atoms a fact reads (`@apply:` keys, alone or inside a monomial)
+// the application atoms a fact reads, alone or inside a monomial
 function factApplications(q: Inequality): string[] {
   return [...q.linear.terms.keys()].flatMap(k =>
-    (k.startsWith(POLY) ? monomialVars(k.slice(POLY.length)) : [k]).filter(v => v.startsWith('@apply:')),
+    (k.startsWith(POLY) ? monomialVars(k.slice(POLY.length)) : [k]).filter(isApplication),
   )
 }
 
@@ -2117,17 +2159,40 @@ function universalInduction(goal: Expression, available: Inequality[], n: string
   const fixed = available.filter(q => ![...q.linear.terms.keys()].some(k => keyMentions(k, n)))
   const range = atLeast(linear({ [n]: 1 }), linear({}, 0))
 
-  if (!universalGoal(substituteName(goal, n, zero), fixed)) {
+  // a BOUNDED induction (`m <= n` beside `fold m`): a guard on the counter that reads it only as itself, linearly, is
+  // kept at each case, shifted there: at 0 for the base and at n + 1 for the step. The step's hypothesis P(n) is only
+  // available where the guards held at n, so this is sound when the guards at n + 1 imply the guards at n, which is
+  // checked (an upper bound on the counter does; a lower bound other than its range does not)
+  const counterGuards = available.filter(q => {
+    const keys = [...q.linear.terms.keys()].filter(k => keyMentions(k, n))
+
+    return keys.length > 0 && keys.every(k => k === n)
+  })
+  const shifted = (q: Inequality, by: number): Inequality => ({
+    linear: { terms: new Map(q.linear.terms), constant: q.linear.constant + (q.linear.terms.get(n) ?? 0) * by },
+    strict: q.strict,
+  })
+  const atZero = (q: Inequality): Inequality => ({
+    linear: { terms: new Map([...q.linear.terms].filter(([k]) => k !== n)), constant: q.linear.constant },
+    strict: q.strict,
+  })
+  const atNext = counterGuards.map(q => shifted(q, 1))
+  const downward = counterGuards.every(g => proves([...fixed, range, ...atNext], g))
+  const guardsAtZero = downward ? counterGuards.map(atZero) : []
+  const guardsAtNext = downward ? atNext : []
+
+  // THE BASE CASE: the goal at 0. Without it this would prove anything the step carries
+  if (!universalGoal(substituteName(goal, n, zero), [...fixed, ...guardsAtZero])) {
     return false
   }
 
-  const hypothesis = instanceFacts(goal, [...fixed, range])
+  const hypothesis = instanceFacts(goal, [...fixed, range, ...guardsAtNext])
 
-  return universalGoal(substituteName(goal, n, next), [...fixed, range, ...hypothesis], [goal])
+  return universalGoal(substituteName(goal, n, next), [...fixed, range, ...guardsAtNext, ...hypothesis], [goal])
 }
 
-// does an atom key read the variable n: the name itself, a monomial holding it, or an application whose argument
-// names it (the argument is written with `.`-joined monomial variables and `*`, `+`, `,` between them)
+// does an atom key read the variable n: the name itself, a monomial holding it, or an application whose arguments
+// read it (recorded when the application's key was made)
 function keyMentions(key: string, n: string): boolean {
   if (key === n) {
     return true
@@ -2137,14 +2202,7 @@ function keyMentions(key: string, n: string): boolean {
     return monomialVars(key.slice(POLY.length)).some(v => keyMentions(v, n))
   }
 
-  if (key.startsWith('@apply:')) {
-    return key
-      .slice('@apply:'.length)
-      .split(/[(),*+.]/)
-      .some(part => part === n)
-  }
-
-  return false
+  return applicationVariables(key).has(n)
 }
 
 // the goal from the facts by linear combination alone (product.ts linear mode), over an ordered field
@@ -2175,17 +2233,33 @@ function productGoalLinear(expr: Expression, available: Inequality[]): boolean {
 
   const negative = new Map([...exact].map(([k, c]) => [k, { n: -c.n, d: c.d }]))
 
+  // an equation may be multiplied by any plain variable the facts or the goal read (an index such as n), never by an
+  // application, whose sign and size are unknown
+  const multipliers = new Set<string>()
+
+  for (const fact of all) {
+    for (const monomial of fact.polynomial.keys()) {
+      monomialVars(monomial).filter(v => !isApplication(v)).forEach(v => multipliers.add(v))
+    }
+  }
+
+  for (const monomial of exact.keys()) {
+    monomialVars(monomial).filter(v => !isApplication(v)).forEach(v => multipliers.add(v))
+  }
+
+  const linear = { multipliers: [...multipliers] }
+
   switch (expr.op) {
     case '>=':
-      return productProves(all, exact, false, true)
+      return productProves(all, exact, false, linear)
     case '>':
-      return productProves(all, exact, true, true)
+      return productProves(all, exact, true, linear)
     case '<=':
-      return productProves(all, negative, false, true)
+      return productProves(all, negative, false, linear)
     case '<':
-      return productProves(all, negative, true, true)
+      return productProves(all, negative, true, linear)
     default:
-      return productProves(all, exact, false, true) && productProves(all, negative, false, true)
+      return productProves(all, exact, false, linear) && productProves(all, negative, false, linear)
   }
 }
 

@@ -8,7 +8,8 @@ import path from 'path'
 
 import { install, hostScopeRegistries } from '../code/install'
 import { loadLockfile } from '../code/lock'
-import { parseManifest } from '../code/manifest'
+import { parseManifest, writeManifest } from '../code/manifest'
+import { ociRouteOf } from '../code/oci/client'
 import { generateKeypair } from '../code/object/sign'
 import { layoutObjectStore } from '../code/oci/layout'
 import { publishToOci } from '../code/oci/publish'
@@ -43,7 +44,7 @@ describe('term load over OCI', () => {
       }),
       repository: { host: server.host, namespace: 'alice', name: 'alice/demo' },
       scope: '@alice',
-      keysRepository: 'alice',
+      keysRepository: 'alice/keys',
       local: layoutObjectStore({ dir: path.join(work, 'publisher') }),
       keypair: generateKeypair(),
       author: 'alice',
@@ -71,13 +72,13 @@ describe('term load over OCI', () => {
     await fs.mkdir(root, { recursive: true })
     await fs.writeFile(
       path.join(root, 'deck.tree'),
-      `deck @alice/app\n  code <1.0.0>\n  host <oci://${server.host}/alice>\n    link @alice/demo, code <1.0.x>\n`,
+      `deck @alice/app\n  code <1.0.0>\n  base alice, <${server.host}/alice>\n  link @alice/demo, code <1.0.x>\n`,
     )
 
     return root
   }
 
-  it('routes a host group, installs, and pins the digest and the key in lock.tree', async () => {
+  it('routes a base line, installs, and pins the digest and the key in lock.tree', async () => {
     const root = await project()
 
     await install({ root })
@@ -101,6 +102,29 @@ describe('term load over OCI', () => {
 
     expect(await fs.readFile(path.join(root, 'link', '@alice', 'demo', 'code', 'demo.ts'), 'utf8')).toBe('export const demo = 1\n')
     expect(server.requests.length).toBe(before)
+  })
+
+  it('reads, routes and writes back a base line, and defaults a scope without one to ghcr.io', () => {
+    const text = 'deck @term/foo\n  code <1.0.0>\n  base alice, <ghcr.io/alice-gh/term>\n  base @bob, <ghcr.io/bobs-place/something>\n  link @alice/foo, code <1.0.x>\n  link @bob/foo, code <1.0.x>\n  link @carol/foo, code <1.0.x>\n'
+    const manifest = parseManifest({ text })
+
+    expect(manifest.base).toEqual([
+      { scope: '@alice', registry: 'ghcr.io/alice-gh/term' },
+      { scope: '@bob', registry: 'ghcr.io/bobs-place/something' },
+    ])
+    expect(parseManifest({ text: writeManifest({ manifest }) }).base).toEqual(manifest.base)
+
+    const config = { registry: 'https://registry.npmjs.org', scopeRegistries: hostScopeRegistries({ manifest }) }
+
+    expect(ociRouteOf({ name: '@alice/foo', config })!.repository.name).toBe('alice-gh/term/foo')
+    expect(ociRouteOf({ name: '@bob/foo', config })!.repository.name).toBe('bobs-place/something/foo')
+    expect(ociRouteOf({ name: '@carol/foo', config })).toMatchObject({
+      registry: { host: 'ghcr.io', namespace: 'carol' },
+      repository: { name: 'carol/foo' },
+      keysRepository: 'carol/keys',
+    })
+    expect(ociRouteOf({ name: 'left-pad', config })).toBeUndefined()
+    expect(() => ociRouteOf({ name: '@carol/keys', config })).toThrow(/reserved/)
   })
 
   it('refuses one scope routed to two registries', () => {

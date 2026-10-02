@@ -1,6 +1,6 @@
-# kotlin structured-concurrency surface: the opaque handle type and the four signatures, so the task module
-# builds on this backend (a signature-only task emits the backend's stub). Wrapping a kotlin coroutine behind
-# the handle is future work; the node backend is the implemented one and carries the tests.
+# kotlin structured-concurrency surface: the opaque handle type and the job-state signatures code/task.tree
+# reads, so the task module builds on this backend (a signature-only task emits the backend's stub). The
+# node backend is the implemented one and carries the tests.
 
 dock type
   load <any>, name job-handle
@@ -14,8 +14,33 @@ task do-spawn
       like text
   like job-handle
 
-task do-wait
+task do-settle
   note async
+  take self, like handle
+  like void
+
+task do-settle-within
+  note async
+  take self, like handle
+  take milliseconds, like number
+  like boolean
+
+task do-settle-group
+  note async
+  take docks
+    like list
+      like job-handle
+  like void
+
+task do-state
+  take self, like handle
+  like text
+
+task do-result
+  take self, like handle
+  like text
+
+task do-rethrow
   take self, like handle
   like text
 
