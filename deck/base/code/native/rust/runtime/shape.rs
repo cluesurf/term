@@ -6,7 +6,7 @@
 mod shape {
     use std::any::Any;
     use std::cell::RefCell;
-    use std::collections::HashMap;
+    use crate::TermMap;
     use std::rc::Rc;
 
     fn inner(value: &dyn Any) -> &dyn Any {
@@ -55,9 +55,9 @@ mod shape {
     pub fn is_hash<T: 'static>(value: T) -> bool {
         let v = inner(&value);
 
-        v.is::<Rc<RefCell<HashMap<String, Rc<dyn Any>>>>>()
-            || v.is::<Rc<RefCell<HashMap<String, String>>>>()
-            || v.is::<Rc<RefCell<HashMap<String, i64>>>>()
+        v.is::<Rc<RefCell<TermMap<String, Rc<dyn Any>>>>>()
+            || v.is::<Rc<RefCell<TermMap<String, String>>>>()
+            || v.is::<Rc<RefCell<TermMap<String, i64>>>>()
     }
 
     pub fn type_of<T: 'static>(value: T) -> String {

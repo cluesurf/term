@@ -1,0 +1,103 @@
+
+# The device's traits as signals (native-dom-0012). A component that adapts to the device reads one, and only the nodes
+# whose effects read it re-render when the platform changes it: the window resizes into split view, the phone
+# rotates, the person turns on dark mode. These are run-time facts, so they are signals and never build-time envs; what
+# a build decides is which implementation of a component is linked (note/term/app/11-uniform-interface.md).
+#
+#   save scheme, call device-trait(text <color-scheme>)
+#   fork test / hook test / call is-equal(call read-signal(read scheme), text <dark>) ...
+#
+# The platform reads and watches live in ./native/{platform}/device. One watcher is installed the first time any trait
+# is asked for, and it writes every signal asked for so far.
+
+load ./native/{platform}/device
+  find read-trait
+  find watch-traits
+
+load ./reactive
+  find signal
+  find make-signal
+  find write-signal
+
+load @term/base/code/hash
+  find hash
+  find get
+  find set
+  find has
+
+load @term/base/code/maybe
+  find maybe
+
+# the signals handed out so far, by trait name. Read through the form's `get` (`call get / read traits`), which answers a
+# maybe: `call traits/get` is the native map's own lookup and answers the bare value.
+host traits
+  make hash
+  like hash
+    like text
+    like signal text
+
+# whether the one watcher is installed yet
+form device-watch
+  note shared
+  link installed, like boolean
+
+host watching
+  make device-watch
+    bind installed, false
+
+# a trait's new value, written into its signal if anything has asked for it
+# (a platform watcher calls this, so it must not raise: a match, never an unwrap)
+task trait-changed
+  take trait, like text
+  take value, like text
+  save found
+    call get
+      read traits
+      read trait
+  fork case, read found
+    # the variant's `value` field is renamed, or it would shadow the `value` parameter
+    case some
+      link held
+      call write-signal
+        bind self, read held
+        bind value, read value
+    case none
+      save skip, code 0
+
+# the signal for a trait, made the first time it is asked for and the same signal every time after
+task device-trait
+  take name, like text
+  like signal text
+  fork test
+    hook test
+      call traits/has
+        read name
+    hook hold
+      save skip, code 0
+    hook miss
+      call traits/set
+        read name
+        call make-signal
+          bind value
+            call read-trait
+              read name
+  fork test
+    hook test, read watching/installed
+    hook hold
+      save skip, code 0
+    hook miss
+      save watching/installed, true
+      save remover
+        call watch-traits
+          read trait-changed
+  save found
+    call get
+      read traits
+      read name
+  fork case, read found
+    case some
+      send back, read found/value
+    case none
+      send back
+        call make-signal
+          bind value, text <>

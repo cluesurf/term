@@ -39,6 +39,15 @@ task remainder
       read a
       read b
 
+task grow
+  take a, like number
+  take b, like number
+  like number
+  send back
+    call multiply
+      read a
+      read b
+
 task ratio
   take a, like float
   take b, like float
@@ -58,11 +67,22 @@ if (!result.ok) {
 
 // the emitted module, run: `export` dropped and the three tasks handed back
 const run = new Function(
-  `${result.typescript.replace(/^export /gm, '').replace(/: (number|float)\b/g, '')}\nreturn { quotient, remainder, ratio }`,
+  `${result.typescript.replace(/^export /gm, '').replace(/: (number|float)\b/g, '')}\nreturn { quotient, remainder, grow, ratio }`,
 )() as {
   quotient: (a: number, b: number) => number
   remainder: (a: number, b: number) => number
+  grow: (a: number, b: number) => number
   ratio: (a: number, b: number) => number
+}
+
+// the form a call raised, or undefined when it answered
+const raised = (f: () => unknown): string | undefined => {
+  try {
+    f()
+    return undefined
+  } catch (e) {
+    return (e as { form?: string }).form ?? 'not a Term exception'
+  }
 }
 
 for (const [a, b, want] of [
@@ -87,6 +107,29 @@ for (const [a, b, want] of [
 
 check('typescript: a float quotient stays a float', run.ratio(7, 2) === 3.5, `got ${run.ratio(7, 2)}`)
 
+// past the safe integers a double is a DIFFERENT integer: 2^30 * 2^30 would come back as 2^60 rounded
+check('typescript: a product inside the safe integers is exact', run.grow(2 ** 26, 2 ** 26) === 2 ** 52, '')
+check(
+  'typescript: a product past the safe integers raises excess, not a rounded integer',
+  raised(() => run.grow(2 ** 30, 2 ** 30)) === 'excess',
+  String(raised(() => run.grow(2 ** 30, 2 ** 30))),
+)
+check(
+  'typescript: and below them raises shortage',
+  raised(() => run.grow(-(2 ** 30), 2 ** 30)) === 'shortage',
+  String(raised(() => run.grow(-(2 ** 30), 2 ** 30))),
+)
+check(
+  'typescript: a division by zero raises defect, not Infinity',
+  raised(() => run.quotient(7, 0)) === 'defect',
+  String(raised(() => run.quotient(7, 0))),
+)
+check(
+  'typescript: a remainder by zero raises defect, not NaN',
+  raised(() => run.remainder(7, 0)) === 'defect',
+  String(raised(() => run.remainder(7, 0))),
+)
+
 // the native backends divide by type: i64, Int and Long all truncate toward zero
 for (const [name, emit, type] of [
   ['rust', emitRust, 'i64'],
@@ -96,6 +139,10 @@ for (const [name, emit, type] of [
   const out = String((emit as (p: unknown) => unknown)(result.program))
   const signature = out.split('\n').find(line => /quotient/.test(line)) ?? ''
   check(`${name}: number is ${type}, whose / truncates`, signature.includes(type), signature.trim())
+
+  // and whose product stops past the edge rather than wrapping: Rust's release `*` and Kotlin's `*` wrap, Swift traps
+  const guard = { rust: 'i64::checked_mul', kotlin: 'Math.multiplyExact', swift: '(a * b)' }[name]
+  check(`${name}: a product past ${type} stops rather than wrapping (${guard})`, out.includes(guard), '')
 }
 
 console.log(`\nnumber: ${pass} pass, ${fail} fail`)

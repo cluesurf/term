@@ -193,6 +193,10 @@ export function emitKotlin(
   // the enclosing function's declared result, so a `return <unknown-typed value>` can cast at the gradual
   // boundary (`read mock/dock` returned as `like mock-data`)
   let currentResult: Type | undefined
+  // the declared generics of the function being emitted (`head t` as `T`), so a construction pins a type argument only
+  // when that argument means something where the code lands. An inlined generic task leaves its own `t` in the checked
+  // type of a construction it built (`make-signal` inlined into `counter` gave `Signal<T>` in a function with no `T`)
+  let scopeGenerics = new Set<string>()
   // the forms a `fill` / `melt` with a form walks, gathered while the bodies are emitted
   const fillSpecs = new Map<string, FormSpec>()
   const meltSpecs = new Map<string, FormSpec>()
@@ -602,8 +606,18 @@ export function emitKotlin(
         return camel(node.name)
       case 'unary':
         return `${node.op}${expr(node.operand)}`
-      case 'binary':
+      case 'binary': {
+        // a sum, difference or product of two numbers is the integer one or the program stops: Kotlin's Long `+`
+        // wraps in silence, a DIFFERENT integer. `Math.*Exact` throws instead. `.toLong()` on both sides so two Int
+        // literals cannot pick the Int overload. note/term/proof-by-default/numbers.md
+        const exact = { '+': 'addExact', '-': 'subtractExact', '*': 'multiplyExact' }[node.op as string]
+
+        if (exact && node.left.type?.kind === 'number' && node.right.type?.kind === 'number') {
+          return `Math.${exact}((${expr(node.left)}).toLong(), (${expr(node.right)}).toLong())`
+        }
+
         return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
+      }
 
       case 'call': {
         // `call fill / <data> / like <form>` and `call melt / <value> / like <form>`: a function per form, generated
@@ -801,9 +815,20 @@ export function emitKotlin(
           }
         }
 
-        // a generic struct built from empty collections cannot infer its parameters; pin them from the checked type
+        // a generic struct built from empty collections cannot infer its parameters; pin them from the checked type.
+        // Not when an argument names a generic that is not in scope here: Kotlin infers those from the field values,
+        // and naming them is an unresolved reference
+        const strayGeneric = (t: Type): boolean =>
+          t.kind === 'named'
+            ? (!(t.args?.length) && !genericArity.has(t.name) && /^[a-z]$/.test(t.name) && !scopeGenerics.has(t.name.toUpperCase())) ||
+              (t.args ?? []).some(strayGeneric)
+            : t.kind === 'array'
+              ? strayGeneric(t.element)
+              : t.kind === 'map'
+                ? strayGeneric(t.key) || strayGeneric(t.value)
+                : false
         const args =
-          node.type?.kind === 'named' && node.type.args?.length
+          node.type?.kind === 'named' && node.type.args?.length && !node.type.args.some(strayGeneric)
             ? `<${node.type.args.map(kotlinType).join(', ')}>`
             : ''
 
@@ -1308,6 +1333,7 @@ export function emitKotlin(
 
       case 'function': {
         const generics = genericClause(node)
+        scopeGenerics = new Set(node.generics.map(g => g.name.toUpperCase()))
         localNames.clear()
         node.params.forEach(p => localNames.add(p.name))
         const params = node.params
@@ -1426,15 +1452,25 @@ export function emitKotlin(
           : ''
 
         // a data class needs a constructor parameter; a form with no fields (a method-only interface form) is a
-        // plain class
-        const decl = node.fields.length > 0
-          ? `data class ${pascal(node.name)}${generics}(${fields})`
-          : `class ${pascal(node.name)}${generics}`
+        // plain class. `is-equal` compares records by their fields on every backend (note/term/optimize/meaning.md,
+        // question 4): a data class does that, and a field-less class gets the same answer (every two are equal) from
+        // the members below. A `note shared` form is a reference by design, so it is a plain class compared by
+        // identity, as it is on TypeScript and Swift.
+        const fieldless = node.fields.length === 0 && !node.shared
+        const decl = node.shared
+          ? `class ${pascal(node.name)}${generics}${node.fields.length > 0 ? `(${fields})` : ''}`
+          : node.fields.length > 0
+            ? `data class ${pascal(node.name)}${generics}(${fields})`
+            : `class ${pascal(node.name)}${generics}`
+        const fieldlessEquality = [
+          `${pad(d + 1)}override fun equals(other: Any?): Boolean = other is ${pascal(node.name)}${node.params.length ? `<${node.params.map(() => '*').join(', ')}>` : ''}`,
+          `${pad(d + 1)}override fun hashCode(): Int = ${JSON.stringify(node.name)}.hashCode()`,
+        ]
         // a form that implements traits declares them on the data class with overrides delegating to the free functions
         const impls = conformances.get(node.name) ?? []
 
         if (impls.length === 0) {
-          return decl
+          return fieldless ? `${decl} {\n${fieldlessEquality.join('\n')}\n${pad(d)}}` : decl
         }
 
         const supers = impls.map(i => pascal(i.mask)).join(', ')
@@ -1451,7 +1487,7 @@ export function emitKotlin(
             .map(line => `${pad(d + 1)}${line}`),
         )
 
-        return `${decl} : ${supers} {\n${overrides.join('\n')}\n${pad(d)}}`
+        return `${decl} : ${supers} {\n${[...(fieldless ? fieldlessEquality : []), ...overrides].join('\n')}\n${pad(d)}}`
       }
 
       case 'mask': {

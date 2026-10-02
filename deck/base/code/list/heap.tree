@@ -13,14 +13,22 @@ form heap
     like list
       like number
 
-  # write value at an index in place (native splice: delete one, insert one)
+  # write value at an index in place: the native `set`, which replaces and never grows the list (`splice` past the end
+  # appended), and lowers on every backend. The index is inside the list, and the caller shows it
   task put
     take self
     take index, like number
     take value, like number
-    call self/items/splice
+    have
+      call is-minimum
+        read index
+        code 0
+    have
+      call is-below
+        read index
+        read self/items/length
+    call self/items/set
       read index
-      code 1
       read value
 
   task push
@@ -34,7 +42,16 @@ form heap
       call subtract
         read self/items/length
         code 1
+    # i walks up the parents, each inside the list
     walk test
+      must
+        call is-minimum
+          read i
+          code 0
+      must
+        call is-below
+          read i
+          read self/items/length
       hook test
         call is-above
           read i
@@ -126,7 +143,20 @@ form heap
               code 0
               read last
             save i, code 0
+            # i walks down the children, each inside the list, so `length - i` falls every turn
             walk test
+              must
+                call is-minimum
+                  read i
+                  code 0
+              must
+                call is-below
+                  read i
+                  read self/items/length
+              down
+                call subtract
+                  read self/items/length
+                  read i
               hook test
                 true
               hook step

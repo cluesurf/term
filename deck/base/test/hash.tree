@@ -1,0 +1,37 @@
+# djb2 with xor, held to values worked by hand: hash("a") = (5381 * 33) xor 97 = 177573 xor 97 = 177604. Until
+# 2026-10-02 the loop never ran and every text hashed to 5381, which a table still survived by probing, so the test
+# that matters is that two texts differ and a long one stays a 32-bit value.
+#
+# Run with: term test
+
+load @term/base/code/hold/hash
+  find hash-djb2-xor
+
+test djb2-xor-of-one-character
+  want hold
+    call is-equal
+      call hash-djb2-xor
+        text <a>
+      code 177604
+
+test djb2-xor-of-the-empty-text-is-the-seed
+  want hold
+    call is-equal
+      call hash-djb2-xor
+        text <>
+      code 5381
+
+test djb2-xor-tells-two-texts-apart
+  want hold
+    call is-unequal
+      call hash-djb2-xor
+        text <alpha>
+      call hash-djb2-xor
+        text <beta>
+
+test djb2-xor-of-a-long-text-stays-in-32-bits
+  want hold
+    call is-below
+      call hash-djb2-xor
+        text <the quick brown fox jumps over the lazy dog>
+      code 4294967296

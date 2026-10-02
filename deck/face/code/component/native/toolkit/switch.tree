@@ -1,0 +1,42 @@
+
+# Switch on a platform with a switch of its own: NSSwitch on macOS, UISwitch on iOS, android.widget.Switch on
+# Android, drawn and animated by the platform, with its accessibility and its feel (native-dom-0013). Reached through
+# `component/switch.tree` by the `toolkit` rung of the macos, ios and android env chains.
+#
+# THE SAME CONTRACT as the generic ../switch.tree: `host`, `class`, and `control`, the disclosure controller (on =
+# open). The author writes `view switch / bind control, read wifi` once and every platform honors it.
+#
+# `node switch` forces the element: inside a component named `switch`, `view switch` would be the component again.
+# The toolkit host makes the platform's control for that tag, takes `aria-checked` as its state, and reports the
+# platform's own change as `click`, which toggles the controller, whose effect writes the state back.
+
+load @term/site/code/view/render
+  find element
+load @term/site/code/dom/dom
+  find view
+  find append
+load ../../../logic/disclosure
+  find disclosure-open
+  find toggle-disclosure
+
+task checked-text
+  take control, like signal boolean
+  like text
+  save on
+    call disclosure-open
+      bind self, read control
+  send back, text <{{on}}>
+
+view switch
+  take host, like view
+  take class, like text
+  take control, like signal boolean
+  node switch
+    bind data-slot, text <switch>
+    bind aria-checked
+      call checked-text
+        read control
+    bind class, read class
+    hook click
+      call toggle-disclosure
+        bind self, read control

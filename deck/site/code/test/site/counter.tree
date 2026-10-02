@@ -13,6 +13,7 @@ load @term/site/code/view/reactive
   find write-signal
 
 view counter
+  take host, like view
   take label, like text
 
   save count

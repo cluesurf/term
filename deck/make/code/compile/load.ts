@@ -23,7 +23,18 @@ export type Source = { file: string; text: string }
 // There is ONE parser for `.tree` in this codebase. The cost that motivated the scan is paid back by `makeParseMemo`
 // below: the dependency walk, the template scan and the mill all take their tree from the same memo, so a module is
 // parsed once per build instead of the two or three times it was before.
-type ImportScan = { paths: string[]; hasZone: boolean }
+type ImportScan = {
+  paths: string[]
+  hasZone: boolean
+  // per import path, whether it is a `bear` (a re-export) and the names its `find` lines ask for
+  finds: { path: string; bear: boolean; names: string[] }[]
+}
+
+// What each module imports BY NAME, resolved to files: a `find`ed name -> every file a `load` / `bear` that finds it
+// resolved to, and the files the module re-exports with `bear`. Names are package-global, so this is the only record
+// of WHICH definition a call site meant when two modules define one name (native-dom-0031). Read by
+// check/overload.ts, which binds such a call by it.
+export type ImportScope = Map<string, { finds: Map<string, string[]>; bears: string[] }>
 
 // the parser's own renderer, so an interpolated path keeps its braces: `load @term/base/code/native/{platform}/float`
 // has to reach the resolver with `{platform}` intact for `withNativeEnv` to fill it in. Reading only the chunks drops
@@ -95,6 +106,7 @@ export function importPathsOf(source: Source, parsed: ParseMemo): string[] {
 
 function scanImports(tree: RootNode): ImportScan {
   const paths: string[] = []
+  const finds: ImportScan['finds'] = []
 
   let hasZone = false
 
@@ -125,10 +137,28 @@ function scanImports(tree: RootNode): ImportScan {
 
     if (path !== undefined) {
       paths.push(path)
+
+      // `find <name>` lines under the path, an alias (`find x, name y`) recorded by the name it imports
+      const names: string[] = []
+
+      for (const child of group.nodes.slice(2)) {
+        if (child.kind !== 'group' || headName(child) !== 'find') {
+          continue
+        }
+
+        const target = child.nodes[1]
+        const name = target?.kind === 'group' ? headName(target) : undefined
+
+        if (name !== undefined) {
+          names.push(name)
+        }
+      }
+
+      finds.push({ path, bear: keyword === 'bear', names })
     }
   }
 
-  return { paths, hasZone }
+  return { paths, hasZone, finds }
 }
 
 // resolve an import path (e.g. `@term/base/code/maybe`) from the importing file to its source, or undefined
@@ -151,9 +181,10 @@ export function collectModules(
   // the build's shared parse memo. Passing the compile's own means each module is parsed once for the whole build
   // rather than once here and again in the mill. Omitted (the editor and the tests), a private one is made.
   parsed: ParseMemo = makeParseMemo(),
-): { sources: Source[]; diagnostics: Diagnostic[] } {
+): { sources: Source[]; diagnostics: Diagnostic[]; scope: ImportScope } {
   const diagnostics: Diagnostic[] = []
   const ordered: Source[] = []
+  const scope: ImportScope = new Map()
   const done = new Set<string>()
   const active = new Set<string>()
 
@@ -167,10 +198,12 @@ export function collectModules(
     // discover dependencies from the module's parse tree. A module that does not parse contributes no dependencies:
     // its own diagnostics are raised where it is compiled, and guessing at its imports here would only bury them.
     const tree = parsed(source)
-    const scan = tree.ok
+    const scan: ImportScan = tree.ok
       ? scanImports(tree.tree)
-      : { paths: [], hasZone: false }
+      : { paths: [], hasZone: false, finds: [] }
     const paths = scan.paths
+    const own = { finds: new Map<string, string[]>(), bears: [] as string[] }
+    scope.set(source.file, own)
 
     // a module with a zone implicitly depends on the render runtime (the emitter synthesizes its calls). Inject it
     // unless the module already loads it or IS it (the render module itself must not depend on itself).
@@ -186,6 +219,16 @@ export function collectModules(
       const dependency = resolve(path, source.file)
 
       if (dependency) {
+        for (const entry of scan.finds.filter(f => f.path === path)) {
+          if (entry.bear) {
+            own.bears.push(dependency.file)
+          }
+
+          for (const name of entry.names) {
+            own.finds.set(name, [...(own.finds.get(name) ?? []), dependency.file])
+          }
+        }
+
         visit(dependency)
       } // unresolved imports are left to the checker's unknown-name diagnostics
     }
@@ -197,5 +240,5 @@ export function collectModules(
 
   visit(entry)
 
-  return { sources: ordered, diagnostics }
+  return { sources: ordered, diagnostics, scope }
 }

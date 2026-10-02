@@ -1,0 +1,116 @@
+
+# The device's traits on the memory host (native-dom-0012): fixed values a test sets, and a change a test makes
+# itself with `change-trait`, which reaches the watcher the way a platform's notification would. Conforms to
+# ../device. The defaults describe a phone: compact, touch, light, motion allowed, text at its standard size. A name
+# that is not a trait reads `no`.
+
+load @term/base/code/hash
+  find hash
+  find get
+  find set
+  find get-or-default
+
+host values
+  make hash
+  like hash
+    like text
+    like text
+
+# the one watcher, once installed
+form trait-watch
+  note shared
+  link handler
+    like task
+      take name, like text
+      take value, like text
+  link installed, like boolean
+
+host watch
+  make trait-watch
+    bind handler
+      task nobody
+        take name, like text
+        take value, like text
+        save skip, code 0
+    bind installed, false
+
+task default-trait
+  take name, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <idiom>
+    hook hold
+      send back, text <phone>
+    hook test
+      call is-equal
+        read name
+        text <width-class>
+    hook hold
+      send back, text <compact>
+    hook test
+      call is-equal
+        read name
+        text <pointer>
+    hook hold
+      send back, text <touch>
+    hook test
+      call is-equal
+        read name
+        text <color-scheme>
+    hook hold
+      send back, text <light>
+    hook test
+      call is-equal
+        read name
+        text <reduce-motion>
+    hook hold
+      send back, text <no>
+    hook test
+      call is-equal
+        read name
+        text <text-scale>
+    hook hold
+      send back, text <1>
+    hook miss
+      send back, text <no>
+
+task read-trait
+  take name, like text
+  like text
+  send back
+    call get-or-default
+      read values
+      read name
+      call default-trait
+        read name
+
+task watch-traits
+  take handler
+    like task
+      take name, like text
+      take value, like text
+  like task
+  save watch/handler, read handler
+  save watch/installed, true
+  send back
+    task drop
+      save watch/installed, false
+
+# for tests: the platform changed a trait
+task change-trait
+  take name, like text
+  take value, like text
+  call values/set
+    read name
+    read value
+  fork test
+    hook test, read watch/installed
+    hook hold
+      call watch/handler
+        read name
+        read value
+    hook miss
+      save skip, code 0

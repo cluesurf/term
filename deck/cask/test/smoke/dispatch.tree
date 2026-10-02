@@ -169,6 +169,12 @@ task is-allowed
         text <cask_log>
     hook hold
       send back, true
+    hook test
+      call is-equal
+        read command
+        text <cask_release>
+    hook hold
+      send back, true
     hook miss
       send back, false
 
@@ -381,6 +387,13 @@ task run-command
     hook hold
       call quit
         wait true
+      send back
+        call make-null
+    hook test
+      call is-equal
+        read command
+        text <cask_release>
+    hook hold
       send back
         call make-null
     hook miss

@@ -36,3 +36,29 @@ test md5-abc
       call calculate-md5
         read bytes
       text <900150983cd24fb0d6963f7d28e17f72>
+
+# RFC 1321 A.5's last vector, "1234567890" eight times: 80 bytes, so the padding runs into a SECOND block, which the
+# shorter vectors never reach. Each byte is the ASCII code of the digit (i + 1) mod 10
+test md5-eighty-digits-spans-two-blocks
+  save bytes, make list
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        code 80
+    hook hold
+      call bytes/push
+        call add
+          code 48
+          call modulo
+            call add
+              read i
+              code 1
+            code 10
+      save i, call increment(read i)
+  want hold
+    call is-equal
+      call calculate-md5
+        read bytes
+      text <57edf4a22be3c955ac49da2e2107b67a>

@@ -126,8 +126,36 @@ function install(): TermBridge {
   return term
 }
 
+// Handle lifetime (native-dom-0017). A handle is a value the cask keeps for the page under an id, and the page holds
+// the id. When the page lets go of the object carrying an id and the WebView collects it, the cask is told to let go
+// too, so a page that queries in a loop for a day does not grow the cask's table for a day. This is Expo's
+// SharedObject lifetime (expo-modules-core/common/cpp/SharedObject.cpp: a destructor that deletes the registry entry)
+// over a JSON bridge, where FinalizationRegistry is the destructor. Collection is the engine's to schedule, so a
+// release may come late and never comes early; `release` lets a page say it at once.
+const handles =
+  typeof FinalizationRegistry === 'function'
+    ? new FinalizationRegistry<{ form: string; handle: string }>(held => {
+        const term = window.term
+        if (term) {
+          term.post(JSON.stringify({ id: '', command: 'cask_release', arguments: held }))
+        }
+      })
+    : undefined
+
 export const bridge = {
   log,
+
+  // register a handle the page just received, so its collection releases it in the cask
+  held(form: string, value: object, handle: string): void {
+    handles?.register(value, { form, handle }, value)
+  },
+
+  // let a handle go now rather than at collection, and stop watching it
+  release(form: string, value: object, handle: string): void {
+    handles?.unregister(value)
+    const term = install()
+    term.post(JSON.stringify({ id: '', command: 'cask_release', arguments: { form, handle } }))
+  },
 
   // receive every event the cask pushes under `name`
   listen(name: string, handler: (text: string) => void): void {

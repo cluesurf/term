@@ -1,0 +1,554 @@
+
+# The in-memory DOM in pure, typed Term: the host every backend can run, with no browser, no runtime shim and no
+# native view toolkit. It is what the `swift` and `kotlin` envs resolve the dom to until an `ios`, `macos` or
+# `android` host stands in front of it (compile/native.ts, NATIVE_ENV_FALLBACK), and it is the tree the differential
+# test renders on TypeScript, Swift and Kotlin and compares (native-dom-0004). See note/term/app/10-native-dom.md.
+#
+# Three rules keep it identical on every backend:
+#
+#   1. a node is read through `element-of`, which retypes the view's opaque handle once, so no field is read off an
+#      untyped value (on Swift that is `Any`, which has no fields)
+#   2. `memory-element` is `note shared`, so a write through one binding is seen through every other, where Swift
+#      would otherwise copy a struct
+#   3. two nodes are the same node when their `key`s match. Never structural equality: a Kotlin data class compares
+#      deeply, and a parent link makes the tree a cycle
+#
+# Conforms to ../dom. The page tasks (title, meta, proxy, path, body, pop) are no-ops here, as on the server, and
+# `serialize` renders the tree to HTML in Term so two backends' output can be compared byte for byte.
+
+load @term/base/code/list
+  find list
+  find push
+  find filter
+  find find
+
+load @term/base/code/maybe
+  find maybe
+
+load ../../view
+  find view
+
+form memory-element
+  note shared
+  link key, like number
+  link tag, like text
+  link text, like text
+  link value, like text
+  link attributes
+    like list
+      like memory-pair
+  link styles
+    like list
+      like memory-pair
+  link classes
+    like list
+      like text
+  link children
+    like list
+      like view
+  link listeners
+    like list
+      like memory-listener
+  link parent
+    like maybe
+      like view
+
+form memory-pair
+  link name, like text
+  link value, like text
+
+form memory-listener
+  link event, like text
+  link handle
+    like task
+
+# the next key to hand out. A key is never reused, so a removed node can never be mistaken for a new one
+form memory-clock
+  link next, like number
+
+host clock
+  make memory-clock
+    bind next, code 0
+
+task make-element
+  take tag, like text
+  take text, like text
+  like memory-element
+  save clock/next
+    call add
+      read clock/next
+      code 1
+  send back
+    make memory-element
+      bind key, read clock/next
+      bind tag, read tag
+      bind text, read text
+      bind value, text <>
+      bind attributes
+        make list
+      bind styles
+        make list
+      bind classes
+        make list
+      bind children
+        make list
+      bind listeners
+        make list
+      bind parent
+        make none
+
+# the one place the opaque handle is retyped
+task element-of
+  take node, like view
+  like memory-element
+  host element, like memory-element
+    read node/handle
+  send back, read element
+
+task create-element
+  take tag, like text
+  like view
+  send back
+    make view
+      bind handle
+        call make-element
+          bind tag, read tag
+          bind text, text <>
+
+task create-text
+  take value, like text
+  like view
+  send back
+    make view
+      bind handle
+        call make-element
+          bind tag, text <>
+          bind text, read value
+
+task set-text
+  take node, like view
+  take value, like text
+  save element
+    call element-of
+      read node
+  save element/text, read value
+
+# one pair per name: a second write replaces the first, the way an attribute does in a browser
+task put-pair
+  take pairs
+    like list
+      like memory-pair
+  take name, like text
+  take value, like text
+  like list
+    like memory-pair
+  save kept
+    call filter
+      read pairs
+      task keep
+        take entry, like memory-pair
+        like boolean
+        send back
+          call is-unequal
+            read entry/name
+            read name
+  call push
+    bind list, read kept
+    bind item
+      make memory-pair
+        bind name, read name
+        bind value, read value
+  send back, read kept
+
+task set-attribute
+  take node, like view
+  take name, like text
+  take value, like text
+  save element
+    call element-of
+      read node
+  save element/attributes
+    call put-pair
+      bind pairs, read element/attributes
+      bind name, read name
+      bind value, read value
+
+task get-attribute
+  take node, like view
+  take name, like text
+  like text
+  save element
+    call element-of
+      read node
+  save found
+    call find
+      read element/attributes
+      task match
+        take entry, like memory-pair
+        like boolean
+        send back
+          call is-equal
+            read entry/name
+            read name
+  fork case, read found
+    case some
+      send back, read found/value/value
+    case none
+      send back, text <>
+
+task set-style
+  take node, like view
+  take property, like text
+  take value, like text
+  save element
+    call element-of
+      read node
+  save element/styles
+    call put-pair
+      bind pairs, read element/styles
+      bind name, read property
+      bind value, read value
+
+task add-class
+  take node, like view
+  take name, like text
+  save element
+    call element-of
+      read node
+  call remove-class
+    read node
+    read name
+  call push
+    bind list, read element/classes
+    bind item, read name
+
+task remove-class
+  take node, like view
+  take name, like text
+  save element
+    call element-of
+      read node
+  save element/classes
+    call filter
+      read element/classes
+      task keep
+        take entry, like text
+        like boolean
+        send back
+          call is-unequal
+            read entry
+            read name
+
+task set-property
+  take node, like view
+  take name, like text
+  take value, like text
+  call set-attribute
+    read node
+    read name
+    read value
+
+# nothing has focus in a tree nobody looks at
+task focus
+  take node, like view
+
+task blur
+  take node, like view
+
+task listen
+  take node, like view
+  take event, like text
+  take handler
+    like task
+  save element
+    call element-of
+      read node
+  call push
+    bind list, read element/listeners
+    bind item
+      make memory-listener
+        bind event, read event
+        bind handle, read handler
+
+# a listener that wants the event object: there is no event object here, and nothing fires one
+task listen-event
+  take node, like view
+  take event, like text
+  take handler
+    like task
+      take event, like any
+
+task listen-document
+  take event, like text
+  take handler
+    like task
+      take event
+  like task
+  send back
+    task drop
+      save skip, code 0
+
+task anchor
+  take reference, like view
+  take panel, like view
+  take placement, like text
+  take offset, like number
+  take flip, like boolean
+  take shift, like boolean
+  like task
+  send back
+    task drop
+      save skip, code 0
+
+# the page tasks: a tree in memory has no document, no address bar and no history
+task page-path
+  like text
+  send back, text </>
+
+task set-title
+  take title, like text
+
+task set-meta
+  take name, like text
+  take content, like text
+
+task set-proxy
+  take url, like text
+
+task proxy-target
+  like text
+  send back, text <>
+
+task page-body
+  like view
+  send back
+    call create-element
+      bind tag, text <body>
+
+task listen-pop
+  take handler
+    like task
+
+task observe-size
+  take node, like view
+  take handler
+    like task
+      take width
+
+task measure-width
+  take node, like view
+  like number
+  send back, code 0
+
+task check-font
+  take family, like text
+  like boolean
+  send back, true
+
+task watch-font
+  take family, like text
+  take handler
+    like task
+      take status, like text
+
+task watch-deadline
+  take family, like text
+  take threshold, like number
+  take handler
+    like task
+
+# the tree as HTML: a text node is its text, an element is its tag, its attributes in the order they were set, and
+# its children. Nothing is escaped, so it is for comparing two renders, not for serving a page
+task serialize
+  take node, like view
+  like text
+  save element
+    call element-of
+      read node
+  fork test
+    hook test
+      call is-equal
+        read element/tag
+        text <>
+    hook hold
+      send back, read element/text
+  save open, text <\<{{element/tag}}>
+  walk list, read element/attributes
+    hook next
+      take site, name pair
+      save open, text <{{open}} {{pair/name}}="{{pair/value}}">
+  save inner, text <>
+  walk list, read element/children
+    hook next
+      take site, name child
+      save part
+        call serialize
+          read child
+      save inner, text <{{inner}}{{part}}>
+  send back, text <{{open}}\>{{inner}}\</{{element/tag}}\>>
+
+task page-shell
+  take body, like text
+  like text
+  send back, read body
+
+# DOM semantics: a node has one parent, so appending a node that already has one moves it
+task append
+  take parent, like view
+  take child, like view
+  call remove
+    read child
+  save element
+    call element-of
+      read parent
+  call push
+    bind list, read element/children
+    bind item, read child
+  save inner
+    call element-of
+      read child
+  save inner/parent
+    make some
+      bind value, read parent
+
+task remove
+  take node, like view
+  save element
+    call element-of
+      read node
+  save edge, read element/parent
+  fork case, read edge
+    case some
+      save owner
+        call element-of
+          read edge/value
+      save owner/children
+        call filter
+          read owner/children
+          task keep
+            take entry, like view
+            like boolean
+            save other
+              call element-of
+                read entry
+            send back
+              call is-unequal
+                read other/key
+                read element/key
+      save element/parent
+        make none
+    case none
+      save skip, code 0
+
+# swap `new` into `old`'s place under the same parent, at the same position. The old node leaves the tree
+task replace
+  take old, like view
+  take new, like view
+  call remove
+    read new
+  save gone
+    call element-of
+      read old
+  save edge, read gone/parent
+  fork case, read edge
+    case some
+      save owner
+        call element-of
+          read edge/value
+      save swapped
+        make list
+      walk list, read owner/children
+        hook next
+          take site, name entry
+          save other
+            call element-of
+              read entry
+          fork test
+            hook test
+              call is-equal
+                read other/key
+                read gone/key
+            hook hold
+              call push
+                bind list, read swapped
+                bind item, read new
+            hook miss
+              call push
+                bind list, read swapped
+                bind item, read entry
+      save owner/children, read swapped
+      save fresh
+        call element-of
+          read new
+      save fresh/parent
+        make some
+          bind value, read edge/value
+      save gone/parent
+        make none
+    case none
+      save skip, code 0
+
+task clear
+  take node, like view
+  save element
+    call element-of
+      read node
+  save element/children
+    make list
+
+task child-count
+  take node, like view
+  like number
+  save element
+    call element-of
+      read node
+  send back, read element/children/length
+
+task get-value
+  take node, like view
+  like text
+  save element
+    call element-of
+      read node
+  send back, read element/value
+
+task set-value
+  take node, like view
+  take value, like text
+  save element
+    call element-of
+      read node
+  save element/value, read value
+
+# ---- for tests: what a person would do to the tree, and what they would see ----
+
+# run every listener on `node` for `event`, in the order they were added, as a tap or a click would
+task fire
+  take node, like view
+  take event, like text
+  save element
+    call element-of
+      read node
+  walk list, read element/listeners
+    hook next
+      take site, name heard
+      fork test
+        hook test
+          call is-equal
+            read heard/event
+            read event
+        hook hold
+          call heard/handle
+
+# the child at `index`, counting from 0
+task child-at
+  take node, like view
+  take index, like number
+  like view
+  save element
+    call element-of
+      read node
+  send back
+    call get
+      bind self, read element/children
+      bind index, read index

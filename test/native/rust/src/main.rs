@@ -14,6 +14,25 @@
 
 // ---- the forms the shims expect from the emitted program ----
 
+// the Term `hash`: the emitted program always carries this (deck/make/code/compile/rust.ts, `termMap`). Only the part
+// the shims call is repeated here.
+#[derive(Clone)]
+pub struct TermMap<K, V> { slot: std::collections::HashMap<K, usize>, entry: Vec<Option<(K, V)>> }
+impl<K: std::hash::Hash + Eq + Clone, V> TermMap<K, V> {
+    pub fn new() -> Self { TermMap { slot: std::collections::HashMap::new(), entry: Vec::new() } }
+    pub fn get(&self, key: &K) -> Option<&V> { self.slot.get(key).and_then(|&i| self.entry[i].as_ref().map(|e| &e.1)) }
+    pub fn insert(&mut self, key: K, value: V) -> Option<V> {
+        if let Some(&i) = self.slot.get(&key) { return self.entry[i].as_mut().map(|e| std::mem::replace(&mut e.1, value)); }
+        self.slot.insert(key.clone(), self.entry.len());
+        self.entry.push(Some((key, value)));
+        None
+    }
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> { self.entry.iter().filter_map(|e| e.as_ref().map(|(k, v)| (k, v))) }
+}
+impl<K: std::hash::Hash + Eq + Clone, V> std::iter::FromIterator<(K, V)> for TermMap<K, V> {
+    fn from_iter<I: IntoIterator<Item = (K, V)>>(items: I) -> Self { let mut m = Self::new(); for (k, v) in items { m.insert(k, v); } m }
+}
+
 #[derive(Clone, Debug)]
 pub struct FileMetadata {
     pub size: i64,
@@ -51,7 +70,7 @@ pub struct Request {
     pub path: String,
     pub query: String,
     pub headers: std::rc::Rc<
-        std::cell::RefCell<std::collections::HashMap<String, String>>,
+        std::cell::RefCell<TermMap<String, String>>,
     >,
     pub body: String,
     pub dock: std::rc::Rc<()>,

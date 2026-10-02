@@ -94,3 +94,26 @@ task data-path
   note async
   take name, like text
   like text
+
+# over-the-air page updates (native-dom-0016): the real ones are ../swift and ../kotlin
+
+task update-launch-path
+  take resources, like text
+  take page, like text
+  take data, like text
+  like text
+
+task update-check
+  take resources, like text
+  take data, like text
+  take base, like text
+  take channel, like text
+  take done
+    like task
+      take status, like text
+      like void
+  like void
+
+task update-ready
+  take data, like text
+  like void

@@ -17,7 +17,9 @@ view button
   take class
   take variant
   take size
-  view tag-button
+  # `node button` forces the element: inside a component named `button`, `view button` is the component again. It was
+  # written `view tag-button`, which no lowering reads, so it rendered a `<tag-button>` element (found 2026-10-02)
+  node button
     seed data-slot, text <button>
     seed data-variant, read variant
     seed data-size, read size

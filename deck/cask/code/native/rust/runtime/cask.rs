@@ -127,6 +127,7 @@ mod cask {
             static MAIN_LOOP: RefCell<Option<glib::MainLoop>> = RefCell::new(None);
         }
 
+
         pub fn open_window(title: String, width: i64, height: i64) -> CaskWindow {
             gtk::init().expect("cask: GTK could not start. Is there a display? (a test runs under xvfb-run)");
             let manager = webkit6::UserContentManager::new();
@@ -344,6 +345,16 @@ mod cask {
             TASKS.with(|tasks| tasks.borrow_mut().push(Box::pin(future)));
             unsafe {
                 let _ = PostMessageW(hwnd, WM_CASK_POLL, WPARAM(0), LPARAM(0));
+            }
+        }
+
+        // run a future on the UI thread, on this executor. What another native (the update client) uses to call a Term
+        // handler back from work it did on its own thread. Polled through the first window; with none open yet, it
+        // waits in the task list for the first poll a window makes
+        pub fn on_ui(future: impl Future<Output = ()> + 'static) {
+            match WINDOWS.with(|windows| windows.borrow().first().map(|window| window.0.hwnd)) {
+                Some(hwnd) => spawn_local(hwnd, future),
+                None => TASKS.with(|tasks| tasks.borrow_mut().push(Box::pin(future))),
             }
         }
 

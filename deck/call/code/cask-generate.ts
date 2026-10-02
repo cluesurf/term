@@ -28,7 +28,9 @@ import { projectResolver } from '@term/call/code/make'
 import { stdlibBase } from '@term/make/code/resolve'
 
 // the commands every cask answers on its own behalf, in the order the dispatcher lists them
-const CASK_COMMANDS = ['cask_bundle_path', 'cask_data_path', 'cask_exit', 'cask_quit', 'cask_log'] as const
+// `cask_release` lets a handle go: the page sends it when it has dropped one (bridge.ts, a FinalizationRegistry), so a
+// value the cask holds for a page lives exactly as long as the page holds its id (native-dom-0017)
+const CASK_COMMANDS = ['cask_bundle_path', 'cask_data_path', 'cask_exit', 'cask_quit', 'cask_log', 'cask_release'] as const
 
 // the modules the shim itself is written with, which therefore never cross
 const NEVER_CROSS = new Set(['json', 'float', 'uuid'])
@@ -447,7 +449,19 @@ function pageFromJson(kind: Kind, read: string, indent: string): { lines: string
     case 'handle':
       return {
         local,
-        lines: [`${indent}save ${local}`, `${indent}  make ${kind.form}`, `${indent}    bind handle`, `${indent}      call as-text`, `${indent}        read ${read}`],
+        lines: [
+          `${indent}save ${local}`,
+          `${indent}  make ${kind.form}`,
+          `${indent}    bind handle`,
+          `${indent}      call as-text`,
+          `${indent}        read ${read}`,
+          // held: when the page drops this value and the WebView collects it, the cask is told to drop its own
+          `${indent}call bridge/held`,
+          `${indent}  text <${kind.form}>`,
+          `${indent}  read ${local}`,
+          `${indent}  call as-text`,
+          `${indent}    read ${read}`,
+        ],
       }
     case 'list':
       return listFromJson(kind.item, read, indent, pageFromJson)
@@ -497,6 +511,8 @@ function caskFromJson(kind: Kind, read: string, indent: string): { lines: string
       return {
         local,
         lines: [
+          // a released id is one the table no longer holds, so `unwrap` refuses it with the stdlib `absence`, the
+          // same as a forged one. The page's call rejects and the cask keeps running
           `${indent}save ${found}`,
           `${indent}  call get`,
           `${indent}    read ${tableOf(kind.form)}`,
@@ -622,6 +638,18 @@ const JSON_FINDS = [
   'as-text', 'as-boolean', 'as-number', 'make-array', 'push-item', 'get-item', 'array-size',
 ]
 
+// the lifetime verb: a task named `release` that takes exactly one handle and answers nothing. It is not a command:
+// the page lets the handle go through `bridge/release`, which tells the cask to drop it from its table, and the
+// native task it names (a no-op wherever a handle is a plain value) never runs (native-dom-0029)
+function isRelease(signature: Signature): boolean {
+  return (
+    signature.task === 'release' &&
+    signature.params.length === 1 &&
+    signature.params[0]!.kind.kind === 'handle' &&
+    signature.result.kind === 'void'
+  )
+}
+
 function shimText(module: Module, carried: Signature[], refused: Refused[], term: string): string {
   temporaries = 0
   const lines: string[] = [
@@ -658,6 +686,24 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], term
   lines.push(...itemsOfText(itemsOf))
 
   for (const signature of carried) {
+    if (isRelease(signature)) {
+      const param = signature.params[0]!
+      const form = (param.kind as { kind: 'handle'; form: string }).form
+      lines.push(
+        `# let ${param.name} go now: the cask drops it from its table, and a use after this is refused`,
+        `task ${signature.native}`,
+        '  note async',
+        `  take ${param.name}`,
+        ...likeOf(param.kind).map(line => `    ${line}`),
+        '  call bridge/release',
+        `    text <${form}>`,
+        `    read ${param.name}`,
+        `    read ${param.name}/handle`,
+        '',
+      )
+      continue
+    }
+
     lines.push(`task ${signature.native}`, '  note async')
 
     for (const param of signature.params) {
@@ -702,8 +748,44 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], term
   return lines.join('\n')
 }
 
-function dispatchText(page: string, modules: Module[], signatures: Signature[], term: string): string {
+// `cask_release`: drop the value under `handle` from the table of `form`. A released id is then one the cask never gave
+// out, so a page that uses it after letting it go is refused by `unwrap`, the same as a forged one
+function releaseLines(forms: string[]): string[] {
+  const lines = ['    hook test', '      call is-equal', '        read command', '        text <cask_release>', '    hook hold']
+
+  if (forms.length > 0) {
+    lines.push('      fork test')
+
+    for (const form of forms) {
+      lines.push(
+        '        hook test',
+        '          call is-equal',
+        '            call field-text',
+        '              read arguments',
+        '              text <form>',
+        `            text <${form}>`,
+        '        hook hold',
+        // the map primitive on the table, the one every backend lowers (`hash/remove` is written over it). A bare
+        // `remove` resolved to whichever one-argument `remove` the scope held, and `/remove` is not lowered on Swift
+        `          call ${tableOf(form)}/delete`,
+        '            call field-text',
+        '              read arguments',
+        '              text <handle>',
+      )
+    }
+
+    lines.push('        hook miss', '          save skip, code 0')
+  }
+
+  lines.push('      send back', '        call make-null')
+
+  return lines
+}
+
+function dispatchText(page: string, modules: Module[], all: Signature[], term: string): string {
   temporaries = 0
+  // a release crosses as `cask_release`, never as a command of its own
+  const signatures = all.filter(signature => !isRelease(signature))
   const lines: string[] = [
     '',
     `# GENERATED by term make from ${relative(term, page)}. Do not edit; regenerate with`,
@@ -775,12 +857,14 @@ function dispatchText(page: string, modules: Module[], signatures: Signature[], 
     'load @term/base/code/maybe',
     '  find maybe',
     '  find unwrap',
+
     '',
   )
 
   for (const form of handleForms(signatures)) {
     lines.push(`# the ${form} values the page holds ids for`, `host ${tableOf(form)}`, '  make hash', '')
   }
+
 
   itemsOf = 'items-of'
   lines.push(...itemsOfText(itemsOf))
@@ -876,6 +960,7 @@ function dispatchText(page: string, modules: Module[], signatures: Signature[], 
     '        wait true',
     '      send back',
     '        call make-null',
+    ...releaseLines(handleForms(signatures)),
     '    hook miss',
     '      # cask_log: a line from the page, printed where the cask prints',
     '      call log',

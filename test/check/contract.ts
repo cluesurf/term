@@ -308,14 +308,44 @@ task use
     { total: 1, proven: 1 },
   )
 
-  tally(
-    'tier 0: an unguarded read is counted as not proven',
-    `task first
+  // an accessor's read over its parameters is its CALLERS' to owe (contract.ts liftedOf): the accessor counts
+  // nothing, an unguarded caller owes the read and cannot prove it, a guarded one proves it
+  const first = `task first
   take items, like list, like number
   like number
   send back, read items/0
+`
+
+  tally('tier 0: an accessor owes its read to its callers, not itself', first, { total: 0, proven: 0 })
+
+  tally(
+    'tier 0: an unguarded caller of an accessor is counted as not proven',
+    `${first}
+task use
+  take xs, like list, like number
+  like number
+  send back
+    call first
+      read xs
 `,
     { total: 1, proven: 0 },
+  )
+
+  tally(
+    'tier 0: a caller that knows the list is not empty proves it',
+    `${first}
+task use
+  take xs, like list, like number
+  have
+    call is-above
+      read xs/length
+      code 0
+  like number
+  send back
+    call first
+      read xs
+`,
+    { total: 1, proven: 1 },
   )
 
   tally(
@@ -567,6 +597,98 @@ task use
       save i, call increment(read i)
 `,
     { total: 2, proven: 2 },
+  )
+
+  // a `have` on a record's field, met by a record built in place at the call
+  const channel = (red: string): string => `form color
+  link red, like number
+
+task shade
+  take c, like color
+  have
+    call is-maximum
+      read c/red
+      code 255
+  like number
+  send back, read c/red
+
+task use
+  like number
+  send back
+    call shade
+      make color
+        bind red, code ${red}
+`
+
+  expect('have on a field: a record built in place that meets it is proven', channel('200'), proven)
+  expect('have on a field: one that does not is refused', channel('300'), refused('unproven'))
+
+  // a `must` on a field of the record a task returns
+  const madeBox = (size: string): string => `form box
+  link size, like number
+
+task make-box
+  take n, like number
+  like box
+  must
+    call is-equal
+      read back/size
+      read n
+  save b
+    make box
+      bind size, ${size}
+  send back, read b
+`
+
+  expect('must on a returned field: a record that keeps it is proven', madeBox('read n'), proven)
+  expect('must on a returned field: one that breaks it is refused', madeBox('code 7'), refused('unproven'))
+
+  // a walk with no condition compiled to a loop that never ran: refused now
+  expect(
+    'a `walk test` with its condition under `hook step` and no `hook test` is refused',
+    `task count
+  take n, like number
+  like number
+  save i, code 0
+  walk test
+    hook step
+      call is-below
+        read i
+        read n
+    hook hold
+      save i
+        call add
+          read i
+          code 1
+  send back, read i
+`,
+    refused('unexpected-node'),
+  )
+
+  expect(
+    'a `walk test` with two bodies is refused',
+    `task count
+  take n, like number
+  like number
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        read n
+    hook step
+      save i
+        call add
+          read i
+          code 1
+    hook hold
+      save i
+        call add
+          read i
+          code 2
+  send back, read i
+`,
+    refused('unexpected-node'),
   )
 
   // `note roam`: a task meant to run forever owes no termination for its walks

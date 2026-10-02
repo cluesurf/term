@@ -1,0 +1,65 @@
+# The update app with its window opened LATE, inside the update check's callback, after the platform's run loop has
+# started (native-dom-0028). The handle `made` is local to the callback and goes out of scope when it returns, so the
+# window lives only because the cask holds every open window itself. Before it did, this page's load neither
+# finished nor failed. test/call/update-app.ts launches it beside ./main.tree and needs the same statuses from both.
+
+load @term/cask/code/cask
+  find window
+  find open-window
+  find load-bundle
+  find on-message
+  find on-ready
+  find run
+  find update-launch-path
+  find update-check
+  find update-ready
+
+load ./dispatch
+  find dispatch
+
+task boot
+  take resources, like text
+  take base, like text
+  like void
+  save data, text <{{resources}}/update-data>
+  save page
+    call update-launch-path
+      read resources
+      text <webview>
+      read data
+  call update-check
+    read resources
+    read data
+    read base
+    text <main>
+    task open
+      take status, like text
+      like void
+      save made
+        call open-window
+          text <Term update>
+          code 640
+          code 480
+      # the page speaking counts as ready as well as `on-ready`, as in ./main.tree
+      call on-message
+        read made
+        task answer
+          note async
+          take message, like text
+          like text
+          call update-ready
+            read data
+          send back
+            call dispatch
+              wait true
+              read message
+      call on-ready
+        read made
+        task drawn
+          like void
+          call update-ready
+            read data
+      call load-bundle
+        read made
+        read page
+  call run

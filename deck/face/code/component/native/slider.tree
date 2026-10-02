@@ -1,0 +1,101 @@
+
+# Slider, the GENERIC implementation: what every platform without its own gets, the web among them, where it is the
+# browser's own range control. A platform with a slider of its own (macOS, iOS, Android) gets ./toolkit/slider.tree
+# instead, through `component/slider.tree` and the build's env chain. Both take the same props, which is the contract
+# (note/term/app/11-uniform-interface.md, native-dom-0026).
+#
+#   save volume, call make-range / bind start, code 40
+#   call slider / read root / text <> / read volume / code 0 / code 100 / code 1
+#
+# Two-way: the control shows the range's value, and a move the person makes is written into the range. Parts:
+# `slider` (the control, data-slot for a theme).
+
+load @term/site/code/view/render
+  find element
+  find attribute
+  find event
+load @term/site/code/view/reactive
+  find signal
+  find make-effect
+load @term/site/code/dom/dom
+  find view
+  find append
+  find get-value
+  find set-value
+load ../../logic/range
+  find range-text
+  find move-range
+
+# the work of the view below. In a `view` body a bare `call` renders as a text child, so a component that builds its
+# control by hand does it in a task the view saves once
+task mount-slider
+  take host, like view
+  take class, like text
+  take control, like signal number
+  take min, like number
+  take max, like number
+  take step, like number
+  like view
+  save input
+    call element
+      text <input>
+  call attribute
+    read input
+    text <type>
+    text <range>
+  call attribute
+    read input
+    text <data-slot>
+    text <slider>
+  call attribute
+    read input
+    text <class>
+    read class
+  call attribute
+    read input
+    text <min>
+    text <{{min}}>
+  call attribute
+    read input
+    text <max>
+    text <{{max}}>
+  call attribute
+    read input
+    text <step>
+    text <{{step}}>
+  # the range's value, kept on the control whenever it changes
+  call make-effect
+    task show-position
+      call set-value
+        read input
+        call range-text
+          read control
+  # a move the person made, written into the range
+  call event
+    read input
+    text <input>
+    task moved
+      call move-range
+        read control
+        call get-value
+          read input
+  call append
+    read host
+    read input
+  send back, read input
+
+view slider
+  take host, like view
+  take class, like text
+  take control, like signal number
+  take min, like number
+  take max, like number
+  take step, like number
+  save mounted
+    call mount-slider
+      read host
+      read class
+      read control
+      read min
+      read max
+      read step

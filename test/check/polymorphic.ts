@@ -195,5 +195,32 @@ rule depth-empty
 `),
 )
 
+// A generic STRUCT in a signature is a type former too. Only an enum used to record its parameter count, so a struct
+// with a `head` was registered as a bare type, `holder text` applied a non-function, and every caller of a task returning
+// one failed the kernel with "applied a non-function" (native-dom-0012, the reactive `signal t`).
+const HOLDER = `form holder
+  head t
+  link item, like t
+
+task hold-text
+  take value, like text
+  like holder text
+  send back
+    make holder
+      bind item, read value
+`
+
+ok(
+  'a task returning a generic struct can be called',
+  compiles(`${HOLDER}
+task use-it
+  like text
+  save held
+    call hold-text
+      text <x>
+  send back, text <done>
+`),
+)
+
 console.log(`\npolymorphic datatypes: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

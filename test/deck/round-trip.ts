@@ -29,8 +29,9 @@ const TERM = join(HERE, '../..')
 
 // how many distinct field heads the tree's own manifests use, of the 27 the grammar knows. A new one is welcome;
 // it just has to survive the trip. 14 until 2026-10-02, when the record system left the tree for mesh/deck/save
-// and took the only `sort` with it.
-const CHECKED = 13
+// and took the only `sort` with it, and then 13 until zone left for the repository's deck/zone the same day and
+// took `cite`, `line`, `make`, `mark` and `text`, which no manifest still in the tree uses.
+const CHECKED = 8
 
 let pass = 0
 let fail = 0

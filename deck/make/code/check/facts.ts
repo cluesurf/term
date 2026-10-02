@@ -755,11 +755,11 @@ export function lengthKeepingFunctions(program: Program): Set<string> {
             const root = rootName(callee)
             const list = callee.target.type
             const onList = list?.kind === 'array' && !callee.index
-            // replacing an element that is itself a list changes that element's length, so only a list of scalars
-            const scalarItems = list?.kind === 'array' && SCALARS.has(list.element.kind)
+            // a `set` changes no length anywhere; a caller forgets only what it knew THROUGH a list position
+            // (holds.ts dropElementPaths)
             const keeps =
               onList &&
-              ((callee.name === 'set' && args.length === 2 && scalarItems) ||
+              ((callee.name === 'set' && args.length === 2) ||
                 ((callee.name === 'get' || callee.name === 'at') && args.length === 1) ||
                 READ_ONLY_LIST_METHODS.has(callee.name))
 

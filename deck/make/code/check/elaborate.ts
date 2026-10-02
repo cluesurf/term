@@ -849,6 +849,16 @@ export function elaborateReport(
   // a polymorphic datatype's type-parameter count, so the type former is registered as `Type -> .. -> Type` and use
   // sites (constructor application, match) supply that many erased type witnesses. 0 (absent) for a monomorphic type.
   const typeFormerArity = new Map<string, number>()
+
+  // every polymorphic record-type's former takes its type parameters, a STRUCT included. Only an enum used to record
+  // it, so a generic struct (`signal t`) was registered as a bare `Type0` and a signature naming `signal text` applied
+  // a non-function: every caller of a task returning one failed the kernel (native-dom-0012). An enum whose encoding
+  // succeeds sets the same count again below.
+  for (const statement of program) {
+    if (statement.form === 'record-type' && statement.params.length > 0) {
+      typeFormerArity.set(statement.name, statement.params.length)
+    }
+  }
   // an indexed family's VALUE-INDEX kernel types (e.g. `[number]` for a length index), so the type former is registered
   // as `Type0 -> .. -> nat -> .. -> Type0` and `vec a n` type-checks. Absent for a non-indexed type.
   const typeFormerIndices = new Map<string, Term[]>()

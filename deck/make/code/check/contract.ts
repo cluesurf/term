@@ -110,6 +110,23 @@ export function substitute(
           : walk(record[key])
     }
 
+    // a field read of a record built in place is the value bound to that field: a callee's `have` on `color/red`,
+    // handed `make rgb-color / bind red, code 255`, owes `255 >= 0`, which the provers read, and not a field of a
+    // literal, which they cannot
+    if (out.form === 'member' && !out.index) {
+      const target = out.target as Record<string, unknown> | undefined
+
+      if (target?.form === 'record' && Array.isArray(target.fields)) {
+        const field = (target.fields as { name: string; value: Expression }[]).find(
+          f => f.name === out.name,
+        )
+
+        if (field) {
+          return field.value
+        }
+      }
+    }
+
     return out
   }
 
@@ -461,12 +478,64 @@ function owedAt(
   const owed = owedAtCalls(expressions, context)
 
   if (context.tier0) {
+    const own: Statement[] = []
+
     for (const expression of expressions) {
-      obligationsIn(expression, guards, owed)
+      obligationsIn(expression, guards, own)
     }
+
+    // an accessor's own obligations over its parameters are its callers' (liftedOf), so they are not owed here
+    const lifted = liftedOf(context.current)
+    owed.push(
+      ...(lifted.length > 0
+        ? own.filter(s => !(s.form === 'hold' && readsOnlyParams(s.expr, context.current)))
+        : own),
+    )
   }
 
   return owed
+}
+
+// AN ACCESSOR'S OBLIGATION IS ITS CALLER'S. A task whose whole body is one `send back` (`get`, which is
+// `send back, call self/at(index)`) owes a list read or a division over nothing but its parameters, which no fact
+// inside it can settle: whether `index` is inside `self` is the caller's to know. Such an obligation is LIFTED: the
+// accessor assumes it, and every call owes it as the same tier-0 obligation, counted, with the arguments in place.
+// Nothing is lost, and the obligation sits where the context that can prove it is.
+const LIFTED = new WeakMap<object, { expr: Expression; origin: HoldOrigin }[]>()
+
+function liftedOf(fn: Context['current']): { expr: Expression; origin: HoldOrigin }[] {
+  const known = LIFTED.get(fn)
+
+  if (known) {
+    return known
+  }
+
+  const out: { expr: Expression; origin: HoldOrigin }[] = []
+  const only = fn.body.length === 1 ? fn.body[0] : undefined
+
+  // a task that states its preconditions (`have`) proves its own obligations from them, and keeps them
+  if (only?.form === 'return' && only.value && !(fn.have?.length ?? 0)) {
+    const holds: Statement[] = []
+    obligationsIn(only.value, [], holds)
+
+    for (const h of holds) {
+      if (h.form === 'hold' && h.origin && readsOnlyParams(h.expr, fn)) {
+        out.push({ expr: h.expr, origin: h.origin })
+      }
+    }
+  }
+
+  LIFTED.set(fn, out)
+
+  return out
+}
+
+// does an expression read nothing but the task's parameters (and constants)
+function readsOnlyParams(expr: Expression, fn: Context['current']): boolean {
+  const params = new Set(fn.params.map(p => p.name))
+  const names = readNames(expr)
+
+  return names.size > 0 && [...names].every(name => params.has(name))
 }
 
 // the facts a binding or assignment `x = call f(args)` may assume afterwards: f's `must` lines, with `back` as x and
@@ -489,7 +558,10 @@ function promisedBy(
     return []
   }
 
-  const binding = new Map<string, Expression>([['back', variable(name, span)]])
+  // `back` is the caller's name for the result, carrying the result's type so a field of it can be read
+  const binding = new Map<string, Expression>([
+    ['back', { ...variable(name, span), ...(init.type ? { type: init.type } : {}) } as Expression],
+  ])
 
   // the parameters whose argument reads the name being written: after the write, that argument means something else
   const stale = new Set<string>()
@@ -537,6 +609,13 @@ function owedAtCalls(expressions: unknown[], context: Context): Statement[] {
 
     for (const precondition of callee.have ?? []) {
       owed.push(hold(substitute(precondition, binding), 'need', call.span))
+    }
+
+    // an accessor's lifted obligations, owed here, counted as the tier-0 obligations they are (liftedOf)
+    if (context.tier0) {
+      for (const { expr, origin } of liftedOf(callee)) {
+        owed.push(hold(substitute(expr, binding), origin, call.span))
+      }
     }
 
     if (
@@ -669,7 +748,16 @@ function lowerList(
         break
 
       case 'expression':
-        out.push(...owedAt([statement.expr], context), statement)
+        // a call made for its effect promises what its callee's `must` says about the arguments afterwards: a
+        // method's postcondition on its record (`self/state/length` still equal to `self/capacity`). A `must` about
+        // `back` has no name to land on here and is dropped
+        out.push(
+          ...owedAt([statement.expr], context),
+          statement,
+          ...promisedBy('back', statement.expr, statement.span, context).filter(
+            given => !readNames((given as { expr: Expression }).expr).has('back'),
+          ),
+        )
         break
 
       case 'throw':
@@ -692,7 +780,11 @@ function lowerList(
 
         // `back` names the value being returned, inside a `must`. It is bound once, so the value is computed once
         const back = `back#${context.fresh.next++}`
-        const binding = new Map([['back', variable(back, statement.span)]])
+        // typed as the value it names, so a `must` on a field of a returned record (`back/capacity`) can read it
+        const type = statement.value.type ?? context.current.result
+        const binding = new Map([
+          ['back', { ...variable(back, statement.span), ...(type ? { type } : {}) } as Expression],
+        ])
 
         out.push(
           {

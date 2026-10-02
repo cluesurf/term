@@ -14,8 +14,9 @@ enum variable {
         unsetenv(name)
     }
 
+    // sorted by name, so a walk over the variables is the same on every run and every backend
     static func list() -> SeedMap<String, String> {
-        SeedMap(ProcessInfo.processInfo.environment)
+        SeedMap(pairs: ProcessInfo.processInfo.environment.sorted { $0.key < $1.key }.map { ($0.key, $0.value) })
     }
 
     static func check(_ name: String) -> Bool {

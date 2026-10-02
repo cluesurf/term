@@ -106,6 +106,41 @@ expect(
   true,
 )
 
+// the platform chain (native-dom-0010): a platform tries its own impl, then its language's, then the memory host.
+// `host` has an ios impl, a swift impl and a memory impl, and nothing for macos, kotlin or android.
+modules.set('@app/code/native/ios/host', 'task host-name\n  like text\n  send back, text <ios>\n')
+modules.set('@app/code/native/swift/host', 'task host-name\n  like text\n  send back, text <swift>\n')
+modules.set('@app/code/native/memory/host', 'task host-name\n  like text\n  send back, text <memory>\n')
+
+const HOST = `load @app/code/native/{platform}/host\n  find host-name\n\ntask describe\n  like text\n  send back\n    call host-name\n`
+
+for (const [env, want] of [
+  ['ios', 'ios'],
+  ['macos', 'swift'],
+  ['swift', 'swift'],
+  ['android', 'memory'],
+  ['kotlin', 'memory'],
+] as const) {
+  const built = compile({ file: 'public.tree', text: HOST }, { resolve: withNativeEnv(env, base) })
+  const got = built.ok ? (['ios', 'apple', 'swift', 'memory'].find(name => built.typescript.includes(`"${name}"`)) ?? 'none') : 'failed'
+  expect(`${env} resolves the ${want} impl through the chain`, got, want)
+}
+
+// the shared Apple rung: an `apple` impl serves macOS and iOS both, and loses to a platform's own
+modules.set('@app/code/native/apple/view', 'task view-name\n  like text\n  send back, text <apple>\n')
+modules.set('@app/code/native/ios/view', 'task view-name\n  like text\n  send back, text <ios>\n')
+
+const VIEW = `load @app/code/native/{platform}/view\n  find view-name\n\ntask describe\n  like text\n  send back\n    call view-name\n`
+
+for (const [env, want] of [
+  ['macos', 'apple'],
+  ['ios', 'ios'],
+] as const) {
+  const built = compile({ file: 'public.tree', text: VIEW }, { resolve: withNativeEnv(env, base) })
+  const got = built.ok ? (['ios', 'apple'].find(name => built.typescript.includes(`"${name}"`)) ?? 'none') : 'failed'
+  expect(`${env} resolves the ${want} view impl`, got, want)
+}
+
 // the retired implicit rewrite: an abstract `native/<name>` import no longer resolves an env impl
 const ABSTRACT = `load @app/code/native/platform\n  find platform-name\n\ntask describe\n  like text\n  send back\n    call platform-name\n`
 const abstract = compile(

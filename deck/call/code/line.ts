@@ -585,6 +585,14 @@ const cli = yargs(hideBin(process.argv))
         .option('dmg', {
           type: 'boolean',
           description: 'Also make a .dmg beside the .app',
+        })
+        .option('publish', {
+          type: 'string',
+          description: 'Also publish the page just built as a signed over-the-air update into this directory',
+        })
+        .option('channel', {
+          type: 'string',
+          description: 'The update channel --publish writes (default main)',
         }),
     async argv => {
       if (argv.target) {
@@ -598,6 +606,8 @@ const cli = yargs(hideBin(process.argv))
           url: argv.url,
           sign: argv.sign,
           dmg: argv.dmg,
+          publish: argv.publish,
+          channel: argv.channel,
         })
 
         return

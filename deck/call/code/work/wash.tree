@@ -68,7 +68,6 @@ task wash-logs
     hook hold
       call remove-directory
         read log-directory
-        wait true
   call log-good
     text <Logs cleared>
 
@@ -94,7 +93,6 @@ task wash-build
         hook hold
           call remove-directory
             read full
-            wait true
           call show-removed
             read directory
           save cleaned

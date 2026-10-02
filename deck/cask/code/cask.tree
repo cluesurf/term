@@ -21,5 +21,9 @@
 #   exit          status                        leave it with a status
 #   bundle-path                                  where the app's own files are
 #   data-path     name                           where the app may write
+#   update-launch-path   resources, page, data    the page to load: the shipped one or the newest good update
+#   update-check         resources, data, base, channel, done   fetch, verify and stage an update for the next launch
+#   update-ready         data                    this launch's page rendered, so its update is good
+#                                                (Swift, Kotlin and Rust; node stubs them)
 
 bear @term/cask/code/native/{platform}/cask

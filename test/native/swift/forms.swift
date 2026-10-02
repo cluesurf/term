@@ -3,9 +3,12 @@
 //
 // They match what deck/make/code/compile/swift.ts emits for the matching `form` declarations. If the emitter
 // changes shape, this is where the suite stops compiling, which is the point.
+// the emitted SeedMap holds an insertion-ordered SeedOrdered (deck/make/code/compile/swift.ts). The shims only use its
+// Dictionary-like surface, which a Dictionary also has, so the stand-in keeps one and adds the `pairs` initializer.
 final class SeedMap<K: Hashable, V> {
   var data: [K: V]
   init(_ data: [K: V]) { self.data = data }
+  init(pairs: [(K, V)]) { var d: [K: V] = [:]; for (k, v) in pairs { d[k] = v }; self.data = d }
 }
 
 final class SeedList<T> {

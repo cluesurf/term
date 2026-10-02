@@ -52,6 +52,9 @@ window.addEventListener('unhandledrejection', function (event) {
 // the name the page posts to and the handler is registered under
 private let BRIDGE_NAME = "term"
 
+// CASK_TRACE=1: every message, reply, window, load and ready printed where the cask prints
+private let CASK_TRACE = ProcessInfo.processInfo.environment["CASK_TRACE"] != nil
+
 // receives every `window.term.post`. One per window, holding the handler the Term program registered. The handler
 // is asynchronous and answers with the reply text; the reply goes back into the page on the main thread, which is
 // the one thread WKWebView accepts a script from. CASK_TRACE=1 in the environment prints every message and reply
@@ -81,7 +84,16 @@ final class CaskNavigation: NSObject, WKNavigationDelegate {
     var onReady: (() -> Void)?
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if CASK_TRACE { print("cask ready: \(webView.url?.path ?? "?")") }
         onReady?()
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        if CASK_TRACE { print("cask load failed: \(error.localizedDescription)") }
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        if CASK_TRACE { print("cask load failed: \(error.localizedDescription)") }
     }
 }
 
@@ -135,6 +147,7 @@ final class CaskWindow {
     fileprivate func applyPendingLoad() {
         guard let load = pending else { return }
         pending = nil
+        if CASK_TRACE { print("cask load: \(load)") }
         switch load {
         case .bundle(let path):
             let directory = URL(fileURLWithPath: path, isDirectory: true)
@@ -187,6 +200,12 @@ final class CaskAppDelegate: NSObject, UIApplicationDelegate {
 #endif
 
 enum cask {
+    // every window that is open, held here so it lives until it is closed. The program's handle is a local like any
+    // other: one opened inside a callback went out of scope when the callback returned, took the window and its WebView
+    // with it, and the page's load neither finished nor failed (native-dom-0028, 2026-10-02). A platform keeps an open
+    // window alive; so does the cask
+    private static var open: [CaskWindow] = []
+
     #if canImport(AppKit)
     private static let delegate = CaskDelegate()
 
@@ -226,11 +245,16 @@ enum cask {
         // NOT on screen yet. A test that only talks over the bridge never shows anything; `show` puts the window
         // on screen behind everything, `activate` brings it to the front with focus
         handle.window = window
+        // released when the person closes it, and not before
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in
+            open.removeAll { $0 === handle }
+        }
         #endif
         #if canImport(UIKit)
         // the window is built by the app delegate once UIApplicationMain runs. The last handle opened is the one shown
         CaskAppDelegate.pending = handle
         #endif
+        open.append(handle)
         return handle
     }
 

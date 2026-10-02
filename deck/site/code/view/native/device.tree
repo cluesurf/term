@@ -1,0 +1,27 @@
+
+# The device's traits (abstract native module, native-dom-0012): what kind of device a view is drawn on, read from the
+# platform and watched for change. The build rewrites `native/{platform}/device` to the env's impl: the browser reads
+# media queries, the toolkit reads UITraitCollection, NSAppearance and Android's Configuration, and the memory host
+# answers fixed values a test can set. See note/term/app/11-uniform-interface.md, "two axes of customization".
+#
+# A trait and its values, each decided by the platform's own notion of it:
+#
+#   idiom          phone | tablet | desktop     what the platform calls the device (UIDevice idiom; Android's
+#                                               smallest width at 600dp; the web's coarse pointer and narrow viewport)
+#   width-class    compact | regular            the width the view has now, which changes in split view and on rotation
+#   pointer        touch | fine                 the primary input
+#   color-scheme   light | dark                 the appearance the person chose
+#   reduce-motion  yes | no                     whether they asked for less motion
+
+# the trait's value now, one of the values above
+task read-trait
+  take name, like text
+  like text
+
+# run `handler` with a trait's name and new value whenever the platform says it changed. Answers a remover
+task watch-traits
+  take handler
+    like task
+      take name, like text
+      take value, like text
+  like task

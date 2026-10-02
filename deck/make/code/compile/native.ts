@@ -21,6 +21,25 @@ export const NATIVE_ENVS = [
   'javascript',
   'kotlin',
   'shared',
+  // a host written in pure Term, with no runtime shim: the in-memory dom tree every backend can run
+  // (deck/site/code/dom/native/memory). Never a build target of its own. It is what `swift` and `kotlin` fall back to
+  // where they have no host, so the renderer runs headless there. See note/term/app/10-native-dom.md
+  'memory',
+  // the PLATFORMS, above the languages. Each compiles with its language's backend and falls back through it
+  // (NATIVE_ENV_FALLBACK), so iOS and macOS share every Swift native and differ only where a module ships an `ios` or
+  // `macos` impl: the view host first. See note/term/app/11-uniform-interface.md
+  'ios',
+  'macos',
+  'android',
+  'windows',
+  'linux',
+  // a SHARED rung under the two Apple platforms: an impl here serves both, with AppKit and UIKit told apart inside its
+  // Swift runtime by `#if canImport`, the way the cask runtime does it. Never a build target of its own
+  'apple',
+  // a SHARED rung under every platform with a UI toolkit of its own: an impl over the platform's views, written once in
+  // Term, with one runtime shim per language beside it (`runtime/<name>.swift`, `.kt`), picked by the target's
+  // extension. The view host lives here (deck/site/code/dom/native/toolkit). Never a build target of its own
+  'toolkit',
 ] as const
 export type NativeEnv = (typeof NATIVE_ENVS)[number]
 
@@ -37,6 +56,16 @@ export const RUNTIME_EXTENSION: Record<NativeEnv, string> = {
   swift: 'swift',
   kotlin: 'kt',
   shared: 'txt',
+  // pure Term, so it docks no shim. The extension is never looked up
+  memory: 'tree',
+  ios: 'swift',
+  macos: 'swift',
+  android: 'kt',
+  windows: 'rs',
+  linux: 'rs',
+  apple: 'swift',
+  // its runtimes are found by the BUILD env's extension (swift for macos and ios, kt for android), never this one
+  toolkit: 'txt',
 }
 
 // ---- native runtime preludes ----
@@ -257,11 +286,28 @@ export function nativePrelude(
 // SSR seams that genuinely differ (the in-memory DOM, the fetch-handler transport + host) ship a `native/cloudflare`
 // file, which still wins because it is tried first. Without this every pure-JS stdlib module (text, list, ...) would
 // need a hand-written `native/cloudflare` re-export.
-export const NATIVE_ENV_FALLBACK: Partial<Record<NativeEnv, NativeEnv>> = {
-  cloudflare: 'browser',
+// A CHAIN, tried in order after the env's own impl and before the abstract module.
+export const NATIVE_ENV_FALLBACK: Partial<Record<NativeEnv, NativeEnv[]>> = {
+  cloudflare: ['browser'],
   // the page in a cask is a browser page whose natives go over the bridge; the DOM, text, list and the rest are the
   // browser's own
-  webview: 'browser',
+  webview: ['browser'],
+  // a native backend with no view host of its own renders into the in-memory tree, so the renderer runs and can be
+  // tested there. Only the dom has a `native/memory` impl, so no stdlib module resolves any differently
+  swift: ['memory'],
+  kotlin: ['memory'],
+  // a platform is its language plus whatever it ships of its own. Rust has no `memory` rung yet: `note shared` is not
+  // lowered on Rust (native-dom-0020), and the memory host needs it
+  ios: ['apple', 'toolkit', 'swift', 'memory'],
+  macos: ['apple', 'toolkit', 'swift', 'memory'],
+  android: ['toolkit', 'kotlin', 'memory'],
+  windows: ['rust'],
+  linux: ['rust'],
+}
+
+// the envs a build for `env` reads impls from, in order: its own, then its fallback chain
+export function envChain(env: NativeEnv): NativeEnv[] {
+  return [env, ...(NATIVE_ENV_FALLBACK[env] ?? [])]
 }
 
 // wrap a resolver so that abstract native imports resolve to the chosen platform's implementation. The env-specific
@@ -275,9 +321,7 @@ export function withNativeEnv(
     // the explicit spelling: `load .../native/{platform}/<name>` says on its face that the path is chosen by the
     // target. The env fills the slot; an env with no impl of its own borrows its sibling's (cloudflare -> browser)
     if (importPath.includes('{platform}')) {
-      const fallbackEnv = NATIVE_ENV_FALLBACK[env]
-
-      for (const candidate of fallbackEnv ? [env, fallbackEnv] : [env]) {
+      for (const candidate of envChain(env)) {
         const resolved = base(
           importPath.replaceAll('{platform}', candidate),
           fromFile,

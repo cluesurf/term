@@ -34,3 +34,11 @@ task field
   take name, like text
   like text
   note async
+
+# let a row go (native-dom-0029). In a cask's page a row is an id for a value the cask holds, and this frees it at once
+# rather than when the page's engine gets round to collecting it; using the row afterwards is refused with
+# `handle-absence`. On every backend where a row is a plain value it is a no-op. The bridge generator recognises the
+# verb: a task named `release` taking one handle and answering nothing becomes `bridge/release` in the page.
+task release
+  take row, like row
+  note async

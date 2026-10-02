@@ -155,6 +155,21 @@ task range
         bind item, read step
   send back, read out
 
+# Empty lists with their element written. A `make list` saved inside a nested task (an effect's body) reaches a
+# native backend as a list of `Any`, because the element inferred from a later `push` is not carried into the
+# closure's local (native-dom-0021). These say it outright, so `each` and `each-keyed` compile on Swift and Kotlin.
+task empty-views
+  like list
+    like view
+  send back
+    make list
+
+task empty-texts
+  like list
+    like text
+  send back
+    make list
+
 task each
   head t
   take host, like view
@@ -176,8 +191,7 @@ task each
             take site, name old
             call remove
               bind node, read old
-        save fresh
-          make list
+        save fresh, call empty-views
         save current, call items
         walk list, read current
           hook next
@@ -220,10 +234,8 @@ task each-keyed
     bind run
       task render
         save current, call items
-        save next-keys
-          make list
-        save next-nodes
-          make list
+        save next-keys, call empty-texts
+        save next-nodes, call empty-views
         # build or reuse a node per current item, matched by key against the previous render
         walk list, read current
           hook next

@@ -255,7 +255,8 @@ task compute
       read x
       code 1
 `,
-    'return p + 1',
+    // a sum of two numbers is range-checked (note/term/proof-by-default/numbers.md); the propagation is inside it
+    'return __termInt(p + 1)',
   )
   // soundness: a copy is NOT propagated when its source is later reassigned
   expectContains(
@@ -438,7 +439,7 @@ task f
       loan a
       loan b
 `,
-    'return a + b',
+    'return __termInt(a + b)',
   )
 
   // soundness: subtraction is NOT commutative; `a - b` must not become `b - a`
@@ -452,7 +453,7 @@ task f
       loan a
       loan b
 `,
-    'return a - b',
+    'return __termInt(a - b)',
   )
 
   // boolean idempotence: x && x -> x, x || x -> x (pure operands)

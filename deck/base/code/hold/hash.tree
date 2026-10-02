@@ -1,31 +1,53 @@
 
 load @term/base/code/bit
-  find unsigned-shift-right
+  find bitwise-and
+  find bitwise-exclusive-or
 
+# djb2 with xor: start at 5381, and for each character hash = (hash * 33) xor code, kept to 32 bits at every step.
+# Until 2026-10-02 the walk's condition was written `hook step`, which the walk does not read, so the loop compiled to
+# `while (false)` and every text hashed to 5381; it also read a counter `i` that did not exist and never reduced the
+# hash, which past nine characters is beyond what a double holds exactly. The reduction each step keeps every value
+# under 2^38 on every backend. It is an explicit mask: the bit operations are 64-bit on every backend, so
+# `unsigned-shift-right(x, 0)` would not reduce anything.
 task hash-djb2-xor
   like u32
   take text, like text
+  must
+    call is-minimum
+      read back
+      code 0
+  must
+    call is-maximum
+      read back
+      code 0xffffffff
   save size, read text/length
   save hash, code 5381
   save mark, code 0
 
   walk test
-    hook step
+    must
+      call is-minimum
+        read hash
+        code 0
+    must
+      call is-maximum
+        read hash
+        code 0xffffffff
+    hook test
       call is-below
         read mark
         read size
     hook hold
       save hash
-        call bitwise-exclusive-or
-          call multiply
-            read hash
-            code 33
-          call text/char-code-at(read i)
+        call bitwise-and
+          call bitwise-exclusive-or
+            call multiply
+              read hash
+              code 33
+            call text/char-code-at(read mark)
+          code 0xffffffff
       save mark
         call increment
           read mark
 
-  send back
-    call unsigned-shift-right
-      read hash
-      code 0
+  send back, read hash

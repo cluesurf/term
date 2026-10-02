@@ -7,10 +7,6 @@
 load @term/base/code/boolean
   find not
 
-load @term/base/code/math
-  find round-down
-  find power
-
 load @term/base/code/text/string
   find concat
 
@@ -23,6 +19,7 @@ load @term/base/code/bit
   find bitwise-not
   find bitwise-exclusive-or
   find shift-left
+  find shift-right
   find unsigned-shift-right
 
 # floor(abs(sin(i + 1)) * 2^32) for i in 0..63
@@ -215,21 +212,31 @@ task calculate-md5
       save i, call increment(read i)
   call m/push
     code 128
+  # the zeros that bring the length to 56 mod 64, counted first so the walk is a count: `(120 - length % 64) % 64`
+  # is that many, the 120 keeping the dividend positive
+  save zeros
+    call modulo
+      call subtract
+        code 120
+        call modulo
+          read m/length
+          code 64
+      code 64
+  save z, code 0
   walk test
     hook test
-      call not
-        call is-equal
-          call modulo
-            read m/length
-            code 64
-          code 56
+      call is-below
+        read z
+        read zeros
     hook hold
       call m/push
         code 0
+      save z, call increment(read z)
   save bits
     call multiply
       read list/length
       code 8
+  # byte j of the bit length, little-endian: shifted down 8j bits and masked, on the 64-bit bit operations
   save j, code 0
   walk test
     hook test
@@ -239,12 +246,11 @@ task calculate-md5
     hook hold
       call m/push
         call bitwise-and
-          call round-down
-            call divide
-              read bits
-              call power
-                code 256
-                read j
+          call shift-right
+            read bits
+            call multiply
+              read j
+              code 8
           code 255
       save j, call increment(read j)
   # the running state
@@ -253,10 +259,14 @@ task calculate-md5
   save c0, code 2562383102
   save d0, code 271733878
   save block, code 0
+  # a whole block of 64 bytes remains: the padded length is a multiple of 64, so this is the same walk as
+  # `block < length`, written as what the reads below need
   walk test
     hook test
-      call is-below
-        read block
+      call is-maximum
+        call add
+          read block
+          code 64
         read m/length
     hook hold
       # the sixteen little-endian words of this block

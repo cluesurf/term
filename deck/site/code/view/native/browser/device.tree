@@ -1,0 +1,42 @@
+
+# The device's traits in a browser (native-dom-0012): media queries and the window's width, read when asked, and a
+# query's `change` event or a resize to say look again. Conforms to ../device. The `webview` and `cloudflare` envs reach
+# this file through the `browser` rung of their chains; outside a browser every trait reads its default.
+#
+#   idiom          phone, tablet or desktop: a fine pointer is a desktop, a coarse one a tablet from 600 px of screen
+#   width-class    compact under 600 px of window width, regular from 600
+#   pointer        fine or touch, `(pointer: fine)`
+#   color-scheme   light or dark, `(prefers-color-scheme: dark)`
+#   reduce-motion  yes or no, `(prefers-reduced-motion: reduce)`
+#   text-scale     the root font size over 16 px
+
+dock load
+  load <global:native-device>, name native-device
+  note native
+
+task read-trait
+  take name, like text
+  like text
+  send back
+    call native-device/read-trait
+      read name
+
+task watch-traits
+  take handler
+    like task
+      take name, like text
+      take value, like text
+  like task
+  call native-device/watch
+    read handler
+  send back
+    task drop
+      call native-device/unwatch
+
+# a page cannot force a media query: this asks the browser again, after a test has changed it
+task change-trait
+  take name, like text
+  take value, like text
+  call native-device/change-trait
+    read name
+    read value

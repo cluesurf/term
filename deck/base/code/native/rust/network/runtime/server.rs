@@ -25,7 +25,7 @@ mod runtime {
     use hyper::service::service_fn;
     use hyper_util::rt::TokioIo;
     use std::cell::RefCell;
-    use std::collections::HashMap;
+    use crate::TermMap;
     use std::rc::Rc;
     use tokio::net::TcpListener;
 
@@ -181,7 +181,7 @@ mod runtime {
         let path = request.uri().path().to_string();
         let query = request.uri().query().unwrap_or("").to_string();
 
-        let mut headers = HashMap::new();
+        let mut headers = TermMap::new();
 
         for (name, value) in request.headers().iter() {
             headers.insert(

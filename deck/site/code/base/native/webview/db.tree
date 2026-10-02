@@ -135,6 +135,11 @@ task query
           bind handle
             call as-text
               read item-9
+      call bridge/held
+        text <row>
+        read value-10
+        call as-text
+          read item-9
       call push
         bind list, read value-7
         bind item, read value-10
@@ -209,3 +214,13 @@ task field
       wait true
       text <db_field>
       read arguments
+
+# let row go now: the cask drops it from its table, and a use after this is refused
+task release
+  note async
+  take row
+    like row
+  call bridge/release
+    text <row>
+    read row
+    read row/handle

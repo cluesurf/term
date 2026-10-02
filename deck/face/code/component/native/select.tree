@@ -1,0 +1,100 @@
+
+# Select, the GENERIC implementation: the browser's own `<select>`, with one `<option>` per choice. A platform
+# with a picker of its own (macOS, iOS, Android) gets ./toolkit/select.tree instead, through
+# `component/select.tree` and the build's env chain. Both take the same props, which is the contract
+# (note/term/app/11-uniform-interface.md, native-dom-0026).
+#
+#   save size, call make-signal / bind value, text <medium>
+#   call select / read root / text <> / read size / read sizes
+#
+# Two-way: the control shows the signal's choice, and a choice the person makes is written into the signal. Parts:
+# `select` (the control, data-slot for a theme).
+
+load @term/site/code/view/render
+  find element
+  find text
+  find attribute
+  find event
+load @term/site/code/view/reactive
+  find signal
+  find make-effect
+  find read-signal
+  find write-signal
+load @term/site/code/dom/dom
+  find view
+  find append
+  find get-value
+  find set-value
+
+# the work of the view below, in a task: in a `view` body a bare `call` renders as a text child
+task mount-select
+  take host, like view
+  take class, like text
+  take control, like signal text
+  take options
+    like list
+      like text
+  like view
+  save picker
+    call element
+      text <select>
+  call attribute
+    read picker
+    text <data-slot>
+    text <select>
+  call attribute
+    read picker
+    text <class>
+    read class
+  walk list, read options
+    hook next
+      take site, name choice
+      save option
+        call element
+          text <option>
+      call attribute
+        read option
+        text <value>
+        read choice
+      call append
+        read option
+        call text
+          read choice
+      call append
+        read picker
+        read option
+  # the signal's choice, kept on the control whenever it changes
+  call make-effect
+    task show-choice
+      call set-value
+        read picker
+        call read-signal
+          bind self, read control
+  # a choice the person made, written into the signal
+  call event
+    read picker
+    text <change>
+    task chosen
+      call write-signal
+        bind self, read control
+        bind value
+          call get-value
+            read picker
+  call append
+    read host
+    read picker
+  send back, read picker
+
+view select
+  take host, like view
+  take class, like text
+  take control, like signal text
+  take options
+    like list
+      like text
+  save mounted
+    call mount-select
+      read host
+      read class
+      read control
+      read options

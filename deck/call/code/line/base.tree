@@ -351,6 +351,12 @@ hook make
   # Also make a .dmg beside the .app
   take dmg
     like boolean
+  # Also publish the page just built as a signed over-the-air update into this directory
+  take publish
+    like text
+  # The update channel --publish writes (default main)
+  take channel
+    like text
   task make
 
 # Type-check a file and report diagnostics (the verifier)

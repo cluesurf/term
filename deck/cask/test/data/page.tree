@@ -3,7 +3,8 @@
 # generated bridge shim for `@term/site/code/base/db`. Opens a database in the cask's data directory, writes a row
 # with text parameters, reads it back with a number parameter, reads a field through the opaque row handle, and
 # leaves with 0 when the field holds the line the driver put in <bundle>/smoke.txt, 1 when it does not, 2 when the
-# row did not come back at all. The driver reads that status.
+# row did not come back at all. Then it lets the row go and uses it again (native-dom-0029): the cask must refuse it,
+# and a row still readable after its release leaves with 3. The driver reads that status.
 
 load @term/cask/code/cask
   find bundle-path
@@ -16,6 +17,7 @@ load @term/site/code/base/db
   find run
   find field
   find row
+  find release
 
 load @term/base/code/file
   find read
@@ -27,6 +29,22 @@ load @term/base/code/list
   find list
   find count
   find get
+
+# reading a field from a row the page let go: true when the cask refused it, false when it answered
+task refused-after-release
+  take row, like row
+  like boolean
+  note async
+  note unsafe
+    save again
+      call field
+        read row
+        text <title>
+        wait true
+    send back, false
+  halt take
+    take problem
+    send back, true
 
 task boot
   note async
@@ -76,11 +94,13 @@ task boot
           read rows
         code 1
     hook hold
+      save row
+        call get
+          read rows
+          code 0
       save title
         call field
-          call get
-            read rows
-            code 0
+          read row
           text <title>
           wait true
       fork test
@@ -89,9 +109,24 @@ task boot
             read title
             read expected
         hook hold
-          call exit
+          # the row read back; now let it go, and the cask must no longer answer for it
+          call release
+            read row
             wait true
-            code 0
+          save refused
+            call refused-after-release
+              read row
+              wait true
+          fork test
+            hook test, read refused
+            hook hold
+              call exit
+                wait true
+                code 0
+            hook miss
+              call exit
+                wait true
+                code 3
         hook miss
           call exit
             wait true

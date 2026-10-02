@@ -2103,13 +2103,39 @@ function loopOf(
 
   if (mode === 'test') {
     const test = hooks.find(h => wordAt(h, 'name') === 'test')
-    const step = hooks.find(h => {
+    const bodies = hooks.filter(h => {
       const name = wordAt(h, 'name')
 
       return name === 'step' || name === 'hold'
     })
-    // `walk test` with no `hook test` has no condition: the mill writes `false`, so the loop never runs. That
-    // is a source mistake rather than a spelling, and the mill's answer is the one to reproduce.
+    const step = bodies[0]
+
+    // `walk test` with no `hook test` has no condition, and the mill writes `false`, so the loop never runs. That
+    // used to compile in silence: `hash-djb2-xor` wrote its condition as `hook step` and its body as `hook hold`,
+    // compiled to `while (false)`, and hashed every text to 5381 for as long as it existed. Refused now, and so is a
+    // walk with two bodies, since only one of them would run
+    if (!test) {
+      bridge.diagnostics.push(
+        diagnose('unexpected-node', {
+          file: bridge.file,
+          span: spanOf(value),
+          message:
+            'this `walk test` has no `hook test`, so it has no condition and would never run. Write the condition under `hook test` and the body under `hook hold`',
+        }),
+      )
+    }
+
+    if (bodies.length > 1) {
+      bridge.diagnostics.push(
+        diagnose('unexpected-node', {
+          file: bridge.file,
+          span: spanOf(value),
+          message:
+            'this `walk test` has two bodies (`hook step` and `hook hold`), and only the first would run. Keep one',
+        }),
+      )
+    }
+
     const cond = expressionOf(bridge, firstAt(test, 'flow')) ?? {
       form: 'boolean' as const,
       value: false,
@@ -2179,8 +2205,14 @@ function loopOf(
     ]
   }
 
-  // any other mode is one the mill has no lowering for: it writes a loop that never runs, and so does this
-  return { form: 'while', cond: { form: 'boolean', value: false, span }, body: [], span }
+  // any other mode is one the mill has no lowering for: it writes a loop that never runs, which is refused rather than
+  // compiled, for the same reason as a `walk test` with no condition
+  return unhandled(bridge, value, `a \`walk ${mode}\``) ?? {
+    form: 'while',
+    cond: { form: 'boolean', value: false, span },
+    body: [],
+    span,
+  }
 }
 
 // `fork case, <subject>` with one `case <label>` arm per variant
@@ -3792,6 +3824,11 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
       truncation: formsAt(value, 'mark').some(
         mark => wordAt(mark, 'kind') === 'prop',
       ),
+      // `note shared`: one object through every binding. Written only when present, so every form that does not
+      // say it builds the same Program it always did.
+      ...(formsAt(value, 'note').some(note => wordAt(note, 'text') === 'shared')
+        ? { shared: true }
+        : {}),
       ...(alias ? { alias } : {}),
       ...(extend ? { extend } : {}),
       functionFree:

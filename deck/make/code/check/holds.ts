@@ -10,6 +10,7 @@ import type {
   HoldOrigin,
   Program,
   Statement,
+  Type,
 } from '@term/make/code/compile/node'
 import type { Linear } from '@term/make/code/check/refine'
 import {
@@ -82,30 +83,53 @@ function extremaOf(program: Program): Map<string, 'max' | 'min'> {
     }
   }
 
-  for (const [name, fn] of defined) {
-    const only = fn.body.length === 1 ? fn.body[0] : undefined
+  // a native module's `min` / `max` handed the task's own two parameters (the stdlib's `min` is `call math/min a b`
+  // over the host `Math` global). This rests on the trust every native call already carries, which `term hold`
+  // prints: the host's `Math.min` is a minimum
+  // (the target is a module name: neither a task of the program nor one of the task's own parameters, which could be a
+  // record with a `min` method of its own)
+  const hostModule = (
+    callee: Expression,
+    params: { name: string }[],
+  ): 'max' | 'min' | undefined =>
+    callee.form === 'member' &&
+    !callee.index &&
+    (callee.name === 'min' || callee.name === 'max') &&
+    callee.target.form === 'variable' &&
+    !defined.has(callee.target.name) &&
+    !params.some(p => p.name === (callee.target as { name: string }).name)
+      ? callee.name
+      : undefined
 
-    if (
-      fn.params.length !== 2 ||
-      only?.form !== 'return' ||
-      only.value?.form !== 'call' ||
-      only.value.callee.form !== 'variable' ||
-      only.value.args.length !== 2
-    ) {
-      continue
-    }
+  // twice, so a task over a task recognized in the first pass (`minimum` over the native-backed `min`) is found
+  for (let pass = 0; pass < 2; pass++) {
+    for (const [name, fn] of defined) {
+      const only = fn.body.length === 1 ? fn.body[0] : undefined
 
-    const inner = table.get(only.value.callee.name)
-    const [a, b] = only.value.args
+      if (
+        table.has(name) ||
+        fn.params.length !== 2 ||
+        only?.form !== 'return' ||
+        only.value?.form !== 'call' ||
+        only.value.args.length !== 2
+      ) {
+        continue
+      }
 
-    if (
-      inner &&
-      a?.form === 'variable' &&
-      b?.form === 'variable' &&
-      a.name === fn.params[0]!.name &&
-      b.name === fn.params[1]!.name
-    ) {
-      table.set(name, inner)
+      const callee = only.value.callee
+      const inner =
+        callee.form === 'variable' ? table.get(callee.name) : hostModule(callee, fn.params)
+      const [a, b] = only.value.args
+
+      if (
+        inner &&
+        a?.form === 'variable' &&
+        b?.form === 'variable' &&
+        a.name === fn.params[0]!.name &&
+        b.name === fn.params[1]!.name
+      ) {
+        table.set(name, inner)
+      }
     }
   }
 
@@ -117,6 +141,10 @@ function extremaOf(program: Program): Map<string, 'max' | 'min'> {
 // size
 const modDividends = new Map<string, Linear>()
 const modDivisors = new Map<string, Linear>()
+// each quotient atom's dividend (a snapshot) and its constant divisor
+const quotients = new Map<string, { dividend: Linear; k: number }>()
+// each max / min atom's two arguments, as snapshots taken where it was read
+const extremumArguments = new Map<string, { kind: 'max' | 'min'; a: Linear; b: Linear }>()
 
 // a fresh atom equal to `value` now, which no later write can change
 function snapshot(value: Linear, side: Inequality[]): Linear {
@@ -142,6 +170,21 @@ function signedRemainders(all: Inequality[]): Inequality[] {
         extra.push(atLeast(m, zero))
       }
 
+      const quotient = quotients.get(key)
+
+      if (quotient) {
+        const kq = scale(m, quotient.k)
+        const slack = linear({}, quotient.k - 1)
+
+        if (proves(all, atLeast(quotient.dividend, zero))) {
+          // k·q <= x <= k·q + k - 1
+          extra.push(atMost(kq, quotient.dividend), atMost(quotient.dividend, add(kq, slack)))
+        } else if (proves(all, atMost(quotient.dividend, zero))) {
+          // k·q - (k - 1) <= x <= k·q
+          extra.push(atLeast(kq, quotient.dividend), atLeast(quotient.dividend, add(kq, scale(slack, -1))))
+        }
+      }
+
       const divisor = modDivisors.get(key)
 
       if (divisor && proves(all, atLeast(divisor, one))) {
@@ -152,7 +195,58 @@ function signedRemainders(all: Inequality[]): Inequality[] {
     }
   }
 
+  // twice, so `min(min(r, g), b)` can use what the first pass found about the inner min
+  for (let pass = 0; pass < 2; pass++) {
+    extra.push(...extremumBounds([...all, ...extra]))
+  }
+
   return extra
+}
+
+// the far side of every max / min atom among these facts: `max(a, b) <= c` when both a and b are, `min(a, b) >= c`
+// when both are. The candidates for c are the constants the facts mention, each confirmed by the prover for both
+function extremumBounds(all: Inequality[]): Inequality[] {
+  const out: Inequality[] = []
+  const candidates = new Set<number>([0])
+
+  for (const q of all) {
+    if (Number.isInteger(q.linear.constant)) {
+      candidates.add(q.linear.constant)
+      candidates.add(-q.linear.constant)
+    }
+  }
+
+  const tried = [...candidates].slice(0, 16)
+
+  for (const q of all) {
+    for (const key of q.linear.terms.keys()) {
+      const extremum = extremumArguments.get(key)
+
+      if (!extremum) {
+        continue
+      }
+
+      const e = linear({ [key]: 1 })
+
+      // the tightest c both arguments meet: the greatest lower bound for a min, the least upper bound for a max
+      const ordered = [...tried].sort((x, y) => (extremum.kind === 'min' ? y - x : x - y))
+
+      for (const c of ordered) {
+        const bound = linear({}, c)
+        const both =
+          extremum.kind === 'min'
+            ? proves(all, atLeast(extremum.a, bound)) && proves(all, atLeast(extremum.b, bound))
+            : proves(all, atMost(extremum.a, bound)) && proves(all, atMost(extremum.b, bound))
+
+        if (both) {
+          out.push(extremum.kind === 'min' ? atLeast(e, bound) : atMost(e, bound))
+          break
+        }
+      }
+    }
+  }
+
+  return out
 }
 
 // translate a compile-AST expression into a linear form, or undefined if it is not linear. Side constraints (for
@@ -194,7 +288,8 @@ function toLinear(
           const b = toLinear(expr.args[1]!, side)
 
           if (a && b) {
-            const e = linear({ [`__ext${modCounter++}`]: 1 })
+            const key = `__ext${modCounter++}`
+            const e = linear({ [key]: 1 })
 
             if (extremum === 'max') {
               side.push(atLeast(e, a), atLeast(e, b))
@@ -202,13 +297,22 @@ function toLinear(
               side.push(atMost(e, a), atMost(e, b))
             }
 
+            // and the bound on the other side, decided where the arguments' bounds are known (signedRemainders):
+            // a max is at most any c both arguments are at most, a min at least any c both are at least
+            extremumArguments.set(key, {
+              kind: extremum,
+              a: snapshot(a, side),
+              b: snapshot(b, side),
+            })
+
             return e
           }
         }
 
-        // `bitwise-and x k` with a constant mask 0 <= k < 2^31 lies in [0, k] for every x: the result has no bit k
-        // does not have. Below 2^31 because JavaScript's `&` works on signed 32-bit integers, where a mask with the
-        // top bit set can give a negative result.
+        // `bitwise-and x k` with a constant mask 0 <= k lies in [0, k] for every x: the result has no bit k does not
+        // have. The stdlib's bit operations are 64-bit on every backend (the `bit` global, through BigInt on the JS
+        // hosts, deck/base/code/native/*/bit.tree), never JavaScript's signed 32-bit `&`, so the mask may be any
+        // exact integer. It was held below 2^31 on the 32-bit assumption, which left `x & 0xffffffff` unbounded.
         if (name === 'bitwise-and' && expr.args.length === 2) {
           const constant = (e: Expression): number | undefined => {
             const l = toLinear(e, [])
@@ -221,7 +325,7 @@ function toLinear(
             mask !== undefined &&
             Number.isInteger(mask) &&
             mask >= 0 &&
-            mask < 2 ** 31
+            mask <= Number.MAX_SAFE_INTEGER
           ) {
             const bits = linear({ [`__and${modCounter++}`]: 1 })
             side.push(atLeast(bits, linear({}, 0)))
@@ -230,6 +334,15 @@ function toLinear(
             return bits
           }
         }
+      }
+
+      // a NUMBER FIELD of a record reached by a plain path (`self/capacity`, `color/red`) is an atom too, keyed
+      // `@field:<path>`. It is state, so it goes where a length goes: with a write through any member, with an
+      // impure call that may reach a record, and with its root name (keyRoot). Unlike a length it may be negative
+      const field = fieldAtom(expr)
+
+      if (field !== undefined) {
+        return linear({ [field]: 1 })
       }
 
       const key = lengthAtom(expr)
@@ -247,6 +360,28 @@ function toLinear(
     case 'binary': {
       const left = toLinear(expr.left, side)
       const right = toLinear(expr.right, side)
+
+      // a remainder whose dividend is not linear still has a known size, from the divisor: |m| < |d|. Its sign is
+      // the dividend's, which is unknown here, so no dividend is recorded and only the size is ever concluded
+      if (expr.op === '%' && !left && right) {
+        const k = constantOf(right)
+        const key = `__mod${modCounter++}`
+        const m = linear({ [key]: 1 })
+
+        if (k === undefined) {
+          modDivisors.set(key, snapshot(right, side))
+
+          return m
+        }
+
+        if (Number.isInteger(k) && k > 0) {
+          side.push(atLeast(m, linear({}, -(k - 1))), atMost(m, linear({}, k - 1)))
+
+          return m
+        }
+
+        return undefined
+      }
 
       if (!left || !right) {
         return undefined
@@ -273,6 +408,29 @@ function toLinear(
         }
 
         return undefined // non-linear (variable * variable)
+      }
+
+      // `x / k` for a positive integer constant k: a fresh atom q, the quotient TRUNCATED toward zero (every backend,
+      // note/term/proof-by-default/numbers.md). Where x is non-negative, k·q <= x <= k·q + k - 1, and where it is
+      // non-positive the mirror; decided at the goal from a snapshot of x (signedRemainders)
+      if (expr.op === '/') {
+        const k = constantOf(right)
+
+        // never a float quotient, which is not an integer and must not be tightened as one
+        if (
+          k !== undefined &&
+          Number.isInteger(k) &&
+          k > 0 &&
+          expr.type?.kind !== 'float' &&
+          expr.left.type?.kind !== 'float'
+        ) {
+          const key = `__div${modCounter++}`
+          quotients.set(key, { dividend: snapshot(left, side), k })
+
+          return linear({ [key]: 1 })
+        }
+
+        return undefined
       }
 
       if (expr.op === '%') {
@@ -356,7 +514,74 @@ function lengthAtom(expr: Expression): string | undefined {
 function keyRoot(key: string): string {
   return key.startsWith('@length:')
     ? key.slice('@length:'.length).split('.')[0]!
-    : key
+    : key.startsWith('@field:')
+      ? key.slice('@field:'.length).split('.')[0]!
+      : key
+}
+
+// each record form's number fields, and the record form of each parameter of the task being walked. A contract's
+// expression is never typed by inference (it is lowered after it), so `read c/count` in a `have` carries no type,
+// and its field is read off the declaration instead: never guessed, since an untyped `float` field read as an
+// integer atom would be tightened as one
+let numberFields = new Map<string, Set<string>>()
+let paramForms = new Map<string, string>()
+
+function numberFieldsOf(program: Program): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>()
+
+  for (const statement of program) {
+    if (statement.form === 'record-type') {
+      out.set(
+        statement.name,
+        new Set(statement.fields.filter(f => f.type?.kind === 'number').map(f => f.name)),
+      )
+    }
+  }
+
+  return out
+}
+
+function paramFormsOf(params: { name: string; type?: Type }[]): Map<string, string> {
+  return new Map(
+    params.flatMap(p => (p.type?.kind === 'named' ? [[p.name, p.type.name] as [string, string]] : [])),
+  )
+}
+
+// a member read whose field is declared a number: by its inferred type, or, untyped, by its parameter's form
+function numberMember(expr: Extract<Expression, { form: 'member' }>): boolean {
+  if (expr.type !== undefined) {
+    return expr.type.kind === 'number'
+  }
+
+  // the record's form: from its own type when it carries one (a caller's argument, a promise's `back`), else from the
+  // parameter or result it names
+  const form =
+    expr.target.type?.kind === 'named'
+      ? expr.target.type.name
+      : expr.target.form === 'variable'
+        ? paramForms.get(expr.target.name)
+        : undefined
+
+  return form !== undefined && numberFields.get(form)?.has(expr.name) === true
+}
+
+// the atom key for a number field read through a plain path, or undefined for anything else (a computed step, a
+// list's element, its length, a field that is not a number)
+function fieldAtom(expr: Expression): string | undefined {
+  if (
+    expr.form !== 'member' ||
+    expr.index ||
+    expr.name === 'length' ||
+    /^[0-9]+$/.test(expr.name) ||
+    !numberMember(expr) ||
+    expr.target.type?.kind === 'array'
+  ) {
+    return undefined
+  }
+
+  const path = plainPath(expr)
+
+  return path === undefined ? undefined : `@field:${path}`
 }
 
 function add(a: Linear, b: Linear): Linear {
@@ -1666,7 +1891,10 @@ function goalProvable(
       return null
     }
 
-    const all = [...available, ...dside]
+    // with the same goal-time facts every other goal gets: remainder signs and sizes, and the far side of max / min.
+    // Without them a division owed `d != 0` never saw that `d` is a max of positives
+    const facts = [...available, ...dside]
+    const all = [...facts, ...signedRemainders(facts)]
 
     if (proves(all, below(left, right)) || proves(all, above(left, right))) {
       return true
@@ -1830,8 +2058,14 @@ export function checkHolds(
   const functions = functionNames(program)
   const tables = constantTableLengths(program, pure)
   extrema = extremaOf(program)
+  numberFields = numberFieldsOf(program)
+  listPops = listPopsOf(program)
+  listPushes = listPushesOf(program)
   const globals = new Set(
     program.flatMap(s => (s.form === 'let' ? [s.name] : [])),
+  )
+  const constants = new Set(
+    program.flatMap(s => (s.form === 'let' && !s.mutable ? [s.name] : [])),
   )
 
   for (const statement of program) {
@@ -1852,6 +2086,11 @@ export function checkHolds(
         ),
       ]
 
+      // and `back`, the value a `must` speaks of, as the declared result
+      paramForms = paramFormsOf([
+        ...statement.params,
+        ...(statement.result ? [{ name: 'back', type: statement.result }] : []),
+      ])
       walkHolds(statement.body, base, {
         diagnostics,
         file,
@@ -1867,6 +2106,7 @@ export function checkHolds(
         fresh: freshNames(statement, returning),
         returning,
         params: steadyParams(statement),
+        constants,
         scalars: scalarLocals(statement.body, statement.params),
         task: statement.method
           ? `${statement.method.form}/${statement.method.name}`
@@ -1922,6 +2162,8 @@ type Walk = {
   returning?: Set<string>
   // the task's parameters that its body never rebinds
   params?: Set<string>
+  // the module's bindings that nothing can rebind (`host`, a `save` that is not mutable): bound before the task ran
+  constants?: Set<string>
   // the task's locals that only ever hold scalars (scalarLocals)
   scalars?: Set<string>
 }
@@ -1989,6 +2231,165 @@ function forget(current: Inequality[], names: Set<string>): Inequality[] {
   }
 
   return facts
+}
+
+// WHAT A BODY WRITES, split by what it can change. A name written (`save x`, a binding, a loop's item) is forgotten
+// whole. A FIELD written through a plain path (`save self/size`) changes the value at that field of whatever record
+// the path reaches, which any other name may also reach, so it is every atom whose path passes through a field of
+// that NAME that goes, whatever its root: `@field:t.size`, `@length:q.size.items`. `self/state/length` survives a
+// write to `self/size`. A write through a computed index or a list position may grow a list or land anywhere, and
+// every state atom goes, as before.
+function forgetWrites(current: Inequality[], statement: unknown): Inequality[] {
+  const names = new Set<string>()
+  const fields = new Set<string>()
+  let everything = false
+
+  const visit = (node: unknown): void => {
+    if (everything || node === null || typeof node !== 'object') {
+      return
+    }
+
+    if (Array.isArray(node)) {
+      node.forEach(visit)
+      return
+    }
+
+    const record = node as Record<string, unknown>
+
+    switch (record.form) {
+      case 'assign': {
+        const target = record.target as Expression
+
+        if (target.form === 'variable') {
+          names.add(target.name)
+        } else if (target.form === 'member' && !target.index && !/^[0-9]+$/.test(target.name) && plainPath(target)) {
+          fields.add(target.name)
+        } else {
+          everything = true
+        }
+
+        break
+      }
+      case 'let':
+        names.add(record.name as string)
+        break
+      case 'for-each':
+        names.add(record.item as string)
+
+        if (typeof record.index === 'string') {
+          names.add(record.index)
+        }
+
+        break
+      case 'closure':
+      case 'function':
+        for (const param of (record.params as { name: string }[] | undefined) ?? []) {
+          names.add(param.name)
+        }
+
+        break
+      case 'guard': {
+        const handler = record.catch as { name: string } | undefined
+
+        if (handler) {
+          names.add(handler.name)
+        }
+
+        break
+      }
+      default:
+        break
+    }
+
+    for (const key of Object.keys(record)) {
+      if (key !== 'type' && key !== 'span' && key !== 'binding') {
+        visit(record[key])
+      }
+    }
+  }
+
+  visit(statement)
+
+  if (everything) {
+    return forget(current, names).filter(q => !mentionsAtom(q))
+  }
+
+  return dropFields(forget(current, names), fields)
+}
+
+// `x = y` with y a record: the two names hold ONE record, so every fact over a field or a length reached through y is
+// a fact through x too, copied with x as the root. It stays true under every later change: a write to a field drops
+// the facts through that field whatever their root (forgetWrites), a call that may reach a record drops them all,
+// and rebinding either name forgets that name's copies
+function aliasFacts(
+  current: Inequality[],
+  name: string,
+  value: Expression,
+  walk: Walk,
+): Inequality[] {
+  if (
+    value.form !== 'variable' ||
+    value.name === name ||
+    walk.volatile.has(name) ||
+    value.type?.kind !== 'named'
+  ) {
+    return []
+  }
+
+  const from = value.name
+  const rename = (key: string): string | undefined => {
+    for (const prefix of ['@field:', '@length:']) {
+      if (key.startsWith(`${prefix}${from}.`)) {
+        return `${prefix}${name}.${key.slice(prefix.length + from.length + 1)}`
+      }
+    }
+
+    return undefined
+  }
+
+  const out: Inequality[] = []
+
+  for (const q of current) {
+    const keys = [...q.linear.terms.keys()]
+
+    if (!keys.some(key => rename(key) !== undefined)) {
+      continue
+    }
+
+    const terms = new Map<string, number>()
+
+    for (const [key, coefficient] of q.linear.terms) {
+      const renamed = rename(key) ?? key
+      terms.set(renamed, (terms.get(renamed) ?? 0) + coefficient)
+    }
+
+    out.push({ ...q, linear: { terms, constant: q.linear.constant } })
+  }
+
+  return out
+}
+
+// drop every fact over a state atom whose path passes through one of these field names after its root
+function dropFields(current: Inequality[], fields: Set<string>): Inequality[] {
+  if (fields.size === 0) {
+    return current
+  }
+
+  return current.filter(q => {
+    for (const key of q.linear.terms.keys()) {
+      const path = key.startsWith('@field:')
+        ? key.slice('@field:'.length)
+        : key.startsWith('@length:')
+          ? key.slice('@length:'.length)
+          : undefined
+
+      if (path !== undefined && path.split('.').slice(1).some(step => fields.has(step))) {
+        return false
+      }
+    }
+
+    return true
+  })
 }
 
 // a task's parameters that nothing in its body rebinds (a closure's included), so each still holds what it was handed
@@ -2486,6 +2887,11 @@ function keepMonotone(
 
   // any impure call at all may change a list that is not local to this task, so no such length survives a turn,
   // unless every one is a call that changes no length (keepsLengths) or a push onto a list this task made
+  // a `set` anywhere in the body may change what a list position holds
+  if (callsImpure(body, walk.pure, walk.functions, walk.local)) {
+    current = dropElementPaths(current)
+  }
+
   if (
     callsImpure(body, walk.pure, walk.functions, walk.local) &&
     !onlyKeepsLengths(body, walk, true)
@@ -2502,9 +2908,41 @@ function keepMonotone(
   }
 
   if (changesState) {
+    // the lists the body pushes to, when pushes are all it does: a length of a list provably not one of them is not
+    // changed at all, so its facts survive whole (the inner walks of MD5 push to `w`, never to `m`)
+    const pushedTo = pushes !== false && !writesThroughMember(body) ? pushTargets(body, walk) : undefined
+    const untouched = (key: string): boolean => {
+      if (!pushedTo || !key.startsWith('@length:')) {
+        return false
+      }
+
+      const other = key.slice('@length:'.length)
+
+      return (
+        !other.includes('.') &&
+        [...pushedTo].every(
+          target =>
+            target !== other &&
+            walk.fresh?.has(target) === true &&
+            (walk.fresh.has(other) ||
+              walk.params?.has(other) === true ||
+              (walk.constants?.has(other) === true && !walk.local.has(other))),
+        )
+      )
+    }
+
     current = current.filter(q => {
       for (const [key, coefficient] of q.linear.terms) {
-        if (!key.startsWith('@')) {
+        if (!key.startsWith('@') || untouched(key)) {
+          continue
+        }
+
+        // a push changes a length and no field: a field fact goes only when something else changes state
+        if (key.startsWith('@field:')) {
+          if (pushes === false || writesThroughMember(body)) {
+            return false
+          }
+
           continue
         }
 
@@ -2665,18 +3103,61 @@ function definingEqualities(
   value: Expression,
   walk: Walk,
 ): Inequality[] {
-  if (
-    walk.volatile.has(name) ||
-    readNames(value).has(name) ||
-    readsAny(value, walk.volatile)
-  ) {
+  if (walk.volatile.has(name) || readsAny(value, walk.volatile)) {
     return []
+  }
+
+  // `x = e` where e reads the OLD x: an equation `x == e` would be about two values under one name. But when e's
+  // linear form does not mention x (`x = bitwise-and(x * 33, mask)` is a bounded atom, whatever x was), the new x is
+  // that form, and every side fact that mentions the old x is dropped
+  if (readNames(value).has(name)) {
+    const side: Inequality[] = []
+    const v = toLinear(value, side)
+    const mentions = (q: Inequality): boolean =>
+      [...q.linear.terms.keys()].some(key => keyRoot(key) === name)
+
+    if (!v || [...v.terms.keys()].some(key => keyRoot(key) === name)) {
+      return []
+    }
+
+    const atom = linear({ [name]: 1 })
+
+    return [...side.filter(q => !mentions(q)), atMost(atom, v), atLeast(atom, v)]
   }
 
   // a list literal: its length is the number of items written, a fact about the atom `@length:name`, which every
   // write through a member and every impure call forgets
   if (value.form === 'array') {
     return literalLength(name, value.items.length)
+  }
+
+  // a record built in place: each number field is its value, and each list field written as a literal has that
+  // literal's length. `make hash-table / bind capacity, read capacity / bind state, make list` gives
+  // `table/capacity == capacity` and `table/state/length == 0`. Those are state atoms, forgotten as fields are
+  if (value.form === 'record') {
+    const out: Inequality[] = []
+    const numbers = numberFields.get(value.name)
+
+    for (const field of value.fields) {
+      if (field.value.form === 'array') {
+        out.push(...literalLength(`${name}.${field.name}`, field.value.items.length))
+        continue
+      }
+
+      if (!numbers?.has(field.name) || readsAny(field.value, walk.volatile)) {
+        continue
+      }
+
+      const side: Inequality[] = []
+      const v = toLinear(field.value, side)
+
+      if (v) {
+        const atom = linear({ [`@field:${name}.${field.name}`]: 1 })
+        out.push(...side, atMost(atom, v), atLeast(atom, v))
+      }
+    }
+
+    return out
   }
 
   // `x = y` with y a list: the two names hold ONE list, so their lengths are equal. Sound under every later change:
@@ -2702,11 +3183,14 @@ function walkHolds(
   body: Statement[],
   assumptions: Inequality[],
   walk: Walk,
-): void {
+): Inequality[] | null {
   const { diagnostics, file } = walk
   let current = forget(assumptions, walk.volatile)
 
   for (const statement of body) {
+    // what was known before this statement, for the effects that depend on it (a pop off a list known non-empty)
+    const before = current
+
     switch (statement.form) {
       case 'hold': {
         // a callee's `must`, assumed where the call returns (check/contract.ts promisedBy): it is proven where the
@@ -2804,9 +3288,11 @@ function walkHolds(
         // a binding, `host` or `save`, is a new value under its name: the old facts go, the defining equality comes.
         // A `save` binding used to contribute nothing, because nothing retracted it when it was reassigned. Now the
         // assignment below retracts it, so it may.
+        current = forget(current, new Set([statement.name]))
         current = [
-          ...forget(current, new Set([statement.name])),
+          ...current,
           ...definingEqualities(statement.name, statement.init, walk),
+          ...aliasFacts(current, statement.name, statement.init, walk),
         ]
         holdsInExpression(statement.init, walk)
         break
@@ -2821,13 +3307,12 @@ function walkHolds(
             ? shiftFacts(current, root, statement, walk)
             : undefined
 
-        current = shifted ?? forget(current, new Set([root]))
-
-        // a write through a member may land in a list another name also holds, and a write past the end grows it,
-        // so no length is known after one
-        if (statement.target.form === 'member') {
-          current = current.filter(q => !mentionsAtom(q))
-        }
+        // a write through a member changes the field it names (or, through an index, anything): forgetWrites. The
+        // record's own name still holds the same record, so it is not forgotten whole
+        current =
+          statement.target.form === 'member'
+            ? forgetWrites(current, statement)
+            : (shifted ?? forget(current, new Set([root])))
 
         // a plain `x = e` (not `x += e`, not a member write) is the same kind of fact a binding is
         if (
@@ -2858,6 +3343,8 @@ function walkHolds(
 
       case 'if': {
         const negations: Inequality[] = []
+        // the facts at the end of every path that reaches the join (joinFacts)
+        const ends: Inequality[][] = []
 
         for (const branch of statement.branches) {
           const side: Inequality[] = []
@@ -2870,11 +3357,15 @@ function walkHolds(
             ? []
             : assumptionInequalities(branch.cond, false, side)
 
-          walkHolds(
+          const end = walkHolds(
             branch.body,
             [...current, ...negations, ...side, ...conditions],
             walk,
           )
+
+          if (end) {
+            ends.push(end)
+          }
 
           if (
             !callsImpure(
@@ -2891,10 +3382,24 @@ function walkHolds(
         }
 
         if (statement.otherwise) {
-          walkHolds(statement.otherwise, [...current, ...negations], walk)
+          const end = walkHolds(statement.otherwise, [...current, ...negations], walk)
+
+          if (end) {
+            ends.push(end)
+          }
+        } else {
+          // no `else`: the path that took no branch reaches the join with every condition false
+          ends.push([...current, ...negations])
         }
 
-        current = forget(current, writtenNames(statement))
+        const written = writtenNames(statement)
+
+        // when only ONE path reaches the join (every branch but one leaves: `if i < 0, halt`), what follows knows
+        // exactly what that path ends with, the negated conditions included
+        current =
+          ends.length === 1
+            ? ends[0]!
+            : [...forgetWrites(current, statement), ...joinFacts(ends, written)]
         break
       }
 
@@ -2958,7 +3463,7 @@ function walkHolds(
           walkHolds(statement.otherwise, current, walk)
         }
 
-        current = forget(current, writtenNames(statement))
+        current = forgetWrites(current, statement)
         break
 
       case 'guard': {
@@ -2966,7 +3471,7 @@ function walkHolds(
         // before the body began, less whatever the body may have written
         walkHolds(statement.body, current, walk)
 
-        const after = forget(current, writtenNames(statement.body))
+        const after = forgetWrites(current, statement.body)
 
         if (statement.catch) {
           walkHolds(
@@ -2976,13 +3481,15 @@ function walkHolds(
           )
         }
 
-        current = forget(current, writtenNames(statement))
+        current = forgetWrites(current, statement)
         break
       }
 
-      case 'function':
+      case 'function': {
         // a nested task is its own scope: its holds are checked from its own parameters, never from the facts of
         // the task around it, which may have changed by the time it runs
+        const outer = paramForms
+        paramForms = new Map([...outer, ...paramFormsOf(statement.params)])
         walkHolds(statement.body, [], {
           ...walk,
           local: localNames(statement),
@@ -2990,7 +3497,9 @@ function walkHolds(
           fresh: freshNames(statement, walk.returning),
           params: steadyParams(statement),
         })
+        paramForms = outer
         break
+      }
 
       default:
         break
@@ -3003,13 +3512,45 @@ function walkHolds(
     // ONE EXCEPTION, `p/push v` on a plain path with a pure argument: the list's length grows by exactly one, so
     // the facts about `@length:p` are rewritten (old length is new length less one) rather than forgotten. Every
     // OTHER length still goes, because another name may hold the same list.
+    // `p/pop` on a list the facts show is not empty takes exactly one item off: the old length is the new one plus one,
+    // so every fact about it is rewritten rather than forgotten. Every other length goes unless provably a different
+    // list, as for a push. A list that may be empty is left to the general rule below, which forgets it
+    const shrunk = poppedPath(statement)
+    const shrunkKey = shrunk !== undefined ? `@length:${shrunk}` : undefined
+    const nonEmpty =
+      shrunkKey !== undefined &&
+      proves(before, atLeast(linear({ [shrunkKey]: 1 }), linear({}, 1)))
+
+    if (shrunkKey !== undefined && nonEmpty) {
+      current = current
+        .filter(q => {
+          for (const k of q.linear.terms.keys()) {
+            if (k !== shrunkKey && /[^a-z0-9_#-]/.test(k) && !k.startsWith('__')) {
+              return false
+            }
+          }
+
+          return true
+        })
+        .map(q => {
+          const a = q.linear.terms.get(shrunkKey) ?? 0
+
+          return a === 0
+            ? q
+            : { ...q, linear: { ...q.linear, constant: q.linear.constant + a } }
+        })
+
+      continue
+    }
+
     const grown = pushedPath(statement, walk)
 
     if (grown !== undefined) {
       const key = `@length:${grown}`
       // a push to a name bound only to fresh lists leaves the length of every list that is not that one: another such
-      // name (each holds lists only it made), or a parameter the task never rebinds (it held its list before the fresh
-      // one existed). A path into a list is not covered: the fresh list may have been pushed into it.
+      // name (each holds lists only it made), a parameter the task never rebinds, or a module binding nothing can
+      // rebind (both held their list before the fresh one existed: MD5's round tables). A path into a list is not
+      // covered: the fresh list may have been pushed into it.
       const apart = (k: string): boolean => {
         const other = k.startsWith('@length:') ? k.slice('@length:'.length) : undefined
 
@@ -3019,7 +3560,9 @@ function walkHolds(
           !other.includes('.') &&
           other !== grown &&
           walk.fresh?.has(grown) === true &&
-          (walk.fresh.has(other) || walk.params?.has(other) === true)
+          (walk.fresh.has(other) ||
+            walk.params?.has(other) === true ||
+            (walk.constants?.has(other) === true && !walk.local.has(other)))
         )
       }
 
@@ -3045,10 +3588,16 @@ function walkHolds(
         })
     } else if (
       statement.form !== 'function' &&
+      callsImpure(statement, walk.pure, walk.functions, walk.local) &&
+      onlyKeepsLengths(statement, walk)
+    ) {
+      // a `set`, or a call to a task that only does such things, changes no length and no field anywhere: only what
+      // was known THROUGH a list position goes
+      current = dropElementPaths(current)
+    } else if (
+      statement.form !== 'function' &&
       !onlyPushingLoop(statement, walk) &&
       callsImpure(statement, walk.pure, walk.functions, walk.local) &&
-      // a `set` inside a list of scalars, or a call to a task that only does such things, changes no length, and no
-      // fact here reads anything else it may change (toLinear reads no state but lengths)
       !onlyKeepsLengths(statement, walk)
     ) {
       // an impure call that could not have reached a LOCAL list (it was handed only scalars, and it is a task of the
@@ -3074,6 +3623,127 @@ function walkHolds(
       })
     }
   }
+
+  // what is known at the end of the body, for a join to merge (the `if` case), or null when the body's last statement
+  // leaves it, so that no path through it reaches what follows. A body that leaves only some of the time returns its
+  // facts, which is weaker for the join and so still sound
+  const last = body[body.length - 1]
+
+  return last && LEAVES.has(last.form) ? null : current
+}
+
+const LEAVES = new Set(['return', 'throw', 'break', 'continue', 'exit'])
+
+// THE JOIN AFTER A BRANCH. Each path that reaches the end of the `if` ends with its own facts. A fact about a name
+// the branches write survives only when EVERY such path proves it: `d = t` on one path and `d = 510 - t` under
+// `t > 255` on the other leave `d >= 1` when each path shows it. The candidates are the facts the paths themselves
+// end with, so nothing is invented, and each is confirmed by the prover in every path
+function joinFacts(ends: Inequality[][], written: Set<string>): Inequality[] {
+  if (ends.length === 0) {
+    return []
+  }
+
+  // each path with what a goal there would also know (remainder bounds, the far side of max / min)
+  const paths = ends.map(end => [...end, ...signedRemainders(end)])
+
+  const mentionsWritten = (q: Inequality): boolean =>
+    [...q.linear.terms.keys()].some(key => written.has(keyRoot(key)))
+
+  const seen = new Set<string>()
+  const candidates: Inequality[] = []
+
+  for (const path of paths) {
+    for (const q of path) {
+      const id = rowKey(q)
+
+      if (mentionsWritten(q) && !seen.has(id) && candidates.length < 40) {
+        seen.add(id)
+        candidates.push(q)
+      }
+    }
+  }
+
+  // and a bound on each written name, which is often what the paths agree on when their equations do not: `d = t`
+  // and `d = 510 - t` share no row, and both give `d >= 1`. The constants tried are the ones the paths mention
+  const constants = new Set<number>([0, 1, -1])
+
+  for (const path of paths) {
+    for (const q of path) {
+      if (Number.isInteger(q.linear.constant) && Math.abs(q.linear.constant) < 2 ** 31) {
+        constants.add(q.linear.constant)
+        constants.add(-q.linear.constant)
+      }
+    }
+  }
+
+  const names = [...written].filter(n => n !== EVERYTHING).slice(0, 6)
+  // the smallest constants first: a bound like 15 is what an index needs, and a module full of 32-bit constants
+  // (MD5's sine table) would otherwise crowd it out of the first dozen
+  const tried = [...constants].sort((a, b) => Math.abs(a) - Math.abs(b)).slice(0, 16)
+
+  for (const name of names) {
+    const x = linear({ [name]: 1 })
+    // the tightest lower bound every path shows, and the tightest upper bound
+    const lower = [...tried].sort((a, b) => b - a).find(c => paths.every(p => proves(p, atLeast(x, linear({}, c)))))
+    const upper = [...tried].sort((a, b) => a - b).find(c => paths.every(p => proves(p, atMost(x, linear({}, c)))))
+
+    if (lower !== undefined) {
+      candidates.push(atLeast(x, linear({}, lower)))
+    }
+
+    if (upper !== undefined) {
+      candidates.push(atMost(x, linear({}, upper)))
+    }
+
+    // and the name against each atom it appears with: `small < length` when one path set small to i and another to
+    // a child index, each below the length. Only atoms the paths already relate to it, against -1, 0 and 1
+    // the atoms the paths relate it to, and the atoms THOSE are related to (`small = left`, `left < length`)
+    const near = (of: Set<string>): Set<string> => {
+      const out = new Set<string>()
+
+      for (const path of ends) {
+        for (const q of path) {
+          if ([...of].some(k => q.linear.terms.has(k))) {
+            for (const key of q.linear.terms.keys()) {
+              if (!of.has(key) && !key.startsWith('__')) {
+                out.add(key)
+              }
+            }
+          }
+        }
+      }
+
+      return out
+    }
+
+    const first = near(new Set([name]))
+    const partners = new Set([...first, ...near(new Set([name, ...first]))])
+    partners.delete(name)
+
+    for (const partner of [...partners].slice(0, 12)) {
+      const difference = linear({ [name]: 1, [partner]: -1 })
+
+      for (const c of [-1, 0]) {
+        const below = atMost(difference, linear({}, c))
+
+        if (paths.every(p => proves(p, below))) {
+          candidates.push(below)
+          break
+        }
+      }
+
+      for (const c of [1, 0]) {
+        const above = atLeast(difference, linear({}, c))
+
+        if (paths.every(p => proves(p, above))) {
+          candidates.push(above)
+          break
+        }
+      }
+    }
+  }
+
+  return candidates.filter(q => paths.every(path => proves(path, q)))
 }
 
 // the facts after `x = x + d` (or `x += d`, `x -= d`) where d is linear and does not read x: the old x is the new x
@@ -3469,12 +4139,32 @@ function keepsLengths(call: Record<string, unknown>, walk: Walk): boolean {
     return false
   }
 
-  const element = callee.target.type.element.kind
-
+  // a `set` replaces what one position holds: no list or record anywhere changes its length or its fields, though a
+  // path read THROUGH a position (`xs.0.length`) now means a different value, which dropElementPaths forgets
   return (
     ((callee.name === 'get' || callee.name === 'at') && args.length === 1) ||
-    (callee.name === 'set' && args.length === 2 && SCALAR_KINDS.has(element))
+    (callee.name === 'set' && args.length === 2)
   )
+}
+
+// forget every fact over a state atom whose path goes through a list position (`@length:rows.0`, `@field:xs.3.size`):
+// after a `set`, or a call to a task that may make one, that position may hold a different value
+function dropElementPaths(current: Inequality[]): Inequality[] {
+  return current.filter(q => {
+    for (const key of q.linear.terms.keys()) {
+      const path = key.startsWith('@field:')
+        ? key.slice('@field:'.length)
+        : key.startsWith('@length:')
+          ? key.slice('@length:'.length)
+          : undefined
+
+      if (path !== undefined && path.split('.').some(step => /^[0-9]+$/.test(step))) {
+        return false
+      }
+    }
+
+    return true
+  })
 }
 
 // does every impure call in a statement change no length (keepsLengths), with none passing a function value on.
@@ -3560,6 +4250,46 @@ function onlyKeepsLengths(statement: unknown, walk: Walk, besidesFresh = false):
   }
 
   return !other
+}
+
+// the plain paths every `p/push v` in a body pushes to, nested walks and branches included
+function pushTargets(body: Statement[], walk: Walk): Set<string> {
+  const out = new Set<string>()
+  const stack: unknown[] = [body]
+  const seen = new Set<unknown>()
+
+  while (stack.length > 0) {
+    const node = stack.pop()
+
+    if (node === null || typeof node !== 'object' || seen.has(node)) {
+      continue
+    }
+
+    seen.add(node)
+
+    if (Array.isArray(node)) {
+      stack.push(...node)
+      continue
+    }
+
+    const record = node as Record<string, unknown>
+
+    if (record.form === 'expression') {
+      const target = pushedPath(record as unknown as Statement, walk)
+
+      if (target !== undefined) {
+        out.add(target)
+      }
+    }
+
+    for (const key of Object.keys(record)) {
+      if (key !== 'type' && key !== 'span' && key !== 'binding') {
+        stack.push(record[key])
+      }
+    }
+  }
+
+  return out
 }
 
 // how a loop body changes state: the number of `p/push v` statements (pure arguments) when those are its ONLY
@@ -3675,6 +4405,95 @@ function writesThroughMember(body: Statement[]): boolean {
   return found
 }
 
+// the path a statement pops one item off: `call p/pop` or the list method `call pop, p`, alone or as the value of a
+// binding, with `p` a plain path to a list. Undefined for anything else
+function poppedPath(statement: Statement): string | undefined {
+  const value =
+    statement.form === 'expression'
+      ? statement.expr
+      : statement.form === 'let'
+        ? statement.init
+        : statement.form === 'assign' && statement.target.form === 'variable'
+          ? statement.value
+          : undefined
+
+  if (value?.form !== 'call') {
+    return undefined
+  }
+
+  const list =
+    value.callee.form === 'member' && value.callee.name === 'pop' && !value.callee.index && value.args.length === 0
+      ? value.callee.target
+      : value.callee.form === 'variable' && listPops.has(value.callee.name) && value.args.length === 1
+        ? value.args[0]!
+        : undefined
+
+  return list?.type?.kind === 'array' ? plainPath(list) : undefined
+}
+
+// the tasks that ARE a list's push: the whole body is `send back, call p/push v` with p and v the task's own two
+// parameters in order (the stdlib's list method `push`)
+let listPushes = new Set<string>()
+
+function listPushesOf(program: Program): Set<string> {
+  const out = new Set<string>()
+
+  for (const statement of program) {
+    if (statement.form !== 'function' || statement.params.length !== 2 || statement.body.length !== 1) {
+      continue
+    }
+
+    const only = statement.body[0]!
+    const value = only.form === 'return' ? only.value : undefined
+    const [list, item] = statement.params
+
+    if (
+      value?.form === 'call' &&
+      value.callee.form === 'member' &&
+      value.callee.name === 'push' &&
+      value.args.length === 1 &&
+      value.callee.target.form === 'variable' &&
+      value.callee.target.name === list!.name &&
+      value.args[0]!.form === 'variable' &&
+      value.args[0]!.name === item!.name
+    ) {
+      out.add(statement.name)
+    }
+  }
+
+  return out
+}
+
+// the tasks that ARE a list's pop, recognized by shape, never by name: the whole body is `send back, call p/pop` on
+// the task's only parameter (the stdlib's list method `pop`). Set by checkHolds per program
+let listPops = new Set<string>()
+
+function listPopsOf(program: Program): Set<string> {
+  const out = new Set<string>()
+
+  for (const statement of program) {
+    if (statement.form !== 'function' || statement.params.length !== 1 || statement.body.length !== 1) {
+      continue
+    }
+
+    const only = statement.body[0]!
+    const value = only.form === 'return' ? only.value : undefined
+
+    if (
+      value?.form === 'call' &&
+      value.callee.form === 'member' &&
+      value.callee.name === 'pop' &&
+      value.args.length === 0 &&
+      value.callee.target.form === 'variable' &&
+      value.callee.target.name === statement.params[0]!.name
+    ) {
+      out.add(statement.name)
+    }
+  }
+
+  return out
+}
+
 // the path a statement pushes one item onto, when it is exactly `call p/push, <value>` with `p` a plain path and the
 // value calling nothing impure; undefined for anything else
 function pushedPath(statement: Statement, walk: Walk): string | undefined {
@@ -3683,6 +4502,18 @@ function pushedPath(statement: Statement, walk: Walk): string | undefined {
   }
 
   const call = statement.expr
+
+  // the list method `push(xs, v)`, recognized by its shape (listPushesOf), is the same one-item push
+  if (
+    call.callee?.form === 'variable' &&
+    listPushes.has(call.callee.name) &&
+    Array.isArray(call.args) &&
+    call.args.length === 2 &&
+    call.args[0]!.type?.kind === 'array' &&
+    !reachesLists([call.args[1]], walk)
+  ) {
+    return plainPath(call.args[0]!)
+  }
 
   // only the native list's `push` adds exactly one item: a form may define its own `push` (the stdlib's heap does)
   // over a `length` field, so the receiver must be typed as a list. What is pushed may be computed by anything that

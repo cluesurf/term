@@ -153,6 +153,12 @@ task is-allowed
         text <cask_log>
     hook hold
       send back, true
+    hook test
+      call is-equal
+        read command
+        text <cask_release>
+    hook hold
+      send back, true
     hook miss
       send back, false
 
@@ -326,6 +332,27 @@ task run-command
     hook hold
       call quit
         wait true
+      send back
+        call make-null
+    hook test
+      call is-equal
+        read command
+        text <cask_release>
+    hook hold
+      fork test
+        hook test
+          call is-equal
+            call field-text
+              read arguments
+              text <form>
+            text <row>
+        hook hold
+          call row-handles/delete
+            call field-text
+              read arguments
+              text <handle>
+        hook miss
+          save skip, code 0
       send back
         call make-null
     hook miss

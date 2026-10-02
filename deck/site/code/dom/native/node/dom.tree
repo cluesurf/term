@@ -19,7 +19,9 @@ dock load
   load <global:html>, name doc
   note native
 
+# one node of the tree, held by its parent's children list and by every view handle at once, so `note shared`
 form page-element
+  note shared
   link tag, like text
   link text, like text
   link value, like text

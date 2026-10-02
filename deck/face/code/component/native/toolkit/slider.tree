@@ -1,0 +1,93 @@
+
+# Slider on a platform with a slider of its own: NSSlider on macOS, UISlider on iOS, a SeekBar on Android, drawn and
+# dragged by the platform, with its accessibility and its feel (native-dom-0026). Reached through
+# `component/slider.tree` by the `toolkit` rung of the macos, ios and android env chains.
+#
+# THE SAME CONTRACT as the generic ../slider.tree: `host`, `class`, `control` (a range, see logic/range), `min`, `max`
+# and `step`. The toolkit host makes the platform's control for the tag `slider`, takes `min`, `max` and `step` as its
+# range, reports the person's move as `input`, and answers `get-value` with the position as the control holds it,
+# snapped to the step as a web range input is.
+
+load @term/site/code/view/render
+  find element
+  find attribute
+  find event
+load @term/site/code/view/reactive
+  find signal
+  find make-effect
+load @term/site/code/dom/dom
+  find view
+  find append
+  find get-value
+  find set-value
+load ../../../logic/range
+  find range-text
+  find move-range
+
+# the work of the view below. In a `view` body a bare `call` renders as a text child, so a component that builds its
+# control by hand does it in a task the view saves once
+task mount-slider
+  take host, like view
+  take class, like text
+  take control, like signal number
+  take min, like number
+  take max, like number
+  take step, like number
+  like view
+  save control-view
+    call element
+      text <slider>
+  call attribute
+    read control-view
+    text <data-slot>
+    text <slider>
+  call attribute
+    read control-view
+    text <class>
+    read class
+  call attribute
+    read control-view
+    text <min>
+    text <{{min}}>
+  call attribute
+    read control-view
+    text <max>
+    text <{{max}}>
+  call attribute
+    read control-view
+    text <step>
+    text <{{step}}>
+  call make-effect
+    task show-position
+      call set-value
+        read control-view
+        call range-text
+          read control
+  call event
+    read control-view
+    text <input>
+    task moved
+      call move-range
+        read control
+        call get-value
+          read control-view
+  call append
+    read host
+    read control-view
+  send back, read control-view
+
+view slider
+  take host, like view
+  take class, like text
+  take control, like signal number
+  take min, like number
+  take max, like number
+  take step, like number
+  save mounted
+    call mount-slider
+      read host
+      read class
+      read control
+      read min
+      read max
+      read step

@@ -186,9 +186,16 @@ export function bindTarget(bind: Bind, env: string): Bind['targets'][number] | u
     return own
   }
 
-  const borrowed = NATIVE_ENV_FALLBACK[env as NativeEnv]
+  // the fallback chain in order, so `ios` reaches a `swift` case the way the resolver reaches a `swift` impl
+  for (const borrowed of NATIVE_ENV_FALLBACK[env as NativeEnv] ?? []) {
+    const found = bind.targets.find(candidate => candidate.env === borrowed)
 
-  return borrowed ? bind.targets.find(candidate => candidate.env === borrowed) : undefined
+    if (found) {
+      return found
+    }
+  }
+
+  return undefined
 }
 
 export function renderBind(

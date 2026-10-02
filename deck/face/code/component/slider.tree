@@ -1,44 +1,11 @@
 
-# Slider — headless. A range input. `value` is bound reactively to the thumb's aria-valuenow. Parts: slider (root),
-# slider-track, slider-range (the filled portion), slider-thumb (role=slider, focusable). Theme positions the range +
-# thumb from the value in CSS.
+# Slider: ONE component for the author, the platform's own control underneath (native-dom-0026). The build fills
+# `{platform}` from its env chain: macOS, iOS and Android reach ./native/toolkit/slider.tree (NSSlider, UISlider,
+# SeekBar) through their `toolkit` rung, and every other target, the web among them, falls to the generic
+# ./native/slider.tree, the browser's range input. Both take `host`, `class`, `control` (a range from logic/range),
+# `min`, `max` and `step`. See note/term/app/11-uniform-interface.md.
+#
+# This replaced a set of headless parts (slider, slider-track, slider-range, slider-thumb) that nothing used and that
+# had no value of their own: a slider is now one control that holds a number, two ways.
 
-load @term/site/code/view/render
-  find element
-load @term/site/code/dom/dom
-  find view
-  find append
-
-view slider
-  take host, like view
-  take class
-  view span
-    bind data-slot, text <slider>
-    bind class, read class
-    slot
-
-view slider-track
-  take host, like view
-  take class
-  view span
-    bind data-slot, text <slider-track>
-    bind class, read class
-    slot
-
-view slider-range
-  take host, like view
-  take class
-  view span
-    bind data-slot, text <slider-range>
-    bind class, read class
-
-view slider-thumb
-  take host, like view
-  take class
-  take value
-  view span
-    bind data-slot, text <slider-thumb>
-    bind role, text <slider>
-    bind tabindex, text <0>
-    bind aria-valuenow, read value
-    bind class, read class
+bear @term/face/code/component/native/{platform}/slider

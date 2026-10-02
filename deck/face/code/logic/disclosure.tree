@@ -4,7 +4,9 @@
 # behavior core: pure logic over a signal, framework-agnostic. A view part binds these reactive getters + actions
 # (the "connect" props) onto its elements; styling stays the consumer's.
 #
-# The controller IS a boolean signal. `make-disclosure` creates it; the free functions read/derive/mutate it. A part
+# The controller IS a boolean signal, and every task here says so (`like signal boolean`): a bare `like signal` reaches
+# a native backend as an unconstrained generic, where reading it does not typecheck. `make-disclosure` creates it; the
+# free functions read/derive/mutate it. A part
 # shows its content with `fork` on `disclosure-open`, sets `data-state` from `disclosure-state` (reactive, so CSS can
 # animate open/close), and toggles from a `hook click, call toggle-disclosure`.
 
@@ -17,14 +19,14 @@ load @term/site/code/view/reactive
 # create a disclosure controller, open or closed to start
 task make-disclosure
   take start, like boolean
-  like signal
+  like signal boolean
   send back
     call make-signal
       bind value, read start
 
 # is it open right now (boolean) — for `fork` and `aria-expanded` / `aria-checked`
 task disclosure-open
-  take self, like signal
+  take self, like signal boolean
   like boolean
   send back
     call read-signal
@@ -32,7 +34,7 @@ task disclosure-open
 
 # the `data-state` string ("open" / "closed") — bound reactively so themes animate
 task disclosure-state
-  take self, like signal
+  take self, like signal boolean
   like text
   send back
     fork test
@@ -46,21 +48,21 @@ task disclosure-state
 
 # open it
 task open-disclosure
-  take self, like signal
+  take self, like signal boolean
   call write-signal
     bind self, read self
     bind value, true
 
 # close it
 task close-disclosure
-  take self, like signal
+  take self, like signal boolean
   call write-signal
     bind self, read self
     bind value, false
 
 # toggle it
 task toggle-disclosure
-  take self, like signal
+  take self, like signal boolean
   save now
     call read-signal
       bind self, read self

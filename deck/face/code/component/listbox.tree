@@ -1,0 +1,103 @@
+
+# Listbox — headless combobox, drawn by the theme. Open/close is the shared `disclosure` controller; the trigger toggles and the content
+# mounts when open with reactive data-state. The items are structural (role=option) and fire a per-item `press` so the
+# consumer wires value selection with a `selection` controller alongside (composing both controllers in ONE component
+# currently trips a generic-signal inference limit; passing the value controller through the consumer sidesteps it).
+# Parts: listbox, listbox-trigger, listbox-value, listbox-content, listbox-item, listbox-group, listbox-label.
+
+# Was `select` until 2026-10-02, when that name went to the platform's own picker (component/select.tree), so an
+# author who writes `select` gets NSPopUpButton, a UIButton menu or a Spinner on a phone or desktop and this listbox
+# only where it is asked for by name.
+
+load @term/site/code/view/render
+  find element
+load @term/site/code/dom/dom
+  find view
+  find append
+load ../logic/disclosure
+  find disclosure-open
+  find disclosure-state
+  find toggle-disclosure
+
+view listbox
+  take host, like view
+  take class
+  view div
+    bind data-slot, text <listbox>
+    bind class, read class
+    slot
+
+view listbox-trigger
+  take host, like view
+  take class
+  take control
+  view button
+    bind type, text <button>
+    bind data-slot, text <listbox-trigger>
+    bind role, text <combobox>
+    bind aria-expanded
+      call disclosure-open
+        bind self, read control
+    bind data-state
+      call disclosure-state
+        bind self, read control
+    hook click
+      call toggle-disclosure
+        bind self, read control
+    bind class, read class
+    slot
+
+view listbox-value
+  take host, like view
+  take class
+  view span
+    bind data-slot, text <listbox-value>
+    bind class, read class
+    slot
+
+view listbox-content
+  take host, like view
+  take class
+  take control
+  fork test
+    hook test
+      call disclosure-open
+        bind self, read control
+    hook hold
+      view div
+        bind data-slot, text <listbox-content>
+        bind role, text <listbox>
+        bind data-state
+          call disclosure-state
+            bind self, read control
+        bind class, read class
+        slot
+
+view listbox-item
+  take host, like view
+  take class
+  take press
+  view button
+    bind type, text <button>
+    bind data-slot, text <listbox-item>
+    bind role, text <option>
+    hook click, call press
+    bind class, read class
+    slot
+
+view listbox-group
+  take host, like view
+  take class
+  view div
+    bind data-slot, text <listbox-group>
+    bind role, text <group>
+    bind class, read class
+    slot
+
+view listbox-label
+  take host, like view
+  take class
+  view div
+    bind data-slot, text <listbox-label>
+    bind class, read class
+    slot

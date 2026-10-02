@@ -35,6 +35,8 @@ import type { NativeEnv } from '@term/make/code/compile/native'
 import type { Resolver, Source } from '@term/make/code/compile/load'
 import { stdlibResolver, linkResolver, siblingResolver } from '@term/call/code/walk'
 import { renderDiagnostic } from '@term/call/code/report'
+import { FACE_NATIVE_PATH, contractFindings } from '@term/call/code/face-contract'
+import type { ContractFinding } from '@term/call/code/face-contract'
 import {
   logGood,
   logFail,
@@ -510,7 +512,27 @@ export function projectResolver(
     return result
   }
 
-  return withNativeEnv(env, base)
+  // AN APP SHADOWS A FACE IMPLEMENTATION (native-dom-0025): an import of `@term/face/code/component/native/...` first
+  // tries the SAME RELATIVE PATH in the project being built, then face's own. It sits under withNativeEnv, so it applies
+  // per rung of the env chain: an app's `code/component/native/toolkit/switch.tree` wins over face's toolkit switch on
+  // macOS, iOS and Android, and face's generic still serves the web. No flag, prop or platform check in the component.
+  // Building face itself, the project's file IS face's, so nothing changes. note/term/app/11-uniform-interface.md
+  const FACE_NATIVE = '@term/face/code/component/native/'
+  const rootFace = path.join(rootReal, 'deck.tree')
+
+  const shadowed: Resolver = (importPath, fromFile) => {
+    if (importPath.startsWith(FACE_NATIVE) && existsSync(rootFace) && manifestNameOf(rootFace) !== '@term/face') {
+      const own = tryFile(path.join(rootReal, importPath.slice('@term/face/'.length)))
+
+      if (own) {
+        return own
+      }
+    }
+
+    return base(importPath, fromFile)
+  }
+
+  return withNativeEnv(env, shadowed)
 }
 
 // compile every .tree file in the project to TypeScript under `host/`, mirroring the source tree. An optional shared
@@ -660,6 +682,14 @@ export function compileProject(
     }
   }
 
+  // an app's shadows of face's platform implementations take exactly face's contract, or the build fails: a shadow
+  // that drops or renames a prop would compile, and the author's `bind` would mean something else on one platform
+  // (native-dom-0025). Face's own are held by test/compile/face-contract.ts.
+  for (const finding of appShadowFindings(root, resolve)) {
+    failed++
+    errors.push(`${path.relative(root, finding.file)}: shadows face's ${finding.component} on ${finding.rung} and ${finding.problem}`)
+  }
+
   return {
     compiled,
     written,
@@ -668,6 +698,25 @@ export function compileProject(
     open: [...open].sort(),
     obligations,
   }
+}
+
+// the contract findings for a project's own `code/component/native/` against face's generics, none for face itself
+function appShadowFindings(root: string, resolve: Resolver): ContractFinding[] {
+  const own = path.join(root, FACE_NATIVE_PATH)
+  const manifest = path.join(root, 'deck.tree')
+
+  if (!existsSync(own) || (existsSync(manifest) && manifestNameOf(manifest) === '@term/face')) {
+    return []
+  }
+
+  // face's generics, found the way an import finds them
+  const generic = resolve('@term/face/code/component/switch', path.join(root, 'deck.tree'))
+
+  if (!generic) {
+    return []
+  }
+
+  return contractFindings(path.join(path.dirname(generic.file), 'native'), own)
 }
 
 // Separate compilation for the whole project (`term make --separate`): every module of every entry's closure is

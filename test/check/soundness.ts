@@ -260,7 +260,24 @@ task h
       read s
       read b/size
 `,
-    refused('unchecked-hold'),
+    // a number field is an atom of the prover now, so this is decided, and refused, rather than out of reach
+    refused('unproven'),
+  )
+
+  expect(
+    'control: a copy of a field equals the field while nothing writes it',
+    `form box
+  link size, like number
+
+task h
+  take b, like box
+  host s, read b/size
+  hold
+    call is-equal
+      read s
+      read b/size
+`,
+    proven,
   )
 
   // ---- impure calls ----
@@ -943,6 +960,286 @@ ${have}  save r
     proven,
   )
   expect('not when the divisor may be negative', remainder(''), refused('unproven'))
+
+  // ---- what the branches of a fork agree on ----
+
+  const join = (other: string): string => `task t
+  take total, like number
+  have
+    call is-above
+      read total
+      code 0
+  have
+    call is-below
+      read total
+      code 510
+  save d, read total
+  fork test
+    hook test
+      call is-above
+        read total
+        code 255
+    hook hold
+      save d
+        call subtract
+          ${other}
+          read total
+  hold
+    call is-minimum
+      read d
+      code 1
+`
+
+  expect('a bound every path through a fork shows holds after it', join('code 510'), proven)
+  expect('not when one path breaks it', join('code 255'), refused('unproven'))
+
+  // ---- the far side of a min or max ----
+
+  // the stdlib's shape: `min` is a task over the host Math global's `min`, recognized by that shape
+  const least = (have: string): string => `dock load
+  load <global:Math>, name math
+
+task smaller
+  take a, like number
+  take b, like number
+  like number
+  send back
+    call math/min
+      read a
+      read b
+
+task t
+  take a, like number
+  take b, like number
+${have}  save low
+    call smaller
+      read a
+      read b
+  hold
+    call is-minimum
+      read low
+      code 0
+`
+  const atLeastZero = (name: string): string =>
+    `  have\n    call is-minimum\n      read ${name}\n      code 0\n`
+
+  expect(
+    'a min of two non-negative numbers is non-negative',
+    least(atLeastZero('a') + atLeastZero('b')),
+    proven,
+  )
+  expect(
+    'not when only one of them is',
+    least(atLeastZero('a')),
+    refused('unproven'),
+  )
+
+  // ---- a record's number field ----
+
+  const counter = (between: string): string => `form counter
+  link count, like number
+
+task zero
+  take c, like counter
+  save c/count, code 0
+
+task use
+  take a, like counter
+  take b, like counter
+  have
+    call is-minimum
+      read a/count
+      code 1
+${between}  hold
+    call is-minimum
+      read a/count
+      code 1
+`
+
+  expect('a field is a fact while nothing writes it', counter(''), proven)
+
+  const pair = (between: string): string => `form pair
+  link count, like number
+  link size, like number
+  link items, like list, like number
+
+task use
+  take a, like pair
+  take b, like pair
+  have
+    call is-minimum
+      read a/count
+      code 1
+  have
+    call is-equal
+      read a/items/length
+      code 2
+${between}  hold
+    call is-minimum
+      read a/count
+      code 1
+  hold
+    call is-equal
+      read a/items/length
+      code 2
+`
+
+  expect(
+    'a write to a different field, through any name, keeps both facts',
+    pair('  save b/size, code 0\n'),
+    proven,
+  )
+  expect(
+    'a write that replaces the list a length is read through forgets that length',
+    pair('  save b/items, make list\n'),
+    refused('unproven'),
+  )
+
+  expect(
+    'a call statement is owed its callee`s promise about its argument',
+    `form pair
+  link count, like number
+
+task fill
+  take p, like pair
+  must
+    call is-minimum
+      read p/count
+      code 1
+  save p/count, code 5
+
+task use
+  take a, like pair
+  call fill
+    read a
+  hold
+    call is-minimum
+      read a/count
+      code 1
+`,
+    proven,
+  )
+  expect(
+    'a write through another name for the same record forgets it',
+    counter('  save b/count, code 0\n'),
+    refused('unproven'),
+  )
+  expect(
+    'a call to a task that writes the field forgets it',
+    counter('  call zero\n    read a\n'),
+    refused('unproven'),
+  )
+
+  // ---- a module's constant table beside a fresh list ----
+
+  expect(
+    'a push to a fresh list keeps a constant table`s length',
+    `host table
+  code 1
+  code 2
+
+task use
+  save m, make list
+  call m/push
+    code 1
+  hold
+    call is-equal
+      read table/length
+      code 2
+`,
+    proven,
+  )
+
+  expect(
+    'not a module binding the task points at that fresh list',
+    `save cache, make list
+
+task use
+  save m, make list
+  save cache, read m
+  call m/push
+    code 1
+  hold
+    call is-equal
+      read cache/length
+      code 0
+`,
+    refused('unproven'),
+  )
+
+  // ---- a walk that pushes only to one list keeps the others whole ----
+
+  const pushWalk = (target: string): string => `task use
+  save m, make list
+  call m/push
+    code 1
+  save w, make list
+  save k, code 0
+  walk test
+    hook test
+      call is-below
+        read k
+        code 4
+    hook hold
+      call ${target}/push
+        read k
+      save k, call increment(read k)
+  hold
+    call is-equal
+      read m/length
+      code 1
+`
+
+  expect('a walk pushing to another fresh list keeps a list`s exact length', pushWalk('w'), proven)
+  expect('not when the walk pushes to that list', pushWalk('m'), refused('unproven'))
+
+  // ---- a pop ----
+
+  const popped = (have: string): string => `task t
+  take xs, like list, like number
+${have}  call xs/pop
+  hold
+    call is-equal
+      read xs/length
+      code 2
+`
+
+  expect(
+    'a pop off a list of three leaves two',
+    popped('  have\n    call is-equal\n      read xs/length\n      code 3\n'),
+    proven,
+  )
+  expect(
+    'a pop off a list that may be empty says nothing',
+    popped('  have\n    call is-maximum\n      read xs/length\n      code 3\n'),
+    refused('unproven'),
+  )
+
+  // ---- an integer quotient ----
+
+  const half = (have: string, goal: string): string => `task t
+  take i, like number
+${have}  save p
+    call divide
+      call subtract
+        read i
+        code 1
+      code 2
+  hold
+    ${goal}
+`
+  const iAbove = '  have\n    call is-above\n      read i\n      code 0\n'
+
+  expect(
+    'a parent index (i - 1) / 2 is below i when i > 0',
+    half(iAbove, 'call is-below\n      read p\n      read i'),
+    proven,
+  )
+  expect(
+    'and not below i - 1 for every i',
+    half(iAbove, 'call is-below\n      read p\n      call subtract\n        read i\n        code 1'),
+    refused('unproven'),
+  )
 
   // ---- a disequality ----
 

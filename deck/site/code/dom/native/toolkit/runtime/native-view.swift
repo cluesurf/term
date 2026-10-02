@@ -1,0 +1,1120 @@
+// The toolkit view host on Apple (native-dom-0005): the dom's node contract over REAL platform views, so a Term program renders
+// with no WebView and no JavaScript engine. The render runtime (site/code/view/render.tree) is Solid-style: it creates
+// a node, sets a property, appends, removes, and never re-describes the screen. AppKit and UIKit are retained trees of
+// exactly that shape, so each call maps to one platform call. See note/term/app/10-native-dom.md.
+//
+// Reached only through ../dom.tree, whose tasks map to `nativeView.*`. Its Android twin is native-view.kt beside it. ONE FILE, TWO TOOLKITS, the way the cask runtime
+// is written: AppKit under `#if canImport(AppKit)`, UIKit under `#if canImport(UIKit)`, and everything between the
+// Term program and the toolkit shared.
+//
+// What a tag becomes:
+//
+//   a text node            a label (NSTextField label, UILabel)
+//   button                 a native button. Its title is the text of its children, which are never installed as views
+//   input, textarea        a native text field, its value two-way
+//   switch                 the platform's switch (NSSwitch, UISwitch). `aria-checked` is its state, its change is `click`
+//   span a b i em strong   a horizontal stack (an inline run)
+//   anything else          a vertical stack: the container every layout starts from
+//
+// Every call happens on the main thread, which is where the render runtime runs: an event handler fires there and the
+// effects it triggers run inside it. Nothing here hops threads.
+import Foundation
+
+#if canImport(AppKit)
+import AppKit
+typealias TermPlatformView = NSView
+typealias TermStack = NSStackView
+#endif
+#if canImport(UIKit)
+import UIKit
+typealias TermPlatformView = UIView
+typealias TermStack = UIStackView
+#endif
+
+// the tags that lay their children out in a row, as inline elements do in a browser
+private let INLINE_TAGS: Set<String> = ["span", "a", "b", "i", "em", "strong", "small", "code", "label", "abbr", "kbd"]
+
+// receives a platform event and runs the Term handler. Held by the node, since the toolkit holds its target weakly
+final class TermAction: NSObject {
+    let run: () -> Void
+
+    init(_ run: @escaping () -> Void) {
+        self.run = run
+    }
+
+    @objc func fire() {
+        run()
+    }
+}
+
+#if canImport(AppKit)
+// AppKit reports a field's edits through its delegate
+final class TermFieldDelegate: NSObject, NSTextFieldDelegate {
+    weak var node: TermNode?
+
+    func controlTextDidChange(_ note: Notification) {
+        guard let node = node, let field = note.object as? NSTextField else { return }
+        node.value = field.stringValue
+        node.fire("input")
+    }
+}
+#endif
+
+// one node of the tree: the platform view, plus what the dom contract can ask of it that a view does not hold itself
+final class TermNode {
+    enum Kind {
+        case text
+        case container
+        case button
+        case field
+        case toggle
+        // NSSlider, UISlider: face's slider on these platforms (native-dom-0026)
+        case range
+        // NSPopUpButton, a UIButton showing a selection menu: face's select on these platforms (native-dom-0026)
+        case choice
+    }
+
+    let key: Int
+    let tag: String
+    let kind: Kind
+    let view: TermPlatformView
+    var text: String
+    var value = ""
+    var attributes: [(name: String, value: String)] = []
+    var styles: [String: String] = [:]
+    var classes: [String] = []
+    var children: [TermNode] = []
+    weak var parent: TermNode?
+    var listeners: [(event: String, run: () -> Void)] = []
+    // the action targets and delegates the toolkit holds weakly, kept alive by the node
+    var keep: [AnyObject] = []
+    var tapInstalled = false
+
+    init(key: Int, tag: String, text: String) {
+        self.key = key
+        self.tag = tag
+        self.text = text
+
+        if tag.isEmpty {
+            kind = .text
+            #if canImport(AppKit)
+            view = NSTextField(labelWithString: text)
+            #endif
+            #if canImport(UIKit)
+            let label = UILabel()
+            label.text = text
+            label.numberOfLines = 0
+            view = label
+            #endif
+        } else if tag == "button" {
+            kind = .button
+            #if canImport(AppKit)
+            let button = NSButton(title: "", target: nil, action: nil)
+            button.bezelStyle = .rounded
+            view = button
+            #endif
+            #if canImport(UIKit)
+            let button = UIButton(type: .system)
+            view = button
+            #endif
+        } else if tag == "switch" {
+            kind = .toggle
+            #if canImport(AppKit)
+            view = NSSwitch()
+            #endif
+            #if canImport(UIKit)
+            view = UISwitch()
+            #endif
+        } else if tag == "slider" {
+            kind = .range
+            #if canImport(AppKit)
+            let slider = NSSlider(value: 0, minValue: 0, maxValue: 100, target: nil, action: nil)
+            slider.isContinuous = true
+            view = slider
+            #endif
+            #if canImport(UIKit)
+            let slider = UISlider()
+            slider.minimumValue = 0
+            slider.maximumValue = 100
+            view = slider
+            #endif
+        } else if tag == "choice" {
+            kind = .choice
+            #if canImport(AppKit)
+            view = NSPopUpButton(frame: .zero, pullsDown: false)
+            #endif
+            #if canImport(UIKit)
+            // the menu IS the picker: a tap shows the choices, and the button's title becomes the one chosen
+            let button = UIButton(type: .system)
+            button.showsMenuAsPrimaryAction = true
+            button.changesSelectionAsPrimaryAction = true
+            view = button
+            #endif
+        } else if tag == "input" || tag == "textarea" {
+            kind = .field
+            #if canImport(AppKit)
+            view = NSTextField(string: "")
+            #endif
+            #if canImport(UIKit)
+            let field = UITextField()
+            field.borderStyle = .roundedRect
+            view = field
+            #endif
+        } else {
+            kind = .container
+            let stack = TermStack()
+            #if canImport(AppKit)
+            stack.orientation = INLINE_TAGS.contains(tag) ? .horizontal : .vertical
+            stack.alignment = INLINE_TAGS.contains(tag) ? .firstBaseline : .leading
+            #endif
+            #if canImport(UIKit)
+            stack.axis = INLINE_TAGS.contains(tag) ? .horizontal : .vertical
+            stack.alignment = INLINE_TAGS.contains(tag) ? .firstBaseline : .leading
+            #endif
+            // CSS's gap is 0 until a `gap` says otherwise; NSStackView's default of 8 made every native row wider than
+            // the same row on the web (native-dom-0027)
+            stack.spacing = 0
+            view = stack
+        }
+    }
+
+    // the text under this node, in order: what a button shows as its title
+    var textContent: String {
+        kind == .text ? text : children.map { $0.textContent }.joined()
+    }
+
+    // the nearest node, this one or above, whose children are drawn by the node itself rather than installed
+    var drawingAncestor: TermNode? {
+        var at: TermNode? = self
+        while let node = at {
+            if node.kind == .button {
+                return node
+            }
+            at = node.parent
+        }
+        return nil
+    }
+
+    func fire(_ event: String) {
+        for listener in listeners where listener.event == event {
+            listener.run()
+        }
+    }
+
+    // a button draws its children's text as its title
+    func refreshTitle() {
+        guard kind == .button else { return }
+        #if canImport(AppKit)
+        (view as? NSButton)?.title = textContent
+        #endif
+        #if canImport(UIKit)
+        // a system button animates a title change, so the drawn label kept the old count while `title(for:)` already
+        // read the new one: the screenshot of 2026-10-02 showed `0` beside `high`. Set it unanimated and lay it out now
+        if let button = view as? UIButton {
+            let title = textContent
+            UIView.performWithoutAnimation {
+                button.setTitle(title, for: .normal)
+                button.layoutIfNeeded()
+            }
+        }
+        #endif
+    }
+}
+
+#if canImport(AppKit)
+final class TermAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
+    }
+}
+#endif
+
+#if canImport(UIKit)
+// iOS builds a window only once UIApplicationMain runs, so the root is made early and installed here
+final class TermViewAppDelegate: NSObject, UIApplicationDelegate {
+    static var pendingRoot: TermNode?
+    static var pendingTitle = ""
+    static var afterLaunch: [() -> Void] = []
+    var window: UIWindow?
+
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        let window = UIWindow(frame: UIScreen.main.bounds)
+        let controller = UIViewController()
+        controller.view.backgroundColor = .systemBackground
+        controller.title = TermViewAppDelegate.pendingTitle
+        if let root = TermViewAppDelegate.pendingRoot {
+            let view = root.view
+            view.translatesAutoresizingMaskIntoConstraints = false
+            controller.view.addSubview(view)
+            let guide = controller.view.safeAreaLayoutGuide
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: guide.topAnchor, constant: 24),
+                view.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 24),
+                view.trailingAnchor.constraint(lessThanOrEqualTo: guide.trailingAnchor, constant: -24),
+            ])
+        }
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        self.window = window
+        nativeView.window = window
+        for body in TermViewAppDelegate.afterLaunch {
+            DispatchQueue.main.async(execute: body)
+        }
+        return true
+    }
+}
+#endif
+
+enum nativeView {
+    private static var nextKey = 0
+
+    #if canImport(AppKit)
+    private static let delegate = TermAppDelegate()
+    static var window: NSWindow?
+    #endif
+    #if canImport(UIKit)
+    static var window: UIWindow?
+    #endif
+
+    // the handle Term holds is `Any`, so every entry point takes `Any` and reads the node out of it
+    private static func node(_ handle: Any) -> TermNode {
+        guard let node = handle as? TermNode else {
+            fatalError("nativeView: not a node: \(handle)")
+        }
+        return node
+    }
+
+    private static func make(_ tag: String, _ text: String) -> TermNode {
+        nextKey += 1
+        return TermNode(key: nextKey, tag: tag, text: text)
+    }
+
+    static func createElement(_ tag: String) -> Any {
+        make(tag, "")
+    }
+
+    static func createText(_ value: String) -> Any {
+        make("", value)
+    }
+
+    static func setText(_ handle: Any, _ value: String) {
+        let node = node(handle)
+        node.text = value
+        #if canImport(AppKit)
+        (node.view as? NSTextField)?.stringValue = value
+        #endif
+        #if canImport(UIKit)
+        (node.view as? UILabel)?.text = value
+        #endif
+        node.drawingAncestor?.refreshTitle()
+    }
+
+    static func setAttribute(_ handle: Any, _ name: String, _ value: String) {
+        let node = node(handle)
+        node.attributes.removeAll { $0.name == name }
+        node.attributes.append((name: name, value: value))
+        // the attributes a platform view has a place for
+        switch name {
+        case "style":
+            applyStyleAttribute(node, value)
+        case "placeholder":
+            #if canImport(AppKit)
+            (node.view as? NSTextField)?.placeholderString = value
+            #endif
+            #if canImport(UIKit)
+            (node.view as? UITextField)?.placeholder = value
+            #endif
+        case "aria-label":
+            #if canImport(AppKit)
+            node.view.setAccessibilityLabel(value)
+            #endif
+            #if canImport(UIKit)
+            node.view.accessibilityLabel = value
+            #endif
+        case "aria-checked" where node.kind == .toggle:
+            #if canImport(AppKit)
+            (node.view as? NSSwitch)?.state = value == "true" ? .on : .off
+            #endif
+            #if canImport(UIKit)
+            (node.view as? UISwitch)?.setOn(value == "true", animated: false)
+            #endif
+        case "min" where node.kind == .range, "max" where node.kind == .range:
+            if let number = Double(value) {
+                #if canImport(AppKit)
+                if let slider = node.view as? NSSlider {
+                    if name == "min" { slider.minValue = number } else { slider.maxValue = number }
+                }
+                #endif
+                #if canImport(UIKit)
+                if let slider = node.view as? UISlider {
+                    if name == "min" { slider.minimumValue = Float(number) } else { slider.maximumValue = Float(number) }
+                }
+                #endif
+            }
+        case "value" where node.kind == .range:
+            setValue(node, value)
+        case "options" where node.kind == .choice:
+            setChoices(node, value.split(separator: "\n").map(String.init))
+        case "disabled":
+            #if canImport(AppKit)
+            (node.view as? NSControl)?.isEnabled = value == "false"
+            #endif
+            #if canImport(UIKit)
+            (node.view as? UIControl)?.isEnabled = value == "false"
+            #endif
+        default:
+            break
+        }
+    }
+
+    static func getAttribute(_ handle: Any, _ name: String) -> String {
+        node(handle).attributes.first { $0.name == name }?.value ?? ""
+    }
+
+    // ---- layout (native-dom-0007): the layout model mapped onto the platform's own stack, no solver of ours ----
+    //
+    //   flex-direction  row | column            the stack's axis
+    //   gap             <n>px                   its spacing
+    //   align-items     start | center | end | stretch    its alignment across the axis
+    //   justify-content start | space-between   its distribution along the axis
+    //   padding         <n>px                   its insets
+    //   width, height   <n>px                   a fixed size
+    //   flex-grow       <n>                     this child gives up its hugging along its parent's axis
+    //
+    // `display: flex` is how the web says "a stack", which every container here already is, so it is accepted and
+    // means nothing more. Anything else is recorded in `unsupported` and reported, never dropped in silence.
+
+    // every style a host could not honor, as `property: value`, for the check that reports them
+    static var unsupported = Set<String>()
+
+    private static func points(_ value: String) -> CGFloat? {
+        Double(value.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "px", with: "")).map { CGFloat($0) }
+    }
+
+    static func setStyle(_ handle: Any, _ property: String, _ value: String) {
+        let node = node(handle)
+        node.styles[property] = value
+        let value = value.trimmingCharacters(in: .whitespaces)
+        let stack = node.view as? TermStack
+
+        switch (property, stack) {
+        case ("display", _) where value == "flex" || value == "block":
+            // `display: flex` is a ROW in CSS until a `flex-direction` says otherwise (native-dom-0037)
+            if value == "flex", let stack, node.styles["flex-direction"] == nil {
+                #if canImport(AppKit)
+                stack.orientation = .horizontal
+                #endif
+                #if canImport(UIKit)
+                stack.axis = .horizontal
+                #endif
+            }
+            return
+        case ("flex-direction", let stack?):
+            #if canImport(AppKit)
+            stack.orientation = value.hasPrefix("row") ? .horizontal : .vertical
+            #endif
+            #if canImport(UIKit)
+            stack.axis = value.hasPrefix("row") ? .horizontal : .vertical
+            #endif
+        case ("gap", let stack?):
+            if let gap = points(value) { stack.spacing = gap; return }
+        case ("align-items", let stack?):
+            #if canImport(AppKit)
+            let row = stack.orientation == .horizontal
+            switch value {
+            case "start", "flex-start": stack.alignment = row ? .top : .leading
+            case "center": stack.alignment = row ? .centerY : .centerX
+            case "end", "flex-end": stack.alignment = row ? .bottom : .trailing
+            case "stretch":
+                // NSStackView has no stretching alignment (`.width` / `.height` left every child at its own size,
+                // off to one side): each child that should fill is pinned to the stack's cross axis, here and as
+                // children arrive
+                stack.alignment = row ? .top : .leading
+            default: unsupported.insert("\(property): \(value)")
+            }
+            #endif
+            #if canImport(UIKit)
+            switch value {
+            case "start", "flex-start": stack.alignment = .leading
+            case "center": stack.alignment = .center
+            case "end", "flex-end": stack.alignment = .trailing
+            // not `.fill`: it would override a child's own width, which CSS keeps. Pinned per child, as on AppKit
+            case "stretch": stack.alignment = .leading
+            default: unsupported.insert("\(property): \(value)")
+            }
+            #endif
+            if value == "stretch" {
+                for child in node.children where shouldFill(child, in: node) {
+                    fill(child.view, in: stack)
+                }
+            }
+            return
+        case ("justify-content", let stack?):
+            switch value {
+            case "start", "flex-start":
+                #if canImport(AppKit)
+                stack.distribution = .gravityAreas
+                #endif
+                #if canImport(UIKit)
+                stack.distribution = .fill
+                #endif
+            case "space-between":
+                stack.distribution = .equalSpacing
+            default:
+                unsupported.insert("\(property): \(value)")
+            }
+            return
+        case ("padding", let stack?):
+            if let inset = points(value) {
+                #if canImport(AppKit)
+                stack.edgeInsets = NSEdgeInsets(top: inset, left: inset, bottom: inset, right: inset)
+                #endif
+                #if canImport(UIKit)
+                stack.isLayoutMarginsRelativeArrangement = true
+                stack.directionalLayoutMargins = NSDirectionalEdgeInsets(top: inset, leading: inset, bottom: inset, trailing: inset)
+                #endif
+                return
+            }
+        case ("width", _), ("height", _):
+            if let size = points(value) {
+                node.view.translatesAutoresizingMaskIntoConstraints = false
+                let anchor = property == "width" ? node.view.widthAnchor : node.view.heightAnchor
+                anchor.constraint(equalToConstant: size).isActive = true
+                return
+            }
+        case ("flex-grow", _):
+            if let grow = Double(value), grow > 0 {
+                #if canImport(AppKit)
+                node.view.setContentHuggingPriority(.defaultLow - 1, for: .horizontal)
+                node.view.setContentHuggingPriority(.defaultLow - 1, for: .vertical)
+                #endif
+                #if canImport(UIKit)
+                node.view.setContentHuggingPriority(.defaultLow - 1, for: .horizontal)
+                node.view.setContentHuggingPriority(.defaultLow - 1, for: .vertical)
+                #endif
+                return
+            }
+        default:
+            break
+        }
+
+        if ["flex-direction", "gap", "padding"].contains(property) && stack == nil {
+            unsupported.insert("\(property) on \(node.tag.isEmpty ? "text" : node.tag)")
+        } else if !["flex-direction"].contains(property) {
+            unsupported.insert("\(property): \(value)")
+        }
+    }
+
+    // a `style` attribute is declarations, each one applied as `set-style` would apply it
+    static func applyStyleAttribute(_ node: TermNode, _ text: String) {
+        for declaration in text.split(separator: ";") {
+            let parts = declaration.split(separator: ":", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+            if parts.count == 2, !parts[0].isEmpty {
+                setStyle(node, parts[0], parts[1])
+            }
+        }
+    }
+
+    // every style no host could honor, sorted, one per line. Empty when everything mapped
+    static func unsupportedStyles() -> String {
+        unsupported.sorted().joined(separator: "\n")
+    }
+
+    // where a node is drawn, in points from the window's content origin: `x,y,width,height`. What a layout test reads
+    static func frameOf(_ handle: Any) -> String {
+        let node = node(handle)
+        #if canImport(AppKit)
+        guard let content = node.view.window?.contentView else { return "0,0,0,0" }
+        content.layoutSubtreeIfNeeded()
+        var frame = node.view.convert(node.view.bounds, to: content)
+        // AppKit's origin is the bottom left; the web's and every other host's is the top left
+        if !content.isFlipped {
+            frame.origin.y = content.bounds.height - frame.origin.y - frame.height
+        }
+        #endif
+        #if canImport(UIKit)
+        guard let root = node.view.window?.rootViewController?.view else { return "0,0,0,0" }
+        root.layoutIfNeeded()
+        let frame = node.view.convert(node.view.bounds, to: root)
+        #endif
+        return [frame.origin.x, frame.origin.y, frame.width, frame.height].map { String(Int($0.rounded())) }.joined(separator: ",")
+    }
+
+    static func addClass(_ handle: Any, _ name: String) {
+        let node = node(handle)
+        if !node.classes.contains(name) {
+            node.classes.append(name)
+        }
+    }
+
+    static func removeClass(_ handle: Any, _ name: String) {
+        node(handle).classes.removeAll { $0 == name }
+    }
+
+    static func focus(_ handle: Any) {
+        let node = node(handle)
+        #if canImport(AppKit)
+        node.view.window?.makeFirstResponder(node.view)
+        #endif
+        #if canImport(UIKit)
+        node.view.becomeFirstResponder()
+        #endif
+    }
+
+    static func blur(_ handle: Any) {
+        let node = node(handle)
+        #if canImport(AppKit)
+        if node.view.window?.firstResponder === node.view {
+            node.view.window?.makeFirstResponder(nil)
+        }
+        #endif
+        #if canImport(UIKit)
+        node.view.resignFirstResponder()
+        #endif
+    }
+
+    // a click is the platform's own: a button's action, or a tap on anything else
+    static func listen(_ handle: Any, _ event: String, _ handler: @escaping () -> Void) {
+        let node = node(handle)
+        node.listeners.append((event: event, run: handler))
+        guard event == "click" else {
+            if event == "input", node.kind == .field {
+                installFieldEvents(node)
+            }
+            // the macOS picker reports a choice through its action, as `change` (iOS's menu items fire it themselves)
+            #if canImport(AppKit)
+            if event == "change", node.kind == .choice, !node.keep.contains(where: { $0 is TermAction }),
+               let popUp = node.view as? NSPopUpButton {
+                let action = TermAction { [weak node] in node?.fire("change") }
+                node.keep.append(action)
+                popUp.target = action
+                popUp.action = #selector(TermAction.fire)
+            }
+            #endif
+            // the slider reports its own moves as `input`, the event a web range input fires while it is dragged
+            if event == "input", node.kind == .range, !node.keep.contains(where: { $0 is TermAction }) {
+                let action = TermAction { [weak node] in node?.fire("input") }
+                node.keep.append(action)
+                #if canImport(AppKit)
+                if let slider = node.view as? NSSlider {
+                    slider.target = action
+                    slider.action = #selector(TermAction.fire)
+                }
+                #endif
+                #if canImport(UIKit)
+                (node.view as? UISlider)?.addTarget(action, action: #selector(TermAction.fire), for: .valueChanged)
+                #endif
+            }
+            return
+        }
+        if node.kind == .toggle {
+            if node.keep.contains(where: { $0 is TermAction }) {
+                return
+            }
+            let action = TermAction { [weak node] in node?.fire("click") }
+            node.keep.append(action)
+            #if canImport(AppKit)
+            if let control = node.view as? NSSwitch {
+                control.target = action
+                control.action = #selector(TermAction.fire)
+            }
+            #endif
+            #if canImport(UIKit)
+            (node.view as? UISwitch)?.addTarget(action, action: #selector(TermAction.fire), for: .valueChanged)
+            #endif
+        } else if node.kind == .button {
+            if node.keep.contains(where: { $0 is TermAction }) {
+                return
+            }
+            let action = TermAction { [weak node] in node?.fire("click") }
+            node.keep.append(action)
+            #if canImport(AppKit)
+            if let button = node.view as? NSButton {
+                button.target = action
+                button.action = #selector(TermAction.fire)
+            }
+            #endif
+            #if canImport(UIKit)
+            (node.view as? UIButton)?.addTarget(action, action: #selector(TermAction.fire), for: .touchUpInside)
+            #endif
+        } else if !node.tapInstalled {
+            node.tapInstalled = true
+            let action = TermAction { [weak node] in node?.fire("click") }
+            node.keep.append(action)
+            #if canImport(AppKit)
+            node.view.addGestureRecognizer(NSClickGestureRecognizer(target: action, action: #selector(TermAction.fire)))
+            #endif
+            #if canImport(UIKit)
+            node.view.isUserInteractionEnabled = true
+            node.view.addGestureRecognizer(UITapGestureRecognizer(target: action, action: #selector(TermAction.fire)))
+            #endif
+        }
+    }
+
+    private static func installFieldEvents(_ node: TermNode) {
+        if node.keep.contains(where: { !($0 is TermAction) }) || node.keep.contains(where: { $0 is TermAction && node.kind == .field }) {
+            return
+        }
+        #if canImport(AppKit)
+        let delegate = TermFieldDelegate()
+        delegate.node = node
+        node.keep.append(delegate)
+        (node.view as? NSTextField)?.delegate = delegate
+        #endif
+        #if canImport(UIKit)
+        let action = TermAction { [weak node] in
+            guard let node = node, let field = node.view as? UITextField else { return }
+            node.value = field.text ?? ""
+            node.fire("input")
+        }
+        node.keep.append(action)
+        (node.view as? UITextField)?.addTarget(action, action: #selector(TermAction.fire), for: .editingChanged)
+        #endif
+    }
+
+    // DOM semantics: a node has one parent, so appending one that already has a parent moves it
+    static func append(_ parentHandle: Any, _ childHandle: Any) {
+        let parent = node(parentHandle)
+        let child = node(childHandle)
+        detach(child)
+        child.parent = parent
+        parent.children.append(child)
+        if let drawing = parent.drawingAncestor {
+            drawing.refreshTitle()
+        } else if let stack = parent.view as? TermStack {
+            stack.addArrangedSubview(child.view)
+            if shouldFill(child, in: parent) {
+                fill(child.view, in: stack)
+            }
+        }
+    }
+
+    private static func vertical(_ stack: TermStack) -> Bool {
+        #if canImport(AppKit)
+        return stack.orientation == .vertical
+        #else
+        return stack.axis == .vertical
+        #endif
+    }
+
+    // whether a child fills its stack's cross axis, by CSS's rules (native-dom-0027, 0037). A size the child declared
+    // on that axis always wins. An explicit `align-items` decides by itself. Otherwise a FLEX container stretches every
+    // child (CSS's default `align-items` is `stretch`), and a BLOCK container's block-level children fill its width
+    // while its inline ones and its controls keep their own size.
+    private static func shouldFill(_ child: TermNode, in parent: TermNode) -> Bool {
+        guard let stack = parent.view as? TermStack else { return false }
+        let down = vertical(stack)
+
+        if child.styles[down ? "width" : "height"] != nil {
+            return false
+        }
+
+        if let align = parent.styles["align-items"]?.trimmingCharacters(in: .whitespaces) {
+            return align == "stretch"
+        }
+
+        if parent.styles["display"]?.trimmingCharacters(in: .whitespaces) == "flex" {
+            return down
+        }
+
+        return down && child.kind == .container && !INLINE_TAGS.contains(child.tag)
+    }
+
+    // the child fills the stack's cross axis inside its insets. Neither stack stretches one child and not its sibling,
+    // so this is a constraint per child. The insets are read when the child is pinned, and a style attribute is applied
+    // before any child is appended, so a `padding` beside the `align-items` is already in them
+    private static func fill(_ child: TermPlatformView, in stack: TermStack) {
+        #if canImport(AppKit)
+        let across = stack.edgeInsets.left + stack.edgeInsets.right
+        let along = stack.edgeInsets.top + stack.edgeInsets.bottom
+        #else
+        let margins = stack.isLayoutMarginsRelativeArrangement ? stack.directionalLayoutMargins : .zero
+        let across = margins.leading + margins.trailing
+        let along = margins.top + margins.bottom
+        #endif
+        child.translatesAutoresizingMaskIntoConstraints = false
+        if vertical(stack) {
+            child.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -across).isActive = true
+        } else {
+            child.heightAnchor.constraint(equalTo: stack.heightAnchor, constant: -along).isActive = true
+        }
+    }
+
+    static func remove(_ handle: Any) {
+        detach(node(handle))
+    }
+
+    private static func detach(_ child: TermNode) {
+        guard let parent = child.parent else { return }
+        parent.children.removeAll { $0 === child }
+        child.parent = nil
+        child.view.removeFromSuperview()
+        parent.drawingAncestor?.refreshTitle()
+    }
+
+    // `new` takes `old`'s place under the same parent, at the same position
+    static func replace(_ oldHandle: Any, _ newHandle: Any) {
+        let old = node(oldHandle)
+        let fresh = node(newHandle)
+        detach(fresh)
+        guard let parent = old.parent, let index = parent.children.firstIndex(where: { $0 === old }) else { return }
+        // the position among the views actually installed, which is the stack's own index
+        let installedBefore = parent.children[..<index].filter { $0.view.superview === parent.view }.count
+        parent.children[index] = fresh
+        fresh.parent = parent
+        old.parent = nil
+        old.view.removeFromSuperview()
+        if let drawing = parent.drawingAncestor {
+            drawing.refreshTitle()
+        } else if let stack = parent.view as? TermStack {
+            stack.insertArrangedSubview(fresh.view, at: installedBefore)
+        }
+    }
+
+    static func clear(_ handle: Any) {
+        let node = node(handle)
+        for child in node.children {
+            child.parent = nil
+            child.view.removeFromSuperview()
+        }
+        node.children = []
+        node.drawingAncestor?.refreshTitle()
+    }
+
+    static func childCount(_ handle: Any) -> Int {
+        node(handle).children.count
+    }
+
+    // ---- the select (native-dom-0026): the platform's own picker, its items the options, the chosen one its value ----
+
+    private static func setChoices(_ node: TermNode, _ choices: [String]) {
+        let held = choiceValue(node)
+        #if canImport(AppKit)
+        if let popUp = node.view as? NSPopUpButton {
+            popUp.removeAllItems()
+            popUp.addItems(withTitles: choices)
+        }
+        #endif
+        #if canImport(UIKit)
+        if let button = node.view as? UIButton {
+            // each item reports the person's choice as `change`, the event a web `<select>` fires
+            let actions = choices.map { choice in
+                UIAction(title: choice) { [weak node] _ in node?.fire("change") }
+            }
+            button.menu = UIMenu(children: actions)
+        }
+        #endif
+        if !held.isEmpty {
+            setChoice(node, held)
+        }
+    }
+
+    private static func setChoice(_ node: TermNode, _ value: String) {
+        #if canImport(AppKit)
+        (node.view as? NSPopUpButton)?.selectItem(withTitle: value)
+        #endif
+        #if canImport(UIKit)
+        if let button = node.view as? UIButton, let menu = button.menu {
+            for case let action as UIAction in menu.children {
+                action.state = action.title == value ? .on : .off
+            }
+            // the menu's chosen item is what the button draws, unanimated so a read straight after sees it
+            UIView.performWithoutAnimation {
+                button.setTitle(value, for: .normal)
+                button.layoutIfNeeded()
+            }
+        }
+        #endif
+    }
+
+    // the chosen item as the control holds it
+    private static func choiceValue(_ node: TermNode) -> String {
+        #if canImport(AppKit)
+        return (node.view as? NSPopUpButton)?.titleOfSelectedItem ?? ""
+        #else
+        guard let button = node.view as? UIButton, let menu = button.menu else { return "" }
+        for case let action as UIAction in menu.children where action.state == .on {
+            return action.title
+        }
+        return ""
+        #endif
+    }
+
+    // for tests: choose an item the way a person does, the control first and then its own report of the choice
+    static func choose(_ handle: Any, _ value: String) {
+        let node = node(handle)
+        #if canImport(AppKit)
+        if let popUp = node.view as? NSPopUpButton {
+            popUp.selectItem(withTitle: value)
+            popUp.sendAction(popUp.action, to: popUp.target)
+        }
+        #endif
+        #if canImport(UIKit)
+        // a menu item cannot be tapped from code: the selection is made as the menu makes it, and its report sent
+        setChoice(node, value)
+        node.fire("change")
+        #endif
+    }
+
+    // a slider's position as the control holds it, snapped to its `step` as a web range input is, and written the way
+    // the web writes a number: `40`, never `40.0`
+    private static func rangeValue(_ node: TermNode) -> String {
+        #if canImport(AppKit)
+        let raw = (node.view as? NSSlider)?.doubleValue ?? 0
+        #else
+        let raw = Double((node.view as? UISlider)?.value ?? 0)
+        #endif
+        let step = Double(node.attributes.first { $0.name == "step" }?.value ?? "") ?? 0
+        let snapped = step > 0 ? (raw / step).rounded() * step : raw
+        let tidy = (snapped * 1_000_000).rounded() / 1_000_000
+        return tidy == tidy.rounded() ? String(Int(tidy)) : String(tidy)
+    }
+
+    static func getValue(_ handle: Any) -> String {
+        let node = node(handle)
+        if node.kind == .range {
+            return rangeValue(node)
+        }
+        if node.kind == .choice {
+            return choiceValue(node)
+        }
+        #if canImport(AppKit)
+        if let field = node.view as? NSTextField, node.kind == .field {
+            return field.stringValue
+        }
+        #endif
+        #if canImport(UIKit)
+        if let field = node.view as? UITextField {
+            return field.text ?? ""
+        }
+        #endif
+        return node.value
+    }
+
+    static func setValue(_ handle: Any, _ value: String) {
+        let node = node(handle)
+        node.value = value
+        if node.kind == .choice {
+            setChoice(node, value)
+            return
+        }
+        if node.kind == .range, let number = Double(value) {
+            #if canImport(AppKit)
+            (node.view as? NSSlider)?.doubleValue = number
+            #endif
+            #if canImport(UIKit)
+            (node.view as? UISlider)?.setValue(Float(number), animated: false)
+            #endif
+            return
+        }
+        #if canImport(AppKit)
+        if let field = node.view as? NSTextField, node.kind == .field {
+            field.stringValue = value
+        }
+        #endif
+        #if canImport(UIKit)
+        (node.view as? UITextField)?.text = value
+        #endif
+    }
+
+    static func measureWidth(_ handle: Any) -> Int {
+        Int(node(handle).view.frame.width)
+    }
+
+    // ---- the app around the tree ----
+
+    // a window whose content is a new root container, returned as the node to mount into. On iOS the window is
+    // built when the app launches; the root is ready at once either way
+    static func openRoot(_ title: String, _ width: Int, _ height: Int) -> Any {
+        let root = make("main", "")
+        #if canImport(AppKit)
+        let app = NSApplication.shared
+        if app.delegate == nil {
+            app.setActivationPolicy(.regular)
+            app.delegate = delegate
+        }
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = title
+        window.isReleasedWhenClosed = false
+        let content = NSView(frame: window.contentLayoutRect)
+        root.view.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(root.view)
+        NSLayoutConstraint.activate([
+            root.view.topAnchor.constraint(equalTo: content.topAnchor, constant: 24),
+            root.view.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
+            root.view.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -24),
+        ])
+        window.contentView = content
+        window.center()
+        self.window = window
+        #endif
+        #if canImport(UIKit)
+        TermViewAppDelegate.pendingRoot = root
+        TermViewAppDelegate.pendingTitle = title
+        #endif
+        return root
+    }
+
+    // run `body` once the app is running and its window exists
+    static func afterLaunch(_ body: @escaping () -> Void) {
+        #if canImport(AppKit)
+        DispatchQueue.main.async(execute: body)
+        #endif
+        #if canImport(UIKit)
+        TermViewAppDelegate.afterLaunch.append(body)
+        #endif
+    }
+
+    // put the window on screen and in front
+    static func show() {
+        #if canImport(AppKit)
+        window?.makeKeyAndOrderFront(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        #endif
+    }
+
+    // hand the process to the toolkit. Returns only when the app quits
+    static func run() {
+        setvbuf(stdout, nil, _IONBF, 0)
+        #if canImport(AppKit)
+        NSApplication.shared.run()
+        #endif
+        #if canImport(UIKit)
+        _ = UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv, nil, NSStringFromClass(TermViewAppDelegate.self))
+        #endif
+    }
+
+    static func exit(_ status: Int) {
+        print("native-view exit \(status)")
+        Foundation.exit(Int32(status))
+    }
+
+    // ---- what a test, or a person, does to the tree and sees of it ----
+
+    static func childAt(_ handle: Any, _ index: Int) -> Any {
+        node(handle).children[index]
+    }
+
+    // a line to standard output, which is unbuffered once `run` starts
+    static func say(_ text: String) {
+        print(text)
+    }
+
+    // press a control the way a person would: the platform's own click, so the platform's own action runs
+    static func press(_ handle: Any) {
+        let node = node(handle)
+        #if canImport(AppKit)
+        if let button = node.view as? NSButton {
+            button.performClick(nil)
+            return
+        }
+        #endif
+        #if canImport(UIKit)
+        if let button = node.view as? UIButton {
+            button.sendActions(for: .touchUpInside)
+            return
+        }
+        #endif
+        #if canImport(AppKit)
+        if let control = node.view as? NSSwitch {
+            control.performClick(nil)
+            return
+        }
+        #endif
+        #if canImport(UIKit)
+        // a tap flips the switch and then reports it, in that order
+        if let control = node.view as? UISwitch {
+            control.setOn(!control.isOn, animated: false)
+            control.sendActions(for: .valueChanged)
+            return
+        }
+        #endif
+        node.fire("click")
+    }
+
+    // for tests: move a slider the way a finger does, the control first and then its own report of the move
+    static func slide(_ handle: Any, _ value: String) {
+        let node = node(handle)
+        guard let number = Double(value) else { return }
+        #if canImport(AppKit)
+        if let slider = node.view as? NSSlider {
+            slider.doubleValue = number
+            slider.sendAction(slider.action, to: slider.target)
+        }
+        #endif
+        #if canImport(UIKit)
+        if let slider = node.view as? UISlider {
+            slider.setValue(Float(number), animated: false)
+            slider.sendActions(for: .valueChanged)
+        }
+        #endif
+    }
+
+    // the tree as HTML, READ BACK FROM THE PLATFORM VIEWS: a button's text is its title as the toolkit holds it and a
+    // label's is its string, so this proves the views were updated, not only the model beside them
+    static func serialize(_ handle: Any) -> String {
+        let node = node(handle)
+        switch node.kind {
+        case .text:
+            #if canImport(AppKit)
+            return (node.view as? NSTextField)?.stringValue ?? ""
+            #else
+            return (node.view as? UILabel)?.text ?? ""
+            #endif
+        case .button:
+            #if canImport(AppKit)
+            let title = (node.view as? NSButton)?.title ?? ""
+            #else
+            // what the button DRAWS, not the title it was asked to show: those two differed while a title animated
+            let title = (node.view as? UIButton)?.titleLabel?.text ?? ""
+            #endif
+            return "<button>\(title)</button>"
+        case .field:
+            return "<\(node.tag) value=\"\(getValue(node))\"></\(node.tag)>"
+        case .toggle:
+            #if canImport(AppKit)
+            let on = (node.view as? NSSwitch)?.state == .on
+            #else
+            let on = (node.view as? UISwitch)?.isOn ?? false
+            #endif
+            return "<switch checked=\"\(on)\"></switch>"
+        case .range:
+            return "<slider value=\"\(rangeValue(node))\"></slider>"
+        case .choice:
+            return "<select value=\"\(choiceValue(node))\"></select>"
+        case .container:
+            let installed = node.children.filter { $0.view.superview === node.view }
+            return "<\(node.tag)>\(installed.map { serialize($0) }.joined())</\(node.tag)>"
+        }
+    }
+
+    // a PNG of the window's content as drawn
+    static func snapshot(_ path: String) {
+        #if canImport(AppKit)
+        guard let content = window?.contentView else { return }
+        // let the platform's own animations land first: NSSwitch slides its knob after a click, and a capture taken at
+        // once showed the knob still on the left of a switch that read `on` (2026-10-02)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+        content.layoutSubtreeIfNeeded()
+        guard let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { return }
+        content.cacheDisplay(in: content.bounds, to: bitmap)
+        if let png = bitmap.representation(using: .png, properties: [:]) {
+            try? png.write(to: URL(fileURLWithPath: path))
+        }
+        #endif
+        #if canImport(UIKit)
+        guard let view = window?.rootViewController?.view else { return }
+        let renderer = UIGraphicsImageRenderer(bounds: view.bounds)
+        let png = renderer.pngData { _ in view.drawHierarchy(in: view.bounds, afterScreenUpdates: true) }
+        try? png.write(to: URL(fileURLWithPath: path))
+        #endif
+    }
+}

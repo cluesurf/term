@@ -1,0 +1,39 @@
+
+# The update client on Linux and Windows, with no window (native-dom-0032): the three update tasks of the Rust cask,
+# called by test/call/update-rust.ts through the program's own Rust driver, one per launch of the binary. The client's
+# whole lifecycle runs on any machine cargo builds for, because only the hop back to the UI thread is per platform.
+
+load @term/cask/code/cask
+  find update-launch-path
+  find update-check
+  find update-ready
+
+task launch
+  take resources, like text
+  take data, like text
+  like text
+  send back
+    call update-launch-path
+      read resources
+      text <webview>
+      read data
+
+task fetch-update
+  take resources, like text
+  take data, like text
+  take base, like text
+  take done
+    like task
+      take status, like text
+      like void
+  call update-check
+    read resources
+    read data
+    read base
+    text <main>
+    read done
+
+task mark-ready
+  take data, like text
+  call update-ready
+    read data

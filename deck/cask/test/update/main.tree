@@ -1,0 +1,73 @@
+# The cask side of the update app (native-dom-0024): a real app that boots through over-the-air updates. It decides
+# its page BEFORE anything else (the shipped one, or the newest downloaded update that matches this binary and has
+# not failed a launch), opens its window, checks for a newer update, and loads the page it decided once the check
+# has answered, so a test can launch it twice and see the second launch run what the first one fetched. `boot` takes
+# the app's resources directory and the update server's address from its driver, the way an app would carry its own
+# address, and keeps its update state in <resources>/update-data, inside the test's own build. macOS and iOS: the
+# update tasks are the Swift cask's (native-dom-0023 brings Android and Rust).
+#
+# The window is made at boot, before the platform's run loop starts, the way every cask app makes it: a WKWebView made
+# inside a callback after NSApplication.run had begun never finished its first load (2026-10-02).
+
+load @term/cask/code/cask
+  find window
+  find open-window
+  find load-bundle
+  find on-message
+  find on-ready
+  find run
+  find update-launch-path
+  find update-check
+  find update-ready
+
+load ./dispatch
+  find dispatch
+
+task boot
+  take resources, like text
+  take base, like text
+  like void
+  save data, text <{{resources}}/update-data>
+  # decided first, so the update this launch checks for can only ever run from the next one
+  save page
+    call update-launch-path
+      read resources
+      text <webview>
+      read data
+  save made
+    call open-window
+      text <Term update>
+      code 640
+      code 480
+  # the page speaking is the surest sign it loaded and ran: on Android a page that answers at once can leave before
+  # the WebView reports its load finished, so the first message counts as ready as well as `on-ready`
+  call on-message
+    read made
+    task answer
+      note async
+      take message, like text
+      like text
+      call update-ready
+        read data
+      send back
+        call dispatch
+          wait true
+          read message
+  call on-ready
+    read made
+    task drawn
+      like void
+      call update-ready
+        read data
+  call update-check
+    read resources
+    read data
+    read base
+    text <main>
+    task open
+      take status, like text
+      like void
+      call load-bundle
+        read made
+        read page
+  call run

@@ -14,6 +14,30 @@ form hsv-color
 
 task from-rgb
   take color, like rgb-color
+  have
+    call is-minimum
+      read color/red
+      code 0
+  have
+    call is-maximum
+      read color/red
+      code 255
+  have
+    call is-minimum
+      read color/green
+      code 0
+  have
+    call is-maximum
+      read color/green
+      code 255
+  have
+    call is-minimum
+      read color/blue
+      code 0
+  have
+    call is-maximum
+      read color/blue
+      code 255
   like hsv-color
   save high
     call maximum

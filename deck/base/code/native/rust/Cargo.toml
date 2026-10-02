@@ -22,6 +22,8 @@ aes-gcm = "0.10"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 base64 = "0.22"
+# the cask's update client verifies a manifest's RSASSA-PKCS1-v1_5 signature (deck/cask/code/native/rust/runtime/cask-update.rs)
+rsa = { version = "0.9", features = ["sha2"] }
 hex = "0.4"
 reqwest = { version = "0.12", features = ["blocking", "json"] }
 tokio = { version = "1", features = ["full"] }

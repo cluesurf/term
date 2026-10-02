@@ -22,6 +22,8 @@ import { stdlibBase } from '@term/make/code/resolve'
 import { manifestNameOf } from '@term/call/code/manifest-name'
 import { projectResolver } from '@term/call/code/make'
 import { generateBridge } from '@term/call/code/cask-generate'
+import { runtimeVersion, toolchainOf, type RuntimeVersion } from '@term/call/code/runtime-version'
+import { publishUpdate, stampUpdateKey } from '@term/call/code/update'
 import { logGood, logStep, fade } from '@term/make/code/tint'
 
 export type CaskTarget = 'macos' | 'ios' | 'android' | 'linux' | 'windows'
@@ -201,7 +203,7 @@ export function buildProgram({
   exe: string
   work: string
   target?: CaskTarget
-}): { source: string } {
+}): { source: string; native: string } {
   const result = compile(
     { file: entry, text: readFileSync(entry, 'utf8') },
     { resolve: projectResolver(root, 'swift'), env: 'swift' },
@@ -237,7 +239,9 @@ export function buildProgram({
     execFileSync('swiftc', [...swiftFlags(), '-O', '-o', exe, file], { stdio: 'inherit' })
   }
 
-  return { source: file }
+  // the native half as compiled, without the driver line, which differs between a dev build and a release of the
+  // same binary surface. What the runtime version hashes
+  return { source: file, native: [prelude, swift].join('\n') }
 }
 
 // ---- linux and windows: the Rust cask ----
@@ -318,7 +322,7 @@ export function buildRustProgram({
   work: string
   crate: string
   target: CaskTarget
-}): { project: string; exe?: string } {
+}): { project: string; exe?: string; native: string } {
   const result = compile(
     { file: entry, text: readFileSync(entry, 'utf8') },
     { resolve: projectResolver(root, 'rust'), env: 'rust' },
@@ -342,11 +346,12 @@ export function buildRustProgram({
   writeFileSync(path.join(project, 'Cargo.toml'), cargoManifest(crate, source))
 
   const cargo = spawnSync('cargo', ['--version'], { encoding: 'utf8' }).status === 0
+  const native = [prelude, rust].join('\n')
 
   if (RUST_TARGETS[target] === process.platform) {
     execFileSync('cargo', ['build', '--release', '--quiet'], { cwd: project, stdio: 'inherit' })
 
-    return { project, exe: path.join(project, 'target/release', target === 'windows' ? `${crate}.exe` : crate) }
+    return { project, exe: path.join(project, 'target/release', target === 'windows' ? `${crate}.exe` : crate), native }
   }
 
   if (cargo) {
@@ -354,7 +359,7 @@ export function buildRustProgram({
     execFileSync('cargo', ['check', '--quiet'], { cwd: project, stdio: 'inherit' })
   }
 
-  return { project }
+  return { project, native }
 }
 
 // the app's directory on Linux (`<Name>/bin/<crate>` beside `<Name>/resources`) and Windows (`<Name>/<Name>.exe`
@@ -391,6 +396,8 @@ async function makeRustCask({
   work,
   target,
   url,
+  publish,
+  channel,
 }: {
   root: string
   page: string
@@ -400,6 +407,8 @@ async function makeRustCask({
   work: string
   target: CaskTarget
   url?: string
+  publish?: string
+  channel?: string
 }): Promise<{ app: string }> {
   const bundle = assembleRustBundle({ out, name, target })
   const pageDir = path.join(bundle.resources, 'webview')
@@ -415,7 +424,7 @@ async function makeRustCask({
   console.log(fade(`  page: ${built.bytes} bytes of JavaScript`))
 
   // the page directory is found at run time from the executable, so the same binary runs wherever the app lands
-  const { project, exe } = buildRustProgram({
+  const { project, exe, native } = buildRustProgram({
     root,
     entry,
     driver: url
@@ -425,6 +434,9 @@ async function makeRustCask({
     crate: crateOf(name),
     target,
   })
+  const stamped = stampRuntimeVersion({ target, native, into: bundle.resources })
+  stampUpdateKey({ identifier: appIdentity(root).identifier, into: bundle.resources })
+  publishBuilt({ publish, channel, page: path.join(bundle.resources, 'webview'), identifier: appIdentity(root).identifier, platform: target, runtimeVersion: stamped.hex })
 
   if (exe) {
     copyFileSync(exe, bundle.exe)
@@ -508,17 +520,21 @@ export function buildAndroidProgram({
   identifier,
   driver,
   work,
+  env = 'kotlin',
 }: {
   root: string
   entry: string
   identifier: string
   driver: string
   work: string
-}): { dex: string } {
+  // `android` for a program drawn in Android's own views (the toolkit view host, native-dom-0006), where the env
+  // chain reaches deck/site/code/dom/native/toolkit. The cask's own program is `kotlin`
+  env?: 'kotlin' | 'android'
+}): { dex: string; native: string } {
   const tools = androidTools()
   const result = compile(
     { file: entry, text: readFileSync(entry, 'utf8') },
-    { resolve: projectResolver(root, 'kotlin'), env: 'kotlin' },
+    { resolve: projectResolver(root, env), env },
   )
 
   if (!result.ok) {
@@ -531,7 +547,7 @@ export function buildAndroidProgram({
   }
 
   const kotlin = emitKotlin(result.program)
-  const prelude = nativePrelude(result.program, 'kotlin', readRuntime, kotlin)
+  const prelude = nativePrelude(result.program, env, readRuntime, kotlin)
   // one package, the app's identifier, so the manifest's `.TermActivity` resolves; imports hoisted above everything
   const source = `package ${identifier}\n\n${hoistKotlinImports([prelude, kotlin, driver].join('\n'))}\n`
   const file = path.join(work, 'app.kt')
@@ -564,7 +580,59 @@ export function buildAndroidProgram({
     { stdio: 'inherit' },
   )
 
-  return { dex: path.join(dexDir, 'classes.dex') }
+  return { dex: path.join(dexDir, 'classes.dex'), native: [prelude, kotlin].join('\n') }
+}
+
+// `--publish`: the page that was just built, as an update for exactly the runtime version that was just stamped, so a
+// publish can never pair a page with a native half it was not built against
+function publishBuilt({
+  publish,
+  channel,
+  page,
+  identifier,
+  platform,
+  runtimeVersion,
+}: {
+  publish?: string
+  channel?: string
+  page: string
+  identifier: string
+  platform: string
+  runtimeVersion: string
+}): void {
+  if (!publish) {
+    return
+  }
+
+  const { manifest, file } = publishUpdate({ page, out: path.resolve(publish), identifier, platform, runtimeVersion, channel: channel ?? 'main' })
+  console.log(fade(`  published ${manifest.id} to ${file}`))
+}
+
+// stamp the runtime version into the app: one sha256 over the native half as compiled (the generated dispatcher and
+// its allowlist, the runtime shims, the program), the target, its minimum OS and the toolchain. A page update is
+// compatible exactly when its runtime version equals this file's. See runtime-version.ts and note/term/app/13.
+export function stampRuntimeVersion({
+  target,
+  native,
+  into,
+}: {
+  target: CaskTarget
+  native: string
+  into: string
+}): RuntimeVersion {
+  const minimum =
+    target === 'ios' ? IOS_MINIMUM : target === 'macos' ? MACOS_MINIMUM : target === 'android' ? String(ANDROID_MINIMUM) : target
+  const version = runtimeVersion({
+    target,
+    minimum,
+    toolchain: toolchainOf(target),
+    sources: [{ name: 'program', text: native }],
+  })
+  mkdirSync(into, { recursive: true })
+  writeFileSync(path.join(into, 'runtime-version'), `${version.hex}\n`)
+  console.log(fade(`  runtime version: ${version.tone}`))
+
+  return version
 }
 
 // the APK: a manifest linked by aapt2 with the page and the app's files as assets, the dex added, aligned, and signed
@@ -597,7 +665,9 @@ export function assembleApk({
       '  <uses-permission android:name="android.permission.INTERNET" />',
       // no action bar: the page owns the whole screen, the way it does on every other platform
       `  <application android:label="${name}" android:usesCleartextTraffic="true" android:theme="@android:style/Theme.DeviceDefault.NoActionBar">`,
-      '    <activity android:name=".TermActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden">',
+      // every device trait change is handled in place (native-dom-0012): Android otherwise destroys the Activity, and
+      // the running program with it, to apply a dark mode, a split screen or a font size
+      '    <activity android:name=".TermActivity" android:exported="true" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode|fontScale|density">',
       '      <intent-filter>',
       '        <action android:name="android.intent.action.MAIN" />',
       '        <category android:name="android.intent.category.LAUNCHER" />',
@@ -704,7 +774,9 @@ export function assembleIosBundle({
       `<key>MinimumOSVersion</key><string>${IOS_MINIMUM}</string>`,
       '<key>LSRequiresIPhoneOS</key><true/>',
       '<key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>',
-      '<key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>',
+      // portrait and both landscapes, as an iPhone app is by default: a Term app reads its width as a signal
+      // (native-dom-0012, 0035) and adapts, so locking it upright would only hide that
+      '<key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>',
       '<key>UIRequiresFullScreen</key><true/>',
       // an empty launch screen dictionary is what tells iOS the app is built for the full display; without it the
       // app runs letterboxed in a compatibility window
@@ -827,6 +899,10 @@ export async function makeCask(input: {
   // also make a .dmg
   dmg?: boolean
   version?: string
+  // also publish the page just built as an over-the-air update for the runtime version just stamped, into this
+  // directory (update.ts documents the layout), on `channel` (default `main`)
+  publish?: string
+  channel?: string
 }): Promise<{ app: string }> {
   if (!CASK_TARGETS.includes(input.target)) {
     throw new Error(`target ${input.target} is not built yet. Today: ${CASK_TARGETS.join(', ')}`)
@@ -858,11 +934,11 @@ export async function makeCask(input: {
   console.log(fade(`  bridge: ${generated.carried} commands, ${generated.refused.length} refused, ${generated.written} files written`))
 
   if (input.target === 'android') {
-    return makeAndroidCask({ root, page, entry, name, identifier, out, work, version, url: input.url })
+    return makeAndroidCask({ root, page, entry, name, identifier, out, work, version, url: input.url, publish: input.publish, channel: input.channel })
   }
 
   if (input.target === 'linux' || input.target === 'windows') {
-    return makeRustCask({ root, page, entry, name, out, work, target: input.target, url: input.url })
+    return makeRustCask({ root, page, entry, name, out, work, target: input.target, url: input.url, publish: input.publish, channel: input.channel })
   }
 
   // 4 first, because the page and the program land inside the bundle
@@ -884,7 +960,7 @@ export async function makeCask(input: {
   console.log(fade(`  page: ${built.bytes} bytes of JavaScript`))
 
   // 3. the program. `boot` gets the page directory, or the dev URL when asked
-  buildProgram({
+  const program = buildProgram({
     root,
     entry,
     // on iOS the page directory is found at run time from the bundle, since the app is installed elsewhere
@@ -896,6 +972,9 @@ export async function makeCask(input: {
     work,
     target: input.target,
   })
+  const stamped = stampRuntimeVersion({ target: input.target, native: program.native, into: bundle.resources })
+  stampUpdateKey({ identifier, into: bundle.resources })
+  publishBuilt({ publish: input.publish, channel: input.channel, page: pageDir, identifier, platform: input.target, runtimeVersion: stamped.hex })
 
   if (input.target === 'ios') {
     // a simulator build runs unsigned. A device build is signed with the identity and profile the next item brings
@@ -937,6 +1016,8 @@ async function makeAndroidCask({
   work,
   version,
   url,
+  publish,
+  channel,
 }: {
   root: string
   page: string
@@ -947,6 +1028,8 @@ async function makeAndroidCask({
   work: string
   version: string
   url?: string
+  publish?: string
+  channel?: string
 }): Promise<{ app: string }> {
   const generated = generateBridge({ page, out: path.dirname(entry), commit: true })
   console.log(fade(`  bridge: ${generated.carried} commands, ${generated.refused.length} refused, ${generated.written} files written`))
@@ -957,7 +1040,7 @@ async function makeAndroidCask({
   const built = await buildPage({ root, page, entry: `import { boot } from './app'\nboot()\n`, into: path.join(assets, 'webview'), title: name, work: path.join(work, 'page') })
   console.log(fade(`  page: ${built.bytes} bytes of JavaScript`))
 
-  const { dex } = buildAndroidProgram({
+  const { dex, native } = buildAndroidProgram({
     root,
     entry,
     identifier,
@@ -970,6 +1053,10 @@ async function makeAndroidCask({
     work,
   })
 
+  // into the assets before they are packaged, so the app reads it from its own APK
+  const stamped = stampRuntimeVersion({ target: 'android', native, into: assets })
+  stampUpdateKey({ identifier, into: assets })
+  publishBuilt({ publish, channel, page: path.join(assets, 'webview'), identifier, platform: 'android', runtimeVersion: stamped.hex })
   const apk = assembleApk({ out, name, identifier, version, dex, assets, work })
   logGood(`${path.relative(root, apk)} (debug signed)`)
 

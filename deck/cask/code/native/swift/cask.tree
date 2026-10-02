@@ -5,6 +5,7 @@
 
 dock load
   load <global:cask>, name cask
+  load <global:cask-update>, name cask-update
 
 # the opaque handle to one window and the WebView inside it
 dock type
@@ -140,3 +141,44 @@ task data-path
   send back
     call cask/data-path
       read name
+
+# ---- over-the-air page updates (native-dom-0016). Runtime: runtime/cask-update.swift. Publisher: deck/call/code/update.ts
+
+# the page directory to load: `resources/page` as shipped, or the newest downloaded update that matches this binary
+# and has not failed a launch. Call it before `load-bundle`, with what it answers
+task update-launch-path
+  take resources, like text
+  take page, like text
+  take data, like text
+  like text
+  send back
+    call cask-update/launch-path
+      read resources
+      read page
+      read data
+
+# fetch, verify and stage the newest update for `channel` from `base`, off the main thread, for the NEXT launch. `done`
+# hears `none`, `current`, `applied <id>` or `refused: <reason>`
+task update-check
+  take resources, like text
+  take data, like text
+  take base, like text
+  take channel, like text
+  take done
+    like task
+      take status, like text
+      like void
+  like void
+  call cask-update/check
+    read resources
+    read data
+    read base
+    read channel
+    read done
+
+# the page reached its first render: the update this launch ran is good. Call it from `on-ready`
+task update-ready
+  take data, like text
+  like void
+  call cask-update/ready
+    read data

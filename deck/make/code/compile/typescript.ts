@@ -312,6 +312,120 @@ let tsVariantFieldsByOwner = new Map<
 let tsRecordFields = new Map<string, { name: string; type: Type; optional?: boolean }[]>()
 // did this module lower a `fill` or `melt` with a form? Then the walk rides in its prelude
 let tsFormWalkUsed = false
+// set when an emitted `+`, `-` or `*` on two numbers is range-checked (__termInt), so the helper rides in front
+let tsIntUsed = false
+// set when an `is-equal` compares by structure (__termEqual) or a map key is interned (__termKey)
+let tsEqualUsed = false
+// the `note shared` forms: references by design, compared and keyed by identity as on the other backends
+let tsSharedForms = new Set<string>()
+
+// does a value of this type compare by its structure rather than by `==`? A record (`form`), a list, a map and bytes
+// do, so `is-equal` on two records with equal fields is true here as it is on Rust, Swift and Kotlin
+// (note/term/optimize/meaning.md, question 4). A type not known statically (a generic, the gradual `unknown`) does
+// too, because `__termEqual` checks identity first and a scalar never reaches the structural walk. A `note shared`
+// form and a closure keep identity.
+function structuralType(type: Type | undefined): boolean {
+  if (!type) {
+    return false
+  }
+
+  switch (type.kind) {
+    case 'array':
+    case 'map':
+    case 'bytes':
+    case 'unknown':
+    case 'variable':
+    case 'dynamic':
+      return true
+    case 'named':
+      return type.name !== 'text' && type.name !== 'boolean' && type.name !== 'void' && !tsSharedForms.has(type.name)
+    default:
+      return false
+  }
+}
+
+// a map receiver's key type: the type when the receiver is a map (`like hash k v` or a native map), `true` when it is
+// a map whose key is not spelled, and `false` when the receiver is not a map at all
+function mapKeyType(type: Type | undefined): Type | true | false {
+  if (type?.kind === 'map') {
+    return type.key
+  }
+
+  if (type?.kind === 'named' && type.name === 'hash') {
+    return type.args?.[0] ?? true
+  }
+
+  return false
+}
+
+// structural equality and key interning. `__termEqual` walks records (plain objects), lists, maps and bytes, and
+// compares anything else by identity (a closure, a class instance from native code). `__termKey` returns ONE
+// representative for every structurally equal record, so a JavaScript `Map` (which keys objects by identity) finds
+// a record key by an equal record. The table is on globalThis so every emitted module shares one: a key interned in
+// one module and looked up in another must meet the same representative. A primitive is returned untouched.
+const EQUAL_PRELUDE = `function __termEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (a == null || b == null) return a == b
+  if (typeof a !== 'object' || typeof b !== 'object') return false
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) if (!__termEqual(a[i], b[i])) return false
+    return true
+  }
+  if (a instanceof Map) {
+    if (!(b instanceof Map) || a.size !== b.size) return false
+    for (const [k, v] of a) if (!b.has(k) || !__termEqual(v, b.get(k))) return false
+    return true
+  }
+  if (a instanceof Uint8Array) {
+    if (!(b instanceof Uint8Array) || a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
+    return true
+  }
+  if (Object.getPrototypeOf(a) !== Object.prototype || Object.getPrototypeOf(b) !== Object.prototype) return false
+  const ka = Object.keys(a as object)
+  if (ka.length !== Object.keys(b as object).length) return false
+  for (const k of ka) {
+    if (!Object.prototype.hasOwnProperty.call(b, k)) return false
+    if (!__termEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k])) return false
+  }
+  return true
+}
+function __termKeyText(v: unknown): string {
+  if (v === undefined) return 'u'
+  if (v === null) return 'z'
+  switch (typeof v) {
+    case 'number': return 'n' + (Object.is(v, -0) ? '0' : String(v))
+    case 'string': return 's' + JSON.stringify(v)
+    case 'boolean': return v ? 't' : 'f'
+    case 'bigint': return 'b' + String(v)
+    case 'object': break
+    default: return 'i' + __termIdentity(v as object)
+  }
+  if (Array.isArray(v)) return '[' + v.map(__termKeyText).join(',') + ']'
+  if (v instanceof Map) return '{' + Array.from(v, ([k, x]) => __termKeyText(k) + ':' + __termKeyText(x)).sort().join(',') + '}'
+  if (v instanceof Uint8Array) return 'y' + Array.from(v).join('.')
+  if (Object.getPrototypeOf(v) !== Object.prototype) return 'i' + __termIdentity(v as object)
+  const o = v as Record<string, unknown>
+  return '(' + Object.keys(o).sort().map(k => JSON.stringify(k) + ':' + __termKeyText(o[k])).join(',') + ')'
+}
+function __termIdentity(v: object): number {
+  const g = globalThis as { __termIdentities?: WeakMap<object, number>; __termIdentityNext?: number }
+  const ids = (g.__termIdentities ??= new WeakMap())
+  let id = ids.get(v)
+  if (id === undefined) { id = g.__termIdentityNext = (g.__termIdentityNext ?? 0) + 1; ids.set(v, id) }
+  return id
+}
+function __termKey<T>(k: T): T {
+  if (typeof k !== 'object' || k === null) return k
+  const g = globalThis as { __termKeys?: Map<string, unknown> }
+  const keys = (g.__termKeys ??= new Map())
+  const text = __termKeyText(k)
+  const seen = keys.get(text)
+  if (seen !== undefined) return seen as T
+  keys.set(text, k)
+  return k
+}`
 
 // the shape `__termFill` walks: one entry per field with its member name and kind. A kind is `text`, `number`,
 // `decimal`, `flag`, `list` (with its item), `form` (with its own spec, recursively) or `any`. A form that reaches
@@ -399,6 +513,20 @@ const EXCEPTION_PRELUDE = `export class ${EXCEPTION_CLASS} extends Error {
     const hive = (globalThis as { __termRaise?: (e: unknown) => void }).__termRaise
     if (hive) hive(this)
   }
+}`
+
+// the range check on an integer sum, difference, product, quotient or remainder: inside the safe integers the double
+// is exact, and past them it is not the integer any more, so it raises the stdlib's `excess` (or `shortage` below).
+// A value that is not finite came from dividing by zero (no product of safe integers nears the float maximum), and
+// raises `defect`. As the exception class when the module carries it, as an Error with the same fields when not
+const intPrelude = (withClass: boolean): string => `function __termInt(x: number): number {
+  if (!(x <= 9007199254740991 && x >= -9007199254740991)) {
+    const base = !Number.isFinite(x)
+      ? { host: "@term/base", form: "defect", note: "Invalid", code: "", time: Date.now(), link: { thing: "a division or remainder by zero" } }
+      : { host: "@term/base", form: x > 0 ? "excess" : "shortage", note: x > 0 ? "Too large" : "Too small", code: "", time: Date.now(), link: { thing: "number", limit: x > 0 ? 9007199254740991 : -9007199254740991, actual: x } }
+    ${withClass ? `throw new ${EXCEPTION_CLASS}(base)` : `throw Object.assign(new Error(base.note), base, { name: "${EXCEPTION_CLASS}" })`}
+  }
+  return x
 }`
 
 // the walk, in the prelude of a module that lowers a `fill` or `melt` with a form. `data` is the value the
@@ -816,6 +944,29 @@ function makeEmitter(
           )
         }
 
+        // a map read or write whose key may be a record goes through `__termKey`, so an equal record finds the entry
+        // (a JavaScript Map keys objects by identity). A primitive key costs one `typeof`.
+        if (
+          node.callee.form === 'member' &&
+          (node.callee.name === 'get' ||
+            node.callee.name === 'set' ||
+            node.callee.name === 'has' ||
+            node.callee.name === 'delete') &&
+          node.args.length > 0 &&
+          mapKeyType(node.callee.target.type) !== false
+        ) {
+          const key = mapKeyType(node.callee.target.type)
+
+          if (structuralType(key === true ? node.args[0]!.type : key)) {
+            tsEqualUsed = true
+
+            return `${expression(node.callee)}(${[
+              `__termKey(${expression(node.args[0]!)})`,
+              ...node.args.slice(1).map(arg => expression(arg)),
+            ].join(', ')})`
+          }
+        }
+
         // keys / values on a map materialize to an array (a `Map` iterator is not the list the stdlib returns)
         const collected = mapCollect(node.callee)
 
@@ -852,7 +1003,17 @@ function makeEmitter(
             : ''
 
         return `new Map${ann}([${node.entries
-          .map(e => `[${expression(e.key)}, ${expression(e.value)}]`)
+          .map(e => {
+            const key = expression(e.key)
+
+            if (!structuralType(e.key.type)) {
+              return `[${key}, ${expression(e.value)}]`
+            }
+
+            tsEqualUsed = true
+
+            return `[__termKey(${key}), ${expression(e.value)}]`
+          })
           .join(', ')}])`
       }
 
@@ -939,6 +1100,19 @@ function makeEmitter(
         return `${node.op}${expression(node.operand, 6)}`
 
       case 'binary': {
+        // `is-equal` on records, lists, maps or bytes compares their structure, as Rust, Swift and Kotlin do.
+        // JavaScript's `==` on two objects is identity, which made two records with equal fields unequal here only
+        // (note/term/optimize/meaning.md, question 4)
+        if (
+          (node.op === '==' || node.op === '!=') &&
+          (structuralType(node.left.type) || structuralType(node.right.type))
+        ) {
+          tsEqualUsed = true
+          const call = `__termEqual(${expression(node.left)}, ${expression(node.right)})`
+
+          return node.op === '==' ? call : `!${call}`
+        }
+
         const precedence = PRECEDENCE[node.op]
         const left = expression(node.left, precedence)
         const right = expression(node.right, precedence + 1)
@@ -946,8 +1120,24 @@ function makeEmitter(
 
         // `number` is an integer, and its quotient truncates toward zero on every backend: `7 / 2` is 3, as it is on
         // Rust, Swift and Kotlin. JavaScript's `/` is the float quotient. note/term/proof-by-default/numbers.md
+        // (and a division by zero, `Infinity` or `NaN` here, is refused by the same check below)
         if (node.op === '/' && integerDivision(node)) {
-          return `Math.trunc(${text})`
+          tsIntUsed = true
+
+          return `__termInt(Math.trunc(${text}))`
+        }
+
+        // and its sum, difference, product and remainder are the integer one or nothing: a result past the safe
+        // integers would come back ROUNDED, a different integer, so it raises `excess` (or `shortage`) instead, and a
+        // remainder by zero (`NaN`) raises `defect`. Rust, Swift and Kotlin stop the same way past i64.
+        // note/term/proof-by-default/numbers.md
+        if (
+          (node.op === '+' || node.op === '-' || node.op === '*' || node.op === '%') &&
+          integerDivision(node)
+        ) {
+          tsIntUsed = true
+
+          return `__termInt(${text})`
         }
 
         return precedence < parentPrecedence ? `(${text})` : text
@@ -1681,6 +1871,11 @@ export function emitTypeScript(
   tsVariantFieldsByOwner = new Map()
   tsRecordFields = new Map()
   tsFormWalkUsed = false
+  tsIntUsed = false
+  tsEqualUsed = false
+  tsSharedForms = new Set(
+    program.flatMap(n => (n.form === 'record-type' && n.shared ? [n.name] : [])),
+  )
 
   for (const node of program) {
     if (node.form === 'record-type') {
@@ -1852,6 +2047,14 @@ export function emitTypeScript(
   // the form walk rides behind the exception class in a module that lowered a `fill` or `melt` with a form
   if (tsFormWalkUsed) {
     prelude.push(FORM_WALK_PRELUDE)
+  }
+
+  if (tsIntUsed) {
+    prelude.push(intPrelude(prelude.includes(EXCEPTION_PRELUDE)))
+  }
+
+  if (tsEqualUsed) {
+    prelude.push(EQUAL_PRELUDE)
   }
 
   // the wake chain: one `hiveWake` per deck with its static entries, then the raise hook, when the program has the

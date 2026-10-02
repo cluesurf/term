@@ -129,7 +129,7 @@ function rustType(type: Type | undefined): string {
           ? 'String'
           : rustType(type.key)
 
-      return `std::rc::Rc<std::cell::RefCell<std::collections::HashMap<${key}, ${rustType(type.value)}>>>`
+      return `std::rc::Rc<std::cell::RefCell<TermMap<${key}, ${rustType(type.value)}>>>`
 
     case 'named': {
       const opaque = rustOpaqueTypes.get(type.name)
@@ -637,7 +637,7 @@ export function emitRust(
       case 'array':
         return 'std::rc::Rc::new(std::cell::RefCell::new(Vec::new()))'
       case 'map':
-        return 'std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()))'
+        return 'std::rc::Rc::new(std::cell::RefCell::new(TermMap::new()))'
       case 'named':
         if (type.name === 'text') {
           return 'String::new()'
@@ -656,7 +656,7 @@ export function emitRust(
         }
 
         if (type.name === 'hash') {
-          return 'std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()))'
+          return 'std::rc::Rc::new(std::cell::RefCell::new(TermMap::new()))'
         }
 
         return '0'
@@ -793,6 +793,107 @@ export function emitRust(
         node.name,
         unused.length === 1 ? unused[0]! : `(${unused.join(', ')})`,
       )
+    }
+  }
+
+  // `is-equal` on two records compares their fields, on every backend (note/term/optimize/meaning.md, question 4). A
+  // form derives `PartialEq` when every field can be compared, and `Eq + Hash` as well when every field can also be
+  // hashed, which is what lets a record be a map key. A closure, a boxed unknown, or a form that does not qualify
+  // keeps the form out (a closure has no meaningful equality). Floats compare but do not hash, and a list or a map
+  // compares by its items but is not a key (RefCell is not Hash). Decided as a greatest fixpoint, so a recursive form
+  // qualifies when nothing outside it disqualifies it.
+  const formDecls = new Map<string, Extract<(typeof program)[number], { form: 'record-type' }>>()
+
+  for (const node of program) {
+    if (node.form === 'record-type') {
+      formDecls.set(node.name, node)
+    }
+  }
+
+  const equatableForms = new Set(formDecls.keys())
+  const hashableForms = new Set(formDecls.keys())
+
+  const fieldTypeQualifies = (
+    type: Type,
+    params: Set<string>,
+    forms: Set<string>,
+    hash: boolean,
+  ): boolean => {
+    switch (type.kind) {
+      case 'number':
+      case 'boolean':
+      case 'string':
+      case 'bytes':
+      case 'unit':
+        return true
+      case 'float':
+      case 'dynamic':
+        return !hash
+      case 'array':
+        return !hash && fieldTypeQualifies(type.element, params, forms, false)
+      case 'map':
+        return (
+          !hash &&
+          fieldTypeQualifies(type.key, params, hashableForms, true) &&
+          fieldTypeQualifies(type.value, params, forms, false)
+        )
+      case 'named': {
+        const args = type.args ?? []
+
+        if (type.name === 'text' || type.name === 'boolean') {
+          return true
+        }
+
+        if (type.name === 'list') {
+          return !hash && args.every(a => fieldTypeQualifies(a, params, forms, false))
+        }
+
+        if (type.name === 'hash') {
+          return (
+            !hash &&
+            (args[0] === undefined || fieldTypeQualifies(args[0], params, hashableForms, true)) &&
+            (args[1] === undefined || fieldTypeQualifies(args[1], params, forms, false))
+          )
+        }
+
+        // a generic parameter: derive adds the bound itself (`impl<T: PartialEq> PartialEq for Pair<T>`)
+        if (params.has(type.name)) {
+          return true
+        }
+
+        return forms.has(type.name) && args.every(a => fieldTypeQualifies(a, params, forms, hash))
+      }
+      default:
+        return false
+    }
+  }
+
+  for (const [forms, hash] of [
+    [equatableForms, false],
+    [hashableForms, true],
+  ] as const) {
+    let changed = true
+
+    while (changed) {
+      changed = false
+
+      for (const name of [...forms]) {
+        const node = formDecls.get(name)!
+        const params = new Set(node.params)
+        const fields = [...node.fields, ...node.variants.flatMap(v => v.fields)]
+
+        if (!fields.every(f => fieldTypeQualifies(f.type, params, forms, hash))) {
+          forms.delete(name)
+          changed = true
+        }
+      }
+    }
+  }
+
+  // a key must also compare, so a hashable form is always an equatable one
+  for (const name of [...hashableForms]) {
+    if (!equatableForms.has(name)) {
+      hashableForms.delete(name)
     }
   }
 
@@ -949,6 +1050,19 @@ export function emitRust(
           return node.op === '==' ? check : `!${check}`
         }
 
+        // a sum, difference or product of two numbers is the integer one or the program stops: a release build's `+`
+        // wraps past i64, which is a DIFFERENT integer, and every proof about `number` is about the integer.
+        // note/term/proof-by-default/numbers.md. The function form takes a literal operand (`5.checked_add` does not)
+        const checked = { '+': 'checked_add', '-': 'checked_sub', '*': 'checked_mul' }[node.op as string]
+
+        if (
+          checked &&
+          node.left.type?.kind === 'number' &&
+          node.right.type?.kind === 'number'
+        ) {
+          return `i64::${checked}(${expr(node.left)}, ${expr(node.right)}).expect("excess: a number past i64")`
+        }
+
         return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
       }
 
@@ -1101,7 +1215,7 @@ export function emitRust(
         // `make hash` / `make list` with no binds are the native collections, not record constructions (the
         // pascal of `hash` would otherwise resolve to the std `Hash` derive macro)
         if (node.name === 'hash' && node.fields.length === 0) {
-          return 'std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()))'
+          return 'std::rc::Rc::new(std::cell::RefCell::new(TermMap::new()))'
         }
 
         if (node.name === 'list' && node.fields.length === 0) {
@@ -1220,8 +1334,8 @@ export function emitRust(
       case 'map':
         return `std::rc::Rc::new(std::cell::RefCell::new(${
           node.entries.length === 0
-            ? 'std::collections::HashMap::new()'
-            : `std::collections::HashMap::from([${node.entries
+            ? 'TermMap::new()'
+            : `TermMap::from([${node.entries
                 .map(e => `(${expr(e.key)}, ${expr(e.value)})`)
                 .join(', ')}])`
         }))`
@@ -2234,7 +2348,13 @@ export function emitRust(
         // every struct/enum is `Clone`: a closure field is an `Rc<dyn Fn>` (a cheap shared handle), so even a
         // record holding one clones. Deriving Clone lets a value be shared at a call site rather than moved --
         // the same property the Rc-wrapped collections rely on.
-        const derive = `#[derive(Clone)]\n${pad(d)}`
+        // and compares by its fields where every field can be compared, hashing too where every field can be hashed
+        // (see `equatableForms`), so `is-equal` on two records means the same thing here as on every other backend
+        const derive = `#[derive(${[
+          'Clone',
+          ...(equatableForms.has(node.name) ? ['PartialEq'] : []),
+          ...(hashableForms.has(node.name) ? ['Eq', 'Hash'] : []),
+        ].join(', ')})]\n${pad(d)}`
 
         if (node.variants.length > 0) {
           const cases = node.variants.map(v => {
@@ -2445,6 +2565,62 @@ export function emitRust(
       .map(n => (n.form === 'let' ? moduleLet(n) : stmt(n, 0))),
   ].filter(Boolean)
 
+  // the Term `hash` on this backend: an insertion-ordered map, so a walk over its keys visits them in the order they
+  // were first set, as TypeScript's Map and Kotlin's LinkedHashMap do. std's HashMap is seeded per process, and the
+  // same binary walked one map in a different order on every run (note/term/optimize/meaning.md, question 1).
+  // Always emitted: a runtime shim may name `crate::TermMap` in a program whose own code never does.
+  const termMap = [
+    `// an insertion-ordered map, the Term \`hash\` (note/term/optimize/meaning.md, question 1)
+#[allow(dead_code)]
+#[derive(Clone)]
+pub struct TermMap<K, V> { slot: std::collections::HashMap<K, usize>, entry: Vec<Option<(K, V)>>, dead: usize }
+#[allow(dead_code)]
+impl<K: std::hash::Hash + Eq + Clone, V> TermMap<K, V> {
+    pub fn new() -> Self { TermMap { slot: std::collections::HashMap::new(), entry: Vec::new(), dead: 0 } }
+    pub fn len(&self) -> usize { self.slot.len() }
+    pub fn is_empty(&self) -> bool { self.slot.is_empty() }
+    pub fn contains_key(&self, key: &K) -> bool { self.slot.contains_key(key) }
+    pub fn get(&self, key: &K) -> Option<&V> { self.slot.get(key).and_then(|&i| self.entry[i].as_ref().map(|e| &e.1)) }
+    pub fn get_mut(&mut self, key: &K) -> Option<&mut V> { match self.slot.get(key) { Some(&i) => self.entry[i].as_mut().map(|e| &mut e.1), None => None } }
+    pub fn insert(&mut self, key: K, value: V) -> Option<V> {
+        if let Some(&i) = self.slot.get(&key) { return self.entry[i].as_mut().map(|e| std::mem::replace(&mut e.1, value)); }
+        self.slot.insert(key.clone(), self.entry.len());
+        self.entry.push(Some((key, value)));
+        None
+    }
+    pub fn remove(&mut self, key: &K) -> Option<V> {
+        let i = self.slot.remove(key)?;
+        let out = self.entry[i].take().map(|e| e.1);
+        self.dead += 1;
+        if self.dead > 16 && self.dead * 2 > self.entry.len() { self.compact(); }
+        out
+    }
+    fn compact(&mut self) {
+        self.entry.retain(|e| e.is_some());
+        self.dead = 0;
+        for (i, e) in self.entry.iter().enumerate() { if let Some((k, _)) = e { if let Some(s) = self.slot.get_mut(k) { *s = i; } } }
+    }
+    pub fn clear(&mut self) { self.slot.clear(); self.entry.clear(); self.dead = 0; }
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> { self.entry.iter().filter_map(|e| e.as_ref().map(|(k, v)| (k, v))) }
+    pub fn keys(&self) -> impl Iterator<Item = &K> { self.iter().map(|(k, _)| k) }
+    pub fn values(&self) -> impl Iterator<Item = &V> { self.iter().map(|(_, v)| v) }
+}
+impl<K: std::hash::Hash + Eq + Clone, V> Default for TermMap<K, V> { fn default() -> Self { Self::new() } }
+impl<K: std::hash::Hash + Eq + Clone, V, const N: usize> From<[(K, V); N]> for TermMap<K, V> {
+    fn from(items: [(K, V); N]) -> Self { let mut m = Self::new(); for (k, v) in items { m.insert(k, v); } m }
+}
+impl<K: std::hash::Hash + Eq + Clone, V> std::iter::FromIterator<(K, V)> for TermMap<K, V> {
+    fn from_iter<I: IntoIterator<Item = (K, V)>>(items: I) -> Self { let mut m = Self::new(); for (k, v) in items { m.insert(k, v); } m }
+}
+// two maps are equal when they hold the same keys with equal values, in any order (Kotlin's Map.equals)
+impl<K: std::hash::Hash + Eq + Clone, V: PartialEq> PartialEq for TermMap<K, V> {
+    fn eq(&self, other: &Self) -> bool { self.len() == other.len() && self.iter().all(|(k, v)| other.get(k) == Some(v)) }
+}
+impl<K: std::hash::Hash + Eq + Clone + std::fmt::Debug, V: std::fmt::Debug> std::fmt::Debug for TermMap<K, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.debug_map().entries(self.iter()).finish() }
+}`,
+  ]
+
   const carrier = body.some(b => b.includes('TermException'))
     ? [
         `// the one exception value of a Term program on this backend (note/term/hive/11-native-exceptions.md)
@@ -2485,7 +2661,7 @@ impl std::error::Error for TermException {}`,
     wake.push(`pub fn wake_hive() {\n${calls}\n}`)
   }
 
-  return [...uses, ...carrier, ...body, ...rustFormWalk(fillSpecs, meltSpecs), ...wake].join('\n\n') + '\n'
+  return [...uses, ...termMap, ...carrier, ...body, ...rustFormWalk(fillSpecs, meltSpecs), ...wake].join('\n\n') + '\n'
 }
 
 // MUTATED-CAPTURE analysis: the names a function must box in `Rc<RefCell>` because a nested closure assigns to them.

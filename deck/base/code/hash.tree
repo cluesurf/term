@@ -102,7 +102,9 @@ form hash
           read key
         read fallback
 
-  # empty the map in place, returning it. Removes each key, using only the cross-backend remove primitive.
+  # empty the map in place, returning it. Removes each key through the cross-backend `delete` primitive itself, not
+  # `remove`: a top-level task named `remove` anywhere in the program (the dom's has one) shadows the method, and
+  # `clear` then called it with the map as a node (native-dom-0031).
   task clear
     take self
     like hash
@@ -113,8 +115,7 @@ form hash
         read self
       hook next
         take site, name key
-        call remove
-          read self
+        call self/delete
           read key
     send back, read self
 

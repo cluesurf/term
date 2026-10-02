@@ -617,6 +617,10 @@ export function emitSwift(
   // variant label -> the owning enum, and each variant's field names (for construction and match binding)
   const variantFields = new Map<string, string[]>()
   const variantSet = new Set<string>()
+  // the `note shared` forms, emitted as classes and compared by identity
+  const sharedForms = new Set(
+    program.flatMap(n => (n.form === 'record-type' && n.shared ? [n.name] : [])),
+  )
   // the forms a `fill` / `melt` with a form walks, gathered while the bodies are emitted
   const fillSpecs = new Map<string, FormSpec>()
   const meltSpecs = new Map<string, FormSpec>()
@@ -999,10 +1003,34 @@ export function emitSwift(
           return node.op === '==' ? check : `!${check}`
         }
 
-        const left = expr(node.left, bind)
-        const right = expr(node.right, bind)
+        // an enum variant built right inside a comparison has no type from context, so `.circle(radius: 2)` is
+        // spelled `Shape.circle(radius: 2)` there
+        const operand = (side: Expression): string => {
+          const text = expr(side, bind)
+
+          return (node.op === '==' || node.op === '!=') &&
+            side.form === 'record' &&
+            variantSet.has(side.name) &&
+            side.type?.kind === 'named' &&
+            text.startsWith('.')
+            ? `${pascal(side.type.name)}${text}`
+            : text
+        }
+
+        const left = operand(node.left)
+        const right = operand(node.right)
         // `a == (try f())` is refused by Swift ("operator can throw"): the `try` goes in front of the operator
         const mark = left.includes('try ') || right.includes('try ') ? 'try ' : ''
+
+        // a `note shared` form is a class, a reference by design, so `is-equal` on two of them is identity, as it is on
+        // TypeScript and Kotlin (note/term/optimize/meaning.md, question 4)
+        const shared = [node.left.type, node.right.type].some(
+          t => t?.kind === 'named' && sharedForms.has(t.name),
+        )
+
+        if (shared && (node.op === '==' || node.op === '!=')) {
+          return `(${mark}${left} ${node.op === '==' ? '===' : '!=='} ${right})`
+        }
 
         return `(${mark}${left} ${OP[node.op]} ${right})`
       }
@@ -1123,8 +1151,9 @@ export function emitSwift(
 
         return node.entries.length === 0
           ? `SeedMap${arg}()`
-          : `SeedMap${arg}([${node.entries
-              .map(e => `${expr(e.key, bind)}: ${expr(e.value, bind)}`)
+          : // pairs, not a Dictionary literal: a Dictionary forgets the order the entries were written in
+            `SeedMap${arg}(pairs: [${node.entries
+              .map(e => `(${expr(e.key, bind)}, ${expr(e.value, bind)})`)
               .join(', ')}])`
       }
 
@@ -1858,6 +1887,24 @@ export function emitSwift(
             `${pad(d + 1)}var ${camel(f.name)}: ${swiftType(f.type)}`,
         )
 
+        // `note shared`: a reference type, so a write through one binding is seen through every other. A class gets
+        // no memberwise init, so one is written with the same labels in the same order, and every construction site
+        // stays exactly what it is for a struct.
+        if (node.shared) {
+          // a closure stored in a field outlives the init, which Swift requires a parameter to say
+          const params = node.fields.map(
+            f =>
+              `${camel(f.name)}: ${f.type.kind === 'function' ? '@escaping ' : ''}${swiftType(f.type)}`,
+          )
+          const assigns = node.fields.map(
+            f => `${pad(d + 2)}self.${camel(f.name)} = ${camel(f.name)}`,
+          )
+
+          return `final class ${pascal(node.name)}${generics}${exceptionForms.has(node.name) ? ': Error' : ''} {\n${fields.join(
+            '\n',
+          )}\n${pad(d + 1)}init(${params.join(', ')}) {\n${assigns.join('\n')}\n${pad(d + 1)}}\n${pad(d)}}`
+        }
+
         return `struct ${pascal(node.name)}${generics}${exceptionForms.has(node.name) ? ': Error' : ''} {\n${fields.join(
           '\n',
         )}\n${pad(d)}}`
@@ -2097,6 +2144,117 @@ export function emitSwift(
       .map(n => stmt(n, 0, new Map())),
   ].filter(Boolean)
 
+  // `is-equal` on two records compares their fields, on every backend (note/term/optimize/meaning.md, question 4). A
+  // struct or enum whose every field can be compared gets a synthesized `Equatable`, and `Hashable` too when every
+  // field can be hashed (which is what lets a record be a map key). A closure or an `Any` keeps the form out, and a
+  // `note shared` form is a class, so it stays a reference compared by identity. A generic form conforms where its
+  // parameters do. Decided as a greatest fixpoint so a recursive form qualifies unless something else disqualifies it.
+  const formDecls = new Map<string, Extract<Program[number], { form: 'record-type' }>>()
+
+  for (const node of program) {
+    if (node.form === 'record-type' && !node.shared) {
+      formDecls.set(node.name, node)
+    }
+  }
+
+  const equatableForms = new Set(formDecls.keys())
+  const hashableForms = new Set(formDecls.keys())
+
+  const fieldTypeQualifies = (
+    type: Type,
+    params: Set<string>,
+    forms: Set<string>,
+    hash: boolean,
+  ): boolean => {
+    switch (type.kind) {
+      case 'number':
+      case 'float':
+      case 'boolean':
+      case 'string':
+      case 'bytes':
+        return true
+      case 'array':
+        return fieldTypeQualifies(type.element, params, forms, hash)
+      case 'map':
+        return !hash && fieldTypeQualifies(type.value, params, forms, false)
+      case 'named': {
+        const args = type.args ?? []
+
+        if (type.name === 'text' || type.name === 'boolean') {
+          return true
+        }
+
+        if (type.name === 'list') {
+          return args.every(a => fieldTypeQualifies(a, params, forms, hash))
+        }
+
+        if (type.name === 'hash') {
+          return !hash && (args[1] === undefined || fieldTypeQualifies(args[1], params, forms, false))
+        }
+
+        if (params.has(type.name)) {
+          return true
+        }
+
+        return forms.has(type.name) && args.every(a => fieldTypeQualifies(a, params, forms, hash))
+      }
+      default:
+        return false
+    }
+  }
+
+  for (const [forms, hash] of [
+    [equatableForms, false],
+    [hashableForms, true],
+  ] as const) {
+    let changed = true
+
+    while (changed) {
+      changed = false
+
+      for (const name of [...forms]) {
+        const node = formDecls.get(name)!
+        const params = new Set(node.params)
+        const fields = [...node.fields, ...node.variants.flatMap(v => v.fields)]
+
+        if (!fields.every(f => fieldTypeQualifies(f.type, params, forms, hash))) {
+          forms.delete(name)
+          changed = true
+        }
+      }
+    }
+  }
+
+  const conformances: string[] = []
+
+  for (const [name, node] of formDecls) {
+    const swiftName = pascal(name)
+
+    // only a form this program actually declares as a struct or an enum
+    const declared = new RegExp(`^(struct|indirect enum) ${swiftName}\\b`)
+
+    if (!body.some(b => declared.test(b))) {
+      continue
+    }
+
+    for (const [protocol, forms] of [
+      ['Equatable', equatableForms],
+      ['Hashable', hashableForms],
+    ] as const) {
+      if (!forms.has(name) || (protocol === 'Hashable' && !equatableForms.has(name))) {
+        continue
+      }
+
+      const where = node.params.length
+        ? ` where ${node.params.map(p => `${p.toUpperCase()}: ${protocol}`).join(', ')}`
+        : ''
+
+      conformances.push(`extension ${swiftName}: ${protocol}${where} {}`)
+    }
+  }
+
+  body.push(...conformances)
+
   const prelude: string[] = []
 
   if (body.some(b => b.includes('SeedError('))) {
@@ -2114,14 +2272,56 @@ export function emitSwift(
   }
 
   // the reference wrapper for maps (a class so mutation persists across a struct copy); emitted only when used
+  // `data` is insertion-ordered (SeedOrdered), so a walk over a map's keys visits them in the order they were first set,
+  // as TypeScript's Map and Kotlin's LinkedHashMap do. A Swift Dictionary is seeded per process, and the same binary
+  // walked one map in a different order on every run (note/term/optimize/meaning.md, question 1). SeedOrdered keeps
+  // the Dictionary surface the emitter and the runtime shims use: a subscript, count, keys, values, removeValue and
+  // iteration as (key, value).
   if (body.some(b => b.includes('SeedMap'))) {
     prelude.push(
       [
+        'struct SeedOrdered<K: Hashable, V>: Sequence {',
+        '    private var slot: [K: Int] = [:]',
+        '    private var entry: [(key: K, value: V)?] = []',
+        '    private var dead = 0',
+        '    init() {}',
+        '    init(_ data: [K: V]) { for (k, v) in data { self[k] = v } }',
+        '    var count: Int { slot.count }',
+        '    var isEmpty: Bool { slot.isEmpty }',
+        '    subscript(key: K) -> V? {',
+        '        get { if let i = slot[key] { return entry[i]?.value }; return nil }',
+        '        set {',
+        '            guard let value = newValue else { removeValue(forKey: key); return }',
+        '            if let i = slot[key] { entry[i] = (key: key, value: value) } else { slot[key] = entry.count; entry.append((key: key, value: value)) }',
+        '        }',
+        '    }',
+        '    @discardableResult mutating func removeValue(forKey key: K) -> V? {',
+        '        guard let i = slot.removeValue(forKey: key) else { return nil }',
+        '        let out = entry[i]?.value',
+        '        entry[i] = nil',
+        '        dead += 1',
+        '        if dead > 16 && dead * 2 > entry.count { compact() }',
+        '        return out',
+        '    }',
+        '    private mutating func compact() {',
+        '        entry = entry.filter { $0 != nil }',
+        '        dead = 0',
+        '        for (i, e) in entry.enumerated() { slot[e!.key] = i }',
+        '    }',
+        '    var keys: [K] { entry.compactMap { $0?.key } }',
+        '    var values: [V] { entry.compactMap { $0?.value } }',
+        '    func makeIterator() -> IndexingIterator<[(key: K, value: V)]> { entry.compactMap { $0 }.makeIterator() }',
+        '}',
         'final class SeedMap<K: Hashable, V> {',
-        '    var data: [K: V]',
-        '    init(_ data: [K: V] = [:]) { self.data = data }',
+        '    var data: SeedOrdered<K, V>',
+        '    init(_ data: [K: V] = [:]) { self.data = SeedOrdered(data) }',
+        '    init(pairs: [(K, V)]) { var d = SeedOrdered<K, V>(); for (k, v) in pairs { d[k] = v }; self.data = d }',
         '    @discardableResult func setting(_ key: K, _ value: V) -> SeedMap<K, V> { data[key] = value; return self }',
         '    @discardableResult func removing(_ key: K) -> Bool { let had = data[key] != nil; data.removeValue(forKey: key); return had }',
+        '}',
+        '// two maps are equal when they hold the same keys with equal values, in any order (Kotlin\'s Map.equals)',
+        'extension SeedMap: Equatable where V: Equatable {',
+        '    static func == (a: SeedMap<K, V>, b: SeedMap<K, V>) -> Bool { a.data.count == b.data.count && a.data.allSatisfy { b.data[$0.key] == $0.value } }',
         '}',
       ].join('\n'),
     )
@@ -2139,6 +2339,13 @@ export function emitSwift(
         '    @discardableResult func unshifting(_ item: T) -> Int { data.insert(item, at: 0); return data.count }',
         '    @discardableResult func shifting() -> T { return data.removeFirst() }',
         '    @discardableResult func splicing(_ start: Int, _ count: Int, _ items: [T]) -> Int { data.replaceSubrange(start..<(start + count), with: items); return data.count }',
+        '}',
+        '// a list compares and hashes by its items, as on every other backend (note/term/optimize/meaning.md, question 4)',
+        'extension SeedList: Equatable where T: Equatable {',
+        '    static func == (a: SeedList<T>, b: SeedList<T>) -> Bool { a.data == b.data }',
+        '}',
+        'extension SeedList: Hashable where T: Hashable {',
+        '    func hash(into hasher: inout Hasher) { hasher.combine(data) }',
         '}',
       ].join('\n'),
     )

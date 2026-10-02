@@ -48,9 +48,9 @@ mod runtime {
         };
 
         let headers: std::rc::Rc<
-            std::cell::RefCell<std::collections::HashMap<String, String>>,
+            std::cell::RefCell<crate::TermMap<String, String>>,
         > = std::rc::Rc::new(std::cell::RefCell::new(
-            std::collections::HashMap::new(),
+            crate::TermMap::new(),
         ));
         let mut length = 0usize;
 

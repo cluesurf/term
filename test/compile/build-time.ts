@@ -51,7 +51,7 @@ const project = mkdtempSync(join(tmpdir(), 'term-buildtime-'))
 const cacheHome = join(project, 'store')
 
 cpSync(join(SEED, 'code'), join(project, 'code'), { recursive: true })
-writeFileSync(join(project, 'deck.tree'), 'deck @term/seed\n  code <0.0.0>\n')
+writeFileSync(join(project, 'deck.tree'), 'deck @term/base\n  code <0.0.0>\n')
 
 let pass = 0
 let fail = 0

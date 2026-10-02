@@ -1,0 +1,89 @@
+
+# Select on a platform with a picker of its own: NSPopUpButton on macOS, a UIButton showing a selection menu on
+# iOS, a Spinner on Android, each the platform's own choice control (native-dom-0026). Reached through
+# `component/select.tree` by the `toolkit` rung of the macos, ios and android env chains.
+#
+# THE SAME CONTRACT as the generic ../select.tree: `host`, `class`, `control` (the chosen option, a text signal)
+# and `options`. The toolkit host makes the platform's picker for the tag `choice`, takes `options` as its items (one
+# per line), reports the person's choice as `change`, and answers `get-value` with the chosen item as the control holds
+# it.
+
+load @term/site/code/view/render
+  find element
+  find attribute
+  find event
+load @term/site/code/view/reactive
+  find signal
+  find make-effect
+  find read-signal
+  find write-signal
+load @term/site/code/dom/dom
+  find view
+  find append
+  find get-value
+  find set-value
+
+# the work of the view below, in a task: in a `view` body a bare `call` renders as a text child
+task mount-select
+  take host, like view
+  take class, like text
+  take control, like signal text
+  take options
+    like list
+      like text
+  like view
+  save picker
+    call element
+      text <choice>
+  call attribute
+    read picker
+    text <data-slot>
+    text <select>
+  call attribute
+    read picker
+    text <class>
+    read class
+  # the choices, one per line: what the host fills the platform's picker with. Joined here, not with text/util's
+  # `join`, whose Swift runtime is an `enum text` that collides with the render runtime's `text` (native-dom-0042)
+  save lines, text <>
+  walk list, read options
+    hook next
+      take site, name choice
+      save lines, text <{{lines}}{{choice}}\n>
+  call attribute
+    read picker
+    text <options>
+    read lines
+  call make-effect
+    task show-choice
+      call set-value
+        read picker
+        call read-signal
+          bind self, read control
+  call event
+    read picker
+    text <change>
+    task chosen
+      call write-signal
+        bind self, read control
+        bind value
+          call get-value
+            read picker
+  call append
+    read host
+    read picker
+  send back, read picker
+
+view select
+  take host, like view
+  take class, like text
+  take control, like signal text
+  take options
+    like list
+      like text
+  save mounted
+    call mount-select
+      read host
+      read class
+      read control
+      read options

@@ -164,6 +164,47 @@ export function startDevServer(options: DevOptions): DevServer {
 
   const app = new Hono()
 
+  // Only this machine may ask (native-dom-0018, after Tauri 2.12's dev-server fix). A page anywhere on the web can
+  // point a name it controls at 127.0.0.1 and then read this server as its own origin (DNS rebinding), and a
+  // cross-site page can open the HMR stream. So a request whose Host is not a loopback name is refused, and so is
+  // one whose Origin is some other site. `10.0.2.2` is how the Android emulator reaches this machine's loopback, and
+  // the iOS simulator shares the host's network, so the cask's dev loop still works. TERM_DEV_HOSTS (comma-separated)
+  // adds names, for a real device on the local network.
+  const allowedHosts = new Set([
+    'localhost',
+    '127.0.0.1',
+    '[::1]',
+    '10.0.2.2',
+    ...(process.env.TERM_DEV_HOSTS ?? '').split(',').map(name => name.trim()).filter(Boolean),
+  ])
+  const hostName = (value: string): string => (value.startsWith('[') ? value.slice(0, value.indexOf(']') + 1) : value.split(':')[0]!)
+
+  app.use('*', async (context, next) => {
+    const host = context.req.header('host') ?? ''
+
+    if (!allowedHosts.has(hostName(host))) {
+      return context.text(`refused: the dev server answers this machine only, not host ${host || '(none)'}`, 403)
+    }
+
+    const origin = context.req.header('origin')
+
+    if (origin) {
+      let originHost = ''
+
+      try {
+        originHost = new URL(origin).host
+      } catch {
+        originHost = ''
+      }
+
+      if (!allowedHosts.has(hostName(originHost))) {
+        return context.text(`refused: a page from ${origin} may not read the dev server`, 403)
+      }
+    }
+
+    return next()
+  })
+
   // each compiled module, served as native ESM
   app.get(`${MOD_PREFIX}:name`, context => {
     const name = context.req.param('name').replace(/\.mjs$/, '')
@@ -211,7 +252,8 @@ export function startDevServer(options: DevOptions): DevServer {
     ),
   )
 
-  const server = serve({ fetch: app.fetch, port })
+  // loopback only: nothing on the network can reach it at all, whatever it sends as Host
+  const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' })
 
   return {
     port,

@@ -1,0 +1,356 @@
+
+# The dom on the platform's own UI toolkit (native-dom-0005, 0006): AppKit on macOS, UIKit on iOS and Android Views,
+# so a Term program's views are real platform views with no WebView and no JavaScript engine. See
+# note/term/app/10-native-dom.md.
+#
+# ONE MODULE, ONE RUNTIME PER LANGUAGE. This file docks `<global:native-view>`, and the build takes its runtime from
+# runtime/ beside it by the target's extension: runtime/native-view.swift on macOS and iOS (which tells AppKit and
+# UIKit apart itself) and runtime/native-view.kt on Android. The `ios`, `macos` and `android` envs reach this file
+# through the `toolkit` rung of their chains (compile/native.ts, NATIVE_ENV_FALLBACK).
+#
+# A node's handle is the runtime's own node object, opaque to Term. Every task forwards to `native-view` and passes
+# the handle through untouched; the runtime reads it back. Conforms to ../dom. The page tasks (title, meta, proxy,
+# path, pop) have no meaning in a native window and are no-ops, as on the server.
+
+load ../../view
+  find view
+
+dock load
+  load <global:native-view>, name native-view
+  note native
+
+task create-element
+  take tag, like text
+  like view
+  send back
+    make view
+      bind handle
+        call native-view/create-element
+          read tag
+
+task create-text
+  take value, like text
+  like view
+  send back
+    make view
+      bind handle
+        call native-view/create-text
+          read value
+
+task set-text
+  take node, like view
+  take value, like text
+  call native-view/set-text
+    read node/handle
+    read value
+
+task set-attribute
+  take node, like view
+  take name, like text
+  take value, like text
+  call native-view/set-attribute
+    read node/handle
+    read name
+    read value
+
+task get-attribute
+  take node, like view
+  take name, like text
+  like text
+  send back
+    call native-view/get-attribute
+      read node/handle
+      read name
+
+task set-style
+  take node, like view
+  take property, like text
+  take value, like text
+  call native-view/set-style
+    read node/handle
+    read property
+    read value
+
+task add-class
+  take node, like view
+  take name, like text
+  call native-view/add-class
+    read node/handle
+    read name
+
+task remove-class
+  take node, like view
+  take name, like text
+  call native-view/remove-class
+    read node/handle
+    read name
+
+task set-property
+  take node, like view
+  take name, like text
+  take value, like text
+  call native-view/set-attribute
+    read node/handle
+    read name
+    read value
+
+task focus
+  take node, like view
+  call native-view/focus
+    read node/handle
+
+task blur
+  take node, like view
+  call native-view/blur
+    read node/handle
+
+task listen
+  take node, like view
+  take event, like text
+  take handler
+    like task
+  call native-view/listen
+    read node/handle
+    read event
+    read handler
+
+# a native control's events carry no DOM event object, so a handler that wants one is not called
+task listen-event
+  take node, like view
+  take event, like text
+  take handler
+    like task
+      take event, like any
+
+task listen-document
+  take event, like text
+  take handler
+    like task
+      take event
+  like task
+  send back
+    task drop
+      save skip, code 0
+
+task anchor
+  take reference, like view
+  take panel, like view
+  take placement, like text
+  take offset, like number
+  take flip, like boolean
+  take shift, like boolean
+  like task
+  send back
+    task drop
+      save skip, code 0
+
+task page-path
+  like text
+  send back, text </>
+
+task set-title
+  take title, like text
+
+task set-meta
+  take name, like text
+  take content, like text
+
+task set-proxy
+  take url, like text
+
+task proxy-target
+  like text
+  send back, text <>
+
+task page-body
+  like view
+  send back
+    call create-element
+      bind tag, text <main>
+
+task listen-pop
+  take handler
+    like task
+
+task observe-size
+  take node, like view
+  take handler
+    like task
+      take width
+
+task measure-width
+  take node, like view
+  like number
+  send back
+    call native-view/measure-width
+      read node/handle
+
+task check-font
+  take family, like text
+  like boolean
+  send back, true
+
+task watch-font
+  take family, like text
+  take handler
+    like task
+      take status, like text
+
+task watch-deadline
+  take family, like text
+  take threshold, like number
+  take handler
+    like task
+
+# the tree as HTML, read back from the platform views themselves
+task serialize
+  take node, like view
+  like text
+  send back
+    call native-view/serialize
+      read node/handle
+
+task page-shell
+  take body, like text
+  like text
+  send back, read body
+
+task append
+  take parent, like view
+  take child, like view
+  call native-view/append
+    read parent/handle
+    read child/handle
+
+task remove
+  take node, like view
+  call native-view/remove
+    read node/handle
+
+task replace
+  take old, like view
+  take new, like view
+  call native-view/replace
+    read old/handle
+    read new/handle
+
+task clear
+  take node, like view
+  call native-view/clear
+    read node/handle
+
+task child-count
+  take node, like view
+  like number
+  send back
+    call native-view/child-count
+      read node/handle
+
+task get-value
+  take node, like view
+  like text
+  send back
+    call native-view/get-value
+      read node/handle
+
+task set-value
+  take node, like view
+  take value, like text
+  call native-view/set-value
+    read node/handle
+    read value
+
+# ---- the app around the tree ----
+
+# a window titled `title`, its content a root node to mount the program into
+task open-root
+  take title, like text
+  take width, like number
+  take height, like number
+  like view
+  send back
+    make view
+      bind handle
+        call native-view/open-root
+          read title
+          read width
+          read height
+
+# run `body` once the app is running and its window exists
+task after-launch
+  take body
+    like task
+  call native-view/after-launch
+    read body
+
+task show-window
+  call native-view/show
+
+# hand the process to the platform. Returns only when the app quits
+task run-app
+  call native-view/run
+
+task exit-app
+  take status, like number
+  call native-view/exit
+    read status
+
+# ---- for tests: what a person does, and what they see ----
+
+# press a control the platform's own way, so its own action runs
+task press
+  take node, like view
+  call native-view/press
+    read node/handle
+
+# for tests: choose an item of a select the way a person does, the control first and then its report (native-dom-0026)
+task choose
+  take node, like view
+  take value, like text
+  call native-view/choose
+    read node/handle
+    read value
+
+# for tests: move a slider the way a finger does, the control first and then its own report (native-dom-0026)
+task slide
+  take node, like view
+  take value, like text
+  call native-view/slide
+    read node/handle
+    read value
+
+task snapshot
+  take path, like text
+  call native-view/snapshot
+    read path
+
+# the child at `index`, counting from 0
+task child-at
+  take node, like view
+  take index, like number
+  like view
+  send back
+    make view
+      bind handle
+        call native-view/child-at
+          read node/handle
+          read index
+
+task say
+  take line, like text
+  call native-view/say
+    read line
+
+# where a node is drawn, `x,y,width,height` in points (dp on Android) from the content's top left
+task frame-of
+  take node, like view
+  like text
+  send back
+    call native-view/frame-of
+      read node/handle
+
+# every style a host could not map onto its platform, one per line, empty when everything mapped
+task unsupported-styles
+  like text
+  send back
+    call native-view/unsupported-styles

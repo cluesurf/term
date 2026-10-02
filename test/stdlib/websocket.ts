@@ -55,7 +55,9 @@ task echo
 async function main(){
   const srv=wsEcho(8761); await new Promise<void>(r=>srv.listen(8761,'127.0.0.1',r))
   const r:any=compile({file:'main.tree',text:SRC},{resolve:withNativeEnv('node',stdlib)})
-  if(!r.ok){console.log('COMPILE FAIL',JSON.stringify([...new Set(r.diagnostics?.map((d:any)=>d.message))].slice(0,5)));srv.close();return}
+  // A COMPILE FAILURE FAILS. It used to return with exit 0, and while the stdlib resolver here matched nothing the gate
+  // reported this suite `ok, 0 pass` on every run without compiling the program once.
+  if(!r.ok){console.log('COMPILE FAIL',JSON.stringify([...new Set(r.diagnostics?.map((d:any)=>d.message))].slice(0,5)));srv.close();process.exit(1)}
   const ts=nativePrelude(r.program,'node',readRuntime)+'\n'+r.typescript
   const dir=mkdtempSync(join(tmpdir(),'ws-'));const f=join(dir,'m.ts');writeFileSync(f,ts)
   const m:any=await import(pathToFileURL(f).href)
@@ -63,5 +65,8 @@ async function main(){
   try { eq('websocket connect/send/receive round-trip', await m.echo('ws://127.0.0.1:8761','hello-ws'), 'hello-ws') }
   finally { srv.close() }
   console.log('\nnetwork/websocket: '+pass+' pass, '+fail+' fail')
+  // exit explicitly: `srv.close()` stops new connections but leaves the upgraded socket open, so the process otherwise
+  // lives forever after a passing run and the gate waits on it until its own limit
+  process.exit(fail ? 1 : 0)
 }
 main()

@@ -6,12 +6,19 @@
 load @term/base/code/list
   find list
 
+# A signal, an effect and an owner are each ONE object that every reader holds: a write to a signal must reach the
+# effects that subscribed to that very signal. `note shared` says so, so a backend whose forms are values (Swift's
+# `struct`) emits a reference type instead of copying the signal at every binding.
 form signal
+  note shared
   head t
   link value, like t
-  link observers, like list
+  link observers
+    like list
+      like effect
 
 form effect
+  note shared
   link run
     like task
   link live, like boolean
@@ -21,24 +28,36 @@ form effect
 # Disposing an owner stops its effects re-running and runs its cleanups, so a view region tears down with no leaks.
 # Named `owner` (not `scope`) to avoid colliding with the focus-scope controller in face.
 form owner
-  link effects, like list
-  link cleanups, like list
+  note shared
+  link effects
+    like list
+      like effect
+  link cleanups
+    like list
+      like task
 
-# the effect currently running, so a signal read can subscribe it (a stack, to support nested effects)
+# the effect currently running, so a signal read can subscribe it (a stack, to support nested effects). The element
+# is written, because a bare `make list` here reaches a native backend as a list of `Any`
 host running
   make list
+  like list
+    like effect
 
 # the open ownership scopes (a stack). Each effect created while a scope is open is registered to it, so the scope can
 # later be disposed as a unit (its effects stop re-running). This is what lets a hot-swap tear down the old view.
 host owners
   make list
+  like list
+    like owner
 
 # batching defers effect runs until a batch completes (one update pass for many writes); pausing suppresses tracking
 # so an untracked read does not subscribe the running effect. One mutable cell holds both flags plus the deferred queue.
 form react-flags
   link batching, like boolean
   link paused, like boolean
-  link queue, like list
+  link queue
+    like list
+      like effect
 
 host flags
   make react-flags
@@ -57,20 +76,22 @@ task make-signal
       bind observers
         make list
 
-# self / value are `like any` (gradual) rather than a generic `signal<t>`: the checker does not instantiate an
-# imported generic fresh per call, so a `signal<t>` self would monomorphize to whichever element type is read / written
-# first (e.g. the string font-status signal), then reject a signal of any other element (a numeric phase / transition
-# signal). `any` keeps the reactive primitives usable across every signal element type in one program.
+# Generic over the signal's element. These were `like any` until 2026-10-02, on the note that the checker did not
+# instantiate an imported generic fresh per call. Probed that day (tmp/sig in this repo, native-dom-0002): an imported
+# `signal t` read and written at a number and at a text in one program checks clean and emits `Signal<Int>` and
+# `Signal<String>` on Swift. `any` is what reached Swift as `Any`, so the native renderer needs the real type.
 task read-signal
-  take self, like any
-  like any
+  head t
+  take self, like signal t
+  like t
   call track
     bind signal, read self
   send back, read self/value
 
 task write-signal
-  take self, like any
-  take value, like any
+  head t
+  take self, like signal t
+  take value, like t
   save self/value, read value
   # snapshot the observers and clear them, so effects re-subscribe fresh when they re-run (no growth mid-iteration)
   save subscribers, read self/observers
@@ -145,7 +166,7 @@ task on-cleanup
 # push the effect, run it (so its reads subscribe), then pop. A disposed effect (live false) is skipped, so a
 # torn-down scope's effects never run again even though a written signal still holds them as observers briefly.
 task run-effect
-  take effect, flex true
+  take effect, like effect
   fork test
     hook test
       read effect/live
@@ -227,7 +248,8 @@ task make-root
 # subscribe the currently-running effect to a signal, if any effect is running (the top of the stack) and tracking is
 # not paused (untrack / on-mount suppress it)
 task track
-  take signal, flex true
+  head t
+  take signal, like signal t
   fork test
     hook test
       read flags/paused

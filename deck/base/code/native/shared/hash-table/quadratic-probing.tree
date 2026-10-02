@@ -5,6 +5,12 @@
 # `capacity` probes and answers -1 when the table has no slot for the key, so no input can loop it.
 # A removed slot keeps state 2 (a tombstone), so probe chains survive a delete. Held by six behavior tests
 # in deck/base/test/hash-table.tree.
+#
+# THE INVARIANT, stated where it is relied on: the capacity is positive and each of the three slot lists holds
+# exactly `capacity` slots. `make-hash-table` promises it (`must`), every method that reads a slot assumes it
+# (`have`), and every method that writes one promises it back, so `term hold` proves every slot read inside its
+# list. The triangular offset is kept as a running sum (`offset`, the previous one plus `step`) rather than computed
+# as `step * (step + 1) / 2`, which is the same number and a sum the prover can read.
 load @term/base/code/boolean
   find not
 
@@ -40,23 +46,37 @@ form hash-table
         read self/size
         code 0
 
-  # the slot index for `key` after `step` collisions: the triangular sequence covers every slot of a
-  # power-of-two table
+  # the slot `offset` past `base`, wrapped into the table: a slot index, inside it
   task probe
     take self
     take base, like number
-    take step, like number
+    take offset, like number
+    have
+      call is-above
+        read self/capacity
+        code 0
+    have
+      call is-minimum
+        read base
+        code 0
+    have
+      call is-minimum
+        read offset
+        code 0
     like number
+    must
+      call is-minimum
+        read back
+        code 0
+    must
+      call is-below
+        read back
+        read self/capacity
     send back
       call modulo
         call add
           read base
-          call divide
-            call multiply
-              read step
-              call increment
-                bind value, read step
-            code 2
+          read offset
         read self/capacity
 
   # the key's own slot, a reusable removed slot, or the hole that ends the search; -1 when `capacity`
@@ -64,19 +84,67 @@ form hash-table
   task locate
     take self
     take key, like text
+    have
+      call is-above
+        read self/capacity
+        code 0
+    have
+      call is-equal
+        read self/state/length
+        read self/capacity
+    have
+      call is-equal
+        read self/keys/length
+        read self/capacity
     like number
+    must
+      call is-below
+        read back
+        read self/capacity
+    save digest
+      call hash
+        read key
     save base
       call modulo
-        call hash
-          read key
+        read digest
         read self/capacity
     save step, code 0
+    save offset, code 0
     save i, read base
     save reuse
       call subtract
         code 0
         code 1
     walk test
+      must
+        call is-minimum
+          read i
+          code 0
+      must
+        call is-below
+          read i
+          read self/capacity
+      must
+        call is-below
+          read reuse
+          read self/capacity
+      must
+        call is-minimum
+          read offset
+          code 0
+      # it ends: a turn leaves once `step` passes the capacity, and `step` grows by one each turn
+      must
+        call is-maximum
+          read step
+          call add
+            read self/capacity
+            code 1
+      down
+        call subtract
+          call add
+            read self/capacity
+            code 1
+          read step
       hook test
         true
       hook hold
@@ -127,26 +195,74 @@ form hash-table
         save step
           call increment
             bind value, read step
+        save offset
+          call add
+            read offset
+            read step
         save i
           call probe
             read self
             read base
-            read step
+            read offset
     send back, read reuse
 
   # the key's held slot, walking past removed slots; -1 when the key is absent
   task seek
     take self
     take key, like text
+    have
+      call is-above
+        read self/capacity
+        code 0
+    have
+      call is-equal
+        read self/state/length
+        read self/capacity
+    have
+      call is-equal
+        read self/keys/length
+        read self/capacity
     like number
+    must
+      call is-below
+        read back
+        read self/capacity
+    save digest
+      call hash
+        read key
     save base
       call modulo
-        call hash
-          read key
+        read digest
         read self/capacity
     save step, code 0
+    save offset, code 0
     save i, read base
     walk test
+      must
+        call is-minimum
+          read i
+          code 0
+      must
+        call is-below
+          read i
+          read self/capacity
+      must
+        call is-minimum
+          read offset
+          code 0
+      # it ends: a turn leaves once `step` passes the capacity, and `step` grows by one each turn
+      must
+        call is-maximum
+          read step
+          call add
+            read self/capacity
+            code 1
+      down
+        call subtract
+          call add
+            read self/capacity
+            code 1
+          read step
       hook test
         true
       hook hold
@@ -185,11 +301,15 @@ form hash-table
         save step
           call increment
             bind value, read step
+        save offset
+          call add
+            read offset
+            read step
         save i
           call probe
             read self
             read base
-            read step
+            read offset
     send back
       call subtract
         code 0
@@ -199,6 +319,38 @@ form hash-table
     take self
     take key, like text
     take value, like unknown
+    have
+      call is-above
+        read self/capacity
+        code 0
+    have
+      call is-equal
+        read self/state/length
+        read self/capacity
+    have
+      call is-equal
+        read self/keys/length
+        read self/capacity
+    have
+      call is-equal
+        read self/values/length
+        read self/capacity
+    must
+      call is-above
+        read self/capacity
+        code 0
+    must
+      call is-equal
+        read self/state/length
+        read self/capacity
+    must
+      call is-equal
+        read self/keys/length
+        read self/capacity
+    must
+      call is-equal
+        read self/values/length
+        read self/capacity
     save i
       call locate
         read self
@@ -233,6 +385,22 @@ form hash-table
   task find
     take self
     take key, like text
+    have
+      call is-above
+        read self/capacity
+        code 0
+    have
+      call is-equal
+        read self/state/length
+        read self/capacity
+    have
+      call is-equal
+        read self/keys/length
+        read self/capacity
+    have
+      call is-equal
+        read self/values/length
+        read self/capacity
     like unknown
     save i
       call seek
@@ -250,6 +418,38 @@ form hash-table
   task remove
     take self
     take key, like text
+    have
+      call is-above
+        read self/capacity
+        code 0
+    have
+      call is-equal
+        read self/state/length
+        read self/capacity
+    have
+      call is-equal
+        read self/keys/length
+        read self/capacity
+    have
+      call is-equal
+        read self/values/length
+        read self/capacity
+    must
+      call is-above
+        read self/capacity
+        code 0
+    must
+      call is-equal
+        read self/state/length
+        read self/capacity
+    must
+      call is-equal
+        read self/keys/length
+        read self/capacity
+    must
+      call is-equal
+        read self/values/length
+        read self/capacity
     save i
       call seek
         read self
@@ -270,7 +470,7 @@ form hash-table
 
 # a table with `capacity` slots, each starting empty. A capacity of zero or less made every later operation take
 # a remainder by zero (`locate`, `probe`), which tier 0 found on 2026-10-02 with nothing written: the `have` below
-# is owed by every caller now.
+# is owed by every caller now. The `must` lines are the invariant every method relies on.
 task make-hash-table
   take capacity, like number
   have
@@ -278,6 +478,22 @@ task make-hash-table
       read capacity
       code 0
   like hash-table
+  must
+    call is-equal
+      read back/capacity
+      read capacity
+  must
+    call is-equal
+      read back/state/length
+      read capacity
+  must
+    call is-equal
+      read back/keys/length
+      read capacity
+  must
+    call is-equal
+      read back/values/length
+      read capacity
   save table
     make hash-table
       bind capacity, read capacity

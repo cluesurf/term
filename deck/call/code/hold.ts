@@ -310,11 +310,12 @@ export async function callHold(input: {
         `  trusted: ${ledger.native.length} impure task(s) (reach native code, are async, or have no body), ${ledger.axioms.length} axiom(s), ${ledger.unending.length} recursion(s) not shown to end, ${ledger.roaming.length} task(s) marked to run forever (note roam), and one assumption: native code handed only scalars reaches no Term value`,
       ),
     )
-    // the linear prover's refutations are replayed by a separate checker; one the search found and the checker
-    // refused is reported unproven, and counted here because it is a bug in the search (check/certificate.ts)
+    // the linear prover's refutations and the sum-of-squares provers' Gram matrices are replayed by a separate
+    // checker; one the search found and the checker refused is reported unproven, and counted here because it is a
+    // bug in the search (check/certificate.ts). Sturm and CAD are not certified, and the line says so
     console.log(
       fade(
-        `  certified: every linear refutation replayed by the checker, ${summary.uncertified} found by the search and refused`,
+        `  certified: every linear refutation and sum-of-squares certificate replayed by the checker, ${summary.uncertified} found by the search and refused. Sturm and CAD are trusted as written`,
       ),
     )
 

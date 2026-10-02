@@ -47,3 +47,9 @@ task field
     call postgres/field
       read row
       read name
+
+# a row here is a plain value, so there is nothing to let go (native-dom-0029: `release` frees a row in a cask's page)
+task release
+  take row, like row
+  note async
+  save skip, code 0

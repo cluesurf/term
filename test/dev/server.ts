@@ -6,6 +6,7 @@ import { startDevServer } from '@term/make/code/dev/server'
 import { applyHmr } from '@term/make/code/dev/client'
 import type { HmrMessage } from '@term/make/code/dev/client'
 import * as fs from 'node:fs'
+import * as http from 'node:http'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -138,6 +139,31 @@ async function main(): Promise<void> {
   )
 
   await reader.cancel()
+
+  // only this machine may ask (native-dom-0018): a rebound DNS name and a cross-site page are refused, the loopback
+  // names and the Android emulator's alias for this machine are not. `fetch` cannot set Host, so these go through http
+  const ask = (headers: Record<string, string>, at = '/'): Promise<number> =>
+    new Promise(resolve => {
+      const request = http.get({ host: '127.0.0.1', port: PORT, path: at, headers }, response => {
+        response.resume()
+        resolve(response.statusCode ?? 0)
+        request.destroy()
+      })
+      request.on('error', () => resolve(0))
+    })
+
+  ok('a rebound host is refused', (await ask({ host: `rebound.example:${PORT}` })) === 403)
+  ok('localhost is served', (await ask({ host: `localhost:${PORT}` })) === 200)
+  ok('the emulator alias for this machine is served', (await ask({ host: `10.0.2.2:${PORT}` })) === 200)
+  ok(
+    'a cross-site page may not open the HMR stream',
+    (await ask({ host: `localhost:${PORT}`, origin: 'https://elsewhere.example' }, '/@seed/hmr')) === 403,
+  )
+  ok(
+    'a same-machine origin may',
+    (await ask({ host: `localhost:${PORT}`, origin: `http://localhost:${PORT}` }, '/@seed/hmr')) === 200,
+  )
+
   server.close()
   fs.rmSync(dir, { recursive: true, force: true })
 

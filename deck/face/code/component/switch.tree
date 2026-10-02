@@ -1,43 +1,7 @@
 
-# Switch — headless, behavior-complete. A toggle backed by the shared `disclosure` controller (on = open). The consumer
-# passes one controller:
-#
-#   save wifi, call make-disclosure / bind start, false
-#   zone switch / bind control, read wifi
-#
-# role=switch + reactive data-state (checked/unchecked, derived from disclosure-state mapped on) drive a11y + the CSS
-# thumb slide; aria-checked tracks the boolean; click toggles. Parts: switch (root button) + switch-thumb.
+# Switch: ONE component for the author, the platform's own control underneath (native-dom-0011, 0013). The build fills
+# `{platform}` from its env chain: macOS, iOS and Android reach ./native/toolkit/switch.tree (NSSwitch, UISwitch,
+# android.widget.Switch) through their `toolkit` rung, and every other target, the web among them, falls to the
+# generic ./native/switch.tree. Both take `host`, `class` and `control`. See note/term/app/11-uniform-interface.md.
 
-load @term/site/code/view/render
-  find element
-load @term/site/code/dom/dom
-  find view
-  find append
-load ../logic/disclosure
-  find disclosure-open
-  find disclosure-state
-  find toggle-disclosure
-
-view switch
-  take host, like view
-  take class
-  take control
-  view button
-    bind type, text <button>
-    bind role, text <switch>
-    bind data-slot, text <switch>
-    bind data-state
-      call disclosure-state
-        bind self, read control
-    bind aria-checked
-      call disclosure-open
-        bind self, read control
-    bind class, read class
-    hook click
-      call toggle-disclosure
-        bind self, read control
-    view span
-      bind data-slot, text <switch-thumb>
-      bind data-state
-        call disclosure-state
-          bind self, read control
+bear @term/face/code/component/native/{platform}/switch

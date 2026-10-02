@@ -1,99 +1,12 @@
 
-# Select — headless combobox. Open/close is the shared `disclosure` controller; the trigger toggles and the content
-# mounts when open with reactive data-state. The items are structural (role=option) and fire a per-item `press` so the
-# consumer wires value selection with a `selection` controller alongside (composing both controllers in ONE component
-# currently trips a generic-signal inference limit; passing the value controller through the consumer sidesteps it).
-# Parts: select, select-trigger, select-value, select-content, select-item, select-group, select-label.
+# Select: ONE component for the author, the platform's own picker underneath (native-dom-0026). The build fills
+# `{platform}` from its env chain: macOS, iOS and Android reach ./native/toolkit/select.tree (NSPopUpButton, a
+# UIButton showing a selection menu, a Spinner) through their `toolkit` rung, and every other target, the web among
+# them, falls to the generic ./native/select.tree, the browser's own `<select>`. Both take `host`, `class`,
+# `control` (the chosen option, a text signal) and `options` (the list to choose from). For a picker drawn by the
+# theme rather than the platform, use `listbox`. See note/term/app/11-uniform-interface.md.
+#
+# This replaced a web-only wrapper whose options were `slot` children and whose change was a raw handler, a shape only
+# a browser could honor, which nothing used.
 
-load @term/site/code/view/render
-  find element
-load @term/site/code/dom/dom
-  find view
-  find append
-load ../logic/disclosure
-  find disclosure-open
-  find disclosure-state
-  find toggle-disclosure
-
-view select
-  take host, like view
-  take class
-  view div
-    bind data-slot, text <select>
-    bind class, read class
-    slot
-
-view select-trigger
-  take host, like view
-  take class
-  take control
-  view button
-    bind type, text <button>
-    bind data-slot, text <select-trigger>
-    bind role, text <combobox>
-    bind aria-expanded
-      call disclosure-open
-        bind self, read control
-    bind data-state
-      call disclosure-state
-        bind self, read control
-    hook click
-      call toggle-disclosure
-        bind self, read control
-    bind class, read class
-    slot
-
-view select-value
-  take host, like view
-  take class
-  view span
-    bind data-slot, text <select-value>
-    bind class, read class
-    slot
-
-view select-content
-  take host, like view
-  take class
-  take control
-  fork test
-    hook test
-      call disclosure-open
-        bind self, read control
-    hook hold
-      view div
-        bind data-slot, text <select-content>
-        bind role, text <listbox>
-        bind data-state
-          call disclosure-state
-            bind self, read control
-        bind class, read class
-        slot
-
-view select-item
-  take host, like view
-  take class
-  take press
-  view button
-    bind type, text <button>
-    bind data-slot, text <select-item>
-    bind role, text <option>
-    hook click, call press
-    bind class, read class
-    slot
-
-view select-group
-  take host, like view
-  take class
-  view div
-    bind data-slot, text <select-group>
-    bind role, text <group>
-    bind class, read class
-    slot
-
-view select-label
-  take host, like view
-  take class
-  view div
-    bind data-slot, text <select-label>
-    bind class, read class
-    slot
+bear @term/face/code/component/native/{platform}/select

@@ -448,6 +448,11 @@ export type Statement =
       // a PROPOSITIONAL TRUNCATION (hProp): declared with `mark prop`, any two inhabitants are equal (proof
       // irrelevance). Its constructors are kept rigid (no reduction) and registered so `convert` equates them.
       truncation?: boolean
+      // `note shared`: a value of this form is ONE object, seen and written through every binding of it, as a signal
+      // or an effect in a reactive graph must be. A backend whose forms are values (Swift's `struct`) emits a reference
+      // type instead; one whose forms are references already (TypeScript, Kotlin) emits what it always does. Absent
+      // means a plain value form. See note/term/app/10-native-dom.md.
+      shared?: boolean
       // true when no field's type is a function, so instances are pure data (a base `RecordNode` / JSON). The base
       // bridge lifts only function-free forms into records; a form with a function-typed field stays code.
       functionFree?: boolean

@@ -1,0 +1,57 @@
+
+# The device's traits on the platform's own toolkit (native-dom-0012): AppKit on macOS, UIKit on iOS, Android's
+# Configuration on Android. Conforms to ../device. The `ios`, `macos` and `android` envs reach this file through the
+# `toolkit` rung of their chains, the way they reach dom/native/toolkit/dom.
+#
+# Every value is READ from the platform when asked, and a change is found by reading every trait again and comparing:
+# the platform's own notification (appearance KVO and the accessibility notifications on macOS, registered trait changes
+# on iOS 17, onConfigurationChanged on Android) only says "look again". So a trait the platform did not change can
+# never fire, and one it did cannot be missed for want of a notification named after it.
+#
+# The runtime reads the window and the Activity through `nativeView`, so it runs beside dom/native/toolkit/dom, which
+# every toolkit app has.
+#
+#   idiom          phone, tablet, desktop, tv
+#   width-class    compact under 600 points of window width, regular from 600
+#   pointer        touch or fine
+#   color-scheme   light or dark
+#   reduce-motion  yes or no
+#   text-scale     the platform's text size over its default, `1` at the default
+
+dock load
+  load <global:native-device>, name native-device
+  note native
+
+task read-trait
+  take name, like text
+  like text
+  send back
+    call native-device/read-trait
+      read name
+
+task watch-traits
+  take handler
+    like task
+      take name, like text
+      take value, like text
+  like task
+  call native-device/watch
+    read handler
+  send back
+    task drop
+      call native-device/unwatch
+
+# for tests: ask the platform to change the window's shape, as a person would (native-dom-0035). macOS widens the
+# window, iOS asks its scene for landscape, Android asks its Activity for landscape. Nothing is written: the new width
+# class arrives later, through the platform's own notification, or not at all
+task turn-device
+  call native-device/turn
+
+# for tests: force a trait the platform lets an app override (the color scheme), then read the platform back. The
+# watcher fires only if the platform's own value changed, so a force that did not take shows as no change.
+task change-trait
+  take name, like text
+  take value, like text
+  call native-device/change-trait
+    read name
+    read value

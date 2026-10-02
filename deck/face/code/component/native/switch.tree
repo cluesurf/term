@@ -1,0 +1,47 @@
+
+# Switch, the GENERIC implementation: what every platform without its own gets, the web among them. A platform with a
+# switch of its own (macOS, iOS, Android) gets ./toolkit/switch.tree instead, through `component/switch.tree` and the
+# build's env chain. Both take the same props, which is the contract (note/term/app/11-uniform-interface.md).
+#
+# Headless, behavior-complete. A toggle backed by the shared `disclosure` controller (on = open). The consumer
+# passes one controller:
+#
+#   save wifi, call make-disclosure / bind start, false
+#   zone switch / bind control, read wifi
+#
+# role=switch + reactive data-state (checked/unchecked, derived from disclosure-state mapped on) drive a11y + the CSS
+# thumb slide; aria-checked tracks the boolean; click toggles. Parts: switch (root button) + switch-thumb.
+
+load @term/site/code/view/render
+  find element
+load @term/site/code/dom/dom
+  find view
+  find append
+load ../../logic/disclosure
+  find disclosure-open
+  find disclosure-state
+  find toggle-disclosure
+
+view switch
+  take host, like view
+  take class, like text
+  take control, like signal boolean
+  view button
+    bind type, text <button>
+    bind role, text <switch>
+    bind data-slot, text <switch>
+    bind data-state
+      call disclosure-state
+        bind self, read control
+    bind aria-checked
+      call disclosure-open
+        bind self, read control
+    bind class, read class
+    hook click
+      call toggle-disclosure
+        bind self, read control
+    view span
+      bind data-slot, text <switch-thumb>
+      bind data-state
+        call disclosure-state
+          bind self, read control

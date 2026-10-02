@@ -71,7 +71,7 @@ import { emitTypeScript } from '@term/make/code/compile/typescript'
 import { emitModules } from '@term/make/code/compile/modules'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
 import { collectModules, makeParseMemo } from '@term/make/code/compile/load'
-import type { ParseMemo } from '@term/make/code/compile/load'
+import type { ImportScope, ParseMemo } from '@term/make/code/compile/load'
 import type { Resolver } from '@term/make/code/compile/load'
 import { hashText } from '@term/make/code/compile/cache'
 import type { CompileCache } from '@term/make/code/compile/cache'
@@ -244,9 +244,10 @@ export function compile(
   // right for one compile and ruinous for three thousand: see makeParseMemo in compile/load.ts.
   const parsed = options?.parsed ?? makeParseMemo()
 
-  const sources = options?.resolve
-    ? collectModules(source, options.resolve, parsed).sources
-    : [source]
+  const collected = options?.resolve
+    ? collectModules(source, options.resolve, parsed)
+    : undefined
+  const sources = collected ? collected.sources : [source]
 
   const cache = options?.cache
 
@@ -384,6 +385,7 @@ export function compile(
       treeShake || (options?.entryPoints?.length ?? 0) > 0,
       options?.roll,
       options?.deckOf,
+      collected?.scope,
     )
   }
 
@@ -469,6 +471,8 @@ export function compileProgram(
   treeShake?: boolean,
   wantRoll?: boolean,
   deckOf?: (file: string) => { name: string; root: string } | undefined,
+  // what each module imports by name, so a call to a name two modules define binds to the one its file imported
+  scope?: ImportScope,
 ): CompileResult {
   // the certificate checker's refusals so far, so this compile can report its own
   const uncertifiedBefore = uncertifiedCount()
@@ -482,8 +486,13 @@ export function compileProgram(
   }
 
   // arity overloading: rename same-name / different-arity functions (and their calls) to unique `name__<arity>` names,
-  // so everything downstream sees one definition per name. See code/check/overload.ts.
-  disambiguateOverloads(program)
+  // so everything downstream sees one definition per name. See code/check/overload.ts. It refuses two bodied
+  // definitions of one name from two files that a call's own imports do not tell apart (native-dom-0031)
+  const ambiguities = disambiguateOverloads(program, scope)
+
+  if (ambiguities.length) {
+    return { ok: false, diagnostics: ambiguities }
+  }
 
   // hole-filling: bind names to definitions
   const resolveDiagnostics = resolve(program, file)
