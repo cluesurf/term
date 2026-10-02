@@ -45,6 +45,8 @@ form host-ask
   link root, like text
   link dryRun, like boolean
   link registry, like text
+  link trust, like text
+  link untrust, like text
 
 # `term test [filter]`: run the project's tests, or the ones whose name matches
 task test
@@ -136,6 +138,8 @@ task host
   note async
   take dry, like boolean
   take registry, like text
+  take trust, like text
+  take untrust, like text
   like void
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root
@@ -146,6 +150,8 @@ task host
         bind root, read root
         bind dryRun, read dry
         bind registry, read registry
+        bind trust, read trust
+        bind untrust, read untrust
       wait true
   halt take
     take error

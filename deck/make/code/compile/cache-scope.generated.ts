@@ -45,6 +45,7 @@ export const CACHE_SCOPE: Record<string, string[]> = {
     'deck/make/code/check/infer.ts',
     'deck/make/code/check/judge.ts',
     'deck/make/code/check/overload.ts',
+    'deck/make/code/check/product.ts',
     'deck/make/code/check/refine.ts',
     'deck/make/code/check/resolve.ts',
     'deck/make/code/check/ring.ts',

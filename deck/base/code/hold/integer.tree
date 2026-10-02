@@ -246,14 +246,24 @@ task lcm
         code 0
     hook hold
       send back, code 0
+  # a and b are both nonzero here, so their gcd is at least 1; the guard states it where the division can see it
+  save g
+    call gcd
+      read a
+      read b
+  fork test
+    hook test
+      call is-maximum
+        read g
+        code 0
+    hook hold
+      send back, code 0
   send back
     call absolute
       call multiply
         call divide
           read a
-          call gcd
-            read a
-            read b
+          read g
         read b
 
 tree is-even
@@ -331,6 +341,12 @@ tree rotate
 host binary-reversal-table, call make-reversal-table
 
 task make-reversal-table
+  like list
+    like number
+  must
+    call is-equal
+      read back/length
+      code 256
   save table
     make list
   save fill, code 0
@@ -350,15 +366,16 @@ task make-reversal-table
         read i
         code 256
     hook hold
+      # i and v are never negative here, so halving is the right shift, and `v > 0` is `v != 0`
       save v
-        call unsigned-shift-right
+        call divide
           read i
-          code 1
+          code 2
       save r, read i
       save s, code 7
       walk test
         hook test
-          call is-unequal
+          call is-above
             read v
             code 0
         hook hold
@@ -377,9 +394,9 @@ task make-reversal-table
               read s
               code 1
           save v
-            call unsigned-shift-right
+            call divide
               read v
-              code 1
+              code 2
       call table/set
         read i
         call bitwise-and
@@ -391,7 +408,7 @@ task make-reversal-table
   send back, read table
 
 save binary-trailing-zero-magic-number, code 0x077cb531
-save binary-leading-zero-table, call make-leading-zero-table
+host binary-leading-zero-table, call make-leading-zero-table
 save binary-trailing-zero-table
   call make-de-bruijn-trailing-zero-table
     code 5
@@ -450,9 +467,11 @@ task count-leading-zeroes-32
 
   save r
     call binary-leading-zero-table/get
-      call unsigned-shift-right
-        read n
-        code 24
+      call bitwise-and
+        call unsigned-shift-right
+          read n
+          code 24
+        code 0xff
 
   fork test
     hook test
@@ -464,9 +483,11 @@ task count-leading-zeroes-32
         call add
           read r
           call binary-leading-zero-table/get
-            call unsigned-shift-right
-              read n
-              code 16
+            call bitwise-and
+              call unsigned-shift-right
+                read n
+                code 16
+              code 0xff
 
   fork test
     hook test
@@ -478,9 +499,11 @@ task count-leading-zeroes-32
         call add
           read r
           call binary-leading-zero-table/get
-            call unsigned-shift-right
-              read n
-              code 8
+            call bitwise-and
+              call unsigned-shift-right
+                read n
+                code 8
+              code 0xff
 
   fork test
     hook test
@@ -492,7 +515,9 @@ task count-leading-zeroes-32
         call add
           read r
           call binary-leading-zero-table/get
-            read n
+            call bitwise-and
+              read n
+              code 0xff
 
   send back, read r
 
@@ -501,9 +526,11 @@ task count-leading-zeroes-16
   like number
   save r
     call binary-leading-zero-table/get
-      call unsigned-shift-right
-        read n
-        code 8
+      call bitwise-and
+        call unsigned-shift-right
+          read n
+          code 8
+        code 0xff
 
   fork test
     hook test
@@ -515,7 +542,9 @@ task count-leading-zeroes-16
         call add
           read r
           call binary-leading-zero-table/get
-            read n
+            call bitwise-and
+              read n
+              code 0xff
 
   send back, read r
 
@@ -524,7 +553,9 @@ task count-leading-zeroes-8
   like number
   send back
     call binary-leading-zero-table/get
-      read n
+      call bitwise-and
+        read n
+        code 0xff
 
 task count-leading-ones-32
   take n
@@ -561,6 +592,12 @@ task count-leading-ones-8
       code 0xff
 
 task make-leading-zero-table
+  like list
+    like number
+  must
+    call is-equal
+      read back/length
+      code 256
   save i
     code 0
   save table
@@ -583,6 +620,7 @@ task make-leading-zero-table
     hook hold
       save count, code 8
       save index, read i
+      # halving: integer division truncates on every backend, so `index / 2` is the shift it stands for
       walk test
         hook test
           call is-above
@@ -590,11 +628,9 @@ task make-leading-zero-table
             code 0
         hook hold
           save index
-            call bitwise-or
-              call divide
-                read index
-                code 2
-              code 0
+            call divide
+              read index
+              code 2
           save count, call decrement(read count)
       call table/set
         read i
@@ -634,6 +670,12 @@ task make-de-bruijn-trailing-zero-table
 host binary-count-one-table, call make-binary-count-one-table
 
 task make-binary-count-one-table
+  like list
+    like number
+  must
+    call is-equal
+      read back/length
+      code 256
   save table
     make list
   save fill, code 0
@@ -660,11 +702,9 @@ task make-binary-count-one-table
             read i
             code 1
           call table/get
-            call bitwise-or
-              call divide
-                read i
-                code 2
-              code 0
+            call divide
+              read i
+              code 2
       save i, call increment(read i)
   send back, read table
 

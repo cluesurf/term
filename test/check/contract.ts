@@ -320,15 +320,30 @@ task use
 
   tally(
     'tier 0: an unguarded caller of an accessor is counted as not proven',
+    // two statements, so the caller is not itself an accessor that would lift the read onward
     `${first}
 task use
+  take xs, like list, like number
+  like number
+  save v
+    call first
+      read xs
+  send back, read v
+`,
+    { total: 1, proven: 0 },
+  )
+
+  tally(
+    'tier 0: an accessor over an accessor lifts the read onward',
+    `${first}
+task second-hand
   take xs, like list, like number
   like number
   send back
     call first
       read xs
 `,
-    { total: 1, proven: 0 },
+    { total: 0, proven: 0 },
   )
 
   tally(

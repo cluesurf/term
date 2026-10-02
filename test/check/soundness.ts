@@ -961,6 +961,47 @@ ${have}  save r
   )
   expect('not when the divisor may be negative', remainder(''), refused('unproven'))
 
+  // ---- a branch that changes a list ----
+
+  const branchy = (inner: string): string => `task grow
+  take xs, like list, like number
+  call xs/push
+    code 9
+
+task t
+  take xs, like list, like number
+  take go, like boolean
+  have
+    call is-equal
+      read xs/length
+      code 2
+  save m, make list
+  fork test
+    hook test
+      read go
+    hook hold
+${inner}  hold
+    call is-equal
+      read xs/length
+      code 2
+`
+
+  expect(
+    'a push to another, fresh list in a branch keeps the length',
+    branchy('      call m/push\n        code 1\n'),
+    proven,
+  )
+  expect(
+    'a push to the list itself in a branch does not',
+    branchy('      call xs/push\n        code 1\n'),
+    refused('unproven'),
+  )
+  expect(
+    'nor a call in a branch to a task that pushes to it',
+    branchy('      call grow\n        read xs\n'),
+    refused('unproven'),
+  )
+
   // ---- what the branches of a fork agree on ----
 
   const join = (other: string): string => `task t
@@ -1192,6 +1233,77 @@ task use
 
   expect('a walk pushing to another fresh list keeps a list`s exact length', pushWalk('w'), proven)
   expect('not when the walk pushes to that list', pushWalk('m'), refused('unproven'))
+
+  // ---- a text's length ----
+
+  const textLength = (between: string): string => `dock load
+  load <global:Math>, name math
+
+task roll
+  like number
+  send back
+    call math/random
+
+task t
+  take s, like text
+  have
+    call is-equal
+      read s/length
+      code 3
+${between}  hold
+    call is-equal
+      read s/length
+      code 3
+`
+
+  expect(
+    'a text`s length survives an impure call: a text does not change',
+    textLength('  save r\n    call roll\n'),
+    proven,
+  )
+  expect(
+    'but not the name being given another text',
+    textLength('  save s, text <four>\n'),
+    refused('unproven'),
+  )
+
+  // ---- an impure call inside a mask ----
+
+  const masked = (goal: string): string => `dock load
+  load <global:Math>, name math
+  load <global:bit>, name bit
+
+task bitwise-and
+  take left, like number
+  take right, like number
+  like number
+  send back
+    call bit/and
+      read left
+      read right
+
+task roll
+  like number
+  send back
+    call math/random
+
+task t
+  like number
+  hold
+    ${goal}
+  send back, code 0
+`
+
+  expect(
+    'a masked roll is inside its mask, whatever the roll was',
+    masked('call is-maximum\n      call bitwise-and\n        call roll\n        code 255\n      code 255'),
+    proven,
+  )
+  expect(
+    'two unmasked rolls are still not equal',
+    masked('call is-equal\n      call roll\n      call roll'),
+    refused('unchecked-hold'),
+  )
 
   // ---- a pop ----
 

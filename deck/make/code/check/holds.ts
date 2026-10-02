@@ -42,6 +42,8 @@ import {
   proves,
 } from '@term/make/code/check/refine'
 import { checkGram, gramKey } from '@term/make/code/check/certificate'
+import type { Fact } from '@term/make/code/check/product'
+import { fromNumbers, productProves } from '@term/make/code/check/product'
 import {
   positiveEverywhere as sturmPositiveEverywhere,
   nonNegativeEverywhere as sturmNonNegativeEverywhere,
@@ -154,14 +156,65 @@ function snapshot(value: Linear, side: Inequality[]): Linear {
   return atom
 }
 
+// does an expression call something impure OUTSIDE a masked value? `bitwise-and(x, k)` with a constant mask is read as a
+// fresh atom in [0, k] whatever x is (toLinear), so an impure call inside x is never compared with anything, and two
+// such reads are never taken to be equal: the reason impure goals are refused does not apply to it
+function impureOutsideMasks(expr: unknown, walk: Walk): boolean {
+  if (expr === null || typeof expr !== 'object') {
+    return false
+  }
+
+  if (Array.isArray(expr)) {
+    return expr.some(e => impureOutsideMasks(e, walk))
+  }
+
+  const node = expr as Expression
+
+  if (
+    node.form === 'call' &&
+    node.callee.form === 'variable' &&
+    node.callee.name === 'bitwise-and' &&
+    node.args.length === 2
+  ) {
+    const mask = toLinear(node.args[1]!, [])
+    const k = mask ? constantOf(mask) : undefined
+
+    if (k !== undefined && Number.isInteger(k) && k >= 0 && k <= Number.MAX_SAFE_INTEGER) {
+      return false
+    }
+  }
+
+  if (node.form === 'call' && callsImpure({ ...node, args: [] }, walk.pure, walk.functions, walk.local)) {
+    return true
+  }
+
+  if (
+    node.form === 'variable' &&
+    walk.functions.has(node.name) &&
+    !walk.pure.has(node.name)
+  ) {
+    return true
+  }
+
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (key !== 'type' && key !== 'span' && key !== 'binding' && impureOutsideMasks(value, walk)) {
+      return true
+    }
+  }
+
+  return false
+}
+
 // the facts the signs decide, for every remainder atom among these: `m >= 0` where the dividend was non-negative,
 // and `-(d - 1) <= m <= d - 1` where the divisor d was positive (`d + 1 <= m <= -d - 1` where it was negative)
-function signedRemainders(all: Inequality[]): Inequality[] {
+function signedRemainders(all: Inequality[], goals: Inequality[] = []): Inequality[] {
   const extra: Inequality[] = []
   const zero = linear({}, 0)
   const one = linear({}, 1)
 
-  for (const q of all) {
+  // the atoms to bound come from the facts AND the goal (a quotient read only in the goal, `get(xs, i / 2)`, is in no
+  // fact); what is proven about them comes from the facts alone, never from the goal
+  for (const q of [...all, ...goals]) {
     for (const key of q.linear.terms.keys()) {
       const m = linear({ [key]: 1 })
       const dividend = modDividends.get(key)
@@ -197,7 +250,7 @@ function signedRemainders(all: Inequality[]): Inequality[] {
 
   // twice, so `min(min(r, g), b)` can use what the first pass found about the inner min
   for (let pass = 0; pass < 2; pass++) {
-    extra.push(...extremumBounds([...all, ...extra]))
+    extra.push(...extremumBounds([...all, ...extra], goals))
   }
 
   return extra
@@ -205,20 +258,21 @@ function signedRemainders(all: Inequality[]): Inequality[] {
 
 // the far side of every max / min atom among these facts: `max(a, b) <= c` when both a and b are, `min(a, b) >= c`
 // when both are. The candidates for c are the constants the facts mention, each confirmed by the prover for both
-function extremumBounds(all: Inequality[]): Inequality[] {
+function extremumBounds(all: Inequality[], goals: Inequality[] = []): Inequality[] {
   const out: Inequality[] = []
   const candidates = new Set<number>([0])
 
-  for (const q of all) {
+  // the constants, and the atoms to bound, from the facts and the goal; the proofs from the facts alone
+  for (const q of [...all, ...goals]) {
     if (Number.isInteger(q.linear.constant)) {
       candidates.add(q.linear.constant)
       candidates.add(-q.linear.constant)
     }
   }
 
-  const tried = [...candidates].slice(0, 16)
+  const tried = [...candidates].sort((a, b) => Math.abs(a) - Math.abs(b)).slice(0, 16)
 
-  for (const q of all) {
+  for (const q of [...all, ...goals]) {
     for (const key of q.linear.terms.keys()) {
       const extremum = extremumArguments.get(key)
 
@@ -493,6 +547,19 @@ function lengthAtom(expr: Expression): string | undefined {
   if (expr.form === 'member' && !expr.index && expr.name === 'length') {
     const path = plainPath(expr.target)
 
+    // a TEXT's length is a property of an immutable value: no call and no write can change it while the name holds
+    // the same text, so it is keyed apart (`@text:`), forgotten only with its name, never as state. An untyped read (a
+    // contract's, which inference never types) is a text when it names a parameter declared one
+    const text =
+      expr.target.type?.kind === 'string' ||
+      (expr.target.type === undefined &&
+        expr.target.form === 'variable' &&
+        textParams.has(expr.target.name))
+
+    if (path !== undefined && text) {
+      return `@text:${path}`
+    }
+
     return path === undefined ? undefined : `@length:${path}`
   }
 
@@ -512,11 +579,19 @@ function lengthAtom(expr: Expression): string | undefined {
 
 // the variable a fact key reads: itself for a plain name, the root of the path for a length atom
 function keyRoot(key: string): string {
-  return key.startsWith('@length:')
-    ? key.slice('@length:'.length).split('.')[0]!
-    : key.startsWith('@field:')
-      ? key.slice('@field:'.length).split('.')[0]!
-      : key
+  for (const prefix of ['@length:', '@field:', '@text:']) {
+    if (key.startsWith(prefix)) {
+      return key.slice(prefix.length).split('.')[0]!
+    }
+  }
+
+  return key
+}
+
+// a key that stands for STATE, which calls and writes can change: a list's length or a record's field. A text's
+// length (`@text:`) is not state, and neither is an auxiliary atom (`__`)
+function isStateAtom(key: string): boolean {
+  return /[^a-z0-9_#-]/.test(key) && !key.startsWith('__') && !key.startsWith('@text:')
 }
 
 // each record form's number fields, and the record form of each parameter of the task being walked. A contract's
@@ -525,6 +600,8 @@ function keyRoot(key: string): string {
 // integer atom would be tightened as one
 let numberFields = new Map<string, Set<string>>()
 let paramForms = new Map<string, string>()
+// the parameters of the task being walked that are declared text
+let textParams = new Set<string>()
 
 function numberFieldsOf(program: Program): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>()
@@ -755,8 +832,12 @@ const monomialVars = (key: string): string[] =>
 // expand an arithmetic expression into its polynomial, or null if it is not a polynomial of degree <= 2 (a degree-3+
 // monomial appears). Coefficients stay exact integers.
 function expandPolynomial(expr: Expression): Poly | null {
+  // every coefficient must stay a safe integer: past 2^53 a number rounds, and a rounded coefficient is a different
+  // polynomial (ring.ts exact). Declining with null is always sound
   if (expr.form === 'integer') {
-    return new Map([['', Number(expr.value)]])
+    const n = Number(expr.value)
+
+    return Number.isSafeInteger(n) && BigInt(n) === BigInt(expr.value) ? new Map([['', n]]) : null
   }
 
   if (expr.form === 'variable') {
@@ -776,7 +857,13 @@ function expandPolynomial(expr: Expression): Poly | null {
       const out: Poly = new Map(left)
 
       for (const [key, value] of right) {
-        out.set(key, (out.get(key) ?? 0) + sign * value)
+        const next = (out.get(key) ?? 0) + sign * value
+
+        if (!Number.isSafeInteger(next)) {
+          return null
+        }
+
+        out.set(key, next)
       }
 
       return out
@@ -791,7 +878,13 @@ function expandPolynomial(expr: Expression): Poly | null {
             ...monomialVars(k1),
             ...monomialVars(k2),
           ])
-          out.set(key, (out.get(key) ?? 0) + v1 * v2)
+          const next = (out.get(key) ?? 0) + v1 * v2
+
+          if (!Number.isSafeInteger(v1 * v2) || !Number.isSafeInteger(next)) {
+            return null
+          }
+
+          out.set(key, next)
         }
       }
 
@@ -1684,6 +1777,203 @@ function nonlinearProves(expr: Expression): boolean {
 
 type Inequality = ReturnType<typeof atMost>
 
+// the atom a monomial of degree two or more becomes among the linear facts
+const POLY = '@poly:'
+
+// a polynomial as a linear form over monomial atoms: a variable stays itself, a higher monomial is `@poly:<key>`
+function polynomialLinear(poly: Poly): Linear {
+  const terms = new Map<string, number>()
+  let constant = 0
+
+  for (const [key, c] of poly) {
+    if (c === 0) {
+      continue
+    }
+
+    if (key === '') {
+      constant += c
+    } else {
+      const at = monomialVars(key).length === 1 ? key : POLY + key
+      terms.set(at, (terms.get(at) ?? 0) + c)
+    }
+  }
+
+  return { terms, constant }
+}
+
+// the negation of a disjunct as facts: the linear ones when it has them, else its polynomial ones
+function orPolynomial(linearFacts: Inequality[], disjunct: Expression): Inequality[] {
+  return linearFacts.length > 0 ? linearFacts : polynomialFacts(disjunct, true)
+}
+
+// the facts a polynomial comparison contributes, in the same `<= 0` / `< 0` shape as assumptionInequalities
+function polynomialFacts(cond: Expression, negated: boolean): Inequality[] {
+  if (cond.form !== 'binary') {
+    return []
+  }
+
+  const left = expandPolynomial(cond.left)
+  const right = expandPolynomial(cond.right)
+
+  if (!left || !right) {
+    return []
+  }
+
+  const l = polynomialLinear(left)
+  const r = polynomialLinear(right)
+
+  switch (cond.op) {
+    case '<':
+      return negated ? [atLeast(l, r)] : [below(l, r)]
+    case '<=':
+      return negated ? [above(l, r)] : [atMost(l, r)]
+    case '>':
+      return negated ? [atMost(l, r)] : [above(l, r)]
+    case '>=':
+      return negated ? [below(l, r)] : [atLeast(l, r)]
+    case '==':
+      return negated ? [] : [atMost(l, r), atLeast(l, r)]
+    default:
+      return []
+  }
+}
+
+// a linear fact `l <= 0` (`< 0`) as the product prover's `-l >= 0` (`> 0`), its atoms read back as monomials. A pair
+// `l <= 0`, `-l <= 0` is the equation `l == 0`, and is given as one, so products with it keep their sign free.
+function productFacts(available: Inequality[]): Fact[] | undefined {
+  const out: Fact[] = []
+  const used = new Set<number>()
+
+  for (let i = 0; i < available.length; i++) {
+    if (used.has(i)) {
+      continue
+    }
+
+    const q = available[i]!
+    const poly = new Map<string, number>()
+
+    for (const [key, c] of q.linear.terms) {
+      if (c !== 0) {
+        const at = key.startsWith(POLY) ? key.slice(POLY.length) : key
+
+        // a key holding the monomial separator that is not a monomial would be misread as one
+        if (!key.startsWith(POLY) && key.includes('\u0000')) {
+          return undefined
+        }
+
+        poly.set(at, (poly.get(at) ?? 0) - c)
+      }
+    }
+
+    if (q.linear.constant !== 0) {
+      poly.set('', -q.linear.constant)
+    }
+
+    const exact = fromNumbers(poly)
+
+    if (!exact) {
+      return undefined
+    }
+
+    const partner = q.strict
+      ? -1
+      : available.findIndex((b, j) => j > i && !used.has(j) && !b.strict && negatesLinear(q.linear, b.linear))
+
+    if (partner >= 0) {
+      used.add(partner)
+      out.push({ polynomial: exact, relation: 'zero' })
+    } else {
+      out.push({ polynomial: exact, relation: q.strict ? 'positive' : 'nonnegative' })
+    }
+  }
+
+  return out
+}
+
+// the variables a fact or goal mentions, for keeping only the facts connected to the goal
+function factVariables(fact: Fact): string[] {
+  return [...fact.polynomial.keys()].flatMap(monomialVars)
+}
+
+// a comparison goal proven by products of the facts (product.ts): `L >= R` is `L - R >= 0`, an equation is both.
+// Only the facts that share a variable with the goal, directly or through other facts, are given, at most twelve.
+function productGoal(expr: Expression, available: Inequality[]): boolean {
+  if (expr.form !== 'binary' || !['<', '<=', '>', '>=', '=='].includes(expr.op)) {
+    return false
+  }
+
+  const left = expandPolynomial(expr.left)
+  const right = expandPolynomial(expr.right)
+
+  if (!left || !right) {
+    return false
+  }
+
+  const nonlinear =
+    polynomialDegree(left) > 1 ||
+    polynomialDegree(right) > 1 ||
+    available.some(q => [...q.linear.terms.keys()].some(k => k.startsWith(POLY)))
+
+  if (!nonlinear) {
+    return false
+  }
+
+  const all = productFacts(available)
+
+  if (!all) {
+    return false
+  }
+
+  const difference: Poly = new Map(left)
+
+  for (const [key, c] of right) {
+    difference.set(key, (difference.get(key) ?? 0) - c)
+  }
+
+  const exact = fromNumbers(difference)
+
+  if (!exact) {
+    return false
+  }
+
+  // keep the facts connected to the goal's variables
+  const reach = new Set([...exact.keys()].flatMap(monomialVars))
+  let kept: Fact[] = []
+
+  for (let grew = true; grew; ) {
+    grew = false
+    kept = all.filter(f => factVariables(f).some(v => reach.has(v)))
+
+    for (const f of kept) {
+      for (const v of factVariables(f)) {
+        if (!reach.has(v)) {
+          reach.add(v)
+          grew = true
+        }
+      }
+    }
+  }
+
+  if (kept.length > 11) {
+    return false
+  }
+
+  const negative = new Map([...exact].map(([k, c]) => [k, { n: -c.n, d: c.d }]))
+
+  switch (expr.op) {
+    case '>=':
+      return productProves(kept, exact, false)
+    case '>':
+      return productProves(kept, exact, true)
+    case '<=':
+      return productProves(kept, negative, false)
+    case '<':
+      return productProves(kept, negative, true)
+    default:
+      return productProves(kept, exact, false) && productProves(kept, negative, false)
+  }
+}
+
 // two linear forms that are exact negatives (b == -a): the pair of non-strict constraints `a <= 0` and `-a <= 0` is
 // how an equality `a == 0` is recorded among the assumptions.
 function negatesLinear(a: Linear, b: Linear): boolean {
@@ -1849,7 +2139,8 @@ function goalProvable(
     // assuming NOT Q proves P), since then one side must hold for every value. This is the sound case-split, done by
     // the linear prover: negate one disjunct, add it as an assumption, and try the other. So `n < 0 or n >= 0` proves
     // because not(n < 0) is n >= 0, which is exactly the right disjunct.
-    const notLeft = assumptionInequalities(expr.left, true, [])
+    // a polynomial disjunct the linear translation drops is assumed as its monomial atoms (polynomialFacts)
+    const notLeft = orPolynomial(assumptionInequalities(expr.left, true, []), expr.left)
 
     if (
       notLeft.length > 0 &&
@@ -1858,7 +2149,7 @@ function goalProvable(
       return true
     }
 
-    const notRight = assumptionInequalities(expr.right, true, [])
+    const notRight = orPolynomial(assumptionInequalities(expr.right, true, []), expr.right)
 
     if (
       notRight.length > 0 &&
@@ -1894,7 +2185,7 @@ function goalProvable(
     // with the same goal-time facts every other goal gets: remainder signs and sizes, and the far side of max / min.
     // Without them a division owed `d != 0` never saw that `d` is a max of positives
     const facts = [...available, ...dside]
-    const all = [...facts, ...signedRemainders(facts)]
+    const all = [...facts, ...signedRemainders(facts, [below(left, right)])]
 
     if (proves(all, below(left, right)) || proves(all, above(left, right))) {
       return true
@@ -1928,13 +2219,14 @@ function goalProvable(
   const goals = goalInequalities(expr, side)
 
   if (!goals) {
-    return null
+    // a polynomial goal is proven, when it can be, by products of the facts
+    return productGoal(expr, available) ? true : null
   }
 
   const facts = [...available, ...side]
-  const all = [...facts, ...signedRemainders(facts)]
+  const all = [...facts, ...signedRemainders(facts, goals)]
 
-  return goals.every(goal => proves(all, goal))
+  return goals.every(goal => proves(all, goal)) || productGoal(expr, available)
 }
 
 // a condition used as a path assumption: the inequalities it contributes, optionally negated (for an else branch).
@@ -1995,6 +2287,67 @@ function assumptionInequalities(
     default:
       return []
   }
+}
+
+// what a branch condition lets the branch assume, conjunct by conjunct: a conjunction that held makes each of its
+// conjuncts hold, so a pure one is assumed even beside one that calls something impure (`left < length and
+// get(items, left) < get(items, small)` still gives `left < length`). A negated disjunction is a conjunction of
+// negations, and the same goes for it. An impure conjunct alone contributes nothing
+function conditionFacts(
+  cond: Expression,
+  negated: boolean,
+  side: Inequality[],
+  walk: Walk,
+  known: Inequality[] = [],
+): Inequality[] {
+  if (cond.form === 'unary' && cond.op === '!') {
+    return conditionFacts(cond.operand, !negated, side, walk, known)
+  }
+
+  if (
+    cond.form === 'binary' &&
+    ((cond.op === '&&' && !negated) || (cond.op === '||' && negated))
+  ) {
+    return [
+      ...conditionFacts(cond.left, negated, side, walk, known),
+      ...conditionFacts(cond.right, negated, side, walk, known),
+    ]
+  }
+
+  if (callsImpure(cond, walk.pure, walk.functions, walk.local)) {
+    return []
+  }
+
+  const facts = assumptionInequalities(cond, negated, side)
+
+  // a comparison of POLYNOMIALS the linear translation dropped (`x*x <= y*y`) is kept with each monomial as an atom
+  // of its own (`@poly:x x`), for the product prover (product.ts). The linear prover reads such an atom as one more
+  // unknown, which only relaxes what it knows, and `forget` projects it out when any of its variables is written.
+  if (facts.length === 0) {
+    facts.push(...polynomialFacts(cond, negated))
+  }
+
+  // `a != b` where what is known already orders them is strict: `small >= i` and `small != i` give `small >= i + 1`
+  if (
+    cond.form === 'binary' &&
+    ((cond.op === '==' && negated) || (cond.op === '!=' && !negated)) &&
+    known.length > 0
+  ) {
+    const left = toLinear(cond.left, side)
+    const right = toLinear(cond.right, side)
+
+    if (left && right) {
+      const all = [...known, ...side]
+
+      if (proves(all, atLeast(left, right))) {
+        facts.push(atLeast(left, add(right, linear({}, 1))))
+      } else if (proves(all, atMost(left, right))) {
+        facts.push(atMost(left, add(right, linear({}, -1))))
+      }
+    }
+  }
+
+  return facts
 }
 
 // A disequality is a disjunction and is not assumed, with ONE exact exception: a length is never negative, so
@@ -2090,6 +2443,10 @@ export function checkHolds(
       paramForms = paramFormsOf([
         ...statement.params,
         ...(statement.result ? [{ name: 'back', type: statement.result }] : []),
+      ])
+      textParams = new Set([
+        ...statement.params.filter(p => p.type?.kind === 'string').map(p => p.name),
+        ...(statement.result?.kind === 'string' ? ['back'] : []),
       ])
       walkHolds(statement.body, base, {
         diagnostics,
@@ -2220,7 +2577,10 @@ function forget(current: Inequality[], names: Set<string>): Inequality[] {
 
   for (const q of current) {
     for (const key of q.linear.terms.keys()) {
-      if (names.has(keyRoot(key))) {
+      if (
+        names.has(keyRoot(key)) ||
+        (key.startsWith(POLY) && monomialVars(key.slice(POLY.length)).some(v => names.has(v)))
+      ) {
         keys.add(key)
       }
     }
@@ -2573,7 +2933,8 @@ function boundInvariant(
   const written = writtenNames(statement.body)
 
   for (const key of right.terms.keys()) {
-    if (written.has(keyRoot(key)) || key.startsWith('@')) {
+    // (a text's length moves only with its name, which the written check covers)
+    if (written.has(keyRoot(key)) || isStateAtom(key)) {
       return []
     }
   }
@@ -2898,7 +3259,7 @@ function keepMonotone(
   ) {
     current = current.filter(q => {
       for (const key of q.linear.terms.keys()) {
-        if (key.startsWith('@') && !walk.local.has(keyRoot(key))) {
+        if (isStateAtom(key) && key.startsWith('@') && !walk.local.has(keyRoot(key))) {
           return false
         }
       }
@@ -2933,7 +3294,7 @@ function keepMonotone(
 
     current = current.filter(q => {
       for (const [key, coefficient] of q.linear.terms) {
-        if (!key.startsWith('@') || untouched(key)) {
+        if (!key.startsWith('@') || key.startsWith('@text:') || untouched(key)) {
           continue
         }
 
@@ -2963,7 +3324,8 @@ function keepMonotone(
         continue
       }
 
-      // a length atom moves with whatever the body does to its list, which this does not track
+      // a length atom moves with whatever the body does to its list, which this does not track (a text's length
+      // moves only with its name, and a written name drops it here too)
       if (key.startsWith('@')) {
         return false
       }
@@ -3144,6 +3506,16 @@ function definingEqualities(
         continue
       }
 
+      // a list field given a list held by a name: the record's list IS that list, so the lengths are equal
+      if (field.value.form === 'variable' && field.value.type?.kind === 'array') {
+        const same = linear({
+          [`@length:${name}.${field.name}`]: 1,
+          [`@length:${field.value.name}`]: -1,
+        })
+        out.push(atMost(same, linear({}, 0)), atLeast(same, linear({}, 0)))
+        continue
+      }
+
       if (!numbers?.has(field.name) || readsAny(field.value, walk.volatile)) {
         continue
       }
@@ -3213,12 +3585,8 @@ function walkHolds(
 
         // a goal that calls something two calls may disagree on cannot be decided by any prover here: the linear
         // and polynomial engines read a call as an atom, and an atom is equal to itself
-        const verdict = callsImpure(
-          statement.expr,
-          walk.pure,
-          walk.functions,
-          walk.local,
-        )
+        // (an impure call inside a masked value is not a reason: impureOutsideMasks)
+        const verdict = impureOutsideMasks(statement.expr, walk)
           ? null
           : goalProvable(statement.expr, current)
 
@@ -3307,6 +3675,46 @@ function walkHolds(
             ? shiftFacts(current, root, statement, walk)
             : undefined
 
+        // `x = e` where e reads the OLD x (`y = x % y`): the old x is renamed to a fresh atom in every fact, e's own
+        // facts are added with it, the new x is e, and then the old one is projected out. Nothing true of the old
+        // value is lost on the way, which dropping the facts that mention it lost (the snapshot of `y` that bounds
+        // `x % y` is exactly such a fact)
+        const reread =
+          shifted === undefined &&
+          statement.op === '=' &&
+          statement.target.form === 'variable' &&
+          !walk.volatile.has(root) &&
+          readNames(statement.value).has(root)
+
+        if (reread) {
+          const old = `${root}#was${modCounter++}`
+          const renamed = (q: Inequality): Inequality => {
+            if (!q.linear.terms.has(root)) {
+              return q
+            }
+
+            const terms = new Map(q.linear.terms)
+            terms.set(old, terms.get(root)!)
+            terms.delete(root)
+
+            return { ...q, linear: { terms, constant: q.linear.constant } }
+          }
+          const side: Inequality[] = []
+          const v = toLinear(statement.value, side)
+
+          if (v) {
+            const now = linear({ [root]: 1 })
+            const value = renamed({ linear: v, strict: false }).linear
+
+            current = forget(
+              [...current.map(renamed), ...side.map(renamed), atMost(now, value), atLeast(now, value)],
+              new Set([old]),
+            )
+            holdsInExpression(statement.value, walk)
+            break
+          }
+        }
+
         // a write through a member changes the field it names (or, through an index, anything): forgetWrites. The
         // record's own name still holds the same record, so it is not forgotten whole
         current =
@@ -3342,20 +3750,18 @@ function walkHolds(
         break
 
       case 'if': {
+        // the conditions run before any branch (each before the next): what their impure calls may change goes first
+        for (const branch of statement.branches) {
+          current = impureEffect(current, branch.cond, walk)
+        }
+
         const negations: Inequality[] = []
         // the facts at the end of every path that reaches the join (joinFacts)
         const ends: Inequality[][] = []
 
         for (const branch of statement.branches) {
           const side: Inequality[] = []
-          const conditions = callsImpure(
-            branch.cond,
-            walk.pure,
-            walk.functions,
-            walk.local,
-          )
-            ? []
-            : assumptionInequalities(branch.cond, false, side)
+          const conditions = conditionFacts(branch.cond, false, side, walk, [...current, ...negations])
 
           const end = walkHolds(
             branch.body,
@@ -3367,18 +3773,7 @@ function walkHolds(
             ends.push(end)
           }
 
-          if (
-            !callsImpure(
-              branch.cond,
-              walk.pure,
-              walk.functions,
-              walk.local,
-            )
-          ) {
-            negations.push(
-              ...assumptionInequalities(branch.cond, true, []),
-            )
-          }
+          negations.push(...conditionFacts(branch.cond, true, [], walk, [...current, ...negations]))
         }
 
         if (statement.otherwise) {
@@ -3394,12 +3789,25 @@ function walkHolds(
 
         const written = writtenNames(statement)
 
-        // when only ONE path reaches the join (every branch but one leaves: `if i < 0, halt`), what follows knows
-        // exactly what that path ends with, the negated conditions included
-        current =
-          ends.length === 1
-            ? ends[0]!
-            : [...forgetWrites(current, statement), ...joinFacts(ends, written)]
+        if (ends.length === 1) {
+          // when only ONE path reaches the join (every branch but one leaves: `if i < 0, halt`), what follows knows
+          // exactly what that path ends with, the negated conditions included
+          current = ends[0]!
+        } else {
+          // every path's facts already carry its own effects (a push in one branch, a write in another), so a fact
+          // from before survives only when untouched by any branch (no written name, no state) or proven on every
+          // path; this replaces dropping every state fact because some branch made some impure call
+          const stable = (q: Inequality): boolean =>
+            !mentionsAtom(q) && ![...q.linear.terms.keys()].some(k => written.has(keyRoot(k)))
+          const augmented = ends.map(end => [...end, ...signedRemainders(end)])
+
+          current = [
+            ...current.filter(stable),
+            ...current.filter(q => !stable(q) && augmented.every(path => proves(path, q))),
+            ...joinFacts(ends, written),
+          ]
+        }
+
         break
       }
 
@@ -3412,28 +3820,14 @@ function walkHolds(
           ...boundInvariant(current, statement, walk),
         ]
         const side: Inequality[] = []
-        const conditions = callsImpure(
-          statement.cond,
-          walk.pure,
-          walk.functions,
-          walk.local,
-        )
-          ? []
-          : assumptionInequalities(statement.cond, false, side)
+        const conditions = conditionFacts(statement.cond, false, side, walk)
 
         walkHolds(statement.body, [...before, ...side, ...conditions], walk)
 
         // a walk that never leaves a turn early ends only when its condition is false, so that is a fact after it
-        const ended =
-          !exitsEarly(statement.body) &&
-          !callsImpure(
-            statement.cond,
-            walk.pure,
-            walk.functions,
-            walk.local,
-          )
-            ? assumptionInequalities(statement.cond, true, [])
-            : []
+        const ended = !exitsEarly(statement.body)
+          ? conditionFacts(statement.cond, true, [], walk)
+          : []
 
         current = [...before, ...ended]
         break
@@ -3525,7 +3919,8 @@ function walkHolds(
       current = current
         .filter(q => {
           for (const k of q.linear.terms.keys()) {
-            if (k !== shrunkKey && /[^a-z0-9_#-]/.test(k) && !k.startsWith('__')) {
+            // a pop changes one list's length and no record's field
+            if (k !== shrunkKey && isStateAtom(k) && !k.startsWith('@field:')) {
               return false
             }
           }
@@ -3566,61 +3961,39 @@ function walkHolds(
         )
       }
 
-      current = current
-        .filter(q => {
-          for (const k of q.linear.terms.keys()) {
-            if (k !== key && /[^a-z0-9_#-]/.test(k) && !k.startsWith('__') && !apart(k)) {
-              return false
-            }
-          }
-
-          return true
-        })
-        .map(q => {
-          const a = q.linear.terms.get(key) ?? 0
-
-          return a === 0
-            ? q
-            : {
-                ...q,
-                linear: { ...q.linear, constant: q.linear.constant - a },
+      current = [
+        ...current
+          .filter(q => {
+            for (const k of q.linear.terms.keys()) {
+              // a push changes one list's length and no record's field
+              if (
+                k !== key &&
+                isStateAtom(k) &&
+                !k.startsWith('@field:') &&
+                !apart(k)
+              ) {
+                return false
               }
-        })
-    } else if (
-      statement.form !== 'function' &&
-      callsImpure(statement, walk.pure, walk.functions, walk.local) &&
-      onlyKeepsLengths(statement, walk)
-    ) {
-      // a `set`, or a call to a task that only does such things, changes no length and no field anywhere: only what
-      // was known THROUGH a list position goes
-      current = dropElementPaths(current)
-    } else if (
-      statement.form !== 'function' &&
-      !onlyPushingLoop(statement, walk) &&
-      callsImpure(statement, walk.pure, walk.functions, walk.local) &&
-      !onlyKeepsLengths(statement, walk)
-    ) {
-      // an impure call that could not have reached a LOCAL list (it was handed only scalars, and it is a task of the
-      // program rather than a function value) leaves local lengths alone. Every other state fact still goes.
-      const reached = reachesLists(statement, walk)
+            }
 
-      current = current.filter(q => {
-        if (!mentionsAtom(q)) {
-          return true
-        }
+            return true
+          })
+          .map(q => {
+            const a = q.linear.terms.get(key) ?? 0
 
-        if (reached) {
-          return false
-        }
-
-        for (const key of q.linear.terms.keys()) {
-          if (key.startsWith('@') && !walk.local.has(keyRoot(key))) {
-            return false
-          }
-        }
-
-        return true
-      })
+            return a === 0
+              ? q
+              : {
+                  ...q,
+                  linear: { ...q.linear, constant: q.linear.constant - a },
+                }
+          }),
+        // and whatever it was before, a list just pushed onto holds at least one item
+        atLeast(linear({ [key]: 1 }), linear({}, 1)),
+      ]
+    } else if (statement.form !== 'function' && statement.form !== 'if') {
+      // (an `if` has had its effects applied path by path, and its conditions' before its branches: the `if` case)
+      current = impureEffect(current, statement, walk)
     }
   }
 
@@ -3633,6 +4006,44 @@ function walkHolds(
 }
 
 const LEAVES = new Set(['return', 'throw', 'break', 'continue', 'exit'])
+
+// what a statement's (or expression's) impure calls leave of the facts: a `set`, or a call to a task that only does
+// such things, changes no length and no field, so only what was known THROUGH a list position goes. Any other impure
+// call may change any state, except that one which cannot reach a LOCAL list (it was handed only scalars, and it is a
+// task of the program rather than a function value) leaves local lengths alone
+function impureEffect(current: Inequality[], node: unknown, walk: Walk): Inequality[] {
+  if (!callsImpure(node, walk.pure, walk.functions, walk.local)) {
+    return current
+  }
+
+  if (onlyKeepsLengths(node, walk)) {
+    return dropElementPaths(current)
+  }
+
+  if (onlyPushingLoop(node as Statement, walk)) {
+    return current
+  }
+
+  const reached = reachesLists(node, walk)
+
+  return current.filter(q => {
+    if (!mentionsAtom(q)) {
+      return true
+    }
+
+    if (reached) {
+      return false
+    }
+
+    for (const key of q.linear.terms.keys()) {
+      if (isStateAtom(key) && key.startsWith('@') && !walk.local.has(keyRoot(key))) {
+        return false
+      }
+    }
+
+    return true
+  })
+}
 
 // THE JOIN AFTER A BRANCH. Each path that reaches the end of the `if` ends with its own facts. A fact about a name
 // the branches write survives only when EVERY such path proves it: `d = t` on one path and `d = 510 - t` under
@@ -3818,13 +4229,42 @@ function constantTableLengths(
   const functions = functionNames(program)
   const tables = new Map<string, number>()
 
+  // a task's promised constant length, `must back/length == K`, which its own check proves
+  const promisedLength = (name: string): number | undefined => {
+    const fn = program.find(
+      s => s.form === 'function' && s.name === name,
+    ) as Extract<Statement, { form: 'function' }> | undefined
+
+    // read the way any condition is read, so `call is-equal / read back/length / code 256` and `==` are one thing:
+    // a promise that pins `@length:back` to a constant
+    for (const m of fn?.must ?? []) {
+      const facts = assumptionInequalities(m, false, [])
+      const n = exactValue(facts, '@length:back')
+
+      if (n !== undefined) {
+        return n
+      }
+    }
+
+    return undefined
+  }
+
   for (const statement of program) {
-    if (
+    if (statement.form === 'let' && !statement.mutable && statement.init.form === 'array') {
+      tables.set(statement.name, statement.init.items.length)
+    } else if (
       statement.form === 'let' &&
       !statement.mutable &&
-      statement.init.form === 'array'
+      statement.init.form === 'call' &&
+      statement.init.callee.form === 'variable'
     ) {
-      tables.set(statement.name, statement.init.items.length)
+      // a table BUILT by a task that promises its length (`host table, call make-table` over `must back/length ==
+      // 256`): the promise is proven where the task is checked, so the binding has that length while untouched
+      const n = promisedLength(statement.init.callee.name)
+
+      if (n !== undefined) {
+        tables.set(statement.name, n)
+      }
     }
   }
 
@@ -3897,7 +4337,17 @@ function constantTableLengths(
         }
       }
 
-      if (call.callee?.form === 'member') {
+      // a method on the table touches it, unless it only reads one position (`table/get i`, `table/at i`) or reads
+      // the list whole without changing it
+      const readsOne =
+        call.callee?.form === 'member' &&
+        !call.callee.index &&
+        call.callee.target.type?.kind === 'array' &&
+        (call.callee.name === 'get' ||
+          call.callee.name === 'at' ||
+          READ_ONLY_LIST_METHODS.has(call.callee.name))
+
+      if (call.callee?.form === 'member' && !readsOne) {
         const root = rootName(call.callee)
 
         if (root !== undefined) {
@@ -4536,7 +4986,7 @@ function pushedPath(statement: Statement, walk: Walk): string | undefined {
 // a fact over an atom that stands for state (`__mod` atoms are only bounds and stay)
 function mentionsAtom(q: Inequality): boolean {
   for (const key of q.linear.terms.keys()) {
-    if (/[^a-z0-9_#-]/.test(key) && !key.startsWith('__mod')) {
+    if (isStateAtom(key)) {
       return true
     }
   }

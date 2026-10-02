@@ -952,12 +952,11 @@ function makeEmitter(
             node.callee.name === 'set' ||
             node.callee.name === 'has' ||
             node.callee.name === 'delete') &&
-          node.args.length > 0 &&
-          mapKeyType(node.callee.target.type) !== false
+          node.args.length > 0
         ) {
           const key = mapKeyType(node.callee.target.type)
 
-          if (structuralType(key === true ? node.args[0]!.type : key)) {
+          if (key !== false && structuralType(key === true ? node.args[0]!.type : key)) {
             tsEqualUsed = true
 
             return `${expression(node.callee)}(${[

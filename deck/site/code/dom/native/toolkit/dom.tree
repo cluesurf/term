@@ -303,6 +303,28 @@ task press
   call native-view/press
     read node/handle
 
+# run `body` once the platform has had its turn: a presentation or dismissal the code just asked for is finished by
+# the platform after that code returns, so a program that must see the result reads it here (native-dom-0026)
+task later
+  take body
+    like task
+  call native-view/later
+    read body
+
+# for tests: dismiss a dialog the way a person does (Esc, a swipe down, back), and its report (native-dom-0026)
+task dismiss
+  take node, like view
+  call native-view/dismiss
+    read node/handle
+
+# for tests: type into a field the way a person does, the field's text first and then its report (native-dom-0026)
+task type-text
+  take node, like view
+  take text, like text
+  call native-view/type
+    read node/handle
+    read text
+
 # for tests: choose an item of a select the way a person does, the control first and then its report (native-dom-0026)
 task choose
   take node, like view

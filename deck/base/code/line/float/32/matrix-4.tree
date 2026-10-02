@@ -28,11 +28,23 @@ form matrix-4
             code 4
           read column
 
-  # matrix product self * other
+  # matrix product self * other. Both are 16 cells, the form's invariant, and so is the product
   task times
     take self
     take other, like matrix-4
+    have
+      call is-equal
+        read self/cells/length
+        code 16
+    have
+      call is-equal
+        read other/cells/length
+        code 16
     like matrix-4
+    must
+      call is-equal
+        read back/cells/length
+        code 16
     save out
       make list
     save row, code 0

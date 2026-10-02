@@ -385,16 +385,21 @@ export function parseLockfileMill(input: {
   const version = Number.isFinite(stated) ? stated : 1
 
   const decks: LockEntry[] = matches(mined.match.get('deck')).map(
-    m => ({
-      name: word(first(m.get('name'))) ?? '',
-      code: parseCode(siteWord(first(m.get('code')), 'text') ?? '0.0.0'),
-      hash: siteWord(first(m.get('hash')), 'text') ?? '',
-      site: siteWord(first(m.get('site')), 'text') ?? '',
-      link: matches(m.get('link')).map(l => ({
-        name: word(first(l.get('name'))) ?? '',
-        code: word(first(l.get('code'))) ?? '',
-      })),
-    }),
+    m => {
+      const key = siteWord(first(m.get('key')), 'text')
+
+      return {
+        name: word(first(m.get('name'))) ?? '',
+        code: parseCode(siteWord(first(m.get('code')), 'text') ?? '0.0.0'),
+        hash: siteWord(first(m.get('hash')), 'text') ?? '',
+        site: siteWord(first(m.get('site')), 'text') ?? '',
+        ...(key ? { key } : {}),
+        link: matches(m.get('link')).map(l => ({
+          name: word(first(l.get('name'))) ?? '',
+          code: word(first(l.get('code'))) ?? '',
+        })),
+      }
+    },
   )
 
   return { version, decks }

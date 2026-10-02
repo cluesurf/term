@@ -1,0 +1,101 @@
+
+# Modal — headless, drawn by the theme, ported from shadcn/radix (dialog.tsx). A modal. The overlay + content expose `data-state`
+# (open / closed) for enter/exit theming. `state` is the consumer's open signal (string); `press` opens/closes.
+# Parts: modal (root), modal-trigger, modal-overlay, modal-content, modal-header, modal-title,
+# modal-description, modal-footer, modal-close. role=dialog + aria-modal wire a11y. Focus-trap / portal are
+# behavioral add-ons (a `present` primitive for exit animation is the noted follow-up); the parts here are the
+# themeable structure.
+
+# Was `dialog` until 2026-10-02, when that name went to the platform's own presentation (component/dialog.tree), so an
+# author who writes `dialog` gets a sheet on Apple and a Dialog on Android, and this modal only where it is asked for.
+
+load @term/site/code/view/render
+  find element
+  find text
+load @term/site/code/dom/dom
+  find view
+  find append
+
+view modal
+  take host, like view
+  take class
+  view div
+    bind data-slot, text <modal>
+    bind class, read class
+    slot
+
+view modal-trigger
+  take host, like view
+  take class
+  take press
+  view button
+    bind type, text <button>
+    bind data-slot, text <modal-trigger>
+    bind class, read class
+    hook click, call press
+    slot
+
+view modal-overlay
+  take host, like view
+  take class
+  take state
+  view div
+    bind data-slot, text <modal-overlay>
+    bind data-state, read state
+    bind class, read class
+
+view modal-content
+  take host, like view
+  take class
+  take state
+  view div
+    bind data-slot, text <modal-content>
+    bind data-state, read state
+    bind role, text <dialog>
+    bind aria-modal, text <true>
+    bind class, read class
+    slot
+
+view modal-header
+  take host, like view
+  take class
+  view div
+    bind data-slot, text <modal-header>
+    bind class, read class
+    slot
+
+view modal-title
+  take host, like view
+  take class
+  view div
+    bind data-slot, text <modal-title>
+    bind class, read class
+    slot
+
+view modal-description
+  take host, like view
+  take class
+  view div
+    bind data-slot, text <modal-description>
+    bind class, read class
+    slot
+
+view modal-footer
+  take host, like view
+  take class
+  view div
+    bind data-slot, text <modal-footer>
+    bind class, read class
+    slot
+
+view modal-close
+  take host, like view
+  take class
+  take press
+  view button
+    bind type, text <button>
+    bind data-slot, text <modal-close>
+    bind aria-label, text <Close>
+    bind class, read class
+    hook click, call press
+    slot

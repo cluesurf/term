@@ -46,6 +46,11 @@ function replay(step: Step, inputs: Row[], depth = 0): Row | undefined {
     case 'input': {
       const row = inputs[step.at]
 
+      // an input whose numbers are not exact integers cannot be reasoned about exactly
+      if (row && (!Number.isSafeInteger(row.constant) || [...row.terms.values()].some(c => !Number.isSafeInteger(c)))) {
+        return undefined
+      }
+
       return row
         ? { terms: new Map(row.terms), constant: row.constant }
         : undefined
@@ -84,10 +89,14 @@ function replay(step: Step, inputs: Row[], depth = 0): Row | undefined {
         }
       }
 
-      return {
-        terms,
-        constant: step.a * first.constant + step.b * second.constant,
+      const constant = step.a * first.constant + step.b * second.constant
+
+      // a step whose numbers left the safe integer range has rounded, and is not a valid inference
+      if (!Number.isSafeInteger(constant) || [...terms.values()].some(c => !Number.isSafeInteger(c))) {
+        return undefined
       }
+
+      return { terms, constant }
     }
 
     case 'cut': {

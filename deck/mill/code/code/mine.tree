@@ -84,6 +84,9 @@ load @term/mill/code/code/cast/mine
 load @term/mill/code/code/tune/mine
   find tune
 
+load @term/mill/code/code/twin/mine
+  find twin
+
 load @term/mill/code/code/view/mine
   find view-def
 
@@ -168,6 +171,9 @@ mine code
         site cast
       mine form, like tune
         site tune
+      # another implementation of a named task (note/term/optimize/words.md)
+      mine form, like twin
+        site twin
       mine form, like view-def
         site view
       # LAST. `mine seed` ends in a fallback that takes any headed group, so a `lace`, a `cast`, a `tune` or a

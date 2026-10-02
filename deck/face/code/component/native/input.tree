@@ -1,0 +1,88 @@
+
+# Input, the ONE implementation, and the platform's own field on every platform (native-dom-0026): an `input` element
+# is the browser's text input on the web, and the toolkit host makes it NSTextField on macOS, UITextField on iOS and
+# EditText on Android, with each platform's keyboard, selection and input methods. So there is no ./toolkit/input.tree:
+# it would repeat this file line for line. A platform that ever needs its own adds one there, held to these props
+# by test/compile/face-contract.ts (note/term/app/11-uniform-interface.md).
+#
+#   save name, call make-signal / bind value, text <>
+#   call input / read root / text <> / read name / text <Your name>
+#
+# Two-way: the field shows the signal's text, and what the person types is written into the signal. Writing it back
+# changes nothing the field already holds, which every host honors, so the cursor and an input method's half-composed
+# character survive the round trip. Parts: `input` (the field, data-slot for a theme).
+
+load @term/site/code/view/render
+  find element
+  find attribute
+  find event
+load @term/site/code/view/reactive
+  find signal
+  find make-effect
+  find read-signal
+  find write-signal
+load @term/site/code/dom/dom
+  find view
+  find append
+  find get-value
+  find set-value
+
+# the work of the view below, in a task: in a `view` body a bare `call` renders as a text child
+task mount-input
+  take host, like view
+  take class, like text
+  take control, like signal text
+  take placeholder, like text
+  like view
+  save field
+    call element
+      text <input>
+  call attribute
+    read field
+    text <type>
+    text <text>
+  call attribute
+    read field
+    text <data-slot>
+    text <input>
+  call attribute
+    read field
+    text <class>
+    read class
+  call attribute
+    read field
+    text <placeholder>
+    read placeholder
+  # the signal's text, kept in the field whenever it changes
+  call make-effect
+    task show-text
+      call set-value
+        read field
+        call read-signal
+          bind self, read control
+  # what the person typed, written into the signal
+  call event
+    read field
+    text <input>
+    task typed
+      call write-signal
+        bind self, read control
+        bind value
+          call get-value
+            read field
+  call append
+    read host
+    read field
+  send back, read field
+
+view input
+  take host, like view
+  take class, like text
+  take control, like signal text
+  take placeholder, like text
+  save mounted
+    call mount-input
+      read host
+      read class
+      read control
+      read placeholder

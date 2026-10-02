@@ -20,48 +20,24 @@ export function isScoped(input: { name: string }): boolean {
   return input.name.startsWith('@')
 }
 
-// TWO hosts, and only two.
-//
-//   tool.base.surf  the API, for the registry and for ALL content
-//   mesh.base.surf  the object store, one flat namespace
-//
-// This is not a package-registry host that happens to serve other things.
-// It is the API, and the registry is one surface on it. The client builds
-// `${BASE_API}/<scope>/<name>` for metadata and
-// `${BASE_API}/<scope>/<name>/-/<file>.tgz` to publish, so both land on the
-// API. Packages use their native name here, with no `.tree` suffix.
-//
-// The API never serves bytes. Metadata points at the object store, and the
-// client fetches the tarball from there directly.
-export const BASE_API = 'https://tool.base.surf'
+// The custom registry at `tool.base.surf`, with its object store at
+// `land.base.surf`, was never deployed and is retired: `@term` publishes to and
+// installs from an OCI registry (note/term/registry/18-oci-registry-default.md).
+// `object/http.ts` and `object/serve.ts` survive as the in-process registry the
+// object tests run against.
 
-// The object store: the ONE place every ClueSurf product's bytes live, not
-// a package-registry bucket. `land.<domain>` is the object store the way
-// `tool.<domain>` is the API and the bare domain is the frontend.
-//
-// Keys are FLAT: `<id>.<ext>`, where the id is the content hash. No
-// directories, no package name in the path, no version in the path. Two
-// packages that publish byte-identical content share one object, and an
-// object's name proves its content.
-//
-// This supersedes the per-brand `mesh.<domain>` stores, including the old
-// registry bucket at mesh.term.surf.
-export const OBJECT_STORE = 'https://land.base.surf'
+// Where the `@term` packages are published: an OCI registry, with each package a
+// repository under the namespace (`@term/bind` is `ghcr.io/cluesurf/term/bind`) and
+// the scope's key set at the namespace itself (`ghcr.io/cluesurf/term:keys`). See
+// note/term/registry/18-oci-registry-default.md.
+export const TERM_REGISTRY = 'oci://ghcr.io/cluesurf/term'
 
-// Where a stored object lives. The extension is carried so a store fetch
-// can be content-typed without a lookup.
-export function objectUrl(input: {
-  id: string
-  extension: string
-}): string {
-  return `${OBJECT_STORE}/${input.id}.${input.extension}`
-}
-
-// the default scope -> host map. any scope not listed falls back to the
+// the default scope -> registry map. any scope not listed falls back to the
 // config's `registry` field (npmjs.org unless overridden), which is what
-// keeps a mixed dependency tree working.
+// keeps a mixed dependency tree working. a value is an npm-style https
+// registry or an `oci://<host>/<namespace>` one.
 export const DEFAULT_SCOPE_REGISTRIES: Record<string, string> = {
-  '@term': BASE_API,
+  '@term': TERM_REGISTRY,
 }
 
 // pick the host for a given package name. a scoped package (`@scope/name`)

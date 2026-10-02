@@ -66,10 +66,13 @@ host flags
     bind queue
       make list
 
+# `like signal t`, never a bare `like signal`: a bare generic form in a signature is seeded ONE fresh variable that is
+# not one of the task's generics, so every call shares it and the first call to bind it decides it for the whole
+# program. A `host` making a text signal turned face's number range into a text one (native-dom-0044).
 task make-signal
   head t
   take value, like t
-  like signal
+  like signal t
   send back
     make signal
       bind value, read value
@@ -220,8 +223,8 @@ task make-memo
   take compute
     like task
       like t
-  like signal
-  save cell
+  like signal t
+  save held
     call make-signal
       bind value
         call compute
@@ -229,10 +232,10 @@ task make-memo
     bind run
       task recompute
         call write-signal
-          bind self, read cell
+          bind self, read held
           bind value
             call compute
-  send back, read cell
+  send back, read held
 
 # run `body` inside a fresh ownership scope and return the scope handle, so the caller can later dispose it (Solid
 # createRoot). Everything reactive built inside `body` registers to the scope and tears down together on dispose.

@@ -8,6 +8,15 @@ import { hashBuffer } from './hash'
 import { fetchTarball } from './fetch'
 import { verifyHash } from './hash'
 import { FetchConfig } from './form'
+import {
+  localStore,
+  ociRouteOf,
+  storeTransport,
+  transportFor,
+  trustDir,
+} from './oci/client'
+import { installOciVersion, readOciVersion } from './oci/install'
+import { isOciRegistry, parsePinnedReference } from './oci/reference'
 
 const LINK_DIR = 'link'
 // The toolchain's directory under `.base`, scoped the way the packages are. Spelled out rather than imported from
@@ -74,6 +83,12 @@ async function installResolved(input: {
   const codeStr = showCode(resolved.code)
   const deckDir = path.join(seedDir, `${resolved.name}@${codeStr}`)
 
+  if (isOciRegistry(resolved.site)) {
+    await installOci({ resolved, seedDir, deckDir, config: input.config })
+
+    return
+  }
+
   // skip if already installed
   try {
     await fsp.access(deckDir)
@@ -121,6 +136,75 @@ async function installResolved(input: {
     tarball,
     deckDir,
   })
+}
+
+// Install a package pinned to an OCI digest. The digest is fetched from the registry the package's scope is routed to
+// NOW, not the host the lockfile was written against, because a digest names the same bytes on any registry: an
+// `oras cp` to another host keeps every lockfile working. The install is skipped only when the directory holds
+// exactly the pinned digest, recorded beside it, so a changed pin can never be satisfied by a stale checkout.
+async function installOci(input: {
+  resolved: ResolvedDeck
+  seedDir: string
+  deckDir: string
+  config: FetchConfig
+}): Promise<void> {
+  const { resolved } = input
+  const codeStr = showCode(resolved.code)
+  const { digest } = parsePinnedReference(resolved.site)
+
+  if (resolved.hash && resolved.hash !== digest) {
+    throw new Error(
+      `lock.tree disagrees with itself for ${resolved.name}@${codeStr}: hash ${resolved.hash}, site ${resolved.site}`,
+    )
+  }
+
+  const marker = path.join(input.seedDir, '.digest', `${resolved.name}@${codeStr}`)
+  const installed = await fsp.readFile(marker, 'utf8').catch(() => undefined)
+
+  if (installed?.trim() === digest) {
+    try {
+      await fsp.access(input.deckDir)
+
+      return
+    } catch {
+      // the marker outlived its directory: install again
+    }
+  }
+
+  const route = ociRouteOf({ name: resolved.name, config: input.config })
+
+  if (!route) {
+    throw new Error(
+      `lock.tree pins ${resolved.name} to ${resolved.site}, but its scope is not routed to an oci:// registry`,
+    )
+  }
+
+  const host = route.registry.host
+  const transport = transportFor({ host, offline: input.config.offline })
+  const version = await readOciVersion({
+    transport,
+    repository: route.repository.name,
+    package: resolved.name,
+    reference: digest,
+    scope: route.scope,
+    keysRepository: route.keysRepository,
+    host,
+    trustDir: trustDir(),
+    expect: { digest, key: resolved.key, version: codeStr },
+    warn: message => console.warn(`  ${message}`),
+  })
+
+  await installOciVersion({
+    transport,
+    repository: route.repository.name,
+    version,
+    dest: input.deckDir,
+    local: localStore(),
+    cache: input.config.offline ? undefined : storeTransport(host),
+  })
+
+  await fsp.mkdir(path.dirname(marker), { recursive: true })
+  await fsp.writeFile(marker, `${digest}\n`)
 }
 
 async function extractAndLink(input: {

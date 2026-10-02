@@ -1,5 +1,5 @@
 # The lockfile grammar: `lock <version>` then one `deck` entry per resolved package, each with its pinned
-# code, its content hash, its store site and its links. Written by deck/deck/code/lock.ts (writeLockfile),
+# code, its content hash, its store site, the key that signed it (an `oci://` package) and its links. Written by deck/deck/code/lock.ts (writeLockfile),
 # read back through the executor; test/compile/mill-run.ts holds the two against each other.
 
 mine lock-file
@@ -27,6 +27,8 @@ mine lock-deck
           site hash
         mine form, like lock-site
           site site
+        mine form, like lock-key
+          site key
         mine form, like lock-link
           site link
 
@@ -42,6 +44,12 @@ mine lock-hash
 
 mine lock-site
   mine term, term site
+    mine text
+      site text
+
+# the signer's public key of an `oci://` package, pinned so a re-signed version fails the next install
+mine lock-key
+  mine term, term key
     mine text
       site text
 

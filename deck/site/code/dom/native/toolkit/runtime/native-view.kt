@@ -49,7 +49,8 @@ private val viewMain = Handler(Looper.getMainLooper())
 // one node of the tree: the platform view, plus what the dom contract can ask that a view does not hold itself
 class TermNode(val key: Long, val tag: String, var text: String, context: Activity) {
     // RANGE is face's slider on Android, a SeekBar, and CHOICE its select, a Spinner (native-dom-0026)
-    enum class Kind { TEXT, CONTAINER, BUTTON, FIELD, TOGGLE, RANGE, CHOICE }
+    // SHEET is face's dialog: a column of content an android.app.Dialog shows, never placed in the page (0026)
+    enum class Kind { TEXT, CONTAINER, BUTTON, FIELD, TOGGLE, RANGE, CHOICE, SHEET }
 
     val kind: Kind = when {
         tag.isEmpty() -> Kind.TEXT
@@ -57,6 +58,7 @@ class TermNode(val key: Long, val tag: String, var text: String, context: Activi
         tag == "switch" -> Kind.TOGGLE
         tag == "slider" -> Kind.RANGE
         tag == "choice" -> Kind.CHOICE
+        tag == "sheet" -> Kind.SHEET
         tag == "input" || tag == "textarea" -> Kind.FIELD
         else -> Kind.CONTAINER
     }
@@ -73,6 +75,11 @@ class TermNode(val key: Long, val tag: String, var text: String, context: Activi
         // a SeekBar counts whole steps from zero; the node keeps min and step and maps the two (see `rangeOf`)
         Kind.RANGE -> android.widget.SeekBar(context).also { it.max = 100 }
         Kind.CHOICE -> android.widget.Spinner(context)
+        Kind.SHEET -> LinearLayout(context).also {
+            it.orientation = LinearLayout.VERTICAL
+            val pad = (24 * context.resources.displayMetrics.density).toInt()
+            it.setPadding(pad, pad, pad, pad)
+        }
         Kind.CONTAINER -> LinearLayout(context).also {
             it.orientation = if (tag in INLINE_TAGS) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
         }
@@ -89,6 +96,8 @@ class TermNode(val key: Long, val tag: String, var text: String, context: Activi
     var watchInstalled = false
     // a Spinner selection made from code is in flight, so the report it sends is not the person's
     var settingChoice = false
+    // the platform's dialog showing a SHEET's content, made the first time it opens
+    var dialog: android.app.Dialog? = null
     // the weighted empty views `justify-content: space-between` puts between children
     val spacers = mutableListOf<android.view.View>()
 
@@ -187,7 +196,40 @@ object nativeView {
             }
             "value" -> if (node.kind == TermNode.Kind.RANGE) setValue(node, value)
             "options" -> if (node.kind == TermNode.Kind.CHOICE) setChoices(node, value.split("\n").filter { it.isNotEmpty() })
+            "open" -> if (node.kind == TermNode.Kind.SHEET) {
+                if (value == "true") present(node) else node.dialog?.takeIf { it.isShowing }?.dismiss()
+            }
+            "title" -> if (node.kind == TermNode.Kind.SHEET) node.dialog?.setTitle(value)
         }
+    }
+
+    // ---- the dialog (native-dom-0026): an android.app.Dialog shows the sheet's content ----
+
+    private fun present(node: TermNode) {
+        val dialog = node.dialog ?: android.app.Dialog(context()).also { made ->
+            made.setContentView(node.view)
+            // back, or a tap outside: the person's own dismissal, reported as `close`
+            made.setOnCancelListener { node.fire("close") }
+            node.dialog = made
+        }
+        dialog.setTitle(node.attributes.firstOrNull { it.first == "title" }?.second ?: "")
+        if (!dialog.isShowing) dialog.show()
+    }
+
+    // run `body` once the platform has had its turn: a Dialog shows and hides on the main looper, after the code that
+    // asked has returned
+    fun later(body: () -> Unit) {
+        viewMain.postDelayed(body, 600)
+    }
+
+    // for tests: dismiss the dialog the way a person does. Back and a tap outside take `cancel`, whose listener the
+    // Dialog runs LATER, through the main looper, so a test reading straight after would see it still open: the
+    // presentation is ended as `cancel` ends it, and the report the listener sends is sent now. The listener itself
+    // (`present`) is what a person's back press reaches
+    fun dismiss(handle: Any) {
+        val node = node(handle)
+        node.dialog?.takeIf { it.isShowing }?.dismiss()
+        node.fire("close")
     }
 
     // ---- the select (native-dom-0026): a Spinner, its items the options, the chosen one its value ----
@@ -487,6 +529,9 @@ object nativeView {
         val drawing = parent.drawingAncestor
         if (drawing != null) {
             drawing.refreshTitle()
+        } else if (child.kind == TermNode.Kind.SHEET) {
+            // a dialog's content is never in the page: its dialog shows it when it opens
+            return
         } else if (parent.view is LinearLayout) {
             // wrapped, not stretched: LinearLayout's default made a vertical stack's children as wide as the stack. A
             // `width` or `height` the child declared is kept: these params replace whatever it was given before it
@@ -566,13 +611,21 @@ object nativeView {
     fun setValue(handle: Any, value: String) {
         val node = node(handle)
         node.value = value
-        if (node.kind == TermNode.Kind.FIELD) (node.view as EditText).setText(value)
+        // a field that already holds the text is left alone: setText moves the cursor and ends an input method's
+        // composition, and the face input writes its signal back after every keystroke (native-dom-0026)
+        if (node.kind == TermNode.Kind.FIELD && (node.view as EditText).text.toString() != value) (node.view as EditText).setText(value)
         if (node.kind == TermNode.Kind.CHOICE) setChoice(node, value)
         if (node.kind == TermNode.Kind.RANGE) {
             val range = rangeOf(node)
             val number = value.toDoubleOrNull() ?: return
             (node.view as android.widget.SeekBar).progress = Math.round((number - range.min) / range.step).toInt()
         }
+    }
+
+    // for tests: type into a field the way a person does. EditText's own watcher reports the edit, as it would a key
+    fun type(handle: Any, text: String) {
+        val node = node(handle)
+        (node.view as? EditText)?.setText(text)
     }
 
     // for tests: move a slider the way a finger does. A SeekBar reports a programmatic move as not from the user, so
@@ -640,6 +693,11 @@ object nativeView {
             TermNode.Kind.TOGGLE -> "<switch checked=\"${(node.view as android.widget.Switch).isChecked}\"></switch>"
             TermNode.Kind.RANGE -> "<slider value=\"${rangeValue(node)}\"></slider>"
             TermNode.Kind.CHOICE -> "<select value=\"${choiceValue(node)}\"></select>"
+            TermNode.Kind.SHEET -> {
+                val group = node.view as ViewGroup
+                val installed = node.children.filter { it.view.parent === group }
+                "<sheet open=\"${node.dialog?.isShowing == true}\">${installed.joinToString("") { serialize(it) }}</sheet>"
+            }
             TermNode.Kind.CONTAINER -> {
                 val group = node.view as ViewGroup
                 val installed = node.children.filter { it.view.parent === group }

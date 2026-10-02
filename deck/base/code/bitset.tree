@@ -1,4 +1,4 @@
-# Bitset: a dense set of non-negative integers, bit-packed into a list of 32-bit words. `set` / `clear` / `toggle` / `has` address a single bit; `count` is the number of set bits; `is-empty` is true when none are set. Pure: built on the bitwise verbs and the list, so it compiles to every backend. Bit i lives in word `i / 32` at offset `i % 32` (computed with shifts, no division).
+# Bitset: a dense set of non-negative integers, bit-packed into a list of 32-bit words. `set` / `clear` / `toggle` / `has` address a single bit; `count` is the number of set bits; `is-empty` is true when none are set. Pure: built on the bitwise verbs and the list, so it compiles to every backend. Bit i lives in word `i / 32` at offset `i % 32`. Every index is non-negative, which each operation states as a `have`.
 
 load @term/base/code/bit
   find bitwise-and
@@ -18,10 +18,14 @@ form bitset
     like list
       like number
 
-  # grow the word list so word index `w` exists, filling new slots with zero
+  # grow the word list so word index `w` exists, filling new slots with zero, and promise it does
   task reserve
     take self
     take w, like number
+    must
+      call is-above
+        read self/words/length
+        read w
     walk test
       hook test
         call is-maximum
@@ -36,11 +40,15 @@ form bitset
   task set
     take self
     take index, like number
+    have
+      call is-minimum
+        read index
+        code 0
     like bitset
     save w
-      call shift-right
+      call divide
         read index
-        code 5
+        code 32
     save b
       call subtract
         read index
@@ -66,11 +74,15 @@ form bitset
   task clear
     take self
     take index, like number
+    have
+      call is-minimum
+        read index
+        code 0
     like bitset
     save w
-      call shift-right
+      call divide
         read index
-        code 5
+        code 32
     save b
       call subtract
         read index
@@ -100,11 +112,15 @@ form bitset
   task toggle
     take self
     take index, like number
+    have
+      call is-minimum
+        read index
+        code 0
     like bitset
     save w
-      call shift-right
+      call divide
         read index
-        code 5
+        code 32
     save b
       call subtract
         read index
@@ -130,11 +146,15 @@ form bitset
   task has
     take self
     take index, like number
+    have
+      call is-minimum
+        read index
+        code 0
     like boolean
     save w
-      call shift-right
+      call divide
         read index
-        code 5
+        code 32
     save b
       call subtract
         read index

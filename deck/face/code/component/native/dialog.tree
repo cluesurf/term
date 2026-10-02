@@ -1,0 +1,107 @@
+
+# Dialog, the GENERIC implementation: what every platform without a presentation of its own gets, the web among them.
+# A `role=dialog` element with `aria-modal`, its title as a heading and its content drawn inside, shown and hidden as
+# the control opens and closes. A platform with its own (macOS, iOS, Android) gets ./toolkit/dialog.tree instead,
+# through `component/dialog.tree` and the build's env chain. Both take the same props, which is the contract
+# (note/term/app/11-uniform-interface.md, native-dom-0026).
+#
+# On the web the content closes it, with a control that closes the disclosure. Esc and a click outside are not wired:
+# the dom contract has no document listener a component can hold yet, and the browser's own `<dialog>` needs a
+# property the browser host does not set. Parts: `dialog`, `dialog-title` (data-slots for a theme).
+
+load @term/site/code/view/render
+  find element
+  find text
+  find attribute
+load @term/site/code/view/reactive
+  find signal
+  find make-effect
+load @term/site/code/dom/dom
+  find view
+  find append
+  find set-style
+load ../../logic/disclosure
+  find disclosure-open
+
+# the work of the view below, in a task: in a `view` body a bare `call` renders as a text child
+task mount-dialog
+  take host, like view
+  take class, like text
+  take control, like signal boolean
+  take title, like text
+  take content
+    like task
+      take host, like view
+  like view
+  save frame
+    call element
+      text <div>
+  call attribute
+    read frame
+    text <role>
+    text <dialog>
+  call attribute
+    read frame
+    text <aria-modal>
+    text <true>
+  call attribute
+    read frame
+    text <data-slot>
+    text <dialog>
+  call attribute
+    read frame
+    text <class>
+    read class
+  save heading
+    call element
+      text <h2>
+  call attribute
+    read heading
+    text <data-slot>
+    text <dialog-title>
+  call append
+    read heading
+    call text
+      read title
+  call append
+    read frame
+    read heading
+  call content
+    read frame
+  # shown while the control is open
+  call make-effect
+    task show-frame
+      fork test
+        hook test
+          call disclosure-open
+            bind self, read control
+        hook hold
+          call set-style
+            read frame
+            text <display>
+            text <block>
+        hook miss
+          call set-style
+            read frame
+            text <display>
+            text <none>
+  call append
+    read host
+    read frame
+  send back, read frame
+
+view dialog
+  take host, like view
+  take class, like text
+  take control, like signal boolean
+  take title, like text
+  take content
+    like task
+      take host, like view
+  save mounted
+    call mount-dialog
+      read host
+      read class
+      read control
+      read title
+      read content

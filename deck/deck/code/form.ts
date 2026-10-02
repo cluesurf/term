@@ -113,8 +113,12 @@ export type DeckManifest = {
 export type ResolvedDeck = {
   name: string
   code: Code
+  // the integrity the registry declared, or for an `oci://` package the manifest digest
   hash: string
+  // the tarball url, or for an `oci://` package the pinned reference `oci://<host>/<repository>@sha256:…`
   site: string
+  // the signer's public key, for an `oci://` package: pinned so a re-signed version fails the next install
+  key?: string
   link: Map<string, string>
 }
 
@@ -127,6 +131,7 @@ export type LockEntry = {
   code: Code
   hash: string
   site: string
+  key?: string
   link: { name: string; code: string }[]
 }
 
@@ -144,8 +149,9 @@ export type FetchConfig = {
   // explicit mapping in `scopeRegistries` (defaults to npmjs.org)
   registry: string
   // per-scope registry overrides, npm's `@scope:registry` mechanism.
-  // keyed by scope including the leading `@` (e.g. `@term`). the term
-  // registry (`@term` -> https://tool.base.surf) is wired by default.
+  // keyed by scope including the leading `@` (e.g. `@term`). a value is an
+  // npm-style https registry or an OCI one, `oci://<host>/<namespace>`, and
+  // `@term` -> oci://ghcr.io/cluesurf/term is wired by default.
   scopeRegistries?: Record<string, string>
   concurrency: number
   offline: boolean

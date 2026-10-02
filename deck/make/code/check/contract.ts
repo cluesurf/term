@@ -312,6 +312,10 @@ function obligationsIn(
   expression: Expression,
   guards: Expression[],
   out: Statement[],
+  // the tasks of the program, for the obligations an accessor lifts onto its callers (liftedOf), owed here under the
+  // same guards as everything else: the read in `left < length and get(items, left) < x` is owed only where
+  // `left < length` held
+  functions?: Map<string, Fn>,
 ): void {
   // `0 <= index < target/length`, under the guards the expression sits beneath
   const owesIndex = (
@@ -461,6 +465,27 @@ function obligationsIn(
         ) {
           owesIndex(node.callee.target, node.args[0]!, node.span, under)
         }
+
+        // a call to an accessor owes what the accessor lifted (liftedOf), with the arguments in place
+        if (node.form === 'call' && node.callee.form === 'variable' && functions) {
+          const callee = functions.get(node.callee.name)
+
+          if (callee) {
+            const binding = new Map<string, Expression>()
+
+            callee.params.forEach((param, at) => {
+              const argument = node.args[at]
+
+              if (argument) {
+                binding.set(param.name, argument)
+              }
+            })
+
+            for (const { expr, origin } of liftedOf(callee, functions)) {
+              out.push(hold(guarded(substitute(expr, binding), under, node.span), origin, node.span))
+            }
+          }
+        }
       }
     }
   }
@@ -481,11 +506,11 @@ function owedAt(
     const own: Statement[] = []
 
     for (const expression of expressions) {
-      obligationsIn(expression, guards, own)
+      obligationsIn(expression, guards, own, context.functions)
     }
 
     // an accessor's own obligations over its parameters are its callers' (liftedOf), so they are not owed here
-    const lifted = liftedOf(context.current)
+    const lifted = liftedOf(context.current, context.functions)
     owed.push(
       ...(lifted.length > 0
         ? own.filter(s => !(s.form === 'hold' && readsOnlyParams(s.expr, context.current)))
@@ -503,7 +528,10 @@ function owedAt(
 // Nothing is lost, and the obligation sits where the context that can prove it is.
 const LIFTED = new WeakMap<object, { expr: Expression; origin: HoldOrigin }[]>()
 
-function liftedOf(fn: Context['current']): { expr: Expression; origin: HoldOrigin }[] {
+function liftedOf(
+  fn: Context['current'],
+  functions?: Map<string, Context['current']>,
+): { expr: Expression; origin: HoldOrigin }[] {
   const known = LIFTED.get(fn)
 
   if (known) {
@@ -511,12 +539,15 @@ function liftedOf(fn: Context['current']): { expr: Expression; origin: HoldOrigi
   }
 
   const out: { expr: Expression; origin: HoldOrigin }[] = []
+  // set before the body is read, so an accessor that reaches itself lifts nothing rather than looping
+  LIFTED.set(fn, out)
   const only = fn.body.length === 1 ? fn.body[0] : undefined
 
-  // a task that states its preconditions (`have`) proves its own obligations from them, and keeps them
+  // a task that states its preconditions (`have`) proves its own obligations from them, and keeps them. With the
+  // program's tasks, an accessor over an accessor (`matrix-4/get` over the list `get`) lifts what the inner one did
   if (only?.form === 'return' && only.value && !(fn.have?.length ?? 0)) {
     const holds: Statement[] = []
-    obligationsIn(only.value, [], holds)
+    obligationsIn(only.value, [], holds, functions)
 
     for (const h of holds) {
       if (h.form === 'hold' && h.origin && readsOnlyParams(h.expr, fn)) {
@@ -611,12 +642,6 @@ function owedAtCalls(expressions: unknown[], context: Context): Statement[] {
       owed.push(hold(substitute(precondition, binding), 'need', call.span))
     }
 
-    // an accessor's lifted obligations, owed here, counted as the tier-0 obligations they are (liftedOf)
-    if (context.tier0) {
-      for (const { expr, origin } of liftedOf(callee)) {
-        owed.push(hold(substitute(expr, binding), origin, call.span))
-      }
-    }
 
     if (
       callee === context.current &&
@@ -645,6 +670,12 @@ function owedAtCalls(expressions: unknown[], context: Context): Statement[] {
 function inferredMeasure(cond: Expression): Expression | undefined {
   if (cond.form !== 'binary') {
     return undefined
+  }
+
+  // `a && b` holds only where a does, so a's measure is natural at the top of every turn: the first conjunct is the
+  // bound (`i < count and i < length` ends by the fixed count, whatever the body does to the list)
+  if (cond.op === '&&') {
+    return inferredMeasure(cond.left) ?? inferredMeasure(cond.right)
   }
 
   const span = cond.span

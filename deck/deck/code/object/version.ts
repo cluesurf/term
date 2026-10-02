@@ -35,6 +35,10 @@ const DEFAULT_EXCLUDE = new Set([
   '.base',
 ])
 
+// Excluded at the package root only: `link/` there is where `term load` links installed dependencies, and a package
+// never carries another package's install. A `code/link/` deeper down is source and ships.
+const ROOT_EXCLUDE = new Set(['link'])
+
 export type BuiltVersion = {
   // the prolly-tree root naming this version's file set
   root: string
@@ -58,7 +62,7 @@ export async function readVersionFiles(input: {
     const entries = await fsp.readdir(dir, { withFileTypes: true })
 
     for (const entry of entries) {
-      if (exclude.has(entry.name)) {
+      if (exclude.has(entry.name) || (prefix === '' && ROOT_EXCLUDE.has(entry.name))) {
         continue
       }
 
@@ -97,16 +101,16 @@ export async function readVersionFiles(input: {
       // `.tree` is PARSED, not chunked. Its record goes into the dataset, so editing
       // one field costs one record rather than a whole file, and the prolly tree's
       // field-level diff and merge apply to a package's own format.
+      // An EMPTY `.tree` is kept as bytes: the record parser refuses empty input, and bind holds four, placeholders
+      // for platforms not bound yet. A non-empty one that does not parse still fails the publish, loudly.
       if (classify({ path: at, bytes: data }) === 'tree') {
-        files.push({
-          path: at,
-          mode,
-          size: data.length,
-          chunks: [],
-          record: parseTree(data.toString('utf8')),
-        })
+        const record = recordOf(data)
 
-        continue
+        if (record !== undefined) {
+          files.push({ path: at, mode, size: data.length, chunks: [], record })
+
+          continue
+        }
       }
 
       const chunks: Array<string> = []
@@ -130,6 +134,14 @@ export async function readVersionFiles(input: {
   files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
 
   return files
+}
+
+function recordOf(data: Buffer): ReturnType<typeof parseTree> | undefined {
+  if (data.toString('utf8').trim() === '') {
+    return undefined
+  }
+
+  return parseTree(data.toString('utf8'))
 }
 
 // Build a version: walk, chunk, and write the prolly tree. The tree's own chunks are

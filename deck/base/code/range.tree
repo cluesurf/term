@@ -29,8 +29,14 @@ form range
           read value
           read self/end
 
+  # a step of zero or less never reaches `end`, so the walk would not stop: the step is positive, and the caller
+  # shows it
   task to-list
     take self
+    have
+      call is-above
+        read self/step
+        code 0
     like list
     save out
       make list

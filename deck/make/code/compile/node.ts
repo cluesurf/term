@@ -641,6 +641,34 @@ export type Proof = {
 
 export type Program = Statement[]
 
+// Another implementation of a named task, read from a `twin` declaration (note/term/optimize/words.md). It is NOT a
+// statement: the mill returns twins BESIDE the program, so every pass and every backend that does not choose between
+// implementations never sees one and emits the reference, which is always a correct choice.
+export type Twin = {
+  // the task this is another implementation of, as written (an alias is resolved later, like any reference)
+  of: string
+  // its label among that task's twins: what bake.json, `term race` and `term bake --why` print
+  name: string
+  // the parameters by name, in the reference's order. Their types, the generics and the result come from the task
+  params: string[]
+  // conditions the compiler must PROVE at a call site for the twin to be eligible there
+  have: Expression[]
+  // `hook test`: conditions proven where they can be, and checked at run time where they cannot
+  test: Expression[]
+  // relaxations of the meaning the twin needs (`float-order`, `float-fused`), granted by the caller's `note ease`
+  ease: string[]
+  // an estimate of the work over the input sizes, used only for a static choice
+  cost?: Expression
+  // knobs: compile-time values a `tour` chooses
+  knobs: { name: string; type?: Type }[]
+  // the targets it is eligible on (`note platform, name rust`); empty is every target
+  platform: string[]
+  // `note trust`: admitted as trusted, so it may call native code the kernel cannot see
+  trust: boolean
+  body: Statement[]
+  span: Span
+}
+
 export function showType(type: Type): string {
   switch (type.kind) {
     case 'number':

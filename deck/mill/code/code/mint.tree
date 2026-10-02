@@ -88,6 +88,9 @@ load @term/mill/code/code/tree/slot/mint
 load @term/mill/code/code/tune/mint
   find tune
 
+load @term/mill/code/code/twin/mint
+  find twin
+
 load @term/mill/code/code/view/mint
   find view-def
 
@@ -165,5 +168,7 @@ mint code
     site cast
   case tune
     site tune
+  case twin
+    site twin
   case view, mint view-def
     site view

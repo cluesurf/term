@@ -93,6 +93,18 @@ load @term/face/code/logic/range
 load @term/face/code/component/select
   find select
 
+# the input the author writes once (native-dom-0026); here NSTextField, UITextField or EditText
+load @term/face/code/component/input
+  find input
+
+# the dialog the author writes once (native-dom-0026); here an NSPanel sheet, a page sheet or an android.app.Dialog
+load @term/face/code/component/dialog
+  find dialog
+
+load @term/face/code/logic/disclosure
+  find disclosure-open
+  find open-disclosure
+
 load @term/base/code/list
   find list
 
@@ -115,6 +127,9 @@ load @term/site/code/dom/native/toolkit/dom
   find press
   find slide
   find choose
+  find type-text
+  find dismiss
+  find later
   find child-at
   find serialize
   find snapshot
@@ -250,6 +265,12 @@ task traits-line
 # the layout words native-dom-0027 holds, each a row of two buttons whose frames are read back from the views. The
 # same rows layout-golden.ts draws in Chromium (test/compile/shared/layout-rows.ts)
 ${LAYOUT_ROWS}
+# what the dialog holds: drawn into it by the dialog, wherever the platform presents it
+view dialog-body
+  take host, like view
+  view span
+    text <Sure?>
+
 # the select's choices, made at the top level: a list made inside a closure reaches Swift untyped (native-dom-0021)
 task size-names
   like list
@@ -297,6 +318,70 @@ task press-times
       take site, name step
       call press
         read button
+
+# the run after the dialog, called once the platform has dismissed it
+task finish-run
+  save missing, call unsupported-styles
+  call say
+    text <unsupported [{{missing}}]>
+  call snapshot
+    text <${shot}>
+  call change-trait
+    text <color-scheme>
+    text <light>
+  save box
+    call create-element
+      bind tag, text <div>
+  call theme
+    read box
+  save before
+    call serialize
+      read box
+  call say
+    text <theme {{before}}>
+  call say
+    call traits-line
+  call change-trait
+    text <color-scheme>
+    text <dark>
+  save after
+    call serialize
+      read box
+  call say
+    text <theme {{after}}>
+  # native-dom-0035: the platform turns the device, and the app hears it the way it hears a person turning it
+  save turn-box
+    call create-element
+      bind tag, text <div>
+  call turn-watch
+    read turn-box
+  save width-before
+    call trait-text
+      text <width-class>
+  save width-runs-before, read counted/width
+  save scheme-runs-before, read counted/scheme
+  call say
+    text <turn before {{width-before}} {{width-runs-before}} {{scheme-runs-before}}>
+  call make-effect
+    task report
+      save seen
+        call trait-text
+          text <width-class>
+      fork test
+        hook test
+          call is-equal
+            read seen
+            read width-before
+        hook miss
+          save width-runs, read counted/width
+          save scheme-runs, read counted/scheme
+          call say
+            text <turned {{seen}} {{width-runs}} {{scheme-runs}}>
+          call exit-app
+            code 0
+        hook hold
+          save skip, code 0
+  call turn-device
 
 task main
   save root
@@ -365,7 +450,7 @@ task main
 ${LAYOUT_CALLS}      # native-dom-0026: the slider, two ways. Mounted off the window so the root's children stay as the rows expect
       save volume
         call make-range
-          bind start, code 40
+          bind start, code 40.0
       save slider-box
         call create-element
           bind tag, text <div>
@@ -373,9 +458,9 @@ ${LAYOUT_CALLS}      # native-dom-0026: the slider, two ways. Mounted off the wi
         read slider-box
         text <>
         read volume
-        code 0
-        code 100
-        code 1
+        code 0.0
+        code 100.0
+        code 0.5
       save slider-shown
         call serialize
           read slider-box
@@ -385,7 +470,7 @@ ${LAYOUT_CALLS}      # native-dom-0026: the slider, two ways. Mounted off the wi
         call child-at
           read slider-box
           code 0
-        text <75>
+        text <37.5>
       save heard
         call range-value
           read volume
@@ -393,7 +478,7 @@ ${LAYOUT_CALLS}      # native-dom-0026: the slider, two ways. Mounted off the wi
         text <slider heard {{heard}}>
       call write-signal
         bind self, read volume
-        bind value, code 20
+        bind value, code 20.0
       save slider-moved
         call serialize
           read slider-box
@@ -435,67 +520,89 @@ ${LAYOUT_CALLS}      # native-dom-0026: the slider, two ways. Mounted off the wi
           read select-box
       call say
         text <select moved {{select-moved}}>
-      save missing, call unsupported-styles
-      call say
-        text <unsupported [{{missing}}]>
-      call snapshot
-        text <${shot}>
-      call change-trait
-        text <color-scheme>
-        text <light>
-      save box
+      # native-dom-0026: the input, two ways, off the window as the others are
+      save greeting
+        call make-signal
+          bind value, text <hello>
+      save input-box
         call create-element
           bind tag, text <div>
-      call theme
-        read box
-      save before
+      call input
+        read input-box
+        text <>
+        read greeting
+        text <Your name>
+      save input-shown
         call serialize
-          read box
+          read input-box
       call say
-        text <theme {{before}}>
+        text <input shown {{input-shown}}>
+      call type-text
+        call child-at
+          read input-box
+          code 0
+        text <hello world>
+      save typed
+        call read-signal
+          bind self, read greeting
       call say
-        call traits-line
-      call change-trait
-        text <color-scheme>
-        text <dark>
-      save after
+        text <input heard {{typed}}>
+      call write-signal
+        bind self, read greeting
+        bind value, text <bye>
+      save input-moved
         call serialize
-          read box
+          read input-box
       call say
-        text <theme {{after}}>
-      # native-dom-0035: the platform turns the device, and the app hears it the way it hears a person turning it
-      save turn-box
+        text <input moved {{input-moved}}>
+      # native-dom-0026: the dialog, presented by the platform and dismissed by the person
+      save asking
+        call make-disclosure
+          bind start, false
+      save dialog-box
         call create-element
           bind tag, text <div>
-      call turn-watch
-        read turn-box
-      save width-before
-        call trait-text
-          text <width-class>
-      save width-runs-before, read counted/width
-      save scheme-runs-before, read counted/scheme
+      call dialog
+        read dialog-box
+        text <>
+        read asking
+        text <Delete it?>
+        read dialog-body
+      save sheet
+        call child-at
+          read dialog-box
+          code 0
+      save closed-tree
+        call serialize
+          read sheet
+      save page-tree
+        call serialize
+          read dialog-box
       call say
-        text <turn before {{width-before}} {{width-runs-before}} {{scheme-runs-before}}>
-      call make-effect
-        task report
-          save seen
-            call trait-text
-              text <width-class>
-          fork test
-            hook test
-              call is-equal
-                read seen
-                read width-before
-            hook miss
-              save width-runs, read counted/width
-              save scheme-runs, read counted/scheme
+        text <dialog closed {{closed-tree}} page {{page-tree}}>
+      call open-disclosure
+        bind self, read asking
+      # the platform presents it on its own turn, so it is read after one
+      call later
+        task opened
+          save open-tree
+            call serialize
+              read sheet
+          call say
+            text <dialog opened {{open-tree}}>
+          call dismiss
+            read sheet
+          call later
+            task dismissed
+              save after-dismiss
+                call serialize
+                  read sheet
+              save still-open
+                call disclosure-open
+                  bind self, read asking
               call say
-                text <turned {{seen}} {{width-runs}} {{scheme-runs}}>
-              call exit-app
-                code 0
-            hook hold
-              save skip, code 0
-      call turn-device
+                text <dialog dismissed {{after-dismiss}} {{still-open}}>
+              call finish-run
   call run-app
 `
 
@@ -560,7 +667,7 @@ function judge(env: string, toolkit: string, output: string, shot: string): void
     return line?.slice(line.indexOf(`slider ${what} `) + `slider ${what} `.length)
   }
   ok(`${env}: the slider shows the range's 40, read back from the platform's control`, sliderLine('shown') === '<div><slider value="40"></slider></div>', String(sliderLine('shown')))
-  ok(`${env}: a move to 75 made on the control is written into the range`, Number(sliderLine('heard')) === 75, String(sliderLine('heard')))
+  ok(`${env}: a move to 37.5 made on the control, half a step, is written into the range`, Number(sliderLine('heard')) === 37.5, String(sliderLine('heard')))
   ok(`${env}: the range written to 20 moves the control`, sliderLine('moved') === '<div><slider value="20"></slider></div>', String(sliderLine('moved')))
   const selectLine = (what: string) => {
     const line = output.split('\n').map(l => l.trim()).find(l => l.includes(`select ${what} `))
@@ -570,6 +677,30 @@ function judge(env: string, toolkit: string, output: string, shot: string): void
   ok(`${env}: the select shows the signal's medium, read back from the platform's picker`, selectLine('shown') === '<div><select value="medium"></select></div>', String(selectLine('shown')))
   ok(`${env}: large chosen on the picker is written into the signal`, selectLine('heard') === 'large', String(selectLine('heard')))
   ok(`${env}: the signal written to small moves the picker`, selectLine('moved') === '<div><select value="small"></select></div>', String(selectLine('moved')))
+  const inputLine = (what: string) => {
+    const line = output.split('\n').map(l => l.trim()).find(l => l.includes(`input ${what} `))
+
+    return line?.slice(line.indexOf(`input ${what} `) + `input ${what} `.length)
+  }
+  ok(`${env}: the input shows the signal's hello, read back from the platform's field`, inputLine('shown') === '<div><input value="hello"></input></div>', String(inputLine('shown')))
+  ok(`${env}: hello world typed into the field is written into the signal`, inputLine('heard') === 'hello world', String(inputLine('heard')))
+  ok(`${env}: the signal written to bye shows in the field`, inputLine('moved') === '<div><input value="bye"></input></div>', String(inputLine('moved')))
+  const dialogLine = (what: string) => {
+    const line = output.split('\n').map(l => l.trim()).find(l => l.includes(`dialog ${what} `))
+
+    return line?.slice(line.indexOf(`dialog ${what} `) + `dialog ${what} `.length)
+  }
+  ok(
+    `${env}: the dialog holds its content, closed, and is not in the page it was given`,
+    dialogLine('closed') === '<sheet open="false"><span>Sure?</span></sheet> page <div></div>',
+    String(dialogLine('closed')),
+  )
+  ok(`${env}: opening the disclosure has the platform present it`, dialogLine('opened') === '<sheet open="true"><span>Sure?</span></sheet>', String(dialogLine('opened')))
+  ok(
+    `${env}: the person's dismissal ends the presentation and closes the disclosure`,
+    dialogLine('dismissed') === '<sheet open="false"><span>Sure?</span></sheet> false',
+    String(dialogLine('dismissed')),
+  )
   // native-dom-0027: the words 0007 did not run, judged by the one judge the web is held to as well
   for (const [name, passed, info] of judgeLayout(output)) {
     ok(`${env}: ${name}`, passed, info)

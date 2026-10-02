@@ -8,7 +8,8 @@ form rational
   link numerator, like number
   link denominator, like number
 
-  # reduce to lowest terms by dividing out the greatest common divisor (an exact division)
+  # reduce to lowest terms by dividing out the greatest common divisor (an exact division). The divisor is zero only
+  # when both terms are, and 0/0 has no lowest terms: it is returned as it is, where it used to divide by zero
   task reduce
     take self
     like rational
@@ -18,6 +19,13 @@ form rational
           read self/numerator
         call absolute
           read self/denominator
+    fork test
+      hook test
+        call is-maximum
+          read g
+          code 0
+      hook hold
+        send back, read self
     send back
       make rational
         bind numerator

@@ -17,9 +17,10 @@
 
 import fsp from 'fs/promises'
 import path from 'path'
-import os from 'os'
-import { hashObject, ObjectKind, idHex } from './hash'
+import { randomUUID } from 'crypto'
+import { hashObject, ObjectKind } from './hash'
 import { tonePath } from './tone'
+import { localStore } from '../oci/client'
 
 /** The minimal contract every object store (local or remote) satisfies. */
 export type ObjectStore = {
@@ -28,12 +29,6 @@ export type ObjectStore = {
   put(input: { id: string; bytes: Buffer }): Promise<void>
   /** Batch existence check: return the subset of ids NOT present. */
   missing(ids: string[]): Promise<string[]>
-}
-
-// The local object store root. Kept beside the existing deck store under
-// the user's home so both share one content-addressed home.
-function localObjectRoot(): string {
-  return path.join(os.homedir(), '.term', 'store', 'objects', 'sha256')
 }
 
 /** Absolute on-disk path for an object id in a given root. */
@@ -55,9 +50,17 @@ export function verifyObject(input: {
   return hashObject({ kind: input.kind, bytes: input.bytes }) === input.id
 }
 
-/** A local filesystem object store rooted under `~/.term/store`. */
+/**
+ * A local filesystem object store. With no root it is the user's store, an OCI image layout at
+ * `~/.base/@cluesurf/term/store` (`oci/layout.ts`), which every install fills and an offline install reads as a
+ * registry. With a root it is the older tone-path layout, which the object tests still build in a scratch directory.
+ */
 export function localObjectStore(input?: { root: string }): ObjectStore {
-  const root = input?.root ?? localObjectRoot()
+  if (!input) {
+    return localStore()
+  }
+
+  const root = input.root
 
   return {
     async has(id: string): Promise<boolean> {
@@ -75,6 +78,11 @@ export function localObjectStore(input?: { root: string }): ObjectStore {
     },
 
     async put(putInput: { id: string; bytes: Buffer }): Promise<void> {
+      // the header's promise, kept: an object whose bytes are not its address never enters the store
+      if (hashObject({ kind: 'blob', bytes: putInput.bytes }) !== putInput.id) {
+        throw new Error(`object hash mismatch for ${putInput.id}`)
+      }
+
       const filePath = objectFilePath(root, putInput.id)
 
       try {
@@ -87,7 +95,8 @@ export function localObjectStore(input?: { root: string }): ObjectStore {
 
       await fsp.mkdir(path.dirname(filePath), { recursive: true })
       // write to a temp then rename, so a reader never sees a partial object
-      const tmp = `${filePath}.tmp-${idHex(putInput.id).slice(0, 8)}`
+      // a unique temp name: two writers of one id must not share a temp file, or one renames the other's half
+      const tmp = `${filePath}.tmp-${randomUUID()}`
       await fsp.writeFile(tmp, putInput.bytes)
       await fsp.rename(tmp, filePath)
     },

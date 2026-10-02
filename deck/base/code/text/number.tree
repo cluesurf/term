@@ -1,0 +1,186 @@
+
+# A number written as text, read: `read-number` answers `some` with the value, a `decimal` (`number` is an integer
+# on every backend, so a fraction needs the float type),, or `none` for text that is not one
+# (native-dom-0040). What a control or a form reports is text (a range input's `value`, a number field), and the stdlib
+# had no way to read it. Pure Term over `char-at`, so every backend reads the same text the same way.
+#
+#   an optional minus first, then digits, then optionally a point and more digits:  42  -7  3.25  -0.5  .5  5.
+#   none:  the empty text, a letter or a space anywhere, a second point, a minus anywhere but first, no digit at all
+
+load @term/base/code/maybe
+  find maybe
+
+load @term/base/code/text
+  find char-at
+  find char-count
+
+# one decimal digit's value, or -1 for anything that is not one
+task decimal-digit
+  take letter, like text
+  like decimal
+  fork test
+    hook test
+      call is-equal
+        read letter
+        text <0>
+    hook hold
+      send back, code 0.0
+    hook test
+      call is-equal
+        read letter
+        text <1>
+    hook hold
+      send back, code 1.0
+    hook test
+      call is-equal
+        read letter
+        text <2>
+    hook hold
+      send back, code 2.0
+    hook test
+      call is-equal
+        read letter
+        text <3>
+    hook hold
+      send back, code 3.0
+    hook test
+      call is-equal
+        read letter
+        text <4>
+    hook hold
+      send back, code 4.0
+    hook test
+      call is-equal
+        read letter
+        text <5>
+    hook hold
+      send back, code 5.0
+    hook test
+      call is-equal
+        read letter
+        text <6>
+    hook hold
+      send back, code 6.0
+    hook test
+      call is-equal
+        read letter
+        text <7>
+    hook hold
+      send back, code 7.0
+    hook test
+      call is-equal
+        read letter
+        text <8>
+    hook hold
+      send back, code 8.0
+    hook test
+      call is-equal
+        read letter
+        text <9>
+    hook hold
+      send back, code 9.0
+    hook miss
+      send back, code -1.0
+
+task read-number
+  take value, like text
+  like maybe
+    head decimal
+  save total, code 0.0
+  save divisor, code 1.0
+  save after-point, false
+  save sign, code 1.0
+  save digits, code 0
+  save broken, false
+  walk size
+    bind base, code 0
+    bind head
+      call char-count
+        read value
+    hook next
+      take site, name at
+      save letter
+        call char-at
+          read value
+          read at
+      save digit
+        call decimal-digit
+          read letter
+      fork test
+        hook test
+          call is-above
+            read digit
+            code -1.0
+        hook hold
+          save total
+            call add
+              call multiply
+                read total
+                code 10.0
+              read digit
+          save digits
+            call add
+              read digits
+              code 1
+          fork test
+            hook test
+              read after-point
+            hook hold
+              save divisor
+                call multiply
+                  read divisor
+                  code 10.0
+            hook miss
+              save skip, code 0
+        hook test
+          call is-equal
+            read letter
+            text <->
+        hook hold
+          # a minus only as the first character
+          fork test
+            hook test
+              call is-equal
+                read at
+                code 0
+            hook hold
+              save sign, code -1.0
+            hook miss
+              save broken, true
+        hook test
+          call is-equal
+            read letter
+            text <.>
+        hook hold
+          # one point at most
+          fork test
+            hook test
+              read after-point
+            hook hold
+              save broken, true
+            hook miss
+              save after-point, true
+        hook miss
+          save broken, true
+  fork test
+    hook test
+      read broken
+    hook hold
+      send back
+        make none
+    hook test
+      call is-equal
+        read digits
+        code 0
+    hook hold
+      send back
+        make none
+    hook miss
+      send back
+        make some
+          bind value
+            call multiply
+              read sign
+              call divide
+                read total
+                read divisor

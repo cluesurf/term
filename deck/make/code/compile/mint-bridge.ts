@@ -28,6 +28,7 @@ import type {
   Program,
   Proof,
   Statement,
+  Twin,
   Type,
   ViewAttribute,
   ViewNode,
@@ -72,7 +73,8 @@ import {
 } from '@term/make/code/compile/node'
 
 export type MillResult =
-  | { ok: true; program: Program }
+  // `twins` sit beside the program and never in it (node.ts, `Twin`), so a reader that ignores them is correct
+  | { ok: true; program: Program; twins?: Twin[] }
   | { ok: false; diagnostics: Diagnostic[] }
 
 type Form = Extract<Minted, { kind: 'form' }>
@@ -164,6 +166,8 @@ type Bridge = {
   // not descend into can still be read BY the grammar. The one place that needs it is a `{{...}}` runtime
   // interpolation, whose contents are a value the text literal holds rather than a node the mine walked.
   grammar: Grammar
+  // the file's `twin` declarations, returned beside the program rather than in it (node.ts, `Twin`)
+  twins: Twin[]
 }
 
 // Read one node as a value, through the grammar, so an interpolation's contents are lowered by the same rules
@@ -2600,6 +2604,87 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
   }
 }
 
+// `twin <task>, name <label>`: another implementation of a named task (note/term/optimize/words.md). Read into a
+// `Twin` beside the program, never into it, so nothing that does not choose between implementations ever sees one.
+function twinOf(bridge: Bridge, value: Form): Twin | undefined {
+  const of = wordAt(value, 'name')
+  const name = wordAt(firstAt(value, 'label'), 'name')
+
+  if (of === undefined || name === undefined) {
+    refuse(bridge, value, 'a twin names the task it twins and its own label: `twin <task>, name <label>`')
+
+    return undefined
+  }
+
+  const takes = formsAt(value, 'take')
+
+  // a twin's parameters take their types from the task it twins, so a type written on one is refused: a twin is
+  // read beside its reference, and two places for one type can disagree
+  for (const take of takes) {
+    if (firstAt(take, 'like')) {
+      refuse(bridge, take, `a twin's parameters take their types from \`${of}\`: write \`take ${wordAt(take, 'name') ?? 'x'}\` alone`)
+    }
+  }
+
+  const params = takes.map(take => wordAt(take, 'name') ?? '').filter(Boolean)
+  const knobs = formsAt(value, 'knob').map(knob => {
+    const type = typeOf(bridge, firstAt(knob, 'like'))
+
+    return { name: wordAt(knob, 'name') ?? '', ...(type ? { type } : {}) }
+  })
+  const lines = (site: string): Expression[] =>
+    formsAt(value, site)
+      .map(line => expressionOf(bridge, firstAt(line, 'seed')))
+      .filter((e): e is Expression => e !== undefined)
+
+  // `note platform, name rust`: the target words are whatever the note carries besides `platform`
+  const platform = formsAt(value, 'note')
+    .filter(note => wordAt(note, 'text') === 'platform')
+    .flatMap(note => wordsUnder(note).filter(word => word !== 'note' && word !== 'platform' && word !== 'name'))
+
+  // the body is its own scope, with the parameters and the knobs bound
+  const enclosing = bridge.declared
+  bridge.declared = new Set([...params, ...knobs.map(k => k.name)])
+  const body = flowOf(bridge, at(value, 'flow'))
+  bridge.declared = enclosing
+
+  const cost = lines('cost')[0]
+
+  return {
+    of,
+    name,
+    params,
+    have: lines('have'),
+    test: lines('test'),
+    ease: formsAt(value, 'ease').map(ease => wordAt(ease, 'name') ?? '').filter(Boolean),
+    ...(cost ? { cost } : {}),
+    knobs,
+    platform,
+    trust: hasWord(value, 'note', 'trust'),
+    body,
+    span: spanOf(value),
+  }
+}
+
+// every bare word under a minted value's source node, in order: what a `note platform, name rust` carries
+function wordsUnder(value: Minted): string[] {
+  const words: string[] = []
+  // a group's `nodes` and a name's chunks, never `parent`, which points back up
+  const visit = (node: GroupNode | GroupNode['nodes'][number]): void => {
+    if (node.kind === 'group') {
+      node.nodes.forEach(visit)
+    } else if (node.kind === 'name') {
+      words.push(node.parts.map(part => (part.kind === 'chunk' ? part.text : '')).join(''))
+    }
+  }
+
+  if (value.node) {
+    visit(value.node as GroupNode)
+  }
+
+  return words
+}
+
 // A top-level statement can lower to several compiler statements (a form and its methods), or to none at all
 // (a `load` is an import, which the loader resolves; it is not part of the program).
 function topLevelOf(bridge: Bridge, value: Minted): Statement[] {
@@ -2644,6 +2729,17 @@ function topLevelOf(bridge: Bridge, value: Minted): Statement[] {
     // a package manifest read by the code role, which is not code: the deck dialect owns it
     case 'deck-def':
       return []
+
+    // another implementation of a named task: returned beside the program, so it adds no statement
+    case 'twin': {
+      const twin = twinOf(bridge, value)
+
+      if (twin) {
+        bridge.twins.push(twin)
+      }
+
+      return []
+    }
 
     case 'bear':
       // imports are resolved by the module loader and carry no statement
@@ -4063,6 +4159,7 @@ export function millByGrammar(
     declared: new Set(),
     aliases: new Map(),
     grammar,
+    twins: [],
   }
   const mined = runMine(grammar.mine, 'code', tree)
 
@@ -4105,5 +4202,5 @@ export function millByGrammar(
 
   applyAliases(bridge.aliases, program)
 
-  return { ok: true, program }
+  return bridge.twins.length > 0 ? { ok: true, program, twins: bridge.twins } : { ok: true, program }
 }

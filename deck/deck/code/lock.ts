@@ -59,6 +59,7 @@ export function parseLockfileByHand(input: { text: string }): Lockfile {
       code: parseCode(valueOf(form, 'code') ?? '0.0.0'),
       hash: valueOf(form, 'hash') ?? '',
       site: valueOf(form, 'site') ?? '',
+      ...(valueOf(form, 'key') ? { key: valueOf(form, 'key') } : {}),
       link: formsWith(form, 'link').map(link => ({
         name: link.terms[0] ?? '',
         code: valueOf(link, 'code') ?? '',
@@ -84,6 +85,10 @@ export function writeLockfile(input: { lockfile: Lockfile }): string {
     lines.push(`  code <${showCode(entry.code)}>`)
     lines.push(`  hash <${entry.hash}>`)
     lines.push(`  site <${entry.site}>`)
+
+    if (entry.key) {
+      lines.push(`  key <${entry.key}>`)
+    }
 
     for (const dep of entry.link) {
       lines.push(`  link ${dep.name}, code <${dep.code}>`)

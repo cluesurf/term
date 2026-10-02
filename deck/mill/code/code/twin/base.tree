@@ -1,0 +1,3 @@
+mill twin
+  bind mine, load ./mine
+  bind mint, load ./mint

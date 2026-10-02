@@ -38,17 +38,28 @@ task join
               read item
   send back, read out
 
-# count how many non-overlapping times `part` occurs in `input`
+# count how many non-overlapping times `part` occurs in `input`. An empty `part` counts 0: it matches at `from` itself,
+# and the walk used to stand there forever. Each turn moves `from` strictly forward (past the match, which `index-of`
+# never finds before `from`), and the walk stops past the end, where nothing more can be found
 task count-occurrences
   take input, like text
   take part, like text
   like number
+  fork test
+    hook test
+      call is-equal
+        read part/length
+        code 0
+    hook hold
+      send back, code 0
   save total, code 0
   save from, code 0
   walk test
     hook test
-      true
-    hook step
+      call is-maximum
+        read from
+        read input/length
+    hook hold
       save found
         call index-of
           read input
@@ -61,15 +72,25 @@ task count-occurrences
             code 0
         hook hold
           halt
-        hook miss
-          save total
+      save total
+        call add
+          read total
+          code 1
+      save next
+        call add
+          read found
+          read part/length
+      fork test
+        hook test
+          call is-maximum
+            read next
+            read from
+        hook hold
+          save next
             call add
-              read total
+              read from
               code 1
-          save from
-            call add
-              read found
-              read part/length
+      save from, read next
   send back, read total
 
 # strip any leading and trailing characters that appear in `chars`

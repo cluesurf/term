@@ -1,0 +1,88 @@
+
+# Dialog on a platform that presents it itself: an NSPanel sheet on the window on macOS, a page sheet on iOS, an
+# android.app.Dialog on Android, each with the platform's own entrance, chrome and dismissal (native-dom-0026). Reached
+# through `component/dialog.tree` by the `toolkit` rung of the macos, ios and android env chains.
+#
+# THE SAME CONTRACT as the generic ../dialog.tree: `host`, `class`, `control` (a disclosure), `title` and `content`.
+# The toolkit host makes the platform's presentation for the tag `sheet`, never places it in the page it is appended
+# to, presents it while `open` is true, and reports the person's own dismissal (Esc on a sheet, a swipe down, back or a
+# tap outside) as `close`, which closes the disclosure.
+
+load @term/site/code/view/render
+  find element
+  find attribute
+  find event
+load @term/site/code/view/reactive
+  find signal
+  find make-effect
+load @term/site/code/dom/dom
+  find view
+  find append
+load ../../../logic/disclosure
+  find disclosure-open
+  find close-disclosure
+
+# the work of the view below, in a task: in a `view` body a bare `call` renders as a text child
+task mount-dialog
+  take host, like view
+  take class, like text
+  take control, like signal boolean
+  take title, like text
+  take content
+    like task
+      take host, like view
+  like view
+  save sheet
+    call element
+      text <sheet>
+  call attribute
+    read sheet
+    text <data-slot>
+    text <dialog>
+  call attribute
+    read sheet
+    text <class>
+    read class
+  call attribute
+    read sheet
+    text <title>
+    read title
+  call content
+    read sheet
+  call append
+    read host
+    read sheet
+  # presented while the control is open
+  call make-effect
+    task show-sheet
+      save open
+        call disclosure-open
+          bind self, read control
+      call attribute
+        read sheet
+        text <open>
+        text <{{open}}>
+  # dismissed by the person: the disclosure closes with it
+  call event
+    read sheet
+    text <close>
+    task dismissed
+      call close-disclosure
+        bind self, read control
+  send back, read sheet
+
+view dialog
+  take host, like view
+  take class, like text
+  take control, like signal boolean
+  take title, like text
+  take content
+    like task
+      take host, like view
+  save mounted
+    call mount-dialog
+      read host
+      read class
+      read control
+      read title
+      read content

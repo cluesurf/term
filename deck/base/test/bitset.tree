@@ -1,0 +1,87 @@
+# Bitset behavior: a bit set is had, a cleared one is not, a toggle flips, the count counts, and a bit past the first
+# word grows the list. Bit 40 lives in word 1 at offset 8.
+#
+# Run with: term test
+
+load @term/base/code/bitset
+  find bitset
+
+load @term/base/code/boolean
+  find not
+
+test bitset-sets-and-has-a-bit
+  save s
+    make bitset
+      bind words
+        make list
+  call set
+    read s
+    code 3
+  want hold
+    call has
+      read s
+      code 3
+
+test bitset-does-not-have-an-unset-bit
+  save s
+    make bitset
+      bind words
+        make list
+  call set
+    read s
+    code 3
+  want hold
+    call not
+      call has
+        read s
+        code 4
+
+test bitset-grows-past-the-first-word
+  save s
+    make bitset
+      bind words
+        make list
+  call set
+    read s
+    code 40
+  want hold
+    call has
+      read s
+      code 40
+
+test bitset-clears-a-bit
+  save s
+    make bitset
+      bind words
+        make list
+  call set
+    read s
+    code 40
+  call clear
+    read s
+    code 40
+  want hold
+    call not
+      call has
+        read s
+        code 40
+
+test bitset-toggles-and-counts
+  save s
+    make bitset
+      bind words
+        make list
+  call set
+    read s
+    code 1
+  call toggle
+    read s
+    code 2
+  call toggle
+    read s
+    code 1
+  want hold
+    call is-equal
+      call count
+        read s
+      code 1

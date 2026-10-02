@@ -4,8 +4,8 @@
 # instead, through `component/slider.tree` and the build's env chain. Both take the same props, which is the contract
 # (note/term/app/11-uniform-interface.md, native-dom-0026).
 #
-#   save volume, call make-range / bind start, code 40
-#   call slider / read root / text <> / read volume / code 0 / code 100 / code 1
+#   save volume, call make-range / bind start, code 40.0
+#   call slider / read root / text <> / read volume / code 0.0 / code 100.0 / code 1.0
 #
 # Two-way: the control shows the range's value, and a move the person makes is written into the range. Parts:
 # `slider` (the control, data-slot for a theme).
@@ -31,10 +31,10 @@ load ../../logic/range
 task mount-slider
   take host, like view
   take class, like text
-  take control, like signal number
-  take min, like number
-  take max, like number
-  take step, like number
+  take control, like signal decimal
+  take min, like decimal
+  take max, like decimal
+  take step, like decimal
   like view
   save input
     call element
@@ -87,10 +87,10 @@ task mount-slider
 view slider
   take host, like view
   take class, like text
-  take control, like signal number
-  take min, like number
-  take max, like number
-  take step, like number
+  take control, like signal decimal
+  take min, like decimal
+  take max, like decimal
+  take step, like decimal
   save mounted
     call mount-slider
       read host

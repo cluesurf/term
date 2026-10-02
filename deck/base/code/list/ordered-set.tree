@@ -41,11 +41,17 @@ form ordered-set
       call size
         read self/items
     save i, code 0
+    # bounded by the count it started with, and inside the length it has now: the native comparison below may touch
+    # the items, so the walk still ends and still reads only inside them
     walk test
       hook test
-        call is-below
-          read i
-          read count
+        call and
+          call is-below
+            read i
+            read count
+          call is-below
+            read i
+            read self/items/length
       hook hold
         save entry
           call get

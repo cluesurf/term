@@ -897,6 +897,88 @@ export function emitRust(
     }
   }
 
+  // the generic parameters of a form that sit in a map KEY somewhere in its fields: comparing the form compares that
+  // map, which needs the key `Eq + Hash + Clone` (TermMap's PartialEq), a bound `#[derive(PartialEq)]` cannot add
+  const keyParams = (node: { params: string[]; fields: { type: Type }[]; variants: { fields: { type: Type }[] }[] }): Set<string> => {
+    const params = new Set(node.params)
+    const found = new Set<string>()
+
+    const mentions = (type: Type | undefined, into: Set<string>): void => {
+      if (!type) {
+        return
+      }
+
+      if (type.kind === 'named') {
+        if (params.has(type.name)) {
+          into.add(type.name)
+        }
+
+        type.args?.forEach(a => mentions(a, into))
+      } else if (type.kind === 'array') {
+        mentions(type.element, into)
+      } else if (type.kind === 'map') {
+        mentions(type.key, into)
+        mentions(type.value, into)
+      }
+    }
+
+    const visit = (type: Type | undefined): void => {
+      if (!type) {
+        return
+      }
+
+      if (type.kind === 'map') {
+        mentions(type.key, found)
+        visit(type.value)
+      } else if (type.kind === 'array') {
+        visit(type.element)
+      } else if (type.kind === 'named') {
+        if (type.name === 'hash') {
+          mentions(type.args?.[0], found)
+          visit(type.args?.[1])
+        } else {
+          type.args?.forEach(visit)
+        }
+      }
+    }
+
+    for (const f of [...node.fields, ...node.variants.flatMap(v => v.fields)]) {
+      visit(f.type)
+    }
+
+    return found
+  }
+
+  // `PartialEq` written out for a form `keyParams` names, with the bound the derive cannot spell: every parameter
+  // `PartialEq`, and a key parameter `Eq + Hash + Clone` too. Field by field for a struct, case by case for an enum.
+  const keyedEquality = (
+    node: { name: string; params: string[]; fields: { name: string }[]; variants: { name: string; fields: { name: string }[] }[] },
+    keyed: Set<string>,
+  ): string => {
+    const name = pascal(node.name)
+    const generics = node.params
+      .map(p => `${p.toUpperCase()}: PartialEq${keyed.has(p) ? ' + Eq + std::hash::Hash + Clone' : ''}`)
+      .join(', ')
+    const applied = `<${node.params.map(p => p.toUpperCase()).join(', ')}>`
+
+    if (node.variants.length === 0) {
+      const same = node.fields.map(f => `self.${snake(f.name)} == other.${snake(f.name)}`)
+
+      return `impl<${generics}> PartialEq for ${name}${applied} { fn eq(&self, other: &Self) -> bool { ${same.length ? same.join(' && ') : 'true'} } }`
+    }
+
+    const arms = node.variants.map(v => {
+      const left = v.fields.map((f, i) => `${snake(f.name)}: a${i}`)
+      const right = v.fields.map((f, i) => `${snake(f.name)}: b${i}`)
+      const pattern = (binds: string[]) => `${name}::${pascal(v.name)}${binds.length ? ` { ${binds.join(', ')} }` : ''}`
+      const same = v.fields.map((_, i) => `a${i} == b${i}`)
+
+      return `(${pattern(left)}, ${pattern(right)}) => ${same.length ? same.join(' && ') : 'true'},`
+    })
+
+    return `impl<${generics}> PartialEq for ${name}${applied} { fn eq(&self, other: &Self) -> bool { match (self, other) { ${arms.join(' ')} _ => false } } }`
+  }
+
   // for each form, which of its generic parameters (by index) flow into a map KEY position inside its fields. A `set<t>`
   // stores `items: hash<t, bool>`, so its index 0 is a key; a method generic that fills that slot needs `Eq + Hash`.
   const formKeyIndices = new Map<string, Set<number>>()
@@ -2349,12 +2431,17 @@ export function emitRust(
         // record holding one clones. Deriving Clone lets a value be shared at a call site rather than moved --
         // the same property the Rc-wrapped collections rely on.
         // and compares by its fields where every field can be compared, hashing too where every field can be hashed
-        // (see `equatableForms`), so `is-equal` on two records means the same thing here as on every other backend
+        // (see `equatableForms`), so `is-equal` on two records means the same thing here as on every other backend.
+        // A generic form holding a map keyed by one of its parameters (`set<t>` holds `items: hash<t, boolean>`)
+        // cannot DERIVE it: the derive bounds `T: PartialEq`, and a map's equality needs its key `Eq + Hash`. That
+        // form gets the impl written out with the bound the derive cannot spell (`keyedEquality` below).
+        const keyed = equatableForms.has(node.name) ? keyParams(node) : new Set<string>()
         const derive = `#[derive(${[
           'Clone',
-          ...(equatableForms.has(node.name) ? ['PartialEq'] : []),
+          ...(equatableForms.has(node.name) && keyed.size === 0 ? ['PartialEq'] : []),
           ...(hashableForms.has(node.name) ? ['Eq', 'Hash'] : []),
         ].join(', ')})]\n${pad(d)}`
+        const written = keyed.size > 0 ? `\n${pad(d)}${keyedEquality(node, keyed)}` : ''
 
         if (node.variants.length > 0) {
           const cases = node.variants.map(v => {
@@ -2374,7 +2461,7 @@ export function emitRust(
 
           return `${derive}enum ${pascal(
             node.name,
-          )}${generics} {\n${cases.join(',\n')}\n${pad(d)}}`
+          )}${generics} {\n${cases.join(',\n')}\n${pad(d)}}${written}`
         }
 
         const fields = node.fields.map(
@@ -2392,7 +2479,7 @@ export function emitRust(
 
         return `${derive}struct ${pascal(
           node.name,
-        )}${generics} {\n${fields.join(',\n')}\n${pad(d)}}`
+        )}${generics} {\n${fields.join(',\n')}\n${pad(d)}}${written}`
       }
 
       case 'hold':

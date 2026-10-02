@@ -31,6 +31,7 @@ import { format } from '@term/make/code/format/format'
 import { parse } from '@term/make/code/parser/tree'
 import { importPathsOf, makeParseMemo } from '@term/make/code/compile/load'
 import { mill } from '@term/make/code/compile/mill'
+import { makeMemo } from '../memo'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
@@ -154,6 +155,11 @@ const files = treeFiles(join(TERM, 'deck')).concat(treeFiles(join(TERM, 'test'))
 
 console.log(`${files.length} .tree files`)
 
+// a file whose text, and the compiler and this sweep, are all unchanged since it last passed every property is not
+// checked again (test/memo.ts). Everything a file's verdict depends on is in those: the formatter, the parser, the
+// mill and its baked grammar, the import reader, and the sweep itself
+const memo = makeMemo('format-sweep', ['deck/make/code', 'test/format'])
+
 let checked = 0
 let skipped = 0
 
@@ -168,13 +174,30 @@ for (const file of files) {
   }
 
   const text = readFileSync(file, 'utf8')
+
+  // the three properties held last time, on these bytes, by this code
+  if (memo.passed(label, text)) {
+    checked++
+    pass += 3
+    continue
+  }
+
+  if (memo.passed(`skip:${label}`, text)) {
+    skipped++
+    continue
+  }
+
   const before = program(file, text)
 
   // a file the parser or the mill refuses has no meaning to preserve
   if (before === undefined) {
     skipped++
+    memo.pass(`skip:${label}`, text)
     continue
   }
+
+  const passedBefore = pass
+  const failedBefore = fail
 
   let once: string
 
@@ -230,6 +253,17 @@ for (const file of files) {
   } else {
     pass++
   }
+
+  // remembered only when all three properties held and nothing was on a known list
+  if (pass - passedBefore === 3 && fail === failedBefore) {
+    memo.pass(label, text)
+  }
+}
+
+const { reused } = memo.save()
+
+if (reused > 0) {
+  console.log(`${reused} file(s) unchanged since they last passed, not checked again (TERM_MEMO=off checks them)`)
 }
 
 for (const line of failures) {

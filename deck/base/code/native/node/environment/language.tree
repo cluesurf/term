@@ -17,8 +17,17 @@ task read
     call split
       read tag
       text <->
+  # a split always has at least one part; the guard says so where the read is, since `split` is native
   save language
-    read parts/0
+    fork
+      test
+      call is-above
+        read parts/length
+        code 0
+      hook hold
+        read parts/0
+      hook miss
+        text <>
   save region
     fork
       test

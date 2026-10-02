@@ -1,9 +1,10 @@
 
 # Range: a number between a minimum and a maximum, written ONCE for every component that picks one (slider today).
-# The controller IS a number signal, as disclosure's is a boolean one: `make-range` creates it, the free functions
-# read and move it. A platform control reports its position as text, the way a web range input's `value` is text,
-# so `move-range` reads that text as a number here, in Term, and every backend gets the same reading.
-# native-dom-0026.
+# The controller IS a decimal signal, as disclosure's is a boolean one: `make-range` creates it, the free functions
+# read and move it. A decimal, not a `number`, because `number` is an integer on every backend and a range steps by
+# fractions too (native-dom-0041). A platform control reports its position as text, the way a web range input's
+# `value` is text, and `move-range` reads it with the stdlib's `read-number` (native-dom-0040); a report that is not a
+# number leaves the range where it was. native-dom-0026.
 
 load @term/site/code/view/reactive
   find signal
@@ -11,28 +12,30 @@ load @term/site/code/view/reactive
   find read-signal
   find write-signal
 
-load @term/base/code/text
-  find char-at
-  find char-count
+load @term/base/code/text/number
+  find read-number
+
+load @term/base/code/maybe
+  find maybe
 
 task make-range
-  take start, like number
-  like signal number
+  take start, like decimal
+  like signal decimal
   send back
     call make-signal
       bind value, read start
 
-# the position right now, as a number, for a `fork` or a label
+# the position right now, for a `fork` or a label
 task range-value
-  take self, like signal number
-  like number
+  take self, like signal decimal
+  like decimal
   send back
     call read-signal
       bind self, read self
 
 # the position as the text a control is given (its `value` attribute), read reactively when bound
 task range-text
-  take self, like signal number
+  take self, like signal decimal
   like text
   save now
     call read-signal
@@ -41,144 +44,14 @@ task range-text
 
 # a control moved: its reported position, read as a number, becomes the range's
 task move-range
-  take self, like signal number
+  take self, like signal decimal
   take reported, like text
-  call write-signal
-    bind self, read self
-    bind value
-      call range-number
-        read reported
-
-# one decimal digit's value, or -1 for anything that is not one
-task range-digit
-  take letter, like text
-  like number
-  fork test
-    hook test
-      call is-equal
-        read letter
-        text <0>
-    hook hold
-      send back, code 0
-    hook test
-      call is-equal
-        read letter
-        text <1>
-    hook hold
-      send back, code 1
-    hook test
-      call is-equal
-        read letter
-        text <2>
-    hook hold
-      send back, code 2
-    hook test
-      call is-equal
-        read letter
-        text <3>
-    hook hold
-      send back, code 3
-    hook test
-      call is-equal
-        read letter
-        text <4>
-    hook hold
-      send back, code 4
-    hook test
-      call is-equal
-        read letter
-        text <5>
-    hook hold
-      send back, code 5
-    hook test
-      call is-equal
-        read letter
-        text <6>
-    hook hold
-      send back, code 6
-    hook test
-      call is-equal
-        read letter
-        text <7>
-    hook hold
-      send back, code 7
-    hook test
-      call is-equal
-        read letter
-        text <8>
-    hook hold
-      send back, code 8
-    hook test
-      call is-equal
-        read letter
-        text <9>
-    hook hold
-      send back, code 9
-    hook miss
-      send back, code -1
-
-# a reported position as a number: an optional minus, digits, an optional point and more digits. What the control
-# reports is always that shape; anything else in it is skipped
-task range-number
-  take reported, like text
-  like number
-  save total, code 0
-  save divisor, code 1
-  save after-point, false
-  save sign, code 1
-  walk size
-    bind base, code 0
-    bind head
-      call char-count
-        read reported
-    hook next
-      take site, name at
-      save letter
-        call char-at
-          read reported
-          read at
-      save digit
-        call range-digit
-          read letter
-      fork test
-        hook test
-          call is-equal
-            read letter
-            text <->
-        hook hold
-          save sign, code -1
-        hook test
-          call is-equal
-            read letter
-            text <.>
-        hook hold
-          save after-point, true
-        hook test
-          call is-above
-            read digit
-            code -1
-        hook hold
-          save total
-            call add
-              call multiply
-                read total
-                code 10
-              read digit
-          fork test
-            hook test
-              read after-point
-            hook hold
-              save divisor
-                call multiply
-                  read divisor
-                  code 10
-            hook miss
-              save skip, code 0
-        hook miss
-          save skip, code 0
-  send back
-    call multiply
-      read sign
-      call divide
-        read total
-        read divisor
+  save read, call read-number(read reported)
+  fork case, read read
+    case some
+      link position
+      call write-signal
+        bind self, read self
+        bind value, read position
+    case none
+      save skip, code 0

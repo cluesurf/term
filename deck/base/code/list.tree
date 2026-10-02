@@ -90,6 +90,8 @@ form list
       call self/includes
         read item
 
+  # the first index whose item passes the test, or -1: a walk in Term rather than the native `findIndex`, so it can
+  # promise its answer is an index of the list, which is what lets `find` read there
   task find-index
     take self
     take test
@@ -97,9 +99,36 @@ form list
         take item, like t
         like boolean
     like number
+    must
+      call is-below
+        read back
+        read self/length
+    # bounded by the length it started with, and inside the length it has now: the test may change the list, and the
+    # walk still ends and still reads only inside it
+    save count, read self/length
+    save i, code 0
+    walk test
+      hook test
+        call and
+          call is-below
+            read i
+            read count
+          call is-below
+            read i
+            read self/length
+      hook hold
+        fork test
+          hook test
+            call test
+              call self/at
+                read i
+          hook hold
+            send back, read i
+        save i, call increment(read i)
     send back
-      call self/findIndex
-        read test
+      call subtract
+        code 0
+        code 1
 
   task join
     take self

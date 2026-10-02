@@ -217,7 +217,12 @@ task utf-8-code-points
     like number
   save points, make list
   save i, code 0
+  # i only moves forward, by the sequence's width
   walk test
+    must
+      call is-minimum
+        read i
+        code 0
     hook test
       call is-below
         read i

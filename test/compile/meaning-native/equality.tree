@@ -1,0 +1,144 @@
+load @term/base/code/hash
+  find hash
+
+load @term/base/code/list
+  find list
+
+form point
+  link x, like number
+  link y, like number
+
+form line
+  link from, like point
+  link to, like point
+
+form shape
+  case circle
+    link radius, like number
+  case square
+    link side, like number
+
+form empty
+
+form handle
+  note shared
+  link id, like number
+
+task make-points
+  take n, like number
+  like list, like point
+  save out
+    make list
+  call push
+    bind list, read out
+    bind item
+      make point
+        bind x, read n
+        bind y, code 1
+  call push
+    bind list, read out
+    bind item
+      make point
+        bind x, code 2
+        bind y, read n
+  send back, read out
+
+task compute
+  like text
+  host a
+    make point
+      bind x, code 3
+      bind y, code 4
+  host b
+    make point
+      bind x, code 3
+      bind y, code 4
+  host c
+    make point
+      bind x, code 3
+      bind y, code 5
+  host equal-fields
+    call is-equal
+      read a
+      read b
+  host different-fields
+    call is-equal
+      read a
+      read c
+  host same-name
+    call is-equal
+      read a
+      read a
+  host lines-equal
+    call is-equal
+      make line
+        bind from, read a
+        bind to, read c
+      make line
+        bind from, read b
+        bind to, read c
+  host lists-equal
+    call is-equal
+      call make-points
+        code 7
+      call make-points
+        code 7
+  host lists-differ
+    call is-equal
+      call make-points
+        code 7
+      call make-points
+        code 8
+  host variants-equal
+    call is-equal
+      make circle
+        bind radius, code 2
+      make circle
+        bind radius, code 2
+  host variants-differ
+    call is-equal
+      make circle
+        bind radius, code 2
+      make square
+        bind side, code 2
+  host empties-equal
+    call is-equal
+      make empty
+      make empty
+  host handle-a
+    make handle
+      bind id, code 1
+  host handles-identity
+    call is-equal
+      read handle-a
+      make handle
+        bind id, code 1
+  host handle-self
+    call is-equal
+      read handle-a
+      read handle-a
+  save m
+    make find
+  call set
+    read m
+    read a
+    code 1
+  call set
+    read m
+    read b
+    code 2
+  host found-by-equal
+    call has
+      read m
+      read c
+  host size-after-equal-key
+    call size
+      read m
+  host value-by-equal
+    call get-or-default
+      read m
+      make point
+        bind x, code 3
+        bind y, code 4
+      code 0
+  send back, text <equal-fields={{equal-fields}} different-fields={{different-fields}} same-name={{same-name}} lines-equal={{lines-equal}} lists-equal={{lists-equal}} lists-differ={{lists-differ}} variants-equal={{variants-equal}} variants-differ={{variants-differ}} empties-equal={{empties-equal}} shared-by-identity={{handles-identity}} shared-self={{handle-self}} key-c-found={{found-by-equal}} size={{size-after-equal-key}} value-by-equal-key={{value-by-equal}}>

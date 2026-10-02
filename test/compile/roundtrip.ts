@@ -3676,7 +3676,7 @@ async function main(): Promise<void> {
     true,
   )
   // collections: the native map runtime on every strict backend. The map is reference-typed on each (kotlin
-  // MutableMap, rust Rc<RefCell<HashMap>>, swift a SeedMap class wrapper), so the mutable set form -- which mutates
+  // MutableMap, rust Rc<RefCell<TermMap>>, swift a SeedMap class wrapper), so the mutable set form -- which mutates
   // `self.items` for its side effect -- runs uniformly.
   runKotlinText(
     'kotlin + collection: set intersect size via the native map runtime (MutableMap)',
@@ -3684,7 +3684,7 @@ async function main(): Promise<void> {
     'true',
   )
   runRustCargo(
-    'rust + cargo: collection set intersect size via the native map runtime (Rc<RefCell<HashMap>>)',
+    'rust + cargo: collection set intersect size via the native map runtime (Rc<RefCell<TermMap>>)',
     frontEnd(COLLECTION_PROG, true, 'rust'),
     'true',
     false,

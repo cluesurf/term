@@ -47,6 +47,17 @@ final class TermAction: NSObject {
     }
 }
 
+#if canImport(UIKit)
+// a page sheet the person swiped away: reported to the dialog's node as `close`
+final class TermSheetWatcher: NSObject, UIAdaptivePresentationControllerDelegate {
+    weak var node: TermNode?
+
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        node?.fire("close")
+    }
+}
+#endif
+
 #if canImport(AppKit)
 // AppKit reports a field's edits through its delegate
 final class TermFieldDelegate: NSObject, NSTextFieldDelegate {
@@ -72,6 +83,9 @@ final class TermNode {
         case range
         // NSPopUpButton, a UIButton showing a selection menu: face's select on these platforms (native-dom-0026)
         case choice
+        // face's dialog: a stack of content the platform presents itself, an NSPanel sheet on macOS and a presented
+        // view controller on iOS, never placed in the page it is appended to (native-dom-0026)
+        case sheet
     }
 
     let key: Int
@@ -138,6 +152,19 @@ final class TermNode {
             slider.maximumValue = 100
             view = slider
             #endif
+        } else if tag == "sheet" {
+            kind = .sheet
+            let stack = TermStack()
+            #if canImport(AppKit)
+            stack.orientation = .vertical
+            stack.alignment = .leading
+            #endif
+            #if canImport(UIKit)
+            stack.axis = .vertical
+            stack.alignment = .leading
+            #endif
+            stack.spacing = 0
+            view = stack
         } else if tag == "choice" {
             kind = .choice
             #if canImport(AppKit)
@@ -356,6 +383,15 @@ enum nativeView {
             }
         case "value" where node.kind == .range:
             setValue(node, value)
+        case "open" where node.kind == .sheet:
+            value == "true" ? present(node) : dismissSheet(node)
+        case "title" where node.kind == .sheet:
+            #if canImport(AppKit)
+            (node.keep.first { $0 is NSPanel } as? NSPanel)?.title = value
+            #endif
+            #if canImport(UIKit)
+            (node.keep.first { $0 is UIViewController } as? UIViewController)?.title = value
+            #endif
         case "options" where node.kind == .choice:
             setChoices(node, value.split(separator: "\n").map(String.init))
         case "disabled":
@@ -684,6 +720,9 @@ enum nativeView {
         parent.children.append(child)
         if let drawing = parent.drawingAncestor {
             drawing.refreshTitle()
+        } else if child.kind == .sheet {
+            // a dialog's content is never in the page: the platform presents it when it opens
+            return
         } else if let stack = parent.view as? TermStack {
             stack.addArrangedSubview(child.view)
             if shouldFill(child, in: parent) {
@@ -786,6 +825,104 @@ enum nativeView {
 
     static func childCount(_ handle: Any) -> Int {
         node(handle).children.count
+    }
+
+    // ---- the dialog (native-dom-0026): the platform presents the sheet's content itself ----
+
+    private static func sheetTitle(_ node: TermNode) -> String {
+        node.attributes.first { $0.name == "title" }?.value ?? ""
+    }
+
+    // is the platform showing it: asked of the platform, never of a flag beside it
+    private static func presented(_ node: TermNode) -> Bool {
+        #if canImport(AppKit)
+        guard let panel = node.keep.first(where: { $0 is NSPanel }) as? NSPanel else { return false }
+        return panel.sheetParent != nil
+        #else
+        // on screen, not on its way: `presentingViewController` is set the moment a presentation starts, and UIKit
+        // ignores a dismissal made while one is still in progress
+        guard let controller = node.keep.first(where: { $0 is UIViewController }) as? UIViewController else { return false }
+        return controller.viewIfLoaded?.window != nil && !controller.isBeingPresented && !controller.isBeingDismissed
+        #endif
+    }
+
+    private static func present(_ node: TermNode) {
+        if presented(node) {
+            return
+        }
+        #if canImport(AppKit)
+        guard let window else { return }
+        let panel = (node.keep.first { $0 is NSPanel } as? NSPanel) ?? {
+            let made = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 360, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+            let content = NSView()
+            node.view.translatesAutoresizingMaskIntoConstraints = false
+            content.addSubview(node.view)
+            NSLayoutConstraint.activate([
+                node.view.topAnchor.constraint(equalTo: content.topAnchor, constant: 20),
+                node.view.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
+                node.view.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -20),
+            ])
+            made.contentView = content
+            node.keep.append(made)
+            return made
+        }()
+        panel.title = sheetTitle(node)
+        window.beginSheet(panel)
+        #endif
+        #if canImport(UIKit)
+        guard let root = window?.rootViewController else { return }
+        let controller = (node.keep.first { $0 is UIViewController } as? UIViewController) ?? {
+            let made = UIViewController()
+            made.view.backgroundColor = .systemBackground
+            node.view.translatesAutoresizingMaskIntoConstraints = false
+            made.view.addSubview(node.view)
+            let guide = made.view.safeAreaLayoutGuide
+            NSLayoutConstraint.activate([
+                node.view.topAnchor.constraint(equalTo: guide.topAnchor, constant: 24),
+                node.view.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 24),
+                node.view.trailingAnchor.constraint(lessThanOrEqualTo: guide.trailingAnchor, constant: -24),
+            ])
+            made.modalPresentationStyle = .pageSheet
+            // a swipe down dismisses a page sheet; the delegate reports it as `close`
+            let watcher = TermSheetWatcher()
+            watcher.node = node
+            made.presentationController?.delegate = watcher
+            node.keep.append(watcher)
+            node.keep.append(made)
+            return made
+        }()
+        controller.title = sheetTitle(node)
+        root.present(controller, animated: false)
+        #endif
+    }
+
+    // run `body` once the platform has had its turn. UIKit finishes even an unanimated presentation or dismissal with
+    // work queued on the main queue, which cannot run while the block that asked is still running: a nested run loop
+    // waited a full second and saw nothing (2026-10-02). A program that must see the result asks for it here
+    static func later(_ body: @escaping () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: body)
+    }
+
+    private static func dismissSheet(_ node: TermNode) {
+        guard presented(node) else { return }
+        #if canImport(AppKit)
+        if let panel = node.keep.first(where: { $0 is NSPanel }) as? NSPanel {
+            window?.endSheet(panel)
+            panel.orderOut(nil)
+        }
+        #endif
+        #if canImport(UIKit)
+        (node.keep.first { $0 is UIViewController } as? UIViewController)?.dismiss(animated: false)
+        #endif
+    }
+
+    // for tests: dismiss the sheet the way a person does (Esc on a macOS sheet, a swipe down on an iOS page sheet), and
+    // its report of that as `close`. Neither gesture can be made from code, so the dismissal is made as the platform
+    // makes it and the report the platform sends is sent
+    static func dismiss(_ handle: Any) {
+        let node = node(handle)
+        dismissSheet(node)
+        node.fire("close")
     }
 
     // ---- the select (native-dom-0026): the platform's own picker, its items the options, the chosen one its value ----
@@ -910,13 +1047,35 @@ enum nativeView {
             #endif
             return
         }
+        // a field that already holds the text is left alone: rewriting it moves the cursor to the end and throws away
+        // an input method's half-composed character, and the face input writes its signal back after every keystroke
+        // (native-dom-0026)
         #if canImport(AppKit)
-        if let field = node.view as? NSTextField, node.kind == .field {
+        if let field = node.view as? NSTextField, node.kind == .field, field.stringValue != value {
             field.stringValue = value
         }
         #endif
         #if canImport(UIKit)
-        (node.view as? UITextField)?.text = value
+        if let field = node.view as? UITextField, field.text != value {
+            field.text = value
+        }
+        #endif
+    }
+
+    // for tests: type into a field the way a person does, the field's text first and then its own report of the edit
+    static func type(_ handle: Any, _ text: String) {
+        let node = node(handle)
+        #if canImport(AppKit)
+        if let field = node.view as? NSTextField {
+            field.stringValue = text
+            (field.delegate as? TermFieldDelegate)?.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+        }
+        #endif
+        #if canImport(UIKit)
+        if let field = node.view as? UITextField {
+            field.text = text
+            field.sendActions(for: .editingChanged)
+        }
         #endif
     }
 
@@ -1090,6 +1249,9 @@ enum nativeView {
             return "<slider value=\"\(rangeValue(node))\"></slider>"
         case .choice:
             return "<select value=\"\(choiceValue(node))\"></select>"
+        case .sheet:
+            let shown = node.children.filter { $0.view.superview === node.view }
+            return "<sheet open=\"\(presented(node))\">\(shown.map { serialize($0) }.joined())</sheet>"
         case .container:
             let installed = node.children.filter { $0.view.superview === node.view }
             return "<\(node.tag)>\(installed.map { serialize($0) }.joined())</\(node.tag)>"

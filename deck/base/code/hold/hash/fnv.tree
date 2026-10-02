@@ -55,14 +55,18 @@ task fnv-hash-32-1a
     call fnv-hash-32-mixer
       read a
 
+# the 32-bit finalizer. Every step stays a 32-bit word: a shift keeps only the bits that land inside the word
+# (fnv-hash-32-shift) and every sum is reduced, so no value passes 2^35 on any backend. The step-by-step sums used to
+# reach 2^55, which a double does not hold exactly, so TypeScript answered a different hash from Rust
 task fnv-hash-32-mixer
   take a
   save a
-    call add
-      read a
-      call shift-left
+    call fnv-hash-32-word
+      call add
         read a
-        code 13
+        call fnv-hash-32-shift
+          read a
+          code 13
   save a
     call bitwise-exclusive-or
       read a
@@ -70,50 +74,76 @@ task fnv-hash-32-mixer
         read a
         code 7
   save a
-    call add
-      read a
-      call shift-left
+    call fnv-hash-32-word
+      call add
         read a
-        code 3
+        call fnv-hash-32-shift
+          read a
+          code 3
   save a
     call bitwise-exclusive-or
       read a
       call unsigned-shift-right
         read a
         code 17
-  save a
-    call add
-      read a
-      call shift-left
+  send back
+    call fnv-hash-32-word
+      call add
         read a
-        code 5
+        call fnv-hash-32-shift
+          read a
+          code 5
+
+task fnv-hash-32-multiply
+  # a * 16777619 mod 2**32, as a + a<<1 + a<<4 + a<<7 + a<<8 + a<<24, each shift already a 32-bit word
+  take a
+  send back
+    call fnv-hash-32-word
+      call add
+        call add
+          call add
+            call add
+              call add
+                call fnv-hash-32-word
+                  read a
+                call fnv-hash-32-shift
+                  read a
+                  code 1
+              call fnv-hash-32-shift
+                read a
+                code 4
+            call fnv-hash-32-shift
+              read a
+              code 7
+          call fnv-hash-32-shift
+            read a
+            code 8
+        call fnv-hash-32-shift
+          read a
+          code 24
+
+# a value reduced to a 32-bit word
+task fnv-hash-32-word
+  take a
   send back
     call bitwise-and
       read a
       code 0xffffffff
 
-task fnv-hash-32-multiply
-  # a * 16777619 mod 2**32.
+# a << n mod 2^32, exactly: the bits that would leave the word are cleared BEFORE the shift, so the shifted value is
+# itself under 2^32 and never needs a reduction a double cannot do
+task fnv-hash-32-shift
   take a
+  take n
   send back
-    call add
-      call add
-        call add
-          call add
-            call add
-              read a
-              call shift-left
-                read a
-                code 1
-            call shift-left
-              read a
-              code 4
-          call shift-left
-            read a
-            code 7
-        call shift-left
-          read a
-          code 8
-      call shift-left
+    call shift-left
+      call bitwise-and
         read a
-        code 24
+        call subtract
+          call shift-left
+            code 1
+            call subtract
+              code 32
+              read n
+          code 1
+      read n

@@ -11,6 +11,36 @@ import type { Expression } from '@term/make/code/compile/node'
 // a polynomial maps each monomial (a canonical key over its variables, "" for the constant) to an integer coefficient
 type Poly = Map<string, number>
 
+// EXACTNESS. Coefficients are JavaScript numbers, which are exact integers only up to 2^53 - 1. Past that a sum or a
+// product rounds, and two different polynomials can compare equal: `x * 9007199254740993 == x * 9007199254740992` was
+// proven. So every literal and every coefficient a step produces must be a safe integer, and one that is not throws
+// INEXACT, which each exported procedure turns into "declined" (false). Declining is always sound: the goal is left to
+// the other provers, or unproven.
+const INEXACT = new Error('a coefficient left the safe integer range')
+
+function exact(n: number): number {
+  if (!Number.isSafeInteger(n)) {
+    throw INEXACT
+  }
+
+  return n
+}
+
+// run a procedure, declining when a coefficient left the exact range
+function declining<A extends unknown[]>(procedure: (...args: A) => boolean): (...args: A) => boolean {
+  return (...args: A): boolean => {
+    try {
+      return procedure(...args)
+    } catch (error) {
+      if (error === INEXACT) {
+        return false
+      }
+
+      throw error
+    }
+  }
+}
+
 // the canonical key for a monomial given its variable powers (sorted, so a*b and b*a agree)
 function monoKey(powers: Map<string, number>): string {
   const parts: string[] = []
@@ -66,7 +96,7 @@ function monoPowers(key: string): Map<string, number> {
 }
 
 function addInto(poly: Poly, key: string, coeff: number): void {
-  const next = (poly.get(key) ?? 0) + coeff
+  const next = exact((poly.get(key) ?? 0) + coeff)
 
   if (next === 0) {
     poly.delete(key)
@@ -89,7 +119,7 @@ function scalePoly(a: Poly, k: number): Poly {
   const out: Poly = new Map()
 
   for (const [m, c] of a) {
-    out.set(m, c * k)
+    out.set(m, exact(c * k))
   }
 
   return out
@@ -106,7 +136,7 @@ function mulPoly(a: Poly, b: Poly): Poly {
         powers.set(v, (powers.get(v) ?? 0) + p)
       }
 
-      addInto(out, monoKey(powers), ca * cb)
+      addInto(out, monoKey(powers), exact(ca * cb))
     }
   }
 
@@ -116,9 +146,14 @@ function mulPoly(a: Poly, b: Poly): Poly {
 function toPoly(expr: Expression): Poly | null {
   switch (expr.form) {
     case 'integer': {
+      // a bigint literal beyond the safe range would round in Number(): decline it rather than read a different number
+      if (typeof expr.value === 'bigint' && (expr.value > BigInt(Number.MAX_SAFE_INTEGER) || expr.value < -BigInt(Number.MAX_SAFE_INTEGER))) {
+        return null
+      }
+
       const n = Number(expr.value)
 
-      if (!Number.isInteger(n)) {
+      if (!Number.isSafeInteger(n)) {
         return null
       }
 
@@ -162,7 +197,9 @@ function toPoly(expr: Expression): Poly | null {
 // decide L == R as a commutative-ring identity: true iff L - R normalizes to the zero polynomial. False means either
 // they are not an identity or they fall outside the +/-/* integer fragment, in which case the goal is left to the
 // other provers.
-export function ringEqual(
+export const ringEqual = declining(ringEqualExact)
+
+function ringEqualExact(
   left: Expression,
   right: Expression,
 ): boolean {
@@ -245,7 +282,9 @@ function monoDivide(dividend: string, divisor: string): string | null {
 // introduces strictly smaller ones, so the largest reducible monomial strictly decreases in the well-founded
 // degree-lex order (a step limit is a backstop). This is the algebraic case of congruence under hypotheses: it closes
 // conditional identities (e.g. rational well-definedness, where `a*d = a'*b` forces a cross-multiplied sum identity).
-export function ringEqualModulo(
+export const ringEqualModulo = declining(ringEqualModuloExact)
+
+function ringEqualModuloExact(
   left: Expression,
   right: Expression,
   hypotheses: [Expression, Expression][],
@@ -480,7 +519,9 @@ function quadraticFormNonNegative(d: Poly): boolean {
 // form whose Gram matrix is positive semidefinite (which covers (a - b)^2 and every quadratic inequality). Proves
 // "n*n >= 0", "a*a + b*b >= 2*a*b", and the like, which the linear prover (degree one) cannot. False when neither holds
 // or the goal falls outside the +/-/* integer fragment.
-export function nonNegativeDifference(
+export const nonNegativeDifference = declining(nonNegativeDifferenceExact)
+
+function nonNegativeDifferenceExact(
   left: Expression,
   right: Expression,
 ): boolean {

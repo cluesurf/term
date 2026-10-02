@@ -1,98 +1,12 @@
 
-# Dialog — headless, ported from shadcn/radix (dialog.tsx). A modal. The overlay + content expose `data-state`
-# (open / closed) for enter/exit theming. `state` is the consumer's open signal (string); `press` opens/closes.
-# Parts: dialog (root), dialog-trigger, dialog-overlay, dialog-content, dialog-header, dialog-title,
-# dialog-description, dialog-footer, dialog-close. role=dialog + aria-modal wire a11y. Focus-trap / portal are
-# behavioral add-ons (a `present` primitive for exit animation is the noted follow-up); the parts here are the
-# themeable structure.
+# Dialog: ONE component for the author, the platform's own presentation underneath (native-dom-0026). The build fills
+# `{platform}` from its env chain: macOS, iOS and Android reach ./native/toolkit/dialog.tree (an NSPanel sheet on the
+# window, a page sheet, an android.app.Dialog) through their `toolkit` rung, and every other target, the web among
+# them, falls to the generic ./native/dialog.tree. Both take `host`, `class`, `control` (open or closed, a disclosure
+# from logic/disclosure), `title`, and `content`, the task that draws what the dialog holds. For a modal drawn by the
+# theme rather than the platform, use `modal`. See note/term/app/11-uniform-interface.md.
+#
+#   save asking, call make-disclosure / bind start, false
+#   call dialog / read root / text <> / read asking / text <Delete the file?> / read confirm-buttons
 
-load @term/site/code/view/render
-  find element
-  find text
-load @term/site/code/dom/dom
-  find view
-  find append
-
-view dialog
-  take host, like view
-  take class
-  view div
-    bind data-slot, text <dialog>
-    bind class, read class
-    slot
-
-view dialog-trigger
-  take host, like view
-  take class
-  take press
-  view button
-    bind type, text <button>
-    bind data-slot, text <dialog-trigger>
-    bind class, read class
-    hook click, call press
-    slot
-
-view dialog-overlay
-  take host, like view
-  take class
-  take state
-  view div
-    bind data-slot, text <dialog-overlay>
-    bind data-state, read state
-    bind class, read class
-
-view dialog-content
-  take host, like view
-  take class
-  take state
-  view div
-    bind data-slot, text <dialog-content>
-    bind data-state, read state
-    bind role, text <dialog>
-    bind aria-modal, text <true>
-    bind class, read class
-    slot
-
-view dialog-header
-  take host, like view
-  take class
-  view div
-    bind data-slot, text <dialog-header>
-    bind class, read class
-    slot
-
-view dialog-title
-  take host, like view
-  take class
-  view div
-    bind data-slot, text <dialog-title>
-    bind class, read class
-    slot
-
-view dialog-description
-  take host, like view
-  take class
-  view div
-    bind data-slot, text <dialog-description>
-    bind class, read class
-    slot
-
-view dialog-footer
-  take host, like view
-  take class
-  view div
-    bind data-slot, text <dialog-footer>
-    bind class, read class
-    slot
-
-view dialog-close
-  take host, like view
-  take class
-  take press
-  view button
-    bind type, text <button>
-    bind data-slot, text <dialog-close>
-    bind aria-label, text <Close>
-    bind class, read class
-    hook click, call press
-    slot
+bear @term/face/code/component/native/{platform}/dialog

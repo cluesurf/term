@@ -531,13 +531,26 @@ const cli = yargs(hideBin(process.argv))
         })
         .option('registry', {
           type: 'string',
-          description: 'Registry host to publish to',
+          description:
+            "Registry to publish to, oci://<host>/<namespace> (default: the scope's registry)",
+        })
+        .option('trust', {
+          type: 'string',
+          description:
+            "Add a public key to the scope's key set, signed by this machine's key, instead of publishing",
+        })
+        .option('untrust', {
+          type: 'string',
+          description:
+            "Remove a public key from the scope's key set, signed by this machine's key, instead of publishing",
         }),
     async argv => {
       await callHost({
         root,
         dryRun: argv.dry,
         registry: argv.registry,
+        trust: argv.trust,
+        untrust: argv.untrust,
       })
     },
   )

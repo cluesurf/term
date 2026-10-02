@@ -155,9 +155,13 @@ task suite-run
   save i, code 0
   walk test
     hook test
-      call is-below
-        bind a, read i
-        bind b, read size
+      call and
+        call is-below
+          bind a, read i
+          bind b, read size
+        call is-below
+          bind a, read i
+          bind b, read registry/length
     hook hold
       save entry
         call get

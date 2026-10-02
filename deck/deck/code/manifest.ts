@@ -405,7 +405,7 @@ export function writeManifest(input: {
   return lines.join('\n') + '\n'
 }
 
-function writeCodeHold(input: { hold: CodeHold }): string {
+export function writeCodeHold(input: { hold: CodeHold }): string {
   switch (input.hold.form) {
     case 'exact':
       return showCode(input.hold.code)

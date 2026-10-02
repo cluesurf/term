@@ -23,6 +23,9 @@ import {
   getVersionList,
   getVersionMeta,
 } from './fetch'
+import { ociRouteOf, transportFor, trustDir, type OciRoute } from './oci/client'
+import { listOciVersions, readOciVersion } from './oci/install'
+import { pinnedReference, tagOfVersion } from './oci/reference'
 
 type ResolveContext = {
   config: FetchConfig
@@ -112,6 +115,7 @@ async function resolveLink(input: {
         code: locked.code,
         hash: locked.hash,
         site: locked.site,
+        ...(locked.key ? { key: locked.key } : {}),
         link: new Map(locked.link.map(l => [l.name, l.code])),
       })
 
@@ -123,6 +127,15 @@ async function resolveLink(input: {
 
       await resolveLinks({ links: transLinks, ctx })
     }
+
+    return
+  }
+
+  // a scope on an `oci://` registry resolves over its tag list and its signed configs
+  const route = ociRouteOf({ name: link.name, config: ctx.config })
+
+  if (route) {
+    await resolveOciLink({ link, ctx, route })
 
     return
   }
@@ -177,6 +190,77 @@ async function resolveLink(input: {
   await resolveLinks({ links: transLinks, ctx })
 }
 
+// Resolve one link against an OCI registry: the tags are the versions, `pickBestCode` chooses as it does over npm's
+// `versions`, and the chosen version's manifest and config are read and VERIFIED before anything is recorded. The
+// links that get followed are the signed config's, never the tag list's or the manifest's.
+async function resolveOciLink(input: {
+  link: DeckLink
+  ctx: ResolveContext
+  route: OciRoute
+}): Promise<void> {
+  const { link, ctx, route } = input
+  const host = route.registry.host
+  const transport = transportFor({ host, offline: ctx.config.offline })
+  const versions: Code[] = []
+
+  for (const version of await listOciVersions({
+    transport,
+    repository: route.repository.name,
+  })) {
+    try {
+      versions.push(parseCode(version))
+    } catch {
+      // a tag that starts with a digit and is not a version is not one of ours
+    }
+  }
+
+  const best = pickBestCode({ versions, hold: link.code })
+
+  if (!best) {
+    throw new Error(
+      `No version of ${link.name} matches constraint (${versions.length} published at ${transport.label}/${route.repository.name})`,
+    )
+  }
+
+  const codeStr = showCode(best)
+  const key = `${link.name}@${codeStr}`
+
+  if (ctx.resolved.has(key)) {return}
+
+  const version = await readOciVersion({
+    transport,
+    repository: route.repository.name,
+    package: link.name,
+    reference: tagOfVersion(codeStr),
+    scope: route.scope,
+    keysRepository: route.keysRepository,
+    host,
+    trustDir: trustDir(),
+    expect: { version: codeStr },
+    warn: message => console.warn(`  ${message}`),
+  })
+
+  ctx.resolved.set(key, {
+    name: link.name,
+    code: best,
+    hash: version.digest,
+    site: pinnedReference({
+      repository: route.repository,
+      digest: version.digest,
+    }),
+    key: version.config.key,
+    link: new Map(version.config.link.map(l => [l.deck, l.code])),
+  })
+
+  await resolveLinks({
+    links: version.config.link.map(l => ({
+      name: l.deck,
+      code: parseCodeHold(l.code),
+    })),
+    ctx,
+  })
+}
+
 function findLockedVersion(input: {
   name: string
   hold: CodeHold
@@ -207,6 +291,7 @@ export function buildLockfile(input: {
       code: resolved.code,
       hash: resolved.hash,
       site: resolved.site,
+      ...(resolved.key ? { key: resolved.key } : {}),
       link: Array.from(resolved.link.entries()).map(([name, code]) => ({
         name,
         code,
