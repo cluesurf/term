@@ -40,6 +40,23 @@ function expect(
   }
 }
 
+// a tier-0 obligation is counted rather than refused, so a case about one reads the tally: does every walk end
+function expectEnds(name: string, source: string, ends: boolean): void {
+  const result = compile({ file: 's.tree', text: source })
+  const unshown = result.ok
+    ? (result.obligations?.failed ?? []).filter(f => f.origin === 'ends').length
+    : -1
+  const good = result.ok && (ends ? unshown === 0 : unshown > 0)
+
+  if (good) {
+    pass++
+    console.log(`ok    ${name}`)
+  } else {
+    fail++
+    console.log(`FAIL  ${name}  (ok=${result.ok}, unshown ends=${unshown}, wanted ${ends ? 'none' : 'some'})`)
+  }
+}
+
 const proven = { ok: true } as const
 const refused = (code: string) => ({ ok: false, code }) as const
 
@@ -1376,6 +1393,121 @@ ${have}  save p
   expect(
     'a length that is not two is not thereby above two',
     otherwise('2', '2'),
+    refused('unproven'),
+  )
+
+  // ---- a walk that only sets ----
+
+  const setting = (change: string): string => `task fill
+  take xs, like list, like number
+  have
+    call is-equal
+      read xs/length
+      code 8
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        code 8
+    hook hold
+      ${change}
+      save i, call increment(read i)
+  hold
+    call is-equal
+      read xs/length
+      code 8
+`
+
+  expect(
+    'a walk of sets keeps a length it was given',
+    setting('call xs/set\n        read i\n        code 0'),
+    proven,
+  )
+  const between = (call: string): string => `task first
+  take xs, like list, like number
+  take test
+    like task
+      take item, like number
+      like boolean
+  like number
+  must
+    call is-below
+      read back
+      read xs/length
+  save i, code 0
+  fork test
+    hook test
+      call is-below
+        read i
+        read xs/length
+    hook hold
+      ${call}
+      send back, read i
+  send back
+    call subtract
+      code 0
+      code 1
+`
+
+  // a counted walk reads its head once: an impure head (it grows the list each time it is called) still bounds it
+  const grow = `task grow
+  take xs, like list, like number
+  like number
+  call xs/push
+    code 0
+  send back, read xs/length
+`
+
+  expectEnds(
+    'a walk size with an impure head ends: the head is read once',
+    `${grow}
+task count
+  take xs, like list, like number
+  save n, code 0
+  walk size
+    bind base, code 0
+    bind head
+      call grow
+        read xs
+    hook next
+      take site, name at
+      save n, call increment(read n)
+  send back, read n
+`,
+    true,
+  )
+  expectEnds(
+    'and a walk test that calls it every turn is not shown to end',
+    `${grow}
+task count
+  take xs, like list, like number
+  save at, code 0
+  walk test
+    hook test
+      call is-below
+        read at
+        call grow
+          read xs
+    hook hold
+      save at, call increment(read at)
+  send back, read at
+`,
+    false,
+  )
+  expect(
+    'a callback between the check and the return forgets the length',
+    between('save hit\n        call test\n          read xs/0'),
+    refused('unproven'),
+  )
+  expect(
+    'control: with nothing in between the check holds',
+    between('save hit, code 0'),
+    proven,
+  )
+  expect(
+    'and a walk that pushes does not',
+    setting('call xs/push\n        code 0'),
     refused('unproven'),
   )
 

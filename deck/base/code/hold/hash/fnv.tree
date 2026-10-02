@@ -1,7 +1,4 @@
 
-dock load
-  load <global:shape>, name shape
-
 load @term/base/code/bit
   find bitwise-and
   find bitwise-or
@@ -31,10 +28,13 @@ task fnv-hash-32-1a
         call bitwise-and
           read c
           code 0xff00
+      # a high byte is mixed in only when it is not zero, so an ASCII text hashes as its bytes. This tested whether
+      # `d` was PRESENT, which a number always is, and so mixed a zero byte into every ASCII character
       fork test
         hook test
-          call shape/is-present
+          call is-above
             read d
+            code 0
         hook hold
           save a
             call fnv-hash-32-multiply

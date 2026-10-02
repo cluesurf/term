@@ -1,4 +1,6 @@
-mod text {
+// Named `strings`, not `text`: a runtime's namespace sits in the program's own, and the render runtime has a task
+// `text` (a text node), so a program reaching both did not build (native-dom-0042).
+mod strings {
     pub fn concat(a: String, b: String) -> String { format!("{}{}", a, b) }
     pub fn from_value<T: 'static>(value: T) -> String {
         let v: &dyn std::any::Any = &value;

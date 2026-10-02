@@ -25,9 +25,13 @@ test utf-16-decodes-a-surrogate-pair
     call utf-16-code-points
       read units
   want hold
-    call is-equal
-      read points/1
-      code 119070
+    call and
+      call is-equal
+        read points/length
+        code 2
+      call is-equal
+        read points/1
+        code 119070
 
 test utf-8-encodes-every-width
   save points, make list
@@ -75,9 +79,13 @@ test utf-8-encodes-every-width
   save i, code 0
   walk test
     hook test
-      call is-below
-        read i
-        read expected/length
+      call and
+        call is-below
+          read i
+          read expected/length
+        call is-below
+          read i
+          read bytes/length
     hook hold
       fork test
         hook test
@@ -109,9 +117,13 @@ test utf-8-round-trips-to-utf-16
       call utf-8-code-points
         read bytes
   want hold
-    call is-equal
-      read units/4
-      code 56606
+    call and
+      call is-equal
+        read units/length
+        code 5
+      call is-equal
+        read units/4
+        code 56606
 
 test lone-surrogate-becomes-replacement
   save units, make list
@@ -121,6 +133,10 @@ test lone-surrogate-becomes-replacement
     call utf-16-code-points
       read units
   want hold
-    call is-equal
-      read points/0
-      code 65533
+    call and
+      call is-equal
+        read points/length
+        code 1
+      call is-equal
+        read points/0
+        code 65533

@@ -4,7 +4,7 @@
     "target": "ES2022",
     "lib": ["es2022"],
     "outDir": "host",
-    "rootDir": ".",
+    "rootDir": "../../../..",
     "sourceMap": true,
     "declaration": true,
     "moduleResolution": "bundler",

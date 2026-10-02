@@ -1,0 +1,5 @@
+
+# Cloudflare Workers page: the same stash-and-shell as node, since a Worker renders on the server. Spelled out here
+# because cloudflare otherwise borrows browser, whose page reads a live document a Worker does not have.
+
+bear @term/site/code/dom/native/node/page

@@ -1,6 +1,6 @@
 
 # A number written as text, read: `read-number` answers `some` with the value, a `decimal` (`number` is an integer
-# on every backend, so a fraction needs the float type),, or `none` for text that is not one
+# on every backend, so a fraction needs the float type), or `none` for text that is not one
 # (native-dom-0040). What a control or a form reports is text (a range input's `value`, a number field), and the stdlib
 # had no way to read it. Pure Term over `char-at`, so every backend reads the same text the same way.
 #

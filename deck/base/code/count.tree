@@ -1,0 +1,187 @@
+# Counting occurrences, and the pieces another implementation of counting needs. `count-each` is the reference
+# written the obvious way, and the twins below are the faster ways the compiler may choose instead
+# (note/term/optimize/readme.md). Until the selection pass lands (optimize-0008), every build runs the reference.
+
+load @term/base/code/hash
+  find hash
+
+load @term/base/code/list
+  find list
+
+# how many times each query occurs in `values`, in the order of the queries: one scan of `values` per query
+task count-each
+  take values, like list, like number
+  take queries, like list, like number
+  like list, like number
+  save counts
+    make list
+  walk list, read queries
+    hook next
+      take site, name query
+      save count, code 0
+      walk list, read values
+        hook next
+          take site, name value
+          fork test
+            hook test
+              call is-equal
+                read value
+                read query
+            hook hold
+              save count
+                call add
+                  read count
+                  code 1
+      call push
+        bind list, read counts
+        bind item, read count
+  send back, read counts
+
+# how many times each value occurs, keyed by the value, in the order each first occurs
+task tally
+  take values, like list, like number
+  like hash
+    like number
+    like number
+  save counts
+    make find
+  walk list, read values
+    hook next
+      take site, name value
+      call set
+        read counts
+        read value
+        call add
+          call get-or-default
+            read counts
+            read value
+            code 0
+          code 1
+  send back, read counts
+
+# is every item at least `base` and below `head`?
+task is-every-within
+  take items, like list, like number
+  take base, like number
+  take head, like number
+  like boolean
+  walk list, read items
+    hook next
+      take site, name value
+      fork test
+        hook test
+          call is-below
+            read value
+            read base
+        hook hold
+          send back, false
+      fork test
+        hook test
+          call is-minimum
+            read value
+            read head
+        hook hold
+          send back, false
+  send back, true
+
+# a list of `size` copies of `item`
+task make-filled
+  take size, like number
+  take item, like number
+  like list, like number
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head, read size
+    hook next
+      take site, name i
+      call push
+        bind list, read out
+        bind item, read item
+  send back, read out
+
+# the item at `site`, or `fall` when `site` is outside the list
+task read-or
+  take items, like list, like number
+  take site, like number
+  take fall, like number
+  like number
+  fork test
+    hook test
+      call is-below
+        read site
+        code 0
+    hook hold
+      send back, read fall
+  fork test
+    hook test
+      call is-minimum
+        read site
+        call size
+          read items
+    hook hold
+      send back, read fall
+  send back, read items/{site}
+
+# the count of each query from one pass over the values: O(values + queries) instead of O(values x queries)
+twin count-each, name tally
+  take values
+  take queries
+  cost
+    call add
+      call size
+        read values
+      call size
+        read queries
+  host tallied
+    call tally
+      read values
+  save counts
+    make list
+  walk list, read queries
+    hook next
+      take site, name query
+      call push
+        bind list, read counts
+        bind item
+          call get-or-default
+            read tallied
+            read query
+            code 0
+  send back, read counts
+
+# the same through an array of 65,536 slots, for values known to be small non-negative integers. Chosen behind a
+# run-time check of that range, since a list of numbers says nothing about how big they are
+twin count-each, name dense
+  take values
+  take queries
+  hook test
+    call is-every-within
+      read values
+      code 0
+      code 65536
+  save slots
+    call make-filled
+      code 65536
+      code 0
+  walk list, read values
+    hook next
+      take site, name value
+      save slots/{value}
+        call add
+          read slots/{value}
+          code 1
+  save counts
+    make list
+  walk list, read queries
+    hook next
+      take site, name query
+      call push
+        bind list, read counts
+        bind item
+          call read-or
+            read slots
+            read query
+            code 0
+  send back, read counts

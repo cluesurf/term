@@ -223,10 +223,23 @@ function computePure(program: Program): Set<string> {
 
   const impure = new Set<string>()
   const calls = new Map<string, Set<string>>()
+  // WRITES THROUGH A PARAMETER are kept apart from every other impurity: `list_push` writes through `self` and
+  // touches nothing else, so a caller that hands it a list the caller MADE stays pure, and a caller that hands it its
+  // own parameter writes through that parameter in turn. Without this, building a list of one's own (`make list`
+  // then `push`) made a task impure, and every task that called it (found by optimize-0006, 2026-10-02)
+  const writes = new Map<string, Set<number>>()
+  // each call to a task of the program, with its arguments, to decide the above at the call site
+  const sites = new Map<string, { callee: string; args: Expression[] }[]>()
 
   for (const [name, fn] of functions) {
     const called = new Set<string>()
     calls.set(name, called)
+    const written = new Set<number>()
+    writes.set(name, written)
+    const at: { callee: string; args: Expression[] }[] = []
+    sites.set(name, at)
+    const paramIndex = (root: string | undefined): number =>
+      root === undefined ? -1 : fn.params.findIndex(p => p.name === root)
 
     if (fn.claim) {
       continue
@@ -267,6 +280,7 @@ function computePure(program: Program): Set<string> {
           if (callee.form === 'variable') {
             if (functions.has(callee.name)) {
               called.add(callee.name)
+              at.push({ callee: callee.name, args: (node.args as Expression[] | undefined) ?? [] })
             } else if (params.has(callee.name)) {
               // PARAMETRIC: calling a function the caller passed in is as pure as what the caller passed. The task
               // stays pure, and the use site answers for its argument (callsImpure reads a task passed as a value).
@@ -276,8 +290,20 @@ function computePure(program: Program): Set<string> {
             } else if (own.has(callee.name) || mutableGlobals.has(callee.name)) {
               dirty = true
             }
-          } else {
-            dirty = true
+          } else if (!collectionCallIsPure(callee, fn)) {
+            // a native list or map WRITE through a parameter (`self/push` in `list_push`) is a write through that
+            // parameter, which the call site decides; anything else is impure
+            const receiver = callee.form === 'member' ? (callee.target as Expression) : undefined
+            const index =
+              receiver?.form === 'variable' && COLLECTION_WRITES.has(callee.name) && isCollection(receiver.type)
+                ? paramIndex(receiver.name)
+                : -1
+
+            if (index >= 0) {
+              written.add(index)
+            } else {
+              dirty = true
+            }
           }
 
           break
@@ -291,9 +317,12 @@ function computePure(program: Program): Set<string> {
           } else if (target.form === 'member') {
             // a write through a record is visible to the caller unless this task made the record. A parameter, or a
             // name it never bound (`self`, a global), belongs to someone else.
-            const parameter = fn.params.some(p => p.name === root)
+            const parameter = paramIndex(root)
 
-            if (parameter || !own.has(root)) {
+            if (parameter >= 0) {
+              // a write through a parameter: the call site decides (see `writes`)
+              written.add(parameter)
+            } else if (!own.has(root)) {
               dirty = true
             }
           }
@@ -325,36 +354,160 @@ function computePure(program: Program): Set<string> {
     }
   }
 
-  // close over calls: a task that calls an impure one is impure
+  // close over calls. A task that calls an impure one is impure. A call to a task that writes through parameter i is
+  // pure here when argument i is a list or map THIS task made (`madeHere`), a write through this task's own parameter
+  // when argument i is that parameter, and impure otherwise. A task named as a value (in `called` but at no site) must
+  // be pure outright, as before.
   let changed = true
 
   while (changed) {
     changed = false
 
-    for (const [name, called] of calls) {
-      if (impure.has(name)) {
+    for (const [name, fn] of functions) {
+      if (impure.has(name) || fn.claim) {
         continue
       }
 
-      for (const callee of called) {
+      const mine = writes.get(name)!
+      const before = mine.size
+      let tainted = false
+
+      for (const { callee, args } of sites.get(name)!) {
         if (impure.has(callee)) {
-          impure.add(name)
-          changed = true
+          tainted = true
           break
         }
+
+        for (const i of writes.get(callee) ?? []) {
+          const arg = args[i]
+          const own = arg?.form === 'variable' ? fn.params.findIndex(p => p.name === arg.name) : -1
+
+          if (own >= 0) {
+            mine.add(own)
+          } else if (!(arg?.form === 'variable' && madeHere(fn.body, arg.name))) {
+            tainted = true
+            break
+          }
+        }
+
+        if (tainted) {
+          break
+        }
+      }
+
+      if (!tainted) {
+        const atSite = new Set(sites.get(name)!.map(s => s.callee))
+
+        for (const callee of calls.get(name)!) {
+          if (!atSite.has(callee) && (impure.has(callee) || (writes.get(callee)?.size ?? 0) > 0)) {
+            tainted = true
+            break
+          }
+        }
+      }
+
+      if (tainted) {
+        impure.add(name)
+        changed = true
+      } else if (mine.size !== before) {
+        changed = true
       }
     }
   }
 
   const pure = new Set<string>()
 
-  for (const name of functions.keys()) {
-    if (!impure.has(name)) {
+  // pure: nothing impure, and no write through a parameter, which the caller would see
+  for (const [name, fn] of functions) {
+    if (!impure.has(name) && (fn.claim || (writes.get(name)?.size ?? 0) === 0)) {
       pure.add(name)
     }
   }
 
   return pure
+}
+
+// A method call on a NATIVE list or map, by the receiver's checked type, that touches nothing the caller can see.
+// Before this, every method call made a task impure, so a task that only built a list of its own (`save out / make
+// list` then `push`) was impure, and so was every task calling it: `count-each` could not have a twin
+// (note/term/optimize/admission.md, found 2026-10-02).
+//
+//   a READ (get, has, keys, includes, ...) is pure on any list or map: it changes nothing
+//   a WRITE (push, set, delete, ...) is pure only on a local this task bound to a list or map it MADE (`make list`,
+//   `make find`, a literal) and never bound to anything else, so no other name can be holding the same one
+//
+// Anything else (a method on a form, an unknown receiver, a write to a parameter or to a local that may be one) stays
+// impure, as it was.
+const COLLECTION_READS = new Set([
+  'get', 'has', 'keys', 'values', 'entries', 'at', 'includes', 'indexOf', 'lastIndexOf', 'slice', 'concat', 'join',
+  'map', 'filter', 'some', 'every', 'reduce', 'findIndex', 'find', 'toReversed', 'flat', 'forEach',
+])
+const COLLECTION_WRITES = new Set(['push', 'pop', 'set', 'delete', 'unshift', 'shift', 'splice', 'clear'])
+
+function collectionCallIsPure(callee: Expression, fn: Fn): boolean {
+  if (callee.form !== 'member') {
+    return false
+  }
+
+  const receiver = callee.target as Expression
+
+  if (!isCollection(receiver.type)) {
+    return false
+  }
+
+  if (COLLECTION_READS.has(callee.name)) {
+    return true
+  }
+
+  if (!COLLECTION_WRITES.has(callee.name) || receiver.form !== 'variable') {
+    return false
+  }
+
+  const name = receiver.name
+
+  return !fn.params.some(p => p.name === name) && madeHere(fn.body, name)
+}
+
+// a native list or map, by its checked type
+function isCollection(type: Expression['type']): boolean {
+  return (
+    type?.kind === 'array' ||
+    type?.kind === 'map' ||
+    (type?.kind === 'named' && (type.name === 'list' || type.name === 'hash'))
+  )
+}
+
+// is every binding and assignment of `name` in the body a fresh list or map (`make list`, `make find`, `make hash`, a
+// list or map literal)? Then the value it holds was made by this task and no other name shares it
+function madeHere(body: Statement[], name: string): boolean {
+  let bound = 0
+  let fresh = true
+
+  const isFresh = (value: unknown): boolean => {
+    const v = value as { form?: string; name?: string; fields?: unknown[] } | undefined
+
+    return (
+      v?.form === 'array' ||
+      v?.form === 'map' ||
+      (v?.form === 'record' && (v.name === 'list' || v.name === 'hash' || v.name === 'find') && (v.fields?.length ?? 0) === 0)
+    )
+  }
+
+  visit(body, node => {
+    if (node.form === 'let' && node.name === name) {
+      bound++
+      fresh = fresh && isFresh(node.init)
+    } else if (node.form === 'assign') {
+      const target = node.target as Expression
+
+      if (target.form === 'variable' && target.name === name) {
+        bound++
+        fresh = fresh && isFresh(node.value)
+      }
+    }
+  })
+
+  return bound > 0 && fresh
 }
 
 // is a local name bound exactly once, never assigned, to a value that does not read a member: then the function it

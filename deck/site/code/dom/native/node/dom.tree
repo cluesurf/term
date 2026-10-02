@@ -236,46 +236,11 @@ task anchor
     task drop
       save skip, code 0
 
-# routing glue on the server: the path comes from the request (the server boot passes it), so these are stubs. A server
-# boot dispatches per request rather than reading globals; the same `route(host, path)` dispatcher is reused.
-task page-path
-  like text
-  send back, text </>
-
-# stash the route's title / meta in the shim, so the document shell renders them into the SSR <head> (the server has no
-# live document; the shell drains the stash per request)
-task set-title
-  take title, like text
-  call doc/set-title
-    read title
-
-task set-meta
-  take name, like text
-  take content, like text
-  call doc/set-meta
-    read name
-    read content
-
-# stash / read the resource-route proxy source (the host fetches + streams a non-empty target's bytes)
-task set-proxy
-  take url, like text
-  call doc/set-proxy
-    read url
-
-task proxy-target
-  like text
-  send back
-    call doc/take-proxy
-
 task page-body
   like view
   send back
     make view
       bind handle, make none
-
-task listen-pop
-  take handler
-    like task
 
 # serialize the in-memory tree to HTML (the SSR render output), via the runtime shim. The shim fns are named
 # `serialize-node` / `document-shell` (not `serialize` / `page-shell`) so they do not collide with these task names
@@ -286,14 +251,6 @@ task serialize
   send back
     call doc/serialize-node
       read node/handle
-
-# wrap body HTML in the document shell (the SSR response), via the runtime shim
-task page-shell
-  take body, like text
-  like text
-  send back
-    call doc/document-shell
-      read body
 
 # no ResizeObserver on the server
 task observe-size

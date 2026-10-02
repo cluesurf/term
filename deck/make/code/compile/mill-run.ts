@@ -34,12 +34,28 @@ import { unescapeText } from '@term/make/code/compile/surface'
 // came from, so a consumer's diagnostic (a manifest error, a lockfile error) points at the line in the file, and
 // the CST `node` itself, so a built AST node can point back at the exact surface syntax it was read from. A span
 // alone loses the shape, and the shape is what an accurate diagnostic needs (mint-bridge-0001).
+// an integer literal as a number while that is exact, and as a bigint read from its own text past 2^53, where the
+// parsed number has already rounded to a different integer. Every checker names a literal by its value, so a rounded
+// literal made `x * 9007199254740993 == x * 9007199254740992` a true statement about one constant.
+function exactInteger(parsed: number, text: string): number | bigint {
+  if (Number.isSafeInteger(parsed)) {
+    return parsed
+  }
+
+  try {
+    return BigInt(text.replace(/_/g, ''))
+  } catch {
+    return parsed
+  }
+}
+
 export type MillCapture =
   | { kind: 'word'; value: string; span?: Span; node?: Node }
   | { kind: 'text'; value: string; span?: Span; node?: Node }
   | {
       kind: 'number'
-      value: number
+      // a bigint only for an integer past 2^53, where a number would round to a different value
+      value: number | bigint
       decimal: boolean
       span?: Span
       node?: Node
@@ -596,9 +612,7 @@ function matchRule(
       }
 
       const value =
-        node.kind === 'radix'
-          ? Number(node.value)
-          : Number(node.value)
+        node.kind === 'decimal' ? Number(node.value) : exactInteger(node.value, node.token.text)
       capture(into, rule.site, {
         kind: 'number',
         value,
@@ -948,7 +962,7 @@ export type Minted =
   | { kind: 'text'; value: string; span?: Span; node?: Node }
   | {
       kind: 'number'
-      value: number
+      value: number | bigint
       decimal: boolean
       span?: Span
       node?: Node

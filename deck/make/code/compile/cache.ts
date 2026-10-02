@@ -8,7 +8,7 @@
 // (see code/call/cache-store.ts). Keys fold in a version, so a toolchain change never serves a stale hit.
 // See note/research/repo/turborepo/07-lessons-for-seed.md and note/seed/plan/compilation-performance.md (Tier 1).
 
-import type { Program } from '@term/make/code/compile/node'
+import type { Program, Twin } from '@term/make/code/compile/node'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 
 // the cache format epoch. Bump to invalidate every persisted entry at once (turborepo's `global_cache_key`). Change
@@ -28,20 +28,42 @@ import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 // read, `void` is the literal in an open call's arguments, and the open call folds builtins. Every one changes
 // what a unit mills to with its text unchanged, and the Sanskrit port spent an hour on `term make` reporting
 // errors the source no longer had before the key was read. lean-0034 is keying this on the build itself.
-export const CACHE_EPOCH = '8'
+// '9': an integer literal past 2^53 mills to an exact bigint instead of a rounded number, so a unit cached at '8'
+// may hold a literal that names a different integer than its text.
+export const CACHE_EPOCH = '9'
 
 // A cached entry, or nothing. A CORRUPT ENTRY IS A MISS, never a crash: the store writes atomically, but a
 // full disk, a killed process on a filesystem that does not honour the rename, or a half-synced network share
 // can still leave a truncated file, and `JSON.parse` on one throws `Unexpected end of JSON input` out of the
 // middle of a build. That is what a cache is least allowed to do, because the build was going to recompute the
 // value anyway and the error names the cache rather than anything the author wrote.
+// a bigint (an integer literal past 2^53) is stored tagged, the way program-json.ts renders it, since JSON has no
+// integer wider than a double and `Number()` would store a different integer
+const BIGINT_TAG = '$bigint'
+
+function storeBigint(_key: string, value: unknown): unknown {
+  return typeof value === 'bigint' ? { [BIGINT_TAG]: value.toString() } : value
+}
+
+function reviveBigint(_key: string, value: unknown): unknown {
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    const tagged = (value as Record<string, unknown>)[BIGINT_TAG]
+
+    if (typeof tagged === 'string' && Object.keys(value).length === 1) {
+      return BigInt(tagged)
+    }
+  }
+
+  return value
+}
+
 function readEntry<T>(stored: string | undefined): T | undefined {
   if (stored === undefined) {
     return undefined
   }
 
   try {
-    return JSON.parse(stored) as T
+    return JSON.parse(stored, reviveBigint) as T
   } catch {
     return undefined
   }
@@ -77,7 +99,9 @@ export function hashFields(fields: string[]): string {
 
 // the milled output of one module: a program, or the diagnostics that stopped it
 export type MilledUnit =
-  | { ok: true; program: Program }
+  // `twins` beside the program (node.ts, `Twin`): a cached unit that dropped them would build as if they were never
+  // written, which is correct but loses them
+  | { ok: true; program: Program; twins?: Twin[] }
   | { ok: false; diagnostics: Diagnostic[] }
 
 // a persistent backend for the cache. `kind` separates namespaces (`mill` / `output`). Synchronous and string-valued,
@@ -189,7 +213,7 @@ export class CompileCache {
     const fresh = build()
     this.mills.set(key, fresh)
     evictTo(this.mills, this.millCap)
-    this.store?.save('mill', key, JSON.stringify(fresh))
+    this.store?.save('mill', key, JSON.stringify(fresh, storeBigint))
 
     return cloneUnit(fresh)
   }
@@ -222,7 +246,7 @@ export class CompileCache {
     const fresh = build()
     this.outputs.set(versioned, fresh)
     evictTo(this.outputs, this.outputCap)
-    this.store?.save('output', versioned, JSON.stringify(fresh))
+    this.store?.save('output', versioned, JSON.stringify(fresh, storeBigint))
 
     return fresh
   }
@@ -230,6 +254,10 @@ export class CompileCache {
 
 function cloneUnit(unit: MilledUnit): MilledUnit {
   return unit.ok
-    ? { ok: true, program: structuredClone(unit.program) }
+    ? {
+        ok: true,
+        program: structuredClone(unit.program),
+        ...(unit.twins ? { twins: structuredClone(unit.twins) } : {}),
+      }
     : unit
 }

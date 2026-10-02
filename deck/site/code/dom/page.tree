@@ -1,0 +1,6 @@
+
+# Public page API: the document shell, route path, title, meta, proxy and navigation, for a host with a document and an
+# address (browser, node, cloudflare). Every other env gets the no-op contract in native/page.tree. The node-building
+# API is ./dom; a host module loads both.
+
+bear @term/site/code/dom/native/{platform}/page

@@ -72,11 +72,14 @@ mint rule-def
 mint rule-have
   case name
     site name
+  case mark, mint rule-mark
+    site mark
   case seed
     site seed
   hook make
     make rule-have
       bind name, read name
+      bind mark, read mark
       bind seed, read seed
 
 mint rule-find

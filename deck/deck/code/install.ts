@@ -12,6 +12,7 @@ import { makeDefaultFetchConfig } from './fetch'
 import { findWorkspaces } from './workspace'
 import { parseCodeHold, showCode } from './code'
 import { initStore } from './store'
+import { parseScope, rootScope } from './name'
 import fsp from 'fs/promises'
 import path from 'path'
 
@@ -29,7 +30,22 @@ export async function install(input: {
   await initStore()
 
   // step 1: read manifest
-  const manifest = await loadManifest({ dir: input.root })
+  const loaded = await loadManifest({ dir: input.root })
+
+  // a `host <registry>` group routes its links' scopes to that registry, so a third-party scope on its own OCI
+  // namespace installs, and its links resolve beside the plain ones
+  config.scopeRegistries = {
+    ...config.scopeRegistries,
+    ...hostScopeRegistries({ manifest: loaded }),
+  }
+
+  const manifest: DeckManifest = {
+    ...loaded,
+    link: [
+      ...loaded.link,
+      ...(loaded.hostLink ?? []).flatMap(group => group.link),
+    ],
+  }
 
   // step 2: discover workspaces
   const workspaces = await findWorkspaces({ root: input.root })
@@ -62,6 +78,36 @@ export async function install(input: {
   await saveLockfile({ dir: input.root, lockfile: newLockfile })
 
   console.log(`Installed ${resolution.decks.size} packages`)
+}
+
+// The scope -> registry routes a manifest's `host` groups declare. Every link in a group names the scope it routes,
+// and one scope routed to two registries is refused rather than decided by file order.
+export function hostScopeRegistries(input: {
+  manifest: DeckManifest
+}): Record<string, string> {
+  const routes: Record<string, string> = {}
+
+  for (const group of input.manifest.hostLink ?? []) {
+    for (const link of group.link) {
+      const scope = rootScope(parseScope({ name: link.name }).scope)
+
+      if (!scope) {
+        throw new Error(
+          `host ${group.registry}: ${link.name} has no scope, so it cannot be routed to a registry`,
+        )
+      }
+
+      if (routes[scope] && routes[scope] !== group.registry) {
+        throw new Error(
+          `${scope} is routed to two registries in deck.tree: ${routes[scope]} and ${group.registry}`,
+        )
+      }
+
+      routes[scope] = group.registry
+    }
+  }
+
+  return routes
 }
 
 export async function addDependency(input: {

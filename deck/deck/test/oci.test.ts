@@ -7,6 +7,7 @@ import os from 'os'
 import path from 'path'
 
 import { generateKeypair, signId } from '../code/object/sign'
+import { readVersionFiles } from '../code/object/version'
 import { credentialsFor, parseChallenge } from '../code/oci/auth'
 import { checkClosure, openRemotePack, parseDeckManifest } from '../code/oci/artifact'
 import { installOciVersion, listOciVersions, readOciVersion } from '../code/oci/install'
@@ -545,6 +546,25 @@ describe('OCI image layout', () => {
 
     expect(Object.keys(await readTree(dest)).sort()).toEqual(['code/empty.tree', 'code/link/kept.ts'])
     expect(await fs.readFile(path.join(dest, 'code/empty.tree'), 'utf8')).toBe('')
+  })
+
+  it('ships an included built directory and nothing else from host/', async () => {
+    const work = await scratch('include')
+    await writePackage(work, {
+      'code/line/base.tree': 'hook run\n',
+      'host/line/run.mjs': 'export {}\n',
+      'host/line/app.mjs': 'export {}\n',
+      'host/other.js': 'leak\n',
+      'host/cache/x.js': 'leak\n',
+    })
+
+    const files = await readVersionFiles({
+      dir: work,
+      store: layoutObjectStore({ dir: path.join(work, '.store') }),
+      include: ['host/line'],
+    })
+
+    expect(files.map(file => file.path)).toEqual(['code/line/base.tree', 'host/line/app.mjs', 'host/line/run.mjs'])
   })
 
   it('never stores an object under the wrong digest', async () => {

@@ -110,6 +110,14 @@ const EQUALITY_WANT =
   'variants-equal=true variants-differ=false empties-equal=true shared-by-identity=false shared-self=true ' +
   'key-c-found=false size=1 value-by-equal-key=2'
 
+// the counting pieces in @term/base/code/count (optimize-0007), and the two `count-each` twin bodies written as
+// plain tasks and compared with the reference over 40 generated input pairs each. The second is also what found the
+// Rust backend writing a list slot by a computed index as `xs.borrow()[i].clone() = v` (E0070)
+const COUNT = readFileSync(join(import.meta.dirname, 'meaning-native/count.tree'), 'utf8')
+const COUNT_WANT = 'counts=3,0,1,3 tally-5=3 keys=3 within=true outside=false filled=3 read-in=7 read-out=0'
+const COUNT_TWINS = readFileSync(join(import.meta.dirname, 'meaning-native/count-twins.tree'), 'utf8')
+const COUNT_TWINS_WANT = 'agree=80 disagree=0'
+
 // Rust has no `note shared` representation yet: a shared form is emitted as a plain struct, so it is a value there
 // and two with equal fields are equal. Its own gap, optimize-0042, not this one's. Rust is held to everything else.
 const EQUALITY_WANT_RUST = EQUALITY_WANT.replace('shared-by-identity=false', 'shared-by-identity=true')
@@ -250,6 +258,8 @@ for (const backend of ['typescript', 'rust', 'swift', 'kotlin']) {
 
   run(backend, 'order', ORDER, ORDER_WANT)
   run(backend, 'equality', EQUALITY, backend === 'rust' ? EQUALITY_WANT_RUST : EQUALITY_WANT)
+  run(backend, 'count', COUNT, COUNT_WANT)
+  run(backend, 'count-twins', COUNT_TWINS, COUNT_TWINS_WANT)
 }
 
 console.log(`\nmeaning-native: ${pass} pass, ${fail} fail, ${skip} skipped`)

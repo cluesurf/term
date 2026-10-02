@@ -507,17 +507,25 @@ task calculate-sha3-256
       save i, call increment(read i)
   call m/push
     code 6
+  # the zeros that bring the length to a multiple of the rate, counted up front so the walk is seen to end
+  save pad
+    call modulo
+      call subtract
+        code 136
+        call modulo
+          read m/length
+          code 136
+      code 136
+  save j, code 0
   walk test
     hook test
-      call not
-        call is-equal
-          call modulo
-            read m/length
-            code 136
-          code 0
+      call is-below
+        read j
+        read pad
     hook hold
       call m/push
         code 0
+      save j, call increment(read j)
   save last
     call subtract
       read m/length
@@ -527,14 +535,23 @@ task calculate-sha3-256
     call bitwise-or
       read m/{last}
       code 128
-  # absorb each 136-byte block, one 8-byte little-endian lane at a time
-  save off, code 0
+  # absorb each 136-byte block, one 8-byte little-endian lane at a time. The blocks are counted as whole ones that
+  # fit, so every byte a block reads is inside the padded message
+  save blocks
+    call divide
+      read m/length
+      code 136
+  save block, code 0
   walk test
     hook test
       call is-below
-        read off
-        read m/length
+        read block
+        read blocks
     hook hold
+      save off
+        call multiply
+          read block
+          code 136
       save lane, code 0
       walk test
         hook test
@@ -630,10 +647,7 @@ task calculate-sha3-256
       call sha3-keccak
         read lo
         read hi
-      save off
-        call add
-          read off
-          code 136
+      save block, call increment(read block)
   # squeeze: the first four lanes, little-endian halves, as hex
   save digest, text <>
   save lane, code 0

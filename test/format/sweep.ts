@@ -148,7 +148,20 @@ function program(file: string, text: string): string | undefined {
     return undefined
   }
 
-  return JSON.stringify(mergeParts(built.program))
+  // a walk's bound is held in a temporary the mill names after its POSITION (`walk-head-<line>-<column>`, in
+  // compile/mint-bridge.ts), and position is exactly what formatting moves: a call compacted onto one line above a
+  // walk renamed every temporary below it, and the sweep reported the meaning changed (2026-10-02, nine files). The
+  // temporaries are renumbered in order of first appearance, so a consistent renaming compares equal and a different
+  // structure still does not
+  const temporaries = new Map<string, string>()
+
+  return JSON.stringify(mergeParts(built.program)).replace(/walk-head-\d+-\d+/g, name => {
+    if (!temporaries.has(name)) {
+      temporaries.set(name, `walk-head-${temporaries.size}`)
+    }
+
+    return temporaries.get(name)!
+  })
 }
 
 const files = treeFiles(join(TERM, 'deck')).concat(treeFiles(join(TERM, 'test')))

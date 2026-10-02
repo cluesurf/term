@@ -22,6 +22,9 @@ export type Signature = {
   names: string[]
   fallbacks: (Expression | undefined)[]
   positional: boolean[]
+  // HOLES: the variables a generic signature's bare forms were seeded with (`like maybe`, `like signal`), which are not
+  // among `generics`. One per signature, so every call shared it until each call was given its own (native-dom-0046)
+  holes?: Set<number>
 }
 
 export type Instantiated = {
@@ -62,6 +65,27 @@ export function instantiate(
     // the generic against some metavariable, each call site must still get its own fresh copy
     if (type.kind === 'variable' && map.has(type.id)) {
       return map.get(type.id)!
+    }
+
+    // a HOLE (a bare form's argument, `like signal` where `like signal t` was meant) is what the body made of it:
+    // linked to a declared generic, it takes that generic's fresh copy; still free, because no body has been checked
+    // yet (a module-level `host` is checked before every function), it takes a fresh variable of this call's own.
+    // Shared, the first call to bind it decided it for the whole program (native-dom-0044, 0046)
+    if (type.kind === 'variable' && signature.holes?.has(type.id)) {
+      const r = sub.resolve(type)
+
+      if (r.kind === 'variable') {
+        if (map.has(r.id)) {
+          return map.get(r.id)!
+        }
+
+        const fresh = sub.fresh()
+        map.set(r.id, fresh)
+
+        return fresh
+      }
+
+      return subst(r)
     }
 
     const r = sub.resolve(type)

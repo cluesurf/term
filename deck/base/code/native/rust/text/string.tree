@@ -1,27 +1,27 @@
 # rust string implementation. Forwards to the linked text runtime shim, which wraps the platform's string API. Internal: reached only through the public string API.
 
 dock load
-  load <global:text>, name text
+  load <global:strings>, name strings
 
 task do-upper
   take input, like text
   like text
   send back
-    call text/upper
+    call strings/upper
       read input
 
 task do-lower
   take input, like text
   like text
   send back
-    call text/lower
+    call strings/lower
       read input
 
 task do-trim
   take input, like text
   like text
   send back
-    call text/trim
+    call strings/trim
       read input
 
 task do-repeat
@@ -29,7 +29,7 @@ task do-repeat
   take count, like number
   like text
   send back
-    call text/repeated
+    call strings/repeated
       read input
       read count
 
@@ -38,7 +38,7 @@ task do-contains
   take part, like text
   like boolean
   send back
-    call text/contains
+    call strings/contains
       read input
       read part
 
@@ -47,7 +47,7 @@ task do-starts-with
   take prefix, like text
   like boolean
   send back
-    call text/starts-with
+    call strings/starts-with
       read input
       read prefix
 
@@ -56,7 +56,7 @@ task do-ends-with
   take suffix, like text
   like boolean
   send back
-    call text/ends-with
+    call strings/ends-with
       read input
       read suffix
 
@@ -66,7 +66,7 @@ task do-replace
   take to, like text
   like text
   send back
-    call text/replace
+    call strings/replace
       read input
       read from
       read to
@@ -77,7 +77,7 @@ task do-slice
   take end, like number
   like text
   send back
-    call text/slice
+    call strings/slice
       read input
       read start
       read end
@@ -87,7 +87,7 @@ task do-concat
   take other, like text
   like text
   send back
-    call text/concat
+    call strings/concat
       read input
       read other
 
@@ -95,6 +95,6 @@ task do-to-text
   take value
   like text
   send back
-    call text/from-value
+    call strings/from-value
       read value
 

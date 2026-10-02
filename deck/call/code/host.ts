@@ -15,6 +15,10 @@ import {
 } from '@cluesurf/deck.tree'
 import type { Keypair, OciRoute } from '@cluesurf/deck.tree'
 
+import { existsSync } from 'fs'
+import nodePath from 'path'
+
+import { callBoot } from '@term/call/code/boot'
 import { keptAt, userHome, legacyUserHome } from '@term/call/code/home'
 import {
   logGood,
@@ -81,6 +85,21 @@ export async function callHost(input: {
       return
     }
 
+    // A package with a `line` console ships it BUILT, so an installed copy runs with `node` alone and needs no Term
+    // CLI beside it. That is `term boot <line>/base.tree --out host/line`, the one generated directory a publish
+    // carries (note/term/plan/split-base-zone-and-rename-seed.md, step 4).
+    const include: string[] = []
+
+    if (manifest.line) {
+      const entry = nodePath.join(input.root, manifest.line, 'base.tree')
+
+      if (existsSync(entry)) {
+        logStep(`Building the ${manifest.line} console into host/line...`)
+        await callBoot({ root: input.root, entry, out: nodePath.join(input.root, 'host', 'line') })
+        include.push('host/line')
+      }
+    }
+
     const local = localObjectStore()
     const link = manifest.link.map(dep => ({
       deck: dep.name,
@@ -117,6 +136,7 @@ export async function callHost(input: {
       time: new Date().toISOString(),
       message: `${name} ${version}`,
       annotations,
+      include,
     }
 
     if (input.dryRun) {
@@ -195,7 +215,6 @@ function routeOf(input: { name: string; registry?: string }): OciRoute {
 // The signing keypair. A release is signed so authorship cannot be forged, and the scope's key set says which keys
 // may sign it. Minted on the first publish from this machine, at mode 0600.
 async function loadPublishKeypair(input: { mint: boolean }): Promise<Keypair | undefined> {
-  const nodePath = await import('path')
   const fs = await import('fs/promises')
   const file = keptAt(userHome('key'), legacyUserHome('key'))
 

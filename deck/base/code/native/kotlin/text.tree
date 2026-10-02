@@ -1,6 +1,6 @@
 
 dock load
-  load <global:text>, name text
+  load <global:strings>, name strings
 
 dock load
   load <global:shape>, name shape
@@ -163,7 +163,7 @@ task kotlin-substring
   take start, like size
   take end, like size
   send back
-    call text/slice
+    call strings/slice
       read value
       read start
       read end
@@ -173,7 +173,7 @@ task kotlin-substring-from
   take value, like text
   take start, like size
   send back
-    call text/sliceFrom
+    call strings/sliceFrom
       read value
       read start
 
@@ -183,7 +183,7 @@ task kotlin-index-of
   take search, like text
   take start, like size
   send back
-    call text/indexOf
+    call strings/indexOf
       read value
       read search
       read start
@@ -194,7 +194,7 @@ task kotlin-replace-all
   take search, like text
   take replacement, like text
   send back
-    call text/replace
+    call strings/replace
       read value
       read search
       read replacement
@@ -205,7 +205,7 @@ task kotlin-replace-first
   take search, like text
   take replacement, like text
   send back
-    call text/replaceFirst
+    call strings/replaceFirst
       read value
       read search
       read replacement
@@ -215,7 +215,7 @@ task kotlin-split
   take value, like text
   take separator, like text
   send back
-    call text/split
+    call strings/split
       read value
       read separator
 
@@ -226,7 +226,7 @@ task kotlin-join
       like text
   take separator, like text
   send back
-    call text/join
+    call strings/join
       read list
       read separator
 
@@ -234,21 +234,21 @@ task kotlin-trim
   note private
   take value, like text
   send back
-    call text/trim
+    call strings/trim
       read value
 
 task kotlin-to-upper
   note private
   take value, like text
   send back
-    call text/upper
+    call strings/upper
       read value
 
 task kotlin-to-lower
   note private
   take value, like text
   send back
-    call text/lower
+    call strings/lower
       read value
 
 task kotlin-starts-with
@@ -256,7 +256,7 @@ task kotlin-starts-with
   take value, like text
   take search, like text
   send back
-    call text/startsWith
+    call strings/startsWith
       read value
       read search
 
@@ -265,7 +265,7 @@ task kotlin-ends-with
   take value, like text
   take search, like text
   send back
-    call text/endsWith
+    call strings/endsWith
       read value
       read search
 
@@ -274,7 +274,7 @@ task kotlin-contains
   take value, like text
   take search, like text
   send back
-    call text/contains
+    call strings/contains
       read value
       read search
 
@@ -282,5 +282,5 @@ task kotlin-length
   note private
   take value, like text
   send back
-    call text/length
+    call strings/length
       read value

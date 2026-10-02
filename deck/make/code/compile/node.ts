@@ -361,6 +361,12 @@ export type Statement =
       open?: boolean
       // a `rule` with `base true`: its goal is POSTULATED, not proven. Listed by name in the trust ledger.
       axiom?: boolean
+      // a `rule` with a `show` goal: a THEOREM over its `mark`s. A mark of task type is then a quantified
+      // mathematical function, so the provers read a call of it as a pure application (check/holds.ts `applied`)
+      theorem?: boolean
+      // a theorem's hypotheses that bind variables of their own (`have h / mark m / <proposition>`): each holds for
+      // every value of its binders, and the prover instantiates it where the goal needs it
+      universals?: { name: string; binders: string[]; expr: Expression }[]
       // `note roam`: the task is MEANT to run forever (a server, an event loop). Its walks owe no termination, it is
       // never a function (so no proof or claim may use it), and the trust ledger lists it. proof-by-default-0035
       roam?: boolean

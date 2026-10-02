@@ -255,9 +255,12 @@ function propagateStatement(
     }
 
     case 'assign':
+      // the TARGET of a write is a place, never a value: a variable there is left as written, whatever is known about
+      // it. Substituted, a closure's `save total` became `0 = ...` on Swift and Kotlin (native-dom-0047). A member
+      // target still substitutes its object, which is a read
       return {
         ...node,
-        target: sub(node.target),
+        target: node.target.form === 'variable' ? node.target : sub(node.target),
         value: sub(node.value),
       }
     case 'return':
@@ -372,8 +375,40 @@ function bindingFacts(body: Statement[]): {
   const letCount = new Map<string, number>()
   const assigned = new Set<string>()
 
+  // a closure anywhere in a statement's expressions (an effect body, a callback) writes the same variables: its
+  // `save` of an outer name is an `assign` the scan has to see, or the name reads as never reassigned and its first
+  // value is propagated over the write (native-dom-0047). Scanning a closure-local `let` more than once only makes it
+  // look reassigned, which keeps it, the safe direction
+  const closuresIn = (value: unknown): void => {
+    if (!value || typeof value !== 'object') {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(closuresIn)
+
+      return
+    }
+
+    const node = value as { form?: string; body?: Statement[] }
+
+    if (node.form === 'closure' && Array.isArray(node.body)) {
+      scan(node.body)
+
+      return
+    }
+
+    for (const [key, child] of Object.entries(node)) {
+      if (key !== 'span' && key !== 'type') {
+        closuresIn(child)
+      }
+    }
+  }
+
   const scan = (stmts: Statement[]): void => {
     for (const s of stmts) {
+      closuresIn(s)
+
       switch (s.form) {
         case 'let':
           letCount.set(s.name, (letCount.get(s.name) ?? 0) + 1)

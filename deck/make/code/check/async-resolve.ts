@@ -41,7 +41,7 @@ export function resolveAsync(program: Program): void {
         continue
       }
 
-      if (bodyCallsAsync(fn.body, asyncSet)) {
+      if (bodyCallsAsync(fn.body, inScope(asyncSet, fn))) {
         asyncSet.add(name)
         changed = true
       }
@@ -55,8 +55,54 @@ export function resolveAsync(program: Program): void {
       fn.async = true
     }
 
-    fn.body = fn.body.map(s => stmt(s, asyncSet))
+    const visible = inScope(asyncSet, fn)
+
+    fn.body = fn.body.map(s => stmt(s, visible))
   }
+}
+
+// the async names a function's body can reach. A parameter or a local of the same name SHADOWS the global task, so a
+// call to it is a call to the value, never the task: `find-index` takes a callback named `test`, and calling it was
+// awaited as though it were the async file `test` the stdlib also defines, which refused the whole program
+function inScope(asyncSet: Set<string>, fn: { params: { name: string }[]; body: Statement[] }): Set<string> {
+  const local = new Set<string>(fn.params.map(p => p.name))
+
+  const collect = (node: unknown): void => {
+    if (!node || typeof node !== 'object') {
+      return
+    }
+
+    if (Array.isArray(node)) {
+      node.forEach(collect)
+
+      return
+    }
+
+    const record = node as Record<string, unknown>
+
+    if (record.form === 'let' && typeof record.name === 'string') {
+      local.add(record.name)
+    }
+
+    if (record.form === 'closure') {
+      // a closure's own parameters are handled where the closure is rewritten
+      return
+    }
+
+    for (const [key, value] of Object.entries(record)) {
+      if (key !== 'span' && key !== 'type') {
+        collect(value)
+      }
+    }
+  }
+
+  collect(fn.body)
+
+  if (![...local].some(name => asyncSet.has(name))) {
+    return asyncSet
+  }
+
+  return new Set([...asyncSet].filter(name => !local.has(name)))
 }
 
 // does this body await directly (not counting a nested closure, whose await makes the CLOSURE async, not this scope)?
@@ -260,7 +306,7 @@ function expr(node: Expression, asyncSet: Set<string>): Expression {
       }
 
     case 'closure': {
-      const body = node.body.map(s => stmt(s, asyncSet))
+      const body = node.body.map(s => stmt(s, inScope(asyncSet, node)))
 
       return { ...node, body, async: node.async || bodyAwaits(body) }
     }

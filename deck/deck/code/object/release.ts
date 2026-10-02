@@ -43,12 +43,15 @@ export async function buildRelease(input: {
   meta: CommitMeta
   params?: ChunkParams
   exclude?: Set<string>
+  // root-relative paths shipped even where `exclude` would drop them, such as a built `host/line`
+  include?: Array<string>
 }): Promise<Release> {
   const built = await buildVersion({
     dir: input.dir,
     store: input.store,
     params: input.params,
     exclude: input.exclude,
+    include: input.include,
   })
 
   // commit the version through base, which owns history. The stores are in memory: a

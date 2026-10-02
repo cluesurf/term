@@ -165,14 +165,15 @@ function rebuild(from: Row['from'], facts: Fact[]): Row | undefined {
 
     const base: Polynomial = new Map([[v, ONE]])
 
+    // `w` is a second variable, or '1' for the constant one (no variable is named '1'): (v - 1)^2, (v + 1)^2
     if (w !== undefined) {
-      base.set(w, plus === '+' ? ONE : rational(-1n))
+      base.set(w === '1' ? '' : w, plus === '+' ? ONE : rational(-1n))
     }
 
     return { polynomial: multiply(base, base), relation: 'nonnegative', from }
   }
 
-  if (from.facts.length < 2 || from.facts.length > 3) {
+  if (!('facts' in from) || from.facts.length < 2 || from.facts.length > 3) {
     return undefined
   }
 
@@ -240,7 +241,7 @@ export function replay(facts: Fact[], certificate: Certificate): boolean {
 // the rows: every fact, every product of two facts, every product of the FOCUS (the negated goal) with two facts, and
 // the square of every variable they mention. The triples are what a square-root step whose root is itself a product
 // needs: `(s t) >= 0` and `x^2 <= (s t)^2` give `x <= s t` through `s t (s t - x)`, a product of three.
-function rowsOf(facts: Fact[], focus?: number): Row[] {
+function rowsOf(facts: Fact[], focus?: number, linearOnly = false): Row[] {
   const rows: Row[] = []
   const variables = new Set<string>()
 
@@ -250,6 +251,13 @@ function rowsOf(facts: Fact[], focus?: number): Row[] {
     for (const key of facts[i]!.polynomial.keys()) {
       vars(key).forEach(v => variables.add(v))
     }
+  }
+
+  // the LINEAR mode: the facts themselves, combined with non-negative rational multipliers and nothing multiplied.
+  // Farkas' lemma over an ordered field, for the many-facts case (instantiated hypotheses) where products would be
+  // too many rows
+  if (linearOnly) {
+    return rows
   }
 
   for (let i = 0; i < facts.length; i++) {
@@ -307,6 +315,13 @@ function rowsOf(facts: Fact[], focus?: number): Row[] {
       }
     }
   })
+
+  // the square of every variable plus or minus one, so `c^2 - c + 1 > 0` (half of (c - 1)^2 plus half of c^2 plus a
+  // half) needs no hint
+  for (const v of sorted) {
+    rows.push(rebuild({ square: [v, '1'] }, facts)!)
+    rows.push(rebuild({ square: [v, '1', '+'] }, facts)!)
+  }
 
   // and the square of every sum and difference of two of them, so `a^2 + b^2 >= 2 a b` needs no hint
   for (let i = 0; i < sorted.length; i++) {
@@ -421,12 +436,12 @@ function feasible(a: Rational[][], b: Rational[]): Rational[] | undefined {
 
 // search for a certificate that the facts are contradictory. Two shapes are tried: the combination is the constant
 // -1, or it is 0 with the strict rows' multipliers summing to 1.
-export function refute(facts: Fact[], focus?: number): Certificate | undefined {
-  if (facts.length === 0 || facts.length > 12 || facts.some(f => degree(f.polynomial) > 4)) {
+export function refute(facts: Fact[], focus?: number, linearOnly = false): Certificate | undefined {
+  if (facts.length === 0 || facts.length > (linearOnly ? 2000 : 14) || facts.some(f => degree(f.polynomial) > 4)) {
     return undefined
   }
 
-  const rows = rowsOf(facts, focus)
+  const rows = rowsOf(facts, focus, linearOnly)
   const monomials = new Set<string>([''])
 
   for (const row of rows) {
@@ -490,13 +505,13 @@ export function refute(facts: Fact[], focus?: number): Certificate | undefined {
 
 // does the goal follow from the facts? The goal is `polynomial >= 0` (or `> 0` when strict), so its negation is
 // `-polynomial > 0` (or `-polynomial >= 0`), added as one more fact to refute.
-export function productProves(facts: Fact[], goal: Polynomial, strict: boolean): boolean {
+export function productProves(facts: Fact[], goal: Polynomial, strict: boolean, linearOnly = false): boolean {
   const negation: Fact = {
     polynomial: scaled(goal, rational(-1n)),
     relation: strict ? 'nonnegative' : 'positive',
   }
 
-  return refute([...facts, negation], facts.length) !== undefined
+  return refute([...facts, negation], facts.length, linearOnly) !== undefined
 }
 
 // a number coefficient (from the integer-valued polynomial expansion in holds.ts) as an exact rational

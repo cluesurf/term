@@ -1,0 +1,169 @@
+load @term/base/code/count
+  find count-each
+  find tally
+  find is-every-within
+  find make-filled
+  find read-or
+
+load @term/base/code/list
+  find list
+
+load @term/base/code/hash
+  find hash
+
+# the two twin bodies from count.tree, written as plain tasks so they can be called and compared
+task by-tally
+  take values, like list, like number
+  take queries, like list, like number
+  like list, like number
+  host tallied
+    call tally
+      read values
+  save counts
+    make list
+  walk list, read queries
+    hook next
+      take site, name query
+      call push
+        bind list, read counts
+        bind item
+          call get-or-default
+            read tallied
+            read query
+            code 0
+  send back, read counts
+
+task by-slots
+  take values, like list, like number
+  take queries, like list, like number
+  like list, like number
+  save slots
+    call make-filled
+      code 65536
+      code 0
+  walk list, read values
+    hook next
+      take site, name value
+      save slots/{value}
+        call add
+          read slots/{value}
+          code 1
+  save counts
+    make list
+  walk list, read queries
+    hook next
+      take site, name query
+      call push
+        bind list, read counts
+        bind item
+          call read-or
+            read slots
+            read query
+            code 0
+  send back, read counts
+
+# a deterministic list of `n` numbers below `bound`
+task numbers
+  take n, like number
+  take bound, like number
+  take seed, like number
+  like list, like number
+  save out
+    make list
+  save x, read seed
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      save x
+        call modulo
+          call add
+            call multiply
+              read x
+              code 1103
+            code 12345
+          code 65521
+      call push
+        bind list, read out
+        bind item
+          call modulo
+            read x
+            read bound
+  send back, read out
+
+task same
+  take a, like list, like number
+  take b, like list, like number
+  like boolean
+  send back
+    call is-equal
+      read a
+      read b
+
+task compute
+  like text
+  save agree, code 0
+  save disagree, code 0
+  walk size
+    bind base, code 0
+    bind head, code 40
+    hook next
+      take site, name i
+      host values
+        call numbers
+          call multiply
+            read i
+            code 7
+          call add
+            code 3
+            read i
+          read i
+      host queries
+        call numbers
+          code 25
+          call add
+            code 5
+            read i
+          call add
+            read i
+            code 99
+      host reference
+        call count-each
+          read values
+          read queries
+      fork test
+        hook test
+          call same
+            read reference
+            call by-tally
+              read values
+              read queries
+        hook hold
+          save agree
+            call add
+              read agree
+              code 1
+        hook miss
+          save disagree
+            call add
+              read disagree
+              code 1
+      fork test
+        hook test
+          call same
+            read reference
+            call by-slots
+              read values
+              read queries
+        hook hold
+          save agree
+            call add
+              read agree
+              code 1
+        hook miss
+          save disagree
+            call add
+              read disagree
+              code 1
+  send back, text <agree={{agree}} disagree={{disagree}}>

@@ -1788,6 +1788,23 @@ export function emitRust(
           return `{ let __slot_value = ${bare(owned(node.value))}; ${moduleConstName(node.target.name)}.with(|v| *v.borrow_mut() = Some(__slot_value)); }`
         }
 
+        // a write to a list slot or a map entry by a COMPUTED key (`save slots/{value}, ...`): the read of the target
+        // emits `slots.borrow()[i].clone()`, a value, which is no place to assign to (E0070). The write goes through
+        // `borrow_mut`, with the value and the key computed first so no `borrow()` guard is alive at the write
+        if (node.target.form === 'member' && node.target.index) {
+          const holder = node.target.target
+          const kind = holder.type?.kind
+          const named = holder.type?.kind === 'named' ? holder.type.name : undefined
+
+          if (kind === 'array' || named === 'list') {
+            return `{ let __index_value = ${bare(owned(node.value))}; let __index = (${expr(node.target.index)}) as usize; ${expr(holder)}.borrow_mut()[__index] ${node.op} __index_value; }`
+          }
+
+          if ((kind === 'map' || named === 'hash') && node.op === '=') {
+            return `{ let __index_value = ${bare(owned(node.value))}; let __index = ${bare(owned(node.target.index))}; ${expr(holder)}.borrow_mut().insert(__index, __index_value); }`
+          }
+        }
+
         const cellTarget = cellAssignTarget(node.target)
 
         if (cellTarget) {

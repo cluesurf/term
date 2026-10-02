@@ -61,7 +61,7 @@ import {
   ringEqualModulo,
   nonNegativeDifference,
 } from '@term/make/code/check/ring'
-import { checkFold } from '@term/make/code/check/induct'
+import { checkFold, checkFoldOrder } from '@term/make/code/check/induct'
 import { unfoldDefinitions } from '@term/make/code/check/unfold'
 import {
   callsImpure,
@@ -5076,6 +5076,69 @@ export function elaborateReport(
 
   // record a discharged named equation as a citable rewrite rule (its `mark` binders are the universal holes). Stores
   // both the structural rule (for `fold ... / cite`) and the string form (for the exact-match `cite`/`turn`/`link`).
+  // the `have` guards of a rule, read off the shape the mill lowers a rule to (mint-bridge.ts): its body is witness
+  // `let`s, then a chain of single-branch `if`s, one per `have`, each holding only the next, with the `hold` innermost.
+  // Nothing on such a chain can write a name, so every guard is a fact at the hold. Null when the hold is not inside
+  // that shape, so no other code's conditions are ever read as hypotheses.
+  // whether the hold is the goal of a theorem with universal hypotheses (`have h / mark t / ...`): the hold checker
+  // proves those, induction included (holds.ts universalGoal, universalInduction), and this pass leaves them to it
+  function inUniversalTheorem(program: Program, hold: Statement): boolean {
+    for (const fn of program) {
+      if (fn.form !== 'function' || !fn.universals?.length) {
+        continue
+      }
+
+      let body: Statement[] = fn.body.filter(s => !(s.form === 'let' && !s.mutable) && s.form !== 'return')
+
+      while (body.length === 1) {
+        const only = body[0]!
+
+        if (only === hold) {
+          return true
+        }
+
+        if (only.form !== 'if' || only.branches.length !== 1 || only.otherwise) {
+          break
+        }
+
+        body = only.branches[0]!.body
+      }
+    }
+
+    return false
+  }
+
+  function ruleGuards(
+    program: Program,
+    hold: Statement,
+  ): Expression[] | null {
+    for (const fn of program) {
+      if (fn.form !== 'function') {
+        continue
+      }
+
+      let body: Statement[] = fn.body.filter(s => !(s.form === 'let' && !s.mutable) && s.form !== 'return')
+      const guards: Expression[] = []
+
+      while (body.length === 1) {
+        const only = body[0]!
+
+        if (only === hold) {
+          return guards
+        }
+
+        if (only.form !== 'if' || only.branches.length !== 1 || only.otherwise) {
+          break
+        }
+
+        guards.push(only.branches[0]!.cond)
+        body = only.branches[0]!.body
+      }
+    }
+
+    return null
+  }
+
   function recordLemmaRule(
     name: string | undefined,
     goal: Extract<Statement, { form: 'hold' }>['expr'],
@@ -5237,6 +5300,33 @@ export function elaborateReport(
     // operands and a disjunction by proving ONE, recursively, with each equality leaf settled by convertibility or the
     // ring normalizer (modulo the path hypotheses). Sound: a connective is discharged only when its leaves genuinely
     // hold. On failure, fall through to the linear prover (unchanged behavior), so nothing true is newly rejected.
+    // a conjunction proved by `fold n`: Peano induction over order goals, whose hypothesis is the whole conjunction
+    // (induct.ts checkFoldOrder). A conjunction is how an induction carries a second fact through its step.
+    // a theorem with universal hypotheses is the hold checker's, its inductions too
+    if (statement.proof?.[0]?.head === 'fold' && inUniversalTheorem(program, statement)) {
+      return
+    }
+
+    if (goal.op === '&&' && statement.proof?.[0]?.head === 'fold' && statement.proof[0].arg) {
+      const guards = ruleGuards(program, statement)
+
+      if (guards !== null && checkFoldOrder(program, goal, statement.proof[0].arg, guards)) {
+        discharged.push(statement.span)
+      } else {
+        // a hard error, never left to the hold checker: an unchecked hold is not reported in a file that already has
+        // a kernel error, so a failed induction left there could pass unseen
+        diagnostics.push(
+          diagnose('invalid-proof', {
+            file,
+            span: statement.span,
+            message: 'the induction did not establish the conjunction',
+          }),
+        )
+      }
+
+      return
+    }
+
     if (goal.op === '&&' || goal.op === '||') {
       const proveConnective = (claim: Expression): boolean => {
         if (
@@ -5446,9 +5536,22 @@ export function elaborateReport(
           true,
         )
 
-      if (byInduction || byDeepSplit || checkFold(program, goal, tactic.arg)) {
+      // an ORDER goal (a comparison, or a conjunction of them) about a recursive function, by Peano induction with the
+      // product prover closing each case (induct.ts checkFoldOrder). Its hypotheses are the rule's `have` guards.
+      const guards = ruleGuards(program, statement)
+      const byOrder =
+        !byInduction &&
+        !byDeepSplit &&
+        guards !== null &&
+        checkFoldOrder(program, goal, tactic.arg, guards)
+
+      if (byInduction || byDeepSplit || byOrder || checkFold(program, goal, tactic.arg)) {
         discharged.push(statement.span)
-        recordLemmaRule(statement.name, goal, scope, context)
+
+        // only an equation is a rewrite: a proved inequality recorded as `lhs -> rhs` would rewrite one side into the other
+        if (goal.form === 'binary' && goal.op === '==') {
+          recordLemmaRule(statement.name, goal, scope, context)
+        }
       } else {
         diagnostics.push(
           diagnose('invalid-proof', {

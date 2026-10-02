@@ -1,0 +1,51 @@
+
+# Server page impl: the title, meta and proxy a route declares are stashed in the `<global:html>` shim, and the document
+# shell drains the stash into the SSR response per request. Conforms to ../page.
+
+dock load
+  load <global:html>, name doc
+  note native
+
+# routing glue on the server: the path comes from the request (the server boot passes it), so this is a stub. A server
+# boot dispatches per request rather than reading globals; the same `route(host, path)` dispatcher is reused.
+task page-path
+  like text
+  send back, text </>
+
+# stash the route's title / meta in the shim, so the document shell renders them into the SSR <head> (the server has no
+# live document; the shell drains the stash per request)
+task set-title
+  take title, like text
+  call doc/set-title
+    read title
+
+task set-meta
+  take name, like text
+  take content, like text
+  call doc/set-meta
+    read name
+    read content
+
+# stash / read the resource-route proxy source (the host fetches + streams a non-empty target's bytes)
+task set-proxy
+  take url, like text
+  call doc/set-proxy
+    read url
+
+task proxy-target
+  like text
+  send back
+    call doc/take-proxy
+
+task listen-pop
+  take handler
+    like task
+
+# wrap body HTML in the document shell (the SSR response), via the runtime shim. The shim fn is named `document-shell`
+# so it does not collide with this task's name when the shim is prepended into the bundle.
+task page-shell
+  take body, like text
+  like text
+  send back
+    call doc/document-shell
+      read body

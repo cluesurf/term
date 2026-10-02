@@ -419,12 +419,48 @@ export function check(
       }
     }
 
+    const params = statement.params.map(p => seedType(p.type, genericVars))
+    const result = seedType(statement.result, genericVars)
+
+    // a GENERIC signature's holes: every variable seeding made that is not one of its generics, which is a bare
+    // form's argument (`like maybe`, `like signal`). Read here, before any unification, so a variable in the signature
+    // is either a declared generic or a hole. Each call resolves its holes for itself (signature.ts, native-dom-0046)
+    const holes = new Set<number>()
+
+    if (genericIds.size > 0) {
+      const visit = (type: Type | undefined): void => {
+        if (!type) {
+          return
+        }
+
+        if (type.kind === 'variable') {
+          if (!genericIds.has(type.id)) {
+            holes.add(type.id)
+          }
+        } else if (type.kind === 'array') {
+          visit(type.element)
+        } else if (type.kind === 'map') {
+          visit(type.key)
+          visit(type.value)
+        } else if (type.kind === 'function') {
+          type.params.forEach(visit)
+          visit(type.result)
+        } else if (type.kind === 'named') {
+          type.args?.forEach(visit)
+        }
+      }
+
+      params.forEach(visit)
+      visit(result)
+    }
+
     functions.set(statement.name, {
       generics: genericIds,
       genericNames,
       bounds,
-      params: statement.params.map(p => seedType(p.type, genericVars)),
-      result: seedType(statement.result, genericVars),
+      params,
+      result,
+      holes,
       // the minimum call arity: trailing `need false` params may be omitted
       minArgs: statement.params.filter(p => !p.optional).length,
       names: statement.params.map(p => p.name),
@@ -2815,6 +2851,32 @@ export function check(
           break
         case 'record':
           node.fields.forEach(f => visitExpression(f.value))
+          break
+        // a closure's body is checked with everything else and resolved with it too. Left out, its locals kept
+        // their raw inference variables and every native backend spelled them `Any`: a list made inside an effect
+        // reached Swift as `SeedList<Any>` and Kotlin as `mutableListOf<Any>()` where the same code at the top of a
+        // task was `<String>` (native-dom-0021)
+        case 'closure':
+          zonkBody(node.body, names)
+          break
+        case 'conditional':
+          node.branches.forEach(b => {
+            visitExpression(b.cond)
+            visitExpression(b.value)
+          })
+
+          if (node.otherwise) {
+            visitExpression(node.otherwise)
+          }
+
+          break
+        case 'template':
+          for (const part of node.parts) {
+            if (typeof part !== 'string') {
+              visitExpression(part)
+            }
+          }
+
           break
         default:
           break

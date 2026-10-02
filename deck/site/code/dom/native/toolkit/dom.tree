@@ -144,33 +144,11 @@ task anchor
     task drop
       save skip, code 0
 
-task page-path
-  like text
-  send back, text </>
-
-task set-title
-  take title, like text
-
-task set-meta
-  take name, like text
-  take content, like text
-
-task set-proxy
-  take url, like text
-
-task proxy-target
-  like text
-  send back, text <>
-
 task page-body
   like view
   send back
     call create-element
       bind tag, text <main>
-
-task listen-pop
-  take handler
-    like task
 
 task observe-size
   take node, like view
@@ -209,11 +187,6 @@ task serialize
   send back
     call native-view/serialize
       read node/handle
-
-task page-shell
-  take body, like text
-  like text
-  send back, read body
 
 task append
   take parent, like view

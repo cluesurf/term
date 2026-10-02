@@ -1,7 +1,14 @@
 # A Bloom filter over 32-bit buckets: k locations per value by double hashing (two FNV-1a passes), each location
-# one bit in the bucket array. `add` sets the bits, `test` reads them (a false stops early), `get-size` estimates
-# the count from the popcount of the buckets. Restored 2026-08-30 from the mangled draft, on the hold/ utilities
-# (count-one-bits-32, fnv-hash-32-1a) now that they are in the build.
+# one bit in the bucket array. `put` sets the bits, `test` reads them (a false stops early), `get-size` estimates
+# the count from the popcount of the buckets. Held by deck/base/test/bloom-filter.tree.
+#
+# THE INVARIANT, stated where it is relied on: `m` is the bit count, positive and exactly 32 bits per bucket, and
+# `k` is positive. `make-bloom-filter` promises it (`must`), every method that reads a bucket assumes it (`have`), and
+# `put` promises it back, so `term hold` proves every bucket read inside the list and every remainder by a nonzero.
+#
+# Two defects the proof found on 2026-10-02, both silent before: the bucket count was `round-up(m / 32)` on an
+# integer quotient, which is already floor(m / 32), so a filter of fewer than 32 bits had no buckets at all and m of
+# zero. And `get-locations` wrote into a stored list made empty, which grows on TypeScript and panics on Rust.
 
 load @term/base/code/hold/integer
   find count-one-bits-32
@@ -15,29 +22,64 @@ load @term/base/code/hold/hash/fnv
   find fnv-hash-32-1a
 
 load @term/base/code/math
-  find round-down
-  find round-up
   find logarithm
 
 form bloom-filter
   link m, like number
   link k, like number
-  link locations
-    like list
-      like number
   link buckets
     like list
       like number
 
-  # the k bit locations for a value: double hashing with two FNV-1a passes
+  # the i-th bit location of a value whose two hashes are a and b: (a + i * b) mod m, inside the filter
+  task location
+    take self
+    take a, like number
+    take b, like number
+    take i, like number
+    have
+      call is-above
+        read self/m
+        code 0
+    like number
+    must
+      call is-minimum
+        read back
+        code 0
+    must
+      call is-below
+        read back
+        read self/m
+    save x
+      call modulo
+        call add
+          read a
+          call multiply
+            read i
+            read b
+        read self/m
+    fork test
+      hook test
+        call is-below
+          read x
+          code 0
+      hook hold
+        send back
+          call add
+            read x
+            read self/m
+    send back, read x
+
+  # the k bit locations of a value, in a list of its own
   task get-locations
     take self
-    take v
+    take v, like text
+    have
+      call is-above
+        read self/m
+        code 0
     like list
       like number
-    save k, read self/k
-    save m, read self/m
-    save r, read self/locations
     save a
       call fnv-hash-32-1a
         read v
@@ -46,36 +88,20 @@ form bloom-filter
       call fnv-hash-32-1a
         read v
         code 1576284489
-    save x
-      call modulo
-        read a
-        read m
+    save r, make list
     save i, code 0
     walk test
       hook test
         call is-below
           read i
-          read k
+          read self/k
       hook hold
-        fork test
-          hook test
-            call is-below
-              read x
-              code 0
-          hook hold
-            save x
-              call add
-                read x
-                read m
-        call r/set
-          read i
-          read x
-        save x
-          call modulo
-            call add
-              read x
-              read b
-            read m
+        call r/push
+          call location
+            read self
+            read a
+            read b
+            read i
         save i
           call increment
             bind value, read i
@@ -84,33 +110,60 @@ form bloom-filter
   # set the value's k bits
   task put
     take self
-    take v
-    save l
-      call get-locations
-        read self
+    take v, like text
+    have
+      call is-above
+        read self/m
+        code 0
+    have
+      call is-equal
+        read self/m
+        call multiply
+          read self/buckets/length
+          code 32
+    must
+      call is-above
+        read self/m
+        code 0
+    must
+      call is-equal
+        read self/m
+        call multiply
+          read self/buckets/length
+          code 32
+    save a
+      call fnv-hash-32-1a
         read v
-    save k, read self/k
-    save buckets, read self/buckets
+        code 0
+    save b
+      call fnv-hash-32-1a
+        read v
+        code 1576284489
     save i, code 0
     walk test
       hook test
         call is-below
           read i
-          read k
+          read self/k
       hook hold
+        save l
+          call location
+            read self
+            read a
+            read b
+            read i
         save at
-          call round-down
-            call divide
-              read l/{i}
-              code 32
-        call buckets/set
+          call divide
+            read l
+            code 32
+        call self/buckets/set
           read at
           call bitwise-or
-            read buckets/{at}
+            read self/buckets/{at}
             call shift-left
               code 1
               call modulo
-                read l/{i}
+                read l
                 code 32
         save i
           call increment
@@ -119,36 +172,52 @@ form bloom-filter
   # are all k bits set? A clear bit answers false at once
   task test
     take self
-    take v
+    take v, like text
+    have
+      call is-above
+        read self/m
+        code 0
+    have
+      call is-equal
+        read self/m
+        call multiply
+          read self/buckets/length
+          code 32
     like boolean
-    save l
-      call get-locations
-        read self
+    save a
+      call fnv-hash-32-1a
         read v
-    save k, read self/k
-    save buckets, read self/buckets
+        code 0
+    save b
+      call fnv-hash-32-1a
+        read v
+        code 1576284489
     save i, code 0
     walk test
       hook test
         call is-below
           read i
-          read k
+          read self/k
       hook hold
-        save b, read l/{i}
+        save l
+          call location
+            read self
+            read a
+            read b
+            read i
         save at
-          call round-down
-            call divide
-              read b
-              code 32
+          call divide
+            read l
+            code 32
         fork test
           hook test
             call is-equal
               call bitwise-and
-                read buckets/{at}
+                read self/buckets/{at}
                 call shift-left
                   code 1
                   call modulo
-                    read b
+                    read l
                     code 32
               code 0
           hook hold
@@ -158,69 +227,92 @@ form bloom-filter
             bind value, read i
     send back, true
 
-  # the estimated count: -m/k * ln(1 - bits/m), bits the popcount over the buckets
+  # the estimated count, m/k * ln(m / (m - bits)) with bits the popcount over the buckets, truncated to a whole
+  # count. Written as m * (ln m - ln(m - bits)) / k so no fraction passes through an integer quotient. A filter with
+  # every bit set has no finite estimate and answers m, the most values its bits can tell apart
   task get-size
     take self
+    have
+      call is-above
+        read self/m
+        code 0
+    have
+      call is-above
+        read self/k
+        code 0
     like number
-    save buckets, read self/buckets
     save bits, code 0
     save i, code 0
-    save n, read buckets/length
     walk test
       hook test
         call is-below
           read i
-          read n
+          read self/buckets/length
       hook hold
         save bits
           call add
             read bits
             call count-one-bits-32
-              read buckets/{i}
+              read self/buckets/{i}
         save i
           call increment
             bind value, read i
+    fork test
+      hook test
+        call is-minimum
+          read bits
+          read self/m
+      hook hold
+        send back, read self/m
     send back
       call divide
         call multiply
+          read self/m
           call subtract
-            code 0
-            read self/m
-          call logarithm
-            call subtract
-              code 1
-              call divide
-                read bits
+            call logarithm
+              read self/m
+            call logarithm
+              call subtract
                 read self/m
+                read bits
         read self/k
 
-# a filter with m bits (rounded up to whole 32-bit buckets) and k hashes per value. An m of zero or less stored a
-# filter of zero bits, and every lookup then took a remainder by zero (`get-locations`), which tier 0 found on
-# 2026-10-02 with nothing written: the `have` below is owed by every caller now.
+# a filter with at least m bits (rounded up to whole 32-bit buckets) and k hashes per value. An m of zero or less
+# made every lookup take a remainder by zero, and a k of zero or less divided by it in `get-size`: both `have` lines
+# are owed by every caller. The `must` lines are the invariant every method relies on.
 task make-bloom-filter
-  take m
-  take k
+  take m, like number
+  take k, like number
   have
     call is-above
       read m
       code 0
+  have
+    call is-above
+      read k
+      code 0
   like bloom-filter
-  save n
-    call round-up
-      call divide
-        read m
+  must
+    call is-above
+      read back/m
+      code 0
+  must
+    call is-above
+      read back/k
+      code 0
+  must
+    call is-equal
+      read back/m
+      call multiply
+        read back/buckets/length
         code 32
-  save bloom
-    make bloom-filter
-      bind m
-        call multiply
-          read n
-          code 32
-      bind k, read k
-      bind locations
-        make list
-      bind buckets
-        make list
+  save n
+    call divide
+      call add
+        read m
+        code 31
+      code 32
+  save buckets, make list
   save i, code 0
   walk test
     hook test
@@ -228,9 +320,17 @@ task make-bloom-filter
         read i
         read n
     hook hold
-      call bloom/buckets/push
+      call buckets/push
         code 0
       save i
         call increment
           bind value, read i
-  send back, read bloom
+  # the bit count is read off the list that was built, so the invariant holds by construction
+  send back
+    make bloom-filter
+      bind m
+        call multiply
+          read buckets/length
+          code 32
+      bind k, read k
+      bind buckets, read buckets

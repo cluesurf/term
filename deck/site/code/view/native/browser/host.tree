@@ -5,9 +5,10 @@
 load @term/site/code/dom/dom
   find view
   find page-body
+  find clear
+load @term/site/code/dom/page
   find page-path
   find listen-pop
-  find clear
 
 task host
   take route

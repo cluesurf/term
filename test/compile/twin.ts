@@ -10,6 +10,7 @@
 import { parse } from '@term/make/code/parser/tree'
 import { mill } from '@term/make/code/compile/mill'
 import { millByGrammar } from '@term/make/code/compile/mint-bridge'
+import { compile } from '@term/make/code/compile/compile'
 import type { Twin } from '@term/make/code/compile/node'
 
 let pass = 0
@@ -155,6 +156,68 @@ ok(
 
 const unlabelled = millText(`${REFERENCE}\ntwin count-each\n  take values\n  take queries\n  send back\n    make list\n`).viaGrammar
 ok('a twin with no label is refused', !unlabelled.ok && JSON.stringify(unlabelled.diagnostics).includes('name <label>'))
+
+// ---- what the compiler refuses about a twin without running anything (check/twin.ts, optimize-0006) ----
+
+const PURE = `task double
+  take n, like number
+  like number
+  send back
+    call add
+      read n
+      read n
+`
+
+const IMPURE = `dock load
+  load <global:Date>, name date
+
+task stamp
+  take n, like number
+  like number
+  send back
+    call add
+      read n
+      call date/now
+`
+
+function refusedFor(text: string): string[] {
+  const built = compile({ file: 'main.tree', text })
+
+  return built.ok ? [] : built.diagnostics.map(d => d.name)
+}
+
+function accepted(text: string): { ok: boolean; twins: number } {
+  const built = compile({ file: 'main.tree', text })
+
+  return { ok: built.ok, twins: built.ok ? (built.twins?.length ?? 0) : 0 }
+}
+
+const good = accepted(`${PURE}\ntwin double, name shift\n  take n\n  send back\n    call multiply\n      read n\n      code 2\n`)
+ok('a pure twin of a pure task compiles, and the build carries it', good.ok && good.twins === 1, JSON.stringify(good))
+
+const cases: [string, string, string][] = [
+  ['a twin of no task', 'twin-unknown', `${PURE}\ntwin triple, name x\n  take n\n  send back, read n\n`],
+  ['a twin of an impure task', 'twin-of-impure', `${IMPURE}\ntwin stamp, name x\n  take n\n  send back, read n\n`],
+  ['a twin with other parameters', 'twin-signature', `${PURE}\ntwin double, name x\n  take m\n  send back, read m\n`],
+  ['an impure twin', 'twin-impure', `${IMPURE}\n${PURE}\ntwin double, name x\n  take n\n  send back\n    call stamp\n      read n\n`],
+  ['a twin that never ends', 'twin-loops', `${PURE}\ntask spin\n  take n, like number\n  like number\n  send back\n    call spin\n      read n\n\ntwin double, name x\n  take n\n  send back\n    call spin\n      read n\n`],
+  ['an impure run-time check', 'guard-impure', `${IMPURE}\n${PURE}\ntwin double, name x\n  take n\n  hook test\n    call is-above\n      call stamp\n        read n\n      code 0\n  send back\n    call multiply\n      read n\n      code 2\n`],
+  ['an undefined relaxation', 'ease-unknown', `${PURE}\ntwin double, name x\n  take n\n  ease anything-goes\n  send back\n    call multiply\n      read n\n      code 2\n`],
+  [
+    'two twins that call each other',
+    'twin-cycle',
+    `${PURE}\ntask halve\n  take n, like number\n  like number\n  send back\n    call divide\n      read n\n      code 2\n\ntwin double, name x\n  take n\n  send back\n    call halve\n      read n\n\ntwin halve, name y\n  take n\n  send back\n    call double\n      read n\n`,
+  ],
+]
+
+for (const [label, want, text] of cases) {
+  const got = refusedFor(text)
+  ok(`${label} is refused as \`${want}\``, got.includes(want), `got ${JSON.stringify(got)}`)
+}
+
+// `note trust` admits an impure twin: trust excuses a proof, never the check that it is admitted as trusted
+const trusted = accepted(`${IMPURE}\n${PURE}\ntwin double, name x\n  take n\n  note trust\n  send back\n    call stamp\n      read n\n`)
+ok('an impure twin that says `note trust` compiles', trusted.ok && trusted.twins === 1, JSON.stringify(trusted))
 
 console.log(`\ntwin: ${pass} pass, ${fail} fail`)
 

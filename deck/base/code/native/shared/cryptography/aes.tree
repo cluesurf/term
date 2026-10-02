@@ -663,12 +663,28 @@ task aes-expand-key
               code 4
             code 0
         hook hold
-          # rotate the word, substitute each byte, fold in the rnd constant
-          save rotated, read t0
-          save t0, read aes-sbox/{t1}
-          save t1, read aes-sbox/{t2}
-          save t2, read aes-sbox/{t3}
-          save t3, read aes-sbox/{rotated}
+          # rotate the word, substitute each byte, fold in the rnd constant. Each index is masked to a byte: a key
+          # byte is one already, and the mask is what says so where the table is read
+          save b0
+            call bitwise-and
+              read t1
+              code 0xff
+          save b1
+            call bitwise-and
+              read t2
+              code 0xff
+          save b2
+            call bitwise-and
+              read t3
+              code 0xff
+          save b3
+            call bitwise-and
+              read t0
+              code 0xff
+          save t0, read aes-sbox/{b0}
+          save t1, read aes-sbox/{b1}
+          save t2, read aes-sbox/{b2}
+          save t3, read aes-sbox/{b3}
           save rnd
             call subtract
               call divide
@@ -760,12 +776,11 @@ task aes-add-round-key
           read rk/{at}
       save c, call increment(read c)
 
-# substitute and shift the rows in one pass: out[4c + r] = sbox[in[4*((c + r) % 4) + r]]
+# substitute and shift the rows in one pass: out[4c + r] = box[in[4*((c + direction * r) % 4) + r]]. Direction 1 is
+# the cipher (the S-box, rows shifted left), any other the inverse (its inverse box, 3 being a shift right). The task
+# reads the table itself rather than taking it, so each lookup is into a constant of known length
 task aes-sub-shift
   take state
-    like list
-      like number
-  take box
     like list
       like number
   take direction, like number
@@ -794,25 +809,36 @@ task aes-sub-shift
             read r
             code 4
         hook hold
+          # the column, wrapped into 0..3 by its low two bits: c + direction * r may be negative when the rows shift
+          # back, where a remainder keeps the sign and a mask does not
           save source-column
-            call modulo
+            call bitwise-and
               call add
-                call add
-                  read c
-                  call multiply
-                    read direction
-                    read r
-                code 4
-              code 4
+                read c
+                call multiply
+                  read direction
+                  read r
+              code 3
           save at
             call add
               call multiply
                 read source-column
                 code 4
               read r
-          save value, read state/{at}
+          save value
+            call bitwise-and
+              read state/{at}
+              code 0xff
+          save substituted, read aes-inv-sbox/{value}
+          fork test
+            hook test
+              call is-equal
+                read direction
+                code 1
+            hook hold
+              save substituted, read aes-sbox/{value}
           call out/push
-            read box/{value}
+            read substituted
           save r, call increment(read r)
       save c, call increment(read c)
   send back, read out
@@ -871,7 +897,6 @@ task aes-encrypt-block
       save state
         call aes-sub-shift
           read state
-          read aes-sbox
           code 1
       save mc, code 0
       walk test
@@ -961,7 +986,6 @@ task aes-encrypt-block
   save state
     call aes-sub-shift
       read state
-      read aes-sbox
       code 1
   call aes-add-round-key
     read state
@@ -1023,7 +1047,6 @@ task aes-decrypt-block
       save state
         call aes-sub-shift
           read state
-          read aes-inv-sbox
           code 3
       call aes-add-round-key
         read state
@@ -1131,7 +1154,6 @@ task aes-decrypt-block
   save state
     call aes-sub-shift
       read state
-      read aes-inv-sbox
       code 3
   call aes-add-round-key
     read state

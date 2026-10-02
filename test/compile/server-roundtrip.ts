@@ -502,12 +502,15 @@ let package = Package(
     // `swift build error: ` with nothing after it and hid every cause. Whichever stream said something wins, and
     // the exception itself is the last resort.
     const said = e as { stderr?: Buffer; stdout?: Buffer }
-    const why =
+    const all =
       String(said.stderr ?? '').trim() ||
       String(said.stdout ?? '').trim() ||
       String(e)
+    // the errors themselves, since a build prints pages of warnings after them and the tail held only those
+    const errors = all.split('\n').filter(line => /\berror:/.test(line))
+    const why = errors.length > 0 ? errors.slice(0, 8).join('\n') : all.slice(-900)
 
-    console.log(`FAIL  ${name}  (swift build error: ${why.slice(-900)})`)
+    console.log(`FAIL  ${name}  (swift build error: ${why})`)
 
     return
   }

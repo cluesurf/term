@@ -54,16 +54,39 @@ export async function readVersionFiles(input: {
   store: ObjectStore
   params?: ChunkParams
   exclude?: Set<string>
+  // root-relative paths shipped even where an exclusion would drop them: a built console under `host/line`, which
+  // a package that runs with `node` alone must carry. Only these paths, and the directories leading to them
+  include?: Array<string>
 }): Promise<Array<PackageFile>> {
   const exclude = input.exclude ?? DEFAULT_EXCLUDE
+  const include = (input.include ?? []).map(at => at.replace(/^\.\//, '').replace(/\/+$/, ''))
   const files: Array<PackageFile> = []
 
-  const walk = async (dir: string, prefix: string): Promise<void> => {
+  const included = (at: string): boolean =>
+    include.some(keep => at === keep || at.startsWith(`${keep}/`))
+  const leadsTo = (at: string): boolean =>
+    include.some(keep => keep.startsWith(`${at}/`))
+
+  // `partial` is a directory walked only because an included path is inside it: nothing else in it ships
+  const walk = async (dir: string, prefix: string, partial = false): Promise<void> => {
     const entries = await fsp.readdir(dir, { withFileTypes: true })
 
     for (const entry of entries) {
-      if (exclude.has(entry.name) || (prefix === '' && ROOT_EXCLUDE.has(entry.name))) {
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name
+
+      if (partial && !included(relative) && !leadsTo(relative)) {
         continue
+      }
+
+      if (exclude.has(entry.name) || (prefix === '' && ROOT_EXCLUDE.has(entry.name))) {
+        if (included(relative)) {
+          // shipped whole, below
+        } else if (entry.isDirectory() && leadsTo(relative)) {
+          await walk(path.join(dir, entry.name), relative, true)
+          continue
+        } else {
+          continue
+        }
       }
 
       // dotfiles are skipped by default, matching the tarball publisher
@@ -77,7 +100,7 @@ export async function readVersionFiles(input: {
 
       if (entry.isDirectory()) {
         const before = files.length
-        await walk(full, at)
+        await walk(full, at, partial && !included(at))
 
         // an EMPTY directory would otherwise vanish, since the tree is derived from
         // file paths. Record it explicitly so a checkout can recreate it. Git cannot
@@ -152,6 +175,7 @@ export async function buildVersion(input: {
   store: ObjectStore
   params?: ChunkParams
   exclude?: Set<string>
+  include?: Array<string>
 }): Promise<BuiltVersion> {
   const files = await readVersionFiles(input)
   const treeChunks = new MemoryChunkStore()

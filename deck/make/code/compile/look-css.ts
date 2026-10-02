@@ -51,7 +51,7 @@ function nodeText(node: Node | undefined): string {
 }
 
 // a group's head word (its first child name)
-function headName(group: GroupNode): string {
+export function headName(group: GroupNode): string {
   const first = group.nodes[0]
 
   return first?.kind === 'name' ? nodeText(first) : ''
@@ -63,7 +63,7 @@ function rest(group: GroupNode): Node[] {
 }
 
 // the child groups of a group whose head is `head` (e.g. every `have` under a `face`)
-function childrenNamed(group: GroupNode, head: string): GroupNode[] {
+export function childrenNamed(group: GroupNode, head: string): GroupNode[] {
   return rest(group).filter(
     (node): node is GroupNode =>
       node.kind === 'group' && headName(node) === head,
@@ -71,7 +71,7 @@ function childrenNamed(group: GroupNode, head: string): GroupNode[] {
 }
 
 // the name of the i-th argument: `rest(group)[i]` is a group wrapping a name (`color` in `have color, ...`)
-function argName(group: GroupNode, index: number): string {
+export function argName(group: GroupNode, index: number): string {
   const arg = rest(group)[index]
 
   return arg?.kind === 'group' ? headName(arg) : nodeText(arg)
@@ -188,7 +188,7 @@ function renderValueNode(node: Node): string {
 }
 
 // render the full value of a `have <property>, ...` declaration
-function renderValue(have: GroupNode): string {
+export function renderValue(have: GroupNode): string {
   const property = argName(have, 0)
   const vals = rest(have).slice(1)
 
@@ -374,7 +374,7 @@ function selector(group: GroupNode): string {
 // ── at-rule + block emitters ──────────────────────────────────────────────────
 
 // the responsive breakpoint min-widths (Tailwind defaults) used by `face` `case` variants
-const BREAKPOINT: Record<string, string> = {
+export const BREAKPOINT: Record<string, string> = {
   sm: '640px',
   md: '768px',
   lg: '1024px',
@@ -383,7 +383,7 @@ const BREAKPOINT: Record<string, string> = {
 }
 
 // data/aria state variants -> the attribute selector they target on the class
-const STATE_ATTR: Record<string, string> = {
+export const STATE_ATTR: Record<string, string> = {
   open: '[data-state=open]',
   closed: '[data-state=closed]',
   checked: '[data-state=checked]',

@@ -89,6 +89,30 @@ enum runtime {
     server.stop = nil
   }
 
+  // the server's own NIOSSL configuration. It advertises only HTTP/1.1 over ALPN, because this builder speaks only
+  // HTTP/1.1: borrowing the http2 shim's, which advertises h2 first, let a browser negotiate a protocol the server
+  // then did not speak. It is also why this file no longer names `http2`, which is prepended only for a program that
+  // docks it, so a plain server did not build at all
+  private static func tlsConfiguration(
+    _ certificate: String,
+    _ key: String
+  ) -> TLSConfiguration? {
+    do {
+      let chain = try NIOSSLCertificate.fromPEMBytes(Array(certificate.utf8))
+        .map { NIOSSLCertificateSource.certificate($0) }
+      let private_ = try NIOSSLPrivateKey(bytes: Array(key.utf8), format: .pem)
+      var tls = TLSConfiguration.makeServerConfiguration(
+        certificateChain: chain,
+        privateKey: .privateKey(private_)
+      )
+      tls.applicationProtocols = ["http/1.1"]
+
+      return tls
+    } catch {
+      return nil
+    }
+  }
+
   private static func run(
     _ port: Int,
     _ host: String,
@@ -121,7 +145,7 @@ enum runtime {
     var builder = HTTPServerBuilder.http1()
 
     if secure {
-      guard let tls = http2.tlsConfiguration(certificate, key) else {
+      guard let tls = tlsConfiguration(certificate, key) else {
         FileHandle.standardError.write(
           Data("server tls: certificate or key did not parse\n".utf8)
         )

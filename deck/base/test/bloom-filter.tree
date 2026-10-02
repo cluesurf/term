@@ -1,0 +1,114 @@
+# Bloom filter behavior: an added value tests true, an empty filter tests false, a filter of fewer than 32 bits
+# still has a bucket (it had none before 2026-10-02), the locations stay inside the filter, and the size estimate
+# counts added values.
+#
+# Run with: term test
+
+load @term/base/code/native/shared/bloom-filter
+  find bloom-filter
+  find make-bloom-filter
+
+load @term/base/code/boolean
+  find not
+
+test bloom-filter-has-an-added-value
+  save f
+    call make-bloom-filter
+      code 256
+      code 3
+  call put
+    read f
+    text <apple>
+  want hold
+    call test
+      read f
+      text <apple>
+
+test bloom-filter-is-empty-at-first
+  save f
+    call make-bloom-filter
+      code 256
+      code 3
+  want hold
+    call not
+      call test
+        read f
+        text <apple>
+
+test bloom-filter-of-few-bits-has-a-bucket
+  save f
+    call make-bloom-filter
+      code 10
+      code 2
+  want hold
+    call is-equal
+      read f/buckets/length
+      code 1
+  call put
+    read f
+    text <pear>
+  want hold
+    call test
+      read f
+      text <pear>
+
+test bloom-filter-locations-are-inside
+  save f
+    call make-bloom-filter
+      code 64
+      code 5
+  save l
+    call get-locations
+      read f
+      text <plum>
+  want hold
+    call is-equal
+      read l/length
+      code 5
+  save inside, code 0
+  walk list, read l
+    hook next
+      take site, name x
+      fork test
+        hook test
+          call and
+            call is-minimum
+              read x
+              code 0
+            call is-below
+              read x
+              code 64
+        hook hold
+          save inside
+            call increment
+              bind value, read inside
+  want hold
+    call is-equal
+      read inside
+      code 5
+
+test bloom-filter-estimates-its-size
+  save f
+    call make-bloom-filter
+      code 1024
+      code 3
+  call put
+    read f
+    text <a>
+  call put
+    read f
+    text <b>
+  call put
+    read f
+    text <c>
+  save n
+    call get-size
+      read f
+  want hold
+    call and
+      call is-minimum
+        read n
+        code 2
+      call is-maximum
+        read n
+        code 4

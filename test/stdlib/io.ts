@@ -2215,7 +2215,7 @@ async function main(): Promise<void> {
     (() => {
       const r = stringFor('rust')
 
-      return r.ok && emitRust(r.program).includes('text::upper')
+      return r.ok && emitRust(r.program).includes('strings::upper')
     })(),
     true,
   )
@@ -2224,7 +2224,7 @@ async function main(): Promise<void> {
     (() => {
       const r = stringFor('swift')
 
-      return r.ok && emitSwift(r.program).includes('text.upper')
+      return r.ok && emitSwift(r.program).includes('strings.upper')
     })(),
     true,
   )
@@ -2233,7 +2233,7 @@ async function main(): Promise<void> {
     (() => {
       const r = stringFor('kotlin')
 
-      return r.ok && emitKotlin(r.program).includes('text.upper')
+      return r.ok && emitKotlin(r.program).includes('strings.upper')
     })(),
     true,
   )

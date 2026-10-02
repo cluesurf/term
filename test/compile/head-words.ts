@@ -51,6 +51,10 @@ const KNOWN = new Set<string>([
   'force',
   // note: inline bold in the document dialect (note/surf/mine.tree)
   'bold',
+  // deck/lock: the signer's public key of an `oci://` package (deck/lock/mine.tree lock-key), written and read by
+  // deck/deck/code/lock.ts. It arrived after the gate went up (2026-10-02, 7b97bc88), and terms.json holds no word for
+  // a signing key, so renaming it is a lock-format change for whoever owns that format, not a mechanical rewrite
+  'key',
   // operand: the byte-layout dialect's own heads (operand/mine.tree)
   'shift',
   'slate',

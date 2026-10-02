@@ -75,14 +75,19 @@ mine rule-def
 
 # `have h, <proposition>`, and `take` as its alias: an antecedent the goal is proved under. The name is a
 # label, not a universal variable, and the proposition is what follows it: one nested child is an expression,
-# several parts on a line are a relation applied to terms.
+# several parts on a line are a relation applied to terms. A `mark` inside a `have` binds a variable of the
+# hypothesis alone: `have regular / mark m, like integer / <proposition>` assumes the proposition FOR EVERY m,
+# and the prover uses it at the terms the goal needs.
 mine rule-have
   mine term, term have
     mine word
       site name
     mine list
-      mine form, like seed
-        site seed
+      mine any
+        mine form, like rule-mark
+          site mark
+        mine form, like seed
+          site seed
 
 # `find x, like t` with a witness: binds x to it, so the goal is checked at that concrete value. This is the
 # existential to `mark`'s universal.

@@ -1,4 +1,6 @@
-object text {
+// Named `strings`, not `text`: a runtime's namespace sits in the program's own, and the render runtime has a task
+// `text` (a text node), so a program reaching both did not build (native-dom-0042).
+object strings {
     fun concat(a: String, b: String): String = a + b
     fun upper(s: String): String = s.uppercase()
     fun lower(s: String): String = s.lowercase()

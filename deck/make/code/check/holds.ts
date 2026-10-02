@@ -311,7 +311,8 @@ function toLinear(
 ): Linear | undefined {
   switch (expr.form) {
     case 'integer':
-      return linear({}, Number(expr.value))
+      // a literal past 2^53 rounds in Number(), and the rounded value is a different number: decline it
+      return within(linear({}, Number(expr.value)))
     case 'variable':
       return linear({ [expr.name]: 1 })
 
@@ -319,6 +320,12 @@ function toLinear(
     // plain path, which the stdlib defines as it. Keyed `@length:<path>`, and forgotten with the path's root.
     case 'member':
     case 'call': {
+      const applied = applicationKey(expr)
+
+      if (applied !== undefined) {
+        return linear({ [applied]: 1 })
+      }
+
       if (expr.form === 'call' && expr.callee.form === 'variable') {
         const name = expr.callee.name
 
@@ -442,11 +449,11 @@ function toLinear(
       }
 
       if (expr.op === '+') {
-        return add(left, right)
+        return within(add(left, right))
       }
 
       if (expr.op === '-') {
-        return add(left, scale(right, -1))
+        return within(add(left, scale(right, -1)))
       }
 
       if (expr.op === '*') {
@@ -454,11 +461,11 @@ function toLinear(
         const rc = constantOf(right)
 
         if (rc !== undefined) {
-          return scale(left, rc)
+          return within(scale(left, rc))
         }
 
         if (lc !== undefined) {
-          return scale(right, lc)
+          return within(scale(right, lc))
         }
 
         return undefined // non-linear (variable * variable)
@@ -599,6 +606,15 @@ function isStateAtom(key: string): boolean {
 // and its field is read off the declaration instead: never guessed, since an untyped `float` field read as an
 // integer atom would be tightened as one
 let numberFields = new Map<string, Set<string>>()
+
+// the quantified FUNCTIONS of the theorem being walked: a rule's `mark x, like task ...`. A theorem holds for every
+// function, so a call of one is a pure application: the same argument gives the same value, and nothing else is
+// known. Each call becomes an atom keyed by the function and its argument's canonical polynomial (applicationKey), so
+// `x(n + 1)` and `x(1 + n)` are one atom and `x(n)` and `x(n + 1)` are two.
+let appliedFunctions = new Set<string>()
+
+// the theorem's UNIVERSAL hypotheses (`have h / mark t / <proposition>`): each true for every value of its binders
+let universalHypotheses: { binders: string[]; expr: Expression }[] = []
 let paramForms = new Map<string, string>()
 // the parameters of the task being walked that are declared text
 let textParams = new Set<string>()
@@ -659,6 +675,14 @@ function fieldAtom(expr: Expression): string | undefined {
   const path = plainPath(expr)
 
   return path === undefined ? undefined : `@field:${path}`
+}
+
+// a linear form whose every number is still exact: below 2^53 in size. A number past it has rounded (two different
+// products can land on one double), so the form is declined, which is sound: the goal is left unproven
+function within(a: Linear): Linear | undefined {
+  const fits = (n: number): boolean => Math.abs(n) <= Number.MAX_SAFE_INTEGER
+
+  return fits(a.constant) && [...a.terms.values()].every(fits) ? a : undefined
 }
 
 function add(a: Linear, b: Linear): Linear {
@@ -831,7 +855,42 @@ const monomialVars = (key: string): string[] =>
 
 // expand an arithmetic expression into its polynomial, or null if it is not a polynomial of degree <= 2 (a degree-3+
 // monomial appears). Coefficients stay exact integers.
+// the atom an application of a quantified function is: `@apply:x(<argument>)`, the argument written canonically from
+// its polynomial (sorted monomials, each `coefficient*var.var`), so equal arguments name one atom. Undefined for any
+// other expression, or an argument outside the polynomial fragment
+function applicationKey(expr: Expression): string | undefined {
+  if (expr.form !== 'call' || expr.callee.form !== 'variable' || !appliedFunctions.has(expr.callee.name)) {
+    return undefined
+  }
+
+  const args: string[] = []
+
+  for (const arg of expr.args) {
+    const poly = expandPolynomial(arg)
+
+    if (!poly) {
+      return undefined
+    }
+
+    args.push(
+      [...poly]
+        .filter(([, c]) => c !== 0)
+        .map(([key, c]) => `${c}*${monomialVars(key).join('.')}`)
+        .sort()
+        .join('+') || '0',
+    )
+  }
+
+  return `@apply:${expr.callee.name}(${args.join(',')})`
+}
+
 function expandPolynomial(expr: Expression): Poly | null {
+  const applied = applicationKey(expr)
+
+  if (applied !== undefined) {
+    return new Map([[applied, 1]])
+  }
+
   // every coefficient must stay a safe integer: past 2^53 a number rounds, and a rounded coefficient is a different
   // polynomial (ring.ts exact). Declining with null is always sound
   if (expr.form === 'integer') {
@@ -1806,6 +1865,330 @@ function orPolynomial(linearFacts: Inequality[], disjunct: Expression): Inequali
   return linearFacts.length > 0 ? linearFacts : polynomialFacts(disjunct, true)
 }
 
+// ---- universal hypotheses, by instantiation ----
+//
+// A hypothesis `for every t, P(t)` is used at terms: each binder is replaced by an argument some quantified function is
+// applied to in the goal (and, for a second round, in the instances that produced), every combination, up to a
+// bound. Each instance is a fact, so every use is sound (an instance of a universal statement is true). A disjunction
+// `A || P` (how a guarded hypothesis `t >= 1 -> P` is written) contributes P where the facts in hand refute A.
+// The goal is then decided by the product prover over an ordered field, first by linear combination of the facts
+// alone (Farkas), then with products of the facts most relevant to it.
+
+function substituteName(e: Expression, name: string, repl: Expression): Expression {
+  switch (e.form) {
+    case 'variable':
+      return e.name === name ? repl : e
+    case 'binary':
+      return { ...e, left: substituteName(e.left, name, repl), right: substituteName(e.right, name, repl) }
+    case 'unary':
+      return { ...e, operand: substituteName(e.operand, name, repl) }
+    case 'call':
+      return { ...e, args: e.args.map(a => substituteName(a, name, repl)) }
+    default:
+      return e
+  }
+}
+
+// the arguments quantified functions are applied to, keyed canonically so one term is counted once
+function appliedArguments(e: Expression, into: Map<string, Expression>): void {
+  if (e.form === 'call') {
+    if (e.callee.form === 'variable' && appliedFunctions.has(e.callee.name)) {
+      for (const arg of e.args) {
+        const poly = expandPolynomial(arg)
+
+        // an argument that is itself an application (`pt(n)` in `bigf(pt(n))`) is a value, not an index a binder
+        // ranges over, and offering it would crowd the indices out of the bounded candidate list
+        if (poly && ![...poly.keys()].some(k => k.includes('@apply:'))) {
+          const key = [...poly].filter(([, c]) => c !== 0).map(([k, c]) => `${c}*${k}`).sort().join('+') || '0'
+          into.set(key, arg)
+        }
+      }
+    }
+
+    e.args.forEach(a => appliedArguments(a, into))
+  } else if (e.form === 'binary') {
+    appliedArguments(e.left, into)
+    appliedArguments(e.right, into)
+  } else if (e.form === 'unary') {
+    appliedArguments(e.operand, into)
+  }
+}
+
+// every instance of the universals over the candidate terms, as expressions
+function instances(candidates: Expression[]): Expression[] {
+  const out: Expression[] = []
+
+  for (const u of universalHypotheses) {
+    const tuples: Expression[][] = [[]]
+
+    for (let i = 0; i < u.binders.length; i++) {
+      const next: Expression[][] = []
+
+      for (const t of tuples) {
+        for (const c of candidates) {
+          next.push([...t, c])
+        }
+      }
+
+      tuples.splice(0, tuples.length, ...next)
+    }
+
+    if (tuples.length > 512) {
+      continue
+    }
+
+    for (const tuple of tuples) {
+      let e = u.expr
+
+      u.binders.forEach((b, i) => {
+        e = substituteName(e, b, tuple[i]!)
+      })
+
+      out.push(e)
+    }
+  }
+
+  return out
+}
+
+// the facts an instance contributes: a conjunction both sides, a disjunction its one disjunct the others are refuted
+// for, and a comparison its linear or polynomial facts
+function instanceFacts(e: Expression, available: Inequality[]): Inequality[] {
+  if (e.form === 'binary' && e.op === '&&') {
+    return [...instanceFacts(e.left, available), ...instanceFacts(e.right, available)]
+  }
+
+  if (e.form === 'binary' && e.op === '||') {
+    const parts: Expression[] = []
+    const flatten = (x: Expression): void => {
+      if (x.form === 'binary' && x.op === '||') {
+        flatten(x.left)
+        flatten(x.right)
+      } else {
+        parts.push(x)
+      }
+    }
+
+    flatten(e)
+
+    // a disjunct is refuted when the facts prove its negation, over an ordered field (no integer rounding, which could
+    // refute `x(n) < 1` from `x(n) > 0` for a rational x)
+    const flip: Record<string, '<' | '<=' | '>' | '>=' | undefined> = { '<': '>=', '<=': '>', '>': '<=', '>=': '<' }
+    const open = parts.filter(part => {
+      if (part.form !== 'binary' || !flip[part.op]) {
+        return true
+      }
+
+      return !productGoalLinear({ ...part, op: flip[part.op]! } as Expression, available)
+    })
+
+    return open.length === 1 ? instanceFacts(open[0]!, available) : []
+  }
+
+  // the instance AS STATED: its linear facts, or else its polynomial ones. (Not orPolynomial, which gives a disjunct's
+  // NEGATION for refuting it, and here would assume the opposite of the hypothesis)
+  const side: Inequality[] = []
+  const linearFacts = assumptionInequalities(e, false, side)
+
+  return linearFacts.length > 0 ? [...side, ...linearFacts] : polynomialFacts(e, false)
+}
+
+function universalGoal(expr: Expression, available: Inequality[], seeds: Expression[] = []): boolean {
+  if (expr.form === 'binary' && expr.op === '&&') {
+    return universalGoal(expr.left, available, seeds) && universalGoal(expr.right, available, seeds)
+  }
+
+  // the candidate terms: the goal's applied arguments (and those of the `seeds`, the statements the goal is proved
+  // from, such as an induction hypothesis), then those of the first round of instances
+  const terms = new Map<string, Expression>()
+  appliedArguments(expr, terms)
+  seeds.forEach(seed => appliedArguments(seed, terms))
+  // and the goal's plain variables, which a hypothesis may need where no call names them (cosh(x + w) needs the
+  // addition formula at x and w, and only x + w is an argument)
+  plainVariables(expr).forEach(name => terms.set(`1*${name}`, { form: 'variable', name, span: expr.span }))
+
+  // a first round over the goal's own terms, and a second over the terms its instances name, tried in that order so
+  // the smaller fact set is asked first
+  for (let round = 0; round < 2; round++) {
+    const candidates = [...terms.values()].slice(0, 8)
+    const made = instances(candidates)
+    const facts = [...available]
+
+    for (const instance of made) {
+      facts.push(...instanceFacts(instance, available))
+    }
+
+
+    if (productGoalLinear(expr, facts) || productGoal(expr, facts) || productGoalBridged(expr, facts)) {
+      return true
+    }
+
+    for (const instance of made) {
+      appliedArguments(instance, terms)
+    }
+  }
+
+  return false
+}
+
+// the plain variables an expression reads (not the quantified functions it calls)
+function plainVariables(e: Expression): string[] {
+  const out = new Set<string>()
+  const walk = (x: Expression): void => {
+    if (x.form === 'variable' && !appliedFunctions.has(x.name)) {
+      out.add(x.name)
+    } else if (x.form === 'binary') {
+      walk(x.left)
+      walk(x.right)
+    } else if (x.form === 'unary') {
+      walk(x.operand)
+    } else if (x.form === 'call') {
+      x.args.forEach(walk)
+    }
+  }
+
+  walk(e)
+
+  return [...out]
+}
+
+// the application atoms a fact reads (`@apply:` keys, alone or inside a monomial)
+function factApplications(q: Inequality): string[] {
+  return [...q.linear.terms.keys()].flatMap(k =>
+    (k.startsWith(POLY) ? monomialVars(k.slice(POLY.length)) : [k]).filter(v => v.startsWith('@apply:')),
+  )
+}
+
+// PRODUCTS over a small fact set chosen around one BRIDGE: an instance that shares an application with the goal. The
+// set is the bridge and every fact whose applications all lie among the goal's and the bridge's, so the products
+// stay few. Tried for each bridge in turn. Sound for the same reason productGoal is: only facts, combined by the
+// product prover's checked certificate
+function productGoalBridged(expr: Expression, facts: Inequality[]): boolean {
+  const goalApps = new Set<string>()
+  const goalFacts = orPolynomial(assumptionInequalities(expr, true, []), expr)
+  goalFacts.forEach(q => factApplications(q).forEach(a => goalApps.add(a)))
+
+  // the facts, each once
+  const unique = new Map<string, Inequality>()
+
+  for (const q of facts) {
+    const key = [...q.linear.terms].filter(([, c]) => c !== 0).map(([k, c]) => `${k}:${c}`).sort().join(',')
+      + `|${q.linear.constant}|${q.strict}`
+    unique.set(key, q)
+  }
+
+  const all = [...unique.values()]
+  // the bridges most tied to the goal first (the most applications in common), and a fixed few of them: a goal that
+  // is false would otherwise try every one, each a product search, and the answer must not depend on a time limit
+  const shared = (q: Inequality): number => factApplications(q).filter(a => goalApps.has(a)).length
+  const bridges = all
+    .filter(q => shared(q) > 0)
+    .map((q, at) => ({ q, at, score: shared(q) }))
+    .sort((a, b) => b.score - a.score || a.at - b.at)
+    .map(b => b.q)
+
+  for (const bridge of bridges.slice(0, 6)) {
+    const allowed = new Set([...goalApps, ...factApplications(bridge)])
+    const chosen = all.filter(q => factApplications(q).every(a => allowed.has(a)))
+
+    if (chosen.length <= 13 && productGoal(expr, chosen)) {
+      return true
+    }
+  }
+
+  return false
+}
+
+// PEANO INDUCTION over n >= 0 for a goal about quantified functions, whose recurrences are universal hypotheses:
+// the base is the goal at 0, and the step is the goal at n + 1 from the goal at n (as facts) and n >= 0. Both are
+// decided by universalGoal, so each instantiates the hypotheses at the terms its own goal names
+function universalInduction(goal: Expression, available: Inequality[], n: string): boolean {
+  const span = goal.span
+  const zero: Expression = { form: 'integer', value: 0, span }
+  const next: Expression = {
+    form: 'binary',
+    op: '+',
+    left: { form: 'variable', name: n, span },
+    right: { form: 'integer', value: 1, span },
+    span,
+  }
+
+  // a fact about n is not a fact about 0 or n + 1, so the cases start from the facts that do not read n
+  const fixed = available.filter(q => ![...q.linear.terms.keys()].some(k => keyMentions(k, n)))
+  const range = atLeast(linear({ [n]: 1 }), linear({}, 0))
+
+  if (!universalGoal(substituteName(goal, n, zero), fixed)) {
+    return false
+  }
+
+  const hypothesis = instanceFacts(goal, [...fixed, range])
+
+  return universalGoal(substituteName(goal, n, next), [...fixed, range, ...hypothesis], [goal])
+}
+
+// does an atom key read the variable n: the name itself, a monomial holding it, or an application whose argument
+// names it (the argument is written with `.`-joined monomial variables and `*`, `+`, `,` between them)
+function keyMentions(key: string, n: string): boolean {
+  if (key === n) {
+    return true
+  }
+
+  if (key.startsWith(POLY)) {
+    return monomialVars(key.slice(POLY.length)).some(v => keyMentions(v, n))
+  }
+
+  if (key.startsWith('@apply:')) {
+    return key
+      .slice('@apply:'.length)
+      .split(/[(),*+.]/)
+      .some(part => part === n)
+  }
+
+  return false
+}
+
+// the goal from the facts by linear combination alone (product.ts linear mode), over an ordered field
+function productGoalLinear(expr: Expression, available: Inequality[]): boolean {
+  if (expr.form !== 'binary' || !['<', '<=', '>', '>=', '=='].includes(expr.op)) {
+    return false
+  }
+
+  const left = expandPolynomial(expr.left)
+  const right = expandPolynomial(expr.right)
+  const all = productFacts(available)
+
+  if (!left || !right || !all) {
+    return false
+  }
+
+  const difference: Poly = new Map(left)
+
+  for (const [key, c] of right) {
+    difference.set(key, (difference.get(key) ?? 0) - c)
+  }
+
+  const exact = fromNumbers(difference)
+
+  if (!exact) {
+    return false
+  }
+
+  const negative = new Map([...exact].map(([k, c]) => [k, { n: -c.n, d: c.d }]))
+
+  switch (expr.op) {
+    case '>=':
+      return productProves(all, exact, false, true)
+    case '>':
+      return productProves(all, exact, true, true)
+    case '<=':
+      return productProves(all, negative, false, true)
+    case '<':
+      return productProves(all, negative, true, true)
+    default:
+      return productProves(all, exact, false, true) && productProves(all, negative, false, true)
+  }
+}
+
 // the facts a polynomial comparison contributes, in the same `<= 0` / `< 0` shape as assumptionInequalities
 function polynomialFacts(cond: Expression, negated: boolean): Inequality[] {
   if (cond.form !== 'binary') {
@@ -1954,7 +2337,7 @@ function productGoal(expr: Expression, available: Inequality[]): boolean {
     }
   }
 
-  if (kept.length > 11) {
+  if (kept.length > 13) {
     return false
   }
 
@@ -2117,6 +2500,12 @@ function goalProvable(
   expr: Expression,
   available: Inequality[],
 ): boolean | null {
+  // a theorem with universal hypotheses is decided by instantiating them, over an ordered field and nothing else
+  // (universalGoal), so what it proves holds for rational and real values and not only for integers
+  if (universalHypotheses.length > 0) {
+    return universalGoal(expr, available)
+  }
+
   // EX FALSO: if the assumptions have no integer solution, the branch is unreachable and every goal holds vacuously.
   if (integerInconsistent(available)) {
     return true
@@ -2377,7 +2766,20 @@ function bindingEqualities(
   const rhs = toLinear(value, side)
 
   if (!rhs) {
-    return []
+    // a POLYNOMIAL value (an existential witness `find n / (c * c + 1) * b`) is kept over monomial atoms, the way a
+    // polynomial condition is (polynomialFacts), so the product prover can use it. A write to the name or to any
+    // variable of the value forgets it (`forget` projects out a `@poly:` atom that reads a written name)
+    const poly = expandPolynomial(value)
+
+    // a value that reads the name it defines (a shadowing `x = x * x`) is not an equation about one value
+    if (!poly || [...poly.keys()].some(key => monomialVars(key).includes(name))) {
+      return []
+    }
+
+    const lhs = linear({ [name]: 1 })
+    const value_ = polynomialLinear(poly)
+
+    return [atMost(lhs, value_), atLeast(lhs, value_)]
   }
 
   const lhs = linear({ [name]: 1 })
@@ -2440,6 +2842,10 @@ export function checkHolds(
       ]
 
       // and `back`, the value a `must` speaks of, as the declared result
+      appliedFunctions = statement.theorem
+        ? new Set(statement.params.filter(p => p.type?.kind === 'function').map(p => p.name))
+        : new Set()
+      universalHypotheses = statement.theorem ? (statement.universals ?? []) : []
       paramForms = paramFormsOf([
         ...statement.params,
         ...(statement.result ? [{ name: 'back', type: statement.result }] : []),
@@ -2453,7 +2859,8 @@ export function checkHolds(
         file,
         pure,
         functions,
-        local: localNames(statement),
+        // a theorem's quantified functions are pure applications, not locals that may hold anything (see above)
+        local: new Set([...localNames(statement)].filter(name => !appliedFunctions.has(name))),
         volatile: volatileNames(statement.body),
         originOnly: options.originOnly,
         tally: options.tally,
@@ -3240,11 +3647,12 @@ function keepMonotone(
   // STATE ACROSS TURNS. A later turn sees every list an earlier turn changed. When the body only ever PUSHES (with
   // pure arguments), lengths only grow, so a LOWER bound on a length survives every turn and anything else about a
   // length does not. Any other impure call, or any write through a member, and no length fact survives at all.
+  // a body whose impure calls are all `set`s (or tasks that only make them) changes no length and no field, so the
+  // state facts survive every turn whole: only what was known THROUGH a position goes, which dropElementPaths takes
   const pushes = bodyOnlyPushes(body, walk)
   const changesState =
-    pushes === false ||
-    pushes > 0 ||
-    writesThroughMember(body)
+    !(onlyKeepsLengths(body, walk) && !writesThroughMember(body)) &&
+    (pushes === false || pushes > 0 || writesThroughMember(body))
 
   // any impure call at all may change a list that is not local to this task, so no such length survives a turn,
   // unless every one is a call that changes no length (keepsLengths) or a push onto a list this task made
@@ -3586,9 +3994,16 @@ function walkHolds(
         // a goal that calls something two calls may disagree on cannot be decided by any prover here: the linear
         // and polynomial engines read a call as an atom, and an atom is equal to itself
         // (an impure call inside a masked value is not a reason: impureOutsideMasks)
+        // `fold n` in a theorem with universal hypotheses: induction over n here, each case decided the way such a
+        // goal is (universalInduction). The kernel pass leaves these to this one
+        const induction =
+          universalHypotheses.length > 0 && statement.proof?.[0]?.head === 'fold' ? statement.proof[0].arg : undefined
+
         const verdict = impureOutsideMasks(statement.expr, walk)
           ? null
-          : goalProvable(statement.expr, current)
+          : induction
+            ? universalInduction(statement.expr, current, induction)
+            : goalProvable(statement.expr, current)
 
         const owed = statement.origin ? OWED[statement.origin] : undefined
         // a tier-0 obligation is COUNTED, not failed: nobody wrote it, so the gate holds it to a baseline (term

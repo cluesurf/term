@@ -300,34 +300,11 @@ task anchor
     task drop
       save skip, code 0
 
-# the page tasks: a tree in memory has no document, no address bar and no history
-task page-path
-  like text
-  send back, text </>
-
-task set-title
-  take title, like text
-
-task set-meta
-  take name, like text
-  take content, like text
-
-task set-proxy
-  take url, like text
-
-task proxy-target
-  like text
-  send back, text <>
-
 task page-body
   like view
   send back
     call create-element
       bind tag, text <body>
-
-task listen-pop
-  take handler
-    like task
 
 task observe-size
   take node, like view
@@ -386,11 +363,6 @@ task serialize
           read child
       save inner, text <{{inner}}{{part}}>
   send back, text <{{open}}\>{{inner}}\</{{element/tag}}\>>
-
-task page-shell
-  take body, like text
-  like text
-  send back, read body
 
 # DOM semantics: a node has one parent, so appending a node that already has one moves it
 task append

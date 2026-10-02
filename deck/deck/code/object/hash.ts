@@ -1,14 +1,11 @@
 /**
  * The content-address primitive for the object registry.
  *
- * Every object (chunk, blob, tree, release) is addressed by
- *   H(kind, bytes) = "sha256:" + hex(SHA256(kind + " " + len + "\0" + bytes))
- *
- * The `"<kind> <len>\0"` prefix is domain separation (git's trick): two
- * objects of different kinds can never share an address even if their
- * payload bytes coincide, and hashing the length closes off
- * length-extension games. This exact construction is the contract the
- * client and server both implement (see note/term/registry/12).
+ * Every object (chunk, blob, tree, commit, pack) is addressed by the plain
+ * digest of its bytes: "sha256:" + hex(SHA256(bytes)), @cluesurf/save's
+ * `hashCanonicalBytes`. That string is exactly an OCI descriptor's
+ * `digest`, which is what lets every object be pushed to an OCI registry
+ * under the id it already has (note/term/registry/18).
  */
 
 import {

@@ -213,6 +213,56 @@ export const CATALOG = {
     severity: 'error',
     fix: 'a proof may call only pure tasks: no native calls, no async, no writes through a record it did not make',
   },
+  // A `twin` is another implementation of a task, which the compiler may choose in its place, so it must be able to
+  // agree with it (note/term/optimize/admission.md). Each of these is a twin that could not.
+  'twin-unknown': {
+    code: 0x1a,
+    message: 'this twin names no task',
+    severity: 'error',
+    fix: 'a twin is written `twin <task>, name <label>` beside a task this module can see',
+  },
+  'twin-of-impure': {
+    code: 0x1b,
+    message: 'this twin is of a task that is not pure',
+    severity: 'error',
+    fix: 'only a pure task can be computed another way: one that reaches native code, is async, or writes what it did not make has an order of effects a twin would have to repeat',
+  },
+  'twin-impure': {
+    code: 0x1c,
+    message: 'this twin is not pure',
+    severity: 'error',
+    fix: 'a twin of a pure task must be pure itself, or say `note trust` to be admitted as trusted',
+  },
+  'twin-signature': {
+    code: 0x1d,
+    message: "this twin's parameters are not its task's",
+    severity: 'error',
+    fix: "name the task's parameters, in the task's order, with no types: a twin takes them from its task",
+  },
+  'twin-loops': {
+    code: 0x1e,
+    message: 'this twin is not shown to end where its task is',
+    severity: 'error',
+    fix: 'a twin that loops where its task returns is a wrong answer, not a faster one',
+  },
+  'twin-cycle': {
+    code: 0x1f,
+    message: 'these twins call each other in a cycle',
+    severity: 'error',
+    fix: 'break the cycle: a twin of one task may call another task, but not one whose twin calls back',
+  },
+  'guard-impure': {
+    code: 0x20,
+    message: "this twin's run-time check is not pure",
+    severity: 'error',
+    fix: 'a `hook test` decides which implementation runs, so it may not change anything or call native code',
+  },
+  'ease-unknown': {
+    code: 0x21,
+    message: 'this relaxation is not one Term defines',
+    severity: 'error',
+    fix: 'the relaxations are `float-order` and `float-fused` (note/term/optimize/words.md)',
+  },
 } satisfies Record<string, CatalogEntry>
 
 export type DiagnosticName = keyof typeof CATALOG

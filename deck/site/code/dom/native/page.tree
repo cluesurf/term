@@ -1,0 +1,44 @@
+
+# The page contract (abstract native module): what a host with a DOCUMENT and an ADDRESS does beyond building nodes. The
+# document shell, the route path, the title and meta tags, a resource route's proxy, and navigation. Split out of the
+# dom (native-dom-0003) so a host that only builds nodes (the toolkit views, the in-memory tree) implements the node
+# contract alone. This file is also the fallback for every env with no `page` of its own: a native app has no address
+# bar, no <head> and no history, so each task is the no-op answer, the path is `/` and no proxy is ever pending.
+
+# wrap server-rendered body HTML in the full document shell (stylesheet link + client script), for SSR responses
+task page-shell
+  take body, like text
+  like text
+  send back, read body
+
+# the current route path (location.pathname). The boot reads it to dispatch the route.
+task page-path
+  like text
+  send back, text </>
+
+# set the document title (per-route, from a route's `seed title` directive). On the server it stashes the title for the
+# document shell; in the browser it sets document.title.
+task set-title
+  take title, like text
+
+# set a SEO meta tag (per-route, from a route's `seed description` / `seed og:image` / etc. directives), declared
+# separately from the component. On the server it stashes the tag for the document shell <head>; in the browser it
+# upserts the live <meta> element. `name` is the meta key (og:* / article:* render as `property`, the rest as `name`).
+task set-meta
+  take name, like text
+  take content, like text
+
+# a resource route's proxy source (e.g. /vibe.pdf). On the server it is stashed for the host to fetch + stream (the
+# page URL stays put); in the browser it triggers a full navigation so the server handles it.
+task set-proxy
+  take url, like text
+
+# the proxy source stashed during this render, or empty (server only; the browser navigates immediately).
+task proxy-target
+  like text
+  send back, text <>
+
+# run `handler` on navigation: back/forward and intercepted same-origin link clicks (SPA navigation)
+task listen-pop
+  take handler
+    like task

@@ -101,12 +101,15 @@ export async function buildOciArtifact(input: {
   message?: string
   params?: ChunkParams
   annotations?: Record<string, string>
+  // built output that ships beside the source, such as a console bundle under `host/line`
+  include?: string[]
 }): Promise<{ release: Release; artifact: BuiltArtifact }> {
   const release = await buildRelease({
     dir: input.dir,
     store: input.local,
     meta: { author: input.author, time: Date.parse(input.time) || 0, message: input.message ?? '' },
     params: input.params,
+    include: input.include,
   })
 
   const read = async (id: string): Promise<Buffer> => {
@@ -146,6 +149,7 @@ export async function publishToOci(input: {
   message?: string
   params?: ChunkParams
   annotations?: Record<string, string>
+  include?: string[]
   concurrency?: number
   log?: (message: string) => void
 }): Promise<OciPublishResult> {

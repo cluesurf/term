@@ -14,6 +14,7 @@ load @term/site/code/dom/dom
   find view
   find create-element
   find serialize
+load @term/site/code/dom/page
   find page-shell
   find proxy-target
 load @term/site/code/http/http

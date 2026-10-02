@@ -17,7 +17,7 @@ export function storeDir(): string {
 
 /** Where scope key pins are kept, beside the store. Not a cache: deleting it re-trusts every scope on first use. */
 export function trustDir(): string {
-  return path.join(getStoreRoot(), 'trust')
+  return process.env['TERM_TRUST_DIR']?.trim() || path.join(getStoreRoot(), 'trust')
 }
 
 export function localStore() {

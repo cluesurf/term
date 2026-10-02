@@ -1,6 +1,8 @@
+// Named `strings`, not `text`: a runtime's namespace sits in the program's own, and the render runtime has a task
+// `text` (a text node), so a program reaching both did not build (native-dom-0042).
 import Foundation
 
-enum text {
+enum strings {
     static func concat(_ a: String, _ b: String) -> String { return a + b }
     static func fromValue(_ v: Any) -> String {
         if let s = v as? String { return s }

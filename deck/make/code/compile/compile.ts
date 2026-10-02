@@ -78,7 +78,9 @@ import type { CompileCache } from '@term/make/code/compile/cache'
 import type {
   Program,
   Statement,
+  Twin,
 } from '@term/make/code/compile/node'
+import { checkTwins } from '@term/make/code/check/twin'
 
 // The render-runtime helpers that `lowerZones` (compile/view-lower.ts)
 // synthesizes calls to when it lowers a `zone` component. Because that
@@ -142,6 +144,9 @@ export type CompileResult =
       uncertified?: number
       // present when `options.roll` was set: the roll of this entry's closure (compile/roll.ts)
       roll?: Roll
+      // the `twin` declarations of the closure, checked (check/twin.ts). Beside the program, never in it: nothing
+      // here emits one yet, so every build runs the reference (note/term/optimize/readme.md)
+      twins?: Twin[]
     }
   | { ok: false; diagnostics: Diagnostic[] }
 
@@ -311,6 +316,7 @@ export function compile(
     const templateKey = templates.size ? hashText(templateText) : ''
 
     const program: Program = []
+    const twins: Twin[] = []
     const roots = new Set<string>()
     // The merged program loses per-module provenance, so downstream passes (resolve, check) would otherwise blame
     // the entry file for an error living in an imported module. Each top-level statement's span records the file it
@@ -371,9 +377,14 @@ export function compile(
       }
 
       program.push(...milled.program)
+
+      for (const twin of milled.twins ?? []) {
+        twin.span.file = unit.file
+        twins.push(twin)
+      }
     }
 
-    return compileProgram(
+    const compiled = compileProgram(
       program,
       source.file,
       roots,
@@ -387,6 +398,16 @@ export function compile(
       options?.deckOf,
       collected?.scope,
     )
+
+    // a twin is checked against the program it twins a task of: what can be refused without running anything
+    // (check/twin.ts). A refusal fails the build the way an unproven claim does
+    if (twins.length === 0 || !compiled.ok) {
+      return compiled
+    }
+
+    const refused = checkTwins(program, twins, source.file)
+
+    return refused.length > 0 ? { ok: false, diagnostics: refused } : { ...compiled, twins }
   }
 
   // the output cache stores a JSON-serialized result, which cannot hold the per-module `Map`. So in per-module mode we
@@ -429,7 +450,7 @@ function millUnit(
   role?: string,
   lean?: boolean,
 ):
-  | { ok: true; program: Program }
+  | { ok: true; program: Program; twins?: Twin[] }
   | { ok: false; diagnostics: Diagnostic[] } {
   const parsed = parseOf(unit)
 

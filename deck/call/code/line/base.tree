@@ -317,13 +317,13 @@ hook host
   # Dry run (no upload)
   take dry
     like boolean
-  # Registry to publish to, oci://<host>/<namespace> (default: the scope's registry)
+  # The oci:// registry to publish to, in place of the scope's own
   take registry
     like text
-  # Add a public key to the scope's key set, signed by this machine's key, instead of publishing
+  # Add this public key to the scope's key set instead of publishing
   take trust
     like text
-  # Remove a public key from the scope's key set, signed by this machine's key, instead of publishing
+  # Remove this public key from the scope's key set instead of publishing
   take untrust
     like text
   task host

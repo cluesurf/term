@@ -22,6 +22,8 @@ load @term/site/code/dom/dom
   find append
   find get-value
   find set-value
+load @term/base/code/text/util
+  find join
 
 # the work of the view below, in a task: in a `view` body a bare `call` renders as a text child
 task mount-select
@@ -43,17 +45,13 @@ task mount-select
     read picker
     text <class>
     read class
-  # the choices, one per line: what the host fills the platform's picker with. Joined here, not with text/util's
-  # `join`, whose Swift runtime is an `enum text` that collides with the render runtime's `text` (native-dom-0042)
-  save lines, text <>
-  walk list, read options
-    hook next
-      take site, name choice
-      save lines, text <{{lines}}{{choice}}\n>
+  # the choices, one per line: what the host fills the platform's picker with
   call attribute
     read picker
     text <options>
-    read lines
+    call join
+      read options
+      text <\n>
   call make-effect
     task show-choice
       call set-value

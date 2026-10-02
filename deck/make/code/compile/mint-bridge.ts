@@ -602,7 +602,7 @@ function expressionOf(
       return textExpression(bridge, value, span)
     case 'number':
       return value.decimal
-        ? { form: 'float', value: value.value, span }
+        ? { form: 'float', value: Number(value.value), span }
         : { form: 'integer', value: value.value, span }
     case 'word':
       // a bare word in value position is `true`, `false`, `void`, or a name
@@ -664,7 +664,7 @@ function expressionOf(
 
       if (literal?.kind === 'number') {
         return literal.decimal
-          ? { form: 'float', value: literal.value, span: spanOf(literal) }
+          ? { form: 'float', value: Number(literal.value), span: spanOf(literal) }
           : { form: 'integer', value: literal.value, span: spanOf(literal) }
       }
 
@@ -2182,11 +2182,20 @@ function loopOf(
 
     const counter: Expression = { form: 'variable', name: item, span }
 
+    // the head is read ONCE, before the first turn, as a counted loop means. Written into the condition it was called
+    // again every turn: `char-count` rebuilt the text's character array per character, and the prover could not read
+    // a measure off a native call it has to treat as different each time. A name or a literal is left in place. The
+    // name is unique by position, so two walks in one scope never declare it twice
+    const steady = to.form === 'variable' || to.form === 'integer'
+    const headName = `walk-head-${span.start.line}-${span.start.column}`
+    const bound: Expression = steady ? to : { form: 'variable', name: headName, span }
+
     return [
+      ...(steady ? [] : [{ form: 'let', name: headName, init: to, mutable: false, span } as Statement]),
       { form: 'let', name: item, init: from, mutable: true, span },
       {
       form: 'while',
-      cond: { form: 'binary', op: '<', left: counter, right: to, span },
+      cond: { form: 'binary', op: '<', left: counter, right: bound, span },
       body: [
         ...scopedFlow(bridge, at(next, 'flow')),
         {
@@ -3329,7 +3338,14 @@ function ruleOf(bridge: Bridge, value: Form): Statement[] {
   const hypotheses = formsAt(value, 'have').map((have, at) => ({
     name: wordAt(have, 'name') ?? `claim_${at}`,
     expr: expressionOf(bridge, firstAt(have, 'seed')),
+    // `mark` inside a `have`: the hypothesis holds FOR EVERY value of these, so it is not a guard on the values in
+    // hand but a statement the prover instantiates (check/holds.ts universalFacts)
+    binders: formsAt(have, 'mark').map(mark => wordAt(mark, 'name') ?? ''),
   }))
+
+  const universals = hypotheses
+    .filter(h => h.binders.length > 0 && h.expr)
+    .map(h => ({ name: h.name, binders: h.binders, expr: h.expr as Expression }))
 
   const witnesses = formsAt(value, 'find').map(find => ({
     name: wordAt(find, 'name') ?? '',
@@ -3391,7 +3407,7 @@ function ruleOf(bridge: Bridge, value: Form): Statement[] {
       ]
 
       for (let at = hypotheses.length - 1; at >= 0; at--) {
-        const cond = hypotheses[at]?.expr
+        const cond = hypotheses[at]?.binders.length ? undefined : hypotheses[at]?.expr
 
         if (cond) {
           held = [{ form: 'if', branches: [{ cond, body: held }], span }]
@@ -3419,6 +3435,8 @@ function ruleOf(bridge: Bridge, value: Form): Statement[] {
       body,
       generics: [],
       ...(goal && axiom ? { axiom: true } : {}),
+      ...(goal && !axiom ? { theorem: true } : {}),
+      ...(universals.length > 0 ? { universals } : {}),
       span,
     },
   ]

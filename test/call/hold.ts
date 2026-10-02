@@ -50,10 +50,13 @@ const GUARDED = `task first
   send back, code 0
 `
 
+// two statements, so it is not an accessor: an accessor's read is lifted to its callers, and with none it would owe
+// nothing here
 const UNGUARDED = `task first
   take items, like list, like number
   like number
-  send back, read items/0
+  save head, read items/0
+  send back, read head
 `
 
 const OPEN = `rule someday

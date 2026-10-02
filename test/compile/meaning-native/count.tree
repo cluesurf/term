@@ -1,0 +1,101 @@
+load @term/base/code/count
+  find count-each
+  find tally
+  find is-every-within
+  find make-filled
+  find read-or
+
+load @term/base/code/list
+  find list
+
+load @term/base/code/hash
+  find hash
+
+task numbers
+  like list, like number
+  save out
+    make list
+  call push
+    bind list, read out
+    bind item, code 5
+  call push
+    bind list, read out
+    bind item, code 3
+  call push
+    bind list, read out
+    bind item, code 5
+  call push
+    bind list, read out
+    bind item, code 9
+  call push
+    bind list, read out
+    bind item, code 5
+  send back, read out
+
+task asks
+  like list, like number
+  save out
+    make list
+  call push
+    bind list, read out
+    bind item, code 5
+  call push
+    bind list, read out
+    bind item, code 7
+  call push
+    bind list, read out
+    bind item, code 3
+  call push
+    bind list, read out
+    bind item, code 5
+  send back, read out
+
+task compute
+  like text
+  host counted
+    call count-each
+      call numbers
+      call asks
+  host tallied
+    call tally
+      call numbers
+  host within
+    call is-every-within
+      call numbers
+      code 0
+      code 10
+  host outside
+    call is-every-within
+      call numbers
+      code 4
+      code 10
+  host filled
+    call make-filled
+      code 3
+      code 7
+  host c0, read counted/0
+  host c1, read counted/1
+  host c2, read counted/2
+  host c3, read counted/3
+  host five
+    call get-or-default
+      read tallied
+      code 5
+      code 0
+  host keys
+    call size
+      read tallied
+  host length
+    call size
+      read filled
+  host inside
+    call read-or
+      read filled
+      code 1
+      code 0
+  host past
+    call read-or
+      read filled
+      code 9
+      code 0
+  send back, text <counts={{c0}},{{c1}},{{c2}},{{c3}} tally-5={{five}} keys={{keys}} within={{within}} outside={{outside}} filled={{length}} read-in={{inside}} read-out={{past}}>

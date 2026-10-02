@@ -117,11 +117,18 @@ form list
             read i
             read self/length
       hook hold
+        save hit
+          call test
+            call self/at
+              read i
+        # the test ran in between and may have shortened the list, so the index is checked against the length now
         fork test
           hook test
-            call test
-              call self/at
+            call and
+              read hit
+              call is-below
                 read i
+                read self/length
           hook hold
             send back, read i
         save i, call increment(read i)

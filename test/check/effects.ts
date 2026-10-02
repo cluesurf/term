@@ -100,6 +100,31 @@ task run
 `,
   )
 
+  // a parameter shadows a task of its name: calling a synchronous callback named `fetch` is not a call to the async
+  // `fetch` task, so it is neither awaited nor refused. Both checks read names globally once, and `list/find-index`'s
+  // callback `test` was awaited as the stdlib's async file `test`, which refused every program that loaded both
+  expectOk(
+    'a callback parameter shadows an async task of the same name',
+    `${FETCH}
+task first
+  take items, like list, like number
+  take fetch
+    like task
+      take item, like number
+      like boolean
+  like number
+  save hit
+    call fetch
+      read items/0
+  fork test
+    hook test
+      read hit
+    hook hold
+      send back, code 0
+  send back, code 1
+`,
+  )
+
   // fire-and-forget: an async call marked `wait false` is intentionally not awaited and the caller stays synchronous
   expectOk(
     'a `wait false` async call is allowed (fire-and-forget)',

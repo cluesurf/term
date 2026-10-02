@@ -325,8 +325,39 @@ export function checkEffects(
         .map(p => p.name),
     )
 
+    // a parameter or local of a task's name shadows it, the way async resolution reads it (check/async-resolve.ts
+    // inScope): a call to a callback named `test` is a call to the callback, never to the stdlib's async `test`
+    const shadowed = new Set(statement.params.map(p => p.name))
+    const lets = (node: unknown): void => {
+      if (!node || typeof node !== 'object') {
+        return
+      }
+
+      if (Array.isArray(node)) {
+        node.forEach(lets)
+
+        return
+      }
+
+      const record = node as Record<string, unknown>
+
+      if (record.form === 'let' && typeof record.name === 'string') {
+        shadowed.add(record.name)
+      }
+
+      if (record.form !== 'closure') {
+        for (const [key, value] of Object.entries(record)) {
+          if (key !== 'span' && key !== 'type') {
+            lets(value)
+          }
+        }
+      }
+    }
+
+    lets(statement.body)
+
     const isAsyncName = (name: string): boolean =>
-      asyncFunctions.has(name) || asyncParams.has(name)
+      (asyncFunctions.has(name) && !shadowed.has(name)) || asyncParams.has(name)
 
     const isKnownSyncName = (name: string): boolean =>
       (allFunctions.has(name) && !asyncFunctions.has(name)) ||
