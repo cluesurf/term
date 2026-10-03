@@ -66,6 +66,8 @@ form comparison
   link instruction-high, like decimal
   # either median under 20 times the empty process's: the ratio measures process start, not the program
   link dominated, like boolean
+  # the target's programs run under emulation on this machine (Rosetta on macOS): the ratio measures the emulator too
+  link emulated, like boolean
   link term-rss, like number
   link base-rss, like number
   link term-size, like number

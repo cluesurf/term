@@ -111,14 +111,15 @@ async function main(): Promise<void> {
     if (d) {console.log(`      (${d.message})`)}
   }
 
-  // a literal index is a plain path segment, spelled with brackets on the way out
+  // a literal index is a plain path segment, read on the way out through the checked list read (it stops out of range,
+  // note/term/stdlib/semantics.md), never JavaScript's bare `items[0]`, which answered undefined
   const indexed = compile({
     file: 'i.tree',
     text: 'task first\n  take items, like list\n    like number\n  like number\n  send back, read items/0\n',
   })
   ok(
-    'a literal index reads with brackets',
-    indexed.ok && indexed.typescript.includes('return items[0]'),
+    'a literal index reads through the checked list read',
+    indexed.ok && indexed.typescript.includes('return __termAt(items, 0)'),
   )
 
   // a `link` past the variant's last field binds nothing, so it is refused rather than silently ignored

@@ -6,7 +6,7 @@ load @term/base/code/process/run
 dock load
   load <global:runner>, name runner
 
-task do-run
+task spawn-process
   note async
   take command, like text
   take argument-list
@@ -17,4 +17,32 @@ task do-run
     call runner/run
       read command
       read argument-list
+      wait true
+
+task spawn-on-terminal
+  note async
+  take command, like text
+  take argument-list
+    like list
+      like text
+  like number
+  send back
+    call runner/attached
+      read command
+      read argument-list
+      wait true
+
+task spawn-with-input
+  note async
+  take command, like text
+  take argument-list
+    like list
+      like text
+  take input, like text
+  like run-result
+  send back
+    call runner/with-input
+      read command
+      read argument-list
+      read input
       wait true

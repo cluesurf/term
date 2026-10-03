@@ -1,7 +1,39 @@
 import { defineConfig } from 'vitest/config'
+import { existsSync } from 'fs'
 import path from 'path'
 
+const MAKE = path.resolve(__dirname, '../make')
+
+// `@term/make/<path>` the way the parent tsconfig's `paths` reads it: the TypeScript source under deck/make first,
+// else the PORT `make:port` writes to deck/make/host/port for a compiler module written in Term (`hashText` is
+// deck/make/code/term/hash.tree, `arm` is deck/make/code/check/arm.tree, since 2026-10-02). A bare alias to ../make
+// finds no port, and every test that imports the compiler failed with "Cannot find package".
+const makeModules = {
+  name: 'term-make-port',
+  enforce: 'pre' as const,
+  resolveId(id: string) {
+    if (!id.startsWith('@term/make/')) {
+      return null
+    }
+
+    const rest = id.slice('@term/make/'.length)
+
+    for (const base of [MAKE, path.join(MAKE, 'host/port')]) {
+      for (const file of [`${rest}.ts`, `${rest}.tsx`, path.join(rest, 'index.ts'), rest]) {
+        const full = path.join(base, file)
+
+        if (existsSync(full) && /\.tsx?$/.test(full)) {
+          return full
+        }
+      }
+    }
+
+    return null
+  },
+}
+
 export default defineConfig({
+  plugins: [makeModules],
   test: {
     globals: false,
     include: [
@@ -15,13 +47,10 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './code'),
       // the manifest and lockfile are parsed with the real tree parser, so this package
-      // resolves its sibling compiler exactly as the parent tsconfig does. There is no
-      // cycle: the compiler does not import the package manager.
-      // a compiler module written in Term (deck/make/code/term/*.tree) is imported from its port, which
-      // `make:port` writes to host/port. The parent tsconfig falls back to it the same way; a bare alias to
-      // ../make cannot, so this one comes first (alias entries match in order)
-      '@term/make/code/term': path.resolve(__dirname, '../make/host/port/code/term'),
-      '@term/make': path.resolve(__dirname, '../make'),
+      // resolves its sibling compiler exactly as the parent tsconfig does. That is the
+      // plugin above, not an alias: an alias rewrites the id before any plugin sees it,
+      // so it would hide the port fallback. There is no cycle: the compiler does not
+      // import the package manager.
       // the package manager is built ON @cluesurf/save: content addressing, the prolly
       // tree, chunk / object / ref stores, commits, sync. It used to reimplement all
       // of that in code/object/. save lives in mesh/deck/save, outside this repository,

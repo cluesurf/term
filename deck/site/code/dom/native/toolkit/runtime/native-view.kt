@@ -10,6 +10,9 @@
 //   button                 an android.widget.Button. Its text is its children's text; they are never added as views
 //   input, textarea        an EditText, its value two-way
 //   switch                 an android.widget.Switch. `aria-checked` is its state, its change is `click`
+//   img                    an ImageView. `src` is a `data:` URI, a path or a URL, `alt` its content description
+//   hr                     a hairline View. Vertical in a row
+//   scroll                 a ScrollView around a vertical LinearLayout the children go into
 //   span a b i em strong   a horizontal LinearLayout (an inline run)
 //   anything else          a vertical LinearLayout
 //
@@ -51,7 +54,8 @@ private val viewMain = Handler(Looper.getMainLooper())
 class TermNode(val key: Long, val tag: String, var text: String, context: Activity) {
     // RANGE is face's slider on Android, a SeekBar, and CHOICE its select, a Spinner (native-dom-0026)
     // SHEET is face's dialog: a column of content an android.app.Dialog shows, never placed in the page (0026)
-    enum class Kind { TEXT, CONTAINER, BUTTON, FIELD, TOGGLE, RANGE, CHOICE, SHEET }
+    // IMAGE, DIVIDER and SCROLL are the vocabulary's image, divider and scroll (native-dom-0049)
+    enum class Kind { TEXT, CONTAINER, BUTTON, FIELD, TOGGLE, RANGE, CHOICE, SHEET, IMAGE, DIVIDER, SCROLL }
 
     val kind: Kind = when {
         tag.isEmpty() -> Kind.TEXT
@@ -61,6 +65,9 @@ class TermNode(val key: Long, val tag: String, var text: String, context: Activi
         tag == "choice" -> Kind.CHOICE
         tag == "sheet" -> Kind.SHEET
         tag == "input" || tag == "textarea" -> Kind.FIELD
+        tag == "img" -> Kind.IMAGE
+        tag == "hr" -> Kind.DIVIDER
+        tag == "scroll" -> Kind.SCROLL
         else -> Kind.CONTAINER
     }
 
@@ -86,7 +93,32 @@ class TermNode(val key: Long, val tag: String, var text: String, context: Activi
         Kind.CONTAINER -> LinearLayout(context).also {
             it.orientation = if (tag in INLINE_TAGS) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
         }
+        // its picture arrives with `src`, its words with `alt`; contain is the default fit
+        Kind.IMAGE -> android.widget.ImageView(context).also {
+            it.scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            it.adjustViewBounds = true
+        }
+        // a hairline across its stack, sized when it is appended (`applyAlignment`)
+        Kind.DIVIDER -> android.view.View(context).also { it.setBackgroundColor(0x1F000000) }
+        // a frame whose content may be taller than it: the platform's ScrollView around a vertical LinearLayout the
+        // children go into, as wide as the frame, so only the height scrolls
+        Kind.SCROLL -> android.widget.ScrollView(context).also {
+            it.addView(
+                LinearLayout(context).also { inner -> inner.orientation = LinearLayout.VERTICAL },
+                ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
+            )
+        }
     }
+
+    // a scroll's content: the layout its children go into, inside the ScrollView, which is what the parent holds
+    val inner: LinearLayout? = (view as? android.widget.ScrollView)?.getChildAt(0) as? LinearLayout
+
+    // the layout this node's children are installed in: its own view, or a scroll's content
+    val box: LinearLayout?
+        get() = inner ?: view as? LinearLayout
+
+    // an image's decoded picture, kept so its size can be read back
+    var picture: android.graphics.Bitmap? = null
 
     var value = ""
     val attributes = mutableListOf<Pair<String, String>>()
@@ -216,6 +248,9 @@ object nativeView {
                 if (parts.size == 2 && parts[0].isNotEmpty()) setStyle(node, parts[0], parts[1])
             }
             "placeholder" -> (node.view as? EditText)?.hint = value
+            "src" -> if (node.kind == TermNode.Kind.IMAGE) loadPicture(node, value)
+            // what the picture shows, for a reader that cannot see it: the description TalkBack reads
+            "alt" -> if (node.kind == TermNode.Kind.IMAGE) node.view.contentDescription = value
             "aria-label" -> node.view.contentDescription = value
             "disabled" -> node.view.isEnabled = value == "false"
             "aria-checked" -> (node.view as? android.widget.Switch)?.isChecked = value == "true"
@@ -358,7 +393,8 @@ object nativeView {
         node.styles[property] = raw
         val value = raw.trim()
         if (drawLook(node, property, value)) return
-        val layout = node.view as? LinearLayout
+        // a scroll's layout words (direction, gap, padding) lay out its content
+        val layout = node.box
         val ok: Boolean = when {
             property == "display" && (value == "flex" || value == "block") -> {
                 // `display: flex` is a ROW in CSS until a `flex-direction` says otherwise (native-dom-0037)
@@ -404,14 +440,79 @@ object nativeView {
                 node.parent?.let { applySpread(it) }
                 true
             }
+            // the vocabulary's frame bounds (native-dom-0049). Any view takes a minimum. A maximum is Android's only on
+            // the text views and the image view; anywhere else it is reported, not dropped
+            (property == "min-width" || property == "min-height") && dp(value) != null -> {
+                if (property == "min-width") node.view.minimumWidth = dp(value)!! else node.view.minimumHeight = dp(value)!!
+                true
+            }
+            (property == "max-width" || property == "max-height") && dp(value) != null -> {
+                val size = dp(value)!!
+                when (val view = node.view) {
+                    // a Button carries an 88dp minimum width, and a minimum outranks a maximum: one above the stated
+                    // maximum is lowered to it, or the long button read 88 wide under `max-width: 60`
+                    is TextView -> {
+                        if (property == "max-width") {
+                            view.minWidth = Math.min(view.minWidth, size)
+                            view.minimumWidth = Math.min(view.minimumWidth, size)
+                            view.maxWidth = size
+                        } else {
+                            view.minHeight = Math.min(view.minHeight, size)
+                            view.minimumHeight = Math.min(view.minimumHeight, size)
+                            view.maxHeight = size
+                        }
+                        true
+                    }
+                    is android.widget.ImageView -> { if (property == "max-width") view.maxWidth = size else view.maxHeight = size; true }
+                    else -> false
+                }
+            }
+            property == "object-fit" && node.kind == TermNode.Kind.IMAGE && (value == "contain" || value == "cover") -> {
+                val image = node.view as android.widget.ImageView
+                // a cover fills the frame, so the view keeps its own bounds rather than the picture's
+                image.adjustViewBounds = value == "contain"
+                image.scaleType = if (value == "cover") android.widget.ImageView.ScaleType.CENTER_CROP else android.widget.ImageView.ScaleType.FIT_CENTER
+                true
+            }
             else -> false
         }
         if (!ok) unsupported.add("$property: $value")
     }
 
+    // ---- the image (native-dom-0049): a `data:` URI, a file path, or an http(s) URL read off the main thread ----
+
+    private fun loadPicture(node: TermNode, source: String) {
+        val comma = source.indexOf(',')
+        if (source.startsWith("data:") && comma > 0) {
+            val body = source.substring(comma + 1)
+            val bytes = if (source.substring(0, comma).endsWith(";base64")) {
+                android.util.Base64.decode(body, android.util.Base64.DEFAULT)
+            } else {
+                java.net.URLDecoder.decode(body, "UTF-8").toByteArray()
+            }
+            setPicture(node, android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
+        } else if (source.startsWith("http://") || source.startsWith("https://")) {
+            Thread {
+                val bitmap = try {
+                    java.net.URL(source).openStream().use { android.graphics.BitmapFactory.decodeStream(it) }
+                } catch (_: Exception) {
+                    null
+                }
+                viewMain.post { setPicture(node, bitmap) }
+            }.start()
+        } else {
+            setPicture(node, android.graphics.BitmapFactory.decodeFile(source.removePrefix("file://")))
+        }
+    }
+
+    private fun setPicture(node: TermNode, bitmap: android.graphics.Bitmap?) {
+        node.picture = bitmap
+        (node.view as android.widget.ImageView).setImageBitmap(bitmap)
+    }
+
     // `align-items`: where children sit across the axis. Gravity for start, center and end; MATCH_PARENT for stretch
     private fun applyAlignment(node: TermNode) {
-        val layout = node.view as? LinearLayout ?: return
+        val layout = node.box ?: return
         val row = layout.orientation == LinearLayout.HORIZONTAL
         val declared = node.styles["align-items"]?.trim()
         val align = declared ?: "start"
@@ -422,6 +523,14 @@ object nativeView {
         }
         for (child in node.children) {
             val params = child.view.layoutParams as? LinearLayout.LayoutParams ?: continue
+            // a divider is a hairline across the stack: a full-width line in a column, a full-height one in a row
+            if (child.kind == TermNode.Kind.DIVIDER) {
+                val hairline = Math.max(1, Math.round(context().resources.displayMetrics.density))
+                params.width = if (row) hairline else ViewGroup.LayoutParams.MATCH_PARENT
+                params.height = if (row) ViewGroup.LayoutParams.MATCH_PARENT else hairline
+                child.view.layoutParams = params
+                continue
+            }
             // the cross axis, by CSS's rules (native-dom-0027, 0037): a size the child declared wins, an explicit
             // `align-items` decides by itself, a FLEX column stretches every child (CSS's default is `stretch`), and a
             // BLOCK container's block-level children fill its width while inline ones and controls keep their size
@@ -429,7 +538,8 @@ object nativeView {
             val fills = when {
                 declared != null -> declared == "stretch"
                 node.styles["display"]?.trim() == "flex" -> !row
-                else -> !row && child.kind == TermNode.Kind.CONTAINER && child.tag !in INLINE_TAGS
+                // a scroll is a block too: it fills the width and scrolls the height
+                else -> !row && (child.kind == TermNode.Kind.CONTAINER || child.kind == TermNode.Kind.SCROLL) && child.tag !in INLINE_TAGS
             }
             val size = if (child.styles[cross]?.let { dp(it) } != null) sizeOf(child, cross)
                 else if (fills) ViewGroup.LayoutParams.MATCH_PARENT
@@ -445,7 +555,7 @@ object nativeView {
 
     // `gap`: the leading margin of every installed child after the first, along the axis
     private fun applyGap(node: TermNode) {
-        val layout = node.view as? LinearLayout ?: return
+        val layout = node.box ?: return
         val gap = node.styles["gap"]?.let { dp(it) } ?: 0
         val row = layout.orientation == LinearLayout.HORIZONTAL
         val installed = node.children.filter { it.view.parent === layout }
@@ -459,7 +569,7 @@ object nativeView {
 
     // `flex-grow` on children and `space-between` on the container, both as layout weights along the axis
     private fun applySpread(node: TermNode) {
-        val layout = node.view as? LinearLayout ?: return
+        val layout = node.box ?: return
         val row = layout.orientation == LinearLayout.HORIZONTAL
         val between = node.styles["justify-content"]?.trim() == "space-between"
         val installed = node.children.filter { it.view.parent === layout }
@@ -792,11 +902,11 @@ object nativeView {
         } else if (child.kind == TermNode.Kind.SHEET) {
             // a dialog's content is never in the page: its dialog shows it when it opens
             return
-        } else if (parent.view is LinearLayout) {
+        } else if (parent.box != null) {
             // wrapped, not stretched: LinearLayout's default made a vertical stack's children as wide as the stack. A
             // `width` or `height` the child declared is kept: these params replace whatever it was given before it
             // had a parent, which is where a style attribute set it (native-dom-0027)
-            (parent.view as LinearLayout).addView(
+            parent.box!!.addView(
                 child.view,
                 LinearLayout.LayoutParams(sizeOf(child, "width"), sizeOf(child, "height")),
             )
@@ -826,7 +936,7 @@ object nativeView {
         val parent = old.parent ?: return
         val index = parent.children.indexOf(old)
         if (index < 0) return
-        val group = parent.view as? ViewGroup
+        val group = parent.box ?: parent.view as? ViewGroup
         // the position among the views actually added, which is the group's own index
         val installedBefore = parent.children.subList(0, index).count { it.view.parent === group }
         parent.children[index] = fresh
@@ -980,6 +1090,21 @@ object nativeView {
                 val group = node.view as ViewGroup
                 val installed = node.children.filter { it.view.parent === group }
                 "<${node.tag}>${installed.joinToString("") { serialize(it) }}</${node.tag}>"
+            }
+            // read off the view: the picture it holds, in pixels, and the description the platform reads aloud
+            TermNode.Kind.IMAGE -> {
+                val size = node.picture?.let { "${it.width}x${it.height}" } ?: "none"
+                "<img alt=\"${node.view.contentDescription ?: ""}\" size=\"$size\"></img>"
+            }
+            TermNode.Kind.DIVIDER -> "<hr></hr>"
+            // the content's laid-out size in dp, so a reader can see it is larger than the frame that scrolls it
+            TermNode.Kind.SCROLL -> {
+                root?.view?.let { layoutNow(it) }
+                val density = context().resources.displayMetrics.density
+                val content = node.inner!!
+                val installed = node.children.filter { it.view.parent === content }
+                val extent = "${Math.round(content.width / density)},${Math.round(content.height / density)}"
+                "<scroll extent=\"$extent\">${installed.joinToString("") { serialize(it) }}</scroll>"
             }
         }
     }

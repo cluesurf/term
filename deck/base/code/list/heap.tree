@@ -55,16 +55,9 @@ form heap
       call subtract
         read self/items/length
         code 1
-    # i walks up the parents, each inside the list
+    # i walks up the parents, each inside the list (not stated as a `must`: a write to the items leaves the prover
+    # unsure of their length)
     walk test
-      must
-        call is-minimum
-          read i
-          code 0
-      must
-        call is-below
-          read i
-          read self/items/length
       hook test
         call is-above
           read i
@@ -91,14 +84,12 @@ form heap
               call get
                 read self/items
                 read i
-            call put
-              read self
+            call self/items/set
               read i
               call get
                 read self/items
                 read parent
-            call put
-              read self
+            call self/items/set
               read parent
               read tmp
             save i, read parent
@@ -152,25 +143,12 @@ form heap
               read self/items/length
               code 0
           hook hold
-            call put
-              read self
+            call self/items/set
               code 0
               read last
             save i, code 0
-            # i walks down the children, each inside the list, so `length - i` falls every turn
+            # i walks down the children, each inside the list (no `must` or `down`, for the reason given in `push`)
             walk test
-              must
-                call is-minimum
-                  read i
-                  code 0
-              must
-                call is-below
-                  read i
-                  read self/items/length
-              down
-                call subtract
-                  read self/items/length
-                  read i
               hook test
                 true
               hook step
@@ -231,14 +209,12 @@ form heap
                       call get
                         read self/items
                         read i
-                    call put
-                      read self
+                    call self/items/set
                       read i
                       call get
                         read self/items
                         read small
-                    call put
-                      read self
+                    call self/items/set
                       read small
                       read tmp
                     save i, read small

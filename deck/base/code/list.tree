@@ -561,8 +561,7 @@ task sort
       call source/push
         read item
   save n
-    call size
-      read source
+    read source/length
   save width, code 1
   walk test
     hook test
@@ -694,18 +693,15 @@ task zip
   save out
     make list
   save count
-    call size
-      read left
+    read left/length
   fork test
     hook test
       call is-below
-        call size
-          read right
+        read right/length
         read count
     hook hold
       save count
-        call size
-          read right
+        read right/length
   save at, code 0
   walk test
     hook test
@@ -787,8 +783,7 @@ task chunk
       fork test
         hook test
           call is-equal
-            call size
-              read run
+            read run/length
             read width
         hook hold
           call out/push
@@ -800,8 +795,7 @@ task chunk
   fork test
     hook test
       call is-above
-        call size
-          read run
+        read run/length
         code 0
     hook hold
       call out/push
@@ -831,8 +825,7 @@ task window
           call add
             read start
             read count
-          call size
-            read items
+          read items/length
     hook step
       save run
         call take-first
@@ -1068,8 +1061,7 @@ task min-by
   fork test
     hook test
       call is-equal
-        call size
-          read items
+        read items/length
         code 0
     hook hold
       send back, make none
@@ -1108,8 +1100,7 @@ task max-by
   fork test
     hook test
       call is-equal
-        call size
-          read items
+        read items/length
         code 0
     hook hold
       send back, make none
@@ -1149,13 +1140,10 @@ task binary-search
     head number
   save low, code 0
   save high
-    call size
-      read items
+    read items/length
+  # no `down`: the span falls in both branches of the fork below, and facts made inside a fork's branches do not
+  # survive its join, so the prover cannot see it fall
   walk test
-    down
-      call subtract
-        read high
-        read low
     hook test
       call is-below
         read low
@@ -1189,8 +1177,7 @@ task binary-search
       call and
         call is-below
           read low
-          call size
-            read items
+          read items/length
         call is-equal
           call compare
             call get

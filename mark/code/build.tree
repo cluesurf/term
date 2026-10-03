@@ -22,6 +22,13 @@ load @term/base/code/text
   find index-of
   find substring
   find contains, name text-contains
+  find starts-with
+  find char-count
+  find replace-all
+
+load ./host
+  find platform-name
+  find arch-name
 
 load ./disk
   find file-text
@@ -42,6 +49,16 @@ form built
   # the toolchain's version line, and the exact build command
   link toolchain, like text
   link line, like text
+
+# the architecture a target's programs run as, against the machine's own. A program built for another architecture
+# runs under emulation (Rosetta on macOS), and every time it gives includes the emulation
+form build-arch
+  # as the toolchain names it: `x86_64-apple-darwin`, `arm64-apple-macosx26.0`, `aarch64`, `arm64`. Empty when unread
+  link named, like text
+  # in node's names, `arm64` or `x64`
+  link family, like text
+  link native, like text
+  link emulated, like boolean
 
 # the tool a target is built with
 task tool-of
@@ -123,6 +140,329 @@ task tool-version
     call get
       read lines
       code 0
+
+# what a command printed on both streams, or empty when it failed
+task said-by
+  note async
+  take command, like text
+  take line, like text
+  like text
+  save found
+    call run-process
+      read command
+      call split
+        read line
+        text < >
+      wait true
+  fork test
+    hook test
+      call is-unequal
+        read found/code
+        code 0
+    hook hold
+      send back, text <>
+  send back, text <{{found/output}}\n{{found/error}}>
+
+# the machine's own architecture, in node's names. On macOS the hardware is asked, because a node started under
+# Rosetta is told `x64` by `os.arch()` on an `arm64` machine
+task native-arch
+  note async
+  like text
+  fork test
+    hook test
+      call is-equal
+        call platform-name
+        text <darwin>
+    hook hold
+      save said
+        call said-by
+          text <sysctl>
+          text <-n hw.optional.arm64>
+          wait true
+      save lines
+        call split
+          call trim
+            read said
+          text <\n>
+      fork test
+        hook test
+          call is-equal
+            call trim
+              call get
+                read lines
+                code 0
+            text <1>
+        hook hold
+          send back, text <arm64>
+  send back
+    call arch-name
+
+# whether the runner's own process is translated: `sysctl.proc_translated` is 1 under Rosetta, 0 natively, and
+# absent off macOS
+task runner-translated
+  note async
+  like boolean
+  fork test
+    hook test
+      call is-unequal
+        call platform-name
+        text <darwin>
+    hook hold
+      send back, false
+  save said
+    call said-by
+      text <sysctl>
+      text <-n sysctl.proc_translated>
+      wait true
+  save lines
+    call split
+      call trim
+        read said
+      text <\n>
+  send back
+    call is-equal
+      call trim
+        call get
+          read lines
+          code 0
+      text <1>
+
+# an architecture name in node's names: `aarch64` and `arm64` are `arm64`, `x86_64` and `amd64` are `x64`
+task arch-family
+  take name, like text
+  like text
+  fork test
+    hook test
+      call or
+        call starts-with
+          read name
+          text <aarch64>
+        call starts-with
+          read name
+          text <arm64>
+    hook hold
+      send back, text <arm64>
+  fork test
+    hook test
+      call or
+        call starts-with
+          read name
+          text <x86_64>
+        call or
+          call starts-with
+            read name
+            text <x64>
+          call starts-with
+            read name
+            text <amd64>
+    hook hold
+      send back, text <x64>
+  send back, read name
+
+# the rest of the first line that starts with `key`, after trimming, or empty
+task value-after
+  take body, like text
+  take key, like text
+  like text
+  walk list
+    call split
+      read body
+      text <\n>
+    hook next
+      take site, name raw
+      save line
+        call trim
+          read raw
+      fork test
+        hook test
+          call starts-with
+            read line
+            read key
+        hook hold
+          send back
+            call trim
+              call substring
+                read line
+                call char-count
+                  read key
+                call char-count
+                  read line
+  send back, text <>
+
+# the architecture a target's built program runs as, as its toolchain names it. Rust: the `host:` line of
+# `rustc -vV`, since the runner passes no `--target`. Swift: `target.triple` of `swiftc -print-target-info`. Kotlin:
+# the JVM's `os.arch`, since `java` runs the jar. Node: `process.arch` of the `node` that runs the program
+task program-arch
+  note async
+  take target, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <node>
+    hook hold
+      save said
+        call said-by
+          text <node>
+          text <-p process.arch>
+          wait true
+      send back
+        call trim
+          read said
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <rust>
+    hook hold
+      save said
+        call said-by
+          text <rustc>
+          text <-vV>
+          wait true
+      send back
+        call value-after
+          read said
+          text <host:>
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <swift>
+    hook hold
+      save said
+        call said-by
+          text <swiftc>
+          text <-print-target-info>
+          wait true
+      save quoted
+        call value-after
+          read said
+          text <"triple":>
+      send back
+        call replace-all
+          call replace-all
+            read quoted
+            text <">
+            text <>
+          text <,>
+          text <>
+  save said
+    call said-by
+      text <java>
+      text <-XshowSettings:properties -version>
+      wait true
+  send back
+    call value-after
+      read said
+      text <os.arch =>
+
+# a target's architecture against the machine's
+task check-arch
+  note async
+  take target, like text
+  take native, like text
+  like build-arch
+  save named
+    call program-arch
+      read target
+      wait true
+  save family
+    call arch-family
+      read named
+  send back
+    make build-arch
+      bind named, read named
+      bind family, read family
+      bind native, read native
+      bind emulated
+        call and
+          call is-unequal
+            read named
+            text <>
+          call is-unequal
+            read family
+            read native
+
+# the Rust host triple native to a machine
+task rust-host-for
+  take native, like text
+  like text
+  save chip, text <x86_64>
+  fork test
+    hook test
+      call is-equal
+        read native
+        text <arm64>
+    hook hold
+      save chip, text <aarch64>
+  save system, text <unknown-linux-gnu>
+  fork test
+    hook test
+      call is-equal
+        call platform-name
+        text <darwin>
+    hook hold
+      save system, text <apple-darwin>
+  fork test
+    hook test
+      call is-equal
+        call platform-name
+        text <win32>
+    hook hold
+      save system, text <pc-windows-msvc>
+  send back, text <{{chip}}-{{system}}>
+
+# how to make a target native, for the warning
+task arch-fix
+  take target, like text
+  take native, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <rust>
+    hook hold
+      save host
+        call rust-host-for
+          read native
+      send back, text <rustup toolchain install stable-{{host}}, then rustup default stable-{{host}}>
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <swift>
+    hook hold
+      send back, text <put a swiftc built for {{native}} first on PATH, and run the shell natively rather than under Rosetta>
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <kotlin>
+    hook hold
+      send back, text <put a JDK built for {{native}} first on PATH (java -XshowSettings:properties -version names its os.arch)>
+  send back, text <put a node built for {{native}} first on PATH (node -p process.arch names it)>
+
+# the toolchain text a case carries: the version line, then what its programs run as
+task toolchain-text
+  take version, like text
+  take arch, like build-arch
+  like text
+  fork test
+    hook test
+      call is-equal
+        read arch/named
+        text <>
+    hook hold
+      send back, text <{{version}} (architecture unread)>
+  fork test
+    hook test
+      read arch/emulated
+    hook hold
+      send back, text <{{version}} ({{arch/named}}, emulated)>
+  send back, text <{{version}} ({{arch/named}}, native)>
 
 # the source extension of a target
 task extension-of

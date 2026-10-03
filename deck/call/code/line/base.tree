@@ -364,6 +364,15 @@ hook make
   # The update channel --publish writes (default main)
   take channel
     like text
+  # With --emit: the program to emit, with its whole import closure
+  take file
+    like text
+  # Write ONE program as a single source file for node (TypeScript), rust, swift or kotlin: runtime prelude plus emitted code. A check error refuses
+  take emit
+    like text
+  # With --emit: the file to write (default standard output)
+  take out
+    like text
   task make
 
 # Type-check a file and report diagnostics (the verifier)

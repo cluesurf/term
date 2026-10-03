@@ -1,0 +1,255 @@
+# What every platform plan is made of: the machine being set up, a tool (how to tell it is there, and the steps that
+# put it there), and a setting (an environment variable, or a directory on PATH). mac.tree, linux.tree and
+# windows.tree each build their list from these; base.tree, the console, checks and installs them. The versions are
+# here once, so every platform installs the same ones.
+
+load @term/base/code/list
+  find list
+  find size
+  find get
+
+load @term/base/code/text
+  find trim
+  find split
+  find contains
+  find starts-with
+
+load @term/base/code/process/run
+  find run
+  find run-attached
+  find run-result
+
+# the toolchain versions every platform installs alike
+host node-major, text <24>
+host pnpm-version, text <12.8.1>
+host jdk-major, text <21>
+host kotlin-version, text <2.3.10>
+host maven-version, text <3.9.9>
+host android-tools-build, text <15859902>
+host android-api, text <36>
+host android-build-tools, text <36.0.0>
+host android-device, text <pixel_api_36>
+
+# the machine being set up
+form machine
+  # mac, linux or windows
+  link system, like text
+  # arm64 or x64
+  link architecture, like text
+  link home, like text
+  # the Term repository this runs from
+  link root, like text
+  # the package manager: brew, apt, dnf, pacman, zypper or winget, or none
+  link packager, like text
+  # the shell profile the settings are written to (~/.zshrc, ~/.bashrc), empty on Windows
+  link profile, like text
+  # where downloaded toolchains are unpacked: ~/.local/share/term-dev, or %LOCALAPPDATA%\term-dev
+  link store, like text
+
+# one command a tool's installation runs, in the platform's shell (`sh -c`, or PowerShell)
+form step
+  link script, like text
+  link note, like text
+
+form tool
+  link name, like text
+  # what it unlocks, for the report
+  link need, like text
+  # a command that succeeds only when the tool is there; its first line of output is the version shown
+  link probe, like text
+  link steps
+    like list
+      like step
+  # not every Term developer needs it: the rest of the suites run without it
+  link optional, like boolean
+  # text the probe's first line must hold, for a tool pinned to one version; empty for any version
+  link expect
+    like text
+    need false
+
+# an environment variable (`path` false), or a directory put first on PATH (`path` true)
+form setting
+  link name, like text
+  link value, like text
+  link path, like boolean
+
+task make-step
+  take script, like text
+  take note, like text
+  like step
+  send back
+    make step
+      bind script, read script
+      bind note, read note
+
+task make-setting
+  take name, like text
+  take value, like text
+  like setting
+  send back
+    make setting
+      bind name, read name
+      bind value, read value
+      bind path, false
+
+task path-setting
+  take value, like text
+  like setting
+  send back
+    make setting
+      bind name, text <PATH>
+      bind value, read value
+      bind path, true
+
+# the command line that installs `packages` (space separated) with the machine's package manager
+task install-packages
+  take machine, like machine
+  take packages, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read machine/packager
+        text <brew>
+    hook hold
+      send back, text <brew install {{packages}}>
+    hook test
+      call is-equal
+        read machine/packager
+        text <apt>
+    hook hold
+      send back, text <sudo apt-get update && sudo apt-get install -y {{packages}}>
+    hook test
+      call is-equal
+        read machine/packager
+        text <dnf>
+    hook hold
+      send back, text <sudo dnf install -y {{packages}}>
+    hook test
+      call is-equal
+        read machine/packager
+        text <pacman>
+    hook hold
+      send back, text <sudo pacman -S --needed --noconfirm {{packages}}>
+    hook test
+      call is-equal
+        read machine/packager
+        text <zypper>
+    hook hold
+      send back, text <sudo zypper install -y {{packages}}>
+    hook test
+      call is-equal
+        read machine/packager
+        text <winget>
+    hook hold
+      send back, text <winget install --exact --silent --accept-source-agreements --accept-package-agreements --id {{packages}}>
+  send back, text <echo "no package manager found: install {{packages}} by hand" && exit 1>
+
+# the program and arguments that run a script in the platform's shell
+task shell-arguments
+  take machine, like machine
+  take script, like text
+  like list
+    like text
+  save out
+    make list
+  fork test
+    hook test
+      call is-equal
+        read machine/system
+        text <windows>
+    hook hold
+      call out/push, text <-NoProfile>
+      call out/push, text <-ExecutionPolicy>
+      call out/push, text <Bypass>
+      call out/push, text <-Command>
+    hook miss
+      call out/push, text <-c>
+  call out/push
+    read script
+  send back, read out
+
+task shell-program
+  take machine, like machine
+  like text
+  fork test
+    hook test
+      call is-equal
+        read machine/system
+        text <windows>
+    hook hold
+      send back, text <powershell>
+  send back, text <sh>
+
+# run a script and capture what it wrote
+task run-script
+  note async
+  take machine, like machine
+  take script, like text
+  like run-result
+  send back
+    call run
+      call shell-program
+        read machine
+      call shell-arguments
+        read machine
+        read script
+      wait true
+
+# run a script on this terminal, where it can prompt and show progress; its exit code
+task run-script-attached
+  note async
+  take machine, like machine
+  take script, like text
+  like number
+  send back
+    call run-attached
+      call shell-program
+        read machine
+      call shell-arguments
+        read machine
+        read script
+      wait true
+
+# the first line of a probe's output, or of its error when it wrote nothing else (`java -version` writes to standard
+# error)
+task first-line
+  take result, like run-result
+  like text
+  save text
+    call trim
+      read result/output
+  fork test
+    hook test
+      call is-equal
+        read text
+        text <>
+    hook hold
+      save text
+        call trim
+          read result/error
+  save lines
+    call split
+      read text
+      call line-break
+  fork test
+    hook test
+      call is-above
+        call size
+          read lines
+        code 0
+    hook hold
+      send back
+        call trim
+          call get
+            read lines
+            code 0
+  send back, text <>
+
+task line-break
+  like text
+  send back
+    call rune-to-text, code 10
+
+load @term/base/code/text/unicode
+  find rune-to-text

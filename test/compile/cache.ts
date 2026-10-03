@@ -5,9 +5,10 @@
 import { compile } from '@term/make/code/compile/compile'
 import {
   CompileCache,
-  hashText,
   hashFields,
 } from '@term/make/code/compile/cache'
+// the content hash is Term since 2026-10-02 (deck/make/code/term/hash.tree, note/term/self-host/04-the-port-switch.md)
+import { hashText } from '@term/make/code/term/hash'
 import type { CacheStore } from '@term/make/code/compile/cache'
 import {
   diskCacheStore,

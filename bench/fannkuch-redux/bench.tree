@@ -1,0 +1,9 @@
+host program, <fannkuch-redux>
+host entry, <fannkuch>
+host source, <the Computer Language Benchmarks Game program, single-threaded, the same algorithm>
+host check, 7
+host expect, <228 Pfannkuchen(7) = 16>
+host size, 10
+host runs, 5
+host semantics, <integers within i64, no overflow, no text. Lists of numbers mutated in place>
+host idiom, <ours, 2026-10-02: each language's natural structures (Vec of usize, IntArray, [Int], number[])>

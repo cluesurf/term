@@ -177,7 +177,8 @@ function runKotlin(): void {
   }
 
   const source = emitKotlin(frontEnd())
-  ok('kotlin: unknown lowers to Any', /var base: Any\b/.test(source), source.slice(0, 200))
+  // `val` since a field nothing reassigns stopped being a `var` (note/term/codegen/android.md, K4): the type is the point
+  ok('kotlin: unknown lowers to Any', /(var|val) base: Any\b/.test(source), source.slice(0, 200))
   const file = join(dir, 'main.kt')
   writeFileSync(
     file,

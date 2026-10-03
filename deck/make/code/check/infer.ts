@@ -927,6 +927,35 @@ export function check(
           type = NUMBER
         } else if (target.kind === 'map' && node.name === 'size') {
           type = NUMBER
+        } else if (target.kind === 'array' && (node.index || /^\d+$/.test(node.name))) {
+          // an element read, `read xs/{i}` or `read xs/0`, is the list's element: it was `unknown`, which every
+          // backend then treated as a boxed dynamic (TypeScript's `any`, structural `__termEqual` on a number)
+          if (node.index) {
+            inferExpression(node.index, env)
+          }
+
+          type = target.element
+        } else if (target.kind === 'map' && node.index) {
+          // a map read by a computed key, `read table/{key}`, is the map's value
+          inferExpression(node.index, env)
+          type = target.value
+        } else if (target.kind === 'function') {
+          // a task has no fields. `read make-box/size` (or lean `make-box()`, which mills to the bare name) read a
+          // member off the function itself and emitted `makeBox.size`, undefined at run time, while the binding
+          // typed as whatever the next use wanted
+          const named = node.target.form === 'variable' ? node.target.name : undefined
+          const message =
+            named && functions.has(named) && !env.has(named)
+              ? `"${named}" is a task, which has no field "${node.name}". Call it first: \`call ${named}\``
+              : `${named ? `"${named}"` : 'this value'} holds a task, which has no field "${node.name}". Was a call meant where it was saved?`
+          diagnostics.push(
+            diagnose('type-mismatch', {
+              file: currentFile,
+              span: node.span,
+              message,
+            }),
+          )
+          type = UNKNOWN
         } else {
           type = UNKNOWN
         }
@@ -1508,7 +1537,9 @@ export function check(
 
           if (caught) {
             for (const branch of node.cases) {
-              if (!caught.has(branch.label)) {
+              // `failure` is never refused: it is what a foreign call's throw becomes on every backend, and a node build
+              // that prunes the form would otherwise refuse the arm a Rust build of the same file requires
+              if (!caught.has(branch.label) && branch.label !== 'failure') {
                 diagnostics.push(
                   diagnose('unknown-name', {
                     file: currentFile,
@@ -2805,6 +2836,38 @@ export function check(
         type: signature.params[i] ?? seedType(param.type, new Map()),
       }),
     )
+
+    // a `fall` default is a value of its parameter's type. It was cloned into each call site that leaves the
+    // parameter out and never checked itself, so `take n, like number, fall text <four>` emitted
+    // `n: number = "four"`, and a bare task name (`fall read make-caps`) passed the TASK where its result was meant.
+    // A parameter whose type still mentions a generic is skipped, since unifying here would pin the generic for
+    // every call.
+    node.params.forEach((param, i) => {
+      const declared = signature.params[i]
+
+      if (!param.fallback || !declared) {
+        return
+      }
+
+      const open = new Set<number>()
+      freeTypeVarsImpl(declared, open, sub)
+
+      if (open.size > 0) {
+        return
+      }
+
+      expect(
+        // on a copy: each call site that leaves the parameter out clones the default and infers its own
+        inferExpression(
+          JSON.parse(JSON.stringify(param.fallback)) as Expression,
+          new Map(moduleEnv),
+        ),
+        declared,
+        param.fallback.span ?? node.span,
+        `the default of "${param.name}"`,
+      )
+    })
+
     checkBody(node.body, env, signature.result)
   }
 

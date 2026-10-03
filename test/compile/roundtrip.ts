@@ -4197,7 +4197,7 @@ async function main(): Promise<void> {
   }
 
   if (port) {
-    const httpProg = `load @term/base/code/network/http\n  find get\n\ntask compute\n  note async\n  like text\n  save r\n    call get\n      text <http://127.0.0.1:${port}/>\n      wait true\n  send back\n    read r/body\n`
+    const httpProg = `load @term/base/code/network/http\n  find fetch\n\ntask compute\n  note async\n  like text\n  save r\n    call fetch\n      text <http://127.0.0.1:${port}/>\n      wait true\n  send back\n    read r/body\n`
     runSwiftCrypto(
       'swift + http: GET a real server via URLSession',
       frontEnd(httpProg, true, 'swift'),

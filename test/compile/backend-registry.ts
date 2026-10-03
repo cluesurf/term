@@ -8,8 +8,7 @@ import { resolve } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
 import { emitWgsl } from '@term/make/code/compile/wgsl'
 import {
-  BACKENDS,
-  backendInfo,
+  listBackends,
   isExperimentalBackend,
   experimentalNotice,
   experimentalBanner,
@@ -27,6 +26,11 @@ function ok(name: string, cond: boolean, info = ''): void {
     fail++
     console.log(`FAIL  ${name}  ${info}`)
   }
+}
+
+// the registry is a list since its port to Term (compile/backend-registry.tree), so a name is looked up here
+function backendInfo(name: string) {
+  return listBackends().find(info => info.name === name)
 }
 
 function frontEnd(text: string): Program {
@@ -113,10 +117,17 @@ ok(
   emitWgsl(program).startsWith('// EXPERIMENTAL backend: WGSL'),
 )
 
-// every backend is registered exactly once and the table is internally consistent
+// every backend is registered exactly once, in the order the CLI lists them
+const names = listBackends().map(info => info.name)
 ok(
-  'every registry entry name matches its key',
-  Object.entries(BACKENDS).every(([key, info]) => key === info.name),
+  'every backend is registered exactly once',
+  new Set(names).size === names.length,
+  names.join(', '),
+)
+ok(
+  'the registry lists the six backends in order',
+  names.join(',') === 'typescript,rust,swift,kotlin,wgsl,hvm',
+  names.join(', '),
 )
 
 console.log(`\nbackend-registry: ${pass} pass, ${fail} fail`)

@@ -38,7 +38,7 @@ bind do-big-from-number
   case browser
     text <BigInt($value)>
   case rust
-    text <std::rc::Rc::new(num_bigint::BigInt::from($value)) as std::rc::Rc\<dyn std::any::Any\>>
+    text <std::rc::Rc::new(num_bigint::BigInt::from(($value) as i64)) as std::rc::Rc\<dyn std::any::Any\>>
   case swift
     text <termbig.fromInt($value)>
   case kotlin

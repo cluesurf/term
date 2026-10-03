@@ -23,7 +23,7 @@ import {
   isText,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp, FormKind, FormSpec } from '@term/make/code/compile/backend'
-import { formSpec, hasValuedReturn, refuseAny, specForms } from '@term/make/code/compile/backend'
+import { escapingParams, formSpec, hasValuedReturn, refuseAny, specForms } from '@term/make/code/compile/backend'
 import {
   collectBinds,
   renderBind,
@@ -249,6 +249,79 @@ const KOTLIN_NUMBER = `fun termNumber(x: Double): String {
     return if (x < 0) "-" + body else body
 }`
 
+// A list of integers held in one LongArray, made wherever a list is built knowing its element is an integer. It IS a
+// `MutableList<Long>`, and the factory is typed as one, so every operation, generic task and equality works as before
+// and a variable may still be given any other list: only the storage differs, with no object per element and no GC
+// write barrier per store. Out-of-range access throws what ArrayList throws. Held against ArrayList, operation for
+// operation, by test/compile/kotlin-longs.ts
+export const KOTLIN_LONGS = `class TermLongs(capacity: Int) : AbstractMutableList<Long>(), RandomAccess {
+    @JvmField var data = LongArray(capacity)
+    @JvmField var count = 0
+    override val size: Int get() = count
+    private fun outside(index: Int): Nothing = throw IndexOutOfBoundsException("Index " + index + " out of bounds for length " + count)
+    private fun room(need: Int) {
+        if (need > data.size) data = data.copyOf(maxOf(need, data.size + (data.size shr 1), 8))
+    }
+    override fun get(index: Int): Long {
+        if (index < 0 || index >= count) outside(index)
+        return data[index]
+    }
+    override fun set(index: Int, element: Long): Long {
+        if (index < 0 || index >= count) outside(index)
+        val old = data[index]
+        data[index] = element
+        return old
+    }
+    override fun add(element: Long): Boolean {
+        room(count + 1)
+        data[count++] = element
+        modCount++
+        return true
+    }
+    override fun add(index: Int, element: Long) {
+        if (index < 0 || index > count) outside(index)
+        room(count + 1)
+        System.arraycopy(data, index, data, index + 1, count - index)
+        data[index] = element
+        count++
+        modCount++
+    }
+    override fun addAll(elements: Collection<Long>): Boolean {
+        if (elements !is TermLongs) return super.addAll(elements)
+        val n = elements.count
+        room(count + n)
+        System.arraycopy(elements.data, 0, data, count, n)
+        count += n
+        modCount++
+        return n > 0
+    }
+    override fun removeAt(index: Int): Long {
+        if (index < 0 || index >= count) outside(index)
+        val old = data[index]
+        System.arraycopy(data, index + 1, data, index, count - index - 1)
+        count--
+        modCount++
+        return old
+    }
+    override fun clear() {
+        count = 0
+        modCount++
+    }
+}
+
+fun mutableLongListOf(vararg items: Long): MutableList<Long> {
+    val list = TermLongs(maxOf(items.size, 10))
+    System.arraycopy(items, 0, list.data, 0, items.size)
+    list.count = items.size
+    return list
+}
+
+fun mutableLongListOf(from: Collection<Long>): MutableList<Long> {
+    val list = TermLongs(maxOf(from.size, 10))
+    list.addAll(from)
+    return list
+}`
+
 // The prelude helpers a Kotlin program may call, each written once, in the order they are emitted. The emitter records
 // a helper in `needs` at the moment it writes a call to it (`need`), and the prelude is exactly the recorded set.
 // It used to be chosen by searching the emitted text for a helper's name, which included `termNumber` for every
@@ -259,6 +332,8 @@ const KOTLIN_HELPERS = {
   number: KOTLIN_NUMBER,
   // integer division that stops where the JVM wraps (`Long.MIN_VALUE / -1`), and throws on zero as `/` does
   divide: 'fun termDivide(a: Long, b: Long): Long = if (b == -1L) Math.negateExact(a) else a / b',
+  // integer lists in a LongArray (KOTLIN_LONGS)
+  longs: KOTLIN_LONGS,
   // the one exception value of a Term program on this backend (note/term/hive/11-native-exceptions.md): the shared
   // fields of every exception, the props as `link`, the raised record as `base`. No stack trace: filling one walks
   // the stack on every raise, and the hive keeps Term's own `flow`. `termException` is the boundary that makes a
@@ -329,6 +404,11 @@ export function emitKotlin(
   const provenSteps = provenIncrements(program)
   // the field names some assignment in the program writes (`save p/x, ...`): every other field is a `val`
   const assignedFields = fieldsAssigned(program)
+  // the names the function being emitted reassigns, for `var` against `val`; undefined at module level
+  let fnAssigned: Set<string> | undefined
+  // the tasks this program defines with a body: their emitted result type is exactly what the checker says
+  const bodiedTasks = new Set(program.flatMap(n => (n.form === 'function' && n.body.length > 0 ? [n.name] : [])))
+  const inlineTasks = inlinable(program)
   const need = (helper: KotlinHelper, code: string): string => {
     needs.add(helper)
 
@@ -474,6 +554,9 @@ export function emitKotlin(
     return text
   }
 
+  // a list whose element is an integer, known where it is built: held as `TermLongs`, one LongArray (the `longs` helper)
+  const longList = (type: Type | undefined): boolean => type?.kind === 'array' && kotlinType(type.element) === 'Long'
+
   // the empty value of a type: what a left-out field holds
   const emptyOf = (type: Type | undefined): string => {
     switch (type?.kind) {
@@ -488,7 +571,7 @@ export function emitKotlin(
       case 'bytes':
         return 'ByteArray(0)'
       case 'array':
-        return 'mutableListOf()'
+        return longList(type) ? need('longs', 'mutableLongListOf()') : 'mutableListOf()'
       case 'map':
         return 'mutableMapOf()'
       case 'named':
@@ -843,7 +926,20 @@ export function emitKotlin(
 
   // an operand of a `Math.*Exact` call as a Long: an integer literal already is one (`5L`), anything else is
   // widened, which is free on an expression that is a Long already and picks the Long overload on one that is an Int
-  const longOf = (node: Expression): string => (node.form === 'integer' ? expr(node) : `(${expr(node)}).toLong()`)
+  // A variable of type `number` is declared Long, so it is written bare: kotlinc warned "redundant call of conversion
+  // method" on every one
+  // Known Long without a conversion: a variable or an element read of type `number`, integer arithmetic (a
+  // `Math.*Exact` or a Long operator), and a call to a task this program defines with a body, whose emitted result
+  // type is Long. A native call keeps the `.toLong()`, since its shim may answer an Int
+  const longOf = (node: Expression): string => {
+    const number = node.type?.kind === 'number'
+    const defined = node.form === 'call' && node.callee.form === 'variable' && bodiedTasks.has(node.callee.name)
+    const known =
+      node.form === 'integer' ||
+      (number && (node.form === 'variable' || (node.form === 'member' && node.index !== undefined) || node.form === 'binary' || defined))
+
+    return known ? expr(node) : `(${expr(node)}).toLong()`
+  }
 
   const expr = (node: Expression): string => {
     switch (node.form) {
@@ -1018,7 +1114,13 @@ export function emitKotlin(
         // an async task called WITHOUT `wait true` from code that cannot suspend runs on its own and the caller goes on,
         // as a promise nobody awaits does on TypeScript: here a coroutine of its own (native-dom-0014: the blog's click
         // handler starting `add-post`). Inside a suspend body Kotlin awaits the call, as it always has
-        if (node.callee.form === 'variable' && asyncFns.has(node.callee.name) && !awaited && !suspendContext) {
+        if (
+          node.callee.form === 'variable' &&
+          asyncFns.has(node.callee.name) &&
+          !localNames.has(node.callee.name) &&
+          !awaited &&
+          !suspendContext
+        ) {
           return need('start', `termStart { ${callee}(${rendered.join(', ')}) }`)
         }
 
@@ -1033,6 +1135,12 @@ export function emitKotlin(
           node.items.length === 0 && node.type?.kind === 'array'
             ? `<${kotlinType(node.type.element)}>`
             : ''
+
+        // an empty one spelled `<Long>` is committed to its element, so it is the LongArray list. A full one is not:
+        // its element is read from the context, which may want `Any`
+        if (args === '<Long>') {
+          return need('longs', 'mutableLongListOf()')
+        }
 
         return `mutableListOf${args}(${node.items.map(expr).join(', ')})`
       }
@@ -1072,7 +1180,7 @@ export function emitKotlin(
               ? `<${kotlinType(node.type.element)}>`
               : ''
 
-          return `mutableListOf${args}()`
+          return args === '<Long>' ? need('longs', 'mutableLongListOf()') : `mutableListOf${args}()`
         }
 
         // `make void` is the absent value: kotlin's Unit, which an Any slot holds and `==` recognizes
@@ -1100,7 +1208,7 @@ export function emitKotlin(
               (value.form === 'array' && value.items.length === 0)) &&
             declaredType?.kind === 'array'
           ) {
-            return `mutableListOf<${kotlinType(declaredType.element)}>()`
+            return longList(declaredType) ? need('longs', 'mutableLongListOf()') : `mutableListOf<${kotlinType(declaredType.element)}>()`
           }
 
           if (
@@ -1299,6 +1407,9 @@ export function emitKotlin(
   ): string => {
     const target = expr(op.target)
     const arg = args.map(expr)
+    // a copy of an integer list is one too, built once into a LongArray (a `TermLongs` source is a single arraycopy)
+    const longs = op.kind !== 'map' && longList(op.target.type)
+    const copy = (of: string): string => (longs ? need('longs', `mutableLongListOf(${of})`) : `${of}.toMutableList()`)
 
     if (op.kind === 'map') {
       switch (op.op) {
@@ -1307,7 +1418,9 @@ export function emitKotlin(
         case 'get':
           return `${target}.getValue(${arg[0]})`
         case 'set':
-          return `${target}.apply { put(${arg[0]}, ${arg[1]}) }`
+          // `also` with a named parameter, never `apply`: inside `apply` the map is the receiver, so a program variable
+          // named `values`, `keys` or `size` read the MAP's member instead (render-native, device trait, 2026-10-02)
+          return `${target}.also { __m -> __m.put(${arg[0]}, ${arg[1]}) }`
         case 'delete':
           return `(${target}.remove(${arg[0]}) != null)`
         case 'keys':
@@ -1321,7 +1434,7 @@ export function emitKotlin(
 
     switch (op.op) {
       case 'push':
-        return `${target}.apply { add(${arg[0]}) }.size.toLong()`
+        return `${target}.also { __l -> __l.add(${arg[0]}) }.size.toLong()`
       case 'pop':
         // never `removeLast()`: compiled against android-36 it binds to JDK 21's List.removeLast, which throws
         // NoSuchMethodError on every device below API 35
@@ -1339,14 +1452,14 @@ export function emitKotlin(
         return `${target}.lastIndexOf(${arg[0]}).toLong()`
       case 'concat':
         // one copy: the left side copied once, the right appended into it
-        return `${target}.toMutableList().apply { addAll(${arg[0]}) }`
+        return `${copy(target)}.also { __l -> __l.addAll(${arg[0]}) }`
       case 'slice':
         // both bounds clamped to the length, empty when start reaches end, never counted from the end
         // (note/term/stdlib/semantics.md)
-        return `${target}.let { d -> val x = (${arg[0]}).toInt().coerceIn(0, d.size); val y = (${arg[1] !== undefined ? `(${arg[1]}).toInt()` : 'd.size'}).coerceIn(0, d.size); if (x < y) d.subList(x, y).toMutableList() else d.subList(0, 0).toMutableList() }`
+        return `${target}.let { d -> val x = (${arg[0]}).toInt().coerceIn(0, d.size); val y = (${arg[1] !== undefined ? `(${arg[1]}).toInt()` : 'd.size'}).coerceIn(0, d.size); if (x < y) ${copy('d.subList(x, y)')} else ${copy('d.subList(0, 0)')} }`
       case 'toReversed':
-        // asReversed is a view, so the one copy is the ArrayList built from it
-        return `${target}.asReversed().toMutableList()`
+        // asReversed is a view, so the one copy is the list built from it
+        return copy(`${target}.asReversed()`)
       case 'join':
         // each item as `to-text` renders it, so a float reads as on every backend
         return op.target.type?.kind === 'array' && op.target.type.element.kind === 'float'
@@ -1356,7 +1469,7 @@ export function emitKotlin(
         // straight into a MutableList: `map(f).toMutableList()` built the list twice
         return `${target}.mapTo(ArrayList(), ${arg[0]})`
       case 'filter':
-        return `${target}.filterTo(ArrayList(), ${arg[0]})`
+        return longs ? need('longs', `${target}.filterTo(mutableLongListOf(), ${arg[0]})`) : `${target}.filterTo(ArrayList(), ${arg[0]})`
       case 'some':
         return `${target}.any(${arg[0]})`
       case 'every':
@@ -1371,13 +1484,13 @@ export function emitKotlin(
           ? `${target}.flatMapTo(ArrayList()) { it }`
           : `${target}.toMutableList()`
       case 'unshift':
-        return `${target}.apply { add(0, ${arg[0]}) }.size.toLong()`
+        return `${target}.also { __l -> __l.add(0, ${arg[0]}) }.size.toLong()`
       case 'shift':
         return `${target}.removeAt(0)`
       case 'splice':
         // JS `splice(start, deleteCount, ...items)`: remove the range, insert the items, in place
         // the start clamped to the length and the count to what remains (semantics.md)
-        return `${target}.apply { val s = (${arg[0]}).toInt().coerceIn(0, size); val c = (${arg[1]}).toInt().coerceIn(0, size - s); subList(s, s + c).clear(); addAll(s, listOf(${arg.slice(2).join(', ')})) }.let { 0L }`
+        return `${target}.let { __l -> val s = (${arg[0]}).toInt().coerceIn(0, __l.size); val c = (${arg[1]}).toInt().coerceIn(0, __l.size - s); __l.subList(s, s + c).clear(); __l.addAll(s, listOf(${arg.slice(2).join(', ')})); 0L }`
       default:
         return ''
     }
@@ -1446,7 +1559,9 @@ export function emitKotlin(
           return `${node.mutable ? 'var' : 'val'} ${camel(node.name)} = ${expr(node.init)} as ${kotlinType(node.type)}`
         }
 
-        return `${node.mutable ? 'var' : 'val'} ${camel(
+        // `var` only for a binding something reassigns: a `save` that is never written again, or a list only written
+        // through, is a `val` (kotlinc warned "variable is never modified"). At module level, the declared mutability
+        return `${node.mutable && (fnAssigned === undefined || fnAssigned.has(node.name)) ? 'var' : 'val'} ${camel(
           node.name,
         )}${ann} = ${expr(node.init)}`
       }
@@ -1676,6 +1791,9 @@ export function emitKotlin(
         // a reassigned parameter is shadowed by a mutable local (Kotlin parameters are immutable)
         const mutated = new Set<string>()
         reassigned(node.body, mutated)
+        // and a local nothing reassigns is a `val` (see the `let` case)
+        const outerAssigned = fnAssigned
+        fnAssigned = mutated
 
         const shadows = node.params
           .filter(p => mutated.has(p.name))
@@ -1714,7 +1832,9 @@ export function emitKotlin(
                 .filter(Boolean)
                 .join('\n')
 
-        return `${suspend}fun ${generics}${camel(
+        fnAssigned = outerAssigned
+
+        return `${inlineTasks.has(node.name) ? 'inline ' : ''}${suspend}fun ${generics}${camel(
           node.name,
         )}(${params}): ${kotlinType(result)} {\n${bodyText}\n${pad(
           d,
@@ -2053,6 +2173,103 @@ export function emitKotlin(
   }
 
   return [...imports, ...prelude, ...body, ...wake].join('\n\n') + '\n'
+}
+
+// The tasks emitted as `inline fun` (note/term/codegen/android.md, K3). A task that takes a function and only calls it
+// is inlined by kotlinc at each call site: the lambda's body is copied in, so no `Function1` is allocated and nothing
+// is boxed through it. Every function parameter must be non-escaping (escapingParams, shared with Swift's
+// `@escaping`), since an inline function may not store or pass on a lambda it was given; the body is at most 120 nodes,
+// since each call copies it; and the task must not reach itself through other inline tasks, since kotlinc refuses a
+// recursive inline function
+function inlinable(program: Program): Set<string> {
+  type Fn = Extract<Statement, { form: 'function' }>
+  const size = (value: unknown): number => {
+    if (typeof value !== 'object' || value === null) {
+      return 0
+    }
+
+    if (Array.isArray(value)) {
+      return value.reduce((n: number, v) => n + size(v), 0)
+    }
+
+    const node = value as Record<string, unknown>
+    let n = typeof node.form === 'string' ? 1 : 0
+
+    for (const [key, child] of Object.entries(node)) {
+      if (key !== 'type' && key !== 'span') {
+        n += size(child)
+      }
+    }
+
+    return n
+  }
+  const candidates = new Map<string, Fn>()
+
+  for (const node of program) {
+    if (
+      node.form === 'function' &&
+      node.body.length > 0 &&
+      node.params.some(p => p.type?.kind === 'function') &&
+      escapingParams(node).size === 0 &&
+      size(node.body) <= 120
+    ) {
+      candidates.set(node.name, node)
+    }
+  }
+
+  // the candidates each one names (as a callee or a value), and every candidate that can reach itself through them
+  const named = (fn: Fn): Set<string> => {
+    const out = new Set<string>()
+    const visit = (value: unknown): void => {
+      if (typeof value !== 'object' || value === null) {
+        return
+      }
+
+      if (Array.isArray(value)) {
+        value.forEach(visit)
+
+        return
+      }
+
+      const node = value as Record<string, unknown>
+
+      if (node.form === 'variable' && typeof node.name === 'string' && candidates.has(node.name)) {
+        out.add(node.name)
+      }
+
+      for (const [key, child] of Object.entries(node)) {
+        if (key !== 'type' && key !== 'span') {
+          visit(child)
+        }
+      }
+    }
+
+    visit(fn.body)
+
+    return out
+  }
+  const edges = new Map([...candidates].map(([name, fn]) => [name, named(fn)]))
+  const reaches = (start: string): boolean => {
+    const seen = new Set<string>()
+    const stack = [...(edges.get(start) ?? [])]
+
+    while (stack.length) {
+      const next = stack.pop()!
+
+      if (next === start) {
+        return true
+      }
+
+      if (!seen.has(next)) {
+        seen.add(next)
+        stack.push(...(edges.get(next) ?? []))
+      }
+    }
+
+    return false
+  }
+
+  return new Set([...candidates.keys()].filter(name => !reaches(name)))
 }
 
 // the field names an assignment writes anywhere in the program: `save a/b/c, ...` reassigns `c` (and nothing else, since

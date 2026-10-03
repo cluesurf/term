@@ -7,6 +7,7 @@ import type {
   Expression,
   Program,
   Statement,
+  Type,
   ViewNode,
 } from '@term/make/code/compile/node'
 import { egraphArith } from '@term/make/code/ir/egraph-arith'
@@ -102,6 +103,41 @@ let specializable = new Map<
 
 // the names currently being inlined on this path, to break a recursive verb cycle
 let inlining = new Set<string>()
+
+// the small one-expression tasks inlined at ANY call whose arguments are pure, not only at a constant one (see
+// `smallBody`): the one-line stdlib wrappers (`list-size`, `boolean-and` over a native) that every backend otherwise
+// calls through. note/term/codegen/passes.md, P1
+let small = new Map<string, { params: { name: string }[]; value: Expression }>()
+
+// the names the function being simplified binds (its parameters, lets, loop variables, closure parameters)
+let callerBound = new Set<string>()
+
+// every variable name an expression reads, nested closures included
+function namesRead(node: unknown, into = new Set<string>()): Set<string> {
+  if (!node || typeof node !== 'object') {
+    return into
+  }
+
+  if (Array.isArray(node)) {
+    node.forEach(n => namesRead(n, into))
+
+    return into
+  }
+
+  const record = node as Record<string, unknown>
+
+  if (record.form === 'variable' && typeof record.name === 'string') {
+    into.add(record.name)
+  }
+
+  for (const [key, value] of Object.entries(record)) {
+    if (key !== 'span' && key !== 'type') {
+      namesRead(value, into)
+    }
+  }
+
+  return into
+}
 
 // the numeric value of an integer or float literal, for constant folding comparisons across both number kinds
 function numericValue(node: Expression): number | undefined {
@@ -693,6 +729,65 @@ function specializableBody(
   return undefined
 }
 
+// A task the inliner may replace by its value at any call whose arguments are pure (a literal or a bare variable):
+// its body is one `send back <expr>` of at most 16 nodes. With pure arguments, substituting them changes neither what
+// is evaluated nor its order, and the expression is small enough that copying it costs less than the call. Left out,
+// each for a reason the backends give:
+//   - async, and a list or map result: the caller awaits the first, and a backend boxes the second at the boundary
+//   - an `unknown` or `dynamic` result or parameter: Rust boxes those at the boundary, which inlining would skip
+//   - generics: the expression's types mention the task's type parameters, which mean nothing at the caller
+function smallBody(fn: Extract<Statement, { form: 'function' }>): Expression | undefined {
+  const only = fn.body.length === 1 ? fn.body[0]! : undefined
+
+  if (!only || only.form !== 'return' || !only.value || fn.async || wrapsCollection(fn)) {
+    return undefined
+  }
+
+  const loose = (t: Type | undefined): boolean => t?.kind === 'unknown' || t?.kind === 'dynamic'
+
+  if (loose(fn.result) || fn.params.some(p => loose(p.type)) || (fn.generics?.length ?? 0) > 0) {
+    return undefined
+  }
+
+  // the size, and no type variable anywhere in the expression's types
+  let nodes = 0
+  let generic = false
+  const seen = new Set<object>()
+  const measure = (value: unknown, inType: boolean): void => {
+    if (typeof value !== 'object' || value === null || seen.has(value)) {
+      return
+    }
+
+    seen.add(value)
+
+    if (Array.isArray(value)) {
+      value.forEach(v => measure(v, inType))
+
+      return
+    }
+
+    const node = value as { form?: string; kind?: string }
+
+    if (inType && node.kind === 'variable') {
+      generic = true
+    }
+
+    if (!inType && node.form) {
+      nodes++
+    }
+
+    for (const [key, child] of Object.entries(node)) {
+      if (key !== 'span') {
+        measure(child, inType || key === 'type')
+      }
+    }
+  }
+
+  measure(only.value, false)
+
+  return nodes <= 16 && !generic ? only.value : undefined
+}
+
 // substitute parameter variables with their argument expressions when inlining a specializable function body. The
 // stdlib verbs reference only their parameters and globals, so a free-variable substitution is sound. A closure that
 // rebinds a parameter name shadows it, so that name is dropped from the substitution before descending.
@@ -1131,6 +1226,33 @@ function simplifyExpression(node: Expression): Expression {
             return sole.value
           }
         }
+
+        // a small one-expression task, inlined at a call whose arguments are all pure: the value with the arguments
+        // substituted for the parameters. Not where a name the body reads, other than its own parameters, is bound by
+        // the caller, which would capture it
+        const tiny = small.get(callee.name)
+
+        if (
+          tiny &&
+          tiny.params.length === args.length &&
+          args.every(isPureArg) &&
+          !inlining.has(callee.name)
+        ) {
+          const own = new Set(tiny.params.map(p => p.name))
+          const captured = [...namesRead(tiny.value)].some(name => !own.has(name) && callerBound.has(name))
+
+          if (!captured) {
+            const subst = new Map<string, Expression>()
+            tiny.params.forEach((p, i) => subst.set(p.name, args[i]!))
+            inlining.add(callee.name)
+            // a COPY per call site: facts are keyed by node identity, and an emitter may rename a node it visits, so
+            // two sites must never share one
+            const value = simplifyExpression(substituteExpr(structuredClone(tiny.value), subst))
+            inlining.delete(callee.name)
+
+            return value
+          }
+        }
       }
 
       return { ...node, callee, args }
@@ -1303,8 +1425,16 @@ function simplifyStatement(node: Statement): Statement {
           ? simplifyBody(node.otherwise)
           : undefined,
       }
-    case 'function':
-      return { ...node, body: simplifyBody(node.body) }
+    case 'function': {
+      // the names this function binds, so a small task's body is not inlined where one of them would capture a name
+      // the body means as its own (see the call case)
+      const outer = callerBound
+      callerBound = boundNames(node)
+      const body = simplifyBody(node.body)
+      callerBound = outer
+
+      return { ...node, body }
+    }
     default:
       return node
   }
@@ -1955,11 +2085,27 @@ export function simplify(
     }
   }
 
+  // and the small one-expression tasks inlined at any call with pure arguments
+  small = new Map()
+
+  for (const node of propagated) {
+    // a specializable task may be small as well: the specializer tries a constant argument first, and this covers the
+    // calls it does not reduce
+    if (node.form === 'function') {
+      const value = smallBody(node)
+
+      if (value) {
+        small.set(node.name, { params: node.params, value })
+      }
+    }
+  }
+
   inlining = new Set()
 
   const folded = propagated.map(simplifyStatement)
-  const droppable = new Set(specializable.keys())
+  const droppable = new Set([...specializable.keys(), ...small.keys()])
   specializable = new Map()
+  small = new Map()
   inlining = new Set()
 
   return dropDeadFunctions(folded, droppable, roots)

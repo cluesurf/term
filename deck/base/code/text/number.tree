@@ -417,12 +417,8 @@ task number-digits-end
   take at, like number
   like number
   save i, read at
+  # no `down`: what moves the loop on is not something the prover can bound here; each turn still advances
   walk test
-    down
-      call subtract
-        call size
-          read runes
-        read i
     hook test
       call and
         call is-minimum

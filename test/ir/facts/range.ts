@@ -187,6 +187,82 @@ const closure = count(
 )
 ok('a counter some closure writes is NOT proven', closure.proven === 0, JSON.stringify(closure))
 
+// 7. the other side of the condition: `high = high - 1` under `low < high` is proven
+const down = count(
+  task(`  save low, code 0
+  save high, read n
+  walk test
+    hook test
+      call is-below
+        read low
+        read high
+    hook hold
+      save high
+        call subtract
+          read high
+          code 1`),
+)
+const minus = (p: Program): number => {
+  const proven = provenIncrements(p)
+  let n = 0
+  const seen = new Set<object>()
+  const visit = (v: unknown): void => {
+    if (typeof v !== 'object' || v === null || seen.has(v)) return
+    seen.add(v)
+    if (Array.isArray(v)) return v.forEach(visit)
+    const node = v as { form?: string; op?: string }
+    if (node.form === 'binary' && node.op === '-' && proven.has(node as Expression)) n++
+    for (const [k, c] of Object.entries(node)) if (k !== 'type' && k !== 'span') visit(c)
+  }
+  visit(p)
+  return n
+}
+ok('a decrement of the big side of `low < high` is proven', minus(down.program) === 1, JSON.stringify(down))
+
+// 8. counterexample: decrementing the SMALL side can go below the minimum
+const wrongWay = count(
+  task(`  save low, code 0
+  walk test
+    hook test
+      call is-below
+        read low
+        read n
+    hook hold
+      save low
+        call subtract
+          read low
+          code 1`),
+)
+ok('a decrement of the small side is NOT proven', minus(wrongWay.program) === 0, JSON.stringify(wrongWay))
+
+// 9. a read of `i + 1` before the step is proven; the same read AFTER the step is not
+const reads = count(
+  task(`  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        read n
+    hook hold
+      save sum
+        call add
+          read sum
+          call add
+            read i
+            code 1
+      save i
+        call add
+          read i
+          code 1
+      save sum
+        call add
+          read sum
+          call add
+            read i
+            code 1`),
+)
+ok('`i + 1` read before the step is proven, and the one after it is not', reads.proven === 2 && reads.adds === 5, JSON.stringify(reads))
+
 console.log(`\nrange: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

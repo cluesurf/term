@@ -70,7 +70,9 @@ describe('an omitted `need false` parameter', () => {
     const result = compile({ file: 'opt.tree', text: OMITTED })
     const out = result.ok ? result.typescript : ''
 
-    expect(out).toContain('greet("hi")')
+    // the left-out boolean is passed as its empty value, `false`, as Rust, Swift and Kotlin pass it
+    // (note/term/stdlib/semantics.md, "A left-out argument")
+    expect(out).toContain('greet("hi", false)')
   })
 
   it('still compiles when the parameter IS given', () => {

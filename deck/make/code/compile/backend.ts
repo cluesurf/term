@@ -254,7 +254,26 @@ export function reassigned(
         break
       case 'assign': {
         // `save x, v` reassigns x; `save x/field, v` mutates x in place, which a by-value parameter needs a mutable
-        // shadow for just the same
+        // shadow for just the same. `save xs/{i}, v` and `save xs/0, v` on a LIST or MAP are not either: every
+        // native backend holds a list and a map by reference (SeedList, Rc<RefCell<..>>, MutableList), and writes the
+        // element through it, so the binding stays immutable. Counting them made Swift write `var perm = perm` and
+        // `var xs = ...` that it then warned were never mutated
+        const element =
+          s.target.form === 'member' &&
+          s.target.target.form === 'variable' &&
+          (s.target.target.type?.kind === 'array' || s.target.target.type?.kind === 'map') &&
+          (s.target.index !== undefined || /^\d+$/.test(s.target.name))
+
+        if (element) {
+          reassignedExpr(s.value, into)
+
+          if (s.target.form === 'member' && s.target.index) {
+            reassignedExpr(s.target.index, into)
+          }
+
+          break
+        }
+
         let target: Expression = s.target
 
         while (target.form === 'member') {
@@ -526,4 +545,63 @@ export function hasValuedReturn(body: import('@term/make/code/compile/node').Sta
   }
 
   return false
+}
+
+// The function-typed parameters a task may keep past its call (note/term/codegen/passes.md, P3, in its first and
+// most conservative form). A parameter stays NON-escaping only when every mention of it is the callee of a call made
+// directly in the task's body: passed as an argument, returned, stored, read inside a closure, or written (a written
+// parameter is copied into a `var`), it escapes. Anything this cannot see is treated as escaping, which is what every
+// parameter was before, so a mistake can only cost the optimization and never the build.
+export function escapingParams(fn: Extract<Statement, { form: 'function' }>): Set<string> {
+  const names = new Set(fn.params.filter(p => p.type?.kind === 'function').map(p => p.name))
+  const escapes = new Set<string>()
+
+  if (names.size === 0) {
+    return escapes
+  }
+
+  type Loose = { form?: string; [key: string]: unknown }
+  const seen = new Set<object>()
+  const visit = (value: unknown, inClosure: boolean): void => {
+    if (typeof value !== 'object' || value === null || seen.has(value)) {
+      return
+    }
+
+    seen.add(value)
+
+    if (Array.isArray(value)) {
+      value.forEach(v => visit(v, inClosure))
+
+      return
+    }
+
+    const node = value as Loose
+    const inside = inClosure || node.form === 'closure'
+
+    if (node.form === 'variable' && names.has(node.name as string)) {
+      escapes.add(node.name as string)
+    }
+
+    if (node.form === 'assign' && (node.target as Loose).form === 'variable' && names.has((node.target as Loose).name as string)) {
+      escapes.add((node.target as Loose).name as string)
+    }
+
+    for (const [key, child] of Object.entries(node)) {
+      if (key === 'type' || key === 'span') {
+        continue
+      }
+
+      // the callee of a direct call outside any closure is the one use that does not escape
+      const callee = child as Loose | null
+      if (node.form === 'call' && key === 'callee' && !inside && callee?.form === 'variable' && names.has(callee.name as string)) {
+        continue
+      }
+
+      visit(child, inside)
+    }
+  }
+
+  visit(fn.body, false)
+
+  return escapes
 }

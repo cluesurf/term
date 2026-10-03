@@ -13,11 +13,15 @@
 //   button                 a native button. Its title is the text of its children, which are never installed as views
 //   input, textarea        a native text field, its value two-way
 //   switch                 the platform's switch (NSSwitch, UISwitch). `aria-checked` is its state, its change is `click`
+//   img                    NSImageView, UIImageView. `src` is a `data:` URI, a path or a URL, `alt` its accessibility label
+//   hr                     a hairline: NSBox's separator, a 1 point UIView. Vertical in a row
+//   scroll                 NSScrollView, UIScrollView, around a vertical stack the children go into
 //   span a b i em strong   a horizontal stack (an inline run)
 //   anything else          a vertical stack: the container every layout starts from
 //
-// Every call happens on the main thread, which is where the render runtime runs: an event handler fires there and the
-// effects it triggers run inside it. Nothing here hops threads.
+// Every call happens on the main thread, the only one a toolkit may be touched from. An event handler fires there and
+// the effects it triggers run inside it, but a page's async `boot` resumes after an await wherever Swift chose, so every
+// `nativeView` entry point hops to the main thread first (`onMain`) when it is called from another (native-dom-0014).
 import Foundation
 
 #if canImport(AppKit)
@@ -86,6 +90,10 @@ final class TermNode {
         // face's dialog: a stack of content the platform presents itself, an NSPanel sheet on macOS and a presented
         // view controller on iOS, never placed in the page it is appended to (native-dom-0026)
         case sheet
+        // the vocabulary's image, divider and scroll (native-dom-0049, note/term/view/11-vocabulary.md)
+        case image
+        case divider
+        case scroll
     }
 
     let key: Int
@@ -109,11 +117,23 @@ final class TermNode {
     // the action targets and delegates the toolkit holds weakly, kept alive by the node
     var keep: [AnyObject] = []
     var tapInstalled = false
+    // a scroll's content: the stack its children go into, inside the scroll view, which is what the parent holds
+    let inner: TermStack?
+    // a divider's thickness, kept so a divider in a row can turn it into a width (a vertical line)
+    var line: NSLayoutConstraint?
+    // an image's loaded picture (NSImage, UIImage), kept so a change of fit can draw it again
+    var picture: AnyObject?
+
+    // the stack this node's children are installed in: its own view, or a scroll's content
+    var box: TermStack? {
+        inner ?? view as? TermStack
+    }
 
     init(key: Int, tag: String, text: String) {
         self.key = key
         self.tag = tag
         self.text = text
+        var content: TermStack?
 
         if tag.isEmpty {
             kind = .text
@@ -199,6 +219,73 @@ final class TermNode {
             floor.isActive = true
             view = field
             #endif
+        } else if tag == "img" {
+            // its picture arrives with `src`, and its words with `alt` (native-dom-0049)
+            kind = .image
+            #if canImport(AppKit)
+            let picture = NSImageView()
+            picture.imageScaling = .scaleProportionallyUpOrDown
+            view = picture
+            #endif
+            #if canImport(UIKit)
+            let picture = UIImageView()
+            picture.contentMode = .scaleAspectFit
+            picture.clipsToBounds = true
+            view = picture
+            #endif
+        } else if tag == "hr" {
+            // a hairline across its stack. One in a row turns into a vertical line when it is appended
+            kind = .divider
+            #if canImport(AppKit)
+            // not NSBox's separator: that is a 5 point frame with a line drawn inside it, so its frame read 5 tall
+            let rule = TermLine()
+            #endif
+            #if canImport(UIKit)
+            let rule = UIView()
+            rule.backgroundColor = .separator
+            #endif
+            rule.translatesAutoresizingMaskIntoConstraints = false
+            let thickness = rule.heightAnchor.constraint(equalToConstant: 1)
+            thickness.isActive = true
+            line = thickness
+            view = rule
+        } else if tag == "scroll" {
+            // a frame whose content may be taller than it: the platform's scroll view around a vertical stack the
+            // children go into, as wide as the frame, so only the height scrolls (native-dom-0049)
+            kind = .scroll
+            let stack = TermStack()
+            stack.spacing = 0
+            stack.translatesAutoresizingMaskIntoConstraints = false
+            #if canImport(AppKit)
+            stack.orientation = .vertical
+            stack.alignment = .leading
+            let scroll = NSScrollView()
+            scroll.hasVerticalScroller = true
+            scroll.drawsBackground = false
+            // a flipped clip, so the content starts at the top as it does everywhere else
+            scroll.contentView = TermTopClip()
+            scroll.documentView = stack
+            NSLayoutConstraint.activate([
+                stack.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
+                stack.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
+                stack.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
+            ])
+            #endif
+            #if canImport(UIKit)
+            stack.axis = .vertical
+            stack.alignment = .leading
+            let scroll = UIScrollView()
+            scroll.addSubview(stack)
+            NSLayoutConstraint.activate([
+                stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+                stack.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+                stack.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+                stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+                stack.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor),
+            ])
+            #endif
+            content = stack
+            view = scroll
         } else {
             kind = .container
             let stack = TermStack()
@@ -215,6 +302,8 @@ final class TermNode {
             stack.spacing = 0
             view = stack
         }
+
+        inner = content
     }
 
     // the text under this node, in order: what a button shows as its title
@@ -261,6 +350,20 @@ final class TermNode {
 }
 
 #if canImport(AppKit)
+// a scroll's clip view, flipped so its content is laid from the top down as a page is
+final class TermTopClip: NSClipView {
+    override var isFlipped: Bool { true }
+}
+
+// a divider: a view filled with the system's separator color, redrawn when the appearance turns light or dark
+final class TermLine: NSView {
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        layer?.backgroundColor = NSColor.separatorColor.cgColor
+    }
+}
+
 final class TermAppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
@@ -427,6 +530,17 @@ enum nativeView {
                 #endif
             case "options" where node.kind == .choice:
                 setChoices(node, value.split(separator: "\n").map(String.init))
+            case "src" where node.kind == .image:
+                load(picture: node, from: value)
+            case "alt" where node.kind == .image:
+                // what the picture shows, for a reader that cannot see it: the platform's accessibility label
+                #if canImport(AppKit)
+                node.view.setAccessibilityLabel(value)
+                #endif
+                #if canImport(UIKit)
+                node.view.isAccessibilityElement = true
+                node.view.accessibilityLabel = value
+                #endif
             case "disabled":
                 #if canImport(AppKit)
                 (node.view as? NSControl)?.isEnabled = value == "false"
@@ -443,6 +557,82 @@ enum nativeView {
                 restyle(node)
             }
         }
+    }
+
+    // ---- the image (native-dom-0049): a `data:` URI, a file path, or an http(s) URL fetched off the main thread ----
+
+    // the bytes of a `data:` URI (base64 or plain) or a file, or nil for a URL that must be fetched
+    private static func bytes(of source: String) -> Data? {
+        if source.hasPrefix("data:"), let comma = source.firstIndex(of: ",") {
+            let meta = source[..<comma]
+            let body = String(source[source.index(after: comma)...])
+            return meta.hasSuffix(";base64") ? Data(base64Encoded: body) : body.removingPercentEncoding?.data(using: .utf8)
+        }
+        if source.hasPrefix("http://") || source.hasPrefix("https://") {
+            return nil
+        }
+        let path = source.hasPrefix("file://") ? (URL(string: source)?.path ?? source) : source
+        return FileManager.default.contents(atPath: path)
+    }
+
+    private static func load(picture node: TermNode, from source: String) {
+        if let data = bytes(of: source) {
+            set(picture: node, data)
+        } else if let url = URL(string: source) {
+            URLSession.shared.dataTask(with: url) { data, _, _ in
+                guard let data else { return }
+                DispatchQueue.main.async { set(picture: node, data) }
+            }.resume()
+        }
+    }
+
+    private static func set(picture node: TermNode, _ data: Data) {
+        #if canImport(AppKit)
+        node.picture = NSImage(data: data)
+        #endif
+        #if canImport(UIKit)
+        node.picture = UIImage(data: data)
+        #endif
+        draw(picture: node)
+    }
+
+    // the picture into the view, by its fit: `contain` (the default) inside the frame, `cover` filling it and clipped
+    private static func draw(picture node: TermNode) {
+        let cover = node.styles["object-fit"]?.trimmingCharacters(in: .whitespaces) == "cover"
+        #if canImport(AppKit)
+        guard let view = node.view as? NSImageView else { return }
+        let image = node.picture as? NSImage
+        // NSImageView has no aspect fill: a cover is the layer's contents, drawn with aspect-fill gravity
+        view.wantsLayer = true
+        view.layer?.masksToBounds = true
+        view.image = cover ? nil : image
+        view.layer?.contentsGravity = .resizeAspectFill
+        view.layer?.contents = cover ? image : nil
+        #endif
+        #if canImport(UIKit)
+        guard let view = node.view as? UIImageView else { return }
+        view.contentMode = cover ? .scaleAspectFill : .scaleAspectFit
+        view.image = node.picture as? UIImage
+        #endif
+    }
+
+    // the loaded picture's size in pixels, `none` before one has loaded
+    private static func pixels(_ node: TermNode) -> String {
+        #if canImport(AppKit)
+        let cg = (node.picture as? NSImage)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        #endif
+        #if canImport(UIKit)
+        let cg = (node.picture as? UIImage)?.cgImage
+        #endif
+        return cg.map { "\($0.width)x\($0.height)" } ?? "none"
+    }
+
+    private static func label(_ node: TermNode) -> String {
+        #if canImport(AppKit)
+        return node.view.accessibilityLabel() ?? ""
+        #else
+        return node.view.accessibilityLabel ?? ""
+        #endif
     }
 
     static func getAttribute(_ handle: Any, _ name: String) -> String {
@@ -495,7 +685,8 @@ enum nativeView {
     private static func applyStyle(_ node: TermNode, _ property: String, _ value: String) {
         node.styles[property] = value
         let value = value.trimmingCharacters(in: .whitespaces)
-        let stack = node.view as? TermStack
+        // a scroll's layout words (direction, gap, padding) lay out its content
+        let stack = node.box
 
         if drawLook(node, property, value) {
             return
@@ -586,11 +777,30 @@ enum nativeView {
                 anchor.constraint(equalToConstant: size).isActive = true
                 return
             }
+        case ("min-width", _), ("max-width", _), ("min-height", _), ("max-height", _):
+            // the vocabulary's frame bounds (native-dom-0049): required, so a control's own size gives way to them
+            if let size = points(value) {
+                node.view.translatesAutoresizingMaskIntoConstraints = false
+                let anchor = property.hasSuffix("width") ? node.view.widthAnchor : node.view.heightAnchor
+                let bound = property.hasPrefix("min")
+                    ? anchor.constraint(greaterThanOrEqualToConstant: size)
+                    : anchor.constraint(lessThanOrEqualToConstant: size)
+                bound.isActive = true
+                return
+            }
+        case ("object-fit", _) where node.kind == .image && (value == "contain" || value == "cover"):
+            // drawn again with the fit now in `styles`, which is where `draw(picture:)` reads it
+            draw(picture: node)
+            return
         case ("flex-grow", _):
             if let grow = Double(value), grow > 0 {
                 #if canImport(AppKit)
                 node.view.setContentHuggingPriority(.defaultLow - 1, for: .horizontal)
                 node.view.setContentHuggingPriority(.defaultLow - 1, for: .vertical)
+                // a stack view holds its own size by a hugging priority of its own, which the content one above does not
+                // reach: an empty growing `div` (the vocabulary's spacer) stayed 0 wide (native-dom-0049)
+                (node.view as? NSStackView)?.setHuggingPriority(.defaultLow - 1, for: .horizontal)
+                (node.view as? NSStackView)?.setHuggingPriority(.defaultLow - 1, for: .vertical)
                 #endif
                 #if canImport(UIKit)
                 node.view.setContentHuggingPriority(.defaultLow - 1, for: .horizontal)
@@ -1159,12 +1369,31 @@ enum nativeView {
             } else if child.kind == .sheet {
                 // a dialog's content is never in the page: the platform presents it when it opens
                 return
-            } else if let stack = parent.view as? TermStack {
+            } else if let stack = parent.box {
                 stack.addArrangedSubview(child.view)
+                if child.kind == .divider {
+                    orient(child, across: stack)
+                }
                 if shouldFill(child, in: parent) {
                     fill(child.view, in: stack)
                 }
             }
+        }
+    }
+
+    // a divider is a line across its stack: horizontal in a column, vertical in a row
+    private static func orient(_ divider: TermNode, across stack: TermStack) {
+        divider.line?.isActive = false
+        let thickness = vertical(stack)
+            ? divider.view.heightAnchor.constraint(equalToConstant: 1)
+            : divider.view.widthAnchor.constraint(equalToConstant: 1)
+        thickness.isActive = true
+        divider.line = thickness
+        divider.view.translatesAutoresizingMaskIntoConstraints = false
+        if vertical(stack) {
+            divider.view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        } else {
+            divider.view.heightAnchor.constraint(equalTo: stack.heightAnchor).isActive = true
         }
     }
 
@@ -1181,7 +1410,8 @@ enum nativeView {
     // child (CSS's default `align-items` is `stretch`), and a BLOCK container's block-level children fill its width
     // while its inline ones and its controls keep their own size.
     private static func shouldFill(_ child: TermNode, in parent: TermNode) -> Bool {
-        guard let stack = parent.view as? TermStack else { return false }
+        // a divider spans its stack by itself (`orient`)
+        guard let stack = parent.box, child.kind != .divider else { return false }
         let down = vertical(stack)
 
         if child.styles[down ? "width" : "height"] != nil {
@@ -1196,7 +1426,8 @@ enum nativeView {
             return down
         }
 
-        return down && child.kind == .container && !INLINE_TAGS.contains(child.tag)
+        // a scroll is a block too: it fills the width and scrolls the height
+        return down && (child.kind == .container || child.kind == .scroll) && !INLINE_TAGS.contains(child.tag)
     }
 
     // the child fills the stack's cross axis inside its insets. Neither stack stretches one child and not its sibling,
@@ -1241,14 +1472,14 @@ enum nativeView {
             detach(fresh)
             guard let parent = old.parent, let index = parent.children.firstIndex(where: { $0 === old }) else { return }
             // the position among the views actually installed, which is the stack's own index
-            let installedBefore = parent.children[..<index].filter { $0.view.superview === parent.view }.count
+            let installedBefore = parent.children[..<index].filter { $0.view.superview === parent.box }.count
             parent.children[index] = fresh
             fresh.parent = parent
             old.parent = nil
             old.view.removeFromSuperview()
             if let drawing = parent.drawingAncestor {
                 drawing.refreshTitle()
-            } else if let stack = parent.view as? TermStack {
+            } else if let stack = parent.box {
                 stack.insertArrangedSubview(fresh.view, at: installedBefore)
             }
         }
@@ -1753,6 +1984,22 @@ enum nativeView {
             case .container:
                 let installed = node.children.filter { $0.view.superview === node.view }
                 return "<\(node.tag)>\(installed.map { serialize($0) }.joined())</\(node.tag)>"
+            case .image:
+                // read off the view: the picture it holds, in pixels, and the label the platform reads aloud
+                return "<img alt=\"\(label(node))\" size=\"\(pixels(node))\"></img>"
+            case .divider:
+                return "<hr></hr>"
+            case .scroll:
+                // the content's laid-out size, so a reader can see it is larger than the frame that scrolls it
+                #if canImport(AppKit)
+                node.view.window?.contentView?.layoutSubtreeIfNeeded()
+                let extent = (node.view as? NSScrollView)?.documentView?.frame.size ?? .zero
+                #else
+                node.view.window?.layoutIfNeeded()
+                let extent = (node.view as? UIScrollView)?.contentSize ?? .zero
+                #endif
+                let installed = node.children.filter { $0.view.superview === node.box }
+                return "<scroll extent=\"\(Int(extent.width.rounded())),\(Int(extent.height.rounded()))\">\(installed.map { serialize($0) }.joined())</scroll>"
             }
         }
     }

@@ -16,9 +16,11 @@
 
 load @term/base/code/path
   find join
+  find directory
 
 load @term/base/code/file
   find read, name read-file
+  find test, name file-test
 
 load @term/base/code/file/directory
   find walk, name walk-directory
@@ -31,6 +33,7 @@ load @term/base/code/file/metadata
 load @term/base/code/text
   find contains
   find ends-with
+  find starts-with
   find substring
   find char-count
   find split
@@ -104,14 +107,46 @@ task is-draft
         back true
   back false
 
-# a `draft.tree` beside a file shelves its whole directory. Synchronous: `file/directory`'s `exists` and `walk`
-# are, and only `file/read` carries `note async`, so awaiting them is itself an effect error.
+# a `draft.tree` in a directory shelves it. `draft.tree` is a FILE, so this asks whether a file exists. It asked
+# `file/directory`'s `exists`, which is false for a file, so no directory was ever shelved (found 2026-10-02).
 task is-shelved
+  note async
   take directory, like text
 
   like boolean
 
-  back directory-exists join directory, <draft.tree>
+  back
+    file-test
+      join(directory, <draft.tree>)
+      wait true
+
+# is a file inside a SHELVED directory: its own, or any above it up to the walk's root. The TypeScript checks each
+# directory on the way down. This walk gets a flat list, so it looks up from each file instead.
+#
+# `is-shelved` was written and never CALLED, from the first version of this port: every walked package was free of
+# `draft.tree` until 2026-10-02, when two arrived in the stdlib and `pnpm term:cli-port` read 821 files against 797.
+task is-under-shelved
+  note async
+  take root, like text
+  take file, like text
+
+  like boolean
+
+  save at, directory file
+  walk test
+    hook test
+      starts-with at, root
+    hook hold
+      fork test
+        is-shelved at, wait true
+        hold
+          back true
+      fork test
+        is-equal at, root
+        hold
+          back false
+      save at, directory at
+  back false
 
 # every `.tree` file under one directory that is not shelved
 task walk-trees
@@ -134,6 +169,10 @@ task walk-trees
             turn next
         fork test
           is-draft item, wait true
+          hold
+            turn next
+        fork test
+          is-under-shelved root, item, wait true
           hold
             turn next
         found/push item

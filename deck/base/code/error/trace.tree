@@ -17,9 +17,9 @@ bind capture-trace
   like list
     like text
   case node
-    text <(new Error().stack ?? "").split("\n").slice(1).map(function (line) \{ return line.trim() \}).filter(function (line) \{ return line.length > 0 \})>
+    text <(new Error().stack ?? "").split(String.fromCharCode(10)).slice(1).map(function (line) \{ return line.trim() \}).filter(function (line) \{ return line.length !== 0 \})>
   case browser
-    text <(new Error().stack ?? "").split("\n").slice(1).map(function (line) \{ return line.trim() \}).filter(function (line) \{ return line.length > 0 \})>
+    text <(new Error().stack ?? "").split(String.fromCharCode(10)).slice(1).map(function (line) \{ return line.trim() \}).filter(function (line) \{ return line.length !== 0 \})>
   case rust
     text <std::rc::Rc::new(std::cell::RefCell::new(std::backtrace::Backtrace::force_capture().to_string().lines().map(|line| line.trim().to_string()).filter(|line| !line.is_empty()).collect::<Vec<String>>()))>
   case swift

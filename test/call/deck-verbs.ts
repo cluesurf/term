@@ -91,9 +91,13 @@ ok(
 
 // THE ASSERTION THAT MATTERS. A manifest that still parses is not the same as a project that still builds, and
 // both defects above passed the first test and failed this one.
+// ONE file: the scaffold's code. The scaffold's `deck.tree` is a manifest and is not compiled as code, since the
+// 2026-10-02 `wake` fix (it used to emit a `host/deck.ts` of its own, which is what "2 files" counted)
+const BUILT = /Compiled 1 file to host/
+
 ok(
   'the project still BUILDS after `toss`',
-  /Compiled 2 files to host/.test(term(root, 'make')),
+  BUILT.test(term(root, 'make')),
   term(root, 'make'),
 )
 
@@ -130,7 +134,9 @@ const bumped = parseManifest({ text: readFileSync(join(root, 'deck.tree'), 'utf8
 
 ok(
   `\`move code 3\` moves ${before.code.major}.${before.code.minor}.${before.code.patch} to ${bumped.code.major}.${bumped.code.minor}.${bumped.code.patch}`,
-  bumped.code.patch === before.code.patch + 1 &&
+  // a published patch is EVEN, so the bump lands on the next even one: the scaffold starts at 0.0.2 and moves to 0.0.4
+  bumped.code.patch > before.code.patch &&
+    bumped.code.patch % 2 === 0 &&
     bumped.code.major === before.code.major &&
     bumped.code.minor === before.code.minor,
   moved,
@@ -159,7 +165,7 @@ ok(
 )
 
 // and the project it registered still builds, which is the property every verb here shares
-ok('the project still builds after `link`', /Compiled 2 files to host/.test(term(root, 'make')))
+ok('the project still builds after `link`', BUILT.test(term(root, 'make')))
 
 console.log(`\ndeck-verbs: ${pass} pass, ${fail} fail`)
 

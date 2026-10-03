@@ -13,6 +13,10 @@
 //   - no closure anywhere in the program writes a variable of the counter's name: a closure made before the loop and
 //     called inside it writes the counter without its write appearing in the loop's body
 //   - the counter is a `number`
+// The same holds on the other side of the condition: in `while (low < high)`, a single `high = high - 1` cannot go
+// below the minimum, since `high > low >= MIN`. And the step's own expression read EARLIER in the body (`i + 1` used as
+// an index before `i = i + 1`) is proven too, outside closures, because there the counter is still the tested value.
+// Separately, `x % c` by a nonzero integer literal cannot leave the range: the result is smaller than |c|.
 // A fact that is wrong removes a check that should fire, so every rule has a counterexample in
 // test/ir/facts/range.ts that must NOT be proven.
 //
@@ -47,6 +51,17 @@ export function provenIncrements(program: Program): WeakSet<Expression> {
       check(node)
     }
 
+    // `x % c` by a nonzero integer literal: the result is smaller than |c|, so it cannot leave the range, and c is no zero
+    if (
+      node.form === 'binary' &&
+      node.op === '%' &&
+      (node.right as Loose).form === 'integer' &&
+      Number((node.right as Loose).value) !== 0 &&
+      ((node.left as Loose).type as { kind?: string } | undefined)?.kind === 'number'
+    ) {
+      proven.add(node as unknown as Expression)
+    }
+
     for (const [key, inner] of Object.entries(node)) {
       if (key !== 'type' && key !== 'span') {
         visit(inner)
@@ -57,22 +72,30 @@ export function provenIncrements(program: Program): WeakSet<Expression> {
   const check = (loop: Loose): void => {
     const cond = loop.cond as Loose | undefined
 
-    if (cond?.form !== 'binary') {
+    if (cond?.form !== 'binary' || (cond.op !== '<' && cond.op !== '>')) {
       return
     }
 
-    const left = cond.left as Loose
-    const right = cond.right as Loose
-    // `i < bound`, or `bound > i`
-    const counter =
-      cond.op === '<' && left.form === 'variable'
-        ? (left.name as string)
-        : cond.op === '>' && right.form === 'variable'
-          ? (right.name as string)
-          : undefined
-    const counterNode = cond.op === '<' ? left : right
+    // `small < big`, or `big > small`: the small side may step up by one and the big side down by one
+    const small = (cond.op === '<' ? cond.left : cond.right) as Loose
+    const big = (cond.op === '<' ? cond.right : cond.left) as Loose
 
-    if (!counter || closureWrites.has(counter) || (counterNode.type as { kind?: string } | undefined)?.kind !== 'number') {
+    if (small.form === 'variable') {
+      counted(loop, small, 1)
+    }
+
+    if (big.form === 'variable') {
+      counted(loop, big, -1)
+    }
+  }
+
+  // one side of the condition as a counter stepping by `direction`: its step is proven, and so is the same expression
+  // read anywhere in the loop body BEFORE the statement that steps it, outside a closure, where the counter still holds
+  // the value the condition tested
+  const counted = (loop: Loose, side: Loose, direction: 1 | -1): void => {
+    const counter = side.name as string
+
+    if (closureWrites.has(counter) || (side.type as { kind?: string } | undefined)?.kind !== 'number') {
       return
     }
 
@@ -119,18 +142,61 @@ export function provenIncrements(program: Program): WeakSet<Expression> {
     }
 
     const write = writes[0]!.node
-    const step = write.value as Loose
     const isCounter = (e: Loose): boolean => e.form === 'variable' && e.name === counter
     const isOne = (e: Loose): boolean => e.form === 'integer' && Number(e.value) === 1
+    // `counter + 1` (either order) stepping up, `counter - 1` stepping down
+    const isStep = (e: Loose): boolean =>
+      e.form === 'binary' &&
+      (direction === 1
+        ? e.op === '+' && ((isCounter(e.left as Loose) && isOne(e.right as Loose)) || (isOne(e.left as Loose) && isCounter(e.right as Loose)))
+        : e.op === '-' && isCounter(e.left as Loose) && isOne(e.right as Loose))
 
-    if (write.op === '=' && step.form === 'binary' && step.op === '+') {
-      const a = step.left as Loose
-      const b = step.right as Loose
+    if (write.op !== '=' || !isStep(write.value as Loose)) {
+      return
+    }
 
-      if ((isCounter(a) && isOne(b)) || (isOne(a) && isCounter(b))) {
-        proven.add(step as unknown as Expression)
+    proven.add(write.value as unknown as Expression)
+
+    // the reads before the stepping statement, when that statement is one of the loop body's own
+    const body = loop.body as unknown[]
+    const at = Array.isArray(body) ? body.indexOf(write) : -1
+
+    if (at < 0) {
+      return
+    }
+
+    const before = new Set<object>()
+    const collect = (value: unknown): void => {
+      if (typeof value !== 'object' || value === null || before.has(value)) {
+        return
+      }
+
+      before.add(value)
+
+      if (Array.isArray(value)) {
+        value.forEach(collect)
+
+        return
+      }
+
+      const node = value as Loose
+
+      if (node.form === 'closure') {
+        return
+      }
+
+      if (isStep(node)) {
+        proven.add(node as unknown as Expression)
+      }
+
+      for (const [key, child] of Object.entries(node)) {
+        if (key !== 'type' && key !== 'span') {
+          collect(child)
+        }
       }
     }
+
+    body.slice(0, at).forEach(collect)
   }
 
   visit(program)

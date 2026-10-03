@@ -12,7 +12,7 @@
 note stable
 
 load @term/base/code/native/{platform}/network/http
-  find do-request
+  find send-request
 
 load @term/base/code/network/response
   find http-response
@@ -55,7 +55,7 @@ task request
   take timeout, like(number), fall 30000
   like http-response
   save got
-    call do-request
+    call send-request
       read method
       read url
       read body

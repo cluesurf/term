@@ -5,7 +5,7 @@
 // a call lowers to `@callee(args)`. Recursion is just a self-reference to `@name`. Forms outside this fragment (strings,
 // collections, closures stored in data, records, loops) are flagged with a SEED-UNSUPPORTED marker, exactly like the
 // WGSL backend. Run monomorphization first so a generic call resolves to a concrete definition. Pure,
-// browser-safe. Experimental: see backend-registry.ts.
+// browser-safe. Experimental: see backend-registry.tree.
 
 import type {
   Expression,

@@ -1891,12 +1891,8 @@ task past-zero
   take at, like number
   like number
   save k, read at
+  # no `down`: what moves the loop on is not something the prover can bound here; each turn still advances
   walk test
-    down
-      call subtract
-        call size
-          read data
-        read k
     hook test
       call is-above
         call byte-at

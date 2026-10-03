@@ -1457,11 +1457,8 @@ task read-date-time
         call add
           read j
           code 1
+      # no `down`: what moves the loop on is not something the prover can bound here; each turn still advances
       walk test
-        down
-          call subtract
-            read m
-            read j
         hook test
           call is-digit
             call at-rune

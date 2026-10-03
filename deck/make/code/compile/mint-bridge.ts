@@ -616,6 +616,19 @@ function expressionOf(
         return { form: 'unit', span }
       }
 
+      // `f()` is a call with no arguments. The generic tree has no node for an empty pair of parentheses, so
+      // `f()` parsed exactly as `f` and milled to the bare name: `save b, make-box()` saved the TASK and emitted
+      // `makeBox.size` (found porting compile/view-cap, 2026-10-02). The parentheses survive only in the token
+      // stream, so that is where they are read.
+      if (value.node && hasEmptyParens(value.node)) {
+        return {
+          form: 'call',
+          callee: readPath(plainName(value.value), span),
+          args: [],
+          span,
+        }
+      }
+
       // THROUGH readPath, so `x/a` in value position is a member read and not a variable named "x/a". The
       // callee slot always went through it and the value slot did not, so `letters/flat-map` as a head
       // worked and `x/a` as an argument resolved to nothing and said nothing (lean-0019, probed 2026-09-12).
@@ -1268,6 +1281,26 @@ function readPath(path: string, span: Span): Expression {
   }
 
   return node
+}
+
+// Is this word written with an empty pair of parentheses straight after it, `f()`. The tree keeps no node for
+// them, so the answer is in the token stream: the word's last token, then `(`, then `)`.
+function hasEmptyParens(node: Node): boolean {
+  const name =
+    node.kind === 'name'
+      ? node
+      : node.kind === 'group' && node.nodes.length === 1 && node.nodes[0]?.kind === 'name'
+        ? node.nodes[0]
+        : undefined
+  const last = name?.parts[name.parts.length - 1]
+
+  if (last?.kind !== 'chunk') {
+    return false
+  }
+
+  const open = (last.token as { next?: { kind: string; next?: { kind: string } } }).next
+
+  return open?.kind === 'open-paren' && open.next?.kind === 'close-paren'
 }
 
 // ---- the lean surface ----

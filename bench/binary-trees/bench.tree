@@ -1,0 +1,9 @@
+host program, <binary-trees>
+host entry, <binary-trees>
+host source, <the Computer Language Benchmarks Game program, single-threaded, the same algorithm, a node per allocation>
+host check, 10
+host expect, <stretch tree of depth 11	 check: 4095 1024	 trees of depth 4	 check: 31744 256	 trees of depth 6	 check: 32512 64	 trees of depth 8	 check: 32704 16	 trees of depth 10	 check: 32752 long lived tree of depth 10	 check: 2047>
+host size, 16
+host runs, 5
+host semantics, <integers within i64. A recursive variant form allocated per node and dropped after each check>
+host idiom, <ours, 2026-10-02: Box enum in Rust, an object or null in TypeScript, an indirect enum in Swift, a class with nullable children in Kotlin>

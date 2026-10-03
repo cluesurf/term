@@ -58,10 +58,11 @@ task read-history
     make list
   fork test
     hook test
-      call not
+      call is-equal
         call file-present
           read dir
           wait true
+        false
     hook hold
       send back, read out
   save names
@@ -194,11 +195,12 @@ task earlier-of
                   text <machine>
                 text <digest>
               read machine
-            call not
+            call is-equal
               call is-less
                 call from-texts
                   read start
                   read before
+              false
         hook hold
           turn next
       save cases
@@ -287,12 +289,14 @@ task earlier-of
       fork test
         hook test
           call and
-            call not
+            call is-equal
               call is-null
                 read term-case
-            call not
+              false
+            call is-equal
               call is-null
                 read base-case
+              false
         hook hold
           send back
             make earlier

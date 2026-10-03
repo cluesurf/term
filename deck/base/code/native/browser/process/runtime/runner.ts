@@ -10,4 +10,14 @@ const runner = {
     output: '',
     error: 'subprocess is not available in the browser',
   }),
+  attached: async (_command: string, _argumentList: string[]): Promise<number> => -1,
+  withInput: async (
+    _command: string,
+    _argumentList: string[],
+    _input: string,
+  ): Promise<{ code: number; output: string; error: string }> => ({
+    code: -1,
+    output: '',
+    error: 'subprocess is not available in the browser',
+  }),
 }

@@ -1,0 +1,113 @@
+load @term/base/code/math
+  find power
+
+# binary-trees, the Benchmarks Game program, single-threaded: build perfect binary trees bottom-up, walk each to count
+# its nodes, and drop it. What it stresses is allocation and freeing, recursion and a match per node. Written the
+# obvious way: a recursive variant form, a recursive builder, a recursive check.
+form tree
+  case leaf
+  case branch
+    link left, like tree
+    link right, like tree
+
+task bottom-up
+  take depth, like number
+  like tree
+  fork test
+    hook test
+      call is-above
+        read depth
+        code 0
+    hook hold
+      host next
+        call subtract
+          read depth
+          code 1
+      send back
+        make branch
+          bind left
+            call bottom-up
+              read next
+          bind right
+            call bottom-up
+              read next
+  send back
+    make leaf
+
+task item-check
+  take t, like tree
+  like number
+  fork case, read t
+    case leaf
+      send back, code 1
+    case branch
+      send back
+        call add
+          code 1
+          call add
+            call item-check
+              read left
+            call item-check
+              read right
+
+task binary-trees
+  take n, like number
+  like text
+  save max-depth, read n
+  fork test
+    hook test
+      call is-below
+        read max-depth
+        code 6
+    hook hold
+      save max-depth, code 6
+  host stretch-depth
+    call add
+      read max-depth
+      code 1
+  host stretch
+    call item-check
+      call bottom-up
+        read stretch-depth
+  save out, text <stretch tree of depth {{stretch-depth}}\t check: {{stretch}}>
+  host long-lived
+    call bottom-up
+      read max-depth
+  save depth, code 4
+  walk test
+    hook test
+      call is-maximum
+        read depth
+        read max-depth
+    hook hold
+      host iterations
+        call power
+          code 2
+          call add
+            call subtract
+              read max-depth
+              read depth
+            code 4
+      save check, code 0
+      walk size
+        bind base, code 0
+        bind head, read iterations
+        hook next
+          take site, name i
+          save check
+            call add
+              read check
+              call item-check
+                call bottom-up
+                  read depth
+      save out, text <{{out}}
+{{iterations}}\t trees of depth {{depth}}\t check: {{check}}>
+      save depth
+        call add
+          read depth
+          code 2
+  host long
+    call item-check
+      read long-lived
+  send back, text <{{out}}
+long lived tree of depth {{max-depth}}\t check: {{long}}>

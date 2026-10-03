@@ -1,0 +1,296 @@
+# What a Linux machine needs to build and test Term: build tools, Node and pnpm, Rust, Swift (through swiftly), a JDK,
+# Kotlin and Maven at the versions the Kotlin runtime pins, the Android SDK, and the GTK and WebKit libraries the Linux
+# cask links against. Every suite but the Apple ones (Swift on a Mac, iOS, the Apple cask) runs here. Debian and
+# Ubuntu (apt), Fedora (dnf), Arch (pacman) and openSUSE (zypper) are each spelled out.
+
+load ./plan
+  find machine
+  find tool
+  find step
+  find setting
+  find make-step
+  find make-setting
+  find path-setting
+  find install-packages
+  find node-major
+  find pnpm-version
+  find jdk-major
+  find kotlin-version
+  find maven-version
+  find android-tools-build
+  find android-api
+  find android-build-tools
+  find android-device
+
+load @term/base/code/list
+  find list
+
+# the package names for this machine's package manager, from the four spellings
+task pick-packages
+  take machine, like machine
+  take apt, like text
+  take dnf, like text
+  take pacman, like text
+  take zypper, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read machine/packager
+        text <dnf>
+    hook hold
+      send back, read dnf
+    hook test
+      call is-equal
+        read machine/packager
+        text <pacman>
+    hook hold
+      send back, read pacman
+    hook test
+      call is-equal
+        read machine/packager
+        text <zypper>
+    hook hold
+      send back, read zypper
+  send back, read apt
+
+task linux-android-home
+  take machine, like machine
+  like text
+  send back, text <{{machine/home}}/Android/Sdk>
+
+task linux-settings
+  take machine, like machine
+  like list
+    like setting
+  save android
+    call linux-android-home
+      read machine
+  save out
+    make list
+  call out/push
+    call path-setting, text <{{machine/store}}/node/bin>
+  call out/push
+    call path-setting, text <{{machine/home}}/.cargo/bin>
+  call out/push
+    call path-setting, text <{{machine/home}}/.local/share/swiftly/bin>
+  call out/push
+    call path-setting, text <{{machine/store}}/kotlin/kotlinc/bin>
+  call out/push
+    call path-setting, text <{{machine/store}}/maven/apache-maven-{{maven-version}}/bin>
+  call out/push
+    call path-setting, text <{{android}}/cmdline-tools/latest/bin>
+  call out/push
+    call path-setting, text <{{android}}/platform-tools>
+  call out/push
+    call path-setting, text <{{android}}/emulator>
+  call out/push
+    call make-setting
+      text <ANDROID_HOME>
+      read android
+  call out/push
+    call make-setting
+      text <ANDROID_SDK_ROOT>
+      read android
+  send back, read out
+
+task linux-tools
+  take machine, like machine
+  like list
+    like tool
+  save android
+    call linux-android-home
+      read machine
+  save node-architecture, text <x64>
+  save image-architecture, text <x86_64>
+  fork test
+    hook test
+      call is-equal
+        read machine/architecture
+        text <arm64>
+    hook hold
+      save node-architecture, text <arm64>
+      save image-architecture, text <arm64-v8a>
+  save out
+    make list
+
+  save steps
+    make list
+  call steps/push
+    call make-step
+      call install-packages
+        read machine
+        call pick-packages
+          read machine
+          text <build-essential curl unzip xz-utils git pkg-config ca-certificates>
+          text <gcc gcc-c++ make curl unzip xz git pkgconf-pkg-config ca-certificates>
+          text <base-devel curl unzip xz git pkgconf ca-certificates>
+          text <gcc gcc-c++ make curl unzip xz git pkg-config ca-certificates>
+      text <a C toolchain, curl, unzip, xz, git and pkg-config>
+  call out/push
+    make tool
+      bind name, text <build tools>
+      bind need, text <everything else: the downloads, git, and the linker Rust and Swift call>
+      bind probe, text <cc --version && curl --version && unzip -v && git --version>
+      bind steps, read steps
+      bind optional, false
+
+  save steps
+    make list
+  call steps/push
+    call make-step
+      text <mkdir -p "{{machine/store}}" && cd "{{machine/store}}" && file=$(curl -fsSL https://nodejs.org/dist/latest-v{{node-major}}.x/SHASUMS256.txt | grep -o "node-v{{node-major}}[^ ]*-linux-{{node-architecture}}.tar.xz" | head -1) && curl -fLO "https://nodejs.org/dist/latest-v{{node-major}}.x/$file" && tar -xJf "$file" && rm "$file" && ln -sfn "$\{file%.tar.xz\}" node>
+      text <the newest Node {{node-major}} from nodejs.org, unpacked in {{machine/store}}/node>
+  call out/push
+    make tool
+      bind name, text <node>
+      bind need, text <the compiler, the CLI and every TypeScript suite>
+      bind probe, text <node --version>
+      bind steps, read steps
+      bind optional, false
+      bind expect, text <v{{node-major}}.>
+
+  save steps
+    make list
+  call steps/push
+    call make-step
+      text <corepack enable --install-directory "{{machine/store}}/node/bin" && corepack prepare pnpm@{{pnpm-version}} --activate>
+      text <pnpm {{pnpm-version}}, the version package.json names>
+  call out/push
+    make tool
+      bind name, text <pnpm>
+      bind need, text <installing the workspace and running every script>
+      bind probe, text <pnpm --version>
+      bind steps, read steps
+      bind optional, false
+
+  save steps
+    make list
+  call steps/push
+    call make-step
+      text <curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --no-modify-path && "$HOME/.cargo/bin/rustup" default stable>
+      text <rustup and the stable Rust toolchain, as the default>
+  call out/push
+    make tool
+      bind name, text <rust>
+      bind need, text <every Rust suite: the base gate, roundtrip, host-native, the Linux cask>
+      bind probe, text <cargo --version>
+      bind steps, read steps
+      bind optional, false
+
+  save steps
+    make list
+  call steps/push
+    call make-step
+      text <cd "$(mktemp -d)" && curl -fL -o swiftly.tar.gz "https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz" && tar -zxf swiftly.tar.gz && ./swiftly init --quiet-shell-followup --assume-yes>
+      text <swiftly and the newest Swift toolchain (it lists any system libraries Swift still wants)>
+  call out/push
+    make tool
+      bind name, text <swift>
+      bind need, text <the Swift suites that run off a Mac>
+      bind probe, text <swiftc --version>
+      bind steps, read steps
+      bind optional, true
+
+  save steps
+    make list
+  call steps/push
+    call make-step
+      call install-packages
+        read machine
+        call pick-packages
+          read machine
+          text <openjdk-{{jdk-major}}-jdk>
+          text <java-{{jdk-major}}-openjdk-devel>
+          text <jdk{{jdk-major}}-openjdk>
+          text <java-{{jdk-major}}-openjdk-devel>
+      text <OpenJDK {{jdk-major}}>
+  call out/push
+    make tool
+      bind name, text <jdk>
+      bind need, text <running Kotlin, Maven and the Android tools>
+      bind probe, text <java -version>
+      bind steps, read steps
+      bind optional, false
+
+  save steps
+    make list
+  call steps/push
+    call make-step
+      text <mkdir -p "{{machine/store}}/kotlin" && curl -fL -o "{{machine/store}}/kotlin.zip" https://github.com/JetBrains/kotlin/releases/download/v{{kotlin-version}}/kotlin-compiler-{{kotlin-version}}.zip && rm -rf "{{machine/store}}/kotlin/kotlinc" && unzip -q -o "{{machine/store}}/kotlin.zip" -d "{{machine/store}}/kotlin" && rm "{{machine/store}}/kotlin.zip">
+      text <the Kotlin compiler {{kotlin-version}}, the version the Kotlin runtime's pom pins>
+  call out/push
+    make tool
+      bind name, text <kotlin>
+      bind need, text <every Kotlin suite and the Android build>
+      bind probe, text <kotlinc -version>
+      bind steps, read steps
+      bind optional, false
+      bind expect, read kotlin-version
+
+  save steps
+    make list
+  call steps/push
+    call make-step
+      text <mkdir -p "{{machine/store}}/maven" && curl -fL -o "{{machine/store}}/maven.zip" https://archive.apache.org/dist/maven/maven-3/{{maven-version}}/binaries/apache-maven-{{maven-version}}-bin.zip && unzip -q -o "{{machine/store}}/maven.zip" -d "{{machine/store}}/maven" && rm "{{machine/store}}/maven.zip">
+      text <Maven {{maven-version}}, which resolves the Kotlin runtime's jars>
+  call steps/push
+    call make-step
+      text <sh task/term/native/kotlin.sh deps>
+      text <the Kotlin runtime's jars: kotlinx-coroutines and ktor>
+  call out/push
+    make tool
+      bind name, text <maven>
+      bind need, text <the Kotlin runtime's classpath>
+      bind probe, text <mvn -v>
+      bind steps, read steps
+      bind optional, false
+
+  save steps
+    make list
+  call steps/push
+    call make-step
+      text <mkdir -p "{{android}}/cmdline-tools" "{{machine/store}}" && curl -fL -o "{{machine/store}}/android-tools.zip" https://dl.google.com/android/repository/commandlinetools-linux-{{android-tools-build}}_latest.zip && rm -rf "{{android}}/cmdline-tools/latest" "{{machine/store}}/android-tools" && unzip -q -o "{{machine/store}}/android-tools.zip" -d "{{machine/store}}/android-tools" && mv "{{machine/store}}/android-tools/cmdline-tools" "{{android}}/cmdline-tools/latest" && rm "{{machine/store}}/android-tools.zip">
+      text <the Android command line tools>
+  call steps/push
+    call make-step
+      text <yes | sdkmanager --licenses>
+      text <the Android SDK licenses, accepted>
+  call steps/push
+    call make-step
+      text <sdkmanager "platform-tools" "platforms;android-{{android-api}}" "build-tools;{{android-build-tools}}" "emulator" "system-images;android-{{android-api}};google_apis;{{image-architecture}}">
+      text <platform {{android-api}}, build-tools {{android-build-tools}}, adb, the emulator and a system image>
+  call steps/push
+    call make-step
+      text <echo no | avdmanager create avd --force --name {{android-device}} --package "system-images;android-{{android-api}};google_apis;{{image-architecture}}">
+      text <the emulator device the Android suites start ({{android-device}})>
+  call out/push
+    make tool
+      bind name, text <android sdk>
+      bind need, text <the Android toolkit-view, blog-native and toolkit-words suites, and the Android cask>
+      bind probe, text <test -f "{{android}}/platforms/android-{{android-api}}/android.jar" && echo android-{{android-api}}>
+      bind steps, read steps
+      bind optional, true
+
+  save steps
+    make list
+  call steps/push
+    call make-step
+      call install-packages
+        read machine
+        call pick-packages
+          read machine
+          text <libgtk-4-dev libwebkitgtk-6.0-dev xvfb>
+          text <gtk4-devel webkitgtk6.0-devel xorg-x11-server-Xvfb>
+          text <gtk4 webkitgtk-6.0 xorg-server-xvfb>
+          text <gtk4-devel webkitgtk-6_0-devel xvfb-run>
+      text <GTK 4, WebKitGTK 6.0 and Xvfb>
+  call out/push
+    make tool
+      bind name, text <desktop libraries>
+      bind need, text <building and running the Linux cask>
+      bind probe, text <pkg-config --modversion gtk4 webkitgtk-6.0 && command -v xvfb-run>
+      bind steps, read steps
+      bind optional, true
+
+  send back, read out

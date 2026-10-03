@@ -9,7 +9,7 @@ dock load
 
 # the match at or after code point `from`: its start and end, then each group's start and end (-1 for a group that
 # took no part), all in code points; empty when nothing matches
-task do-search
+task engine-search
   take pattern, like text
   take input, like text
   take from, like number

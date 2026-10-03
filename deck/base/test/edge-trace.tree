@@ -1,0 +1,27 @@
+# The call stack is captured on every backend: some frames, each a line of text. The frames' text is the host's own,
+# so only the shape is compared. Held by `pnpm term:base-gate`.
+
+load @term/base/code/error/trace
+  find capture-trace
+  find format-trace
+
+load @term/base/code/list
+  find size
+
+test <a captured stack has frames, one line each>
+  save frames
+    call capture-trace
+  want hold
+    call and
+      call is-above
+        call size
+          read frames
+        code 0
+      call is-above
+        call char-count
+          call format-trace
+            read frames
+        code 0
+
+load @term/base/code/text
+  find char-count

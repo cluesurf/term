@@ -349,9 +349,111 @@ function rowsOf(facts: Fact[], focus?: number, linear?: LinearMode): Row[] {
   return rows
 }
 
+// THE FAST REFUSAL. Phase one in floating point, run before the exact search: when it ends at an optimum whose sum of
+// artificials is clearly above zero, no x >= 0 solves A x = b, and the exact search (up to 5000 pivots over growing
+// bigint rationals, which is the half hour a false goal used to take) is skipped. This can only DECLINE: a system it
+// calls infeasible gets no certificate, which costs at most a proof, and every certificate still comes from the exact
+// search below and is replayed. Anything doubtful (no optimum within the step cap, or an optimum near zero) falls
+// through to the exact search, so a feasible system, whose exact optimum is 0, is never declined here.
+function plainlyInfeasible(a: Rational[][], b: Rational[]): boolean {
+  const m = a.length
+  const n = a[0]?.length ?? 0
+  const width = n + m
+  const value = (r: Rational): number => Number(r.n) / Number(r.d)
+  const table: number[][] = []
+
+  for (let i = 0; i < m; i++) {
+    const raw = [...a[i]!.map(value), value(b[i]!)]
+    // each row scaled to a largest entry of 1, so one tolerance serves every row
+    const scale = Math.max(...raw.map(Math.abs)) || 1
+    const flip = raw[n]! < 0 ? -1 : 1
+    const row = raw.slice(0, n).map(c => (flip * c) / scale)
+
+    for (let j = 0; j < m; j++) {
+      row.push(i === j ? 1 : 0)
+    }
+
+    row.push((flip * raw[n]!) / scale)
+
+    if (row.some(c => !Number.isFinite(c))) {
+      return false
+    }
+
+    table.push(row)
+  }
+
+  const basis = Array.from({ length: m }, (_, i) => n + i)
+  const cost = Array.from({ length: width + 1 }, (_, j) => (j >= n && j < width ? 1 : 0))
+
+  for (let i = 0; i < m; i++) {
+    for (let j = 0; j <= width; j++) {
+      cost[j] = cost[j]! - table[i]![j]!
+    }
+  }
+
+  const EPSILON = 1e-9
+
+  for (let step = 0; step < 20000; step++) {
+    const enter = cost.findIndex((c, j) => j < width && c < -EPSILON)
+
+    if (enter < 0) {
+      // optimal: -cost[width] is the least sum of artificials
+      return -cost[width]! > 1e-6
+    }
+
+    let leave = -1
+    let best = Infinity
+
+    for (let i = 0; i < m; i++) {
+      const c = table[i]![enter]!
+
+      if (c > EPSILON) {
+        const ratio = table[i]![width]! / c
+
+        if (ratio < best - EPSILON || (Math.abs(ratio - best) <= EPSILON && basis[i]! < basis[leave]!)) {
+          best = ratio
+          leave = i
+        }
+      }
+    }
+
+    if (leave < 0) {
+      // unbounded in phase one cannot happen for a sum of non-negatives: a numerical fault, so no verdict
+      return false
+    }
+
+    const pivot = table[leave]![enter]!
+    table[leave] = table[leave]!.map(c => c / pivot)
+
+    for (let i = 0; i < m; i++) {
+      const k = table[i]![enter]!
+
+      if (i !== leave && k !== 0) {
+        const lead = table[leave]!
+        table[i] = table[i]!.map((c, j) => c - k * lead[j]!)
+      }
+    }
+
+    const k = cost[enter]!
+    const lead = table[leave]!
+
+    for (let j = 0; j <= width; j++) {
+      cost[j] = cost[j]! - k * lead[j]!
+    }
+
+    basis[leave] = enter
+  }
+
+  return false
+}
+
 // Phase one of the simplex, exact, with Bland's rule (so it cannot cycle): is there x >= 0 with A x = b? Returns x,
 // or undefined. Every row of b is made non-negative first, and one artificial per row starts the basis.
 function feasible(a: Rational[][], b: Rational[]): Rational[] | undefined {
+  if (plainlyInfeasible(a, b)) {
+    return undefined
+  }
+
   const m = a.length
   const n = a[0]?.length ?? 0
   const width = n + m

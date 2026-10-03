@@ -1,0 +1,491 @@
+load @term/base/code/list
+  find list
+  find push
+  find get
+
+load @term/base/code/float
+  find square-root
+  find round
+  find to-number
+
+load @term/base/code/text
+  find pad-left
+
+# n-body, single-threaded: the Benchmarks Game's "naive transliteration from Michael Ferguson's Chapel program"
+# (nbody.node-8, swift-8), step for step. Five bodies held as value records in a list, each written back whole when
+# it changes, the way the Rust entry keeps a [Planet; 5] of plain structs. 64-bit floats, printed to 9 decimals.
+
+form body
+  link x, like decimal
+  link y, like decimal
+  link z, like decimal
+  link vx, like decimal
+  link vy, like decimal
+  link vz, like decimal
+  link mass, like decimal
+
+# the body at an index, through the list's typed `get`: a bare `read bodies/{i}` reaches Rust untyped, so arithmetic
+# on its fields is emitted as integer arithmetic, and returning it as a body emits a downcast a Body does not have
+task body-at
+  take bodies
+    like list
+      like body
+  take i, like number
+  like body
+  send back
+    call get
+      read bodies
+      read i
+
+task solar-mass
+  like decimal
+  send back
+    call multiply
+      call multiply
+        code 4.0
+        code 3.141592653589793
+      code 3.141592653589793
+
+task days-per-year
+  like decimal
+  send back, code 365.24
+
+# a planet from its position, its velocity per day and its mass in suns
+task planet
+  take x, like decimal
+  take y, like decimal
+  take z, like decimal
+  take vx, like decimal
+  take vy, like decimal
+  take vz, like decimal
+  take mass, like decimal
+  like body
+  send back
+    make body
+      bind x, read x
+      bind y, read y
+      bind z, read z
+      bind vx
+        call multiply
+          read vx
+          call days-per-year
+      bind vy
+        call multiply
+          read vy
+          call days-per-year
+      bind vz
+        call multiply
+          read vz
+          call days-per-year
+      bind mass
+        call multiply
+          read mass
+          call solar-mass
+
+task offset-momentum
+  take bodies
+    like list
+      like body
+  save px, code 0.0
+  save py, code 0.0
+  save pz, code 0.0
+  walk list, read bodies
+    hook next
+      take site, name b
+      save px
+        call add
+          read px
+          call multiply
+            read b/vx
+            read b/mass
+      save py
+        call add
+          read py
+          call multiply
+            read b/vy
+            read b/mass
+      save pz
+        call add
+          read pz
+          call multiply
+            read b/vz
+            read b/mass
+  save first, code 0
+  save sun
+    call body-at
+      read bodies
+      read first
+  save bodies/{first}
+    make body
+      bind x, read sun/x
+      bind y, read sun/y
+      bind z, read sun/z
+      bind vx
+        call divide
+          call subtract
+            code 0.0
+            read px
+          call solar-mass
+      bind vy
+        call divide
+          call subtract
+            code 0.0
+            read py
+          call solar-mass
+      bind vz
+        call divide
+          call subtract
+            code 0.0
+            read pz
+          call solar-mass
+      bind mass, read sun/mass
+
+task energy
+  take bodies
+    like list
+      like body
+  like decimal
+  save e, code 0.0
+  save count, code 5
+  walk size
+    bind base, code 0
+    bind head, read count
+    hook next
+      take site, name i
+      save b
+        call body-at
+          read bodies
+          read i
+      save sq
+        call add
+          call add
+            call multiply
+              read b/vx
+              read b/vx
+            call multiply
+              read b/vy
+              read b/vy
+          call multiply
+            read b/vz
+            read b/vz
+      save e
+        call add
+          read e
+          call multiply
+            call multiply
+              code 0.5
+              read b/mass
+            read sq
+      walk size
+        bind base
+          call add
+            read i
+            code 1
+        bind head, read count
+        hook next
+          take site, name j
+          save other
+            call body-at
+              read bodies
+              read j
+          save dx
+            call subtract
+              read b/x
+              read other/x
+          save dy
+            call subtract
+              read b/y
+              read other/y
+          save dz
+            call subtract
+              read b/z
+              read other/z
+          save dsq
+            call add
+              call add
+                call multiply
+                  read dx
+                  read dx
+                call multiply
+                  read dy
+                  read dy
+              call multiply
+                read dz
+                read dz
+          save e
+            call subtract
+              read e
+              call divide
+                call multiply
+                  read b/mass
+                  read other/mass
+                call square-root
+                  read dsq
+  send back, read e
+
+task advance
+  take bodies
+    like list
+      like body
+  take dt, like decimal
+  save count, code 5
+  walk size
+    bind base, code 0
+    bind head, read count
+    hook next
+      take site, name i
+      walk size
+        bind base
+          call add
+            read i
+            code 1
+        bind head, read count
+        hook next
+          take site, name j
+          save bi
+            call body-at
+              read bodies
+              read i
+          save bj
+            call body-at
+              read bodies
+              read j
+          save dx
+            call subtract
+              read bi/x
+              read bj/x
+          save dy
+            call subtract
+              read bi/y
+              read bj/y
+          save dz
+            call subtract
+              read bi/z
+              read bj/z
+          save dsq
+            call add
+              call add
+                call multiply
+                  read dx
+                  read dx
+                call multiply
+                  read dy
+                  read dy
+              call multiply
+                read dz
+                read dz
+          save mag
+            call divide
+              read dt
+              call multiply
+                read dsq
+                call square-root
+                  read dsq
+          save mj
+            call multiply
+              read bj/mass
+              read mag
+          save bodies/{i}
+            make body
+              bind x, read bi/x
+              bind y, read bi/y
+              bind z, read bi/z
+              bind vx
+                call subtract
+                  read bi/vx
+                  call multiply
+                    read dx
+                    read mj
+              bind vy
+                call subtract
+                  read bi/vy
+                  call multiply
+                    read dy
+                    read mj
+              bind vz
+                call subtract
+                  read bi/vz
+                  call multiply
+                    read dz
+                    read mj
+              bind mass, read bi/mass
+          save mi
+            call multiply
+              read bi/mass
+              read mag
+          save bodies/{j}
+            make body
+              bind x, read bj/x
+              bind y, read bj/y
+              bind z, read bj/z
+              bind vx
+                call add
+                  read bj/vx
+                  call multiply
+                    read dx
+                    read mi
+              bind vy
+                call add
+                  read bj/vy
+                  call multiply
+                    read dy
+                    read mi
+              bind vz
+                call add
+                  read bj/vz
+                  call multiply
+                    read dz
+                    read mi
+              bind mass, read bj/mass
+  walk size
+    bind base, code 0
+    bind head, read count
+    hook next
+      take site, name k
+      save b
+        call body-at
+          read bodies
+          read k
+      save bodies/{k}
+        make body
+          bind x
+            call add
+              read b/x
+              call multiply
+                read b/vx
+                read dt
+          bind y
+            call add
+              read b/y
+              call multiply
+                read b/vy
+                read dt
+          bind z
+            call add
+              read b/z
+              call multiply
+                read b/vz
+                read dt
+          bind vx, read b/vx
+          bind vy, read b/vy
+          bind vz, read b/vz
+          bind mass, read b/mass
+
+# x to 9 decimals: |x| times 10^9, rounded to the nearest whole, laid out, with the sign
+task fixed-9
+  take x, like decimal
+  like text
+  save sign, text <>
+  save magnitude, read x
+  fork test
+    hook test
+      call is-below
+        read x
+        code 0.0
+    hook hold
+      save sign, text <->
+      save magnitude
+        call subtract
+          code 0.0
+          read x
+  save scaled
+    call to-number
+      call round
+        call multiply
+          read magnitude
+          code 1000000000.0
+  save whole
+    call divide
+      read scaled
+      code 1000000000
+  save part
+    call modulo
+      read scaled
+      code 1000000000
+  save digits
+    call pad-left
+      text <{{part}}>
+      code 9
+      text <0>
+  send back, text <{{sign}}{{whole}}.{{digits}}>
+
+task run
+  take size, like number
+  like text
+  save bodies
+    make list
+  # the sun
+  call push
+    read bodies
+    make body
+      bind x, code 0.0
+      bind y, code 0.0
+      bind z, code 0.0
+      bind vx, code 0.0
+      bind vy, code 0.0
+      bind vz, code 0.0
+      bind mass
+        call solar-mass
+  # jupiter
+  call push
+    read bodies
+    call planet
+      code 4.84143144246472090
+      code -1.16032004402742839
+      code -0.103622044471123109
+      code 0.00166007664274403694
+      code 0.00769901118419740425
+      code -0.0000690460016972063023
+      code 0.000954791938424326609
+  # saturn
+  call push
+    read bodies
+    call planet
+      code 8.34336671824457987
+      code 4.12479856412430479
+      code -0.403523417114321381
+      code -0.00276742510726862411
+      code 0.00499852801234917238
+      code 0.0000230417297573763929
+      code 0.000285885980666130812
+  # uranus
+  call push
+    read bodies
+    call planet
+      code 12.8943695621391310
+      code -15.1111514016986312
+      code -0.223307578892655734
+      code 0.00296460137564761618
+      code 0.00237847173959480950
+      code -0.0000296589568540237556
+      code 0.0000436624404335156298
+  # neptune
+  call push
+    read bodies
+    call planet
+      code 15.3796971148509165
+      code -25.9193146099879641
+      code 0.179258772950371181
+      code 0.00268067772490389322
+      code 0.00162824170038242295
+      code -0.0000951592254519715870
+      code 0.0000515138902046611451
+  call offset-momentum
+    read bodies
+  save before
+    call fixed-9
+      call energy
+        read bodies
+  walk size
+    bind base, code 0
+    bind head, read size
+    hook next
+      take site, name step
+      call advance
+        read bodies
+        code 0.01
+  save after
+    call fixed-9
+      call energy
+        read bodies
+  send back, text <{{before}}\n{{after}}>

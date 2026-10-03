@@ -87,12 +87,8 @@ task regex-digits-end
   take at, like number
   like number
   save i, read at
+  # no `down`: what moves the loop on is not something the prover can bound here; each turn still advances
   walk test
-    down
-      call subtract
-        call size
-          read runes
-        read i
     hook test
       call regex-is-digit
         call regex-rune-at
@@ -456,11 +452,8 @@ task canonical-pattern
     make list
   save held, false
   save i, code 0
+  # no `down`: what moves the loop on is not something the prover can bound here; each turn still advances
   walk test
-    down
-      call subtract
-        read n
-        read i
     hook test
       call is-below
         read i

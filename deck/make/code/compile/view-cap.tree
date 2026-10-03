@@ -1,0 +1,96 @@
+# Every bound a document has a number for, in one place.
+#
+# A closed vocabulary stops a document doing something we did not write. It does not stop it doing something we
+# DID write, ten million times. Rendering a long list is legitimate, so the answer is a number rather than a
+# refusal, and the number lives here so there is one place to read it and one place to change it.
+#
+# Every cap has a message naming which cap was hit. A cap with no message is a bug report nobody can act on.
+#
+# The counts are taken on the EXPANDED document, after `fuse`. A document with twenty fuses of a ten-node macro is
+# a two-hundred-node document, and the count before expansion describes nothing a browser will build.
+#
+# See note/term/view/05-sandbox.md.
+#
+# Ported from compile/view-cap.ts (self-hosting, phase 2, 2026-10-02). The `VIEW_CAPS` constant is the task
+# `make-view-caps`, because a top-level `host` is private to its emitted module.
+
+form view-caps
+  # nodes in the expanded document
+  link node, like number
+  # how deep the node tree may nest
+  link deep, like number
+  # `call` expressions nested inside one value
+  link call-deep, like number
+  # `call` expressions in the whole document
+  link call-sum, like number
+  # what one `walk list` counts as when its length is not known until the query resolves. A counted walk over a
+  # literal range contributes its real bound instead.
+  link walk-wide, like number
+  # `walk` inside `walk` inside `walk`
+  link walk-deep, like number
+  # the product of the bounds of nested counted walks, which is what a browser actually builds
+  link walk-sum, like number
+  # statements of one kind, so a document cannot have ten thousand queries
+  link find, like number
+  link host, like number
+  link view, like number
+
+# The defaults. Chosen to be generous for a document a person wrote and tight enough that a machine-generated one
+# is caught, and deliberately low enough on the nesting bounds that they fire before anything else does.
+task make-view-caps
+  like view-caps
+
+  back
+    make view-caps
+      bind node, 4000
+      bind deep, 32
+      bind call-deep, 4
+      bind call-sum, 500
+      bind walk-wide, 1000
+      bind walk-deep, 3
+      bind walk-sum, 100000
+      bind find, 64
+      bind host, 256
+      bind view, 64
+
+# the message for one cap, named the way TypeScript spells the field (`callDeep`). `said` is the count the document
+# reached. An unknown cap has no message
+task cap-message
+  take cap, like text
+  take said, like number
+  take caps
+    like view-caps
+    fall call make-view-caps
+  like text
+
+  fork test, is-equal(cap, <node>)
+    hold
+      back <this document builds {{said}} nodes and the cap is {{caps/node}}. Counted after macros expand, which is what a browser builds>
+  fork test, is-equal(cap, <deep>)
+    hold
+      back <this document nests {{said}} deep and the cap is {{caps/deep}}>
+  fork test, is-equal(cap, <callDeep>)
+    hold
+      back <this value nests {{said}} calls and the cap is {{caps/call-deep}}. A document formats a value, it does not compute one>
+  fork test, is-equal(cap, <callSum>)
+    hold
+      back <this document applies {{said}} operators and the cap is {{caps/call-sum}}>
+  fork test, is-equal(cap, <walkWide>)
+    hold
+      back <a list walk is assumed to draw {{caps/walk-wide}} items when its length is only known once the query resolves>
+  fork test, is-equal(cap, <walkDeep>)
+    hold
+      back <this document nests {{said}} walks and the cap is {{caps/walk-deep}}>
+  fork test, is-equal(cap, <walkSum>)
+    hold
+      back <these nested walks build up to {{said}} nodes and the cap is {{caps/walk-sum}}. One walk is bounded by its list, three are bounded by their product>
+  fork test, is-equal(cap, <find>)
+    hold
+      back <this document names {{said}} queries and the cap is {{caps/find}}>
+  fork test, is-equal(cap, <host>)
+    hold
+      back <this document names {{said}} values and the cap is {{caps/host}}>
+  fork test, is-equal(cap, <view>)
+    hold
+      back <this document declares {{said}} views and the cap is {{caps/view}}>
+  back <>

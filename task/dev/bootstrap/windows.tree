@@ -1,0 +1,312 @@
+# What a Windows machine needs to build and test Term: winget, Git, Node and pnpm, the Visual Studio C++ build tools
+# Rust links with, Rust, Swift, a JDK, Kotlin and Maven at the versions the Kotlin runtime pins, the Android SDK, and
+# the WebView2 runtime the Windows cask draws with. Every step is a PowerShell command. The Apple suites (Swift on a
+# Mac, iOS, the Apple cask) need a Mac.
+
+load ./plan
+  find machine
+  find tool
+  find step
+  find setting
+  find make-step
+  find make-setting
+  find path-setting
+  find install-packages
+  find node-major
+  find pnpm-version
+  find jdk-major
+  find kotlin-version
+  find maven-version
+  find android-tools-build
+  find android-api
+  find android-build-tools
+  find android-device
+
+load @term/base/code/list
+  find list
+
+task windows-android-home
+  take machine, like machine
+  like text
+  send back, text <{{machine/home}}\AppData\Local\Android\Sdk>
+
+task windows-settings
+  take machine, like machine
+  like list
+    like setting
+  save android
+    call windows-android-home
+      read machine
+  save out
+    make list
+  call out/push
+    call path-setting, text <{{machine/home}}\.cargo\bin>
+  call out/push
+    call path-setting, text <{{machine/store}}\kotlin\kotlinc\bin>
+  call out/push
+    call path-setting, text <{{machine/store}}\maven\apache-maven-{{maven-version}}\bin>
+  call out/push
+    call path-setting, text <{{android}}\cmdline-tools\latest\bin>
+  call out/push
+    call path-setting, text <{{android}}\platform-tools>
+  call out/push
+    call path-setting, text <{{android}}\emulator>
+  call out/push
+    call make-setting
+      text <ANDROID_HOME>
+      read android
+  call out/push
+    call make-setting
+      text <ANDROID_SDK_ROOT>
+      read android
+  send back, read out
+
+# a winget package, by its id
+task winget-step
+  take machine, like machine
+  take id, like text
+  take note, like text
+  like step
+  send back
+    call make-step
+      call install-packages
+        read machine
+        read id
+      read note
+
+# download a zip and unpack it under the store
+task unpack-step
+  take machine, like machine
+  take url, like text
+  take into, like text
+  take note, like text
+  like step
+  send back
+    call make-step
+      text <$zip = Join-Path $env:TEMP 'term-dev.zip'; Invoke-WebRequest -UseBasicParsing -Uri '{{url}}' -OutFile $zip; New-Item -ItemType Directory -Force -Path '{{into}}' | Out-Null; Expand-Archive -Force -Path $zip -DestinationPath '{{into}}'; Remove-Item $zip>
+      read note
+
+task windows-tools
+  take machine, like machine
+  like list
+    like tool
+  save android
+    call windows-android-home
+      read machine
+  save image-architecture, text <x86_64>
+  fork test
+    hook test
+      call is-equal
+        read machine/architecture
+        text <arm64>
+    hook hold
+      save image-architecture, text <arm64-v8a>
+  save out
+    make list
+
+  save steps
+    make list
+  call steps/push
+    call make-step
+      text <Start-Process 'ms-windows-store://pdp/?productid=9NBLGGH4NNS1'; Write-Output 'Install App Installer from the Store, then run this again'>
+      text <opens the Store page for App Installer, which carries winget>
+  call out/push
+    make tool
+      bind name, text <winget>
+      bind need, text <the package manager every later step uses>
+      bind probe, text <winget --version>
+      bind steps, read steps
+      bind optional, false
+
+  save steps
+    make list
+  call steps/push
+    call winget-step
+      read machine
+      text <Git.Git>
+      text <Git for Windows>
+  call out/push
+    make tool
+      bind name, text <git>
+      bind need, text <the repository>
+      bind probe, text <git --version>
+      bind steps, read steps
+      bind optional, false
+
+  save steps
+    make list
+  call steps/push
+    call winget-step
+      read machine
+      text <OpenJS.NodeJS.LTS>
+      text <Node, the long-term-support line>
+  call out/push
+    make tool
+      bind name, text <node>
+      bind need, text <the compiler, the CLI and every TypeScript suite>
+      bind probe, text <node --version>
+      bind steps, read steps
+      bind optional, false
+
+  save steps
+    make list
+  call steps/push
+    call make-step
+      text <corepack enable; corepack prepare pnpm@{{pnpm-version}} --activate>
+      text <pnpm {{pnpm-version}}, the version package.json names>
+  call out/push
+    make tool
+      bind name, text <pnpm>
+      bind need, text <installing the workspace and running every script>
+      bind probe, text <pnpm --version>
+      bind steps, read steps
+      bind optional, false
+
+  save steps
+    make list
+  call steps/push
+    call make-step
+      text <winget install --exact --silent --accept-source-agreements --accept-package-agreements --id Microsoft.VisualStudio.2022.BuildTools --override '--wait --quiet --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended'>
+      text <the Visual Studio C++ build tools and Windows SDK, which Rust and Swift link with>
+  call out/push
+    make tool
+      bind name, text <c++ build tools>
+      bind need, text <linking every Rust and Swift program>
+      bind probe, text <if (Test-Path "$\{env:ProgramFiles(x86)\}\Microsoft Visual Studio\Installer\vswhere.exe") \{ & "$\{env:ProgramFiles(x86)\}\Microsoft Visual Studio\Installer\vswhere.exe" -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property displayName \} else \{ exit 1 \}>
+      bind steps, read steps
+      bind optional, false
+
+  save steps
+    make list
+  call steps/push
+    call winget-step
+      read machine
+      text <Rustlang.Rustup>
+      text <rustup>
+  call steps/push
+    call make-step
+      text <& "$env:USERPROFILE\.cargo\bin\rustup.exe" default stable>
+      text <the stable Rust toolchain, as the default>
+  call out/push
+    make tool
+      bind name, text <rust>
+      bind need, text <every Rust suite: the base gate, roundtrip, host-native, the Windows cask>
+      bind probe, text <cargo --version>
+      bind steps, read steps
+      bind optional, false
+
+  save steps
+    make list
+  call steps/push
+    call winget-step
+      read machine
+      text <Swift.Toolchain>
+      text <the Swift toolchain for Windows>
+  call out/push
+    make tool
+      bind name, text <swift>
+      bind need, text <compiling Swift off a Mac>
+      bind probe, text <swiftc --version>
+      bind steps, read steps
+      bind optional, true
+
+  save steps
+    make list
+  call steps/push
+    call winget-step
+      read machine
+      text <EclipseAdoptium.Temurin.{{jdk-major}}.JDK>
+      text <the Temurin JDK {{jdk-major}}>
+  call out/push
+    make tool
+      bind name, text <jdk>
+      bind need, text <running Kotlin, Maven and the Android tools>
+      bind probe, text <java -version>
+      bind steps, read steps
+      bind optional, false
+
+  save steps
+    make list
+  call steps/push
+    call unpack-step
+      read machine
+      text <https://github.com/JetBrains/kotlin/releases/download/v{{kotlin-version}}/kotlin-compiler-{{kotlin-version}}.zip>
+      text <{{machine/store}}\kotlin>
+      text <the Kotlin compiler {{kotlin-version}}, the version the Kotlin runtime's pom pins>
+  call out/push
+    make tool
+      bind name, text <kotlin>
+      bind need, text <every Kotlin suite and the Android build>
+      bind probe, text <kotlinc -version>
+      bind steps, read steps
+      bind optional, false
+      bind expect, read kotlin-version
+
+  save steps
+    make list
+  call steps/push
+    call unpack-step
+      read machine
+      text <https://archive.apache.org/dist/maven/maven-3/{{maven-version}}/binaries/apache-maven-{{maven-version}}-bin.zip>
+      text <{{machine/store}}\maven>
+      text <Maven {{maven-version}}, which resolves the Kotlin runtime's jars>
+  call steps/push
+    call make-step
+      text <mvn -q -B -f deck/base/code/native/kotlin/pom.xml dependency:resolve>
+      text <the Kotlin runtime's jars: kotlinx-coroutines and ktor>
+  call out/push
+    make tool
+      bind name, text <maven>
+      bind need, text <the Kotlin runtime's classpath>
+      bind probe, text <mvn -v>
+      bind steps, read steps
+      bind optional, false
+
+  save steps
+    make list
+  call steps/push
+    call unpack-step
+      read machine
+      text <https://dl.google.com/android/repository/commandlinetools-win-{{android-tools-build}}_latest.zip>
+      text <{{machine/store}}\android-tools>
+      text <the Android command line tools>
+  call steps/push
+    call make-step
+      text <New-Item -ItemType Directory -Force -Path '{{android}}\cmdline-tools' | Out-Null; if (Test-Path '{{android}}\cmdline-tools\latest') \{ Remove-Item -Recurse -Force '{{android}}\cmdline-tools\latest' \}; Move-Item '{{machine/store}}\android-tools\cmdline-tools' '{{android}}\cmdline-tools\latest'>
+      text <the command line tools moved into the SDK>
+  call steps/push
+    call make-step
+      text <1..30 | ForEach-Object \{ 'y' \} | sdkmanager.bat --licenses>
+      text <the Android SDK licenses, accepted>
+  call steps/push
+    call make-step
+      text <sdkmanager.bat "platform-tools" "platforms;android-{{android-api}}" "build-tools;{{android-build-tools}}" "emulator" "system-images;android-{{android-api}};google_apis;{{image-architecture}}">
+      text <platform {{android-api}}, build-tools {{android-build-tools}}, adb, the emulator and a system image>
+  call steps/push
+    call make-step
+      text <'no' | avdmanager.bat create avd --force --name {{android-device}} --package "system-images;android-{{android-api}};google_apis;{{image-architecture}}">
+      text <the emulator device the Android suites start ({{android-device}})>
+  call out/push
+    make tool
+      bind name, text <android sdk>
+      bind need, text <the Android toolkit-view, blog-native and toolkit-words suites, and the Android cask>
+      bind probe, text <if (Test-Path '{{android}}\platforms\android-{{android-api}}\android.jar') \{ 'android-{{android-api}}' \} else \{ exit 1 \}>
+      bind steps, read steps
+      bind optional, true
+
+  save steps
+    make list
+  call steps/push
+    call winget-step
+      read machine
+      text <Microsoft.EdgeWebView2Runtime>
+      text <the WebView2 runtime>
+  call out/push
+    make tool
+      bind name, text <webview2>
+      bind need, text <running the Windows cask>
+      bind probe, text <$found = Get-ChildItem -ErrorAction SilentlyContinue 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients' | Where-Object \{ (Get-ItemProperty $_.PSPath).name -eq 'Microsoft Edge WebView2 Runtime' \}; if ($found) \{ 'WebView2' \} else \{ exit 1 \}>
+      bind steps, read steps
+      bind optional, true
+
+  send back, read out

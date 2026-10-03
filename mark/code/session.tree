@@ -516,8 +516,9 @@ task measurement-of
   fork test
     hook test
       call or
-        call not
+        call is-equal
           read counted
+          false
         call is-equal
           call size
             read samples
@@ -593,9 +594,10 @@ task case-object
             code 2
       fork test
         hook test
-          call not
+          call is-equal
             call is-null
               read metric
+            false
         hook hold
           call push-item
             read measurements

@@ -39,7 +39,7 @@ import type { ViewCatalog } from '@term/make/code/compile/view-catalog'
 import { writeLong } from '@term/make/code/compile/host'
 import type { Data, DataEntry } from '@term/make/code/compile/host'
 import type { ViewCaps } from '@term/make/code/compile/view-cap'
-import { VIEW_CAPS, capMessage } from '@term/make/code/compile/view-cap'
+import { makeViewCaps, capMessage } from '@term/make/code/compile/view-cap'
 
 // ---- the forms ----
 // One per form in @term/base/code/view-file, plus the ones reused from zone, seed, bind, road, like and take.
@@ -173,7 +173,7 @@ export function readView(
   // The four closed vocabularies. Absent means no name is checked, which is what the grammar and lowering tests
   // want; a project supplies one and then every name a document says is checked against it.
   catalog?: ViewCatalog,
-  caps: ViewCaps = VIEW_CAPS,
+  caps: ViewCaps = makeViewCaps(),
   // the lean surface for a placement's inputs. See ViewCheck.lean
   lean = false,
 ): ViewResult {
@@ -2111,7 +2111,7 @@ export function checkView(
     }
   }
 
-  const bomb = viewBomb(tree, source.file, bodies, (options.caps ?? VIEW_CAPS).node)
+  const bomb = viewBomb(tree, source.file, bodies, (options.caps ?? makeViewCaps()).node)
 
   if (bomb.length > 0) {
     return { ok: false, diagnostics: bomb }

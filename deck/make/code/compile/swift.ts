@@ -24,7 +24,7 @@ import {
   isText,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp, FormKind, FormSpec } from '@term/make/code/compile/backend'
-import { formSpec, hasValuedReturn, refuseAny, specForms } from '@term/make/code/compile/backend'
+import { escapingParams, formSpec, hasValuedReturn, refuseAny, specForms } from '@term/make/code/compile/backend'
 import {
   collectBinds,
   renderBind,
@@ -457,65 +457,6 @@ function typeKindsIn(program: Program): string[] {
   visit(program)
 
   return [...kinds]
-}
-
-// The function-typed parameters a task may keep past its call (note/term/codegen/passes.md, P3, in its first and
-// most conservative form). A parameter stays NON-escaping only when every mention of it is the callee of a call made
-// directly in the task's body: passed as an argument, returned, stored, read inside a closure, or written (a written
-// parameter is copied into a `var`), it escapes. Anything this cannot see is treated as escaping, which is what every
-// parameter was before, so a mistake can only cost the optimization and never the build.
-function escapingParams(fn: Extract<Statement, { form: 'function' }>): Set<string> {
-  const names = new Set(fn.params.filter(p => p.type?.kind === 'function').map(p => p.name))
-  const escapes = new Set<string>()
-
-  if (names.size === 0) {
-    return escapes
-  }
-
-  type Loose = { form?: string; [key: string]: unknown }
-  const seen = new Set<object>()
-  const visit = (value: unknown, inClosure: boolean): void => {
-    if (typeof value !== 'object' || value === null || seen.has(value)) {
-      return
-    }
-
-    seen.add(value)
-
-    if (Array.isArray(value)) {
-      value.forEach(v => visit(v, inClosure))
-
-      return
-    }
-
-    const node = value as Loose
-    const inside = inClosure || node.form === 'closure'
-
-    if (node.form === 'variable' && names.has(node.name as string)) {
-      escapes.add(node.name as string)
-    }
-
-    if (node.form === 'assign' && (node.target as Loose).form === 'variable' && names.has((node.target as Loose).name as string)) {
-      escapes.add((node.target as Loose).name as string)
-    }
-
-    for (const [key, child] of Object.entries(node)) {
-      if (key === 'type' || key === 'span') {
-        continue
-      }
-
-      // the callee of a direct call outside any closure is the one use that does not escape
-      const callee = child as Loose | null
-      if (node.form === 'call' && key === 'callee' && !inside && callee?.form === 'variable' && names.has(callee.name as string)) {
-        continue
-      }
-
-      visit(child, inside)
-    }
-  }
-
-  visit(fn.body, false)
-
-  return escapes
 }
 
 // The enums that must be `indirect`: those on a cycle of forms that hold each other BY VALUE. A list, a map and a
@@ -1358,6 +1299,13 @@ export function emitSwift(
     program.flatMap(node => (node.form === 'function' && node.async ? [node.name] : [])),
   )
   let awaiting = false
+  // the names bound in scope (the function's and every enclosing closure's parameters, and each let and walk item as it
+  // is emitted): one named like a task shadows it
+  let boundNames = new Set<string>()
+  // each free task's parameter count, for a throwing task passed as a value (methods are reached by dispatch, not named)
+  const taskArity = new Map(
+    program.flatMap(node => (node.form === 'function' && !node.method ? [[node.name, node.params.length] as const] : [])),
+  )
   const tryWord = (): string => (currentThrows || guardDepth > 0 ? 'try' : 'try!')
 
   const subSelf = (
@@ -1496,9 +1444,12 @@ export function emitSwift(
         // a throwing task passed as a VALUE goes where a Term task type is taken, which is a non-throwing Swift
         // function type, so it is wrapped in a closure whose call is `try!`, as a raise in any closure body is
         // (native-dom-0014: the blog's `keep` handed to the view as its store)
-        if (node.form === 'variable' && throwingFns.has(node.name) && node.type?.kind === 'function') {
-          const names = node.type.params.map((_, i) => `p${i}`)
-          const isAsync = asyncFns.has(node.name) || node.type.effects?.includes('async') === true
+        // The arity is the task's own, read off its definition: the reference does not always carry a function type
+        const defined = node.form === 'variable' && !boundNames.has(node.name) ? taskArity.get(node.name) : undefined
+
+        if (node.form === 'variable' && throwingFns.has(node.name) && defined !== undefined) {
+          const names = Array.from({ length: defined }, (_, i) => `p${i}`)
+          const isAsync = asyncFns.has(node.name)
 
           return `{ (${names.join(', ')})${isAsync ? ' async' : ''} in try! ${isAsync ? 'await ' : ''}${vname(node.name)}(${names.join(', ')}) }`
         }
@@ -1672,14 +1623,18 @@ export function emitSwift(
         // an async task called WITHOUT `wait true` runs on its own and the caller goes on, as a promise nobody awaits
         // does on TypeScript: on Swift that is a Task, whose body is the awaited call (native-dom-0014: the blog's
         // click handler starting `add-post`). A raise in it ends the program, as any unhandled raise does
+        // a callee is CALLED, never passed: a bare name, not the closure a throwing task becomes as a value
+        const callee = node.callee.form === 'variable' ? vname(node.callee.name) : expr(node.callee, bind)
+
         if (
           node.callee.form === 'variable' &&
           asyncFns.has(node.callee.name) &&
+          !boundNames.has(node.callee.name) &&
           !awaited
         ) {
           const raise = throwingFns.has(node.callee.name) ? 'try! ' : ''
 
-          return `Task { ${raise}await ${expr(node.callee, bind)}(${renderedArgs.join(', ')}) }`
+          return `Task { ${raise}await ${callee}(${renderedArgs.join(', ')}) }`
         }
 
         // a call to a throwing function is `try!`: fatal on error (there is no catch construct), and the caller's own
@@ -1688,10 +1643,10 @@ export function emitSwift(
           node.callee.form === 'variable' &&
           throwingFns.has(node.callee.name)
         ) {
-          return `(${tryWord()} ${expr(node.callee, bind)}(${renderedArgs.join(', ')}))`
+          return `(${tryWord()} ${callee}(${renderedArgs.join(', ')}))`
         }
 
-        return `${expr(node.callee, bind)}(${renderedArgs.join(', ')})`
+        return `${callee}(${renderedArgs.join(', ')})`
       }
 
       case 'array': {
@@ -1877,8 +1832,10 @@ export function emitSwift(
         // guard inside the closure still makes its own body `try` (native-dom-0014: `make-effect`'s body)
         const outerThrows = currentThrows
         const outerGuard = guardDepth
+        const outerBound = boundNames
         currentThrows = false
         guardDepth = 0
+        boundNames = new Set([...outerBound, ...node.params.map(p => p.name)])
         const last = node.body[node.body.length - 1]
         const lead = node.body
           .slice(0, -1)
@@ -1896,6 +1853,7 @@ export function emitSwift(
 
         currentThrows = outerThrows
         guardDepth = outerGuard
+        boundNames = outerBound
 
         // an async closure carries an explicit `(params) async -> Ret in` signature: Swift closures express async in
         // the signature (there is no async-block form), and the explicit types let `let f = { ... }` infer the async
@@ -2062,6 +2020,8 @@ export function emitSwift(
   const stmt = (node: Statement, d: number, bind: Bindings): string => {
     switch (node.form) {
       case 'let': {
+        boundNames.add(node.name)
+
         // a valueless typed module slot (`host current, like context`, filled later by a `save`): an
         // implicitly-unwrapped optional, so reads carry the declared class type
         if (node.init.form === 'unit' && node.type?.kind === 'named' && node.type.name) {
@@ -2227,6 +2187,12 @@ export function emitSwift(
       }
 
       case 'for-each': {
+        boundNames.add(node.item)
+
+        if (node.index) {
+          boundNames.add(node.index)
+        }
+
         // a list is a SeedList; iterate its backing `.data` Array
         const iterable =
           node.iterable.type?.kind === 'array'
@@ -2402,6 +2368,7 @@ export function emitSwift(
         const asyncMark = node.async ? ' async' : ''
         const throwsMark = throwingFns.has(node.name) || bodyThrows(node.body) ? ' throws' : ''
         currentThrows = throwsMark !== ''
+        boundNames = new Set(node.params.map(p => p.name))
         // a reassigned parameter is shadowed by a mutable local (Swift parameters are immutable)
         const mutated = new Set<string>()
         reassigned(node.body, mutated)
@@ -2428,12 +2395,26 @@ export function emitSwift(
         // a valued task whose body ends in branching that returns from every live path: swift cannot always
         // see the coverage (an if chain with no else), so the fall-through traps
         const last = node.body[node.body.length - 1]
+        // not when every path of the last statement already returns or throws: an exhaustive `switch` whose every arm
+        // returns, or an `if` with an `else` whose every branch does. swiftc sees those and warned "will never be
+        // executed" on the trap
+        const terminates = (body: Statement[] | undefined): boolean => {
+          const end = body?.[body.length - 1]
+
+          if (!end) return false
+          if (end.form === 'return' || end.form === 'throw') return true
+          if (end.form === 'if') return end.otherwise !== undefined && end.branches.every(b => terminates(b.body)) && terminates(end.otherwise)
+          if (end.form === 'match') return end.cases.every(c => terminates(c.body)) && (end.otherwise === undefined || terminates(end.otherwise))
+
+          return false
+        }
         const unreachable =
           (last?.form === 'if' ||
             last?.form === 'while' ||
             last?.form === 'match') &&
           node.result &&
-          node.result.kind !== 'unit'
+          node.result.kind !== 'unit' &&
+          !terminates(node.body)
             ? `${pad(d + 1)}fatalError("unreachable")`
             : ''
 

@@ -14,6 +14,7 @@ import type {
 import {
   collectBinds,
   renderBind,
+  bindTarget,
   bindGap,
   bindImports,
   referencedBinds,
@@ -81,10 +82,72 @@ function bare(rendered: string): string {
   return rendered.slice(1, -1)
 }
 
+// does a value, made a function's tail expression, hold a borrow guard (`Ref`, `MutexGuard`, a `with` closure's) in a
+// temporary? Before edition 2024 a tail expression's temporaries outlive the body's locals (E0597), so such a value
+// stays a `return` statement. Every block `{ a; b; c }` inside the value is asked of its own tail `c` only: a guard in
+// a statement before it (a temporary, or a `let` the block owns) is dropped by the time the block ends
+function borrowsAtTail(value: string): boolean {
+  // the statement part of each block, `{` up to its last `;`, is cut out; what is left can reach the tail
+  const cuts: [number, number][] = []
+  const blocks: { open: number; semi: number }[] = []
+  let quoted = false
+
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i]!
+
+    if (quoted) {
+      if (c === '\\') {
+        i++
+      } else if (c === '"') {
+        quoted = false
+      }
+    } else if (c === '"') {
+      quoted = true
+    } else if (c === "'" && value[i + 2] === "'") {
+      // a char literal (`'"'`, `';'`), never a lifetime, which has no closing quote
+      i += 2
+    } else if (c === "'" && value[i + 1] === '\\' && value[i + 3] === "'") {
+      i += 3
+    } else if (c === '{') {
+      blocks.push({ open: i, semi: -1 })
+    } else if (c === '}') {
+      const block = blocks.pop()
+
+      if (block && block.semi > block.open) {
+        cuts.push([block.open + 1, block.semi + 1])
+      }
+    } else if (c === ';' && blocks.length) {
+      blocks[blocks.length - 1]!.semi = i
+    }
+  }
+
+  let kept = ''
+  let from = 0
+
+  for (const [start, end] of cuts.sort((a, b) => a[0] - b[0])) {
+    if (start >= from) {
+      kept += value.slice(from, start)
+      from = end
+    }
+  }
+
+  return /\.borrow(_mut)?\(\)|\.lock\(\)|\.with\(/.test(kept + value.slice(from))
+}
+
 // an index expression cast to `usize`, parenthesized only when it needs it. `as` binds tighter than every binary
 // operator and looser than a call or a field, so `i - 1` needs them and `i64::checked_sub(a, 1).expect(..)` does not,
 // and rustc's unused_parens warning (a gate fails on warnings) fires on the second
 function asUsize(text: string): string {
+  // an integer literal: a non-negative one IS a usize, and a negative one is typed i64 first, since rustc otherwise
+  // infers the literal as the cast's target and refuses to negate a usize (E0600)
+  if (/^-\d+$/.test(text)) {
+    return `(${text}i64) as usize`
+  }
+
+  if (/^\d+$/.test(text)) {
+    return text
+  }
+
   let depth = 0
   let quote = false
   let bare = true
@@ -615,13 +678,22 @@ export function emitRust(
 
   // a field value that is a variable or a member read is cloned into the struct, the way an argument is, so the
   // binding it came from stays usable (a closure is not Clone and passes as is)
-  const owned = (value: Expression): string =>
-    (value.form === 'variable' || value.form === 'member') &&
-    value.type &&
-    value.type.kind !== 'function' &&
-    !(value.form === 'variable' && cellVars.has(value.name))
-      ? `${expr(value)}.clone()`
-      : expr(value)
+  // A `number`, `float` or `boolean` is `Copy` (i64, f64, bool), so it is read as it is: `.clone()` on one is noise
+  // that clippy flags. A rendering that already ends in a clone (a list element read) is not cloned twice: both
+  // emitted `perm.borrow()[i].clone().clone()` and `n.clone()` until 2026-10-02
+  const copyType = (type: Type | undefined): boolean => type?.kind === 'number' || type?.kind === 'float' || type?.kind === 'boolean'
+  const owned = (value: Expression): string => {
+    const rendered = expr(value)
+
+    return (value.form === 'variable' || value.form === 'member') &&
+      value.type &&
+      value.type.kind !== 'function' &&
+      !copyType(value.type) &&
+      !rendered.endsWith('.clone()') &&
+      !(value.form === 'variable' && cellVars.has(value.name))
+      ? `${rendered}.clone()`
+      : rendered
+  }
 
   // a value flowing into an `unknown` slot boxes (`std::rc::Rc::new`; the unsized coercion supplies `dyn Any` from
   // the slot's declared type). Only a read or a call whose own type is unknown is already the boxed dynamic; a
@@ -1362,9 +1434,12 @@ export function emitRust(
           binds.has(node.callee.name)
         ) {
           const bind = binds.get(node.callee.name)!
+          // a template that is a formatting macro (`panic!("defect: {}", $reason)`) takes a text literal as the
+          // literal itself: Display reads a `&str`, and `.to_string()` there is clippy's to_string_in_format_args
+          const formats = /^(panic|format|print|println|eprintln|write|writeln)!\(/.test(bindTarget(bind, 'rust')?.expression ?? '')
 
           return (
-            renderBind(bind, 'rust', node.args.map(expr)) ??
+            renderBind(bind, 'rust', node.args.map(a => (formats && a.form === 'string' ? JSON.stringify(a.value) : expr(a)))) ??
             bindGap(bind.name)
           )
         }
@@ -1380,7 +1455,8 @@ export function emitRust(
         const text = stringCall(node.callee)
 
         if (text) {
-          return stringExpr(text.op, expr(text.target), node.args.map(a => expr(a)))
+          // the arguments OWNED, as every by-value argument is: `let n: String = part` moved a parameter read in a loop
+          return stringExpr(text.op, expr(text.target), node.args.map(a => owned(a)))
         }
 
         // Rust moves a value passed by value, so a local (or a field read out of a struct) used as an argument would
@@ -1423,10 +1499,16 @@ export function emitRust(
             // an UNTYPED variable is cloned too: the view lowering synthesizes `view0`-style locals with no type, and
             // passing one to `append` then reading it again moved it away (native-dom-0020). A function value here is
             // an `Rc<dyn Fn>`, so its clone is a refcount bump as well
+            // a `Copy` value (a number, a float, a boolean) is passed as it is, and a read that already clones (a list
+            // element) is not cloned twice: clippy's clone_on_copy flagged every `n.clone()`
+            const rendered = expr(a)
+
             return (a.form === 'variable' || a.form === 'member') &&
-              (!a.type || a.type.kind !== 'function')
-              ? `${expr(a)}.clone()`
-              : expr(a)
+              (!a.type || a.type.kind !== 'function') &&
+              !copyType(a.type) &&
+              !rendered.endsWith('.clone()')
+              ? `${rendered}.clone()`
+              : rendered
           })()
 
           // a binary's grouping parens are redundant at argument position (the comma delimits):
@@ -1558,7 +1640,7 @@ export function emitRust(
           .filter(f => !given.has(f.name))
           .map(f => `${snake(f.name)}: ${emptyOf(f.type)}`)
 
-        const built = `${pascal(node.name)} { ${[
+        const parts = [
           ...node.fields.map(
             f =>
               `${snake(f.name)}: ${boxUnknown(declared.get(f.name), f.value, owned(f.value))}`,
@@ -1567,7 +1649,9 @@ export function emitRust(
           ...(phantomForms.has(node.name)
             ? ['_marker: std::marker::PhantomData']
             : []),
-        ].join(', ')} }`
+        ]
+        // a field-less struct is `Empty {}`, as rustfmt lays it out
+        const built = parts.length ? `${pascal(node.name)} { ${parts.join(', ')} }` : `${pascal(node.name)} {}`
 
         // a `mark shared` form is made once and handed out as its handle
         return rustSharedForms.has(node.name) ? `TermShared::new(${built})` : built
@@ -1577,7 +1661,7 @@ export function emitRust(
         // a DYNAMIC segment (`read table/{key}`) indexes the collection through its handle; cloned out, since
         // indexing a Vec of non-Copy values (String, Rc) cannot move
         if (node.index) {
-          return `${expr(node.target)}.borrow()[${expr(node.index)} as usize].clone()`
+          return `${expr(node.target)}.borrow()[${asUsize(expr(node.index))}]${copyType(node.type) ? '' : '.clone()'}`
         }
 
         // `map.size` / `array.length` read the length (a map goes through its Rc<RefCell> handle; an array is a plain
@@ -1602,7 +1686,7 @@ export function emitRust(
           node.target.type?.kind === 'array'
         ) {
           // cloned, as a dynamic index read is: a bare `v.borrow()[1]` moves a String out of the Vec and is refused
-          return `${expr(node.target)}.borrow()[${node.name}].clone()`
+          return `${expr(node.target)}.borrow()[${node.name}]${copyType(node.type) ? '' : '.clone()'}`
         }
 
         // a field of a `mark shared` value, READ: cloned out of the borrow, since `x.borrow().field` moves a String or
@@ -1697,6 +1781,9 @@ export function emitRust(
             ? hintedResult
             : inferredResult)
         closureDepth++
+        // the locals in scope where the closure is BUILT: rendering the body adds the names it binds itself (a walk's
+        // item, its own lets), and those are not captures (render.tree's `each` cloned its own loop's `old`)
+        const outerLocals = new Set(localNames)
         const body = [...shadows, ...node.body.map(s => stmt(s, 0))]
           .filter(Boolean)
           .join(' ')
@@ -1721,7 +1808,7 @@ export function emitRust(
         // (native-dom-0020: the memory device host's `watch`)
         const named = (name: string): boolean => new RegExp(`\\b${vname(name)}\\b`).test(body)
         const captured = [...used].filter(
-          name => localNames.has(name) && !paramNames.has(name) && !cellVars.has(name) && named(name),
+          name => outerLocals.has(name) && !paramNames.has(name) && !cellVars.has(name) && named(name),
         )
         // a mutated capture's cell, under the same rule: a field written through a module-level host
         // (`save watch/installed`) marks `watch` mutated, but the body writes it as `MODULE_WATCH`
@@ -1742,9 +1829,23 @@ export function emitRust(
         // an async closure becomes a plain `Fn` whose body is a pinned async block: calling it returns a future the
         // caller `.await`s (Rust closures can't themselves be `async`). The `let`/parameter type annotation supplies
         // the `Pin<Box<dyn Future>>` return so the concrete async block coerces to the boxed trait object.
+        // a closure whose body is one `return x;` is `move |a| x`, as Rust writes it (clippy: needless_return). Not
+        // when the value borrows: a tail expression's temporaries outlive the closure body's locals (see `tailed`)
+        const lone = body.trim()
+        const expression =
+          !node.async &&
+          node.body.length === 1 &&
+          node.body[0]!.form === 'return' &&
+          lone.startsWith('return ') &&
+          lone.endsWith(';') &&
+          !/\.borrow(_mut)?\(\)|\.lock\(\)|\.with\(/.test(lone)
+            ? lone.slice('return '.length, -1)
+            : undefined
         const boxed = node.async
           ? `std::rc::Rc::new(move |${params}| { ${innerClones} std::boxed::Box::pin(async move { ${body} }) })`
-          : `std::rc::Rc::new(move |${params}| { ${body} })`
+          : expression !== undefined
+            ? `std::rc::Rc::new(move |${params}| ${expression})`
+            : `std::rc::Rc::new(move |${params}| { ${body} })`
 
         return handleClones ? `{ ${handleClones} ${boxed} }` : boxed
       }
@@ -1961,22 +2062,30 @@ export function emitRust(
   // JavaScript's string methods over rust's String (see backend.ts, STRING_METHODS). Positions count chars; a read
   // past the end is empty (charAt) or 0 (charCodeAt), never a panic. Each borrows the receiver, so a local read here
   // is not moved away.
-  const stringExpr = (op: string, t: string, a: string[]): string => {
+  const stringExpr = (op: string, target: string, a: string[]): string => {
+    // a text LITERAL is borrowed as it is, not built into a String to be borrowed (clippy: unnecessary_to_owned)
+    const literal = /^"(?:[^"\\]|\\.)*"\.to_string\(\)$/.test(target)
+    const t = target
+    const borrow = literal ? target.slice(0, -'.to_string()'.length) : `&${target}`
+    // a position clamped at zero: an integer literal is clamped here, at emit time (clippy: unnecessary_min_or_max)
+    // (typed `i64`: a bare `1.min(n)` is an ambiguous numeric type, E0689)
+    const atLeastZero = (x: string): string => (/^-?\d+$/.test(x) ? `${Math.max(Number(x), 0)}i64` : `(${x}).max(0)`)
+
     switch (op) {
       case 'charAt':
       case 'at':
-        return `{ let h: &str = &${t}; let i = ${a[0]}; if i < 0 { String::new() } else { h.chars().nth(i as usize).map(|c| c.to_string()).unwrap_or_default() } }`
+        return `{ let h: &str = ${borrow}; let i = ${a[0]}; if i < 0 { String::new() } else { h.chars().nth(i as usize).map(|c| c.to_string()).unwrap_or_default() } }`
       case 'charCodeAt':
-        return `{ let h: &str = &${t}; let i = ${a[0]}; if i < 0 { -1i64 } else { h.chars().nth(i as usize).map(|c| c as i64).unwrap_or(-1) } }`
+        return `{ let h: &str = ${borrow}; let i = ${a[0]}; if i < 0 { -1i64 } else { h.chars().nth(i as usize).map(|c| c as i64).unwrap_or(-1) } }`
       case 'indexOf':
-        return `{ let h: &str = &${t}; let n: String = ${a[0]}; let from = (${a[1] ?? '0'}).max(0) as usize; let start = h.char_indices().nth(from).map(|(b, _)| b).unwrap_or(h.len()); match h[start..].find(n.as_str()) { Some(b) => h[..start + b].chars().count() as i64, None => -1 } }`
+        return `{ let h: &str = ${borrow}; let n: String = ${a[0]}; let from = ${atLeastZero(a[1] ?? '0')} as usize; let start = h.char_indices().nth(from).map(|(b, _)| b).unwrap_or(h.len()); match h[start..].find(n.as_str()) { Some(b) => h[..start + b].chars().count() as i64, None => -1 } }`
       case 'lastIndexOf':
-        return `{ let h: &str = &${t}; let n: String = ${a[0]}; match h.rfind(n.as_str()) { Some(b) => h[..b].chars().count() as i64, None => -1 } }`
+        return `{ let h: &str = ${borrow}; let n: String = ${a[0]}; match h.rfind(n.as_str()) { Some(b) => h[..b].chars().count() as i64, None => -1 } }`
       case 'split':
-        return `std::rc::Rc::new(std::cell::RefCell::new({ let h: &str = &${t}; let d: String = ${a[0]}; if d.is_empty() { h.chars().map(|c| c.to_string()).collect::<Vec<String>>() } else { h.split(d.as_str()).map(|s| s.to_string()).collect::<Vec<String>>() } }))`
+        return `std::rc::Rc::new(std::cell::RefCell::new({ let h: &str = ${borrow}; let d: String = ${a[0]}; if d.is_empty() { h.chars().map(|c| c.to_string()).collect::<Vec<String>>() } else { h.split(d.as_str()).map(|s| s.to_string()).collect::<Vec<String>>() } }))`
       case 'substring':
       case 'slice':
-        return `{ let h: &str = &${t}; let n = h.chars().count() as i64; let x = (${a[0]}).max(0).min(n); let y = (${a[1] ?? 'n'}).max(0).min(n); let (x, y) = if x <= y { (x, y) } else { (y, x) }; h.chars().skip(x as usize).take((y - x) as usize).collect::<String>() }`
+        return `{ let h: &str = ${borrow}; let n = h.chars().count() as i64; let x = ${atLeastZero(a[0]!)}.min(n); let y = ${atLeastZero(a[1] ?? 'n')}.min(n); let (x, y) = if x <= y { (x, y) } else { (y, x) }; h.chars().skip(x as usize).take((y - x) as usize).collect::<String>() }`
       case 'toLowerCase':
         return `${t}.to_lowercase()`
       case 'toUpperCase':
@@ -2120,6 +2229,14 @@ export function emitRust(
           const named = holder.type?.kind === 'named' ? holder.type.name : undefined
 
           if (kind === 'array' || named === 'list') {
+            // a `Copy` variable or literal written at a variable or literal index borrows nothing, so it is written
+            // in place. Anything else computes first, so no `borrow()` guard is alive at the `borrow_mut`
+            const simple = (e: Expression): boolean => e.form === 'variable' || e.form === 'integer' || e.form === 'float' || e.form === 'boolean'
+
+            if (simple(node.value) && copyType(node.value.type) && simple(node.target.index) && !(node.value.form === 'variable' && cellVars.has(node.value.name))) {
+              return `${expr(holder)}.borrow_mut()[${asUsize(expr(node.target.index))}] ${node.op} ${expr(node.value)};`
+            }
+
             return `{ let __index_value = ${bare(owned(node.value))}; let __index = (${expr(node.target.index)}) as usize; ${expr(holder)}.borrow_mut()[__index] ${node.op} __index_value; }`
           }
 
@@ -2134,6 +2251,40 @@ export function emitRust(
           return `{ let __cell_value = ${bare(
             expr(node.value),
           )}; ${cellTarget} ${node.op} __cell_value; }`
+        }
+
+        // `i = i + 1` is `i += 1` where the arithmetic is written plain: a step the range fact proved, or a float.
+        // A checked integer step stays the `checked_add` call. clippy flagged every one (assign_op_pattern)
+        if (
+          node.op === '=' &&
+          node.target.form === 'variable' &&
+          node.value.form === 'binary' &&
+          (node.value.op === '+' || node.value.op === '-' || node.value.op === '*') &&
+          node.value.left.form === 'variable' &&
+          node.value.left.name === node.target.name &&
+          (provenSteps.has(node.value) || node.value.type?.kind === 'float') &&
+          node.value.right.type?.kind !== 'string'
+        ) {
+          return `${expr(node.target)} ${node.value.op}= ${bare(expr(node.value.right))};`
+        }
+
+        // and any other step the emitter already wrote as plain arithmetic (`left / 2`, a division by a nonzero literal
+        // other than -1, which cannot overflow): read off the emitted text, so it is compound exactly when it is plain
+        if (
+          node.op === '=' &&
+          node.target.form === 'variable' &&
+          node.value.form === 'binary' &&
+          ['+', '-', '*', '/', '%'].includes(node.value.op) &&
+          node.value.left.form === 'variable' &&
+          node.value.left.name === node.target.name &&
+          node.value.right.type?.kind !== 'string'
+        ) {
+          const target = expr(node.target)
+          const right = expr(node.value.right)
+
+          if (bare(owned(node.value)) === `${target} ${node.value.op} ${right}`) {
+            return `${target} ${node.value.op}= ${bare(right)};`
+          }
         }
 
         return node.op === '='
@@ -2188,6 +2339,12 @@ export function emitRust(
           !node.value && currentResult?.kind === 'unknown'
             ? '(std::rc::Rc::new(()) as std::rc::Rc<dyn std::any::Any>)'
             : undefined
+
+        // a value that diverges (a `panic!`, what `abandon` renders) is a statement of its own: wrapping it in a
+        // `return`, or in an `Ok`, is clippy's diverging_sub_expression
+        if (/^(panic|unreachable|unimplemented|todo)!\(/.test(casted)) {
+          return `${casted};`
+        }
 
         if (guardDepth > 0) {
           return `return std::result::Result::Ok(Some(${boxedUnit ?? casted}));`
@@ -2288,8 +2445,10 @@ export function emitRust(
         // does. It iterated `.borrow().clone()` of the whole list until 2026-10-02 (note/term/codegen/rust.md, R1)
         if (node.iterable.type?.kind === 'array') {
           const index = node.index ? `let ${vname(node.index)} = __at as i64; ` : ''
+          // a `Copy` element is read out by value, anything else is cloned out of the borrow
+          const element = node.iterable.type.kind === 'array' && copyType(node.iterable.type.element) ? '*value' : 'value.clone()'
 
-          return `{ let __walked = &(${expr(node.iterable)}); let mut __at: usize = 0; loop { let ${vname(node.item)} = match __walked.borrow().get(__at) { Some(value) => value.clone(), None => break }; ${index}__at += 1;\n${budget}${block(
+          return `{ let __walked = &(${expr(node.iterable)}); let mut __at: usize = 0; loop { let ${vname(node.item)} = match __walked.borrow().get(__at) { Some(value) => ${element}, None => break }; ${index}__at += 1;\n${budget}${block(
             node.body,
             d + 1,
           )}\n${pad(d)}} }`
@@ -2388,11 +2547,14 @@ export function emitRust(
         // match a clone of the subject: a variant pattern binds (moves out) the variant's fields, so matching the
         // original would partially move it and break a branch that also uses the whole subject (`return self`). Our
         // ADTs all derive Clone, so this is always valid; the bound fields come from the clone, the original is intact.
-        const subject = `${expr(node.subject)}.clone()`
+        // ...unless this match is the variable's only read (`moveArgs`, the last-use analysis): then it is matched by
+        // value, nothing is cloned, and the fields move out of it
         const subjectVar =
           node.subject.form === 'variable'
             ? node.subject.name
             : undefined
+        const moved = subjectVar !== undefined && moveArgs.has(subjectVar) && !cellVars.has(subjectVar)
+        const subject = moved ? expr(node.subject) : `${expr(node.subject)}.clone()`
 
         const arms = node.cases.map(b => {
           const subjectType = node.subject.type
@@ -2433,13 +2595,15 @@ export function emitRust(
             }
           }
 
-          // a recursive field arrives Rc-wrapped (see recursiveFields); clone it out so the branch body
-          // sees the plain enum value it was written against
+          // a recursive field arrives Rc-wrapped (see recursiveFields), and the branch body sees the plain enum value
+          // it was written against. `Rc::unwrap_or_clone` MOVES the value out when this is the only reference, which
+          // it is for a tree built and consumed once, and clones only a shared one: it was always `(*x).clone()`, a
+          // clone per node per walk (binary-trees)
           const unwraps = locals
             .filter(({ field }) => recursiveFields.has(`${b.label}/${field}`))
             .map(
               ({ local }) =>
-                `${pad(d + 2)}let ${snake(local)} = (*${snake(local)}).clone();`,
+                `${pad(d + 2)}let ${snake(local)} = std::rc::Rc::unwrap_or_clone(${snake(local)});`,
             )
 
           return `${pad(d + 1)}${pascal(owner)}::${pascal(
@@ -2783,11 +2947,56 @@ export function emitRust(
                 // always see the coverage (an `if` chain with no `else`), so the fall-through is marked
                 `${pad(d + 1)}unreachable!()`
               : ''
+        // a function's FINAL `return x;` is its tail expression `x`, as Rust is written (clippy: needless_return). Only
+        // the last statement, and only when it is a `return` on a line of its own at the body's depth, so a return
+        // nested deeper, or one inside a block of its own, is left as it is
+        const tailed = (text: string): string => {
+          // a FINAL `match` is the tail expression too, so the closing `return x;` of each arm is the arm's value. Only
+          // a line at the arm's own depth directly before the arm's closing brace, and only inside the text the
+          // `match` itself wrote (an `if` chain lays its blocks out one level shallower and is left alone)
+          // A final `if` / `else` chain, which rustc saw cover every path (`tail` is empty only then), is the same: the
+          // last `return x;` of each branch, at the branch's depth and directly before its `}` or `} else`
+          if ((last?.form === 'match' || last?.form === 'if') && !tail) {
+            const word = last.form === 'match' ? 'match ' : 'if '
+            const head = text.lastIndexOf(`\n${pad(d + 1)}${word}`) + 1 || (text.startsWith(`${pad(d + 1)}${word}`) ? 0 : -1)
+
+            if (head < 0 || !text.endsWith(`${pad(d + 1)}}`)) {
+              return text
+            }
+
+            const inner = last.form === 'match' ? d + 3 : d + 2
+            const close = last.form === 'match' ? `${pad(d + 2)}\\}$` : `${pad(d + 1)}\\}( else|$)`
+            const branch = new RegExp(`^${pad(inner)}return (.*);\\n(?=${close})`, 'gm')
+
+            return (
+              text.slice(0, head) +
+              text.slice(head).replace(branch, (whole, value: string) => (borrowsAtTail(value) ? whole : `${pad(inner)}${value}\n`))
+            )
+          }
+
+          const marker = `${pad(d + 1)}return `
+          const at = text.startsWith(marker) ? 0 : text.lastIndexOf(`\n${marker}`) + 1
+
+          if (last?.form !== 'return' || tail || at < 0 || (at === 0 && !text.startsWith(marker)) || !text.endsWith(';')) {
+            return text
+          }
+
+          const value = text.slice(at + marker.length, -1)
+
+          // a value that borrows (`out.borrow().iter()...`) stays a `return` statement: before edition 2024 a tail
+          // expression's temporaries outlive the block's locals, so the `Ref` guard would outlive `out` (E0597),
+          // while a statement drops it at its semicolon
+          if (borrowsAtTail(value)) {
+            return text
+          }
+
+          return value === '()' ? text.slice(0, Math.max(at - 1, 0)) : `${text.slice(0, at)}${pad(d + 1)}${value}`
+        }
         // a signature-only stub compiles: its body is the not-implemented panic
         const bodyText =
           node.body.length === 0
             ? `${pad(d + 1)}unimplemented!(${JSON.stringify(`stub: ${node.name}`)})`
-            : [...shadows, block(node.body, d + 1), tail]
+            : [...shadows, tailed(block(node.body, d + 1)), tail]
                 .filter(Boolean)
                 .join('\n')
 

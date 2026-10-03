@@ -136,6 +136,11 @@ task row-of
       read one/dominated
     hook hold
       save verdict, text <dominated by process start>
+  fork test
+    hook test
+      read one/emulated
+    hook hold
+      save verdict, text <emulated, left out ({{verdict}})>
   call push
     read cells
     read verdict
@@ -339,8 +344,8 @@ task worst-first
             send back, make greater
         send back, make equal
 
-# per target: the geometric mean of the wall ratios over the comparisons not dominated by process start, with its
-# denominator, and the worst three by name
+# per target: the geometric mean of the wall ratios over the comparisons neither dominated by process start nor
+# emulated, with its denominator, and the worst three by name
 task print-summary
   take all
     like list
@@ -356,6 +361,7 @@ task print-summary
       save ratios
         make list
       save dominated, code 0
+      save emulated, code 0
       save total, code 0
       walk list, read all
         hook next
@@ -371,6 +377,13 @@ task print-summary
                   read total
                   code 1
               fork test
+                hook test
+                  read one/emulated
+                hook hold
+                  save emulated
+                    call add
+                      read emulated
+                      code 1
                 hook test
                   read one/dominated
                 hook hold
@@ -400,7 +413,7 @@ task print-summary
             code 0
         hook hold
           call log
-            text <{{target}}: 0 of {{total}} comparisons measurable, {{dominated}} dominated by process start>
+            text <{{target}}: 0 of {{total}} comparisons measurable, {{dominated}} dominated by process start, {{emulated}} emulated>
           turn next
       save mean
         call fixed
@@ -411,7 +424,7 @@ task print-summary
         call size
           read ratios
       call log
-        text <{{target}}: geometric mean of the wall ratios {{mean}}, over {{counted}} of {{total}} comparisons ({{dominated}} dominated by process start, left out)>
+        text <{{target}}: geometric mean of the wall ratios {{mean}}, over {{counted}} of {{total}} comparisons ({{dominated}} dominated by process start and {{emulated}} emulated, left out)>
       save ranked
         call worst-first
           read kept

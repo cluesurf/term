@@ -74,6 +74,18 @@ task reserved-words
       <public>
       <eval>
       <arguments>
+      <window>
+      <document>
+      <globalThis>
+      <navigator>
+      <fetch>
+      <performance>
+      <atob>
+      <btoa>
+      <setTimeout>
+      <clearTimeout>
+      <queueMicrotask>
+      <structuredClone>
 
 task is-reserved
   take word, like text

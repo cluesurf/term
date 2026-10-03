@@ -1,0 +1,118 @@
+# The single source of truth for every code-generation backend: its target language, whether it is production-ready
+# or experimental, and (for experimental ones) the precise limitations a user must know before relying on it. The
+# CLI's target selection, the emitters' experimental banners, and the backend tests all read from here, so a
+# backend's stability is stated in exactly one place.
+#
+# Ported from compile/backend-registry.ts (self-hosting, phase 2, 2026-10-02). Two shapes changed with the port and
+# the one test that read them changed in the same step: the table is a LIST of `backend-info` (`backends`), not an
+# object keyed by name, and `backendInfo(name)`, which answered `undefined` for an unknown name, is gone, because
+# nothing but that test read it.
+
+load @term/base/code/list
+  find list
+
+form backend-info
+  # the target name as written on the command line and passed to the emitter (`rust`, `wgsl`, ...)
+  link name, like text
+  # the human-facing language or format name (`Rust`, `WGSL`, ...)
+  link language, like text
+  # `stable` or `experimental`
+  link stability, like text
+  # for an experimental backend, what does not work yet; empty for a stable one
+  link limitations
+    like list
+      like text
+
+host backends
+  like list
+    like backend-info
+  make list
+    make backend-info
+      bind name, <typescript>
+      bind language, <TypeScript>
+      bind stability, <stable>
+      bind limitations, make list
+    make backend-info
+      bind name, <rust>
+      bind language, <Rust>
+      bind stability, <stable>
+      bind limitations, make list
+    make backend-info
+      bind name, <swift>
+      bind language, <Swift>
+      bind stability, <stable>
+      bind limitations, make list
+    make backend-info
+      bind name, <kotlin>
+      bind language, <Kotlin>
+      bind stability, <stable>
+      bind limitations, make list
+    make backend-info
+      bind name, <wgsl>
+      bind language, <WGSL>
+      bind stability, <experimental>
+      bind limitations
+        make list
+          <Numeric-only by design: no strings, maps, records, closures, or async. It targets the GPU data-parallel fragment (numbers, floats, booleans, and arrays of them).>
+    make backend-info
+      bind name, <hvm>
+      bind language, <HVM>
+      bind stability, <experimental>
+      bind limitations
+        make list
+          <The pure fragment is lowered: numbers, booleans, arithmetic / comparison, named-function calls, recursion, and value conditionals (an `if` becomes a numeric match). Strings, collections, records, stored closures, and loops are not yet lowered and are flagged with a SEED-UNSUPPORTED marker.>
+
+# every registered backend, in order. A task rather than the `host` itself, because a `host` constant is private to
+# its emitted module, and TypeScript can reach a port only through its tasks and forms
+task list-backends
+  like list
+    like backend-info
+
+  back backends
+
+# whether a backend is experimental. An unknown name is not
+task is-experimental-backend
+  take name, like text
+  like boolean
+
+  walk backends
+    take info
+    fork test, is-equal(info/name, name)
+      hold
+        back is-equal(info/stability, <experimental>)
+  back false
+
+# the experimental notice for a backend, as plain lines (no comment syntax). Empty for a stable or unknown backend.
+# The emitters wrap these in their own comment prefix; the CLI prints them as a warning.
+task experimental-notice
+  take name, like text
+  like list
+    like text
+
+  save out, make list
+  walk backends
+    take info
+    fork test, and(is-equal(info/name, name), is-equal(info/stability, <experimental>))
+      hold
+        out/push <EXPERIMENTAL backend: {{info/language}}. Output is not production-ready.>
+        walk info/limitations
+          take line
+          out/push <- {{line}}>
+  back out
+
+# the experimental notice as a comment block in the target language's own comment syntax, ready to prepend to emitted
+# source. `prefix` is the line-comment marker (`//` for WGSL). Empty for a stable backend.
+task experimental-banner
+  take name, like text
+  take prefix, like text
+  like text
+
+  save notice, experimental-notice(name)
+  fork test, is-empty(notice)
+    hold
+      back <>
+  save lines, make list
+  walk notice
+    take line
+    lines/push <{{prefix}} {{line}}>
+  back <{{join(lines, <\n>)}}\n\n>

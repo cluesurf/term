@@ -226,17 +226,26 @@ export function buildProgram({
   writeFileSync(file, source)
   mkdirSync(path.dirname(exe), { recursive: true })
 
+  // The release flags. `-wmo` lets generics specialize across the one module. `-enforce-exclusivity=unchecked` drops the
+  // dynamic exclusivity check on every access to a class's stored property, and a Term list is a `SeedList` class:
+  // on fannkuch-redux that check was about 3x of the run (2.8 to 3.7 s against 1.0 to 1.2 s, 2026-10-02). It is sound
+  // for emitted Term code because the emitter never creates an overlapping access: a read of `.data` copies the array
+  // value, so its access ends at once, a write is one statement, and nothing is passed `inout`. The test harnesses keep
+  // the default checked build, so an overlap a later change introduces traps in the suites rather than shipping
+  // (note/term/codegen/ios.md, Build)
+  const release = ['-O', '-wmo', '-enforce-exclusivity=unchecked']
+
   if (target === 'ios') {
     // the iOS simulator SDK through xcrun. The stdlib's macOS package flags (swift-nio, Hummingbird) are not iOS
     // modules and are not passed; an app whose closure reaches them does not build for iOS yet
     const sdk = execFileSync('xcrun', ['-sdk', 'iphonesimulator', '--show-sdk-path'], { encoding: 'utf8' }).trim()
     execFileSync(
       'xcrun',
-      ['-sdk', 'iphonesimulator', 'swiftc', '-target', IOS_SIMULATOR_TARGET, '-sdk', sdk, '-O', '-o', exe, file],
+      ['-sdk', 'iphonesimulator', 'swiftc', '-target', IOS_SIMULATOR_TARGET, '-sdk', sdk, ...release, '-o', exe, file],
       { stdio: 'inherit' },
     )
   } else {
-    execFileSync('swiftc', [...swiftFlags(), '-O', '-o', exe, file], { stdio: 'inherit' })
+    execFileSync('swiftc', [...swiftFlags(), ...release, '-o', exe, file], { stdio: 'inherit' })
   }
 
   // the native half as compiled, without the driver line, which differs between a dev build and a release of the

@@ -11,7 +11,10 @@ import { parse } from '@term/make/code/parser/tree'
 import { readView, checkView } from '@term/make/code/compile/view'
 import { readCatalog } from '@term/make/code/compile/view-catalog'
 import { compile } from '@term/make/code/compile/compile'
-import { VIEW_CAPS } from '@term/make/code/compile/view-cap'
+import { makeViewCaps } from '@term/make/code/compile/view-cap'
+
+// a task since compile/view-cap became Term (2026-10-02): a top-level `host` is private to its module
+const VIEW_CAPS = makeViewCaps()
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'

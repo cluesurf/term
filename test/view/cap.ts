@@ -5,7 +5,10 @@
 
 import { parse } from '@term/make/code/parser/tree'
 import { readView } from '@term/make/code/compile/view'
-import { VIEW_CAPS } from '@term/make/code/compile/view-cap'
+import { makeViewCaps } from '@term/make/code/compile/view-cap'
+
+// a task since compile/view-cap became Term (2026-10-02): a top-level `host` is private to its module
+const VIEW_CAPS = makeViewCaps()
 
 let pass = 0
 let fail = 0

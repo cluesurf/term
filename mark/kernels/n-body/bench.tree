@@ -1,0 +1,61 @@
+# n-body, single-threaded, scalar. upstream/ holds the four Benchmarks Game programs unchanged, from the source zip
+# public/download/benchmarksgame-sourcecode.zip in the pinned repository: nbody.rust (TeXitoi), nbody.kotlin (Hank
+# Grabowski, from the Java), and the naive transliterations of Michael Ferguson's Chapel program for Node and Swift,
+# which term.tree follows step for step. Changes, each forced:
+#   same.rs     nbody.rust, unchanged
+#   same.kt     nbody.kotlin, unchanged
+#   same.ts     node-8 with `let px = py = pz = 0` written `let px = 0, py = 0, pz = 0`: py and pz were implicit
+#               globals, which a module refuses
+#   same.swift  swift-8 importing Foundation where it imported Glibc, which macOS lacks, and printing each energy
+#               with String(format: "%.9f") where it printed the full double
+# The four differ in the order of a few float operations (dx * mass * mag against dx * (mass * mag)), which the
+# Benchmarks Game accepts because all agree to 9 decimals. expect/check.txt is the upstream 1000_out. The Benchmarks
+# Game runs 50,000,000 steps. timed is 20,000,000, where the slowest hand version runs 0.5 to 5 seconds on the M5 Pro. Term prints
+# to 9 decimals by rounding |x| * 10^9 to the nearest whole and laying out the digits with the sign, which agrees
+# with printf's %.9f except when |x| * 10^9 lies within an ulp of a half.
+host term, <term.tree>
+host input
+  host kind, <size>
+  host seed, 1
+  host sizes
+    host check, 1000
+    host timed, 20000000
+host output
+  host kind, <exact>
+host boundary, <process>
+list metrics
+  <wall>, <rss>, <size>
+host semantics
+  host integer, <64-bit, stops on overflow. Only loop counters, below the step count>
+  host float, <IEEE 754 binary64, round to nearest, no fused multiply-add asked for. Printed to 9 decimals>
+  host text, <none>
+  host map-order, <none>
+list baselines
+  mesh
+    host name, <same-rust>
+    host file, <same.rs>
+    host track, <same>
+    host source, <benchmarksgame-team/benchmarksgame, nbody/nbody.rust>
+    host commit, <40296663ed350d5fe4a6ab5e367bab61cb77c219>
+    host license, <BSD-3-Clause>
+  mesh
+    host name, <same-typescript>
+    host file, <same.ts>
+    host track, <same>
+    host source, <benchmarksgame-team/benchmarksgame, nbody/nbody.node-8.node>
+    host commit, <40296663ed350d5fe4a6ab5e367bab61cb77c219>
+    host license, <BSD-3-Clause>
+  mesh
+    host name, <same-swift>
+    host file, <same.swift>
+    host track, <same>
+    host source, <benchmarksgame-team/benchmarksgame, nbody/nbody.swift-8.swift>
+    host commit, <40296663ed350d5fe4a6ab5e367bab61cb77c219>
+    host license, <BSD-3-Clause>
+  mesh
+    host name, <same-kotlin>
+    host file, <same.kt>
+    host track, <same>
+    host source, <benchmarksgame-team/benchmarksgame, nbody/nbody.kotlin>
+    host commit, <40296663ed350d5fe4a6ab5e367bab61cb77c219>
+    host license, <BSD-3-Clause>

@@ -10,7 +10,30 @@ object runner {
             val error = process.errorStream.bufferedReader().readText()
             val code = process.waitFor()
             RunResult(code.toLong(), output, error)
-        } catch (cause: Exception) {
+        } catch (cause: Throwable) {
+            RunResult(-1L, "", cause.toString())
+        }
+    }
+
+    // the command on this terminal: it reads the keyboard and writes as it goes; its exit code, -1 when it could not start
+    suspend fun attached(command: String, argumentList: List<String>): Long {
+        return try {
+            ProcessBuilder(listOf(command) + argumentList).inheritIO().start().waitFor().toLong()
+        } catch (cause: Throwable) {
+            -1L
+        }
+    }
+
+    // the command with `input` written to its standard input and then closed, its output captured as `run` captures it
+    suspend fun withInput(command: String, argumentList: List<String>, input: String): RunResult {
+        return try {
+            val process = ProcessBuilder(listOf(command) + argumentList).start()
+            process.outputStream.use { it.write(input.toByteArray()) }
+            val output = process.inputStream.bufferedReader().readText()
+            val error = process.errorStream.bufferedReader().readText()
+            val code = process.waitFor()
+            RunResult(code.toLong(), output, error)
+        } catch (cause: Throwable) {
             RunResult(-1L, "", cause.toString())
         }
     }

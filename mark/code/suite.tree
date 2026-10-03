@@ -40,6 +40,7 @@ load @term/base/code/calendar
 
 load ./host
   find here
+  find arch-name
   find stamp
   find load-average
   find core-count
@@ -57,6 +58,12 @@ load ./build
   find tool-version
   find build-term
   find build-source
+  find build-arch
+  find native-arch
+  find runner-translated
+  find check-arch
+  find arch-fix
+  find toolchain-text
 
 load ./time
   find sample
@@ -473,6 +480,7 @@ task compare-group
     like list
       like case
   take floor, like decimal
+  take emulated, like boolean
   like list
     like comparison
   save out
@@ -609,6 +617,7 @@ task compare-group
               call is-below
                 read base-median
                 read limit
+          bind emulated, read emulated
           bind term-rss
             call peak-rss
               read term/samples
@@ -923,10 +932,38 @@ task run-suite
       code 2
   call log
     text <floor: an empty process takes {{floor-text}} ms here. A median under {{floor-factor}} times that is dominated by process start>
-  # the toolchains
+  # the toolchains, and the architecture each one's programs run as. An emulated target is a warning outside a
+  # headline session, and refused in one
+  save native
+    call native-arch
+      wait true
+  save headline
+    call is-equal
+      read purpose
+      text <headline>
+  save refused, false
+  fork test
+    hook test
+      call runner-translated
+        wait true
+    hook hold
+      save own
+        call arch-name
+      fork test
+        hook test
+          read headline
+        hook hold
+          call log-error
+            text <term mark: --purpose headline refuses the runner: its own node is translated (sysctl.proc_translated is 1), a {{own}} process on a {{native}} machine. Run it with a node built for {{native}}>
+          save refused, true
+        hook miss
+          call log
+            text <WARNING: the runner's own node is translated (sysctl.proc_translated is 1), a {{own}} process on a {{native}} machine. Fix: put a node built for {{native}} first on PATH>
   save installed
     make list
   save versions
+    make list
+  save emulations
     make list
   walk list, read targets
     hook next
@@ -939,22 +976,59 @@ task run-suite
         read installed
         read have
       save version, text <>
+      save emulated, false
       fork test
         hook test
           read have
         hook hold
-          save version
-            call tool-version
+          save arch
+            call check-arch
               read one
+              read native
               wait true
+          save version
+            call toolchain-text
+              call tool-version
+                read one
+                wait true
+              read arch
+          save emulated, read arch/emulated
           call log
             text <{{one}}: {{version}}>
+          fork test
+            hook test
+              read emulated
+            hook hold
+              save fix
+                call arch-fix
+                  read one
+                  read native
+              fork test
+                hook test
+                  read headline
+                hook hold
+                  call log-error
+                    text <term mark: --purpose headline refuses {{one}}: it builds {{arch/named}} programs, which run emulated on this {{native}} machine. Fix: {{fix}}>
+                  save refused, true
+                hook miss
+                  call log
+                    text <WARNING: {{one}} builds {{arch/named}} programs, which run emulated on this {{native}} machine, so every {{one}} time includes the emulation. Its comparisons are flagged and left out of the geometric mean. Fix: {{fix}}>
         hook miss
           call log
             text <{{one}}: skipped, the toolchain is not installed>
       call push
         read versions
         read version
+      call push
+        read emulations
+        read emulated
+  fork test
+    hook test
+      read refused
+    hook hold
+      call log-error
+        text <term mark: nothing built. A headline session times only programs native to the machine>
+      send back, code 1
   # every program, target and size
   save cell
     call seeded
@@ -1173,6 +1247,9 @@ task run-suite
                 call compare-group
                   read group
                   read floor
+                  call get
+                    read emulations
+                    read target-at
                 hook next
                   take site, name one
                   call push

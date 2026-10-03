@@ -384,6 +384,11 @@ const LIST_HELPER: Record<string, string> = {
 // the `note shared` forms: references by design, compared and keyed by identity as on the other backends
 let tsSharedForms = new Set<string>()
 
+// the variants this module constructs with no fields, each ONE frozen constant (name -> constant): a field-less value
+// carries nothing a construction could set and nothing a program could write, so every `make leaf` can be the same
+// object. A fresh `{ form: "leaf" }` per construction was most of binary-trees' gap to hand-written code
+let tsFieldless = new Map<string, string>()
+
 // every function's declared parameters, so a left-out trailing `need false` argument is filled with its type's empty
 // value, as the Rust, Swift and Kotlin backends fill it: left as `undefined`, a left-out text printed "undefined" here
 // and nothing there
@@ -772,6 +777,12 @@ function __termAt<T>(a: T[], i: number): T {
   if (!(i >= 0 && i < a.length)) __termStop("a list read at " + i + " of " + a.length)
   return a[i]!
 }
+function __termReadPast(a: unknown[], i: number): never {
+  return __termStop("a list read at " + i + " of " + a.length)
+}
+function __termWritePast(a: unknown[], i: number): never {
+  return __termStop("a list write at " + i + " of " + a.length)
+}
 function __termPut<T>(a: T[], i: number, v: T): T {
   if (!(i >= 0 && i < a.length)) __termStop("a list write at " + i + " of " + a.length)
   return (a[i] = v)
@@ -1125,6 +1136,31 @@ function makeEmitter(
 
   let assignedNames = new Set<string>()
 
+  // A list read with its check written IN PLACE when the list and the index are plain (a name, a literal, a field of a
+  // name), so evaluating each twice changes nothing: `(i >= 0 && i < xs.length ? xs[i]! : __termReadPast(xs, i))`.
+  // The stop stays out of line. One shared `__termAt` saw lists of every element type at one call site, and on
+  // fannkuch-redux the call was most of the gap to hand-written code (2.58x to 1.38x with the checks inlined away,
+  // tmp/ts-check-cost.ts, 2026-10-02). Anything else keeps `__termAt`, which evaluates each once
+  const plainOperand = (e: Expression): boolean =>
+    e.form === 'variable' || e.form === 'integer' || (e.form === 'member' && !e.index && !/^\d+$/.test(e.name) && plainOperand(e.target))
+  // a value with no effect of its own beyond stopping: a write may then check before it computes the value
+  const effectFree = (e: Expression): boolean =>
+    plainOperand(e) ||
+    e.form === 'float' ||
+    e.form === 'string' ||
+    e.form === 'boolean' ||
+    (e.form === 'member' && e.index !== undefined && e.target.type?.kind === 'array' && plainOperand(e.target) && plainOperand(e.index)) ||
+    (e.form === 'binary' && effectFree(e.left) && effectFree(e.right)) ||
+    (e.form === 'unary' && effectFree(e.operand))
+  const readAt = (list: Expression, index: Expression): string => {
+    const xs = expression(list)
+    const i = expression(index)
+
+    return plainOperand(list) && plainOperand(index)
+      ? `(${i} >= 0 && ${i} < ${xs}.length ? ${xs}[${i}]! : __termReadPast(${xs}, ${i}))`
+      : `__termAt(${xs}, ${i})`
+  }
+
   const expression = (
     node: Expression,
     parentPrecedence = 0,
@@ -1172,7 +1208,7 @@ function makeEmitter(
 
           return node.callee.name === 'set'
             ? `__termPut(${target}, ${expression(node.args[0]!)}, ${expression(node.args[1]!)})`
-            : `__termAt(${target}, ${expression(node.args[0]!)})`
+            : readAt(node.callee.target, node.args[0]!)
         }
 
         if (
@@ -1261,6 +1297,15 @@ function makeEmitter(
           )
         }
 
+        // a map READ is the stored value: Term's raw `get` reads a key it has (the stdlib's `hash-get` asks `has` first),
+        // so the read is `get(k)!`, as TypeScript writes a read it knows is there. `tsc --strict` refused `V | undefined`
+        // where a `V` was declared
+        const mapRead =
+          node.callee.form === 'member' &&
+          node.callee.name === 'get' &&
+          node.callee.target.type?.kind === 'map' &&
+          node.args.length === 1
+
         // a map read or write whose key may be a record goes through `__termKey`, so an equal record finds the entry
         // (a JavaScript Map keys objects by identity). A primitive key costs one `typeof`.
         if (
@@ -1279,7 +1324,7 @@ function makeEmitter(
             return `${expression(node.callee)}(${[
               `__termKey(${expression(node.args[0]!)})`,
               ...node.args.slice(1).map(arg => expression(arg)),
-            ].join(', ')})`
+            ].join(', ')})${mapRead ? '!' : ''}`
           }
         }
 
@@ -1305,7 +1350,7 @@ function makeEmitter(
           }
         }
 
-        return `${expression(node.callee)}(${rendered.join(', ')})`
+        return `${expression(node.callee)}(${rendered.join(', ')})${mapRead ? '!' : ''}`
       }
 
       case 'array': {
@@ -1373,6 +1418,15 @@ function makeEmitter(
         // contextual type is never checked against the type it is meant to be. 636 of the v4 grammar's strict
         // errors were one such pattern built without its optional `system`.
         if (variants.has(node.name)) {
+          // a variant with no fields at all, declared or given, and not `mark shared` (whose identity is the point): the
+          // module's one frozen constant for it
+          if (node.fields.length === 0 && variantCase(node.name, node.type).length === 0 && !tsSharedForms.has(node.name)) {
+            const constant = tsFieldless.get(node.name) ?? `__termVariant${toPascal(node.name)}`
+            tsFieldless.set(node.name, constant)
+
+            return constant
+          }
+
           return `{ ${[
             'form: ' + JSON.stringify(node.name),
             ...inDeclaredOrder(variantCase(node.name, node.type), node.fields, fields),
@@ -1401,7 +1455,7 @@ function makeEmitter(
           if (node.target.type?.kind === 'array') {
             tsListUsed = true
 
-            return `__termAt(${expression(node.target)}, ${expression(node.index)})`
+            return readAt(node.target, node.index)
           }
 
           return `${expression(node.target)}[${expression(node.index)}]`
@@ -1421,7 +1475,7 @@ function makeEmitter(
           if (node.target.type?.kind === 'array') {
             tsListUsed = true
 
-            return `__termAt(${expression(node.target)}, ${node.name})`
+            return readAt(node.target, { form: 'integer', value: Number(node.name), span: node.span })
           }
 
           return `${expression(node.target)}[${node.name}]`
@@ -1458,8 +1512,14 @@ function makeEmitter(
         // `is-equal` on records, lists, maps or bytes compares their structure, as Rust, Swift and Kotlin do.
         // JavaScript's `==` on two objects is identity, which made two records with equal fields unequal here only
         // (note/term/optimize/meaning.md, question 4)
+        // a comparison with a number, text or boolean LITERAL is never structural: the literal equals only a value of
+        // its own kind, which `===` decides. `!__termEqual(k, 0)` walked an unknown-typed list read on every turn
+        const scalarLiteral = (e: Expression): boolean => e.form === 'integer' || e.form === 'float' || e.form === 'string' || e.form === 'boolean'
+
         if (
           (node.op === '==' || node.op === '!=') &&
+          !scalarLiteral(node.left) &&
+          !scalarLiteral(node.right) &&
           (structuralType(node.left.type) || structuralType(node.right.type))
         ) {
           tsEqualUsed = true
@@ -1813,7 +1873,10 @@ function makeEmitter(
         // match `Maybe<number>` -- and a `host x / like list / like feature-state` with a hundred entries
         // then fails at whatever reads it rather than where it is written. Only when the source declared one:
         // an inferred binding is left to inference, as it was.
-        const declared = node.type ? `: ${tsType(node.type)}` : ''
+        // An anonymous record (a nested `host` table, typed `named ''`) has no name to spell, so it is left to inference
+        // rather than written `const range:  = ...`
+        const spelled = node.type ? tsType(node.type) : ''
+        const declared = spelled ? `: ${spelled}` : ''
 
         return `${keyword} ${toCamel(node.name)}${declared} = ${expression(
           node.init,
@@ -1828,9 +1891,20 @@ function makeEmitter(
           tsListUsed = true
           const list = expression(node.target.target)
           const at = node.target.index ? expression(node.target.index) : node.target.name
-          const write = node.op === '=' ? `${list}[${at}] = ${expression(node.value)}` : `${list}[${at}] ${node.op} ${expression(node.value)}`
+          // one checked write, `__termPut`, which evaluates the list and the index ONCE: the read-then-write pair
+          // evaluated both twice and made two calls. The value is computed first, as on Rust (`__set_value`). With a
+          // plain list and index and a value that has no effect of its own, the check is written in place (readAt)
+          if (node.op === '=') {
+            const index: Expression = node.target.index ?? { form: 'integer', value: Number(node.target.name), span: node.span }
 
-          return `__termAt(${list}, ${at}); ${write}`
+            if (plainOperand(node.target.target) && plainOperand(index) && effectFree(node.value)) {
+              return `${at} >= 0 && ${at} < ${list}.length ? (${list}[${at}] = ${expression(node.value)}) : __termWritePast(${list}, ${at})`
+            }
+
+            return `__termPut(${list}, ${at}, ${expression(node.value)})`
+          }
+
+          return `__termAt(${list}, ${at}); ${list}[${at}] ${node.op} ${expression(node.value)}`
         }
 
         const target = expression(node.target)
@@ -2161,10 +2235,16 @@ function makeEmitter(
             lastRequired = i
           }
         })
+        // A `fall` DEFAULT IS SPELLED IN THE SIGNATURE (`binds: string[] = []`). The checker already fills it at
+        // every Term call site, so Term callers are unchanged; what the default buys is the TypeScript that calls an
+        // emitted module directly, which passed `undefined` straight into the body. Found porting `check/arm`
+        // (self-hosting-0033, 2026-10-02), whose twelve TypeScript callers had to change because of it.
         const params = node.params
           .map(
             (p, i) =>
-              `${toCamel(p.name)}${p.optional && !p.fallback && i > lastRequired ? '?' : ''}: ${tsType(p.type)}`,
+              `${toCamel(p.name)}${p.optional && !p.fallback && i > lastRequired ? '?' : ''}: ${tsType(p.type)}${
+                p.fallback ? ` = ${expression(p.fallback)}` : ''
+              }`,
           )
           .join(', ')
 
@@ -2279,6 +2359,7 @@ export function emitTypeScript(
   tsEqualUsed = false
   tsTextUsed = false
   tsListUsed = false
+  tsFieldless = new Map()
   tsSharedForms = new Set(
     program.flatMap(n => (n.form === 'record-type' && n.shared ? [n.name] : [])),
   )
@@ -2473,6 +2554,11 @@ export function emitTypeScript(
 
   if (tsListUsed) {
     prelude.push(listPrelude(prelude.includes(EXCEPTION_PRELUDE)))
+  }
+
+  // the field-less variants' constants, ahead of every use
+  for (const [name, constant] of tsFieldless) {
+    prelude.push(`const ${constant} = Object.freeze({ form: ${JSON.stringify(name)} as const })`)
   }
 
   // the wake chain: one `hiveWake` per deck with its static entries, then the raise hook, when the program has the

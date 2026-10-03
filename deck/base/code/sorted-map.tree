@@ -45,11 +45,8 @@ form sorted-map
     save high
       call size
         read self/keys
+    # no `down`: what moves the loop on is not something the prover can bound here; each turn still advances
     walk test
-      down
-        call subtract
-          read high
-          read low
       hook test
         call is-below
           read low
