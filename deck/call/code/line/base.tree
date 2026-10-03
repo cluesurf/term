@@ -114,6 +114,7 @@ load @term/call/code/work/tool-verbs
   find hold
   find time
   find zone
+  find mark
 
 load @term/call/code/work/wake
   find wake
@@ -436,6 +437,14 @@ hook time
   take history
     like text
   task time
+
+# Compare emitted code with hand-written code per target (time: time-* tasks)
+hook mark
+  # a filter on <family>/<program>, or `list`; then --target, --runs, --quick, --check, --size, --export, --markdown, --purpose, --label
+  take rest
+    like text
+    many
+  task mark
 
 # Compile and run an app (entry, or the deck.tree boot entry)
 hook boot

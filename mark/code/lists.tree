@@ -1,0 +1,66 @@
+# Three list operations written out by hand. The list form has `slice`, `copy` and `contains` as METHODS, and in a
+# build that also holds top-level tasks of those names (`text`'s `slice` and `contains`, `bytes`' `slice`, `file`'s
+# `copy`), the top-level task shadows the method and the call is refused as the wrong overload.
+
+load @term/base/code/list
+  find list
+  find push
+  find get
+  find size
+
+# items `start` up to, not including, `end`
+task part-of
+  take values
+    like list
+      like decimal
+  take start, like number
+  take end, like number
+  like list
+    like decimal
+  save out
+    make list
+  walk size
+    bind base, read start
+    bind head, read end
+    hook next
+      take site, name at
+      call push
+        read out
+        call get
+          read values
+          read at
+  send back, read out
+
+task words-copy
+  take values
+    like list
+      like text
+  like list
+    like text
+  save out
+    make list
+  walk list, read values
+    hook next
+      take site, name one
+      call push
+        read out
+        read one
+  send back, read out
+
+task holds-text
+  take values
+    like list
+      like text
+  take item, like text
+  like boolean
+  walk list, read values
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call is-equal
+            read one
+            read item
+        hook hold
+          send back, true
+  send back, false

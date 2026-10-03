@@ -295,10 +295,14 @@ function cargoManifest(crate: string, source: string): string {
     'windows = { version = "0.58", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_LibraryLoader", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_UI_Shell", "Win32_Storage_FileSystem", "Win32_Graphics_Gdi", "Win32_System_WinRT"] }',
     'webview2-com = "0.33"',
     '',
+    // a Term raise is a Result and never a panic, and nothing here catches one, so a panic is a stop: aborting drops the
+    // unwinding tables and landing pads, which shrinks the binary and lets LLVM treat panicking calls as noreturn
+    // without cleanup. Fat LTO across every crate (note/term/codegen/rust.md, Build profile)
     '[profile.release]',
     'opt-level = 3',
-    'lto = true',
+    'lto = "fat"',
     'codegen-units = 1',
+    'panic = "abort"',
     'strip = true',
     '',
   ].join('\n')
@@ -559,7 +563,14 @@ export function buildAndroidProgram({
   mkdirSync(dexDir, { recursive: true })
   writeFileSync(file, source)
 
-  execFileSync('kotlinc', ['-cp', tools.platform, '-d', classes, '-nowarn', file], { stdio: 'inherit' })
+  // Term's types already rule out a null where a non-null is declared, so kotlinc's own null checks at every public
+  // function's entry (`Intrinsics.checkNotNullParameter`) and around every call are dead weight: the three flags drop
+  // them (note/term/codegen/android.md, Build)
+  execFileSync(
+    'kotlinc',
+    ['-cp', tools.platform, '-d', classes, '-nowarn', '-Xno-param-assertions', '-Xno-call-assertions', '-Xno-receiver-assertions', file],
+    { stdio: 'inherit' },
+  )
 
   const classFiles: string[] = []
   const walk = (dir: string): void => {
@@ -576,7 +587,8 @@ export function buildAndroidProgram({
 
   execFileSync(
     path.join(tools.buildTools, 'd8'),
-    ['--lib', tools.platform, '--min-api', String(ANDROID_MINIMUM), '--output', dexDir, ...classFiles, tools.stdlib],
+    // `--release`: d8's default is a debug dex, with debug information kept and no optimization of the bytecode
+    ['--release', '--lib', tools.platform, '--min-api', String(ANDROID_MINIMUM), '--output', dexDir, ...classFiles, tools.stdlib],
     { stdio: 'inherit' },
   )
 

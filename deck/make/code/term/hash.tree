@@ -21,99 +21,55 @@ load @term/base/code/bit
   find bitwise-and
 
 load @term/base/code/text
-  find char-count
+  find split
   find char-code-at
 
 # the two seeds cyrb53 starts from
 host seed-one, code 3735928559
+
 host seed-two, code 1103547991
 
+# ONE PASS OVER THE TEXT. This walked an index and asked `char-code-at(text, at)` for each one, and on node a
+# code-point-aware `char-code-at` scans from the start of the string, so hashing was O(n^2) in the file's length:
+# 1.9 of 2.4 seconds compiling a 40-deep nest of forks went here, and the stdlib's 24,826-line Unicode table would
+# have taken minutes per cache key. Walking the text visits each character once, and the code of a one-character
+# text is constant time on every backend. Found 2026-10-02, the day this module became the compiler's only hash.
 task hash-text
   take text, like text
+
   like text
-  save one
-    read seed-one
-  save two
-    read seed-two
-  save size
-    call char-count
-      read text
-  save at
-    code 0
-  walk test
-    hook test
-      call is-below
-        read at
-        read size
-    hook hold
-      save code
-        call char-code-at
-          read text
-          read at
-      save one
-        call multiply-32
-          call bitwise-exclusive-or
-            read one
-            read code
-          code 2654435761
-      save two
-        call multiply-32
-          call bitwise-exclusive-or
-            read two
-            read code
-          code 1597334677
-      save at
-        call add
-          read at
-          code 1
+
+  save one, seed-one
+  save two, seed-two
+
+  # the characters, split once: `split` with an empty separator splits by code point on every backend (Array.from
+  # on node), which is one pass, where a walk over indexes paid a scan per index
+  save chars
+    split read(text), <>
+  walk chars
+    take site, name char
+    save code, char-code-at char, code 0
+    save one
+      multiply-32 bitwise-exclusive-or(one, read code), code 2654435761
+    save two
+      multiply-32 bitwise-exclusive-or(two, read code), code 1597334677
   save one-mixed
-    call bitwise-exclusive-or
-      call multiply-32
-        call bitwise-exclusive-or
-          read one
-          call shift-32
-            read one
-            code 16
-        code 2246822507
-      call multiply-32
-        call bitwise-exclusive-or
-          read two
-          call shift-32
-            read two
-            code 13
-        code 3266489909
+    bitwise-exclusive-or
+      multiply-32 bitwise-exclusive-or(one, shift-32 one, code 16), code 2246822507
+      multiply-32 bitwise-exclusive-or(two, shift-32 two, code 13), code 3266489909
   save two-mixed
-    call bitwise-exclusive-or
-      call multiply-32
-        call bitwise-exclusive-or
-          read two
-          call shift-32
-            read two
-            code 16
-        code 2246822507
-      call multiply-32
-        call bitwise-exclusive-or
-          read one-mixed
-          call shift-32
-            read one-mixed
-            code 13
+    bitwise-exclusive-or
+      multiply-32 bitwise-exclusive-or(two, shift-32 two, code 16), code 2246822507
+      multiply-32
+        bitwise-exclusive-or one-mixed, shift-32 one-mixed, code 13
         code 3266489909
   # `4294967296 * (2097151 & h2) + (h1 >>> 0)`, then base 36
-  save high
-    call bitwise-and
-      read two-mixed
-      code 2097151
-  save low
-    call shift-32
-      read one-mixed
-      code 0
-  send back
-    call to-base-36
-      call add
-        call multiply
-          code 4294967296
-          read high
-        read low
+  save high, bitwise-and two-mixed, code 2097151
+  save low, shift-32 one-mixed, code 0
+
+  back
+    to-base-36
+      add multiply(code 4294967296, high), low
 
 # `>>>` IS A 32-BIT SHIFT IN JAVASCRIPT and the stdlib's `unsigned-shift-right` is 64-bit, so a negative
 # intermediate shifts in a completely different number. Masking to the low 32 bits first is what makes the two
@@ -121,18 +77,16 @@ task hash-text
 task shift-32
   take value, like number
   take count, like number
+
   like number
-  send back
-    call unsigned-shift-right
-      call bitwise-and
-        read value
-        code 4294967295
-      read count
+
+  back
+    unsigned-shift-right bitwise-and(value, code 4294967295), count
 
 # a non-negative integer in base 36, which is how the key is spelled on disk
 task to-base-36
   take value, like number
+
   like text
-  send back
-    call value/toString
-      code 36
+
+  back call value/toString, code 36

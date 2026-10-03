@@ -1,0 +1,263 @@
+# A time of day with no date and no zone: an opening hour, an alarm, a timetable entry. Read and written as RFC 3339's
+# partial time, `HH:MM:SS` with an optional fraction of a second kept to the millisecond, in Term, the same on every
+# backend. A text that is not one raises `time-mismatch` with the position and the reason (calendar/time-text.tree).
+
+note stable
+
+load @term/base/code/calendar/time-text
+  find time-mismatch
+  find refuse-time
+  find time-rune-at
+  find time-digits
+  find time-mark
+  find time-range
+
+load @term/base/code/calendar/civil
+  find pad-number
+  find floor-divide
+
+load @term/base/code/text/unicode
+  find to-runes
+
+load @term/base/code/list
+  find size
+
+form time-of-day
+  link hour, like number
+  link minute, like number
+  link second, like number
+  link millisecond, like number
+
+# `HH:MM` or `HH:MM:SS`, the seconds optionally followed by a point and one or more digits (past the third, cut off)
+task parse-time-of-day
+  take text, like text
+  like time-of-day
+  save r
+    call to-runes
+      read text
+  save n
+    call size
+      read r
+  save hour
+    call time-range
+      call time-digits
+        read r
+        code 0
+        code 2
+      code 0
+      code 23
+      code 0
+      text <an hour is 00 to 23>
+  call time-mark
+    read r
+    code 2
+    code 58
+    code 58
+    text <a colon was expected>
+  save minute
+    call time-range
+      call time-digits
+        read r
+        code 3
+        code 2
+      code 0
+      code 59
+      code 3
+      text <a minute is 00 to 59>
+  save second, code 0
+  save milli, code 0
+  save at, code 5
+  fork test
+    hook test
+      call is-below
+        read at
+        read n
+    hook hold
+      call time-mark
+        read r
+        code 5
+        code 58
+        code 58
+        text <a colon was expected>
+      save second
+        call time-range
+          call time-digits
+            read r
+            code 6
+            code 2
+          code 0
+          code 59
+          code 6
+          text <a second is 00 to 59>
+      save at, code 8
+      fork test
+        hook test
+          call is-below
+            read at
+            read n
+        hook hold
+          call time-mark
+            read r
+            code 8
+            code 46
+            code 46
+            text <a point was expected>
+          save at, code 9
+          save scale, code 100
+          walk test
+            down
+              call subtract
+                read n
+                read at
+            hook test
+              call is-below
+                read at
+                read n
+            hook step
+              save digit
+                call time-digits
+                  read r
+                  read at
+                  code 1
+              save milli
+                call add
+                  read milli
+                  call multiply
+                    read digit
+                    read scale
+              save scale
+                call divide
+                  read scale
+                  code 10
+              save at
+                call add
+                  read at
+                  code 1
+          fork test
+            hook test
+              call is-equal
+                read at
+                code 9
+            hook hold
+              call refuse-time
+                read at
+                text <a digit is missing>
+  fork test
+    hook test
+      call is-below
+        read at
+        read n
+    hook hold
+      call refuse-time
+        read at
+        text <the time ends before this>
+  send back
+    make time-of-day
+      bind hour, read hour
+      bind minute, read minute
+      bind second, read second
+      bind millisecond, read milli
+
+# `HH:MM:SS`, then `.sss` when there is a part of a second
+task format-time-of-day
+  take time, like time-of-day
+  like text
+  save hour
+    call pad-number
+      read time/hour
+      code 2
+  save minute
+    call pad-number
+      read time/minute
+      code 2
+  save second
+    call pad-number
+      read time/second
+      code 2
+  fork test
+    hook test
+      call is-equal
+        read time/millisecond
+        code 0
+    hook hold
+      send back, text <{{hour}}:{{minute}}:{{second}}>
+  save milli
+    call pad-number
+      read time/millisecond
+      code 3
+  send back, text <{{hour}}:{{minute}}:{{second}}.{{milli}}>
+
+# the UTC time of day of an instant
+task time-of-day-at
+  take millis, like number
+  like time-of-day
+  save rest
+    call subtract
+      read millis
+      call multiply
+        call floor-divide
+          read millis
+          code 86400000
+        code 86400000
+  save hour
+    call divide
+      read rest
+      code 3600000
+  save minute
+    call divide
+      call subtract
+        read rest
+        call multiply
+          read hour
+          code 3600000
+      code 60000
+  save second
+    call divide
+      call subtract
+        read rest
+        call add
+          call multiply
+            read hour
+            code 3600000
+          call multiply
+            read minute
+            code 60000
+      code 1000
+  send back
+    make time-of-day
+      bind hour, read hour
+      bind minute, read minute
+      bind second, read second
+      bind millisecond
+        call subtract
+          read rest
+          call add
+            call add
+              call multiply
+                read hour
+                code 3600000
+              call multiply
+                read minute
+                code 60000
+            call multiply
+              read second
+              code 1000
+
+# the milliseconds since midnight
+task millis-of-day
+  take time, like time-of-day
+  like number
+  send back
+    call add
+      call add
+        call multiply
+          read time/hour
+          code 3600000
+        call multiply
+          read time/minute
+          code 60000
+      call add
+        call multiply
+          read time/second
+          code 1000
+        read time/millisecond

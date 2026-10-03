@@ -1,3 +1,4 @@
+note unstable
 
 mask dimension-free
   # Unsized trait

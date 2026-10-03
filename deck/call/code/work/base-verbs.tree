@@ -77,115 +77,100 @@ form tag-ask
 # every verb ends the same way, so the guard is written once
 task fail-with
   take error, like unknown
+
   like void
-  call log-fail
-    call format-error
-      read error
-  call node-process/exit
-    code 1
+
+  log-fail format-error error
+  node-process/exit code 1
 
 # create a repository here
 task base-init
   note async
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
-    call base-module/callBaseInit
-      make root-ask
-        bind root, read root
-      wait true
+    call base-module/callBaseInit, make(root-ask, bind root, read root), wait true
   halt take
     take error
-    call fail-with
-      read error
+    fail-with error
 
 # whether the repository is coherent
 task base-check
   note async
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
-    call base-module/callBaseCheck
-      make root-ask
-        bind root, read root
-      wait true
+    call base-module/callBaseCheck, make(root-ask, bind root, read root), wait true
   halt take
     take error
-    call fail-with
-      read error
+    fail-with error
 
 # commits per branch, newest first
 task base-log
   note async
   take branch, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
     call base-module/callBaseLog
-      make branch-ask
-        bind root, read root
-        bind branch, read branch
+      make branch-ask, bind(root, read root), bind branch, read branch
       wait true
   halt take
     take error
-    call fail-with
-      read error
+    fail-with error
 
 # what is uncommitted on a branch
 task base-status
   note async
   take branch, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
     call base-module/callBaseStatus
-      make branch-ask
-        bind root, read root
-        bind branch, read branch
+      make branch-ask, bind(root, read root), bind branch, read branch
       wait true
   halt take
     take error
-    call fail-with
-      read error
+    fail-with error
 
 # field-level changes between two commits
 task base-diff
   note async
   take to, like text
   take from, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
     call base-module/callBaseDiff
-      make diff-ask
-        bind root, read root
-        bind to, read to
-        bind from, read from
+      make diff-ask, bind(root, read root), bind(to, read to), bind from, read from
       wait true
   halt take
     take error
-    call fail-with
-      read error
+    fail-with error
 
 # one record in canonical form, which is what is hashed
 task base-show
   note async
   take commit, like text
   take mark, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
     call base-module/callBaseShow
       make show-ask
@@ -195,27 +180,24 @@ task base-show
       wait true
   halt take
     take error
-    call fail-with
-      read error
+    fail-with error
 
 # every record at a commit
 task base-list
   note async
   take commit, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
     call base-module/callBaseList
-      make commit-ask
-        bind root, read root
-        bind commit, read commit
+      make commit-ask, bind(root, read root), bind commit, read commit
       wait true
   halt take
     take error
-    call fail-with
-      read error
+    fail-with error
 
 # commit the working files onto a branch
 task base-commit
@@ -223,10 +205,11 @@ task base-commit
   take message, like text
   take branch, like text
   take author, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
     call base-module/callBaseCommit
       make base-make-ask
@@ -237,27 +220,24 @@ task base-commit
       wait true
   halt take
     take error
-    call fail-with
-      read error
+    fail-with error
 
 # write a commit back out as `.tree` files
 task base-checkout
   note async
   take commit, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
     call base-module/callBaseCheckout
-      make commit-ask
-        bind root, read root
-        bind commit, read commit
+      make commit-ask, bind(root, read root), bind commit, read commit
       wait true
   halt take
     take error
-    call fail-with
-      read error
+    fail-with error
 
 # merge one branch into another
 task base-merge
@@ -265,10 +245,11 @@ task base-merge
   take from, like text
   take into, like text
   take author, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
     call base-module/callBaseMerge
       make merge-ask
@@ -279,18 +260,18 @@ task base-merge
       wait true
   halt take
     take error
-    call fail-with
-      read error
+    fail-with error
 
 # write a commit out as one file
 task base-export
   note async
   take commit, like text
   take out, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
     call base-module/callBaseExport
       make export-ask
@@ -300,8 +281,7 @@ task base-export
       wait true
   halt take
     take error
-    call fail-with
-      read error
+    fail-with error
 
 # name a commit
 task base-tag
@@ -309,10 +289,11 @@ task base-tag
   take name, like text
   take commit, like text
   take branch, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
     call base-module/callBaseTag
       make tag-ask
@@ -323,5 +304,4 @@ task base-tag
       wait true
   halt take
     take error
-    call fail-with
-      read error
+    fail-with error

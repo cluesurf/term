@@ -27,6 +27,7 @@ import {
 } from '@term/make/code/compile/bind'
 import type { Bind } from '@term/make/code/compile/bind'
 import { armLocals } from '@term/make/code/check/arm'
+import { provenIncrements } from '@term/make/code/ir/facts/range'
 
 const guardStart = (text: string): string =>
   /^[([`]/.test(text) ? `;${text}` : text
@@ -113,11 +114,10 @@ const RESERVED = new Set([
   'document',
   'globalThis',
   'navigator',
-  // the same for the globals the shims call: a Term `fetch` (http's GET) made the http shim's `fetch(url)` call itself
+  // the same for the globals the shims call: a Term `fetch` (http's GET) made the http shim's `fetch(url)` call itself.
+  // Not `console` or `crypto`: modules dock those by that very name, and a dock alias is written as given
   'fetch',
-  'crypto',
   'performance',
-  'console',
   'atob',
   'btoa',
   'setTimeout',
@@ -296,6 +296,39 @@ function emptyFor(
     .map(f => `${toMember(f.name)}: ${tsEmptyOf(f.type)}`)
 }
 
+// The members of a construction in the form's DECLARED order, given and filled alike, so every construction of one
+// form makes objects of one shape and V8 keeps one hidden class for it: two sites writing the fields in two orders
+// made two shapes, and a field read seeing both went polymorphic. A literal evaluates its values in the order they are
+// written, so the reorder happens only when no given value can do anything but produce itself (a literal, a name, a
+// field of a name). Otherwise the written order stays, followed by the filled fields, as before.
+function inDeclaredOrder(
+  declared: { name: string; type: Type; optional?: boolean }[],
+  given: { name: string; value: Expression }[],
+  rendered: string[],
+): string[] {
+  const inert = (e: Expression): boolean =>
+    e.form === 'integer' ||
+    e.form === 'float' ||
+    e.form === 'boolean' ||
+    e.form === 'string' ||
+    e.form === 'null' ||
+    e.form === 'unit' ||
+    e.form === 'variable' ||
+    (e.form === 'member' && !e.index && inert(e.target))
+
+  const known = new Set(declared.map(f => f.name))
+
+  if (declared.length === 0 || !given.every(f => known.has(f.name) && inert(f.value))) {
+    return [...rendered, ...emptyFor(declared, given)]
+  }
+
+  const byName = new Map(given.map((f, i) => [f.name, rendered[i]!]))
+
+  return declared.flatMap(f =>
+    byName.has(f.name) ? [byName.get(f.name)!] : f.optional ? [] : [`${toMember(f.name)}: ${tsEmptyOf(f.type)}`],
+  )
+}
+
 export function toPascal(name: string): string {
   const camel = toCamel(name)
   const spelled = camel.charAt(0).toUpperCase() + camel.slice(1)
@@ -399,7 +432,9 @@ function mapKeyType(type: Type | undefined): Type | true | false {
 // compares anything else by identity (a closure, a class instance from native code). `__termKey` returns ONE
 // representative for every structurally equal record, so a JavaScript `Map` (which keys objects by identity) finds
 // a record key by an equal record. The table is on globalThis so every emitted module shares one: a key interned in
-// one module and looked up in another must meet the same representative. A primitive is returned untouched.
+// one module and looked up in another must meet the same representative. A primitive is returned untouched. The table
+// holds each representative WEAKLY: a map that keys by it keeps it alive, and once nothing does, its entry is dropped.
+// It held them strongly until 2026-10-02, so a server keyed by request data grew without bound.
 const EQUAL_PRELUDE = `const __termShared = Symbol.for('term.shared')
 function __termShare<T extends object>(value: T): T {
   Object.defineProperty(value, __termShared, { value: true })
@@ -462,12 +497,14 @@ function __termIdentity(v: object): number {
 }
 function __termKey<T>(k: T): T {
   if (typeof k !== 'object' || k === null) return k
-  const g = globalThis as { __termKeys?: Map<string, unknown> }
+  const g = globalThis as { __termKeys?: Map<string, WeakRef<object>>; __termKeysGone?: FinalizationRegistry<string> }
   const keys = (g.__termKeys ??= new Map())
+  const gone = (g.__termKeysGone ??= new FinalizationRegistry(text => { if (keys.get(text)?.deref() === undefined) keys.delete(text) }))
   const text = __termKeyText(k)
-  const seen = keys.get(text)
+  const seen = keys.get(text)?.deref()
   if (seen !== undefined) return seen as T
-  keys.set(text, k)
+  keys.set(text, new WeakRef(k as object))
+  gone.register(k as object, text)
   return k
 }`
 
@@ -579,7 +616,9 @@ const intPrelude = (withClass: boolean): string => `function __termInt(x: number
 // is the same answer by construction. No escape sequence appears in it: the White_Space set and the surrogate test
 // are built from character codes, because an escaped U+2028 that some later step decodes is a line break inside a
 // regular expression.
-const TEXT_PRELUDE = `const __termSurrogate = { test(s: string): boolean { for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); if (c >= 55296 && c <= 57343) return true } return false } }
+// the two texts tested last are remembered, so a loop of char-at over one text (or a compare of two) scans each once
+// rather than on every call, which made such a loop quadratic (reported 2026-10-02: 1.9 of 2.4 s of the Term hash)
+export const TEXT_PRELUDE = `const __termSurrogate = { a: "", aHas: false, b: "", bHas: false, test(s: string): boolean { if (s === this.a) return this.aHas; if (s === this.b) return this.bHas; let has = false; for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); if (c >= 55296 && c <= 57343) { has = true; break } } this.b = this.a; this.bHas = this.aHas; this.a = s; this.aHas = has; return has } }
 const __termWhite = [9, 10, 11, 12, 13, 32, 133, 160, 5760, 8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288].map(c => String.fromCharCode(c)).join('')
 const __termWhiteStart = new RegExp('^[' + __termWhite + ']+')
 const __termWhiteEnd = new RegExp('[' + __termWhite + ']+$')
@@ -604,8 +643,12 @@ const __termText = {
   charAt(s: string, i: number): string {
     if (!(i >= 0)) return ''
     if (!__termSurrogate.test(s)) return i < s.length ? s[i]! : ''
-    const c = Array.from(s)
-    return i < c.length ? c[i]! : ''
+    let n = 0
+    for (const c of s) {
+      if (n === i) return c
+      n++
+    }
+    return ''
   },
   at(s: string, i: number): string {
     return __termText.charAt(s, i)
@@ -632,12 +675,14 @@ const __termText = {
     return d === '' ? Array.from(s) : s.split(d)
   },
   substring(s: string, a: number, b?: number): string {
-    const c = __termSurrogate.test(s) ? Array.from(s) : null
-    const size = c ? c.length : s.length
+    const plain = !__termSurrogate.test(s)
+    const size = plain ? s.length : __termText.length(s)
     let x = Math.min(Math.max(a, 0), size)
     let y = Math.min(Math.max(b === undefined ? size : b, 0), size)
     if (x > y) [x, y] = [y, x]
-    return c ? c.slice(x, y).join('') : s.slice(x, y)
+    if (plain) return s.slice(x, y)
+    const from = __termText.offset(s, x)
+    return s.slice(from, from + __termText.offset(s.slice(from), y - x))
   },
   slice(s: string, a: number, b?: number): string {
     return __termText.substring(s, a, b)
@@ -696,16 +741,23 @@ const __termText = {
   },
   // code point order, which is UTF-8 byte order: JavaScript's < orders by UTF-16 unit, and the two disagree above
   // the basic plane
+  // read in place: up to the first unit that differs the two agree, so that position is a code point boundary in both
+  // (or the low half of one shared high surrogate), two units outside the surrogate range order as their code points,
+  // and only a surrogate needs the whole code point read. It built two arrays of code points per comparison, so a sort
+  // of texts allocated on every comparison
   compare(a: string, b: string): number {
-    if (!__termSurrogate.test(a) && !__termSurrogate.test(b)) return a < b ? -1 : a > b ? 1 : 0
-    const x = Array.from(a)
-    const y = Array.from(b)
-    for (let i = 0; i < Math.min(x.length, y.length); i++) {
-      const p = x[i]!.codePointAt(0)!
-      const q = y[i]!.codePointAt(0)!
-      if (p !== q) return p < q ? -1 : 1
+    const n = Math.min(a.length, b.length)
+    for (let i = 0; i < n; i++) {
+      const x = a.charCodeAt(i)
+      const y = b.charCodeAt(i)
+      if (x !== y) {
+        if ((x < 55296 || x > 57343) && (y < 55296 || y > 57343)) return x < y ? -1 : 1
+        const p = a.codePointAt(i)!
+        const q = b.codePointAt(i)!
+        return p < q ? -1 : p > q ? 1 : 0
+      }
     }
-    return x.length === y.length ? 0 : x.length < y.length ? -1 : 1
+    return a.length === b.length ? 0 : a.length < b.length ? -1 : 1
   },
 }`
 
@@ -1066,6 +1118,8 @@ function makeEmitter(
   hmr = false,
   binds = new Map<string, Bind>(),
   env = 'node',
+  // the `+` nodes proven not to overflow (ir/facts/range.ts): written without `__termInt`
+  provenSteps: WeakSet<Expression> = new WeakSet(),
 ) {
   const pad = (depth: number) => '  '.repeat(depth)
 
@@ -1321,17 +1375,13 @@ function makeEmitter(
         if (variants.has(node.name)) {
           return `{ ${[
             'form: ' + JSON.stringify(node.name),
-            ...fields,
-            ...emptyFor(variantCase(node.name, node.type), node.fields),
+            ...inDeclaredOrder(variantCase(node.name, node.type), node.fields, fields),
           ].join(', ')} }`
         }
 
         // a field the construction leaves out (`need false`, or one the runtime fills on another path) takes its
         // type's empty value, so the object satisfies its interface -- the rule the native backends already follow
-        const made = `{ ${[
-          ...fields,
-          ...emptyFor(tsRecordFields.get(node.name) ?? [], node.fields),
-        ].join(', ')} }`
+        const made = `{ ${inDeclaredOrder(tsRecordFields.get(node.name) ?? [], node.fields, fields).join(', ')} }`
 
         // a `mark shared` value carries a hidden marker, so a record holding it compares it by identity and a map
         // keys it by identity, as Rust (`Rc::ptr_eq`), Swift (`===`) and Kotlin (a plain class) do
@@ -1433,7 +1483,11 @@ function makeEmitter(
         const precedence = PRECEDENCE[node.op]
         const left = expression(node.left, precedence)
         const right = expression(node.right, precedence + 1)
-        const text = `${left} ${node.op} ${right}`
+        // strict equality: JavaScript's `==` converts (`0 == ""` is true), which no other backend does. A comparison
+        // with a `null` literal stays loose, because it is the one test that means "null or undefined"
+        const nullish = node.left.form === 'null' || node.right.form === 'null'
+        const op = nullish ? node.op : node.op === '==' ? '===' : node.op === '!=' ? '!==' : node.op
+        const text = `${left} ${op} ${right}`
 
         // `number` is an integer, and its quotient truncates toward zero on every backend: `7 / 2` is 3, as it is on
         // Rust, Swift and Kotlin. JavaScript's `/` is the float quotient. note/term/proof-by-default/numbers.md
@@ -1450,7 +1504,8 @@ function makeEmitter(
         // note/term/proof-by-default/numbers.md
         if (
           (node.op === '+' || node.op === '-' || node.op === '*' || node.op === '%') &&
-          integerDivision(node)
+          integerDivision(node) &&
+          !provenSteps.has(node)
         ) {
           tsIntUsed = true
 
@@ -1818,9 +1873,18 @@ function makeEmitter(
 
         return `try ${block(node.body, depth)}${handler}`
       }
-      case 'for-each':
-        // a walk that names its INDEX iterates the entries; one that does not keeps the plain `of` loop, so
-        // nothing that compiled before changes shape. lean-0017
+      case 'for-each': {
+        // a walk over a LIST that names its index is a counted loop: `entries()` made a `[i, x]` pair per turn, and
+        // this allocates nothing. The length is read every turn, as the array iterator `for...of` uses does
+        if (node.index && node.iterable.type?.kind === 'array') {
+          const walked = `__walked${depth}`
+          const body = block(node.body, depth)
+
+          return `{ const ${walked} = ${expression(node.iterable)}; for (let ${toCamel(node.index)} = 0; ${toCamel(node.index)} < ${walked}.length; ${toCamel(node.index)}++) {\n${pad(depth + 1)}const ${toCamel(node.item)} = ${walked}[${toCamel(node.index)}]!${body.slice(1)} }`
+        }
+
+        // a walk that names its INDEX over anything else iterates the entries; one that does not keeps the plain `of`
+        // loop. lean-0017
         return node.index
           ? `for (const [${toCamel(node.index)}, ${toCamel(node.item)}] of ${expression(
               node.iterable,
@@ -1828,6 +1892,7 @@ function makeEmitter(
           : `for (const ${toCamel(node.item)} of ${expression(
               node.iterable,
             )}) ${block(node.body, depth)}`
+      }
 
       case 'match': {
         const raw = expression(node.subject)
@@ -1839,7 +1904,7 @@ function makeEmitter(
           node.cases.forEach((branch, i) => {
             const arm = node.exceptionArms![branch.label]!
             const bodyText = branch.body.map(s => statement(s, depth + 1)).join('\n')
-            const locals = armLocals([...arm.shared, ...arm.link], branch.binds)
+            const locals = armLocals([...arm.shared, ...arm.link], branch.binds ?? [])
               .filter(({ local }) => new RegExp(`\\b${toCamel(local).replace(/[^\w$]/g, '\\$&')}\\b`).test(bodyText))
               .map(({ field, local }) => `${pad(depth + 1)}const ${toCamel(local)} = ${exceptionSubject}.${arm.link.includes(field) ? `link.${toMember(field)}` : toMember(field)}`)
             out += `${i ? ' else ' : ''}if (${exceptionSubject}.form === ${JSON.stringify(branch.label)}) {\n${[...locals, ...branch.body.map(s => `${pad(depth + 1)}${guardStart(statement(s, depth + 1))}`)].join('\n')}\n${pad(depth)}}`
@@ -1865,7 +1930,15 @@ function makeEmitter(
         // A bare identifier or a plain member chain is left alone: it is already a name, re-reading it is
         // free, and the output stays readable.
         const isName = /^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)*$/.test(raw)
-        const held = isName ? undefined : `__at${depth}`
+        // a name is held too when an arm binds a field of the same name (`fork case, read value` over a variant with
+        // a `value` field): `const value = value.value` reads the new binding before it exists
+        const root = raw.split('.')[0]
+        const shadowed = node.cases.some(branch =>
+          armLocals((tsVariantFields.get(branch.label) ?? []).map(f => f.name), branch.binds ?? []).some(
+            ({ local }) => toCamel(local) === root,
+          ),
+        )
+        const held = isName && !shadowed ? undefined : `__at${depth}`
         const subject = held ?? raw
 
         // the chain, wrapped in a block that holds the subject where one was bound
@@ -1951,7 +2024,7 @@ function makeEmitter(
           const bodyText = branch.body
             .map(s => statement(s, depth + 1))
             .join('\n')
-          const locals = armLocals(fields, branch.binds)
+          const locals = armLocals(fields, branch.binds ?? [])
             .filter(({ local }) =>
               new RegExp(`\\b${toCamel(local).replace(/[^\w$]/g, '\\$&')}\\b`).test(bodyText),
             )
@@ -1992,7 +2065,8 @@ function makeEmitter(
       case 'continue':
         return 'continue'
       case 'exit':
-        return 'process.exit(0)'
+        // a page has no process to end: `process` is a ReferenceError in a browser, so `exit` there is a return
+        return env === 'browser' ? 'return' : 'process.exit(0)'
       case 'debug':
         return 'debugger'
 
@@ -2246,6 +2320,7 @@ export function emitTypeScript(
     options?.hmr ?? false,
     binds,
     env,
+    provenIncrements(program),
   )
 
   // native module bindings (`dock load`) become host imports at the top. A `<global:X>` binding refers to a host

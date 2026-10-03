@@ -1,6 +1,8 @@
 
 # Bitwise And trait.
 
+note unstable
+
 mask intersection
   head other, base self
   head output

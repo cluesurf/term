@@ -1,0 +1,288 @@
+# TOML reads and writes the same on every backend: toml.tree is pure Term. Held by `pnpm term:base-gate`.
+
+load @term/base/code/toml
+  find parse-toml
+  find stringify-toml
+  find toml-field
+  find toml
+  find toml-mismatch
+
+load @term/base/code/text/unicode
+  find rune-to-text
+
+load @term/base/code/list
+  find list
+  find join
+
+load @term/base/code/maybe
+  find is-some
+
+task lines
+  take parts
+    like list
+      like text
+  like text
+  send back
+    call join
+      read parts
+      call rune-to-text, code 10
+
+# the document parsed and written back, or `at reason`
+task again
+  take text, like text
+  like text
+  note unsafe
+    save value
+      call parse-toml
+        read text
+    send back
+      call stringify-toml
+        read value
+  halt take
+    take problem
+    fork case, read problem
+      case toml-mismatch
+        send back, text <{{at}} {{reason}}>
+
+test <the example document from toml.io>
+  save d
+    make list
+  call d/push, text <# This is a TOML document>
+  call d/push, text <title = "TOML Example">
+  call d/push, text <>
+  call d/push, text <[owner]>
+  call d/push, text <name = "Tom Preston-Werner">
+  call d/push, text <dob = 1979-05-27T07:32:00-08:00>
+  call d/push, text <>
+  call d/push, text <[database]>
+  call d/push, text <enabled = true>
+  call d/push, text <ports = [ 8000, 8001, 8002 ]>
+  call d/push, text <data = [ ["delta", "phi"], [3.14] ]>
+  call d/push, text <temp_targets = \{ cpu = 79.5, case = 72.0 \}>
+  call d/push, text <>
+  call d/push, text <[servers]>
+  call d/push, text <>
+  call d/push, text <[servers.alpha]>
+  call d/push, text <ip = "10.0.0.1">
+  call d/push, text <role = "frontend">
+  call d/push, text <>
+  call d/push, text <[servers.beta]>
+  call d/push, text <ip = "10.0.0.2">
+  call d/push, text <role = "backend">
+  save w
+    make list
+  call w/push, text <title = "TOML Example">
+  call w/push, text <>
+  call w/push, text <[owner]>
+  call w/push, text <name = "Tom Preston-Werner">
+  call w/push, text <dob = 1979-05-27T07:32:00-08:00>
+  call w/push, text <>
+  call w/push, text <[database]>
+  call w/push, text <enabled = true>
+  call w/push, text <ports = [8000, 8001, 8002]>
+  call w/push, text <data = [["delta", "phi"], [3.14]]>
+  call w/push, text <>
+  call w/push, text <[database.temp_targets]>
+  call w/push, text <cpu = 79.5>
+  call w/push, text <case = 72.0>
+  call w/push, text <>
+  call w/push, text <[servers]>
+  call w/push, text <>
+  call w/push, text <[servers.alpha]>
+  call w/push, text <ip = "10.0.0.1">
+  call w/push, text <role = "frontend">
+  call w/push, text <>
+  call w/push, text <[servers.beta]>
+  call w/push, text <ip = "10.0.0.2">
+  call w/push, text <role = "backend">
+  call w/push, text <>
+  want hold
+    call is-equal
+      call again
+        call lines
+          read d
+      call lines
+        read w
+
+test <integers in four bases and floats>
+  save d
+    make list
+  call d/push, text <a = +99>
+  call d/push, text <b = 1_000>
+  call d/push, text <c = 0xDEAD_beef>
+  call d/push, text <d = 0o755>
+  call d/push, text <e = 0b1101>
+  call d/push, text <f = 6.626e-34>
+  call d/push, text <g = -inf>
+  call d/push, text <h = 5e+22>
+  call d/push, text <i = +1_000.5>
+  call d/push, text <j = nan>
+  save w
+    make list
+  call w/push, text <a = 99>
+  call w/push, text <b = 1000>
+  call w/push, text <c = 3735928559>
+  call w/push, text <d = 493>
+  call w/push, text <e = 13>
+  call w/push, text <f = 6.626e-34>
+  call w/push, text <g = -inf>
+  call w/push, text <h = 5e+22>
+  call w/push, text <i = 1000.5>
+  call w/push, text <j = nan>
+  call w/push, text <>
+  want hold
+    call is-equal
+      call again
+        call lines
+          read d
+      call lines
+        read w
+
+test <basic, literal and multi-line strings>
+  save q
+    call rune-to-text, code 34
+  save s
+    call rune-to-text, code 92
+  save d
+    make list
+  call d/push, text <a = "tab{{s}}there {{s}}u00e9 {{s}}U0001D11E">
+  call d/push, text <b = 'C:{{s}}path'>
+  call d/push, text <c = {{q}}{{q}}{{q}}>
+  call d/push, text <one {{s}}>
+  call d/push, text <    two{{q}}{{q}}{{q}}>
+  call d/push, text <e = '''>
+  call d/push, text <first>
+  call d/push, text <second'''>
+  save w
+    make list
+  call w/push, text <a = "tab{{s}}there é 𝄞">
+  call w/push, text <b = "C:{{s}}{{s}}path">
+  call w/push, text <c = "one two">
+  call w/push, text <e = "first{{s}}nsecond">
+  call w/push, text <>
+  want hold
+    call is-equal
+      call again
+        call lines
+          read d
+      call lines
+        read w
+
+test <arrays of tables, nested>
+  save d
+    make list
+  call d/push, text <[[fruit]]>
+  call d/push, text <name = "apple">
+  call d/push, text <[fruit.physical]>
+  call d/push, text <color = "red">
+  call d/push, text <[[fruit.variety]]>
+  call d/push, text <name = "red delicious">
+  call d/push, text <[[fruit]]>
+  call d/push, text <name = "banana">
+  save w
+    make list
+  call w/push, text <>
+  call w/push, text <[[fruit]]>
+  call w/push, text <name = "apple">
+  call w/push, text <>
+  call w/push, text <[fruit.physical]>
+  call w/push, text <color = "red">
+  call w/push, text <>
+  call w/push, text <[[fruit.variety]]>
+  call w/push, text <name = "red delicious">
+  call w/push, text <>
+  call w/push, text <[[fruit]]>
+  call w/push, text <name = "banana">
+  call w/push, text <>
+  want hold
+    call is-equal
+      call again
+        call lines
+          read d
+      call lines
+        read w
+
+test <keys keep their order, dotted and quoted>
+  save d
+    make list
+  call d/push, text <b = 1>
+  call d/push, text <a.y = 2>
+  call d/push, text <a . x = 3>
+  call d/push, text <"quoted key" = 4>
+  save w
+    make list
+  call w/push, text <b = 1>
+  call w/push, text <"quoted key" = 4>
+  call w/push, text <>
+  call w/push, text <[a]>
+  call w/push, text <y = 2>
+  call w/push, text <x = 3>
+  call w/push, text <>
+  want hold
+    call is-equal
+      call again
+        call lines
+          read d
+      call lines
+        read w
+
+test <dates and times stay as written, with T and Z>
+  save d
+    make list
+  call d/push, text <d1 = 1979-05-27 07:32:00Z>
+  call d/push, text <d2 = 1979-05-27t07:32:00.999999z>
+  call d/push, text <d3 = 1979-05-27>
+  call d/push, text <t = 07:32:00>
+  save w
+    make list
+  call w/push, text <d1 = 1979-05-27T07:32:00Z>
+  call w/push, text <d2 = 1979-05-27T07:32:00.999999Z>
+  call w/push, text <d3 = 1979-05-27>
+  call w/push, text <t = 07:32:00>
+  call w/push, text <>
+  want hold
+    call is-equal
+      call again
+        call lines
+          read d
+      call lines
+        read w
+
+test <a field is read by name>
+  save nl
+    call rune-to-text, code 10
+  save value
+    call parse-toml, text <[a]{{nl}}b = 1>
+  want hold
+    call is-some
+      call toml-field
+        read value
+        text <a>
+
+test <what is not TOML is refused with its place>
+  save nl
+    call rune-to-text, code 10
+  want hold
+    call and
+      call and
+        call is-equal
+          call again, text <a = 1{{nl}}a = 2>
+          text <6 this key is defined twice>
+        call is-equal
+          call again, text <[a]{{nl}}[a]>
+          text <4 this table is defined twice>
+      call and
+        call and
+          call is-equal
+            call again, text <a = >
+            text <4 a value was expected>
+          call is-equal
+            call again, text <a = 01>
+            text <4 a decimal number has no leading zero>
+        call and
+          call is-equal
+            call again, text <a = "x>
+            text <4 a string is not closed on its line>
+          call is-equal
+            call again, text <a = \{b = 1,\}>
+            text <11 an inline table has no comma after its last entry>

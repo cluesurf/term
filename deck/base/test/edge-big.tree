@@ -1,0 +1,72 @@
+# Big integers give the same digits on every backend, Swift included (base-v1-0015). Held by `pnpm term:base-gate`.
+
+load @term/base/code/integer/big
+  find big-integer
+  find make-big-integer
+  find big-from-number
+
+test <a product past every machine integer>
+  save a
+    call make-big-integer, text <123456789012345678901234567890>
+  save b
+    call make-big-integer, text <-987654321098765432109876543210>
+  save p
+    call a/multiply
+      read b
+  want hold
+    call is-equal
+      call p/text
+      text <-121932631137021795226185032733622923332237463801111263526900>
+
+test <division truncates and the remainder takes the dividend's sign>
+  save a
+    call make-big-integer, text <-100000000000000000000000000007>
+  save b
+    call make-big-integer, text <3>
+  save q
+    call a/divide
+      read b
+  save r
+    call a/remainder
+      read b
+  want hold
+    call and
+      call is-equal
+        call q/text
+        text <-33333333333333333333333333335>
+      call is-equal
+        call r/text
+        text <-2>
+
+test <sums, differences and order>
+  save a
+    call make-big-integer, text <18446744073709551616>
+  save b
+    call big-from-number
+      call subtract
+        code 0
+        code 9007199254740991
+  save s
+    call a/add
+      read b
+  save d
+    call b/subtract
+      read a
+  want hold
+    call and
+      call and
+        call is-equal
+          call s/text
+          text <18437736874454810625>
+        call is-equal
+          call d/text
+          text <-18455751272964292607>
+      call and
+        call is-equal
+          call a/compare
+            read b
+          code 1
+        call is-equal
+          call b/compare
+            read b
+          code 0

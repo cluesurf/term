@@ -52,88 +52,63 @@ task scan
   note async
   take file, like text
   take back, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   save want-json
-    call is-equal
-      read back
-      text <json>
-  save full
-    call node-path/resolve
-      read root
-      read file
-  save there
-    call file-test
-      read full
-      wait true
+    is-equal read(back), <json>
+  save full, node-path/resolve root, file
+  save there, file-test full, wait true
+
   fork test
-    read there
-    hook miss
+    there
+    miss
       fork test
-        read want-json
-        hook hold
-          call console/log
-            call json-global/stringify
+        want-json
+        hold
+          console/log
+            json-global/stringify
               make missing-answer
                 bind ok, false
-                bind error, text <not-found>
-                bind file, read file
-        hook miss
-          call log-fail
-            text <File not found: {{file}}>
-      call node-process/exit
-        code 1
-  save text
-    call read-file
-      read full
-      wait true
+                bind error, <not-found>
+                bind file, file
+        miss
+          log-fail <File not found: {{file}}>
+      node-process/exit code 1
+  save text, read-file full, wait true
+
   save result
-    call compile-module/compile
-      make source-ask
-        bind file, read full
-        bind text, read text
-      make compile-ask
-        bind resolve
-          call resolve-module/editorResolver
-            read full
+    compile-module/compile
+      make source-ask, bind(file, full), bind text, read text
+      make compile-ask, bind resolve, call resolve-module/editorResolver, full
   save found
     fork test
       read result/ok
-      hook hold
+      hold
         read result/warnings
-      hook miss
+      miss
         read result/diagnostics
   fork test
-    read want-json
-    hook hold
-      call console/log
-        call json-global/stringify
-          read result
+    want-json
+    hold
+      console/log json-global/stringify result
       fork test
         read result/ok
-        hook miss
-          call node-process/exit
-            code 1
+        miss
+          node-process/exit code 1
       send back
-  walk list, read found
-    hook next
-      take site, name one
-      call report-module/printDiagnostic
-        read one
+  walk found
+    take site, name one
+    call report-module/printDiagnostic, one
   fork test
     read result/ok
-    hook miss
-      call node-process/exit
-        code 1
+    miss
+      node-process/exit code 1
   fork test
-    call is-above
-      read found/length
-      code 0
-    hook hold
-      call log-good
-        text <{{file}} ok ({{found}} warnings)>
+    is-above read(found/length), code 0
+    hold
+      log-good <{{file}} ok ({{found}} warnings)>
       send back
-  call log-good
-    text <{{file}} ok>
+  log-good <{{file}} ok>

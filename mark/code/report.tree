@@ -1,0 +1,445 @@
+# The printed report: one table of comparisons, then the summary per target. `--markdown` prints the same rows as a
+# markdown table for a note. Every count states its denominator.
+
+load @term/base/code/console
+  find log
+
+load @term/base/code/list
+  find list
+  find push
+  find get
+  find size
+  find join
+  find sort
+  find set
+
+load @term/base/code/ordering
+  find ordering
+
+load @term/base/code/text
+  find pad-right
+  find char-count
+
+load @term/base/code/text/number
+  find to-fixed
+
+load @term/base/code/float
+  find to-decimal
+
+load ./case
+  find comparison
+
+load ./stat
+  find geometric-mean
+
+task fixed
+  take value, like decimal
+  take places, like number
+  like text
+  send back
+    call to-fixed
+      read value
+      read places
+
+# bytes as megabytes, one place, or `-` when not counted
+task megabytes
+  take bytes, like number
+  like text
+  fork test
+    hook test
+      call is-below
+        read bytes
+        code 0
+    hook hold
+      send back, text <->
+  send back
+    call fixed
+      call divide
+        call to-decimal
+          read bytes
+        code 1048576.0
+      code 1
+
+task kilobytes
+  take bytes, like number
+  like text
+  fork test
+    hook test
+      call is-maximum
+        read bytes
+        code 0
+    hook hold
+      send back, text <->
+  send back
+    call fixed
+      call divide
+        call to-decimal
+          read bytes
+        code 1024.0
+      code 1
+
+# a ratio with its interval: `1.042 [1.010-1.071]`
+task ratio-text
+  take ratio, like decimal
+  take low, like decimal
+  take high, like decimal
+  like text
+  save middle
+    call fixed
+      read ratio
+      code 3
+  save from
+    call fixed
+      read low
+      code 3
+  save to
+    call fixed
+      read high
+      code 3
+  send back, text <{{middle}} [{{from}}-{{to}}]>
+
+# the row of one comparison
+task row-of
+  take one, like comparison
+  like list
+    like text
+  save cells
+    make list
+  call push
+    read cells
+    text <{{one/program}} {{one/size-name}}>
+  call push
+    read cells
+    read one/target
+  call push
+    read cells
+    text <{{one/baseline}} ({{one/track}})>
+  call push
+    read cells
+    call fixed
+      read one/term-wall
+      code 2
+  call push
+    read cells
+    call fixed
+      read one/base-wall
+      code 2
+  call push
+    read cells
+    call ratio-text
+      read one/ratio
+      read one/low
+      read one/high
+  save verdict, read one/verdict
+  fork test
+    hook test
+      read one/dominated
+    hook hold
+      save verdict, text <dominated by process start>
+  call push
+    read cells
+    read verdict
+  save instructions, text <->
+  fork test
+    hook test
+      read one/counted
+    hook hold
+      save instructions
+        call ratio-text
+          read one/instruction-ratio
+          read one/instruction-low
+          read one/instruction-high
+  call push
+    read cells
+    read instructions
+  save term-rss
+    call megabytes
+      read one/term-rss
+  save base-rss
+    call megabytes
+      read one/base-rss
+  call push
+    read cells
+    text <{{term-rss}} / {{base-rss}}>
+  save term-size
+    call kilobytes
+      read one/term-size
+  save base-size
+    call kilobytes
+      read one/base-size
+  call push
+    read cells
+    text <{{term-size}} / {{base-size}}>
+  send back, read cells
+
+task header-cells
+  like list
+    like text
+  save cells
+    make list
+  call push(read(cells), text <program size>)
+  call push(read(cells), text <target>)
+  call push(read(cells), text <baseline (track)>)
+  call push(read(cells), text <term ms>)
+  call push(read(cells), text <baseline ms>)
+  call push(read(cells), text <wall ratio [95%]>)
+  call push(read(cells), text <verdict>)
+  call push(read(cells), text <instructions ratio [95%]>)
+  call push(read(cells), text <rss MB term / base>)
+  call push(read(cells), text <size KB term / base>)
+  send back, read cells
+
+# a table, aligned for a terminal or as markdown
+task print-table
+  take header
+    like list
+      like text
+  take rows
+    like list
+      like list
+        like text
+  take markdown, like boolean
+  save widths
+    make list
+  walk list, read header
+    hook next
+      take site, name cell
+      call push
+        read widths
+        call char-count
+          read cell
+  walk list, read rows
+    hook next
+      take site, name row
+      walk size
+        bind base, code 0
+        bind head
+          call size
+            read row
+        hook next
+          take site, name at
+          save width
+            call char-count
+              call get
+                read row
+                read at
+          fork test
+            hook test
+              call is-above
+                read width
+                call get
+                  read widths
+                  read at
+            hook hold
+              call set
+                read widths
+                read at
+                read width
+  save lines
+    make list
+  call push
+    read lines
+    read header
+  fork test
+    hook test
+      read markdown
+    hook hold
+      save rule
+        make list
+      walk list, read header
+        hook next
+          take site, name cell
+          call push
+            read rule
+            text <--->
+      call push
+        read lines
+        read rule
+  walk list, read rows
+    hook next
+      take site, name row
+      call push
+        read lines
+        read row
+  walk list, read lines
+    hook next
+      take site, name row
+      save padded
+        make list
+      walk size
+        bind base, code 0
+        bind head
+          call size
+            read row
+        hook next
+          take site, name at
+          save cell
+            call get
+              read row
+              read at
+          fork test
+            hook test
+              read markdown
+            hook hold
+              call push
+                read padded
+                read cell
+            hook miss
+              call push
+                read padded
+                call pad-right
+                  read cell
+                  call get
+                    read widths
+                    read at
+                  text < >
+      fork test
+        hook test
+          read markdown
+        hook hold
+          save joined
+            call join
+              read padded
+              text < | >
+          call log
+            text <| {{joined}} |>
+        hook miss
+          call log
+            call join
+              read padded
+              text <  >
+
+# the comparisons on one target, worst first
+task worst-first
+  take all
+    like list
+      like comparison
+  like list
+    like comparison
+  send back
+    call sort
+      read all
+      task
+        take left, like comparison
+        take right, like comparison
+        like ordering
+        fork test
+          hook test
+            call is-above
+              read left/ratio
+              read right/ratio
+          hook hold
+            send back, make less
+        fork test
+          hook test
+            call is-below
+              read left/ratio
+              read right/ratio
+          hook hold
+            send back, make greater
+        send back, make equal
+
+# per target: the geometric mean of the wall ratios over the comparisons not dominated by process start, with its
+# denominator, and the worst three by name
+task print-summary
+  take all
+    like list
+      like comparison
+  take targets
+    like list
+      like text
+  walk list, read targets
+    hook next
+      take site, name target
+      save kept
+        make list
+      save ratios
+        make list
+      save dominated, code 0
+      save total, code 0
+      walk list, read all
+        hook next
+          take site, name one
+          fork test
+            hook test
+              call is-equal
+                read one/target
+                read target
+            hook hold
+              save total
+                call add
+                  read total
+                  code 1
+              fork test
+                hook test
+                  read one/dominated
+                hook hold
+                  save dominated
+                    call add
+                      read dominated
+                      code 1
+                hook miss
+                  call push
+                    read kept
+                    read one
+                  call push
+                    read ratios
+                    read one/ratio
+      fork test
+        hook test
+          call is-equal
+            read total
+            code 0
+        hook hold
+          turn next
+      fork test
+        hook test
+          call is-equal
+            call size
+              read ratios
+            code 0
+        hook hold
+          call log
+            text <{{target}}: 0 of {{total}} comparisons measurable, {{dominated}} dominated by process start>
+          turn next
+      save mean
+        call fixed
+          call geometric-mean
+            read ratios
+          code 3
+      save counted
+        call size
+          read ratios
+      call log
+        text <{{target}}: geometric mean of the wall ratios {{mean}}, over {{counted}} of {{total}} comparisons ({{dominated}} dominated by process start, left out)>
+      save ranked
+        call worst-first
+          read kept
+      walk size
+        bind base, code 0
+        bind head
+          call size
+            read ranked
+        hook next
+          take site, name at
+          fork test
+            hook test
+              call is-minimum
+                read at
+                code 3
+            hook hold
+              halt
+          save one
+            call get
+              read ranked
+              read at
+          save shown
+            call fixed
+              read one/ratio
+              code 3
+          save rank
+            call add
+              read at
+              code 1
+          call log
+            text <  worst {{rank}}. {{one/program}} {{one/size-name}} against {{one/baseline}}, {{shown}}>

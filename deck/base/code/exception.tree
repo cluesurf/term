@@ -2,6 +2,8 @@
 # recognises an exception by that chain, fills `host`, `form`, `code` and `time` at every `halt <form>`, and puts each
 # one on the roll. See note/term/hive/03-exception.md.
 
+note stable
+
 load @term/base/code/uuid
   find version4
 

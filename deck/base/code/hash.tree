@@ -1,6 +1,8 @@
 
 # Hash map: the stdlib map type, backed by the native map. Build a value with `make find`.
 
+note stable
+
 load @term/base/code/maybe
   find maybe
   find unwrap-or

@@ -1,5 +1,7 @@
 # RGB color: three integer channels, each 0 to 255. Pure-logic color operations, no platform dependency.
 
+note unstable
+
 form rgb-color
   link red, like number
   link green, like number

@@ -1,5 +1,5 @@
 # node HTTP/HTTPS server: forwards to the linked server runtime shim (node http / https). The shim reads each request,
-# hands a normalized request to the seed handler, and writes the handler's response. The opaque handle a seed `server`
+# hands a normalized request to the Term handler, and writes the handler's response. The opaque handle a Term `server`
 # holds is the node `http.Server`. Internal: reached only through the public network/server API.
 
 dock type

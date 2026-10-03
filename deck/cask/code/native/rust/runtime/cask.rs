@@ -117,6 +117,8 @@ mod cask {
             webview: webkit6::WebView,
             handler: RefCell<Option<Handler>>,
             ready: RefCell<Option<Ready>>,
+            // what runs when this window closes (native-dom-0030)
+            closed: RefCell<Vec<Ready>>,
         }
 
         // the opaque handle Term holds: `dock type / load <cask::CaskWindow>, name window`
@@ -125,6 +127,8 @@ mod cask {
 
         thread_local! {
             static MAIN_LOOP: RefCell<Option<glib::MainLoop>> = RefCell::new(None);
+            // how many windows are open: the process ends with the last one, not the first
+            static OPEN: RefCell<usize> = RefCell::new(0);
         }
 
 
@@ -157,7 +161,9 @@ mod cask {
                 webview: webview.clone(),
                 handler: RefCell::new(None),
                 ready: RefCell::new(None),
+                closed: RefCell::new(Vec::new()),
             }));
+            OPEN.with(|open| *open.borrow_mut() += 1);
             let receiver = handle.clone();
             manager.connect_script_message_received(Some("term"), move |_, value| {
                 receiver.receive(value.to_str().to_string());
@@ -171,8 +177,21 @@ mod cask {
                     }
                 }
             });
-            handle.0.window.connect_close_request(|_| {
-                quit();
+            // this window's `on-close` handlers, then the process ends if it was the last one open (native-dom-0030)
+            let closing = handle.clone();
+            handle.0.window.connect_close_request(move |_| {
+                let handlers = std::mem::take(&mut *closing.0.closed.borrow_mut());
+                for handler in handlers {
+                    handler();
+                }
+                let left = OPEN.with(|open| {
+                    let mut open = open.borrow_mut();
+                    *open = open.saturating_sub(1);
+                    *open
+                });
+                if left == 0 {
+                    quit();
+                }
                 glib::Propagation::Proceed
             });
             // GTK has no off-screen window and a WebView renders only once its window is realised, so the window is
@@ -231,6 +250,16 @@ mod cask {
 
         pub fn on_ready(handle: CaskWindow, handler: Ready) -> () {
             *handle.0.ready.borrow_mut() = Some(handler);
+        }
+
+        // runs when the window closes, by the person or by `close` (native-dom-0030)
+        pub fn on_close(handle: CaskWindow, handler: Ready) -> () {
+            handle.0.closed.borrow_mut().push(handler);
+        }
+
+        // close the window as its close box does: GTK's close request runs the `on-close` handlers
+        pub fn close(handle: CaskWindow) -> () {
+            handle.0.window.close();
         }
 
         // the visible part of the page as a PNG at `path`, then `done`
@@ -318,6 +347,8 @@ mod cask {
             pending: RefCell<Option<Load>>,
             // scripts asked for before the WebView existed
             queued: RefCell<Vec<String>>,
+            // what runs when this window closes (native-dom-0030)
+            closed: RefCell<Vec<Ready>>,
         }
 
         // the opaque handle Term holds: `dock type / load <cask::CaskWindow>, name window`
@@ -391,7 +422,21 @@ mod cask {
                     LRESULT(0)
                 }
                 WM_DESTROY => {
-                    PostQuitMessage(0);
+                    // this window's `on-close` handlers, then the window leaves the list; the process ends with
+                    // the LAST window, not the first (native-dom-0030: a cask may hold two)
+                    if let Some(window) = window_of(hwnd) {
+                        let handlers = std::mem::take(&mut *window.0.closed.borrow_mut());
+                        for handler in handlers {
+                            handler();
+                        }
+                    }
+                    let left = WINDOWS.with(|windows| {
+                        windows.borrow_mut().retain(|w| w.0.hwnd != hwnd);
+                        windows.borrow().len()
+                    });
+                    if left == 0 {
+                        PostQuitMessage(0);
+                    }
                     LRESULT(0)
                 }
                 _ => DefWindowProcW(hwnd, message, wparam, lparam),
@@ -445,6 +490,7 @@ mod cask {
                     ready: RefCell::new(None),
                     pending: RefCell::new(None),
                     queued: RefCell::new(Vec::new()),
+                    closed: RefCell::new(Vec::new()),
                 }));
                 WINDOWS.with(|windows| windows.borrow_mut().push(handle.clone()));
                 handle.create_webview();
@@ -658,6 +704,18 @@ mod cask {
             *handle.0.ready.borrow_mut() = Some(handler);
         }
 
+        // runs when the window closes, by the person or by `close` (native-dom-0030)
+        pub fn on_close(handle: CaskWindow, handler: Ready) -> () {
+            handle.0.closed.borrow_mut().push(handler);
+        }
+
+        // close the window as its close box does: WM_CLOSE, then WM_DESTROY runs the `on-close` handlers
+        pub fn close(handle: CaskWindow) -> () {
+            unsafe {
+                let _ = PostMessageW(handle.0.hwnd, WM_CLOSE, WPARAM(0), LPARAM(0));
+            }
+        }
+
         // the page as a PNG at `path`, then `done`
         pub fn snapshot(handle: CaskWindow, path: String, done: Ready) -> () {
             let Some(webview) = handle.0.webview.borrow().clone() else {
@@ -765,6 +823,12 @@ mod cask {
             unimplemented!("{}", ELSEWHERE)
         }
         pub fn on_ready(_handle: CaskWindow, _handler: Ready) -> () {
+            unimplemented!("{}", ELSEWHERE)
+        }
+        pub fn on_close(_handle: CaskWindow, _handler: Ready) -> () {
+            unimplemented!("{}", ELSEWHERE)
+        }
+        pub fn close(_handle: CaskWindow) -> () {
             unimplemented!("{}", ELSEWHERE)
         }
         pub fn snapshot(_handle: CaskWindow, _path: String, _done: Ready) -> () {

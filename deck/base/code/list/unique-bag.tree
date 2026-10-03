@@ -1,6 +1,8 @@
 
 # Unique bag: a set. Each value appears at most once. Backed by a list, with a membership check guarding insertion.
 
+note unstable
+
 form unique-bag
   head t
 

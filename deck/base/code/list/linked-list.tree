@@ -1,6 +1,8 @@
 
 # Singly linked list: a recursive immutable list (empty | node value next).
 
+note unstable
+
 load @term/base/code/maybe
   find maybe
 

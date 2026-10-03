@@ -9,6 +9,8 @@
 # `seed` holds a `bind` (a call's arguments) and a `bind` holds a `seed`, so the two modules import each other.
 # That is the stdlib's only import cycle and the compiler takes it.
 
+note unstable
+
 load ./term
   find term
 

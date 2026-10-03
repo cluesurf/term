@@ -1,0 +1,216 @@
+load @term/base/code/list
+  find list
+  find push
+
+load @term/base/code/float
+  find square-root
+  find round
+  find to-decimal
+  find to-number
+
+load @term/base/code/text
+  find pad-left
+
+# spectral-norm, single-threaded: the Benchmarks Game's "naive transliteration from Sebastien Loisel's C program"
+# (spectralnorm.node-8, swift-8), step for step. 64-bit floats, printed to 9 decimals.
+
+# element i, j of the infinite matrix A
+task eval-a
+  take i, like number
+  take j, like number
+  like decimal
+  save sum
+    call add
+      read i
+      read j
+  send back
+    call divide
+      code 1.0
+      call to-decimal
+        call add
+          call add
+            call divide
+              call multiply
+                read sum
+                call add
+                  read sum
+                  code 1
+              code 2
+            read i
+          code 1
+
+# n copies of one value
+task filled
+  take n, like number
+  take value, like decimal
+  like list
+    like decimal
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      call push
+        read out
+        read value
+  send back, read out
+
+# au = A u
+task times-u
+  take n, like number
+  take u
+    like list
+      like decimal
+  take au
+    like list
+      like decimal
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      save total, code 0.0
+      walk size
+        bind base, code 0
+        bind head, read n
+        hook next
+          take site, name j
+          save total
+            call add
+              read total
+              call multiply
+                call eval-a
+                  read i
+                  read j
+                read u/{j}
+      save au/{i}, read total
+
+# au = A-transposed u
+task times-at-u
+  take n, like number
+  take u
+    like list
+      like decimal
+  take au
+    like list
+      like decimal
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      save total, code 0.0
+      walk size
+        bind base, code 0
+        bind head, read n
+        hook next
+          take site, name j
+          save total
+            call add
+              read total
+              call multiply
+                call eval-a
+                  read j
+                  read i
+                read u/{j}
+      save au/{i}, read total
+
+# out = A-transposed A u
+task times-ata-u
+  take n, like number
+  take u
+    like list
+      like decimal
+  take out
+    like list
+      like decimal
+  save v
+    call filled
+      read n
+      code 0.0
+  call times-u
+    read n
+    read u
+    read v
+  call times-at-u
+    read n
+    read v
+    read out
+
+# x to 9 decimals: x times 10^9, rounded to the nearest whole, laid out. x is positive here
+task fixed-9
+  take x, like decimal
+  like text
+  save scaled
+    call to-number
+      call round
+        call multiply
+          read x
+          code 1000000000.0
+  save whole
+    call divide
+      read scaled
+      code 1000000000
+  save part
+    call modulo
+      read scaled
+      code 1000000000
+  save digits
+    call pad-left
+      text <{{part}}>
+      code 9
+      text <0>
+  send back, text <{{whole}}.{{digits}}>
+
+task run
+  take size, like number
+  like text
+  save n, read size
+  save u
+    call filled
+      read n
+      code 1.0
+  save v
+    call filled
+      read n
+      code 0.0
+  walk size
+    bind base, code 0
+    bind head, code 10
+    hook next
+      take site, name power-step
+      call times-ata-u
+        read n
+        read u
+        read v
+      call times-ata-u
+        read n
+        read v
+        read u
+  save vbv, code 0.0
+  save vv, code 0.0
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      save vbv
+        call add
+          read vbv
+          call multiply
+            read u/{i}
+            read v/{i}
+      save vv
+        call add
+          read vv
+          call multiply
+            read v/{i}
+            read v/{i}
+  send back
+    call fixed-9
+      call square-root
+        call divide
+          read vbv
+          read vv

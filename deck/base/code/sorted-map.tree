@@ -3,6 +3,8 @@
 # every backend. A lookup is a binary search; an insert or a removal moves the later entries along, so this suits maps
 # that are read far more than they are written. `hash` is the map to reach for when order does not matter.
 
+note stable
+
 load @term/base/code/list
   find list
   find size

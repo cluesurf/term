@@ -27,56 +27,48 @@ form parse-ask
 # the head word of a group, or nothing when its first node is not a name
 task head-name
   take group, like unknown
+
   like text
-  save first
-    read group/nodes/0
+
+  save first, read group/nodes/0
+
   fork test
-    call is-equal
-      read first/kind
-      text <name>
-    hook hold
-      send back
-        call parser/renderHead
-          read first
-  send back
-    text <>
+    is-equal read(first/kind), <name>
+    hold
+      back call parser/renderHead, first
+  back <>
 
 # the first ARGUMENT of a group: `deck @term/site` gives `@term/site`
 task argument-of
   take group, like unknown
+
   like text
-  save second
-    read group/nodes/1
+
+  save second, read group/nodes/1
+
   fork test
-    call is-equal
-      read second/kind
-      text <group>
-    hook hold
-      send back
-        call head-name
-          read second
-  send back
-    text <>
+    is-equal read(second/kind), <group>
+    hold
+      back head-name second
+  back <>
 
 # the groups of a node list, dropping anything that is not one
 task groups-of
-  take nodes, like list
+  take nodes
+    like list
     like unknown
-  like list
-    like unknown
-  save found
-    make list
-  walk list, read nodes
-    hook next
-      take site, name one
-      fork test
-        call is-equal
-          read one/kind
-          text <group>
-        hook hold
-          call found/push
-            read one
-  send back, read found
+
+  like list, like unknown
+
+  save found, make list
+
+  walk nodes
+    take site, name one
+    fork test
+      is-equal read(one/kind), <group>
+      hold
+        found/push one
+  back found
 
 # The value a manifest gives one head. The `deck` statement's CHILDREN are searched first and the top level second,
 # so the manifest's own block wins when both spell the same head.
@@ -84,96 +76,71 @@ task manifest-value
   take text, like text
   take file, like text
   take head, like text
+
   like text
+
   save parsed
-    call parser/parse
-      make parse-ask
-        bind file, read file
-        bind text, read text
+    parser/parse
+      make parse-ask, bind(file, file), bind text, read text
   fork test
     read parsed/ok
-    hook miss
-      send back
-        text <>
-  save groups
-    call groups-of
-      read parsed/tree/nodes
-  save nested
-    make list
-  walk list, read groups
-    hook next
-      take site, name group
-      fork test
-        call is-equal
-          call head-name
-            read group
-          text <deck>
-        hook hold
-          save kids
-            call groups-of
-              read group/nodes
-          walk list, read kids
-            hook next
-              take site, name kid
-              call nested/push
-                read kid
-  save found
-    call first-value
-      read nested
-      read head
+    miss
+      back <>
+  save groups, groups-of read parsed/tree/nodes
+  save nested, make list
+
+  walk groups
+    take site, name group
+    fork test
+      is-equal head-name(group), <deck>
+      hold
+        save kids, groups-of read group/nodes
+        walk kids
+          take site, name kid
+          nested/push kid
+  save found, first-value nested, read head
+
   fork test
-    call is-unequal
-      read found
-      text <>
-    hook hold
-      send back, read found
-  send back
-    call first-value
-      read groups
-      read head
+    is-unequal found, <>
+    hold
+      back found
+  back first-value groups, read head
 
 # the argument of the first group with this head, or the empty text
 task first-value
-  take groups, like list
+  take groups
+    like list
     like unknown
   take head, like text
+
   like text
-  walk list, read groups
-    hook next
-      take site, name group
-      fork test
-        call is-equal
-          call head-name
-            read group
-          read head
-        hook hold
-          save value
-            call argument-of
-              read group
-          fork test
-            call is-unequal
-              read value
-              text <>
-            hook hold
-              send back, read value
-  send back
-    text <>
+
+  walk groups
+    take site, name group
+    fork test
+      is-equal head-name(group), read head
+      hold
+        save value, argument-of group
+        fork test
+          is-unequal value, <>
+          hold
+            back value
+  back <>
 
 # the same, read from a file. Unreadable or unparseable answers the empty text, the way a missing manifest does.
 task manifest-value-of
   note async
   take file, like text
   take head, like text
+
   like text
+
   note unsafe
     send back
       call manifest-value
-        call read-file
-          read file
-          wait true
+        call read-file, read(file), wait true
         read file
         read head
   halt take
     take error
-    send back
-      text <>
+    back <>

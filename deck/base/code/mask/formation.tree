@@ -1,6 +1,8 @@
 
 # Formation: construct a value of this type from a source value. The dual of conversion.
 
+note unstable
+
 mask formation
   head from
 

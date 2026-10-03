@@ -13,6 +13,9 @@
 #   emit          window, name, text             push an event into the page
 #   listen        name, handler                  receive an event, on the page side
 #   on-ready      window, handler                the page has finished loading
+#   on-close      window, handler                the window closed, by the person or by `close`. A cask's dispatcher
+#                                                drops every handle that window's page held (native-dom-0030)
+#   close         window                         close it as its close box does: every `on-close` handler runs
 #   snapshot      window, path, done             write a PNG of the page as drawn, then call done
 #   show          window                         put the window on screen, behind everything. A window opens off screen
 #   activate      window                         bring the window to the front with focus

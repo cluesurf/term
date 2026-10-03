@@ -30,7 +30,7 @@ load ../../view
   find view
 
 form memory-element
-  note shared
+  mark shared
   link key, like number
   link tag, like text
   link text, like text
@@ -63,8 +63,11 @@ form memory-listener
   link handle
     like task
 
-# the next key to hand out. A key is never reused, so a removed node can never be mistaken for a new one
+# the next key to hand out. A key is never reused, so a removed node can never be mistaken for a new one. ONE clock,
+# so shared: unshared, a backend whose forms are values (Rust) bumps a copy, hands every node key 0, and every node is
+# then the same node (native-dom-0020)
 form memory-clock
+  mark shared
   link next, like number
 
 host clock

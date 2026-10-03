@@ -4,6 +4,9 @@
 # lives in each platform, never shipped here. `$value` is the text.
 
 # the number of Unicode code points (runes) in the text
+
+note stable
+
 bind rune-count
   take value, like text
   like number
@@ -187,7 +190,7 @@ bind rune-to-text
   case kotlin
     text <if (Character.isValidCodePoint($code.toInt())) String(Character.toChars($code.toInt())) else "">
 
-# rebuild text from a list of Unicode code points (the inverse of to-runes). Pure Seed over the list's own iteration, so
+# rebuild text from a list of Unicode code points (the inverse of to-runes). Pure Term over the list's own iteration, so
 # it never touches a backend's internal list representation: it folds each rune's one-character text onto the result.
 task from-runes
   take runes

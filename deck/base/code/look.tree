@@ -6,6 +6,8 @@
 # zero runtime). The headless components carry `class` + `data-slot`/`data-state`, so `face ... / case <state>` themes
 # them with no runtime work.
 
+note unstable
+
 load ./term
   find term
 

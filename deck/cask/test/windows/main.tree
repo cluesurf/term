@@ -1,0 +1,408 @@
+
+# The windows smoke (native-dom-0030): two windows in one app, each served by the generated dispatcher under a key of
+# its own, so a handle one window's page holds is the other's to neither read nor let go, and every handle a window
+# held is dropped when it closes. A third window is the CONTROL: the first message its page sends runs the checks,
+# below, against the two served windows' keys through `dispatch-as`, which is exactly what a page's post reaches.
+#
+# The driver writes the expected line to <bundle>/smoke.txt. Exit statuses:
+#   0  every check held                      4  the second window read the first's row
+#   1  the line in smoke.txt was wrong       5  the second window released the first's row, and it went
+#   2  the first window could not read its   6  the first window's rows survived its closing
+#      own row                               7  the second window stopped working when the first closed
+#                                            8  a check raised (a reply that was not JSON)
+
+load @term/cask/code/cask
+  find window
+  find open-window
+  find load-bundle
+  find on-message
+  find on-close
+  find close
+  find run
+  find exit
+  find bundle-path
+  find data-path
+
+load @term/base/code/file
+  find read
+
+load @term/base/code/text
+  find trim
+  find contains
+
+load @term/base/code/json
+  find make-object
+  find set-field
+  find from-text
+  find make-array
+  find push-item
+  find stringify
+  find parse
+  find get-field
+  find get-item
+  find as-text
+
+load @term/base/code/clock
+  find sleep
+
+load ./dispatch
+  find serve
+  find dispatch-as
+
+# what the checks carry from before the first window closes to after: the second window's own row, and whether the
+# platform has said the first window closed. Shared, so the close handler and the checks see the one record
+form trial
+  mark shared
+  link first-row, like text
+  link second-row, like text
+  link closed, like boolean
+
+host held
+  make trial
+    bind first-row, text <>
+    bind second-row, text <>
+    bind closed, false
+
+# one message as a page posts it: `{ id, command, arguments }`
+task message
+  take command, like text
+  take arguments, like dynamic
+  like text
+  send back
+    call stringify
+      call set-field
+        call set-field
+          call set-field
+            call make-object
+            text <id>
+            call from-text
+              text <w1>
+          text <command>
+          call from-text
+            read command
+        text <arguments>
+        read arguments
+
+# `{ sql, params: [] }`
+task statement
+  take sql, like text
+  like dynamic
+  send back
+    call set-field
+      call set-field
+        call make-object
+        text <sql>
+        call from-text
+          read sql
+      text <params>
+      call make-array
+
+# a row of the first window's, as the second window or the first asks for it: true when the cask answered with the
+# line, false when it refused
+task reads
+  note async
+  take owner, like text
+  take row, like text
+  take expected, like text
+  like boolean
+  save reply
+    call dispatch-as
+      wait true
+      read owner
+      call message
+        text <db_field>
+        call set-field
+          call set-field
+            call make-object
+            text <row>
+            call from-text
+              read row
+          text <name>
+          call from-text
+            text <title>
+  send back
+    call contains
+      read reply
+      read expected
+
+task check
+  note async
+  take first, like window
+  take first-key, like text
+  take second-key, like text
+  like number
+  save bundle
+    call bundle-path
+      wait true
+  save expected
+    call trim
+      call read
+        wait true
+        text <{{bundle}}/smoke.txt>
+  fork test
+    hook test
+      call contains
+        read expected
+        text <windows-ok>
+    hook miss
+      send back, code 1
+  save directory
+    call data-path
+      text <TermWindows>
+      wait true
+  # the FIRST window opens the database and makes its row; the rows come back as ids under the first window's key
+  save opened
+    call dispatch-as
+      wait true
+      read first-key
+      call message
+        text <db_connect>
+        call set-field
+          call make-object
+          text <url>
+          call from-text
+            text <{{directory}}/windows.sqlite>
+  save made
+    call dispatch-as
+      wait true
+      read first-key
+      call message
+        text <db_run>
+        call statement
+          text <CREATE TABLE IF NOT EXISTS note (id TEXT PRIMARY KEY, title TEXT NOT NULL)>
+  save cleared
+    call dispatch-as
+      wait true
+      read first-key
+      call message
+        text <db_run>
+        call statement
+          text <DELETE FROM note>
+  save written
+    call dispatch-as
+      wait true
+      read first-key
+      call message
+        text <db_run>
+        call statement
+          text <INSERT INTO note (id, title) VALUES ('one', '{{expected}}')>
+  save rows
+    call parse
+      call dispatch-as
+        wait true
+        read first-key
+        call message
+          text <db_query>
+          call statement
+            text <SELECT id, title FROM note>
+  save row
+    call as-text
+      call get-item
+        call get-field
+          read rows
+          text <value>
+        code 0
+  save own
+    call reads
+      wait true
+      read first-key
+      read row
+      read expected
+  fork test
+    hook test, read own
+    hook miss
+      send back, code 2
+  # the SECOND window, holding the first's id, is refused: the id is not in its part of the table
+  save stolen
+    call reads
+      wait true
+      read second-key
+      read row
+      read expected
+  fork test
+    hook test, read stolen
+    hook hold
+      send back, code 4
+  # nor can the second window let it go: a release under its key finds nothing of the first's
+  save released
+    call dispatch-as
+      wait true
+      read second-key
+      call message
+        text <cask_release>
+        call set-field
+          call set-field
+            call make-object
+            text <form>
+            call from-text
+              text <row>
+          text <handle>
+          call from-text
+            read row
+  save still
+    call reads
+      wait true
+      read first-key
+      read row
+      read expected
+  fork test
+    hook test, read still
+    hook miss
+      send back, code 5
+  # the second window's OWN row, which must outlive the first window's closing
+  save theirs
+    call parse
+      call dispatch-as
+        wait true
+        read second-key
+        call message
+          text <db_query>
+          call statement
+            text <SELECT id, title FROM note>
+  save held/first-row, read row
+  save held/second-row
+    call as-text
+      call get-item
+        call get-field
+          read theirs
+          text <value>
+        code 0
+  send back, code 0
+
+# after the first window closed, through the platform: its row is let go, and the second window still answers
+task after-close
+  note async
+  take first-key, like text
+  take second-key, like text
+  take expected, like text
+  like number
+  # the platform closes a window on its own turn: wait for it to say so, a tenth of a second at a time, ten seconds
+  # at most
+  walk size
+    bind base, code 0
+    bind head, code 100
+    hook next
+      take site, name tick
+      fork test
+        hook test, read held/closed
+        hook hold
+          halt
+      call sleep
+        wait true
+        code 100
+  fork test
+    hook test, read held/closed
+    hook miss
+      send back, code 6
+  save gone
+    call reads
+      wait true
+      read first-key
+      read held/first-row
+      read expected
+  fork test
+    hook test, read gone
+    hook hold
+      send back, code 6
+  save kept
+    call reads
+      wait true
+      read second-key
+      read held/second-row
+      read expected
+  fork test
+    hook test, read kept
+    hook miss
+      send back, code 7
+  send back, code 0
+
+task boot
+  take bundle, like text
+  like void
+  save first
+    call open-window
+      text <Term windows: first>
+      code 480
+      code 320
+  save second
+    call open-window
+      text <Term windows: second>
+      code 480
+      code 320
+  save control
+    call open-window
+      text <Term windows: control>
+      code 480
+      code 320
+  save first-key
+    call serve
+      read first
+  save second-key
+    call serve
+      read second
+  # the control window's page asks one thing; the first time it does, the checks run and the app leaves with their
+  # verdict, after closing the first window and checking what its closing let go
+  call on-message
+    read control
+    task drive
+      note async
+      take message, like text
+      like text
+      save where
+        call bundle-path
+          wait true
+      # a check that raises (a reply that is not JSON) is a failed run with its own status, never a crash
+      save verdict, code 8
+      note unsafe
+        save verdict
+          call check
+            wait true
+            read first
+            read first-key
+            read second-key
+      halt take
+        take problem
+        save verdict, code 8
+      fork test
+        hook test
+          call is-equal
+            read verdict
+            code 0
+        hook hold
+          # registered after `serve`'s, so it runs after the dispatcher let the first window's handles go
+          call on-close
+            read first
+            task seen
+              like void
+              save held/closed, true
+          call close
+            read first
+          save expected
+            call trim
+              call read
+                wait true
+                text <{{where}}/smoke.txt>
+          save verdict
+            call after-close
+              wait true
+              read first-key
+              read second-key
+              read expected
+      call exit
+        wait true
+        read verdict
+      send back
+        call dispatch-as
+          wait true
+          text <control>
+          read message
+  call load-bundle
+    read first
+    read bundle
+  call load-bundle
+    read second
+    read bundle
+  call load-bundle
+    read control
+    read bundle
+  call run

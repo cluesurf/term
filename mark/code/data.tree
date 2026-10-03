@@ -1,0 +1,17 @@
+# A data file's text as a dynamic value, keys in snake case. `read` is loaded from the file that DEFINES it: the
+# file module's `read` has the same name and the same parameter types, so the call is bound by import, and an import
+# through `@term/host/code/base` (which only re-exports it) did not count, so the name read as undefined.
+
+load @term/host/code/read
+  find read
+
+load @term/host/code/json
+  find to-dynamic
+
+task data-value
+  take body, like text
+  like dynamic
+  send back
+    call to-dynamic
+      call read
+        read body

@@ -1,0 +1,531 @@
+# The statistics of note/term/codegen/measurement.md. The median is the point estimate. The 95% interval of a ratio
+# comes from a bootstrap over PAIRED samples, drawn from a seeded generator so the same samples always give the same
+# interval. A suite is summarized by the geometric mean of its ratios, because an arithmetic mean of ratios scores 2x
+# slower and 2x faster as a net loss.
+
+load @term/base/code/list
+  find list
+  find push
+  find get
+  find set
+  find size
+  find sort
+
+load ./lists
+  find part-of
+
+load @term/base/code/ordering
+  find ordering
+
+load @term/base/code/float
+  find to-decimal
+  find natural-logarithm
+  find exponent
+  find absolute
+
+# the resamples a bootstrap draws
+host resample-count, code 10000
+
+# the bootstrap's seed: fixed, so an interval is reproducible from its samples
+host bootstrap-seed, code 20261002
+
+# what an interval says about a ratio
+form interval
+  link ratio, like decimal
+  link low, like decimal
+  link high, like decimal
+  link verdict, like text
+
+# ascending order of two decimals
+task compare-decimals
+  take left, like decimal
+  take right, like decimal
+  like ordering
+  fork test
+    hook test
+      call is-below
+        read left
+        read right
+    hook hold
+      send back, make less
+  fork test
+    hook test
+      call is-above
+        read left
+        read right
+    hook hold
+      send back, make greater
+  send back, make equal
+
+task sorted-of
+  take values
+    like list
+      like decimal
+  like list
+    like decimal
+  send back
+    call sort
+      read values
+      read compare-decimals
+
+# the median of a sorted list
+task median-sorted
+  take sorted
+    like list
+      like decimal
+  like decimal
+  save n
+    call size
+      read sorted
+  fork test
+    hook test
+      call is-equal
+        read n
+        code 0
+    hook hold
+      send back, code 0.0
+  save middle
+    call divide
+      read n
+      code 2
+  fork test
+    hook test
+      call is-equal
+        call modulo
+          read n
+          code 2
+        code 1
+    hook hold
+      send back
+        call get
+          read sorted
+          read middle
+  send back
+    call divide
+      call add
+        call get
+          read sorted
+          call subtract
+            read middle
+            code 1
+        call get
+          read sorted
+          read middle
+      code 2.0
+
+task median-of
+  take values
+    like list
+      like decimal
+  like decimal
+  send back
+    call median-sorted
+      call sorted-of
+        read values
+
+# the item at a fraction of a sorted list, by nearest rank below: `per-thousand` 250 is the first quartile
+task rank-at
+  take sorted
+    like list
+      like decimal
+  take per-thousand, like number
+  like decimal
+  save at
+    call divide
+      call multiply
+        call size
+          read sorted
+        read per-thousand
+      code 1000
+  fork test
+    hook test
+      call is-minimum
+        read at
+        call size
+          read sorted
+    hook hold
+      save at
+        call subtract
+          call size
+            read sorted
+          code 1
+  send back
+    call get
+      read sorted
+      read at
+
+# a Park-Miller generator, in integers, its state held in a one-item list: the next draw in 0 to bound
+task draw
+  take cell
+    like list
+      like number
+  take bound, like number
+  like number
+  save state
+    call modulo
+      call multiply
+        call get
+          read cell
+          code 0
+        code 48271
+      code 2147483647
+  call set
+    read cell
+    code 0
+    read state
+  send back
+    call modulo
+      read state
+      read bound
+
+task seeded
+  take seed, like number
+  like list
+    like number
+  save cell
+    make list
+  call push
+    read cell
+    call add
+      call modulo
+        read seed
+        code 2147483646
+      code 1
+  send back, read cell
+
+# 0 to count - 1 in a new order, Fisher-Yates
+task shuffled
+  take count, like number
+  take cell
+    like list
+      like number
+  like list
+    like number
+  save order
+    make list
+  walk size
+    bind base, code 0
+    bind head, read count
+    hook next
+      take site, name i
+      call push
+        read order
+        read i
+  save at
+    call subtract
+      read count
+      code 1
+  walk test
+    hook test
+      call is-above
+        read at
+        code 0
+    hook hold
+      save other
+        call draw
+          read cell
+          call add
+            read at
+            code 1
+      save held
+        call get
+          read order
+          read at
+      call set
+        read order
+        read at
+        call get
+          read order
+          read other
+      call set
+        read order
+        read other
+        read held
+      save at
+        call subtract
+          read at
+          code 1
+  send back, read order
+
+# what an interval may be called. One that holds 1.00 is no measurable difference, never a win
+task verdict-of
+  take low, like decimal
+  take high, like decimal
+  like text
+  fork test
+    hook test
+      call is-above
+        read low
+        code 1.0
+    hook hold
+      send back, text <slower>
+  fork test
+    hook test
+      call is-below
+        read high
+        code 1.0
+    hook hold
+      send back, text <faster>
+  send back, text <no measurable difference>
+
+# median(term) / median(base), with its 95% bootstrap interval. Sample i of each side ran in the same round, so
+# resampling keeps the pairs together and a round that ran hot moves both
+task ratio-interval
+  take term
+    like list
+      like decimal
+  take base
+    like list
+      like decimal
+  like interval
+  save count
+    call size
+      read term
+  fork test
+    hook test
+      call is-below
+        call size
+          read base
+        read count
+    hook hold
+      save count
+        call size
+          read base
+  save cell
+    call seeded
+      read bootstrap-seed
+  save ratios
+    make list
+  walk size
+    bind base, code 0
+    bind head, read resample-count
+    hook next
+      take site, name turn
+      save left
+        make list
+      save right
+        make list
+      walk size
+        bind base, code 0
+        bind head, read count
+        hook next
+          take site, name k
+          save pick
+            call draw
+              read cell
+              read count
+          call push
+            read left
+            call get
+              read term
+              read pick
+          call push
+            read right
+            call get
+              read base
+              read pick
+      call push
+        read ratios
+        call divide
+          call median-of
+            read left
+          call median-of
+            read right
+  save sorted
+    call sorted-of
+      read ratios
+  save low
+    call rank-at
+      read sorted
+      code 25
+  save high
+    call rank-at
+      read sorted
+      code 975
+  send back
+    make interval
+      bind ratio
+        call divide
+          call median-of
+            read term
+          call median-of
+            read base
+      bind low, read low
+      bind high, read high
+      bind verdict
+        call verdict-of
+          read low
+          read high
+
+# the geometric mean: e to the mean of the logarithms
+task geometric-mean
+  take values
+    like list
+      like decimal
+  like decimal
+  save total, code 0.0
+  walk list, read values
+    hook next
+      take site, name value
+      save total
+        call add
+          read total
+          call natural-logarithm
+            read value
+  send back
+    call exponent
+      call divide
+        read total
+        call to-decimal
+          call size
+            read values
+
+task smallest
+  take values
+    like list
+      like decimal
+  like decimal
+  send back
+    call get
+      call sorted-of
+        read values
+      code 0
+
+task largest
+  take values
+    like list
+      like decimal
+  like decimal
+  save sorted
+    call sorted-of
+      read values
+  send back
+    call get
+      read sorted
+      call subtract
+        call size
+          read sorted
+        code 1
+
+# the median absolute deviation: how far a typical sample sits from the median
+task deviation-of
+  take values
+    like list
+      like decimal
+  like decimal
+  save middle
+    call median-of
+      read values
+  save gaps
+    make list
+  walk list, read values
+    hook next
+      take site, name value
+      call push
+        read gaps
+        call absolute
+          call subtract
+            read value
+            read middle
+  send back
+    call median-of
+      read gaps
+
+# how many samples lie outside Tukey's fences, the first quartile less 1.5 interquartile ranges and the third plus
+# 1.5. Counted and reported, never dropped: the median already resists them
+task outlier-count
+  take values
+    like list
+      like decimal
+  like number
+  save sorted
+    call sorted-of
+      read values
+  save first
+    call rank-at
+      read sorted
+      code 250
+  save third
+    call rank-at
+      read sorted
+      code 750
+  save spread
+    call multiply
+      call subtract
+        read third
+        read first
+      code 1.5
+  save floor
+    call subtract
+      read first
+      read spread
+  save ceiling
+    call add
+      read third
+      read spread
+  save count, code 0
+  walk list, read values
+    hook next
+      take site, name value
+      fork test
+        hook test
+          call or
+            call is-below
+              read value
+              read floor
+            call is-above
+              read value
+              read ceiling
+        hook hold
+          save count
+            call add
+              read count
+              code 1
+  send back, read count
+
+# the median of the last third of the rounds against the first third, as a ratio. Above 1.05 the machine slowed while
+# it ran, which is thermal throttling until shown otherwise (measurement.md, The machine). 1.0 when too few rounds
+task trend-of
+  take values
+    like list
+      like decimal
+  like decimal
+  save n
+    call size
+      read values
+  save third
+    call divide
+      read n
+      code 3
+  fork test
+    hook test
+      call is-below
+        read third
+        code 2
+    hook hold
+      send back, code 1.0
+  save early
+    call median-of
+      call part-of
+        read values
+        code 0
+        read third
+  save late
+    call median-of
+      call part-of
+        read values
+        call subtract
+          read n
+          read third
+        read n
+  fork test
+    hook test
+      call is-maximum
+        read early
+        code 0.0
+    hook hold
+      send back, code 1.0
+  send back
+    call divide
+      read late
+      read early

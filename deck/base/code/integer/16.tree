@@ -1,5 +1,7 @@
 # Signed 16-bit integer: values -32768 to 32767. See `n` for the operation template.
 
+note stable
+
 load @term/base/code/bit
   find bitwise-and
   find bitwise-or

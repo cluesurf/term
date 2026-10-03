@@ -1,3 +1,5 @@
+note unstable
+
 load @term/base/code/color/rgb
   find rgb-color
 

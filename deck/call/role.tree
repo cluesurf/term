@@ -1,0 +1,12 @@
+# Which files of the CLI are read with the LEAN surface (note/term/lean.md, note/term/self-host/03-lean.md).
+#
+# The verbs under `code/work/` are written lean: a bare head is a call, `<x>` is text, a bare word is a variable,
+# `back` returns. Proven before the switch, not after it: `pnpm term:lean-equal` compiled all 29 files both ways
+# and the emitted TypeScript was identical (self-hosting-0013, 0015, 2026-10-02).
+#
+# `code/line/base.tree`, the command tree, is NOT listed. Its `hook` routes are read by the dispatcher and the
+# drift gate, and nothing in it has a head lean would drop. A file no rule matches keeps the content rule.
+
+role code
+  mark lean
+  take @/code/work/**/*.tree

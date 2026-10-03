@@ -3,6 +3,9 @@
 # The socket-level connect/listen API lives in ../../tcp.
 
 # control flags carried in a segment header
+
+note unstable
+
 form tcp-flags
   link fin, like boolean
   link syn, like boolean

@@ -12,6 +12,9 @@ import {
   createServer as tlsCreateServer,
 } from 'node:tls'
 
+// each listening server's connections not yet accepted, and the accepts still waiting for one
+const queues = new WeakMap<Server, { waiting: Socket[]; takers: ((socket: Socket) => void)[] }>()
+
 const tcp = {
   connect: (
     host: string,
@@ -38,13 +41,37 @@ const tcp = {
           ? tlsCreateServer({ cert: certificate, key })
           : createServer()
       server.on('error', fail)
+      // every connection is queued from the moment the server listens, so one that arrives before `accept` is asked
+      // for is not lost: a client's connect resolves only once the connection exists, and the `connection` event had
+      // often fired by then, leaving accept waiting for good. Rust and the others accept from the OS backlog
+      const waiting: Socket[] = []
+      const takers: ((socket: Socket) => void)[] = []
+      server.on('connection', socket => {
+        const taker = takers.shift()
+
+        if (taker) {
+          taker(socket as Socket)
+        } else {
+          waiting.push(socket as Socket)
+        }
+      })
+      queues.set(server, { waiting, takers })
       server.listen(port, host, () => ok(server))
     }),
 
   accept: (server: Server): Promise<Socket> =>
-    new Promise(ok =>
-      server.once('connection', socket => ok(socket as Socket)),
-    ),
+    new Promise(ok => {
+      const queue = queues.get(server)
+      const ready = queue?.waiting.shift()
+
+      if (ready) {
+        ok(ready)
+      } else if (queue) {
+        queue.takers.push(ok)
+      } else {
+        server.once('connection', socket => ok(socket as Socket))
+      }
+    }),
 
   read: (socket: Socket): Promise<string> =>
     new Promise(ok => {
@@ -68,6 +95,12 @@ const tcp = {
   close: (socket: Socket): Promise<void> =>
     new Promise(ok => socket.end(() => ok())),
 
+  // stop listening and release the port, then answer: connections already made carry on, as on the other backends.
+  // Waiting for node's close callback waited for every open connection to end, so a listener with a client that never
+  // hung up never answered
   closeServer: (server: Server): Promise<void> =>
-    new Promise(ok => server.close(() => ok())),
+    new Promise(ok => {
+      server.close()
+      setImmediate(ok)
+    }),
 }

@@ -296,13 +296,15 @@ export const NATIVE_ENV_FALLBACK: Partial<Record<NativeEnv, NativeEnv[]>> = {
   // tested there. Only the dom has a `native/memory` impl, so no stdlib module resolves any differently
   swift: ['memory'],
   kotlin: ['memory'],
-  // a platform is its language plus whatever it ships of its own. Rust has no `memory` rung yet: `note shared` is not
-  // lowered on Rust (native-dom-0020), and the memory host needs it
+  // a platform is its language plus whatever it ships of its own. Rust renders into the memory tree too since
+  // native-dom-0020: `mark shared` lowers to an `Rc<RefCell<..>>` handle there, and render-native holds all three
+  // renderer programs on Rust to the HTML the other backends print
+  rust: ['memory'],
   ios: ['apple', 'toolkit', 'swift', 'memory'],
   macos: ['apple', 'toolkit', 'swift', 'memory'],
   android: ['toolkit', 'kotlin', 'memory'],
-  windows: ['rust'],
-  linux: ['rust'],
+  windows: ['rust', 'memory'],
+  linux: ['rust', 'memory'],
 }
 
 // the envs a build for `env` reads impls from, in order: its own, then its fallback chain

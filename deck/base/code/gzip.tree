@@ -1,0 +1,2140 @@
+# gzip (RFC 1952) over DEFLATE (RFC 1951), written in Term, so `gzip` gives the same bytes for the same input on every
+# backend and `gunzip` reads what any gzip writes. A host library each would compress the same text to different
+# bytes (each picks its own matches), which a digest or a cache key cannot live with.
+#
+#   gzip     one member: LZ77 over a 32 KiB window, greedy, the fixed Huffman codes, mtime 0, OS unknown (255)
+#   gunzip   every member in turn, each block stored, fixed or dynamic, the CRC-32 and length checked
+#
+# Data that is not gzip, or is cut short, or fails its check, raises `gzip-mismatch` with the byte position and the
+# reason. The inflater follows zlib's reference decoder, puff.c (Mark Adler).
+
+note stable
+
+load @term/base/code/bytes
+  find to-byte-list
+  find from-byte-list
+
+load @term/base/code/bit
+  find bitwise-and
+  find bitwise-or
+  find bitwise-exclusive-or
+  find shift-left
+  find shift-right
+
+load @term/base/code/list
+  find list
+  find size
+  find get
+
+load @term/base/code/hash
+  find hash
+  find get-or-default
+
+load @term/base/code/exception
+  find mismatch
+
+form gzip-mismatch
+  like mismatch
+    bind note, <Not gzip data>
+    link at, like number
+    link reason, like text
+
+# the four tables of RFC 1951 3.2.5: each length and distance code's base and its extra bits
+form match-tables
+  link length-base
+    like list
+      like number
+  link length-extra
+    like list
+      like number
+  link distance-base
+    like list
+      like number
+  link distance-extra
+    like list
+      like number
+
+# a canonical Huffman code: how many codes each length has, and the symbols in code order
+form huffman-table
+  link counts
+    like list
+      like number
+  link symbols
+    like list
+      like number
+
+form block-tables
+  link literals, like huffman-table
+  link distances, like huffman-table
+
+task refuse-gzip
+  mark private
+  take at, like number
+  take reason, like text
+  like number
+  halt gzip-mismatch
+    bind thing, text <gzip>
+    bind at, read at
+    bind reason, read reason
+
+# a list read that is -1 past either end
+task byte-at
+  mark private
+  take data
+    like list
+      like number
+  take at, like number
+  like number
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read at
+          code 0
+        call is-below
+          read at
+          call size
+            read data
+    hook hold
+      send back
+        call get
+          read data
+          read at
+  send back
+    call subtract
+      code 0
+      code 1
+
+# a list of `count` copies of `value`
+task filled
+  mark private
+  take count, like number
+  take value, like number
+  like list
+    like number
+  save out
+    make list
+  save k, code 0
+  walk test
+    down
+      call subtract
+        read count
+        read k
+    hook test
+      call is-below
+        read k
+        read count
+    hook step
+      call out/push
+        read value
+      save k
+        call add
+          read k
+          code 1
+  send back, read out
+
+# ---------------------------------------------------------------- CRC-32 (the IEEE polynomial, reflected)
+
+task crc-table
+  mark private
+  like list
+    like number
+  save table
+    make list
+  save n, code 0
+  walk test
+    down
+      call subtract
+        code 256
+        read n
+    hook test
+      call is-below
+        read n
+        code 256
+    hook step
+      save c, read n
+      save k, code 0
+      walk test
+        down
+          call subtract
+            code 8
+            read k
+        hook test
+          call is-below
+            read k
+            code 8
+        hook step
+          fork test
+            hook test
+              call is-equal
+                call bitwise-and
+                  read c
+                  code 1
+                code 1
+            hook hold
+              save c
+                call bitwise-exclusive-or
+                  code 3988292384
+                  call shift-right
+                    read c
+                    code 1
+            hook miss
+              save c
+                call shift-right
+                  read c
+                  code 1
+          save k
+            call add
+              read k
+              code 1
+      call table/push
+        read c
+      save n
+        call add
+          read n
+          code 1
+  send back, read table
+
+# the CRC-32 of the bytes from `from` up to `to`
+task crc-32
+  take data
+    like list
+      like number
+  take from, like number
+  take to, like number
+  like number
+  save table
+    call crc-table
+  save c, code 4294967295
+  save k, read from
+  walk test
+    down
+      call subtract
+        read to
+        read k
+    hook test
+      call is-below
+        read k
+        read to
+    hook step
+      save c
+        call bitwise-exclusive-or
+          call byte-at
+            read table
+            call bitwise-and
+              call bitwise-exclusive-or
+                read c
+                call byte-at
+                  read data
+                  read k
+              code 255
+          call shift-right
+            read c
+            code 8
+      save k
+        call add
+          read k
+          code 1
+  send back
+    call bitwise-exclusive-or
+      read c
+      code 4294967295
+
+# ---------------------------------------------------------------- the tables both directions share
+
+task length-base
+  mark private
+  like list
+    like number
+  save t
+    make list
+  call t/push, code 3
+  call t/push, code 4
+  call t/push, code 5
+  call t/push, code 6
+  call t/push, code 7
+  call t/push, code 8
+  call t/push, code 9
+  call t/push, code 10
+  call t/push, code 11
+  call t/push, code 13
+  call t/push, code 15
+  call t/push, code 17
+  call t/push, code 19
+  call t/push, code 23
+  call t/push, code 27
+  call t/push, code 31
+  call t/push, code 35
+  call t/push, code 43
+  call t/push, code 51
+  call t/push, code 59
+  call t/push, code 67
+  call t/push, code 83
+  call t/push, code 99
+  call t/push, code 115
+  call t/push, code 131
+  call t/push, code 163
+  call t/push, code 195
+  call t/push, code 227
+  call t/push, code 258
+  send back, read t
+
+task length-extra
+  mark private
+  like list
+    like number
+  save t
+    make list
+  call t/push, code 0
+  call t/push, code 0
+  call t/push, code 0
+  call t/push, code 0
+  call t/push, code 0
+  call t/push, code 0
+  call t/push, code 0
+  call t/push, code 0
+  call t/push, code 1
+  call t/push, code 1
+  call t/push, code 1
+  call t/push, code 1
+  call t/push, code 2
+  call t/push, code 2
+  call t/push, code 2
+  call t/push, code 2
+  call t/push, code 3
+  call t/push, code 3
+  call t/push, code 3
+  call t/push, code 3
+  call t/push, code 4
+  call t/push, code 4
+  call t/push, code 4
+  call t/push, code 4
+  call t/push, code 5
+  call t/push, code 5
+  call t/push, code 5
+  call t/push, code 5
+  call t/push, code 0
+  send back, read t
+
+task distance-base
+  mark private
+  like list
+    like number
+  save t
+    make list
+  call t/push, code 1
+  call t/push, code 2
+  call t/push, code 3
+  call t/push, code 4
+  call t/push, code 5
+  call t/push, code 7
+  call t/push, code 9
+  call t/push, code 13
+  call t/push, code 17
+  call t/push, code 25
+  call t/push, code 33
+  call t/push, code 49
+  call t/push, code 65
+  call t/push, code 97
+  call t/push, code 129
+  call t/push, code 193
+  call t/push, code 257
+  call t/push, code 385
+  call t/push, code 513
+  call t/push, code 769
+  call t/push, code 1025
+  call t/push, code 1537
+  call t/push, code 2049
+  call t/push, code 3073
+  call t/push, code 4097
+  call t/push, code 6145
+  call t/push, code 8193
+  call t/push, code 12289
+  call t/push, code 16385
+  call t/push, code 24577
+  send back, read t
+
+task distance-extra
+  mark private
+  like list
+    like number
+  save t
+    make list
+  save k, code 0
+  walk test
+    down
+      call subtract
+        code 30
+        read k
+    hook test
+      call is-below
+        read k
+        code 30
+    hook step
+      fork test
+        hook test
+          call is-below
+            read k
+            code 2
+        hook hold
+          call t/push, code 0
+        hook miss
+          call t/push
+            call subtract
+              call divide
+                read k
+                code 2
+              code 1
+      save k
+        call add
+          read k
+          code 1
+  send back, read t
+
+# ---------------------------------------------------------------- writing: bits out, least significant first
+
+# `state` is [the bits not yet a whole byte, how many there are]
+task put-bits
+  mark private
+  take out
+    like list
+      like number
+  take state
+    like list
+      like number
+  take value, like number
+  take count, like number
+  like number
+  save buffer
+    call bitwise-or
+      call byte-at
+        read state
+        code 0
+      call shift-left
+        read value
+        call byte-at
+          read state
+          code 1
+  save held
+    call add
+      call byte-at
+        read state
+        code 1
+      read count
+  walk test
+    down, read held
+    hook test
+      call is-minimum
+        read held
+        code 8
+    hook step
+      call out/push
+        call bitwise-and
+          read buffer
+          code 255
+      save buffer
+        call shift-right
+          read buffer
+          code 8
+      save held
+        call subtract
+          read held
+          code 8
+  call state/set
+    code 0
+    read buffer
+  call state/set
+    code 1
+    read held
+  send back, read held
+
+# `code`'s low `count` bits in reverse order: a Huffman code goes out most significant bit first
+task reverse-bits
+  mark private
+  take code, like number
+  take count, like number
+  like number
+  save out, code 0
+  save k, code 0
+  save rest, read code
+  walk test
+    down
+      call subtract
+        read count
+        read k
+    hook test
+      call is-below
+        read k
+        read count
+    hook step
+      save out
+        call bitwise-or
+          call shift-left
+            read out
+            code 1
+          call bitwise-and
+            read rest
+            code 1
+      save rest
+        call shift-right
+          read rest
+          code 1
+      save k
+        call add
+          read k
+          code 1
+  send back, read out
+
+# a literal or length symbol in the fixed code (RFC 1951, 3.2.6)
+task put-symbol
+  mark private
+  take out
+    like list
+      like number
+  take state
+    like list
+      like number
+  take symbol, like number
+  like number
+  save code, code 0
+  save count, code 8
+  fork test
+    hook test
+      call is-maximum
+        read symbol
+        code 143
+    hook hold
+      save code
+        call add
+          read symbol
+          code 48
+    hook test
+      call is-maximum
+        read symbol
+        code 255
+    hook hold
+      save code
+        call add
+          read symbol
+          code 256
+      save count, code 9
+    hook test
+      call is-maximum
+        read symbol
+        code 279
+    hook hold
+      save code
+        call subtract
+          read symbol
+          code 256
+      save count, code 7
+    hook miss
+      save code
+        call subtract
+          read symbol
+          code 88
+  send back
+    call put-bits
+      read out
+      read state
+      call reverse-bits
+        read code
+        read count
+      read count
+
+# the index of the last entry of `table` at most `value`
+task table-place
+  mark private
+  take table
+    like list
+      like number
+  take value, like number
+  like number
+  save k, code 0
+  walk test
+    down
+      call subtract
+        call size
+          read table
+        read k
+    hook test
+      call and
+        call is-below
+          call add
+            read k
+            code 1
+          call size
+            read table
+        call is-maximum
+          call byte-at
+            read table
+            call add
+              read k
+              code 1
+          read value
+    hook step
+      save k
+        call add
+          read k
+          code 1
+  send back, read k
+
+# a run of `length` bytes copied from `distance` back
+task put-match
+  mark private
+  take out
+    like list
+      like number
+  take state
+    like list
+      like number
+  take length, like number
+  take distance, like number
+  take tables, like match-tables
+  like number
+  save lengths, read tables/length-base
+  save at
+    call table-place
+      read lengths
+      read length
+  call put-symbol
+    read out
+    read state
+    call add
+      read at
+      code 257
+  call put-bits
+    read out
+    read state
+    call subtract
+      read length
+      call byte-at
+        read lengths
+        read at
+    call byte-at
+      read tables/length-extra
+      read at
+  save distances, read tables/distance-base
+  save place
+    call table-place
+      read distances
+      read distance
+  call put-bits
+    read out
+    read state
+    call reverse-bits
+      read place
+      code 5
+    code 5
+  send back
+    call put-bits
+      read out
+      read state
+      call subtract
+        read distance
+        call byte-at
+          read distances
+          read place
+      call byte-at
+        read tables/distance-extra
+        read place
+
+# the length the bytes at `from` and at `at` agree for, up to 258
+task match-length
+  mark private
+  take data
+    like list
+      like number
+  take from, like number
+  take at, like number
+  like number
+  save most
+    call subtract
+      call size
+        read data
+      read at
+  fork test
+    hook test
+      call is-above
+        read most
+        code 258
+    hook hold
+      save most, code 258
+  save k, code 0
+  walk test
+    down
+      call subtract
+        read most
+        read k
+    hook test
+      call and
+        call is-below
+          read k
+          read most
+        call is-equal
+          call byte-at
+            read data
+            call add
+              read from
+              read k
+          call byte-at
+            read data
+            call add
+              read at
+              read k
+    hook step
+      save k
+        call add
+          read k
+          code 1
+  send back, read k
+
+task triple-key
+  mark private
+  take data
+    like list
+      like number
+  take at, like number
+  like number
+  send back
+    call add
+      call add
+        call multiply
+          call byte-at
+            read data
+            read at
+          code 65536
+        call multiply
+          call byte-at
+            read data
+            call add
+              read at
+              code 1
+          code 256
+      call byte-at
+        read data
+        call add
+          read at
+          code 2
+
+# one final block in the fixed code: LZ77 over a 32 KiB window, the longest match among the last 64 places the same
+# three bytes were seen, the nearest of equal length
+task deflate-fixed
+  take data
+    like list
+      like number
+  like list
+    like number
+  save out
+    make list
+  save state
+    make list
+  call state/push, code 0
+  call state/push, code 0
+  # final, fixed
+  call put-bits
+    read out
+    read state
+    code 3
+    code 3
+  save tables
+    make match-tables
+      bind length-base
+        call length-base
+      bind length-extra
+        call length-extra
+      bind distance-base
+        call distance-base
+      bind distance-extra
+        call distance-extra
+  save n
+    call size
+      read data
+  # the last place each three-byte key was seen, and for each place the one before it with the same key
+  save head
+    make hash
+  save previous
+    call filled
+      read n
+      call subtract
+        code 0
+        code 1
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        read n
+    hook step
+      save best, code 0
+      save best-from, code 0
+      fork test
+        hook test
+          call is-below
+            call add
+              read i
+              code 2
+            read n
+        hook hold
+          save key
+            call triple-key
+              read data
+              read i
+          save candidate
+            call get-or-default
+              read head
+              read key
+              call subtract
+                code 0
+                code 1
+          save tries, code 0
+          walk test
+            down
+              call subtract
+                code 64
+                read tries
+            hook test
+              call and
+                call is-below
+                  read tries
+                  code 64
+                call and
+                  call is-minimum
+                    read candidate
+                    code 0
+                  call is-maximum
+                    call subtract
+                      read i
+                      read candidate
+                    code 32768
+            hook step
+              save got
+                call match-length
+                  read data
+                  read candidate
+                  read i
+              fork test
+                hook test
+                  call is-above
+                    read got
+                    read best
+                hook hold
+                  save best, read got
+                  save best-from, read candidate
+              save candidate
+                call byte-at
+                  read previous
+                  read candidate
+              save tries
+                call add
+                  read tries
+                  code 1
+      save step, code 1
+      fork test
+        hook test
+          call is-minimum
+            read best
+            code 3
+        hook hold
+          call put-match
+            read out
+            read state
+            read best
+            call subtract
+              read i
+              read best-from
+            read tables
+          save step, read best
+        hook miss
+          call put-symbol
+            read out
+            read state
+            call byte-at
+              read data
+              read i
+      # every place the step covers enters the chains
+      save k, code 0
+      walk test
+        down
+          call subtract
+            read step
+            read k
+        hook test
+          call is-below
+            read k
+            read step
+        hook step
+          save at
+            call add
+              read i
+              read k
+          fork test
+            hook test
+              call is-below
+                call add
+                  read at
+                  code 2
+                read n
+            hook hold
+              save key
+                call triple-key
+                  read data
+                  read at
+              call previous/set
+                read at
+                call get-or-default
+                  read head
+                  read key
+                  call subtract
+                    code 0
+                    code 1
+              call head/set
+                read key
+                read at
+          save k
+            call add
+              read k
+              code 1
+      save i
+        call add
+          read i
+          read step
+  # end of block, then the last bits padded out to a byte
+  call put-symbol
+    read out
+    read state
+    code 256
+  fork test
+    hook test
+      call is-above
+        call byte-at
+          read state
+          code 1
+        code 0
+    hook hold
+      call put-bits
+        read out
+        read state
+        code 0
+        call subtract
+          code 8
+          call byte-at
+            read state
+            code 1
+  send back, read out
+
+task put-word-32
+  mark private
+  take out
+    like list
+      like number
+  take value, like number
+  like number
+  save rest, read value
+  save k, code 0
+  walk test
+    down
+      call subtract
+        code 4
+        read k
+    hook test
+      call is-below
+        read k
+        code 4
+    hook step
+      call out/push
+        call bitwise-and
+          read rest
+          code 255
+      save rest
+        call shift-right
+          read rest
+          code 8
+      save k
+        call add
+          read k
+          code 1
+  send back, read value
+
+# the data as one gzip member
+task gzip
+  take data, like bytes
+  like bytes
+  save input
+    call to-byte-list
+      read data
+  save out
+    make list
+  # magic, deflate, no flags, mtime 0, no extra flags, OS unknown
+  call out/push, code 31
+  call out/push, code 139
+  call out/push, code 8
+  call out/push, code 0
+  call out/push, code 0
+  call out/push, code 0
+  call out/push, code 0
+  call out/push, code 0
+  call out/push, code 0
+  call out/push, code 255
+  walk list
+    call deflate-fixed
+      read input
+    hook next
+      take site, name b
+      call out/push
+        read b
+  call put-word-32
+    read out
+    call crc-32
+      read input
+      code 0
+      call size
+        read input
+  call put-word-32
+    read out
+    call bitwise-and
+      call size
+        read input
+      code 4294967295
+  send back
+    call from-byte-list
+      read out
+
+# ---------------------------------------------------------------- reading: puff
+
+# `reader` is [the next byte position, the bits not yet used, how many there are]
+task read-bits
+  mark private
+  take data
+    like list
+      like number
+  take reader
+    like list
+      like number
+  take count, like number
+  like number
+  save at
+    call byte-at
+      read reader
+      code 0
+  save buffer
+    call byte-at
+      read reader
+      code 1
+  save held
+    call byte-at
+      read reader
+      code 2
+  walk test
+    down
+      call subtract
+        read count
+        read held
+    hook test
+      call is-below
+        read held
+        read count
+    hook step
+      save b
+        call byte-at
+          read data
+          read at
+      fork test
+        hook test
+          call is-below
+            read b
+            code 0
+        hook hold
+          call refuse-gzip
+            read at
+            text <the data ends inside a block>
+      save buffer
+        call bitwise-or
+          read buffer
+          call shift-left
+            read b
+            read held
+      save at
+        call add
+          read at
+          code 1
+      save held
+        call add
+          read held
+          code 8
+  save value
+    call bitwise-and
+      read buffer
+      call subtract
+        call shift-left
+          code 1
+          read count
+        code 1
+  call reader/set
+    code 0
+    read at
+  call reader/set
+    code 1
+    call shift-right
+      read buffer
+      read count
+  call reader/set
+    code 2
+    call subtract
+      read held
+      read count
+  send back, read value
+
+# the canonical code for symbol lengths: [count per length 0..15] then [symbols by code]
+task huffman
+  mark private
+  take lengths
+    like list
+      like number
+  like huffman-table
+  save counts
+    call filled
+      code 16
+      code 0
+  walk list, read lengths
+    hook next
+      take site, name length
+      call counts/set
+        read length
+        call add
+          call byte-at
+            read counts
+            read length
+          code 1
+  save offsets
+    call filled
+      code 16
+      code 0
+  save k, code 1
+  walk test
+    down
+      call subtract
+        code 15
+        read k
+    hook test
+      call is-below
+        read k
+        code 15
+    hook step
+      call offsets/set
+        call add
+          read k
+          code 1
+        call add
+          call byte-at
+            read offsets
+            read k
+          call byte-at
+            read counts
+            read k
+      save k
+        call add
+          read k
+          code 1
+  save symbols
+    call filled
+      call size
+        read lengths
+      code 0
+  save symbol, code 0
+  walk list, read lengths
+    hook next
+      take site, name length
+      fork test
+        hook test
+          call is-above
+            read length
+            code 0
+        hook hold
+          save place
+            call byte-at
+              read offsets
+              read length
+          call symbols/set
+            read place
+            read symbol
+          call offsets/set
+            read length
+            call add
+              read place
+              code 1
+      save symbol
+        call add
+          read symbol
+          code 1
+  send back
+    make huffman-table
+      bind counts, read counts
+      bind symbols, read symbols
+
+task decode
+  mark private
+  take data
+    like list
+      like number
+  take reader
+    like list
+      like number
+  take table, like huffman-table
+  like number
+  save counts, read table/counts
+  save symbols, read table/symbols
+  save code, code 0
+  save first, code 0
+  save index, code 0
+  save length, code 1
+  walk test
+    down
+      call subtract
+        code 16
+        read length
+    hook test
+      call is-below
+        read length
+        code 16
+    hook step
+      save code
+        call bitwise-or
+          read code
+          call read-bits
+            read data
+            read reader
+            code 1
+      save count
+        call byte-at
+          read counts
+          read length
+      fork test
+        hook test
+          call is-below
+            call subtract
+              read code
+              read count
+            read first
+        hook hold
+          send back
+            call byte-at
+              read symbols
+              call add
+                read index
+                call subtract
+                  read code
+                  read first
+      save index
+        call add
+          read index
+          read count
+      save first
+        call multiply
+          call add
+            read first
+            read count
+          code 2
+      save code
+        call multiply
+          read code
+          code 2
+      save length
+        call add
+          read length
+          code 1
+  send back
+    call refuse-gzip
+      call byte-at
+        read reader
+        code 0
+      text <a code is not in the table>
+
+# the symbols of a block, literals and matches, until the end of block
+task inflate-codes
+  mark private
+  take data
+    like list
+      like number
+  take reader
+    like list
+      like number
+  take out
+    like list
+      like number
+  take literals, like huffman-table
+  take distances, like huffman-table
+  like number
+  save length-bases
+    call length-base
+  save length-extras
+    call length-extra
+  save distance-bases
+    call distance-base
+  save distance-extras
+    call distance-extra
+  save going, true
+  walk test
+    hook test
+      read going
+    hook step
+      save symbol
+        call decode
+          read data
+          read reader
+          read literals
+      fork test
+        hook test
+          call is-below
+            read symbol
+            code 256
+        hook hold
+          call out/push
+            read symbol
+        hook test
+          call is-equal
+            read symbol
+            code 256
+        hook hold
+          save going, false
+        hook miss
+          save s
+            call subtract
+              read symbol
+              code 257
+          fork test
+            hook test
+              call is-minimum
+                read s
+                code 29
+            hook hold
+              call refuse-gzip
+                call byte-at
+                  read reader
+                  code 0
+                text <a length code is out of range>
+          save length
+            call add
+              call byte-at
+                read length-bases
+                read s
+              call read-bits
+                read data
+                read reader
+                call byte-at
+                  read length-extras
+                  read s
+          save d
+            call decode
+              read data
+              read reader
+              read distances
+          fork test
+            hook test
+              call is-minimum
+                read d
+                code 30
+            hook hold
+              call refuse-gzip
+                call byte-at
+                  read reader
+                  code 0
+                text <a distance code is out of range>
+          save distance
+            call add
+              call byte-at
+                read distance-bases
+                read d
+              call read-bits
+                read data
+                read reader
+                call byte-at
+                  read distance-extras
+                  read d
+          fork test
+            hook test
+              call is-above
+                read distance
+                call size
+                  read out
+            hook hold
+              call refuse-gzip
+                call byte-at
+                  read reader
+                  code 0
+                text <a distance reaches before the start>
+          save from
+            call subtract
+              call size
+                read out
+              read distance
+          save k, code 0
+          walk test
+            down
+              call subtract
+                read length
+                read k
+            hook test
+              call is-below
+                read k
+                read length
+            hook step
+              call out/push
+                call byte-at
+                  read out
+                  call add
+                    read from
+                    read k
+              save k
+                call add
+                  read k
+                  code 1
+  send back
+    call size
+      read out
+
+task fixed-tables
+  mark private
+  like block-tables
+  save lengths
+    make list
+  save k, code 0
+  walk test
+    down
+      call subtract
+        code 288
+        read k
+    hook test
+      call is-below
+        read k
+        code 288
+    hook step
+      fork test
+        hook test
+          call is-below
+            read k
+            code 144
+        hook hold
+          call lengths/push, code 8
+        hook test
+          call is-below
+            read k
+            code 256
+        hook hold
+          call lengths/push, code 9
+        hook test
+          call is-below
+            read k
+            code 280
+        hook hold
+          call lengths/push, code 7
+        hook miss
+          call lengths/push, code 8
+      save k
+        call add
+          read k
+          code 1
+  send back
+    make block-tables
+      bind literals
+        call huffman
+          read lengths
+      bind distances
+        call huffman
+          call filled
+            code 30
+            code 5
+
+# the code lengths of a dynamic block's two tables (RFC 1951, 3.2.7)
+task dynamic-tables
+  mark private
+  take data
+    like list
+      like number
+  take reader
+    like list
+      like number
+  like block-tables
+  save literal-count
+    call add
+      call read-bits
+        read data
+        read reader
+        code 5
+      code 257
+  save distance-count
+    call add
+      call read-bits
+        read data
+        read reader
+        code 5
+      code 1
+  save length-count
+    call add
+      call read-bits
+        read data
+        read reader
+        code 4
+      code 4
+  save order
+    make list
+  call order/push, code 16
+  call order/push, code 17
+  call order/push, code 18
+  call order/push, code 0
+  call order/push, code 8
+  call order/push, code 7
+  call order/push, code 9
+  call order/push, code 6
+  call order/push, code 10
+  call order/push, code 5
+  call order/push, code 11
+  call order/push, code 4
+  call order/push, code 12
+  call order/push, code 3
+  call order/push, code 13
+  call order/push, code 2
+  call order/push, code 14
+  call order/push, code 1
+  call order/push, code 15
+  save code-lengths
+    call filled
+      code 19
+      code 0
+  save k, code 0
+  walk test
+    down
+      call subtract
+        read length-count
+        read k
+    hook test
+      call is-below
+        read k
+        read length-count
+    hook step
+      call code-lengths/set
+        call byte-at
+          read order
+          read k
+        call read-bits
+          read data
+          read reader
+          code 3
+      save k
+        call add
+          read k
+          code 1
+  save code-table
+    call huffman
+      read code-lengths
+  save total
+    call add
+      read literal-count
+      read distance-count
+  save lengths
+    make list
+  walk test
+    hook test
+      call is-below
+        call size
+          read lengths
+        read total
+    hook step
+      save symbol
+        call decode
+          read data
+          read reader
+          read code-table
+      fork test
+        hook test
+          call is-below
+            read symbol
+            code 16
+        hook hold
+          call lengths/push
+            read symbol
+        hook miss
+          save value, code 0
+          save repeat, code 0
+          fork test
+            hook test
+              call is-equal
+                read symbol
+                code 16
+            hook hold
+              fork test
+                hook test
+                  call is-equal
+                    call size
+                      read lengths
+                    code 0
+                hook hold
+                  call refuse-gzip
+                    call byte-at
+                      read reader
+                      code 0
+                    text <a repeat has nothing before it>
+              save value
+                call byte-at
+                  read lengths
+                  call subtract
+                    call size
+                      read lengths
+                    code 1
+              save repeat
+                call add
+                  code 3
+                  call read-bits
+                    read data
+                    read reader
+                    code 2
+            hook test
+              call is-equal
+                read symbol
+                code 17
+            hook hold
+              save repeat
+                call add
+                  code 3
+                  call read-bits
+                    read data
+                    read reader
+                    code 3
+            hook miss
+              save repeat
+                call add
+                  code 11
+                  call read-bits
+                    read data
+                    read reader
+                    code 7
+          fork test
+            hook test
+              call is-above
+                call add
+                  call size
+                    read lengths
+                  read repeat
+                read total
+            hook hold
+              call refuse-gzip
+                call byte-at
+                  read reader
+                  code 0
+                text <a repeat runs past the lengths>
+          save j, code 0
+          walk test
+            down
+              call subtract
+                read repeat
+                read j
+            hook test
+              call is-below
+                read j
+                read repeat
+            hook step
+              call lengths/push
+                read value
+              save j
+                call add
+                  read j
+                  code 1
+  save literal-lengths
+    make list
+  save distance-lengths
+    make list
+  save k, code 0
+  walk list, read lengths
+    hook next
+      take site, name length
+      fork test
+        hook test
+          call is-below
+            read k
+            read literal-count
+        hook hold
+          call literal-lengths/push
+            read length
+        hook miss
+          call distance-lengths/push
+            read length
+      save k
+        call add
+          read k
+          code 1
+  send back
+    make block-tables
+      bind literals
+        call huffman
+          read literal-lengths
+      bind distances
+        call huffman
+          read distance-lengths
+
+# a DEFLATE stream from `reader`'s position into `out`, leaving `reader` at the byte after it
+task inflate
+  mark private
+  take data
+    like list
+      like number
+  take reader
+    like list
+      like number
+  take out
+    like list
+      like number
+  like number
+  save last, false
+  walk test
+    hook test
+      call is-equal
+        read last
+        false
+    hook step
+      save last
+        call is-equal
+          call read-bits
+            read data
+            read reader
+            code 1
+          code 1
+      save kind
+        call read-bits
+          read data
+          read reader
+          code 2
+      fork test
+        hook test
+          call is-equal
+            read kind
+            code 0
+        hook hold
+          # stored: the rest of this byte is dropped, then a length and its complement
+          call reader/set
+            code 1
+            code 0
+          call reader/set
+            code 2
+            code 0
+          save at
+            call byte-at
+              read reader
+              code 0
+          save length
+            call add
+              call byte-at
+                read data
+                read at
+              call multiply
+                call byte-at
+                  read data
+                  call add
+                    read at
+                    code 1
+                code 256
+          save check
+            call add
+              call byte-at
+                read data
+                call add
+                  read at
+                  code 2
+              call multiply
+                call byte-at
+                  read data
+                  call add
+                    read at
+                    code 3
+                code 256
+          fork test
+            hook test
+              call is-unequal
+                call add
+                  read length
+                  read check
+                code 65535
+            hook hold
+              call refuse-gzip
+                read at
+                text <a stored block's length does not match its complement>
+          fork test
+            hook test
+              call is-above
+                call add
+                  call add
+                    read at
+                    code 4
+                  read length
+                call size
+                  read data
+            hook hold
+              call refuse-gzip
+                read at
+                text <the data ends inside a block>
+          save k, code 0
+          walk test
+            down
+              call subtract
+                read length
+                read k
+            hook test
+              call is-below
+                read k
+                read length
+            hook step
+              call out/push
+                call byte-at
+                  read data
+                  call add
+                    call add
+                      read at
+                      code 4
+                    read k
+              save k
+                call add
+                  read k
+                  code 1
+          call reader/set
+            code 0
+            call add
+              call add
+                read at
+                code 4
+              read length
+        hook test
+          call is-equal
+            read kind
+            code 1
+        hook hold
+          save tables
+            call fixed-tables
+          call inflate-codes
+            read data
+            read reader
+            read out
+            read tables/literals
+            read tables/distances
+        hook test
+          call is-equal
+            read kind
+            code 2
+        hook hold
+          save tables
+            call dynamic-tables
+              read data
+              read reader
+          call inflate-codes
+            read data
+            read reader
+            read out
+            read tables/literals
+            read tables/distances
+        hook miss
+          call refuse-gzip
+            call byte-at
+              read reader
+              code 0
+            text <a block type is reserved>
+  # the rest of the last byte is padding
+  call reader/set
+    code 1
+    code 0
+  call reader/set
+    code 2
+    code 0
+  send back
+    call size
+      read out
+
+task word-32-at
+  mark private
+  take data
+    like list
+      like number
+  take at, like number
+  like number
+  send back
+    call add
+      call add
+        call byte-at
+          read data
+          read at
+        call multiply
+          call byte-at
+            read data
+            call add
+              read at
+              code 1
+          code 256
+      call add
+        call multiply
+          call byte-at
+            read data
+            call add
+              read at
+              code 2
+          code 65536
+        call multiply
+          call byte-at
+            read data
+            call add
+              read at
+              code 3
+          code 16777216
+
+# the position just past the zero that ends a text in a gzip header
+task past-zero
+  mark private
+  take data
+    like list
+      like number
+  take at, like number
+  like number
+  save k, read at
+  walk test
+    down
+      call subtract
+        call size
+          read data
+        read k
+    hook test
+      call is-above
+        call byte-at
+          read data
+          read k
+        code 0
+    hook step
+      save k
+        call add
+          read k
+          code 1
+  fork test
+    hook test
+      call is-below
+        call byte-at
+          read data
+          read k
+        code 0
+    hook hold
+      call refuse-gzip
+        read k
+        text <a header text is not ended>
+  send back
+    call add
+      read k
+      code 1
+
+# every member's data, joined
+task gunzip
+  take data, like bytes
+  like bytes
+  save input
+    call to-byte-list
+      read data
+  save n
+    call size
+      read input
+  save out
+    make list
+  save at, code 0
+  fork test
+    hook test
+      call is-equal
+        read n
+        code 0
+    hook hold
+      call refuse-gzip
+        code 0
+        text <there is no data>
+  walk test
+    hook test
+      call is-below
+        read at
+        read n
+    hook step
+      fork test
+        hook test
+          call or
+            call is-unequal
+              call byte-at
+                read input
+                read at
+              code 31
+            call is-unequal
+              call byte-at
+                read input
+                call add
+                  read at
+                  code 1
+              code 139
+        hook hold
+          call refuse-gzip
+            read at
+            text <the gzip magic number is missing>
+      fork test
+        hook test
+          call is-unequal
+            call byte-at
+              read input
+              call add
+                read at
+                code 2
+            code 8
+        hook hold
+          call refuse-gzip
+            call add
+              read at
+              code 2
+            text <the method is not deflate>
+      save flags
+        call byte-at
+          read input
+          call add
+            read at
+            code 3
+      fork test
+        hook test
+          call is-below
+            read flags
+            code 0
+        hook hold
+          call refuse-gzip
+            call add
+              read at
+              code 3
+            text <the header is cut short>
+      save place
+        call add
+          read at
+          code 10
+      # extra field, name, comment, header check
+      fork test
+        hook test
+          call is-equal
+            call bitwise-and
+              read flags
+              code 4
+            code 4
+        hook hold
+          save place
+            call add
+              call add
+                read place
+                code 2
+              call add
+                call byte-at
+                  read input
+                  read place
+                call multiply
+                  call byte-at
+                    read input
+                    call add
+                      read place
+                      code 1
+                  code 256
+      fork test
+        hook test
+          call is-equal
+            call bitwise-and
+              read flags
+              code 8
+            code 8
+        hook hold
+          save place
+            call past-zero
+              read input
+              read place
+      fork test
+        hook test
+          call is-equal
+            call bitwise-and
+              read flags
+              code 16
+            code 16
+        hook hold
+          save place
+            call past-zero
+              read input
+              read place
+      fork test
+        hook test
+          call is-equal
+            call bitwise-and
+              read flags
+              code 2
+            code 2
+        hook hold
+          save place
+            call add
+              read place
+              code 2
+      save reader
+        make list
+      call reader/push
+        read place
+      call reader/push, code 0
+      call reader/push, code 0
+      save start
+        call size
+          read out
+      call inflate
+        read input
+        read reader
+        read out
+      save end
+        call byte-at
+          read reader
+          code 0
+      fork test
+        hook test
+          call is-above
+            call add
+              read end
+              code 8
+            read n
+        hook hold
+          call refuse-gzip
+            read end
+            text <the check at the end is cut short>
+      fork test
+        hook test
+          call is-unequal
+            call word-32-at
+              read input
+              read end
+            call crc-32
+              read out
+              read start
+              call size
+                read out
+        hook hold
+          call refuse-gzip
+            read end
+            text <the CRC-32 does not match the data>
+      fork test
+        hook test
+          call is-unequal
+            call word-32-at
+              read input
+              call add
+                read end
+                code 4
+            call bitwise-and
+              call subtract
+                call size
+                  read out
+                read start
+              code 4294967295
+        hook hold
+          call refuse-gzip
+            call add
+              read end
+              code 4
+            text <the length does not match the data>
+      save at
+        call add
+          read end
+          code 8
+  send back
+    call from-byte-list
+      read out

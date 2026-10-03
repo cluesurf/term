@@ -1,5 +1,7 @@
 # Hex color formatting (#rrggbb). The clean uniform interface; the byte-to-hex formatting is delegated to the per-env native implementation, hidden behind the API.
 
+note unstable
+
 load @term/base/code/color/rgb
   find rgb-color
 

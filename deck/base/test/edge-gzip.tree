@@ -1,0 +1,133 @@
+# gzip gives the same bytes everywhere and gunzip reads what other writers wrote. Held by `pnpm term:base-gate`. The
+# fixtures were written by Python's zlib: a dynamic Huffman block (level 9), a stored block (level 0), two members.
+
+load @term/base/code/gzip
+  find gzip
+  find gunzip
+  find gzip-mismatch
+
+load @term/base/code/bytes
+  find from-text
+  find to-text
+  find from-hex
+  find to-hex
+  find count
+
+load @term/base/code/text
+  find starts-with
+  find ends-with
+  find char-count
+
+task why
+  take hex, like text
+  like text
+  note unsafe
+    save got
+      call gunzip
+        call from-hex
+          read hex
+    send back
+      call to-text
+        read got
+  halt take
+    take problem
+    fork case, read problem
+      case gzip-mismatch
+        send back, text <{{at}} {{reason}}>
+      case failure
+        send back, text <failure>
+
+test <a dynamic Huffman block from zlib>
+  save got
+    call to-text
+      call gunzip
+        call from-hex
+          text <1f8b08000000000002ff35508911c030085ac5d504f69fa1406ceff2892014cbdd85d73237eebf81af5e6c0809bd6220a407aefa098c52f512880d38a5913ee5125daf66a5363acc26faab8aef37a93b2beb5ecdd4431e411032ae6783d94e06e3a4bda6ee6633583756adfed92ad17cc575be1aa2635c5164232853f8129f83c089e680e019925ea49a4d57a0a9533eda96983ff4a70c538fdff996980fff54797090010000>
+  want hold
+    call and
+      call is-equal
+        call char-count
+          read got
+        code 400
+      call and
+        call starts-with
+          read got
+          text <bacaaabaaaaccaaacaaaac>
+        call ends-with
+          read got
+          text <aabaaabbabdabbabaaaa adac >
+
+test <a stored block and two members>
+  want hold
+    call and
+      call is-equal
+        call why
+          text <1f8b08000000000004ff011100eeff73746f72656420f09d849e20626c6f636b1711b05711000000>
+        text <stored 𝄞 block>
+      call is-equal
+        call why
+          text <1f8b08000000000002ffcbcf4b5500004961ac23040000001f8b08000000000002ff2b29cf0700668aca1103000000>
+        text <one two>
+
+test <what gzip writes it reads back>
+  save texts
+    make list
+  call texts/push, text <>
+  call texts/push, text <a>
+  call texts/push, text <hello hello hello hello, 𝄞 and 𝄞 again>
+  call texts/push, text <abcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabc>
+  save ok, true
+  walk list, read texts
+    hook next
+      take site, name t
+      save back
+        call to-text
+          call gunzip
+            call gzip
+              call from-text
+                read t
+      fork test
+        hook test
+          call is-unequal
+            read back
+            read t
+        hook hold
+          save ok, false
+  want hold
+    read ok
+
+test <the bytes gzip writes are the same everywhere, and shorter for repetition>
+  save packed
+    call gzip
+      call from-text
+        text <abcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabc>
+  want hold
+    call and
+      call is-below
+        call count
+          read packed
+        code 40
+      call starts-with
+        call to-hex
+          read packed
+        text <1f8b08000000000000ff>
+
+test <what is not gzip is refused with its place>
+  want hold
+    call and
+      call and
+        call is-equal
+          call why, text <>
+          text <0 there is no data>
+        call is-equal
+          call why, text <1f8c>
+          text <0 the gzip magic number is missing>
+      call and
+        call is-equal
+          call why
+            text <1f8b08000000000004ff011100eeff73746f72656420f09d849e20626c6f636b1711b05712000000>
+          text <36 the length does not match the data>
+        call is-equal
+          call why
+            text <1f8b08000000000004ff011100eeff73746f72656420f09d849e20626c6f636b1711b05811000000>
+          text <32 the CRC-32 does not match the data>

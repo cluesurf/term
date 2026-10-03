@@ -467,6 +467,7 @@ export function check(
       names: statement.params.map(p => p.name),
       fallbacks: statement.params.map(p => p.fallback),
       positional: statement.params.map(p => p.positional === true),
+      optional: statement.params.map(p => p.optional === true),
     })
   }
 
@@ -492,6 +493,7 @@ export function check(
       names: statement.params.map(p => p.name),
       fallbacks: statement.params.map(() => undefined),
       positional: statement.params.map(() => false),
+      optional: statement.params.map(p => p.optional === true),
     })
   }
 
@@ -973,6 +975,24 @@ export function check(
           break
         }
 
+        // `call peer/send / read line` on a FORM whose `send` is a Term method (`take self` first) is a call of that
+        // method with `peer` as its receiver, rewritten here to the mangled method so it is checked, arranged and
+        // emitted as `call send / read peer / read line` is. See bindMemberMethod
+        if (node.callee.form === 'member' && !node.callee.index) {
+          bindMemberMethod(node, env)
+        }
+
+        // a LABELLED call to a form method that a top-level task of the same name shadows binds to the method of
+        // its receiver's form before the labels are placed, so they are placed by the method's parameters
+        if (
+          node.callee.form === 'variable' &&
+          !env.has(node.callee.name) &&
+          methodNames.has(node.callee.name) &&
+          node.names?.some(name => typeof name === 'string')
+        ) {
+          bindLabelledMethod(node, env)
+        }
+
         // named arguments and defaults: put each `bind <name>` value in the callee's declared position, refuse a
         // name on a `slot` parameter or one the callee does not have, and clone in the `fall` of any omitted
         // parameter, so every backend receives the full argument list. Only for a direct call of a known task.
@@ -1178,11 +1198,15 @@ export function check(
                 r.kind === 'string' ||
                 r.kind === 'boolean' ||
                 r.kind === 'bytes' ||
-                (r.kind === 'named' && !r.args?.length) ||
+                (r.kind === 'named' && (r.args ?? []).every(ground)) ||
+                // a list, a map or a generic form whose parts are ground is ground too: a row pushed into a fresh
+                // `make list` makes it a list of lists, which was left a list of anything (base-v1-0042)
+                (r.kind === 'array' && ground(r.element)) ||
+                (r.kind === 'map' && ground(r.key) && ground(r.value)) ||
                 (r.kind === 'function' && r.params.every(ground) && ground(r.result))
               )
             }
-            const pin = (slot: Type, arg: Expression | undefined): void => {
+            const pin =(slot: Type, arg: Expression | undefined): void => {
               if (!arg) {
                 return
               }
@@ -1452,7 +1476,10 @@ export function check(
 
         // a `fork case` over a caught exception: the labels are exception forms, each arm binds the shared fields and
         // the form's own props, and the arms must cover what the guarded body can raise (or carry an `otherwise`)
-        if (subjectType.kind === 'named' && subjectType.name === 'exception' && node.cases.every(c => exceptionProps.has(c.label))) {
+        // An arm may name an exception this build never declares (`failure`, raised only by a native backend's foreign
+        // call, is pruned from a node build): it still matches by `form`, with only the shared fields, rather than
+        // turning the whole match into a comparison of the caught value with text
+        if (subjectType.kind === 'named' && subjectType.name === 'exception' && node.cases.some(c => exceptionProps.has(c.label))) {
           node.exceptionArms = {}
 
           for (const branch of node.cases) {
@@ -1502,7 +1529,7 @@ export function check(
             arm.shared.forEach(name => fields.set(name, records.get('exception')?.get(name) ?? STRING))
             arm.link.forEach(name => fields.set(name, linkFields?.get(name) ?? STRING))
 
-            for (const { field, local } of armLocals([...fields.keys()], branch.binds)) {
+            for (const { field, local } of armLocals([...fields.keys()], branch.binds ?? [])) {
               inner.set(local, { vars: [], type: seedType(fields.get(field)!, new Map()) })
             }
 
@@ -1646,7 +1673,7 @@ export function check(
               )
             }
 
-            for (const { field, local } of armLocals(fieldNames, branch.binds)) {
+            for (const { field, local } of armLocals(fieldNames, branch.binds ?? [])) {
               inner.set(local, {
                 vars: [],
                 type: seedType(fields.get(field)!, argMap),
@@ -2025,6 +2052,107 @@ export function check(
     }
 
     delete node.lean
+  }
+
+  // A MEMBER CALL ONTO A FORM'S OWN METHOD. `call peer/send / read line`, where `peer` is a `socket` record and
+  // `send` is declared under `form socket` with `take self` first, was typed as the method's whole function and
+  // called with the member target as a JavaScript `this`: refused as one argument short ("expects 2 arguments, found
+  // 1"), and with `self` passed by hand it compiled to `peer.send(peer, line)` on a plain record, which fails at run
+  // time. That member path exists for bind's native DOM methods, which take NO `self` and really are methods of the
+  // host object, so only a method whose first parameter is `self` is rewritten: the callee becomes the mangled method
+  // and the target its first argument, exactly what receiver dispatch builds for `call send / read peer / read line`.
+  // test/compile/method-label.ts.
+  function bindMemberMethod(
+    node: Extract<Expression, { form: 'call' }>,
+    env: Env,
+  ): void {
+    const member = node.callee as Extract<Expression, { form: 'member' }>
+
+    // a narrowed case subject reads its variant's fields, never a method
+    if (member.target.form === 'variable' && narrowing.has(member.target.name)) {
+      return
+    }
+
+    const target = resolve(member.target.type ?? inferExpression(member.target, env))
+
+    if (target.kind !== 'named' || !records.has(target.name) || records.get(target.name)!.has(member.name)) {
+      return
+    }
+
+    const mangled = methodTable.get(target.name)?.get(member.name)
+    const method = mangled ? functions.get(mangled) : undefined
+
+    if (!mangled || !method || method.names[0] !== 'self') {
+      return
+    }
+
+    node.callee = { form: 'variable', name: mangled, span: member.span } as Expression
+    node.args.unshift(member.target)
+
+    if (node.names) {
+      node.names.unshift(undefined)
+    }
+
+    if (node.leanNames) {
+      node.leanNames.unshift(false)
+    }
+  }
+
+  // A LABELLED CALL TO A SHADOWED FORM METHOD. `call get / bind self, read xs / bind index, code 0` names list's
+  // `get` method, but a top-level `get` anywhere in the program (the http client's `get(url, header)` was one) made
+  // `functions.get('get')` that task, so the labels were placed by ITS parameters and refused as names it does not
+  // take, while the positional call dispatched on its first argument and compiled. A `find get` of the method name
+  // did not help, because the import binds the name and the name was the top-level task's.
+  //
+  // Rewritten here to the receiver form's mangled method, once, before arrangeArguments, when:
+  //   - the receiver is the argument labelled `self`, else the first unlabelled one, and its type is a form that
+  //     owns a method of this name (a list for an array, a hash for a map, as receiver dispatch reads them)
+  //   - every label is a parameter of that method
+  //   - a label is `self`, or the top-level task of the name, if any, cannot take every label
+  // So a call written with the top-level task's own labels still reaches the top-level task, and a call whose
+  // receiver owns no such method is left alone and refused as before. test/compile/method-label.ts.
+  function bindLabelledMethod(
+    node: Extract<Expression, { form: 'call' }>,
+    env: Env,
+  ): void {
+    const callee = node.callee as { name: string }
+    const labels = node.names ?? []
+    const named = labels.filter((name): name is string => typeof name === 'string')
+    const top = functions.get(callee.name)
+
+    if (!named.includes('self') && top && named.every(name => top.names.includes(name))) {
+      return
+    }
+
+    let at = labels.indexOf('self')
+
+    if (at < 0) {
+      at = node.args.findIndex((_, i) => typeof labels[i] !== 'string')
+    }
+
+    const receiverNode = node.args[at]
+
+    if (!receiverNode) {
+      return
+    }
+
+    const receiver = resolve(receiverNode.type ?? inferExpression(receiverNode, env))
+    const owner =
+      receiver.kind === 'named'
+        ? receiver.name
+        : receiver.kind === 'array'
+          ? 'list'
+          : receiver.kind === 'map'
+            ? 'hash'
+            : undefined
+    const mangled = owner ? methodTable.get(owner)?.get(callee.name) : undefined
+    const method = mangled ? functions.get(mangled) : undefined
+
+    if (!mangled || !method || !named.every(name => method.names.includes(name))) {
+      return
+    }
+
+    callee.name = mangled
   }
 
   // put a call's arguments in the callee's declared order and fill its defaults. See the `call` case.
@@ -2466,9 +2594,25 @@ export function check(
 
       const fallback = signature.fallbacks[i]
 
+      // a `need false` collection or text left out between two given arguments is its empty value, as it is when
+      // trailing below (`call fetch / read url / bind timeout, code 300` leaves out the header map)
+      const gapType = resolve(signature.params[i] ?? UNKNOWN)
+      const emptyGap =
+        i < filled && signature.optional?.[i] === true
+          ? gapType.kind === 'map'
+            ? ({ form: 'map', entries: [], span: node.span, type: gapType } as Expression)
+            : gapType.kind === 'array'
+              ? ({ form: 'array', items: [], span: node.span, type: gapType } as Expression)
+              : gapType.kind === 'string'
+                ? ({ form: 'string', value: '', span: node.span, type: gapType } as Expression)
+                : undefined
+          : undefined
+
       if (fallback) {
         ordered[i] = clone(fallback)
         ordered[i]!.span = node.span
+      } else if (emptyGap) {
+        ordered[i] = emptyGap
       } else if (i < filled) {
         diagnostics.push(
           diagnose('type-mismatch', {

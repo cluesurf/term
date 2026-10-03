@@ -58,6 +58,18 @@ task on-ready
       like void
   like void
 
+# runs when the window closes. A node cask has no window, so nothing ever closes one (native-dom-0030)
+task on-close
+  take self, like window
+  take handler
+    like task
+      like void
+  like void
+
+task close
+  take self, like window
+  like void
+
 task snapshot
   take self, like window
   take path, like text

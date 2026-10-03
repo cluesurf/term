@@ -788,7 +788,10 @@ function swiftFor(env: 'macos' | 'ios', shot: string): string | undefined {
   const prelude = nativePrelude(result.program, env, readRuntime, swift)
   ok(`${env}: the Apple view runtime is in the prelude`, prelude.includes('enum nativeView'))
   const file = join(dir, `${env}.swift`)
-  writeFileSync(file, ['import Foundation', prelude, swift, 'main()', ''].join('\n'))
+  // `main` throws when anything it reaches can raise (a native call raises `failure`), and a raise nothing handles
+  // ends the program
+  const start = /func main\(\)[^{]*throws/.test(swift) ? 'try main()' : 'main()'
+  writeFileSync(file, ['import Foundation', prelude, swift, start, ''].join('\n'))
 
   return file
 }

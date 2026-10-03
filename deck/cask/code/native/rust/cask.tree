@@ -89,6 +89,24 @@ task on-ready
     read self
     read handler
 
+# runs when the window closes, by the person or by `close` (native-dom-0030)
+task on-close
+  take self, like window
+  take handler
+    like task
+      like void
+  like void
+  call cask/on-close
+    read self
+    read handler
+
+# close the window, as the person would: every `on-close` handler runs
+task close
+  take self, like window
+  like void
+  call cask/close
+    read self
+
 task snapshot
   take self, like window
   take path, like text

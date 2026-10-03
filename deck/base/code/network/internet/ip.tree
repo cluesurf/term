@@ -1,6 +1,8 @@
 
 # IP: Internet Protocol. Addressing and the packet header at the internet layer, for both version 4 and version 6.
 
+note unstable
+
 host ip-version
   term four
   term six

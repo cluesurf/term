@@ -51,112 +51,84 @@ form unlink-ask
 task link-register
   note async
   take root, like text
+
   like void
-  call log-step
-    text <Registering current package globally...>
+
+  log-step <Registering current package globally...>
+
   note unsafe
     save shown
       call deck-tree/registerGlobalLink
-        make register-ask
-          bind packageDir, read root
+        make register-ask, bind packageDir, read root
         wait true
-    call log-good
-      text <Registered {{shown}}>
-    call console/log
-      call fade
-        text <  use it elsewhere with: term link {{shown}}>
+    call log-good, text <Registered {{shown}}>
+    call console/log, call fade, text <  use it elsewhere with: term link {{shown}}>
   halt take
     take error
-    call log-fail
-      call format-error
-        read error
-    call node-process/exit
-      code 1
+    log-fail format-error error
+    node-process/exit code 1
 
 task link
   note async
   take deck, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   fork test
-    call is-equal
-      read deck
-      text <>
-    hook hold
-      call link-register
-        read root
-        wait true
+    is-equal read(deck), <>
+    hold
+      link-register root, wait true
       send back
-  call log-step
-    text <Linking {{deck}}...>
+  log-step <Linking {{deck}}...>
+
   note unsafe
     save consumed
       call deck-tree/consumeGlobalLink
-        make consume-ask
-          bind root, read root
-          bind name, read deck
+        make consume-ask, bind(root, read root), bind name, read deck
         wait true
     fork test
       read consumed
       hook hold
-        call log-good
-          text <Linked {{deck}}>
+        call log-good, text <Linked {{deck}}>
         send back
     # not registered: treat the argument as a path to a local package
-    save directory
-      call node-path/resolve
-        read deck
+    save directory, call node-path/resolve, read deck
     save manifest
-      call join
-        read directory
-        text <deck.tree>
+      call join, read(directory), text <deck.tree>
     save there
-      call file-test
-        read manifest
-        wait true
+      call file-test, read(manifest), wait true
     fork test
       read there
       hook miss
         call log-fail
           text <"{{deck}}" is not in the global link registry and is not a local package (no deck.tree at {{directory}})>
-        call node-process/exit
-          code 1
+        call node-process/exit, code 1
     call deck-tree/devLink
-      make dev-link-ask
-        bind root, read root
-        bind packageDir, read directory
+      make dev-link-ask, bind(root, read root), bind packageDir, read directory
       wait true
-    call log-good
-      text <Linked {{deck}}>
+    call log-good, text <Linked {{deck}}>
   halt take
     take error
-    call log-fail
-      call format-error
-        read error
-    call node-process/exit
-      code 1
+    log-fail format-error error
+    node-process/exit code 1
 
 task unlink
   note async
   take root, like text
   take deck, like text
+
   like void
-  call log-step
-    text <Unlinking {{deck}}...>
+
+  log-step <Unlinking {{deck}}...>
+
   note unsafe
     call deck-tree/devUnlink
-      make unlink-ask
-        bind root, read root
-        bind name, read deck
+      make unlink-ask, bind(root, read root), bind name, read deck
       wait true
-    call log-good
-      text <Unlinked {{deck}}>
+    call log-good, text <Unlinked {{deck}}>
   halt take
     take error
-    call log-fail
-      call format-error
-        read error
-    call node-process/exit
-      code 1
+    log-fail format-error error
+    node-process/exit code 1

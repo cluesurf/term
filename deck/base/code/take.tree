@@ -1,6 +1,8 @@
 
 # Take: a declared input. The uniform parameter node for component props, route params, and CLI options.
 
+note unstable
+
 load ./term
   find term
 

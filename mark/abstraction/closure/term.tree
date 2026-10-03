@@ -1,0 +1,44 @@
+# sum weigh(i) for i from 0 to count, where weigh is whatever task the caller passes
+task sum-over
+  take count, like number
+  take weigh
+    like task
+      take i, like number
+      like number
+  like number
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read count
+    hook next
+      take site, name i
+      save total
+        call add
+          read total
+          call weigh
+            read i
+  send back, read total
+
+# the passed task captures `step`, a value known only at run time
+task run
+  take size, like number
+  like text
+  save step
+    call add
+      call modulo
+        read size
+        code 7
+      code 3
+  save total
+    call sum-over
+      read size
+      task
+        take i, like number
+        like number
+        send back
+          call modulo
+            call multiply
+              read i
+              read step
+            code 1000
+  send back, text <{{total}}>

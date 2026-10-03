@@ -150,11 +150,13 @@ export const bridge = {
     handles?.register(value, { form, handle }, value)
   },
 
-  // let a handle go now rather than at collection, and stop watching it
-  release(form: string, value: object, handle: string): void {
+  // let a handle go now rather than at collection, and stop watching it. A round trip, not a post: the cask answers
+  // each message in a task of its own, so a release posted and not waited for could be overtaken by the very next
+  // call using the handle, which the cask then answered. Waiting for the cask's reply is what makes "a use after
+  // release is refused" true (native-dom-0019 found it, when the dispatcher gained a suspension point)
+  release(form: string, value: object, handle: string): Promise<unknown> {
     handles?.unregister(value)
-    const term = install()
-    term.post(JSON.stringify({ id: '', command: 'cask_release', arguments: { form, handle } }))
+    return bridge.invoke('cask_release', { form, handle })
   },
 
   // receive every event the cask pushes under `name`

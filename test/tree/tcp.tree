@@ -6,6 +6,7 @@ load @term/base/code/network/tcp
   find read
   find write
   find accept
+  find close
 
 load @term/base/code/text
   find contains
@@ -48,6 +49,16 @@ test <loopback echo round-trips a message>
     call read
       read client
       wait true
+  # closed, so the port is free for the next backend: the gate's node leg runs in the gate's own process
+  call close
+    read client
+    wait true
+  call close
+    read peer
+    wait true
+  call close
+    read server
+    wait true
   want hold
     call contains
       read reply
@@ -75,6 +86,13 @@ test <an http request nobody answers times out>
     fork case, read problem
       case timeout
         save outcome, text <timeout {{waited}}>
+      case outage
+        save outcome, text <outage>
+      case failure
+        save outcome, text <failure>
+  call close
+    read silent
+    wait true
   want hold
     call is-equal
       read outcome

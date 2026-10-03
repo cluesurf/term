@@ -31,6 +31,7 @@ import {
 import type { CollectionOp } from '@term/make/code/compile/backend'
 import { armLocals } from '@term/make/code/check/arm'
 import { raiseSets } from '@term/make/code/check/effects'
+import { provenIncrements } from '@term/make/code/ir/facts/range'
 import { formSpec, refuseAny, specForms } from '@term/make/code/compile/backend'
 import type { FormKind, FormSpec } from '@term/make/code/compile/backend'
 
@@ -287,6 +288,11 @@ export function emitRust(
   options?: { wake?: WakeGroup[] },
 ): string {
   const pad = (d: number) => '    '.repeat(d)
+  // the TermException carrier is emitted when a raise, a guard or a raising signature is written, recorded there
+  // rather than found by searching the emitted text for its name
+  let carries = false
+  // the `+` nodes proven not to overflow (ir/facts/range.ts): written without the checked call
+  const provenSteps = provenIncrements(program)
   // when the stdlib hive is in the program, every new raise tells it (the throw lowering), and the compiler can
   // emit the wake chain (`wake_hive`) from the roll the driver hands over
   const hasHiveTell = program.some(
@@ -502,6 +508,11 @@ export function emitRust(
   const raising = new Set<string>()
   let currentRaising = false
   let currentResult: Type | undefined
+  // the result a call site's parameter declares for the closure argument being rendered (see the call case)
+  let closureHint: Type | undefined
+  // how many closures the statement being rendered sits inside: a closure is an `Fn`, run any number of times, so a
+  // captured value it returns is cloned rather than moved out (`return root` in a `mount` callback)
+  let closureDepth = 0
   // whether the function or closure body being emitted is asynchronous, so a guard inside it can `.await`
   let currentAsync = false
   let guardDepth = 0
@@ -837,8 +848,56 @@ export function emitRust(
       .map(n => n.name),
   )
 
+  // a module binding to a number, float or boolean LITERAL that nothing assigns is a Rust `const`: read by name, with no
+  // thread-local lookup and no clone, and folded by rustc wherever it is used (note/term/codegen/rust.md, R7)
+  const assignedNames = new Set<string>()
+  const findAssigned = (value: unknown): void => {
+    if (typeof value !== 'object' || value === null) {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(findAssigned)
+
+      return
+    }
+
+    const node = value as { form?: string; target?: { form?: string; name?: string } }
+
+    if (node.form === 'assign' && node.target?.form === 'variable' && node.target.name) {
+      assignedNames.add(node.target.name)
+    }
+
+    for (const [key, child] of Object.entries(node)) {
+      if (key !== 'type' && key !== 'span') {
+        findAssigned(child)
+      }
+    }
+  }
+  findAssigned(program)
+  const scalarConsts = new Set<string>(
+    program
+      .filter(
+        (n): n is Extract<Statement, { form: 'let' }> =>
+          n.form === 'let' &&
+          !moduleSlots.has(n.name) &&
+          !assignedNames.has(n.name) &&
+          (n.init.form === 'integer' || n.init.form === 'float' || n.init.form === 'boolean'),
+      )
+      .map(n => n.name),
+  )
+  // the read of a module binding, by its kind
+  const moduleRead = (name: string): string =>
+    scalarConsts.has(name)
+      ? moduleConstName(name)
+      : moduleSlots.has(name)
+        ? `${moduleConstName(name)}.with(|v| v.borrow().clone().unwrap())`
+        : `${moduleConstName(name)}.with(|v| v.clone())`
+
   const moduleLet = (node: Extract<Statement, { form: 'let' }>): string =>
-    moduleSlots.has(node.name)
+    scalarConsts.has(node.name)
+      ? `const ${moduleConstName(node.name)}: ${rustType(node.init.type ?? node.type)} = ${expr(node.init)};`
+      : moduleSlots.has(node.name)
       ? `thread_local! { static ${moduleConstName(node.name)}: std::cell::RefCell<Option<${rustType(node.type)}>> = std::cell::RefCell::new(None); }`
       : `thread_local! { static ${moduleConstName(node.name)}: ${
           hostStructOf.get(node.name) ?? rustType(node.init.type ?? node.type)
@@ -1157,7 +1216,8 @@ export function emitRust(
         return String(node.value)
       case 'float':
         // a float literal must carry a decimal point so the value and its arithmetic are f64, not integer
-        return Number.isInteger(node.value)
+        // (JavaScript writes 1e21 and past as `1e+21`, already a float literal, which a `.0` would break)
+        return Number.isInteger(node.value) && !/e/i.test(String(node.value))
           ? `${node.value}.0`
           : String(node.value)
       case 'boolean':
@@ -1211,9 +1271,7 @@ export function emitRust(
 
         // a module-level constant lives in a thread_local (rust has no top-level `let`): a read clones it out
         if (moduleConsts.has(node.name) && !localNames.has(node.name)) {
-          return moduleSlots.has(node.name)
-            ? `${moduleConstName(node.name)}.with(|v| v.borrow().clone().unwrap())`
-            : `${moduleConstName(node.name)}.with(|v| v.clone())`
+          return moduleRead(node.name)
         }
 
         // a mutated capture lives in an Rc<RefCell> handle: a read borrows and clones the value out
@@ -1221,6 +1279,12 @@ export function emitRust(
           ? `${vname(node.name)}.borrow().clone()`
           : vname(node.name)
       case 'unary':
+        // a release build's `-i64::MIN` wraps to itself, a different integer: checked_neg stops instead. A literal
+        // operand cannot be the minimum, so `-5` stays as written
+        if (node.op === '-' && node.operand.type?.kind === 'number' && node.operand.form !== 'integer') {
+          return `i64::checked_neg(${expr(node.operand)}).expect("excess: a number past i64")`
+        }
+
         return `${node.op}${expr(node.operand)}`
       case 'binary': {
         // string concatenation: Rust's `+` requires `String + &str`, so two owned `String`s (e.g. function-call
@@ -1231,6 +1295,12 @@ export function emitRust(
             node.right.type?.kind === 'string' ||
             node.type?.kind === 'string')
         ) {
+          // two texts join in one allocation of the exact length. `&*` reads either a String or a &str as &str. A
+          // side that is not text (a number) still goes through `format!`, which renders it
+          if (node.left.type?.kind === 'string' && node.right.type?.kind === 'string') {
+            return `[&*(${expr(node.left)}), &*(${expr(node.right)})].concat()`
+          }
+
           return `format!("{}{}", ${expr(node.left)}, ${expr(node.right)})`
         }
 
@@ -1254,10 +1324,12 @@ export function emitRust(
         // note/term/proof-by-default/numbers.md. The function form takes a literal operand (`5.checked_add` does not)
         const checked = { '+': 'checked_add', '-': 'checked_sub', '*': 'checked_mul' }[node.op as string]
 
+        // a counted loop's increment is proven in range (ir/facts/range.ts) and is a plain `+`, which LLVM can vectorize
         if (
           checked &&
           node.left.type?.kind === 'number' &&
-          node.right.type?.kind === 'number'
+          node.right.type?.kind === 'number' &&
+          !provenSteps.has(node)
         ) {
           return `i64::${checked}(${expr(node.left)}, ${expr(node.right)}).expect("excess: a number past i64")`
         }
@@ -1328,6 +1400,11 @@ export function emitRust(
                 : undefined))
             : undefined
         const argList = node.args.map((a, i) => {
+          // a closure passed where a task is declared answers what that task declares: the checker can leave the
+          // closure's own result unknown, and boxing a `View` into an `Rc<dyn Any>` then misses an `Fn() -> View`
+          // parameter (native-dom-0020: the renderer's `mount` and `dynamic` callbacks)
+          const slot = params?.[i]
+          closureHint = a.form === 'closure' && slot?.kind === 'function' ? slot.result : undefined
           const rendered = (() => {
             if (
               a.form === 'variable' &&
@@ -1343,9 +1420,11 @@ export function emitRust(
               return expr(a)
             }
 
+            // an UNTYPED variable is cloned too: the view lowering synthesizes `view0`-style locals with no type, and
+            // passing one to `append` then reading it again moved it away (native-dom-0020). A function value here is
+            // an `Rc<dyn Fn>`, so its clone is a refcount bump as well
             return (a.form === 'variable' || a.form === 'member') &&
-              a.type &&
-              a.type.kind !== 'function'
+              (!a.type || a.type.kind !== 'function')
               ? `${expr(a)}.clone()`
               : expr(a)
           })()
@@ -1406,6 +1485,17 @@ export function emitRust(
       }
 
       case 'array':
+        // an EMPTY list whose element the checker knows is typed: a bare `vec![]` nothing reads as a list of that
+        // element is refused (`type annotations needed`, native-dom-0020: the renderer's `each`)
+        if (
+          node.items.length === 0 &&
+          node.type?.kind === 'array' &&
+          node.type.element.kind !== 'variable' &&
+          node.type.element.kind !== 'unknown'
+        ) {
+          return `std::rc::Rc::new(std::cell::RefCell::new(Vec::<${rustType(node.type.element)}>::new()))`
+        }
+
         return `std::rc::Rc::new(std::cell::RefCell::new(vec![${node.items
           .map(expr)
           .join(', ')}]))`
@@ -1515,6 +1605,13 @@ export function emitRust(
           return `${expr(node.target)}.borrow()[${node.name}].clone()`
         }
 
+        // a field of a `mark shared` value, READ: cloned out of the borrow, since `x.borrow().field` moves a String or
+        // a generic `T` out of a `Ref` and is refused (native-dom-0020: the memory host's `element.borrow().text`, the
+        // signal's `slf.borrow().value`). A write goes through `memberPath` straight, under `borrow_mut()`
+        if (isSharedType(node.target.type)) {
+          return `${memberPath(node)}.clone()`
+        }
+
         return memberPath(node)
       }
 
@@ -1589,10 +1686,21 @@ export function emitRust(
         const outerResult = currentResult
         currentRaising = false
         guardDepth = 0
-        currentResult = node.result ?? (node.type?.kind === 'function' ? node.type.result : undefined)
+        // the result the closure was inferred to answer, unless it was left unknown and the parameter it is passed to
+        // declares one: then that (set by the call site, consumed here so a nested closure does not inherit it)
+        const inferredResult = node.type?.kind === 'function' ? node.type.result : undefined
+        const hintedResult = closureHint
+        closureHint = undefined
+        currentResult =
+          node.result ??
+          ((!inferredResult || inferredResult.kind === 'unknown') && hintedResult && hintedResult.kind !== 'unknown'
+            ? hintedResult
+            : inferredResult)
+        closureDepth++
         const body = [...shadows, ...node.body.map(s => stmt(s, 0))]
           .filter(Boolean)
           .join(' ')
+        closureDepth--
         currentRaising = outerRaising
         guardDepth = outerGuardDepth
         currentResult = outerResult
@@ -1608,15 +1716,24 @@ export function emitRust(
         // may read it again after the closure is built (`on-message(made, handler)` then `load-bundle(made, ...)`).
         // Every value here is Clone, and a handle clone shares the same thing
         const paramNames = new Set(node.params.map(p => p.name))
-        const captured = [...used].filter(name => localNames.has(name) && !paramNames.has(name) && !cellVars.has(name))
-        const handleClones = [...[...cellVars].filter(name => used.has(name)), ...captured]
+        // and only a name the rendered body actually names: a module-level `host` the body reaches as its thread-local
+        // (`MODULE_WATCH`) is no local, and cloning `watch` into the closure named a value that does not exist
+        // (native-dom-0020: the memory device host's `watch`)
+        const named = (name: string): boolean => new RegExp(`\\b${vname(name)}\\b`).test(body)
+        const captured = [...used].filter(
+          name => localNames.has(name) && !paramNames.has(name) && !cellVars.has(name) && named(name),
+        )
+        // a mutated capture's cell, under the same rule: a field written through a module-level host
+        // (`save watch/installed`) marks `watch` mutated, but the body writes it as `MODULE_WATCH`
+        const cells = [...cellVars].filter(name => used.has(name) && named(name))
+        const handleClones = [...cells, ...captured]
           .map(name => `let ${vname(name)} = ${vname(name)}.clone();`)
           .join(' ')
 
         // an async body is a second `move` (the async block) inside the `Fn`: an `Fn` may not give its captures
         // away, so each one is cloned again inside the closure before the block takes it
         const innerClones = node.async
-          ? [...[...cellVars].filter(name => used.has(name)), ...captured].map(name => `let ${vname(name)} = ${vname(name)}.clone();`).join(' ')
+          ? [...cells, ...captured].map(name => `let ${vname(name)} = ${vname(name)}.clone();`).join(' ')
           : ''
 
         cellVars = previousCells
@@ -1671,7 +1788,9 @@ export function emitRust(
         case 'get':
           return `${target}.borrow().get(&${arg[0]}).cloned().unwrap()`
         case 'set':
-          return `{ ${target}.borrow_mut().insert(${arg[0]}, ${arg[1]}); ${target}.clone() }`
+          // the key and value first: a value that reads the same map (`set(k, add(get-or-default(m, k), 1))`) would
+          // otherwise find it already borrowed mutably, and RefCell panics
+          return `{ let __set_key = ${arg[0]}; let __set_value = ${arg[1]}; ${target}.borrow_mut().insert(__set_key, __set_value); ${target}.clone() }`
         case 'delete':
           return `${target}.borrow_mut().remove(&${arg[0]}).is_some()`
         case 'keys':
@@ -1693,7 +1812,8 @@ export function emitRust(
 
     switch (op.op) {
       case 'push':
-        return `{ ${target}.borrow_mut().push(${arg[0]}); ${data}.len() as i64 }`
+        // the item first, for the reason `set` gives: `out/push(get(out, k))` reads the list it pushes onto
+        return `{ let __push_item = ${arg[0]}; ${target}.borrow_mut().push(__push_item); ${data}.len() as i64 }`
       case 'pop':
         return `${target}.borrow_mut().pop().unwrap()`
       case 'at':
@@ -1710,8 +1830,9 @@ export function emitRust(
       case 'lastIndexOf':
         return `${data}.iter().rposition(|e| *e == ${arg[0]}).map(|i| i as i64).unwrap_or(-1)`
       case 'concat':
+        // one allocation of the final length: `[a.clone(), b.clone()].concat()` built both copies and then a third
         return wrapList(
-          `[${data}.clone(), ${arg[0]}.borrow().clone()].concat()`,
+          `{ let __a = ${data}; let __b = ${arg[0]}; let __b = __b.borrow(); let mut __v = Vec::with_capacity(__a.len() + __b.len()); __v.extend_from_slice(&__a); __v.extend_from_slice(&__b); __v }`,
         )
       case 'slice':
         // both bounds clamped to the length, empty when start reaches end, never counted from the end
@@ -1753,7 +1874,7 @@ export function emitRust(
         )
       case 'unshift':
         // insert at the front, returning the new length (JS `unshift`)
-        return `{ let mut __b = ${target}.borrow_mut(); __b.insert(0, ${arg[0]}); __b.len() as i64 }`
+        return `{ let __push_item = ${arg[0]}; let mut __b = ${target}.borrow_mut(); __b.insert(0, __push_item); __b.len() as i64 }`
       case 'shift':
         // remove and return the front element (JS `shift`); callers guard against empty
         return `${target}.borrow_mut().remove(0)`
@@ -1763,7 +1884,7 @@ export function emitRust(
         const items = arg.slice(2).join(', ')
 
         // the start clamped to the length and the count to what remains (semantics.md)
-        return `{ let mut __b = ${target}.borrow_mut(); let __n = __b.len() as i64; let __s = (${arg[0]}).max(0).min(__n); let __d = (${arg[1]}).max(0).min(__n - __s); let (__s, __d) = (__s as usize, __d as usize); let _: Vec<_> = __b.splice(__s..__s + __d, vec![${items}]).collect(); 0i64 }`
+        return `{ let __start = ${arg[0]}; let __drop = ${arg[1]}; let __items = vec![${items}]; let mut __b = ${target}.borrow_mut(); let __n = __b.len() as i64; let __s = (__start).max(0).min(__n); let __d = (__drop).max(0).min(__n - __s); let (__s, __d) = (__s as usize, __d as usize); let _: Vec<_> = __b.splice(__s..__s + __d, __items).collect(); 0i64 }`
       }
 
       default:
@@ -1816,7 +1937,9 @@ export function emitRust(
       }
 
       const root = rootVariable(node)
-      const separator = root && aliases.has(root) ? '::' : '.'
+      // a parameter or local of the same name as a dock alias (`take time` beside `load <global:time>, name time`) is the
+      // value, not the module
+      const separator = root && aliases.has(root) && !localNames.has(root) ? '::' : '.'
 
       // a field of a `mark shared` value is read through its handle
       if (isSharedType(node.target.type)) {
@@ -1940,6 +2063,31 @@ export function emitRust(
           return `let ${mutOf(node.name)}${vname(node.name)}: std::rc::Rc<dyn std::any::Any> = std::rc::Rc::new(${owned(node.init)});`
         }
 
+        // a call whose type argument nothing ever constrains (a deque made and only asked whether it is empty) leaves
+        // rustc nothing to infer: the argument is any type, so the binding names it `()`
+        const initCall =
+          node.init.form === 'call' ? node.init : node.init.form === 'await' && node.init.expr.form === 'call' ? node.init.expr : undefined
+        const free = new Set<number>()
+
+        if (initCall && node.type?.kind === 'named' && (node.type.args?.length ?? 0) > 0) {
+          collectVars(node.type, free)
+
+          for (const id of [...free]) {
+            if (rustVarNames.has(id)) {
+              free.delete(id)
+            }
+          }
+        }
+
+        if (free.size > 0) {
+          const saved = rustVarNames
+          rustVarNames = new Map([...saved, ...[...free].map(id => [id, '()'] as const)])
+          const closed = rustType(node.type!)
+          rustVarNames = saved
+
+          return `let ${mutOf(node.name)}${vname(node.name)}: ${closed} = ${bare(owned(node.init))};`
+        }
+
         return `let ${mutOf(node.name)}${vname(node.name)}${ann || emptyAnn(node.init)} = ${bare(owned(node.init))};`
       }
       case 'assign': {
@@ -2001,7 +2149,7 @@ export function emitRust(
           ? '()'
           : fnReturnsArray && isNativeCall(node.value)
             ? wrapList(expr(node.value))
-            : bare(boxUnknown(currentResult, node.value, expr(node.value)))
+            : bare(boxUnknown(currentResult, node.value, closureDepth > 0 ? owned(node.value) : expr(node.value)))
 
         // the gradual boundary: an unknown-typed value returned at a declared FORM type downcasts
         const valueKind =
@@ -2057,6 +2205,7 @@ export function emitRust(
         // checker did not see reach here) it still ends the program, with the form and note. When the program has
         // the stdlib hive, a NEW carrier tells it before unwinding (a pass-on re-raise does not re-tell), the same
         // hook the TypeScript constructor carries.
+        carries = true
         const tell = (built: string): string =>
           hasHiveTell
             ? `{ let told = ${built}; hive_tell(HiveEntry { host: told.host.clone(), kind: "exception".to_string(), name: told.form.clone(), site: String::new(), base: std::rc::Rc::new(told.clone()) }); told }`
@@ -2096,6 +2245,7 @@ export function emitRust(
         // the body runs as a closure returning Result<Option<T>, TermException>, T the enclosing task's result: a
         // `send back` inside it is Ok(Some(v)) and returns from the task after the match, falling off the end is
         // Ok(None), a raise (its own, or a callee's through `?`) is Err(e) and runs the handler with e bound
+        carries = true
         const result = currentResult && currentResult.kind !== 'unit' ? rustType(currentResult) : '()'
         const outerRaising = currentRaising
         guardDepth++
@@ -2125,6 +2275,26 @@ export function emitRust(
 
         const budget = budgetCheck(node, d + 1)
 
+        // the item and index are locals, so a top-level task or dock alias of the same name does not capture a read
+        localNames.add(node.item)
+
+        if (node.index) {
+          localNames.add(node.index)
+        }
+
+        // a list is walked by position, each element cloned out under a borrow that ends before the body runs: no copy
+        // of the whole Vec, and the body may still push to the list it walks. The length is read every turn, so an
+        // item pushed during the walk is visited and a removal ends it early, which is what TypeScript's `for...of`
+        // does. It iterated `.borrow().clone()` of the whole list until 2026-10-02 (note/term/codegen/rust.md, R1)
+        if (node.iterable.type?.kind === 'array') {
+          const index = node.index ? `let ${vname(node.index)} = __at as i64; ` : ''
+
+          return `{ let __walked = &(${expr(node.iterable)}); let mut __at: usize = 0; loop { let ${vname(node.item)} = match __walked.borrow().get(__at) { Some(value) => value.clone(), None => break }; ${index}__at += 1;\n${budget}${block(
+            node.body,
+            d + 1,
+          )}\n${pad(d)}} }`
+        }
+
         // a walk that names its INDEX enumerates; `i64` because that is what a Term number is here. lean-0017
         return node.index
           ? `for (${vname(node.index)}, ${vname(node.item)}) in ${iterable}.into_iter().enumerate().map(|(i, v)| (i as i64, v)) {\n${budget}${block(
@@ -2147,7 +2317,7 @@ export function emitRust(
           const arms = node.cases.map(b => {
             const arm = node.exceptionArms![b.label]!
             const bodyText = block(b.body, d + 2)
-            const locals = armLocals([...arm.shared, ...arm.link], b.binds)
+            const locals = armLocals([...arm.shared, ...arm.link], b.binds ?? [])
               .filter(({ local }) => new RegExp(`\\b${snake(local)}\\b`).test(bodyText))
               .map(({ field, local }) =>
                 arm.link.includes(field)
@@ -2234,7 +2404,7 @@ export function emitRust(
           // bind the variant's fields so the branch body can read them; narrow the subject for this arm so a
           // `subject/field` read resolves to the bound local (restored after the arm so sibling arms are unaffected)
           // the arm's `link` lines select or rename the fields (see check/arm.ts); a field left out is `..`
-          const locals = armLocals(fields, b.binds)
+          const locals = armLocals(fields, b.binds ?? [])
           const pattern =
             fields.length > 0
               ? ` { ${[
@@ -2486,6 +2656,7 @@ export function emitRust(
               : node.result
         const plainResult =
           declaredResult && declaredResult.kind !== 'unit' ? rustType(declaredResult) : ''
+        carries ||= raising.has(node.name)
         const ret = raising.has(node.name)
           ? ` -> std::result::Result<${plainResult || '()'}, TermException>`
           : plainResult
@@ -2966,7 +3137,7 @@ pub fn term_number(x: f64) -> String {
 }`,
   ]
 
-  const carrier = body.some(b => b.includes('TermException'))
+  const carrier = carries
     ? [
         `// the one exception value of a Term program on this backend (note/term/hive/11-native-exceptions.md)
 #[derive(Clone)]
@@ -2990,7 +3161,7 @@ impl std::error::Error for TermException {}`,
       const { ref, base, ...own } = entry
       const boxed =
         typeof ref === 'string'
-          ? `std::rc::Rc::new(${moduleConstName(ref)}.with(|v| v.clone()))`
+          ? `std::rc::Rc::new(${moduleRead(ref)})`
           : `std::rc::Rc::new(${JSON.stringify(JSON.stringify(base ?? {}))}.to_string())`
 
       return `HiveEntry { host: ${JSON.stringify(String(own.host ?? ''))}.to_string(), kind: ${JSON.stringify(String(own.kind ?? ''))}.to_string(), name: ${JSON.stringify(String(own.name ?? ''))}.to_string(), site: ${JSON.stringify(String(own.site ?? ''))}.to_string(), base: ${boxed} }`

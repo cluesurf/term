@@ -2,6 +2,8 @@
 # `locale` reads it and `locales` lists the ones the platform knows; this file holds the form both use, so the
 # natives can build it without importing the module that delegates to them.
 
+note unstable
+
 form locale
   link language, like text
   link region, like text

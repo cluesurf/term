@@ -2,6 +2,8 @@
 # when it is. Color is off when output is not a terminal (a pipe, a file) and whenever NO_COLOR is set to anything
 # (no-color.org), the same rule on every backend, so a log redirected to a file never holds escape codes.
 
+note stable
+
 load @term/base/code/environment
   find has-variable
 

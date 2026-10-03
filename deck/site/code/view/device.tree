@@ -38,7 +38,7 @@ host traits
 
 # whether the one watcher is installed yet
 form device-watch
-  note shared
+  mark shared
   link installed, like boolean
 
 host watching

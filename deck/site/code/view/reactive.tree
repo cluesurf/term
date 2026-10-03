@@ -12,7 +12,7 @@ load @term/base/code/list
 # effects that subscribed to that very signal. `note shared` says so, so a backend whose forms are values (Swift's
 # `struct`) emits a reference type instead of copying the signal at every binding.
 form signal
-  note shared
+  mark shared
   head t
   link value, like t
   link observers
@@ -20,7 +20,7 @@ form signal
       like effect
 
 form effect
-  note shared
+  mark shared
   link run
     like task
   link live, like boolean
@@ -30,7 +30,7 @@ form effect
 # Disposing an owner stops its effects re-running and runs its cleanups, so a view region tears down with no leaks.
 # Named `owner` (not `scope`) to avoid colliding with the focus-scope controller in face.
 form owner
-  note shared
+  mark shared
   link effects
     like list
       like effect

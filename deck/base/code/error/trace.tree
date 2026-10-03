@@ -1,23 +1,39 @@
-load @term/base/code/kink
-  find kink
+# The call stack, as text. `capture-trace` answers the frames above the place it is called, innermost first, one per
+# entry, each written the way its host writes a frame (a JavaScript stack line, a Rust backtrace symbol, a Swift call
+# stack symbol, a Kotlin stack element): the names in a frame are the compiled ones, so the text differs by backend
+# while the shape does not. For a person reading a failure, never for a program to parse.
 
-form frame
-  link name, like text
-  link file, like text
-  link line, like size
-  link column, like size
+note unstable
 
-task capture
-  take
-    limit
-    like size
-    fall 10
+load @term/base/code/list
+  find list
+  find join
+
+load @term/base/code/text/unicode
+  find rune-to-text
+
+# the frames above this call, innermost first
+bind capture-trace
   like list
+    like text
+  case node
+    text <(new Error().stack ?? "").split("\n").slice(1).map(function (line) \{ return line.trim() \}).filter(function (line) \{ return line.length > 0 \})>
+  case browser
+    text <(new Error().stack ?? "").split("\n").slice(1).map(function (line) \{ return line.trim() \}).filter(function (line) \{ return line.length > 0 \})>
+  case rust
+    text <std::rc::Rc::new(std::cell::RefCell::new(std::backtrace::Backtrace::force_capture().to_string().lines().map(|line| line.trim().to_string()).filter(|line| !line.is_empty()).collect::<Vec<String>>()))>
+  case swift
+    text <SeedList<String>(Thread.callStackSymbols)>
+  case kotlin
+    text <Throwable().stackTrace.map \{ it.toString() \}.toMutableList()>
 
-task read
-  take error, like kink
-  like list
-
-task format
-  take frames, like list
+# the frames, one per line
+task format-trace
+  take frames
+    like list
+      like text
   like text
+  send back
+    call join
+      read frames
+      call rune-to-text, code 10

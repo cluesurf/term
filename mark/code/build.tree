@@ -1,0 +1,480 @@
+# Build one implementation of a benchmark for one target, in release, into a process the runner can start.
+#
+# The Term program goes through `term make --emit <target>`, which writes the runtime prelude and the emitted code,
+# and a per-target `main` is appended that reads the size from the first argument, calls `run` and prints what it
+# answers. A hand version is a complete program with its own `main`, built with the SAME release command as Term's
+# output on that target (note/term/codegen/measurement.md, Build profiles). No debug build is ever timed. A missing
+# toolchain is a skip with its reason, never a silent pass.
+
+load @term/base/code/process/run
+  find run, name run-process
+  find run-result
+
+load @term/base/code/list
+  find list
+  find push
+  find join
+  find get
+
+load @term/base/code/text
+  find trim
+  find split
+  find index-of
+  find substring
+  find contains, name text-contains
+
+load ./disk
+  find file-text
+  find file-save
+  find file-size
+  find make-folder
+
+# a process the runner can start, or why there is none
+form built
+  # `ok`, `unbuilt` (it failed on an installed toolchain) or `skipped` (no toolchain)
+  link status, like text
+  link note, like text
+  link command, like text
+  link arguments
+    like list
+      like text
+  link size, like number
+  # the toolchain's version line, and the exact build command
+  link toolchain, like text
+  link line, like text
+
+# the tool a target is built with
+task tool-of
+  take target, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <node>
+    hook hold
+      send back, text <node>
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <rust>
+    hook hold
+      send back, text <rustc>
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <swift>
+    hook hold
+      send back, text <swiftc>
+  send back, text <kotlinc>
+
+task has-tool
+  note async
+  take target, like text
+  like boolean
+  save words
+    make list
+  call push
+    read words
+    call tool-of
+      read target
+  save found
+    call run-process
+      text <which>
+      read words
+      wait true
+  send back
+    call is-equal
+      read found/code
+      code 0
+
+# the toolchain's own version line, kept with every case
+task tool-version
+  note async
+  take target, like text
+  like text
+  save words
+    make list
+  save flag, text <--version>
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <kotlin>
+    hook hold
+      save flag, text <-version>
+  call push
+    read words
+    read flag
+  save found
+    call run-process
+      call tool-of
+        read target
+      read words
+      wait true
+  save lines
+    call split
+      call trim
+        text <{{found/output}}{{found/error}}>
+      text <\n>
+  send back
+    call get
+      read lines
+      code 0
+
+# the source extension of a target
+task extension-of
+  take target, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <node>
+    hook hold
+      send back, text <ts>
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <rust>
+    hook hold
+      send back, text <rs>
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <swift>
+    hook hold
+      send back, text <swift>
+  send back, text <kt>
+
+# whether the emitted `run` can raise: then it comes back a `Result` on Rust and `throws` on Swift
+task run-raises
+  take source, like text
+  take target, like text
+  like boolean
+  save marker, text <func run(>
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <rust>
+    hook hold
+      save marker, text <fn run(>
+  save at
+    call index-of
+      read source
+      read marker
+  fork test
+    hook test
+      call is-below
+        read at
+        code 0
+    hook hold
+      send back, false
+  save head
+    call substring
+      read source
+      read at
+      call add
+        read at
+        code 160
+  save open
+    call index-of
+      read head
+      text <\{>
+  fork test
+    hook test
+      call is-above
+        read open
+        code 0
+    hook hold
+      save head
+        call substring
+          read head
+          code 0
+          read open
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <rust>
+    hook hold
+      send back
+        call text-contains
+          read head
+          text <Result\<>
+  send back
+    call text-contains
+      read head
+      text <throws>
+
+# the entry appended to Term's output: read the size, call `run`, print the answer. A `run` that can raise is
+# unwrapped, because a benchmark that swallowed a failure would be timing the failure path
+task main-for
+  take target, like text
+  take raises, like boolean
+  like text
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <node>
+    hook hold
+      send back, text <\nconsole.log(run(Number(process.argv[2])))\n>
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <rust>
+    hook hold
+      save unwrap, text <>
+      fork test
+        hook test
+          read raises
+        hook hold
+          save unwrap, text <.unwrap()>
+      send back, text <\nfn main() \{\n    let size: i64 = std::env::args().nth(1).expect("size").parse().expect("size");\n    let out = run(size){{unwrap}};\n    println!("\{\}", out);\n\}\n>
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <swift>
+    hook hold
+      save attempt, text <>
+      fork test
+        hook test
+          read raises
+        hook hold
+          save attempt, text <try! >
+      send back, text <\nlet size = Int(CommandLine.arguments[1])!\nprint({{attempt}}run(size))\n>
+  send back, text <\nfun main(args: Array\<String\>) \{\n    println(run(args[0].toLong()))\n\}\n>
+
+# the first part of a failed tool's output, enough to say why
+task failure-of
+  take found, like run-result
+  like text
+  save whole
+    call trim
+      text <{{found/error}}{{found/output}}>
+  send back
+    call substring
+      read whole
+      code 0
+      code 1200
+
+task unbuilt
+  take note, like text
+  take toolchain, like text
+  take line, like text
+  like built
+  send back
+    make built
+      bind status, text <unbuilt>
+      bind note, read note
+      bind command, text <>
+      bind arguments
+        make list
+      bind size, code 0
+      bind toolchain, read toolchain
+      bind line, read line
+
+# build one source file for its target in release, into `dir`, as `name`
+task build-source
+  note async
+  take term-root, like text
+  take source, like text
+  take target, like text
+  take dir, like text
+  take name, like text
+  take toolchain, like text
+  like built
+  call make-folder
+    read dir
+  save words
+    make list
+  save tool
+    call tool-of
+      read target
+  save command, text <>
+  save launch
+    make list
+  save product, text <>
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <node>
+    hook hold
+      # both sides through the same esbuild call: ESM, node20, minified
+      save tool, text <{{term-root}}/node_modules/.bin/esbuild>
+      save product, text <{{dir}}/{{name}}.mjs>
+      call push(read(words),read source)
+      call push(read(words),text <--bundle>)
+      call push(read(words),text <--platform=node>)
+      call push(read(words),text <--format=esm>)
+      call push(read(words),text <--target=node20>)
+      call push(read(words),text <--minify>)
+      call push(read(words),text <--outfile={{product}}>)
+      call push(read(words),text <--log-level=error>)
+      save command, text <node>
+      call push(read(launch),read product)
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <rust>
+    hook hold
+      # the release profile of note/term/codegen/rust.md: fat LTO, one codegen unit, abort on panic, stripped
+      save product, text <{{dir}}/{{name}}>
+      call push(read(words),text <--edition>)
+      call push(read(words),text <2021>)
+      call push(read(words),text <-C>)
+      call push(read(words),text <opt-level=3>)
+      call push(read(words),text <-C>)
+      call push(read(words),text <lto=fat>)
+      call push(read(words),text <-C>)
+      call push(read(words),text <codegen-units=1>)
+      call push(read(words),text <-C>)
+      call push(read(words),text <panic=abort>)
+      call push(read(words),text <-C>)
+      call push(read(words),text <strip=symbols>)
+      call push(read(words),text <-A>)
+      call push(read(words),text <warnings>)
+      call push(read(words),read source)
+      call push(read(words),text <-o>)
+      call push(read(words),read product)
+      save command, read product
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <swift>
+    hook hold
+      save product, text <{{dir}}/{{name}}>
+      call push(read(words),text <-O>)
+      call push(read(words),text <-wmo>)
+      call push(read(words),text <-suppress-warnings>)
+      call push(read(words),read source)
+      call push(read(words),text <-o>)
+      call push(read(words),read product)
+      save command, read product
+  fork test
+    hook test
+      call is-equal
+        read target
+        text <kotlin>
+    hook hold
+      # a jar started with `java -jar`: the JVM's start is inside the timer on both sides, the process boundary
+      save product, text <{{dir}}/{{name}}.jar>
+      call push(read(words),read source)
+      call push(read(words),text <-jvm-target>)
+      call push(read(words),text <21>)
+      call push(read(words),text <-include-runtime>)
+      call push(read(words),text <-nowarn>)
+      call push(read(words),text <-d>)
+      call push(read(words),read product)
+      save command, text <java>
+      call push(read(launch),text <-jar>)
+      call push(read(launch),read product)
+  save joined
+    call join
+      read words
+      text < >
+  save line, text <{{tool}} {{joined}}>
+  save done
+    call run-process
+      read tool
+      read words
+      wait true
+  fork test
+    hook test
+      call is-unequal
+        read done/code
+        code 0
+    hook hold
+      send back
+        call unbuilt
+          text <{{tool}} failed: {{done/error}}{{done/output}}>
+          read toolchain
+          read line
+  send back
+    make built
+      bind status, text <ok>
+      bind note, text <>
+      bind command, read command
+      bind arguments, read launch
+      bind size
+        call file-size
+          read product
+          wait true
+      bind toolchain, read toolchain
+      bind line, read line
+
+# a Term program for a target: emitted by `term make --emit`, a `main` appended, then built like a hand version
+task build-term
+  note async
+  take term-root, like text
+  take file, like text
+  take target, like text
+  take dir, like text
+  take name, like text
+  take toolchain, like text
+  like built
+  call make-folder
+    read dir
+  save extension
+    call extension-of
+      read target
+  save source, text <{{dir}}/{{name}}.{{extension}}>
+  save words
+    make list
+  call push(read(words),text <{{term-root}}/host/line.js>)
+  call push(read(words),text <make>)
+  call push(read(words),text <--emit>)
+  call push(read(words),read target)
+  call push(read(words),read file)
+  call push(read(words),text <--out>)
+  call push(read(words),read source)
+  save emitted
+    call run-process
+      text <node>
+      read words
+      wait true
+  fork test
+    hook test
+      call is-unequal
+        read emitted/code
+        code 0
+    hook hold
+      send back
+        call unbuilt
+          text <term make --emit {{target}} refused it: {{emitted/error}}{{emitted/output}}>
+          read toolchain
+          text <term make --emit {{target}} {{file}}>
+  save body
+    call file-text
+      read source
+      wait true
+  save entry
+    call main-for
+      read target
+      call run-raises
+        read body
+        read target
+  call file-save
+    read source
+    text <{{body}}{{entry}}>
+    wait true
+  send back
+    call build-source
+      read term-root
+      read source
+      read target
+      read dir
+      read name
+      read toolchain
+      wait true

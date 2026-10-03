@@ -62,10 +62,11 @@ task base-import
   take branch, like text
   take author, like text
   take message, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
     call base-import-module/callBaseImport
       make import-ask
@@ -80,11 +81,8 @@ task base-import
       wait true
   halt take
     take error
-    call log-fail
-      call format-error
-        read error
-    call node-process/exit
-      code 1
+    log-fail format-error error
+    node-process/exit code 1
 
 # a project built across a pool of workers, which is what a big package takes
 task build-parallel
@@ -93,37 +91,39 @@ task build-parallel
   take concurrency, like number
   take env, like text
   take platform, like text
+
   like unknown
-  send back
+
+  back
     call parallel-module/compileProjectParallel
-      read root
+      root
       make parallel-ask
-        bind concurrency, read concurrency
-        bind env, read env
-        bind platform, read platform
+        bind concurrency, concurrency
+        bind env, env
+        bind platform, platform
       wait true
 
 # the compiler's cache for one project: per-module mills shared machine-wide, the compiled output local
 task project-cache
   take root, like text
+
   like unknown
-  send back
-    call cache-module/projectCache
-      read root
+
+  back call cache-module/projectCache, root
 
 # where that cache lives, which is the one place the path is written
 task cache-directory
   take root, like text
+
   like text
-  send back
-    call cache-module/projectCacheDir
-      read root
+
+  back call cache-module/projectCacheDir, root
 
 # the running compiler's fingerprint, folded into every cache key so a toolchain change cannot serve a stale hit
 task compiler-version
   like text
-  send back
-    call cache-module/compilerVersion
+
+  back call cache-module/compilerVersion
 
 # run one test file and answer what held
 task run-test-file
@@ -132,11 +132,8 @@ task run-test-file
   take text, like text
   take resolve, like unknown
   take env, like text
+
   like unknown
-  send back
-    call test-run-module/runTestFile
-      read file
-      read text
-      read resolve
-      read env
-      wait true
+
+  back
+    call test-run-module/runTestFile, file, read(text), resolve, env, wait true

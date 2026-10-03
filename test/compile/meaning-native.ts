@@ -120,6 +120,15 @@ const COUNT_WANT = 'counts=3,0,1,3 tally-5=3 keys=3 within=true outside=false fi
 const COUNT_TWINS = readFileSync(join(import.meta.dirname, 'meaning-native/count-twins.tree'), 'utf8')
 const COUNT_TWINS_WANT = 'agree=80 disagree=0'
 
+// text by code point, across surrogate pairs (codegen-performance: Kotlin's TermText reads the String in place)
+const TEXT = readFileSync(join(import.meta.dirname, 'meaning-native/text.tree'), 'utf8')
+const TEXT_WANT = 'length=5 at=😀 code=128512 past=[] y=2 later=4 last=4 middle=😀y parts=5 trimmed=[a😀] padded=ab😀'
+
+// map, filter, concat, reverse and pop, which the Kotlin emitter now writes with one copy and never `removeLast()`,
+// and a quotient that truncates toward zero
+const LISTS = readFileSync(join(import.meta.dirname, 'meaning-native/lists.tree'), 'utf8')
+const LISTS_WANT = 'd0=8 d3=4 b0=4 b1=7 both=6 r0=2 popped=2 left=3 quotient=-3'
+
 const baseTree = join(process.cwd(), 'deck', 'base')
 const STDLIB_PREFIX = /^@term\/base\//
 
@@ -258,6 +267,8 @@ for (const backend of ['typescript', 'rust', 'swift', 'kotlin']) {
   run(backend, 'equality', EQUALITY, EQUALITY_WANT)
   run(backend, 'count', COUNT, COUNT_WANT)
   run(backend, 'count-twins', COUNT_TWINS, COUNT_TWINS_WANT)
+  run(backend, 'text', TEXT, TEXT_WANT)
+  run(backend, 'lists', LISTS, LISTS_WANT)
 }
 
 console.log(`\nmeaning-native: ${pass} pass, ${fail} fail, ${skip} skipped`)

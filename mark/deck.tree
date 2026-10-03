@@ -1,0 +1,8 @@
+
+deck @term/mark
+  head <The benchmark suite: Term's emitted code against hand-written code, per target, with the runner that times them>
+  code <0.0.2>
+  lock mit
+  line ./code/line
+  link @term/base, code <0.0.x>
+  link @term/host, code <0.0.x>

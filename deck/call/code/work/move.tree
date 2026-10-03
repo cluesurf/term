@@ -43,77 +43,52 @@ form write-ask
 # means too, so a typo bumps the smallest part rather than failing.
 task parse-level
   take level, like text
+
   like number
+
   fork test
-    call is-equal
-      read level
-      text <2>
-    hook hold
-      send back
-        code 2
+    is-equal level, <2>
+    hold
+      back code 2
   fork test
-    call is-equal
-      read level
-      text <1>
-    hook hold
-      send back
-        code 1
-  send back
-    code 3
+    is-equal level, <1>
+    hold
+      back code 1
+  back code 3
 
 task bump-code
   note async
   take target, like text
   take level, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   fork test
-    call is-unequal
-      read target
-      text <code>
-    hook hold
-      call log-fail
-        text <Unknown move target: {{target}}. Use: term move code [1|2|3]>
-      call node-process/exit
-        code 1
-  save chosen
-    call parse-level
-      read level
-  call log-step
-    text <Bumping version...>
+    is-unequal target, <code>
+    hold
+      log-fail <Unknown move target: {{target}}. Use: term move code [1|2|3]>
+      node-process/exit code 1
+  save chosen, parse-level level
+  log-step <Bumping version...>
+
   note unsafe
     save manifest
       call deck-tree/loadManifest
-        make manifest-ask
-          bind dir, read root
+        make manifest-ask, bind dir, read root
         wait true
-    save old-code
-      call deck-tree/showCode
-        read manifest/code
+    save old-code, call deck-tree/showCode, read manifest/code
     save new-code
       call deck-tree/bumpCode
-        make bump-ask
-          bind code, read manifest/code
-          bind level, read chosen
-    save shown
-      call deck-tree/showCode
-        read new-code
+        make bump-ask, bind(code, read manifest/code), bind level, read chosen
+    save shown, call deck-tree/showCode, read new-code
     call write-file
-      call join
-        read root
-        text <deck.tree>
-      call deck-tree/writeManifest
-        make write-ask
-          bind manifest, read manifest
+      call join, read(root), text <deck.tree>
+      call deck-tree/writeManifest, make write-ask, bind manifest, read manifest
       wait true
-    call log-good
-      text <Version bumped: {{old-code}} -\> {{shown}}>
+    call log-good, text <Version bumped: {{old-code}} -\> {{shown}}>
   halt take
     take error
-    call log-fail
-      call format-error
-        read error
-    call node-process/exit
-      code 1
+    log-fail format-error error
+    node-process/exit code 1

@@ -875,7 +875,19 @@ function expressionOf(
         return finish(
           folded ??
             (into
-              ? ({ form: 'call', callee: readPath(`${plainName(callee)}-form`, span), args, into, span } as Expression)
+              ? // `fill` / `melt` carry the lean markers too, so a nested call written bare under one is a call
+                // rather than a label nobody resolves (deck/base/code/native/webview/file.tree, `fill /
+                // data-from-text as-text(reply) / like path-info`, pnpm term:lean-equal 2026-10-02)
+                ({
+                  form: 'call',
+                  callee: readPath(`${plainName(callee)}-form`, span),
+                  args,
+                  into,
+                  span,
+                  ...(names.some(Boolean) ? { names } : {}),
+                  ...(leanNames.some(Boolean) ? { leanNames } : {}),
+                  lean: true,
+                } as Expression)
               : ({
                   form: 'call',
                   callee: readPath(plainName(callee), span),

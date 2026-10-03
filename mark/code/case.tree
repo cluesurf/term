@@ -1,0 +1,72 @@
+# One case: one implementation of one program at one size on one target, its correctness, and its samples
+# (note/term/bench/database.md). The Term program is a case too, implementation `term`, language `term`, track `term`.
+
+load ./time
+  find sample
+
+form case
+  # `<family>/<program>`, and the sha256 in tone of everything in its directory
+  link program, like text
+  link program-digest, like text
+  # `term`, or the baseline's name in bench.tree
+  link implementation, like text
+  # `term`, `typescript`, `rust`, `swift`, `kotlin`
+  link language, like text
+  # `term`, `same`, `idiom`, `best`, `library`, `pair`
+  link track, like text
+  link target, like text
+  link boundary, like text
+  link size-name, like text
+  link size-value, like number
+  link expect, like text
+  link expect-digest, like text
+  # one item each, changed in place: `correct`, `wrong`, `unbuilt` or `skipped`, and why when it is not `correct`
+  link correctness
+    like list
+      like text
+  link note
+    like list
+      like text
+  # empty when the toolchain is not installed
+  link toolchain, like text
+  link line, like text
+  link source, like text
+  # empty for `ours`
+  link commit, like text
+  link license, like text
+  # how to start it, without the size, and the bytes of what is started
+  link command, like text
+  link arguments
+    like list
+      like text
+  link artifact, like number
+  # the timed rounds, in order. Sample i of every case in one group ran in round i
+  link samples
+    like list
+      like sample
+
+# one ratio: the Term program against one baseline, on one target at one size
+form comparison
+  link program, like text
+  link size-name, like text
+  link target, like text
+  link baseline, like text
+  link track, like text
+  # medians, in milliseconds
+  link term-wall, like decimal
+  link base-wall, like decimal
+  link ratio, like decimal
+  link low, like decimal
+  link high, like decimal
+  link verdict, like text
+  # the instruction ratio, where both sides counted instructions. `counted` false otherwise
+  link counted, like boolean
+  link instruction-ratio, like decimal
+  link instruction-low, like decimal
+  link instruction-high, like decimal
+  # either median under 20 times the empty process's: the ratio measures process start, not the program
+  link dominated, like boolean
+  link term-rss, like number
+  link base-rss, like number
+  link term-size, like number
+  link base-size, like number

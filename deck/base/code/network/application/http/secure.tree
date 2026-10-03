@@ -2,6 +2,8 @@
 # HTTPS: HTTP over TLS. The request and response shapes are shared with plain HTTP (see ../http); this adds the
 # transport-security parameters for a secure connection.
 
+note unstable
+
 form tls-version
   case one-two
   case one-three

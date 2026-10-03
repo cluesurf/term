@@ -28,86 +28,57 @@ form manifest-ask
 # `@scope/name` when the manifest names a host, the bare name when it does not
 task full-name
   take manifest, like unknown
+
   like text
-  save host
-    read manifest/host
+
+  save host, read manifest/host
+
   fork test
-    call is-unequal
-      read host
-      text <>
-    hook hold
-      save short
-        read manifest/name
-      send back
-        text <@{{host}}/{{short}}>
-  send back
-    read manifest/name
+    is-unequal read(host), <>
+    hold
+      save short, read manifest/name
+      back <@{{host}}/{{short}}>
+  back read manifest/name
 
 task note
   note async
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
     save manifest
       call deck-tree/loadManifest
-        make manifest-ask
-          bind dir, read root
+        make manifest-ask, bind dir, read root
         wait true
-    save shown
-      call full-name
-        read manifest
-    save version
-      call deck-tree/showCode
-        read manifest/code
-    call console/log
-      text <>
-    call console/log
-      text <  {{shown}} {{version}}>
-    save head
-      read manifest/head
+    save shown, call full-name, read manifest
+    save version, call deck-tree/showCode, read manifest/code
+    call console/log, text <>
+    call console/log, text <  {{shown}} {{version}}>
+    save head, read manifest/head
     fork test
-      call is-unequal
-        read head
-        text <>
+      call is-unequal, read(head), text <>
       hook hold
-        call console/log
-          text <  {{head}}>
-    save lock
-      read manifest/lock
+        call console/log, text <  {{head}}>
+    save lock, read manifest/lock
     fork test
-      call is-unequal
-        read lock
-        text <>
+      call is-unequal, read(lock), text <>
       hook hold
-        call console/log
-          text <  License: {{lock}}>
-    save links
-      read manifest/link
+        call console/log, text <  License: {{lock}}>
+    save links, read manifest/link
     fork test
-      call is-above
-        read links/length
-        code 0
+      call is-above, read(links/length), code 0
       hook hold
-        call console/log
-          text <>
-        call console/log
-          call chalk/bold
-            text <  Dependencies:>
-        walk list, read links
+        call console/log, text <>
+        call console/log, call chalk/bold, text <  Dependencies:>
+        walk list
+          read links
           hook next
             take site, name dep
-            save shown-dep
-              read dep/name
-            call console/log
-              text <    {{shown-dep}}>
-    call console/log
-      text <>
+            save shown-dep, read dep/name
+            call console/log, text <    {{shown-dep}}>
+    call console/log, text <>
   halt take
     take error
-    call log-fail
-      call format-error
-        read error
-    call node-process/exit
-      code 1
+    log-fail format-error error
+    node-process/exit code 1

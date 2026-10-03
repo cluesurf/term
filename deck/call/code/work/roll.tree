@@ -43,132 +43,102 @@ form roll-show-ask
 
 # the kinds a roll always has, before any a deck declares with `roll <name>`
 task built-in-kinds
-  like list
-    like text
-  send back
-    make list
-      text <deck>
-      text <exception>
-      text <task>
-      text <dock>
-      text <tell>
-      text <kind>
+  like list, like text
+
+  back
+    make list, <deck>, <exception>, <task>, <dock>, <tell>, <kind>
 
 task is-known-kind
   take kind, like text
-  take declared, like list
+  take declared
+    like list
     like unknown
+
   like boolean
-  walk list, call built-in-kinds
-    hook next
-      take site, name one
-      fork test
-        call is-equal
-          read one
-          read kind
-        hook hold
-          send back, true
-  walk list, read declared
-    hook next
-      take site, name one
-      fork test
-        call is-equal
-          read one/name
-          read kind
-        hook hold
-          send back, true
-  send back, false
+
+  walk
+    call built-in-kinds
+    take site, name one
+    fork test
+      is-equal one, kind
+      hold
+        back true
+  walk declared
+    take site, name one
+    fork test
+      is-equal read(one/name), kind
+      hold
+        back true
+  back false
 
 task roll
   note async
   take kind, like text
   take json-out, like boolean
   take show-path, like boolean
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   fork test
-    read json-out
-    hook miss
-      call log-step
-        text <Rolling...>
-  save answer
-    call roll-module/projectRoll
-      read root
-  save roll
-    read answer/roll
-  save failed
-    read answer/failed
+    json-out
+    miss
+      log-step <Rolling...>
+  save answer, call roll-module/projectRoll, root
+  save roll, read answer/roll
+  save failed, read answer/failed
+
   fork test
-    call is-unequal
-      read kind
-      text <>
-    hook hold
+    is-unequal kind, <>
+    hold
       fork test
-        call is-known-kind
-          read kind
-          read roll/kind
-        hook miss
-          call log-fail
-            text <Unknown kind "{{kind}}">
-          call node-process/exit
-            code 1
+        is-known-kind kind, read roll/kind
+        miss
+          log-fail <Unknown kind "{{kind}}">
+          node-process/exit code 1
   # which tell covers each exception, so a reader sees what a customer would be told
-  walk list, read roll/exception
-    hook next
-      take site, name one
-      save full
-        text <{{one/host}}/{{one/name}}>
-      save note
-        call tell-for
-          read roll/tell
-          read full
-      save one/tell
-        read note
+  walk
+    read roll/exception
+    take site, name one
+    save full, <{{one/host}}/{{one/name}}>
+    save note
+      tell-for read(roll/tell), full
+    save one/tell, read note
   fork test
-    read json-out
-    hook hold
-      call console/log
-        call json-global/stringify
-          read roll
-          make void
-          code 2
+    json-out
+    hold
+      console/log
+        json-global/stringify read(roll), make(void), code 2
       send back
-  call console/log
-    text <>
-  call console/log
+  console/log <>
+
+  console/log
     call roll-show/showRoll
       read roll
-      read kind
-      make roll-show-ask
-        bind path, read show-path
-  call console/log
-    text <>
+      kind
+      make roll-show-ask, bind path, show-path
+  console/log <>
+
   fork test
-    call is-above
-      read failed/length
-      code 0
-    hook hold
-      call console/log
-        call fade
-          text <  {{failed}} file(s) did not compile and are not on the roll>
+    is-above read(failed/length), code 0
+    hold
+      console/log
+        fade <  {{failed}} file(s) did not compile and are not on the roll>
 
 # the note of the tell that covers one exception, or `private` when none does
 task tell-for
-  take tells, like list
+  take tells
+    like list
     like unknown
   take full, like text
+
   like text
-  walk list, read tells
-    hook next
-      take site, name one
-      fork test
-        call is-equal
-          read one/name
-          read full
-        hook hold
-          send back
-            read one/note
-  send back
-    text <private>
+
+  walk tells
+    take site, name one
+    fork test
+      is-equal read(one/name), full
+      hold
+        back read one/note
+  back <private>

@@ -1,0 +1,24 @@
+host term, <term.tree>
+host input
+  host kind, <size>
+  host seed, 1
+  host sizes
+    host check, 1000
+    host timed, 300000
+host output
+  host kind, <exact>
+host boundary, <process>
+list metrics
+  <wall>, <rss>, <size>
+host semantics
+  host integer, <64-bit, stops on overflow. The largest value, a Collatz step below 300000, is under 2^37, below 2^53, so TypeScript is exact>
+  host float, <none>
+  host text, <none>
+  host map-order, <none>
+list baselines
+  mesh
+    host name, <lowered>
+    host file, <lowered.tree>
+    host track, <pair>
+    host source, <ours>
+    host license, <MIT>

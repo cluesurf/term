@@ -45,10 +45,11 @@ task make
   take ride, like boolean
   take separate, like boolean
   take trees, like boolean
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
     call make-module/callMake
       make make-ask
@@ -59,19 +60,16 @@ task make
       wait true
   halt take
     take error
-    call log-fail
-      call format-error
-        read error
-    call node-process/exit
-      code 1
+    log-fail format-error error
+    node-process/exit code 1
 
 # the role a project's `role.tree` gives a file: `role host` over `take @/data/**` overrides what the content says
 task role-of
   take root, like text
+
   like unknown
-  send back
-    call role-module/projectRoleOf
-      read root
+
+  back call role-module/projectRoleOf, root
 
 # warm the local cache from a remote one before a build, and push what is new after it. Content addressing makes
 # both safe: a key's bytes never change.
@@ -80,23 +78,17 @@ task cache-pull
   take directory, like text
   take endpoint, like text
   take token, like text
+
   like number
-  send back
-    call remote-module/pullRemoteCache
-      read directory
-      read endpoint
-      read token
-      wait true
+
+  back call remote-module/pullRemoteCache, directory, endpoint, token, wait true
 
 task cache-push
   note async
   take directory, like text
   take endpoint, like text
   take token, like text
+
   like number
-  send back
-    call remote-module/pushRemoteCache
-      read directory
-      read endpoint
-      read token
-      wait true
+
+  back call remote-module/pushRemoteCache, directory, endpoint, token, wait true

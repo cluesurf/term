@@ -29,54 +29,42 @@ load @term/base/code/environment/path
   find known-directory
 
 # the directory under `.base`, scoped the way the packages are
-host home, text <@cluesurf/term>
+host home, <@cluesurf/term>
 
 # what it was before 2026-08-30, still read for data that cannot be rebuilt
-host legacy-home, text <term>
+host legacy-home, <term>
 
 # `<root>/.base/@cluesurf/term`
 task project-home
   take root, like text
+
   like text
-  send back
-    call join
-      call join
-        read root
-        text <.base>
-      read home
+
+  back
+    join join(root, <.base>), home
 
 # the same path as it was before the rename, for a fallback read
 task legacy-project-home
   take root, like text
+
   like text
-  send back
-    call join
-      call join
-        read root
-        text <.base>
-      read legacy-home
+
+  back
+    join join(root, <.base>), legacy-home
 
 # `~/.base/@cluesurf/term`: the user-level auth token, link registry and shared mill cache
 task user-home
   like text
-  send back
-    call join
-      call join
-        call known-directory
-          text <home>
-        text <.base>
-      read home
+
+  back
+    join join(known-directory <home>, <.base>), home
 
 # the same, before the rename
 task legacy-user-home
   like text
-  send back
-    call join
-      call join
-        call known-directory
-          text <home>
-        text <.base>
-      read legacy-home
+
+  back
+    join join(known-directory <home>, <.base>), legacy-home
 
 # The path to use for something that CANNOT BE REBUILT: a remembered fact, an auth token, a signing key, the link
 # registry. If the new location does not exist yet and the old one does, the old one is used, whole. Nothing is
@@ -88,24 +76,22 @@ task kept-at
   note async
   take current, like text
   take legacy, like text
+
   like text
-  save here
-    call file-test
-      read current
-      wait true
+
+  save here, file-test current, wait true
+
   fork test
-    read here
-    hook hold
-      send back, read current
-  save there
-    call file-test
-      read legacy
-      wait true
+    here
+    hold
+      back current
+  save there, file-test legacy, wait true
+
   fork test
-    read there
-    hook hold
-      send back, read legacy
-  send back, read current
+    there
+    hold
+      back legacy
+  back current
 
 # The environment variables the toolchain reads. `TERM_` since the Seed rename; the `SEED_` spelling is still
 # honored so a shell profile that sets one keeps working, and is the only place the old name survives.
@@ -113,32 +99,29 @@ task kept-at
 # NOTE the prefix is `TERM_` and never bare `TERM`, which is the terminal type every POSIX shell already sets.
 task read-env
   take name, like text
+
   like text
+
   save term
-    call variable
-      call join-name
-        text <TERM_>
-        read name
+    variable
+      join-name <TERM_>, read name
   fork test
-    call is-unequal
-      read term
-      text <>
-    hook hold
-      send back, read term
-  send back
-    call variable
-      call join-name
-        text <SEED_>
-        read name
+    is-unequal read(term), <>
+    hold
+      back read term
+  back
+    variable
+      join-name <SEED_>, read name
 
 # the two halves of an environment variable's name, joined. `path/join` would put a separator between them, and
 # the stdlib has no text concat task, so this is runtime interpolation, which is the idiom.
 task join-name
   take head, like text
   take tail, like text
+
   like text
-  send back
-    text <{{head}}{{tail}}>
+
+  back <{{head}}{{tail}}>
 
 # THE PROJECT ROOT, READ RATHER THAN PASSED. A `hook` command's takes are its ARGUMENTS, and no command takes a
 # root: in the shipped CLI it comes from the process, not from argv. Arguments reach an implementation in `take`
@@ -148,5 +131,5 @@ task join-name
 # So a verb asks for the root instead of being handed it, and its parameters are the command's and nothing else.
 task root
   like text
-  send back
-    call working-directory
+
+  back call working-directory

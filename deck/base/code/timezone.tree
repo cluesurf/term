@@ -4,9 +4,15 @@
 # is pure arithmetic on the epoch-millisecond timestamp plus `calendar`'s decomposition, so the local wall-clock parts
 # fall out by shifting the instant by the offset and reading it as UTC.
 
+note stable
+
 load @term/base/code/calendar
   find to-parts
   find date-parts
+  find make-utc
+
+load @term/base/code/calendar/civil
+  find format-pattern
 
 load @term/base/code/exception
   find absence
@@ -108,3 +114,123 @@ task offset-hours
         read millis
         read zone
       code 60
+
+# an instant as it reads in a zone: the instant, the zone, and the zone's offset from UTC at it, in minutes
+form zoned-time
+  link instant, like number
+  link zone, like text
+  link offset, like number
+
+# the instant in `zone`; an unknown zone raises `zone-absence`
+task in-zone
+  take millis, like number
+  take zone, like text
+  like zoned-time
+  send back
+    make zoned-time
+      bind instant, read millis
+      bind zone, read zone
+      bind offset
+        call offset-minutes
+          read millis
+          read zone
+
+# the instant laid out by `pattern` (calendar/civil.tree's tokens) on the zone's wall clock, `Z` its offset there
+task format-in-zone
+  take millis, like number
+  take zone, like text
+  take pattern, like text
+  like text
+  send back
+    call format-pattern
+      read millis
+      read pattern
+      call offset-minutes
+        read millis
+        read zone
+
+# the instant a wall-clock time in `zone` names. A time the zone skips (the hour lost when clocks go forward) is read
+# with the offset from before the change, so it lands that far past the gap; a time the zone reads twice (the hour
+# repeated when clocks go back) is the earlier of the two instants. The same rule as JavaScript's Temporal
+# `compatible`, on every backend.
+task from-local
+  take year, like number
+  take month, like number
+  take day, like number
+  take hour, like number
+  take minute, like number
+  take second, like number
+  take zone, like text
+  like number
+  save wall
+    call make-utc
+      read year
+      read month
+      read day
+      read hour
+      read minute
+      read second
+  # the offsets a day either side: a transition is never closer together than that
+  save before
+    call offset-minutes
+      call subtract
+        read wall
+        code 86400000
+      read zone
+  save after
+    call offset-minutes
+      call add
+        read wall
+        code 86400000
+      read zone
+  save early
+    call subtract
+      read wall
+      call multiply
+        read before
+        code 60000
+  save late
+    call subtract
+      read wall
+      call multiply
+        read after
+        code 60000
+  save early-fits
+    call is-equal
+      call offset-minutes
+        read early
+        read zone
+      read before
+  save late-fits
+    call is-equal
+      call offset-minutes
+        read late
+        read zone
+      read after
+  fork test
+    hook test
+      call and
+        read early-fits
+        read late-fits
+    hook hold
+      # read twice, or no change at all: the earlier instant
+      fork test
+        hook test
+          call is-below
+            read late
+            read early
+        hook hold
+          send back, read late
+      send back, read early
+  fork test
+    hook test
+      read early-fits
+    hook hold
+      send back, read early
+  fork test
+    hook test
+      read late-fits
+    hook hold
+      send back, read late
+  # skipped: the offset from before the change
+  send back, read early

@@ -7,6 +7,8 @@
 #   an optional minus first, then digits, then optionally a point and more digits:  42  -7  3.25  -0.5  .5  5.
 #   none:  the empty text, a letter or a space anywhere, a second point, a minus anywhere but first, no digit at all
 
+note stable
+
 load @term/base/code/maybe
   find maybe
 
@@ -907,15 +909,8 @@ task to-fixed
           read carry
         hook hold
           call kept/unshift, code 1
-  # at least places + 1 digits, so there is a whole part
+  # at least places + 1 digits, so there is a whole part (no `down`: the prover loses a list's size at an unshift)
   walk test
-    down
-      call subtract
-        call add
-          read places
-          code 1
-        call size
-          read kept
     hook test
       call is-below
         call size

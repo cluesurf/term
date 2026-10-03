@@ -5,6 +5,11 @@
 # (note/term/stdlib/semantics.md). The logarithm and the trigonometric functions are in `float`: their results are not
 # whole numbers.
 
+note stable
+
+load @term/base/code/stop
+  find abandon
+
 load @term/base/code/native/{platform}/math
   find abs
   find min
@@ -54,7 +59,8 @@ task power
             read base
             code 0
         hook hold
-          halt text <zero has no negative power>
+          send back
+            call abandon, text <power: zero to a negative power>
       fork test
         hook test
           call is-equal
@@ -139,7 +145,8 @@ task square-root
         read value
         code 0
     hook hold
-      halt text <a negative number has no square root>
+      send back
+        call abandon, text <square-root: a negative number>
   fork test
     hook test
       call is-below

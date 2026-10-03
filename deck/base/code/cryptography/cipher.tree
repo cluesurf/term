@@ -4,6 +4,8 @@
 #
 # No cryptography is implemented here. Every backend forwards to the platform's own AES-GCM (Web Crypto, javax.crypto, the aes-gcm crate, CryptoKit), and `extra` is a parameter each of those already defines.
 
+note stable
+
 load @term/base/code/native/{platform}/cryptography/cipher
   find encrypt-aes-gcm
   find decrypt-aes-gcm

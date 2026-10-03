@@ -1,6 +1,8 @@
 
 # Clock: current time and delays. Platform implementation is selected at build time and hidden behind this API.
 
+note stable
+
 load @term/base/code/native/{platform}/clock
   find current-time
   find delay

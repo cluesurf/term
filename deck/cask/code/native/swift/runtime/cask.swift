@@ -113,6 +113,9 @@ final class CaskWindow {
     let bridge = CaskBridge()
     let navigation = CaskNavigation()
     fileprivate var pending: PendingLoad?
+    // what runs when this window closes, by the person or by `close`, in the order registered (native-dom-0030: a
+    // cask's dispatcher drops every handle the window's page held)
+    var onClose: [() -> Void] = []
     #if canImport(AppKit)
     var window: NSWindow?
     #endif
@@ -247,6 +250,10 @@ enum cask {
         handle.window = window
         // released when the person closes it, and not before
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in
+            for closed in handle.onClose {
+                closed()
+            }
+            handle.onClose = []
             open.removeAll { $0 === handle }
         }
         #endif
@@ -292,6 +299,20 @@ enum cask {
 
     static func onMessage(_ handle: CaskWindow, _ handler: @escaping (String) async -> String) {
         handle.bridge.onMessage = handler
+    }
+
+    // runs when the window closes, whoever closed it. On iOS a cask has one window for the life of the process, so
+    // nothing closes it and a handler registered here never runs (native-dom-0030)
+    static func onClose(_ handle: CaskWindow, _ handler: @escaping () -> Void) {
+        handle.onClose.append(handler)
+    }
+
+    // close the window the way the person does, so everything registered with `on-close` runs. On iOS there is no
+    // second window to close, and this does nothing
+    static func close(_ handle: CaskWindow) {
+        #if canImport(AppKit)
+        DispatchQueue.main.async { handle.window?.close() }
+        #endif
     }
 
     // fires once per load, after the page has finished. Registered before `load-bundle` so the first load is seen

@@ -178,7 +178,11 @@ task each
     like task
       take item, like t
       like view
+  # typed: an empty list leaves its element to inference, and Rust's `vec![]` cannot be inferred when nothing reads it
+  # as a list of views first (native-dom-0020)
   save mounted
+    like list
+      like view
     make list
   call make-effect
     bind run

@@ -1,3 +1,6 @@
+note draft
+
+# SHELVED 2026-10-02 (base-v1-0019): a bodiless `format`. Nothing loads it.
 
 form record
   link level, like text

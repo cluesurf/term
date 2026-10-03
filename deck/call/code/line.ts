@@ -14,6 +14,7 @@ import { callScan } from '@term/call/code/scan'
 import { callMind } from '@term/call/code/mind'
 import { callTest } from '@term/call/code/test'
 import { callTime } from '@term/call/code/time'
+import { callMark } from '@term/call/code/mark'
 import { callBoot } from '@term/call/code/boot'
 import { callCast } from '@term/call/code/cast'
 import { callHalt } from '@term/call/code/halt'
@@ -68,6 +69,7 @@ const COMMANDS = [
   'mind',
   'test',
   'time',
+  'mark',
   'boot',
   'cast',
   'halt',
@@ -562,10 +564,23 @@ const cli = yargs(hideBin(process.argv))
     },
   )
   .command(
-    'make',
-    'Build/compile the project',
+    'make [file]',
+    'Build/compile the project, or with --emit one program for one backend',
     yargs =>
       yargs
+        .positional('file', {
+          type: 'string',
+          description: 'With --emit: the program to emit, with its whole import closure',
+        })
+        .option('emit', {
+          type: 'string',
+          description:
+            'Write ONE program as a single source file for node (TypeScript), rust, swift or kotlin: runtime prelude plus emitted code. A check error refuses',
+        })
+        .option('out', {
+          type: 'string',
+          description: 'With --emit: the file to write (default standard output)',
+        })
         .option('ride', {
           type: 'boolean',
           alias: 'watch',
@@ -615,6 +630,19 @@ const cli = yargs(hideBin(process.argv))
           description: 'The update channel --publish writes (default main)',
         }),
     async argv => {
+      if (argv.emit !== undefined) {
+        const { callEmit } = await import('@term/call/code/emit')
+
+        callEmit({
+          root,
+          file: argv.file,
+          target: argv.emit,
+          out: argv.out,
+        })
+
+        return
+      }
+
       if (argv.target) {
         const { makeCask } = await import('@term/call/code/cask')
 
@@ -777,6 +805,25 @@ const cli = yargs(hideBin(process.argv))
         memory: argv.memory,
         top: argv.top,
       })
+    },
+  )
+  .command(
+    'mark [rest..]',
+    'Compare emitted code with hand-written code per target (time: time-* tasks)',
+    yargs =>
+      yargs
+        .positional('rest', {
+          type: 'string',
+          array: true,
+          description:
+            'a filter on <family>/<program>, or `list`; then --target, --runs, --quick, --check, --size, --export, --markdown, --purpose, --label',
+        })
+        // every flag after `mark` belongs to the runner, `--help` included
+        .parserConfiguration({ 'unknown-options-as-args': true })
+        .help(false)
+        .strict(false),
+    async () => {
+      await callMark({ root, argv: process.argv })
     },
   )
   .command(

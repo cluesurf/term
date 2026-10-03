@@ -1,6 +1,8 @@
 
 # Stack (LIFO), backed by the native array.
 
+note stable
+
 load @term/base/code/list
   find list
 

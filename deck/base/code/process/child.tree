@@ -1,3 +1,6 @@
+note draft
+
+# SHELVED 2026-10-02 (base-v1-0019): bodiless `wait`, `stop`, `write`, `close`, `read`, `stream`; process/run runs a command. Nothing loads it.
 
 load @term/base/code/process
   find child

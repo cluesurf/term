@@ -1,4 +1,5 @@
 import { projectDeckOf } from '@term/call/code/deck-of'
+import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import path from 'path'
 import net from 'net'
 import { fileURLToPath } from 'url'
@@ -262,6 +263,10 @@ export async function buildClientBundle(opts: {
         cache: projectCache(projectRoot),
         env: 'browser',
         deckOf: projectDeckOf(),
+        // the role and the lean surface, exactly as `term make` reads them. Without these a `mark lean` module
+        // in a booted program compiled as longhand, every property head an unknown name (self-hosting-0015)
+        roleOf: projectRoleOf(projectRoot),
+        leanOf: projectLeanOf(projectRoot),
       },
     )
 
@@ -688,7 +693,15 @@ export async function callBoot(input: {
     } | null> => {
       const result = compile(
         { file: entry, text: readFileSync(entry, 'utf8') },
-        { resolve, cache, env, deckOf: projectDeckOf() },
+        {
+          resolve,
+          cache,
+          env,
+          deckOf: projectDeckOf(),
+          // the role and the lean surface, as `term make` reads them (see the client build above)
+          roleOf: projectRoleOf(projectRoot),
+          leanOf: projectLeanOf(projectRoot),
+        },
       )
 
       if (!result.ok) {

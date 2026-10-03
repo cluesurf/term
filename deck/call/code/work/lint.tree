@@ -48,92 +48,55 @@ form lint-ask
 task lint
   note async
   take fix, like boolean
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   # the fix path splices by byte offset, which the stdlib cannot do yet: hand the whole verb over rather than
   # half-implement it
   fork test
-    read fix
-    hook hold
+    fix
+    hold
       call lint-module/callLint
-        make lint-ask
-          bind root, read root
-          bind paths, make list
-          bind fix, true
+        make lint-ask, bind(root, root), bind(paths, make list), bind fix, true
         wait true
       send back
-  save files
-    call walk-trees
-      read root
-      wait true
+  save files, walk-trees root, wait true
+
   fork test
-    call is-equal
-      read files/length
-      code 0
-    hook hold
-      call log-fail
-        text <No .tree files found>
-      call node-process/exit
-        code 1
-  call log-step
-    text <Linting...>
-  save findings
-    code 0
-  save errors
-    code 0
-  walk list, read files
-    hook next
-      take site, name file
-      save text
-        call read-file
-          read file
-          wait true
-      save shown
-        call node-path/relative
-          read root
-          read file
-      save found
-        call analyze-module/analyze
-          make analyze-ask
-            bind file, read shown
-            bind text, read text
-      save each
-        call found/lint
-      walk list, read each
-        hook next
-          take site, name one
-          save findings
-            call add
-              read findings
-              code 1
-          fork test
-            call is-equal
-              read one/severity
-              text <error>
-            hook hold
-              save errors
-                call add
-                  read errors
-                  code 1
-          call console/log
-            call fade
-              text <  {{shown}}: {{one/message}}>
+    is-equal read(files/length), code 0
+    hold
+      log-fail <No .tree files found>
+      node-process/exit code 1
+  log-step <Linting...>
+  save findings, code 0
+  save errors, code 0
+
+  walk files
+    take site, name file
+    save text, read-file file, wait true
+    save shown, node-path/relative root, file
+    save found
+      analyze-module/analyze
+        make analyze-ask, bind(file, shown), bind text, read text
+    save each, call found/lint
+    walk each
+      take site, name one
+      save findings, add findings, code 1
+      fork test
+        is-equal read(one/severity), <error>
+        hold
+          save errors, add errors, code 1
+      console/log fade <  {{shown}}: {{one/message}}>
   fork test
-    call is-equal
-      read findings
-      code 0
-    hook hold
-      call log-good
-        text <No lint findings>
+    is-equal findings, code 0
+    hold
+      log-good <No lint findings>
       send back
-  call log-fail
-    text <{{findings}} finding(s), {{errors}} error(s)>
+  log-fail <{{findings}} finding(s), {{errors}} error(s)>
+
   fork test
-    call is-above
-      read errors
-      code 0
-    hook hold
-      call node-process/exit
-        code 1
+    is-above errors, code 0
+    hold
+      node-process/exit code 1

@@ -1,6 +1,8 @@
 # Symbolic and hard links. The clean uniform interface, the per-env native implementation selected at build time
 # and hidden.
 
+note unstable
+
 load @term/base/code/native/{platform}/file/asynchronous/link
   find link-make
   find link-read

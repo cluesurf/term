@@ -16,6 +16,8 @@
 # `term make` refuses a `transient` worker whose work cannot raise (check/supervise.ts): it can never restart, so it is
 # a `temporary` with a misleading name. Design 4 in note/term/research/beam-otp-lessons.md.
 
+note unstable
+
 load @term/base/code/task
   find spawn
 

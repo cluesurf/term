@@ -1,0 +1,19 @@
+# `term.tree` lowered by hand: one counting loop, no list and no closure. The F6 pair of the demo.
+
+task run
+  take size, like number
+  like text
+  save total, code 0
+  walk size
+    bind base, code 1
+    bind head
+      call add
+        read size
+        code 1
+    hook next
+      take site, name i
+      save total
+        call add
+          read total
+          read i
+  send back, text <{{total}}>

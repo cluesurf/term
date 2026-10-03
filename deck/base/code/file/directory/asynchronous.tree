@@ -9,6 +9,8 @@
 #
 # These take what the synchronous three cannot: a depth bound, and entries that say what they are.
 
+note unstable
+
 load @term/base/code/native/{platform}/file/asynchronous/directory
   find folder-make
   find folder-list

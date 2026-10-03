@@ -1,0 +1,73 @@
+load @term/base/code/list
+  find list
+
+# the list operations the Kotlin emitter writes without a second copy (codegen-performance-0015), and integer division
+# with negative operands, which truncates toward zero on every backend
+task numbers
+  like list, like number
+  save out
+    make list
+  call push
+    bind list, read out
+    bind item, code 4
+  call push
+    bind list, read out
+    bind item, code 1
+  call push
+    bind list, read out
+    bind item, code 7
+  call push
+    bind list, read out
+    bind item, code 2
+  send back, read out
+
+task compute
+  like text
+  host xs
+    call numbers
+  host doubled
+    call map
+      read xs
+      task
+        take x, like number
+        like number
+        send back
+          call multiply
+            read x
+            code 2
+  host big
+    call filter
+      read xs
+      task
+        take x, like number
+        like boolean
+        send back
+          call is-above
+            read x
+            code 2
+  host both
+    call concat
+      read xs
+      read big
+  host back
+    call reverse
+      read xs
+  host popped
+    call pop
+      read xs
+  host left
+    call size
+      read xs
+  host quotient
+    call divide
+      code -7
+      code 2
+  host d0, read doubled/0
+  host d3, read doubled/3
+  host b0, read big/0
+  host b1, read big/1
+  host n
+    call size
+      read both
+  host r0, read back/0
+  send back, text <d0={{d0}} d3={{d3}} b0={{b0}} b1={{b1}} both={{n}} r0={{r0}} popped={{popped}} left={{left}} quotient={{quotient}}>

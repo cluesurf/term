@@ -754,9 +754,9 @@ export function raiseSets(
     if (sawNative) {
       nativeShims.add(name)
 
-      if (exceptions.has('failure')) {
-        direct.add('failure')
-      }
+      // whether or not this build declares `failure`: a node build prunes the form when nothing names it, and the
+      // set then differed by backend, so a handler that compiled on node was refused on Rust as not covering it
+      direct.add('failure')
 
       for (const declared of statement.raises ?? []) {
         if (exceptions.has(declared)) {

@@ -1,6 +1,8 @@
 
 # FTP: File Transfer Protocol. A command/reply control channel plus a data transfer mode.
 
+note unstable
+
 host ftp-transfer-mode
   term stream
   term block

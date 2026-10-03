@@ -153,6 +153,40 @@ task run-helper
   )
 }
 
+{
+  // a LOCAL of the name shadows every definition: `maybe/filter` calls its own callback parameter `test`, while the
+  // stdlib's file module and the CLI's app-verbs each define a top-level `test`. The call names no import, so asking
+  // which import it came from refused it, and broke @term/call's build (2026-10-02)
+  const keep = `task keep\n  take test, like task\n    take x, like text\n    like boolean\n  take x, like text\n  like boolean\n  send back\n    call test\n      read x\n`
+  // main brings BOTH definers into the program (a for `other`, b for `test` itself), so the name is ambiguous
+  // program-wide and only the parameter in keep.tree is not
+  const main = `load @app/keep\n  find keep\n\nload @app/a\n  find other\n\nload @app/b\n  find test\n\ntask run\n  like boolean\n  send back\n    call keep\n      task\n        take x, like text\n        like boolean\n        send back, true\n      text <x>\n`
+  const testA = `task test\n  take x, like text\n  like boolean\n  send back, true\n\ntask other\n  like text\n  send back, text <o>\n`
+  const testB = `task test\n  take x, like text\n  like boolean\n  send back, false\n`
+  const result = build({ '@app/keep': keep, '@app/a': testA, '@app/b': testB }, main)
+  ok(
+    'a call to a parameter that shares a name two files define is the parameter',
+    !(!result.ok && result.diagnostics.some(d => d.name === 'duplicate-definition')),
+    result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '),
+  )
+}
+
+{
+  // a LEAN nested call to a name two files define, under a call to that same name: the import binding renames every
+  // `pick` apart before the resolver runs, so the nested one has to be a call by then or it is a label naming nothing
+  // (`"pick__from0_0" has no parameter "pick"`, deck/site/code/http/http.tree, 2026-10-02)
+  const files: Record<string, string> = { '@app/a': PICK_A, '@app/b': PICK_B, '@app/c': C }
+  const resolve = (p: string): Source | undefined =>
+    files[p] !== undefined ? { file: `${p.slice('@app/'.length)}.tree`, text: files[p]! } : undefined
+  const main = `load @app/a\n  find pick\n\nload @app/c\n  find helper\n\ntask run\n  like text\n  back pick(pick(<x>))\n`
+  const result = compile({ file: 'main.tree', text: main }, { resolve, leanOf: file => file === 'main.tree' })
+  ok(
+    'a lean nested call to an ambiguous name is bound like any other call',
+    result.ok,
+    result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '),
+  )
+}
+
 console.log(`\nambiguous-name: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

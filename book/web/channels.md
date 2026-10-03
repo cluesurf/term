@@ -16,11 +16,9 @@ Maps to: the browser `WebSocket` (or a WebSocket client library), with the platf
 | `call peer/close` | Close the connection |
 | `read message/kind` | `text` for a message, `close` when the peer closed |
 
-**The two samples below are fenced as sketches and are not built.** The socket's methods declare `take self` with no type in `websocket.tree`, so `call peer/send` does not receive `peer` and fails as a wrong argument count, and passing `peer` by hand compiles to a call on the record that fails at run time. They show the intended shape until the method declarations are fixed.
-
 ## A basic client
 
-```tree fragment
+```tree
 load @term/base/code/network/websocket
   find connect
   find socket
@@ -53,7 +51,7 @@ task ask
 
 Loop on `receive` until the peer closes, handing each message on.
 
-```tree fragment
+```tree
 load @term/base/code/network/websocket
   find connect
   find socket

@@ -4,6 +4,8 @@
 # item on each front operation. Pops return `maybe`, so an empty deque is total. Build one with `make deque` and an
 # empty `items` list (or `make-deque`); `start` and `filled` begin at zero.
 
+note stable
+
 load @term/base/code/list
   find list
   find size
@@ -13,6 +15,8 @@ load @term/base/code/maybe
   find maybe
 
 form deque
+  # one object: its methods move `front` / `start` / `size`, and a copy (a Swift struct, a Rust value) would not see it
+  mark shared
   head t
   link items
     like list

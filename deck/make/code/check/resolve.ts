@@ -582,7 +582,7 @@ export function resolve(
           const caughtLink = exceptionLink.get(branch.label)
 
           if (caughtLink) {
-            for (const { local } of armLocals([...EXCEPTION_SHARED, ...caughtLink], branch.binds)) {
+            for (const { local } of armLocals([...EXCEPTION_SHARED, ...caughtLink], branch.binds ?? [])) {
               declare(local, { kind: 'local' })
             }
           }

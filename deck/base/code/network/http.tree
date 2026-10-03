@@ -9,6 +9,8 @@
 # (`waited` is the milliseconds); a server that cannot be reached raises `outage` (`thing` is the url). Any status,
 # 404 and 500 included, is an answer, not a raise.
 
+note stable
+
 load @term/base/code/native/{platform}/network/http
   find do-request
 
@@ -28,7 +30,13 @@ load @term/base/code/ordering
   find from-texts
 
 load @term/base/code/text/number
-  find parse-integer
+  find read-number
+
+load @term/base/code/float
+  find to-number
+
+load @term/base/code/maybe
+  find unwrap-or
 
 load @term/base/code/exception
   find timeout
@@ -93,20 +101,22 @@ task request
     make hash
   save names
     make list
+  # the length read once: a push in the body leaves the prover unsure of every list's size
+  save count
+    call size
+      read got
   save k, code 3
   walk test
     down
       call subtract
-        call size
-          read got
+        read count
         read k
     hook test
       call is-below
         call add
           read k
           code 1
-        call size
-          read got
+        read count
     hook step
       save name
         call get
@@ -151,13 +161,20 @@ task request
         read name
         call seen/get
           read name
+  # the host reports the status as digits; read without a raise, so a caller's `fork case` names only timeout and
+  # outage
+  save status
+    call read-number
+      call get
+        read got
+        code 1
   send back
     make http-response
       bind status
-        call parse-integer
-          call get
-            read got
-            code 1
+        call to-number
+          call unwrap-or
+            read status
+            0.0
       bind body
         call get
           read got

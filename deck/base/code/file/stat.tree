@@ -5,6 +5,8 @@
 # which carries a record by value and needs the form on both ends (native-dom-0019). A missing path reads as size 0
 # and not a directory, so the API stays total, as file/metadata does.
 
+note unstable
+
 form path-info
   link size, like number
   link directory, like boolean

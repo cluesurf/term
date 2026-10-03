@@ -1,0 +1,56 @@
+# the Collatz steps from n down to 1, counted in an accumulator passed to the tail call
+task steps
+  take n, like number
+  take count, like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        read n
+        code 1
+    hook hold
+      send back, read count
+  fork test
+    hook test
+      call is-equal
+        call modulo
+          read n
+          code 2
+        code 0
+    hook hold
+      send back
+        call steps
+          call divide
+            read n
+            code 2
+          call add
+            read count
+            code 1
+  send back
+    call steps
+      call add
+        call multiply
+          read n
+          code 3
+        code 1
+      call add
+        read count
+        code 1
+
+# the total Collatz steps of 1 to size - 1
+task run
+  take size, like number
+  like text
+  save total, code 0
+  walk size
+    bind base, code 1
+    bind head, read size
+    hook next
+      take site, name i
+      save total
+        call add
+          read total
+          call steps
+            read i
+            code 0
+  send back, text <{{total}}>

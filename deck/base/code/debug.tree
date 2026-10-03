@@ -1,32 +1,25 @@
+# Checks for a program's own assumptions. `assert-that` stops the run with the stdlib's `defect` when its condition is
+# false, on every backend, the way a list read past the end does: a broken assumption is a stop, not an exception a
+# caller handles (note/term/stdlib/semantics.md, "Two kinds of failure"). To print while debugging, `log/debug`; for the
+# call stack, `error/trace`.
+#
+# RENAMED AND CUT 2026-10-02 (base-v1-0020): this module declared `inspect`, `print`, `pause` and `assert` with no
+# bodies, so a call built clean and failed at run time.
 
-task inspect
-  take value
-  take
-    depth
-    like size
-    fall 4
-  take
-    color
-    like boolean
-    fall true
-  take
-    width
-    like size
-    fall 80
-  like text
+note unstable
 
-task print
-  take value
-  take
-    label
-    like text
-    need false
+load @term/base/code/stop
+  find abandon
 
-task pause
-
-task assert
+# true when the condition holds; otherwise the run stops, saying what was assumed
+task assert-that
   take condition, like boolean
-  take
-    message
-    like text
-    need false
+  take message, like text
+  like boolean
+  fork test
+    hook test
+      read condition
+    hook hold
+      send back, true
+  call abandon, text <assertion: {{message}}>
+  send back, false

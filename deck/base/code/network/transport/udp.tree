@@ -3,6 +3,9 @@
 # The socket-level open/send API lives in ../../udp.
 
 # a datagram: an eight-byte header plus the payload bytes
+
+note unstable
+
 form udp-datagram
   link source-port, like u16
   link destination-port, like u16

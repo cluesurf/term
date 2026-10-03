@@ -1,0 +1,126 @@
+# binary-trees, single-threaded: the algorithm of hanabi1224's 3.rs, 1.swift and 1.kt. A node at depth 0 is still a
+# node, with two empty children, so every program allocates the same 2^(d+1) - 1 nodes per tree.
+
+form tree
+  case empty
+  case node
+    link left, like tree
+    link right, like tree
+
+task bottom-up-tree
+  take depth, like number
+  like tree
+  fork test
+    hook test
+      call is-above
+        read depth
+        code 0
+    hook hold
+      send back
+        make node
+          bind left
+            call bottom-up-tree
+              call subtract
+                read depth
+                code 1
+          bind right
+            call bottom-up-tree
+              call subtract
+                read depth
+                code 1
+  send back
+    make node
+      bind left
+        make empty
+      bind right
+        make empty
+
+task item-check
+  take t, like tree
+  like number
+  fork case, read t
+    case empty
+      send back, code 0
+    case node
+      send back
+        call add
+          code 1
+          call add
+            call item-check
+              read left
+            call item-check
+              read right
+
+task run
+  take size, like number
+  like text
+  save min-depth, code 4
+  save max-depth, read size
+  fork test
+    hook test
+      call is-below
+        read max-depth
+        call add
+          read min-depth
+          code 2
+    hook hold
+      save max-depth
+        call add
+          read min-depth
+          code 2
+  save stretch-depth
+    call add
+      read max-depth
+      code 1
+  save stretch-check
+    call item-check
+      call bottom-up-tree
+        read stretch-depth
+  save out, text <stretch tree of depth {{stretch-depth}}\t check: {{stretch-check}}>
+  save long-lived
+    call bottom-up-tree
+      read max-depth
+  save depth, read min-depth
+  walk test
+    hook test
+      call is-maximum
+        read depth
+        read max-depth
+    hook hold
+      # iterations is 1 shifted left by max-depth - depth + min-depth
+      save iterations, code 1
+      walk size
+        bind base, code 0
+        bind head
+          call add
+            call subtract
+              read max-depth
+              read depth
+            read min-depth
+        hook next
+          take site, name k
+          save iterations
+            call multiply
+              read iterations
+              code 2
+      save total, code 0
+      walk size
+        bind base, code 0
+        bind head, read iterations
+        hook next
+          take site, name i
+          save total
+            call add
+              read total
+              call item-check
+                call bottom-up-tree
+                  read depth
+      save out, text <{{out}}\n{{iterations}}\t trees of depth {{depth}}\t check: {{total}}>
+      save depth
+        call add
+          read depth
+          code 2
+  save long-check
+    call item-check
+      read long-lived
+  send back, text <{{out}}\nlong lived tree of depth {{max-depth}}\t check: {{long-check}}>

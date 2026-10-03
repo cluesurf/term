@@ -1,5 +1,7 @@
 # Duration: a span of elapsed time, held as a whole number of nanoseconds. Pure integer arithmetic, identical on every backend. The `from-*` forms build a duration from a unit count; the `to-*` forms read it back in a coarser unit (truncating); `plus` / `minus` / `negate` / `absolute` compose spans. The combiners are named `plus` / `minus` rather than `add` / `subtract` because those names are the `number` arithmetic primitives.
 
+note stable
+
 form duration
   link nanoseconds, like number
 

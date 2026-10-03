@@ -22,7 +22,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "SeedSwiftRuntime",
+    name: "TermSwiftRuntime",
     platforms: [.macOS(.v14)],
     dependencies: [
         .package(
@@ -36,7 +36,7 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "SeedSwiftRuntime",
+            name: "TermSwiftRuntime",
             dependencies: [
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
@@ -45,7 +45,7 @@ let package = Package(
                 .product(name: "HummingbirdHTTP2", package: "hummingbird"),
                 .product(name: "HummingbirdTLS", package: "hummingbird"),
             ],
-            path: "Sources/SeedSwiftRuntime"
+            path: "Sources/TermSwiftRuntime"
         )
     ]
 )

@@ -1,6 +1,8 @@
 
 # Process: platform info and lifecycle. Platform implementation is selected at build time and hidden behind this API.
 
+note stable
+
 load @term/base/code/native/{platform}/process
   find get-platform
   find exit-with

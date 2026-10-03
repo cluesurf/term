@@ -1,3 +1,4 @@
+note unstable
 
 mask exclusion
   # Bitwise Xor trait

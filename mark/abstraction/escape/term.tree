@@ -1,0 +1,47 @@
+load @term/base/code/list
+  find list
+  find push
+  find sum
+
+# the decimal digits of n, lowest first, as a list that never leaves the caller
+task digits
+  take n, like number
+  like list
+    like number
+  save out
+    make list
+  save rest, read n
+  walk test
+    hook test
+      call is-above
+        read rest
+        code 0
+    hook hold
+      call push
+        read out
+        call modulo
+          read rest
+          code 10
+      save rest
+        call divide
+          read rest
+          code 10
+  send back, read out
+
+# the sum of the digit sums of 0 to size, each digit sum taken from a list made and summed per number
+task run
+  take size, like number
+  like text
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read size
+    hook next
+      take site, name i
+      save total
+        call add
+          read total
+          call sum
+            call digits
+              read i
+  send back, text <{{total}}>

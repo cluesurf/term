@@ -6,7 +6,8 @@
 //
 // The dom's `{platform}` slot is pinned to `memory` for all three, so TypeScript runs the identical host rather than
 // the server's (`native/node`), and a difference can only be the backend.
-// RN_ONLY=typescript (or swift, kotlin) runs one backend. Run: npx tsx test/compile/render-native.ts
+// Rust joined on 2026-10-02 (native-dom-0020), once `mark shared` lowered there.
+// RN_ONLY=typescript (or swift, kotlin, rust) runs one backend. Run: npx tsx test/compile/render-native.ts
 
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
@@ -17,6 +18,7 @@ import { nativePrelude } from '@term/make/code/compile/native'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
+import { emitRust } from '@term/make/code/compile/rust'
 import { projectResolver } from '@term/call/code/make'
 import type { Resolver } from '@term/make/code/compile/load'
 
@@ -297,7 +299,8 @@ function compiles(label: string, args: string[]): boolean {
   } catch (e) {
     // the errors, not the warnings in front of them
     const text = String((e as { stderr?: Buffer }).stderr ?? e)
-    const errors = text.split('\n').filter(line => /error:|^e: /.test(line))
+    // `error:` (swiftc), `e: ` (kotlinc), `error[E0308]:` (rustc), and rustc's ` --> file:line` under each
+    const errors = text.split('\n').filter(line => /error:|^e: |^error\[|^\s+--> /.test(line))
     ok(`${label}: builds`, false, (errors.length > 0 ? errors.join('\n') : text).slice(0, 1600))
 
     return false
@@ -344,10 +347,28 @@ function runKotlin(one: Case): void {
   }
 }
 
+// Rust (native-dom-0020): the memory host holds its nodes in `mark shared` forms, which Rust lowers to an
+// `Rc<RefCell<..>>` handle, so a node appended under the root is the same node the effect rewrites
+function runRust(one: Case): void {
+  if (!have('rustc')) {
+    return skipped('rust: render', 'rustc not installed')
+  }
+
+  const result = build('rust', one)
+  const rust = emitRust(result.program)
+  const prelude = nativePrelude(result.program, 'rust', readRuntime, rust)
+  const stem = join(dir, `${one.name.replace(/ /g, '-')}-rust`)
+  writeFileSync(`${stem}.rs`, [prelude, rust, 'fn main() { println!("{}", run()); }', ''].join('\n'))
+
+  if (compiles(`rust (${one.name})`, ['rustc', '-A', 'warnings', '-o', stem, `${stem}.rs`])) {
+    judge('rust', one, spawnSync(stem, [], { encoding: 'utf8' }))
+  }
+}
+
 const only = process.env.RN_ONLY ?? ''
 
 for (const one of CASES) {
-  for (const [name, run] of [['typescript', runTypeScript], ['swift', runSwift], ['kotlin', runKotlin]] as const) {
+  for (const [name, run] of [['typescript', runTypeScript], ['swift', runSwift], ['kotlin', runKotlin], ['rust', runRust]] as const) {
     if (!only || only === name) {
       try {
         run(one)

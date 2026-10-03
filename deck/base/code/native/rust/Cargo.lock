@@ -1448,7 +1448,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "seed-rust-runtime"
+name = "term-rust-runtime"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",

@@ -1,6 +1,8 @@
 # Who owns a file. The clean uniform interface, the per-env native implementation selected at build time and
 # hidden. A missing path reads as user 0 and group 0, so the API stays total.
 
+note unstable
+
 load @term/base/code/native/{platform}/file/asynchronous/owner
   find owner-read
   find owner-write

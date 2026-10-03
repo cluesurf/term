@@ -1,0 +1,799 @@
+# The `bench.tree` contract (note/term/bench/rules.md, "The file, exactly"). Every program under
+# `mark/<family>/<program>/` states what it measures before it is timed. The file is Term data, read by @term/host, the
+# compiler's own data reader. A program missing any key is REFUSED with every reason named, and never run.
+
+load ./data
+  find data-value
+
+load @term/base/code/json
+  find get-field
+  find get-item
+  find as-text
+  find as-number
+  find is-null
+  find is-text
+  find is-object
+  find is-array
+  find is-boolean
+  find array-size
+  find object-keys
+
+load @term/base/code/float
+  find to-number
+
+load ./disk
+  find file-text
+  find file-present
+  find is-directory
+  find folder-names
+
+load @term/base/code/list
+  find list
+  find push
+  find size
+  find sort
+  find join
+
+load ./lists
+  find holds-text
+
+load @term/base/code/ordering
+  find from-texts
+
+load @term/base/code/text
+  find trim
+  find split
+  find starts-with
+  find ends-with
+
+load ./digest
+  find tone-of-text
+
+# one implementation the Term program is compared with, as bench.tree states it
+form baseline
+  link name, like text
+  link file, like text
+  # `typescript`, `rust`, `swift`, `kotlin`, or `term` for a pair, which is compiled for every target
+  link language, like text
+  # the one target a hand version runs on, or `every` for a Term pair
+  link target, like text
+  link track, like text
+  link source, like text
+  # empty for `ours`
+  link commit, like text
+  link license, like text
+
+# a named size, its expected output, and the digest of that output
+form named-size
+  link name, like text
+  link value, like number
+  link expect, like text
+  link digest, like text
+
+form contract
+  # `<family>/<program>`
+  link name, like text
+  link dir, like text
+  # the Term program, as an absolute path
+  link term, like text
+  link boundary, like text
+  link sizes
+    like list
+      like named-size
+  link baselines
+    like list
+      like baseline
+  # every reason the program is refused. Empty when it may run
+  link refused
+    like list
+      like text
+  # the sha256 in tone of bench.tree, every source and every expected output
+  link digest, like text
+
+host track-names, text <same idiom best library pair>
+
+host metric-names, text <wall rss size>
+
+host semantics-keys, text <integer float text map_order>
+
+# a number in a dynamic value: not absent and none of the other kinds
+task is-number
+  take value, like dynamic
+  like boolean
+  send back
+    call not
+      call or
+        call or
+          call is-null
+            read value
+          call is-text
+            read value
+        call or
+          call or
+            call is-object
+              read value
+            call is-array
+              read value
+          call is-boolean
+            read value
+
+# the language a hand version is written in, by its extension. Empty for one the runner does not build
+task language-of
+  take file, like text
+  like text
+  fork test
+    hook test
+      call ends-with
+        read file
+        text <.ts>
+    hook hold
+      send back, text <typescript>
+  fork test
+    hook test
+      call ends-with
+        read file
+        text <.rs>
+    hook hold
+      send back, text <rust>
+  fork test
+    hook test
+      call ends-with
+        read file
+        text <.swift>
+    hook hold
+      send back, text <swift>
+  fork test
+    hook test
+      call ends-with
+        read file
+        text <.kt>
+    hook hold
+      send back, text <kotlin>
+  fork test
+    hook test
+      call ends-with
+        read file
+        text <.tree>
+    hook hold
+      send back, text <term>
+  send back, text <>
+
+# the target a language runs on. A Term pair runs on every one
+task target-of
+  take language, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read language
+        text <typescript>
+    hook hold
+      send back, text <node>
+  fork test
+    hook test
+      call is-equal
+        read language
+        text <term>
+    hook hold
+      send back, text <every>
+  send back, read language
+
+task sorted-texts
+  take values
+    like list
+      like text
+  like list
+    like text
+  send back
+    call sort
+      read values
+      read from-texts
+
+# every file under a directory, as paths relative to it, in sorted order
+task files-under
+  note async
+  take dir, like text
+  take prefix, like text
+  like list
+    like text
+  save out
+    make list
+  save names
+    call sorted-texts
+      call folder-names
+        read dir
+  walk list, read names
+    hook next
+      take site, name entry
+      save full, text <{{dir}}/{{entry}}>
+      save relative, text <{{prefix}}{{entry}}>
+      save inward
+        call is-directory
+          read full
+          wait true
+      fork test
+        hook test
+          read inward
+        hook hold
+          save inner
+            call files-under
+              read full
+              text <{{relative}}/>
+              wait true
+          walk list, read inner
+            hook next
+              take site, name one
+              call push
+                read out
+                read one
+        hook miss
+          call push
+            read out
+            read relative
+  send back, read out
+
+# the program's digest: every file under its directory, by relative path and content, in sorted order. A changed
+# program is a new workload, never compared with its earlier self
+task program-digest
+  note async
+  take dir, like text
+  like text
+  save files
+    call files-under
+      read dir
+      text <>
+      wait true
+  save parts
+    make list
+  walk list, read files
+    hook next
+      take site, name relative
+      save body
+        call file-text
+          text <{{dir}}/{{relative}}>
+          wait true
+      call push
+        read parts
+        text <{{relative}}\n{{body}}\n>
+  send back
+    call tone-of-text
+      call join
+        read parts
+        text <>
+      wait true
+
+# a text field of a dynamic map, or empty when absent or not text
+task text-field
+  take value, like dynamic
+  take key, like text
+  like text
+  send back
+    call as-text
+      call get-field
+        read value
+        read key
+
+# read one program's bench.tree. The contract comes back either way; `refused` holds every reason it may not run
+task read-contract
+  note async
+  take dir, like text
+  take name, like text
+  like contract
+  save refused
+    make list
+  save sizes
+    make list
+  save baselines
+    make list
+  save file, text <{{dir}}/bench.tree>
+  save empty
+    make contract
+      bind name, read name
+      bind dir, read dir
+      bind term, text <>
+      bind boundary, text <>
+      bind sizes, read sizes
+      bind baselines, read baselines
+      bind refused, read refused
+      bind digest, text <>
+  fork test
+    hook test
+      call not
+        call file-present
+          read file
+          wait true
+    hook hold
+      call push
+        read refused
+        text <no bench.tree>
+      send back, read empty
+  save body
+    call file-text
+      read file
+      wait true
+  save value
+    call data-value
+      read body
+  # the Term program
+  save term-name
+    call text-field
+      read value
+      text <term>
+  fork test
+    hook test
+      call is-equal
+        read term-name
+        text <>
+    hook hold
+      save term-name, text <term.tree>
+  save term, text <{{dir}}/{{term-name}}>
+  fork test
+    hook test
+      call not
+        call file-present
+          read term
+          wait true
+    hook hold
+      call push
+        read refused
+        text <the Term program {{term-name}} does not exist>
+  # input
+  save input
+    call get-field
+      read value
+      text <input>
+  fork test
+    hook test
+      call is-null
+        read input
+    hook hold
+      call push
+        read refused
+        text <missing key: input>
+    hook miss
+      save kind
+        call text-field
+          read input
+          text <kind>
+      fork test
+        hook test
+          call is-unequal
+            read kind
+            text <size>
+        hook hold
+          call push
+            read refused
+            text <input.kind is "{{kind}}", and the runner reads only size today>
+      save named
+        call get-field
+          read input
+          text <sizes>
+      save keys
+        call object-keys
+          read named
+      fork test
+        hook test
+          call is-equal
+            call size
+              read keys
+            code 0
+        hook hold
+          call push
+            read refused
+            text <missing key: input.sizes, which names at least one size>
+      walk list, read keys
+        hook next
+          take site, name key
+          save one
+            call get-field
+              read named
+              read key
+          fork test
+            hook test
+              call not
+                call is-number
+                  read one
+            hook hold
+              call push
+                read refused
+                text <input.sizes.{{key}} is not a number>
+            hook miss
+              save expect-file, text <{{dir}}/expect/{{key}}.txt>
+              fork test
+                hook test
+                  call file-present
+                    read expect-file
+                    wait true
+                hook hold
+                  save expect
+                    call trim
+                      call file-text
+                        read expect-file
+                        wait true
+                  call push
+                    read sizes
+                    make named-size
+                      bind name, read key
+                      bind value
+                        call to-number
+                          call as-number
+                            read one
+                      bind expect, read expect
+                      bind digest
+                        call tone-of-text
+                          read expect
+                          wait true
+                hook miss
+                  call push
+                    read refused
+                    text <no expected output expect/{{key}}.txt for size {{key}}>
+  # output
+  save output
+    call get-field
+      read value
+      text <output>
+  fork test
+    hook test
+      call is-null
+        read output
+    hook hold
+      call push
+        read refused
+        text <missing key: output>
+    hook miss
+      save kind
+        call text-field
+          read output
+          text <kind>
+      fork test
+        hook test
+          call is-unequal
+            read kind
+            text <exact>
+        hook hold
+          call push
+            read refused
+            text <output.kind is "{{kind}}", and the runner checks only exact today>
+  # boundary
+  save boundary
+    call text-field
+      read value
+      text <boundary>
+  fork test
+    hook test
+      call is-equal
+        read boundary
+        text <>
+    hook hold
+      call push
+        read refused
+        text <missing key: boundary>
+    hook miss
+      fork test
+        hook test
+          call is-equal
+            read boundary
+            text <kernel>
+        hook hold
+          call push
+            read refused
+            text <boundary kernel is not run yet: the runner times whole processes>
+        hook miss
+          fork test
+            hook test
+              call is-unequal
+                read boundary
+                text <process>
+            hook hold
+              call push
+                read refused
+                text <boundary is "{{boundary}}", not process or kernel>
+  # metrics
+  save metrics
+    call get-field
+      read value
+      text <metrics>
+  save allowed
+    call split
+      read metric-names
+      text < >
+  fork test
+    hook test
+      call is-equal
+        call array-size
+          read metrics
+        code 0
+    hook hold
+      call push
+        read refused
+        text <missing key: metrics>
+    hook miss
+      walk size
+        bind base, code 0
+        bind head
+          call array-size
+            read metrics
+        hook next
+          take site, name at
+          save metric
+            call as-text
+              call get-item
+                read metrics
+                read at
+          fork test
+            hook test
+              call not
+                call holds-text
+                  read allowed
+                  read metric
+            hook hold
+              call push
+                read refused
+                text <metric "{{metric}}" is not one of wall, rss, size>
+  # semantics: every key stated, as text
+  save semantics
+    call get-field
+      read value
+      text <semantics>
+  fork test
+    hook test
+      call is-null
+        read semantics
+    hook hold
+      call push
+        read refused
+        text <missing key: semantics>
+    hook miss
+      walk list
+        call split
+          read semantics-keys
+          text < >
+        hook next
+          take site, name key
+          fork test
+            hook test
+              call not
+                call is-text
+                  call get-field
+                    read semantics
+                    read key
+            hook hold
+              call push
+                read refused
+                text <semantics.{{key}} is not stated>
+  # baselines
+  save stated
+    call get-field
+      read value
+      text <baselines>
+  save tracks
+    call split
+      read track-names
+      text < >
+  fork test
+    hook test
+      call is-equal
+        call array-size
+          read stated
+        code 0
+    hook hold
+      call push
+        read refused
+        text <missing key: baselines>
+    hook miss
+      walk size
+        bind base, code 0
+        bind head
+          call array-size
+            read stated
+        hook next
+          take site, name at
+          save one
+            call get-item
+              read stated
+              read at
+          save where, text <baselines[{{at}}]>
+          save path
+            call text-field
+              read one
+              text <file>
+          save language
+            call language-of
+              read path
+          save given
+            call text-field
+              read one
+              text <name>
+          save track
+            call text-field
+              read one
+              text <track>
+          save source
+            call text-field
+              read one
+              text <source>
+          save commit
+            call text-field
+              read one
+              text <commit>
+          save license
+            call text-field
+              read one
+              text <license>
+          fork test
+            hook test
+              call is-equal
+                read given
+                text <>
+            hook hold
+              call push
+                read refused
+                text <{{where}}.name is missing>
+          fork test
+            hook test
+              call is-equal
+                read path
+                text <>
+            hook hold
+              call push
+                read refused
+                text <{{where}}.file is missing>
+            hook miss
+              fork test
+                hook test
+                  call is-equal
+                    read language
+                    text <>
+                hook hold
+                  call push
+                    read refused
+                    text <{{where}}.file {{path}} is not .ts, .rs, .swift, .kt or .tree>
+              fork test
+                hook test
+                  call not
+                    call file-present
+                      text <{{dir}}/{{path}}>
+                      wait true
+                hook hold
+                  call push
+                    read refused
+                    text <{{where}}.file {{path}} does not exist>
+          fork test
+            hook test
+              call not
+                call holds-text
+                  read tracks
+                  read track
+            hook hold
+              call push
+                read refused
+                text <{{where}}.track "{{track}}" is not one of same, idiom, best, library, pair>
+          fork test
+            hook test
+              call is-equal
+                read source
+                text <>
+            hook hold
+              call push
+                read refused
+                text <{{where}}.source is missing: ours, or the upstream repository>
+          fork test
+            hook test
+              call is-equal
+                read license
+                text <>
+            hook hold
+              call push
+                read refused
+                text <{{where}}.license is missing>
+          fork test
+            hook test
+              call and
+                call is-unequal
+                  read source
+                  text <ours>
+                call is-equal
+                  read commit
+                  text <>
+            hook hold
+              call push
+                read refused
+                text <{{where}} is upstream and pins no commit>
+          call push
+            read baselines
+            make baseline
+              bind name, read given
+              bind file, read path
+              bind language, read language
+              bind target
+                call target-of
+                  read language
+              bind track, read track
+              bind source, read source
+              bind commit, read commit
+              bind license, read license
+  save digest, text <>
+  fork test
+    hook test
+      call is-equal
+        call size
+          read refused
+        code 0
+    hook hold
+      save digest
+        call program-digest
+          read dir
+          wait true
+  send back
+    make contract
+      bind name, read name
+      bind dir, read dir
+      bind term, read term
+      bind boundary, read boundary
+      bind sizes, read sizes
+      bind baselines, read baselines
+      bind refused, read refused
+      bind digest, read digest
+
+# every program directory: `mark/<family>/<program>/`, where a family is any directory but the runner's own
+task program-names
+  note async
+  take root, like text
+  like list
+    like text
+  save out
+    make list
+  save skipped
+    call split
+      text <code tmp node_modules host>
+      text < >
+  save families
+    call sorted-texts
+      call folder-names
+        read root
+  walk list, read families
+    hook next
+      take site, name family
+      save family-folder
+        call is-directory
+          text <{{root}}/{{family}}>
+          wait true
+      fork test
+        hook test
+          call or
+            call or
+              call holds-text
+                read skipped
+                read family
+              call starts-with
+                read family
+                text <.>
+            call not
+              read family-folder
+        hook hold
+          turn next
+      save inside
+        call sorted-texts
+          call folder-names
+            text <{{root}}/{{family}}>
+      walk list, read inside
+        hook next
+          take site, name program
+          save program-folder
+            call is-directory
+              text <{{root}}/{{family}}/{{program}}>
+              wait true
+          fork test
+            hook test
+              call or
+                call starts-with
+                  read program
+                  text <.>
+                call not
+                  read program-folder
+            hook hold
+              turn next
+          call push
+            read out
+            text <{{family}}/{{program}}>
+  send back, read out

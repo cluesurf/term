@@ -28,64 +28,43 @@ task deck-root-of
   note async
   take file, like text
   take root, like text
+
   like text
-  save at
-    call node-path/dirname
-      read file
+
+  save at, node-path/dirname file
+
   walk test
     hook test
       true
     hook hold
-      save manifest
-        call join
-          read at
-          text <deck.tree>
-      save there
-        call file-test
-          read manifest
-          wait true
+      save manifest, join at, <deck.tree>
+      save there, file-test manifest, wait true
       fork test
-        read there
-        hook hold
+        there
+        hold
           save name
-            call manifest-value-of
-              read manifest
-              text <deck>
-              wait true
+            manifest-value-of manifest, <deck>, wait true
           fork test
-            call starts-with
-              read name
-              text <@>
-            hook hold
-              send back, read at
-      save up
-        call node-path/dirname
-          read at
+            starts-with read(name), <@>
+            hold
+              back at
+      save up, node-path/dirname at
       fork test
-        call is-equal
-          read up
-          read at
-        hook hold
-          send back, read root
-      save at
-        read up
-  send back, read root
+        is-equal up, at
+        hold
+          back root
+      save at, up
+  back root
 
 # the deck NAME a file belongs to, or the empty text when nothing above it is a manifest
 task deck-name-of
   note async
   take file, like text
   take root, like text
+
   like text
-  save at
-    call deck-root-of
-      read file
-      read root
-      wait true
-  send back
-    call manifest-value-of
-      call join
-        read at
-        text <deck.tree>
-      text <deck>
-      wait true
+
+  save at, deck-root-of file, root, wait true
+
+  back
+    manifest-value-of join(at, <deck.tree>), <deck>, wait true

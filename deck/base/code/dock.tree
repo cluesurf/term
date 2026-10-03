@@ -6,6 +6,8 @@
 # The matcher and arg-policy are ours (uniform everywhere); transport/argv delegate to native per backend.
 # Public surface: book/site/routes.md, book/site/navigation.md, book/line/calls.md.
 
+note unstable
+
 load ./term
   find term
 

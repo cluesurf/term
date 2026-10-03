@@ -52,43 +52,33 @@ form host-ask
 task test
   note async
   take filter, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
     call test-module/callTest
-      make test-ask
-        bind root, read root
-        bind filter, read filter
+      make test-ask, bind(root, read root), bind filter, read filter
       wait true
   halt take
     take error
-    call log-fail
-      call format-error
-        read error
-    call node-process/exit
-      code 1
+    log-fail format-error error
+    node-process/exit code 1
 
 # `term walk`: the REPL
 task walk
   note async
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
-    call walk-module/callWalk
-      make root-ask
-        bind root, read root
-      wait true
+    call walk-module/callWalk, make(root-ask, bind root, read root), wait true
   halt take
     take error
-    call log-fail
-      call format-error
-        read error
-    call node-process/exit
-      code 1
+    log-fail format-error error
+    node-process/exit code 1
 
 # `term cast [entry]`: build a server-rendered app into something deployable. Cloudflare is the one target, and
 # anything else is named rather than ignored.
@@ -96,28 +86,23 @@ task cast
   note async
   take entry, like text
   take target, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   save chosen
     fork test
-      call is-equal
-        read target
-        text <>
-      hook hold
+      is-equal target, <>
+      hold
         text <cloudflare>
-      hook miss
+      miss
         read target
   fork test
-    call is-unequal
-      read chosen
-      text <cloudflare>
-    hook hold
-      call log-fail
-        text <Unknown cast target: {{chosen}}. The one target is cloudflare.>
-      call node-process/exit
-        code 1
+    is-unequal chosen, <cloudflare>
+    hold
+      log-fail <Unknown cast target: {{chosen}}. The one target is cloudflare.>
+      node-process/exit code 1
   note unsafe
     call cast-module/callCast
       make cast-ask
@@ -127,11 +112,8 @@ task cast
       wait true
   halt take
     take error
-    call log-fail
-      call format-error
-        read error
-    call node-process/exit
-      code 1
+    log-fail format-error error
+    node-process/exit code 1
 
 # `term host`: publish this package to the registry
 task host
@@ -140,10 +122,11 @@ task host
   take registry, like text
   take trust, like text
   take untrust, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
     call host-module/callHost
       make host-ask
@@ -155,49 +138,35 @@ task host
       wait true
   halt take
     take error
-    call log-fail
-      call format-error
-        read error
-    call node-process/exit
-      code 1
+    log-fail format-error error
+    node-process/exit code 1
 
 # `term show`: what this toolchain is -- its version and where it is installed
 task show
   note async
   take what, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
-    call line-module/callShow
-      make root-ask
-        bind root, read root
-      wait true
+    call line-module/callShow, make(root-ask, bind root, read root), wait true
   halt take
     take error
-    call log-fail
-      call format-error
-        read error
-    call node-process/exit
-      code 1
+    log-fail format-error error
+    node-process/exit code 1
 
 # `term fill`: print the shell completion script
 task fill
   note async
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
-    call line-module/callFill
-      make root-ask
-        bind root, read root
-      wait true
+    call line-module/callFill, make(root-ask, bind root, read root), wait true
   halt take
     take error
-    call log-fail
-      call format-error
-        read error
-    call node-process/exit
-      code 1
+    log-fail format-error error
+    node-process/exit code 1

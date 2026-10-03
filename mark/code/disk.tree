@@ -1,0 +1,76 @@
+# The file operations the runner uses, under names of their own. The file module's `read`, `write`, `test` and
+# `list` share their names with @term/host's `read` and the list module's tasks, and an alias (`find read, name
+# read-file`) renamed the definition for every file in the build rather than for the importing file only, so
+# @term/host's `read` went undefined elsewhere. Wrapping them here keeps each name imported once.
+
+load @term/base/code/file
+  find read
+  find write
+  find test
+  find stat
+
+load @term/base/code/file/directory
+  find make
+  find list
+
+task file-text
+  note async
+  take path, like text
+  like text
+  send back
+    call read
+      read path
+      wait true
+
+task file-save
+  note async
+  take path, like text
+  take body, like text
+  call write
+    read path
+    read body
+    wait true
+
+task file-present
+  note async
+  take path, like text
+  like boolean
+  send back
+    call test
+      read path
+      wait true
+
+# bytes, 0 when absent
+task file-size
+  note async
+  take path, like text
+  like number
+  save info
+    call stat
+      read path
+      wait true
+  send back, read info/size
+
+task is-directory
+  note async
+  take path, like text
+  like boolean
+  save info
+    call stat
+      read path
+      wait true
+  send back, read info/directory
+
+# make a directory and its parents
+task make-folder
+  take path, like text
+  call make
+    read path
+
+task folder-names
+  take path, like text
+  like list
+    like text
+  send back
+    call list
+      read path

@@ -145,11 +145,14 @@ task anchor
     task drop
       save skip, code 0
 
+# the window's root once `open-root` made it, as a page's body is its document's, so a page written for the web mounts
+# here unchanged (native-dom-0014). Before a window exists, a detached root
 task page-body
   like view
   send back
-    call create-element
-      bind tag, text <main>
+    make view
+      bind handle
+        call native-view/page-body
 
 task observe-size
   take node, like view
@@ -255,6 +258,16 @@ task after-launch
   take body
     like task
   call native-view/after-launch
+    read body
+
+# run an ASYNC body once the app is running and its window exists: a page's `boot`, which awaits its data before it
+# mounts (native-dom-0014)
+task launch
+  take body
+    like task
+      wait true
+      like void
+  call native-view/launch
     read body
 
 task show-window

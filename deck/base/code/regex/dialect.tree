@@ -13,6 +13,8 @@
 # Refused, because the engines disagree or one lacks it: lookaround, backreferences, named groups, \b and \B (four
 # meanings of "word" across the four engines), \x \u \p escapes, and inline flags.
 
+note stable
+
 load @term/base/code/text/unicode
   find to-runes
   find rune-to-text

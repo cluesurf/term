@@ -1,0 +1,352 @@
+# One timed run of one process. The runner's own clock around starting it and its exit is the wall time, and the
+# process runs under `/usr/bin/time` (`-l` on macOS, `-v` on Linux) for what the kernel counted: user and system
+# time, peak resident set, and on macOS the instructions retired, cycles elapsed and peak memory footprint. A count
+# the platform does not give is ABSENT, -1 here, never 0. Every value is a whole number: nanoseconds, bytes, counts.
+
+load @term/base/code/process/run
+  find run, name run-process
+  find run-result
+
+load @term/base/code/list
+  find list
+  find push
+  find get
+  find size
+
+load @term/base/code/text
+  find trim
+  find split
+  find starts-with
+  find ends-with
+  find substring
+  find char-count
+
+load @term/base/code/text/number
+  find parse-integer
+  find parse-float
+
+load @term/base/code/float
+  find to-decimal
+  find to-number
+  find round
+
+load ./host
+  find stamp
+  find platform-name
+
+form sample
+  # nanoseconds
+  link wall, like number
+  link user, like number
+  link system, like number
+  # bytes
+  link rss, like number
+  link footprint, like number
+  # counts
+  link instructions, like number
+  link cycles, like number
+  link switches, like number
+  # what the process said, and how it ended
+  link code, like number
+  link output, like text
+  link error, like text
+
+# the words of a line, the runs of spaces between them dropped
+task words-of
+  take line, like text
+  like list
+    like text
+  save out
+    make list
+  walk list
+    call split
+      call trim
+        read line
+      text < >
+    hook next
+      take site, name word
+      fork test
+        hook test
+          call is-unequal
+            read word
+            text <>
+        hook hold
+          call push
+            read out
+            read word
+  send back, read out
+
+# a whole number written in a word, or -1
+task count-of
+  take word, like text
+  like number
+  fork test
+    hook test
+      call is-equal
+        read word
+        text <>
+    hook hold
+      send back
+        call subtract
+          code 0
+          code 1
+  send back
+    call parse-integer
+      read word
+
+# seconds written as a decimal, in whole nanoseconds
+task nanoseconds-of
+  take word, like text
+  like number
+  send back
+    call to-number
+      call round
+        call multiply
+          call parse-float
+            read word
+          code 1000000000.0
+
+# the last word of a line
+task last-word
+  take line, like text
+  like text
+  save words
+    call words-of
+      read line
+  fork test
+    hook test
+      call is-equal
+        call size
+          read words
+        code 0
+    hook hold
+      send back, text <>
+  send back
+    call get
+      read words
+      call subtract
+        call size
+          read words
+        code 1
+
+task first-word
+  take line, like text
+  like text
+  save words
+    call words-of
+      read line
+  fork test
+    hook test
+      call is-equal
+        call size
+          read words
+        code 0
+    hook hold
+      send back, text <>
+  send back
+    call get
+      read words
+      code 0
+
+# the flag `/usr/bin/time` takes for its long report on this platform
+task time-flag
+  like text
+  fork test
+    hook test
+      call is-equal
+        call platform-name
+        text <darwin>
+    hook hold
+      send back, text <-l>
+  send back, text <-v>
+
+# run `command` with `arguments` once, under /usr/bin/time, and read what it reports
+task take-sample
+  note async
+  take command, like text
+  take arguments
+    like list
+      like text
+  take flag, like text
+  like sample
+  save words
+    make list
+  call push
+    read words
+    read flag
+  call push
+    read words
+    read command
+  walk list, read arguments
+    hook next
+      take site, name word
+      call push
+        read words
+        read word
+  save start
+    call stamp
+  save found
+    call run-process
+      text </usr/bin/time>
+      read words
+      wait true
+  save wall
+    call to-number
+      call multiply
+        call subtract
+          call stamp
+          read start
+        code 1000000.0
+  save absent
+    call subtract
+      code 0
+      code 1
+  save user, read absent
+  save system, read absent
+  save rss, read absent
+  save footprint, read absent
+  save instructions, read absent
+  save cycles, read absent
+  save switches, read absent
+  walk list
+    call split
+      read found/error
+      text <\n>
+    hook next
+      take site, name raw
+      save line
+        call trim
+          read raw
+      # macOS, -l
+      fork test
+        hook test
+          call ends-with
+            read line
+            text < sys>
+        hook hold
+          save parts
+            call words-of
+              read line
+          fork test
+            hook test
+              call is-equal
+                call size
+                  read parts
+                code 6
+            hook hold
+              save user
+                call nanoseconds-of
+                  call get
+                    read parts
+                    code 2
+              save system
+                call nanoseconds-of
+                  call get
+                    read parts
+                    code 4
+      fork test
+        hook test
+          call ends-with
+            read line
+            text <maximum resident set size>
+        hook hold
+          save rss
+            call count-of
+              call first-word
+                read line
+      fork test
+        hook test
+          call ends-with
+            read line
+            text <peak memory footprint>
+        hook hold
+          save footprint
+            call count-of
+              call first-word
+                read line
+      fork test
+        hook test
+          call ends-with
+            read line
+            text <instructions retired>
+        hook hold
+          save instructions
+            call count-of
+              call first-word
+                read line
+      fork test
+        hook test
+          call ends-with
+            read line
+            text <cycles elapsed>
+        hook hold
+          save cycles
+            call count-of
+              call first-word
+                read line
+      fork test
+        hook test
+          call ends-with
+            read line
+            text <involuntary context switches>
+        hook hold
+          save switches
+            call count-of
+              call first-word
+                read line
+      # Linux, -v
+      fork test
+        hook test
+          call starts-with
+            read line
+            text <User time (seconds):>
+        hook hold
+          save user
+            call nanoseconds-of
+              call last-word
+                read line
+      fork test
+        hook test
+          call starts-with
+            read line
+            text <System time (seconds):>
+        hook hold
+          save system
+            call nanoseconds-of
+              call last-word
+                read line
+      fork test
+        hook test
+          call starts-with
+            read line
+            text <Maximum resident set size (kbytes):>
+        hook hold
+          save rss
+            call multiply
+              call count-of
+                call last-word
+                  read line
+              code 1024
+      fork test
+        hook test
+          call starts-with
+            read line
+            text <Involuntary context switches:>
+        hook hold
+          save switches
+            call count-of
+              call last-word
+                read line
+  send back
+    make sample
+      bind wall, read wall
+      bind user, read user
+      bind system, read system
+      bind rss, read rss
+      bind footprint, read footprint
+      bind instructions, read instructions
+      bind cycles, read cycles
+      bind switches, read switches
+      bind code, read found/code
+      bind output, read found/output
+      bind error, read found/error

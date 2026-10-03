@@ -1,0 +1,40 @@
+# the digit sum of n, added up as the digits come off: no list
+task digit-sum
+  take n, like number
+  like number
+  save total, code 0
+  save rest, read n
+  walk test
+    hook test
+      call is-above
+        read rest
+        code 0
+    hook hold
+      save total
+        call add
+          read total
+          call modulo
+            read rest
+            code 10
+      save rest
+        call divide
+          read rest
+          code 10
+  send back, read total
+
+# the same sum as term.tree
+task run
+  take size, like number
+  like text
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read size
+    hook next
+      take site, name i
+      save total
+        call add
+          read total
+          call digit-sum
+            read i
+  send back, text <{{total}}>

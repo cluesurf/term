@@ -17,6 +17,10 @@ export default defineConfig({
       // the manifest and lockfile are parsed with the real tree parser, so this package
       // resolves its sibling compiler exactly as the parent tsconfig does. There is no
       // cycle: the compiler does not import the package manager.
+      // a compiler module written in Term (deck/make/code/term/*.tree) is imported from its port, which
+      // `make:port` writes to host/port. The parent tsconfig falls back to it the same way; a bare alias to
+      // ../make cannot, so this one comes first (alias entries match in order)
+      '@term/make/code/term': path.resolve(__dirname, '../make/host/port/code/term'),
       '@term/make': path.resolve(__dirname, '../make'),
       // the package manager is built ON @cluesurf/save: content addressing, the prolly
       // tree, chunk / object / ref stores, commits, sync. It used to reimplement all

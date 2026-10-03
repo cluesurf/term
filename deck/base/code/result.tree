@@ -1,3 +1,4 @@
+note stable
 
 load @term/base/code/maybe
   find maybe

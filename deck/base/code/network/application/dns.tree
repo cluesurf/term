@@ -1,6 +1,8 @@
 
 # DNS: Domain Name System. Query and response messages for resolving names to records.
 
+note unstable
+
 form dns-record-type
   case a
   case quad-a

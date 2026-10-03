@@ -1,0 +1,56 @@
+load @term/base/code/list
+  find list
+  find push
+  find map
+  find filter
+  find reduce
+
+# the numbers 0 to size, tripled, the even ones kept, and summed: map, then filter, then reduce
+task run
+  take size, like number
+  like text
+  save items
+    make list
+  walk size
+    bind base, code 0
+    bind head, read size
+    hook next
+      take site, name i
+      call push
+        read items
+        read i
+  save tripled
+    call map
+      read items
+      task
+        take item, like number
+        like number
+        send back
+          call multiply
+            read item
+            code 3
+  save even
+    call filter
+      read tripled
+      task
+        take item, like number
+        like boolean
+        send back
+          call is-equal
+            call modulo
+              read item
+              code 2
+            code 0
+  save total
+    call reduce
+      read even
+      task
+        take total, like number
+        take item, like number
+        like number
+        send back
+          call add
+            read total
+            read item
+      code 0
+  send back, text <{{total}}>

@@ -1,0 +1,71 @@
+# The locals a `fork case` arm brings into scope. A variant's fields are visible in its arm by their own names. A
+# leading run of `link <name>` lines under the `case` says which, or renames them: when every name is a field of the
+# variant, the arm selects those fields by name (in any order, the others stay out of scope); otherwise the names
+# rename the fields in declaration order, so a nested match on the same enum can bind both without a collision.
+# The checker types the locals and the emitters declare them, from this one answer.
+#
+# The first checker module in Term (self-hosting, phase 2, 2026-10-02). It replaced check/arm.ts, which was deleted
+# in the same change: the checker and all four emitters import `armLocals` from the module this emits.
+
+load @term/base/code/list
+  find list
+
+form arm-local
+  link field, like text
+  link local, like text
+
+task arm-locals
+  # the variant's field names, in declaration order
+  take fields
+    like list
+      like text
+  # the arm's `link` names, in source order, empty when it wrote none
+  take binds
+    like list
+      like text
+  like list
+    like arm-local
+
+  save out, make list
+
+  # no `link` lines: every field, by its own name
+  fork test, is-empty(binds)
+    hold
+      walk fields
+        take field
+        out/push
+          make arm-local
+            bind field, read field
+            bind local, read field
+      back out
+
+  # every name a field: those fields, selected by name, in the order written
+  save every, true
+  walk binds
+    take name
+    fork test, is-equal(contains(fields, name), false)
+      hold
+        save every, false
+  fork test, every
+    hold
+      walk binds
+        take name
+        out/push
+          make arm-local
+            bind field, read name
+            bind local, read name
+      back out
+
+  # otherwise the names rename the fields in declaration order, and a field past the last name keeps its own
+  walk fields
+    take field
+    take at
+    save local, field
+    fork test, is-below(at, binds/length)
+      hold
+        save local, get(binds, at)
+    out/push
+      make arm-local
+        bind field, read field
+        bind local, read local
+  back out

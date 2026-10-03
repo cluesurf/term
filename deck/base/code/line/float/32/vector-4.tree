@@ -1,5 +1,7 @@
 # Vector-4D: a 4-component 32-bit-float vector (homogeneous coordinates). Pure float math. `plus` / `minus` combine, `scale` by a scalar, `dot` is the scalar product, `length` the magnitude, `normalize` the unit vector, `distance` the gap.
 
+note unstable
+
 load @term/base/code/float
   find square-root
 

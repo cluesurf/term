@@ -1838,14 +1838,10 @@ async function main(): Promise<void> {
     mathTs.includes('function absolute'),
     false,
   )
+  // power is exact integer arithmetic written in Term (note/term/stdlib/semantics.md), never the host's float pow
   expect(
-    'math: the power wrapper is inlined away (no function power)',
-    mathTs.includes('function power'),
-    false,
-  )
-  expect(
-    'math: power delegates inline to the host Math (math.pow)',
-    mathTs.includes('math.pow'),
+    'math: power is computed in Term, not by the host float pow',
+    mathTs.includes('function power') && !mathTs.includes('math.pow'),
     true,
   )
   expect(

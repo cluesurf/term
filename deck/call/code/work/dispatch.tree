@@ -40,171 +40,149 @@ form dispatch-answer
 
 # the route whose path is this token, among the ones at this level
 task route-named
-  take routes, like list
+  take routes
+    like list
     like unknown
   take token, like text
+
   like unknown
-  walk list, read routes
-    hook next
-      take site, name one
-      fork test
-        call is-equal
-          read one/path
-          read token
-        hook hold
-          send back, read one
-  send back
-    make void
+
+  walk routes
+    take site, name one
+    fork test
+      is-equal read(one/path), token
+      hold
+        back one
+  back make void
 
 # the full name a short letter stands for, so `-t` resolves to `--title`
 task name-for-short
-  take takes, like list
+  take takes
+    like list
     like unknown
   take letter, like text
+
   like text
-  walk list, read takes
-    hook next
-      take site, name one
-      fork test
-        call is-equal
-          read one/short
-          read letter
-        hook hold
-          send back
-            read one/name
-  send back, read letter
+
+  walk takes
+    take site, name one
+    fork test
+      is-equal read(one/short), letter
+      hold
+        back read one/name
+  back letter
 
 # does any take of this route collect the rest?
 task is-variadic
-  take takes, like list
+  take takes
+    like list
     like unknown
+
   like boolean
-  walk list, read takes
-    hook next
-      take site, name one
-      fork test
-        read one/variadic
-        hook hold
-          send back, true
-  send back, false
+
+  walk takes
+    take site, name one
+    fork test
+      read one/variadic
+      hold
+        back true
+  back false
 
 # is this value one the take allows? A take with no `pick` allows anything.
 task is-allowed
   take take, like unknown
   take value, like text
+
   like boolean
-  save choices
-    read take/choices
+
+  save choices, read take/choices
+
   fork test
-    call is-equal
-      read choices
-      make void
-    hook hold
-      send back, true
+    is-equal choices, make void
+    hold
+      back true
   fork test
-    call is-equal
-      read choices/length
-      code 0
-    hook hold
-      send back, true
-  walk list, read choices
-    hook next
-      take site, name one
-      fork test
-        call is-equal
-          read one
-          read value
-        hook hold
-          send back, true
-  send back, false
+    is-equal read(choices/length), code 0
+    hold
+      back true
+  walk choices
+    take site, name one
+    fork test
+      is-equal one, value
+      hold
+        back true
+  back false
 
 # the command path an argv names, descending while the next bare token is a subcommand
 task command-path
-  take routes, like list
+  take routes
+    like list
     like unknown
-  take argv, like list
+  take argv
+    like list
     like text
-  like list
-    like text
-  save found
-    make list
-  save level
-    read routes
-  walk list, read argv
-    hook next
-      take site, name token
-      fork test
-        call starts-with
-          read token
-          text <->
-        hook hold
-          send back, read found
-      save next
-        call route-named
-          read level
-          read token
-      fork test
-        call is-equal
-          read next
-          make void
-        hook hold
-          send back, read found
-      call found/push
-        read token
-      save level
-        read next/children
-  send back, read found
+
+  like list, like text
+
+  save found, make list
+  save level, routes
+
+  walk argv
+    take site, name token
+    fork test
+      starts-with token, <->
+      hold
+        back found
+    save next, route-named level, token
+    fork test
+      is-equal read(next), make void
+      hold
+        back found
+    found/push token
+    save level, read next/children
+  back found
 
 # The route an argv resolves to, or nothing when the first token names no command. The caller reports the error,
 # because it knows whether an empty argv means "no command" or "show the help".
 task route-for
-  take routes, like list
+  take routes
+    like list
     like unknown
-  take argv, like list
+  take argv
+    like list
     like text
+
   like unknown
-  save level
-    read routes
-  save current
-    make void
-  walk list, read argv
-    hook next
-      take site, name token
-      fork test
-        call starts-with
-          read token
-          text <->
-        hook hold
-          send back, read current
-      save next
-        call route-named
-          read level
-          read token
-      fork test
-        call is-equal
-          read next
-          make void
-        hook hold
-          send back, read current
-      save current
-        read next
-      save level
-        read next/children
-  send back, read current
+
+  save level, routes
+  save current, make void
+
+  walk argv
+    take site, name token
+    fork test
+      starts-with token, <->
+      hold
+        back current
+    save next, route-named level, token
+    fork test
+      is-equal read(next), make void
+      hold
+        back current
+    save current, read next
+    save level, read next/children
+  back current
 
 # The task a resolved command runs: the first `call` its route carries, which is what `task <name>` under a `hook`
 # becomes.
 task task-for
   take route, like unknown
+
   like text
-  save calls
-    read route/calls
+
+  save calls, read route/calls
+
   fork test
-    call is-above
-      read calls/length
-      code 0
-    hook hold
-      send back
-        read calls/0/name
-  send back
-    text <>
+    is-above read(calls/length), code 0
+    hold
+      back read calls/0/name
+  back <>

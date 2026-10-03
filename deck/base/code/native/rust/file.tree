@@ -1,4 +1,4 @@
-# Rust file system implementation. Forwards to the linked `io` runtime (code/compile/io-runtime SEED_IO_RUNTIME_RUST), which wraps std::fs and absorbs its Result type so the public file API stays total. Internal: reached only through the public file API.
+# Rust file system implementation. Forwards to the linked `io` runtime (runtime/io in this directory), which wraps std::fs and absorbs its Result type so the public file API stays total. Internal: reached only through the public file API.
 
 dock load
   load <global:io>, name io

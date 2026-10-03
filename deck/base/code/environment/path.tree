@@ -14,6 +14,8 @@
 # now, which is the convention code/environment.tree already follows for `current-directory` and `get-variable`.
 # Twelve more public modules are in the same state for the same reason: see note/term/stdlib-gaps.md.
 
+note stable
+
 load @term/base/code/native/{platform}/environment/path
   find read-path
 

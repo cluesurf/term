@@ -1,0 +1,192 @@
+load @term/base/code/list
+  find list
+  find push
+
+# fannkuch-redux, single-threaded: the Benchmarks Game's "naive transliteration from Rex Kerr's Scala program"
+# (fannkuchredux.java-8, swift-8, node-8), step for step. Three lists of n numbers, read and written in place by
+# index.
+
+# n numbers: 0, stride, 2 stride, and on
+task numbers
+  take n, like number
+  take stride, like number
+  like list
+    like number
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      call push
+        read out
+        call multiply
+          read i
+          read stride
+  send back, read out
+
+task run
+  take size, like number
+  like text
+  save n, read size
+  save perm1
+    call numbers
+      read n
+      code 1
+  save perm
+    call numbers
+      read n
+      code 0
+  save count
+    call numbers
+      read n
+      code 0
+  save f, code 0
+  save flips, code 0
+  save nperm, code 0
+  save checksum, code 0
+  save i, code 0
+  save k, code 0
+  save r, read n
+  save done, false
+  walk test
+    hook test
+      call is-equal
+        read done
+        false
+    hook hold
+      save i, code 0
+      walk test
+        hook test
+          call is-unequal
+            read r
+            code 1
+        hook hold
+          save below
+            call subtract
+              read r
+              code 1
+          save count/{below}, read r
+          save r, read below
+      walk test
+        hook test
+          call is-below
+            read i
+            read n
+        hook hold
+          save perm/{i}, read perm1/{i}
+          save i
+            call add
+              read i
+              code 1
+      # count the flips, and update the maximum and the checksum
+      save f, code 0
+      save k, read perm/0
+      walk test
+        hook test
+          call is-unequal
+            read k
+            code 0
+        hook hold
+          save i, code 0
+          walk test
+            hook test
+              call is-below
+                call multiply
+                  code 2
+                  read i
+                read k
+            hook hold
+              save mirror
+                call subtract
+                  read k
+                  read i
+              save t, read perm/{i}
+              save perm/{i}, read perm/{mirror}
+              save perm/{mirror}, read t
+              save i
+                call add
+                  read i
+                  code 1
+          save k, read perm/0
+          save f
+            call add
+              read f
+              code 1
+      fork test
+        hook test
+          call is-above
+            read f
+            read flips
+        hook hold
+          save flips, read f
+      fork test
+        hook test
+          call is-equal
+            call modulo
+              read nperm
+              code 2
+            code 0
+        hook hold
+          save checksum
+            call add
+              read checksum
+              read f
+        hook miss
+          save checksum
+            call subtract
+              read checksum
+              read f
+      # the next permutation, by incremental change
+      save more, true
+      walk test
+        hook test
+          read more
+        hook hold
+          fork test
+            hook test
+              call is-equal
+                read r
+                read n
+            hook hold
+              save done, true
+              save more, false
+            hook miss
+              save p0, read perm1/0
+              save i, code 0
+              walk test
+                hook test
+                  call is-below
+                    read i
+                    read r
+                hook hold
+                  save j
+                    call add
+                      read i
+                      code 1
+                  save perm1/{i}, read perm1/{j}
+                  save i, read j
+              save perm1/{r}, read p0
+              save left
+                call subtract
+                  read count/{r}
+                  code 1
+              save count/{r}, read left
+              fork test
+                hook test
+                  call is-above
+                    read left
+                    code 0
+                hook hold
+                  save more, false
+                hook miss
+                  save r
+                    call add
+                      read r
+                      code 1
+      save nperm
+        call add
+          read nperm
+          code 1
+  send back, text <{{checksum}}\nPfannkuchen({{n}}) = {{flips}}>

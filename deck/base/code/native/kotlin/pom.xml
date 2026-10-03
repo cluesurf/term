@@ -29,7 +29,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
   <groupId>surf.clue.term</groupId>
-  <artifactId>seed-kotlin-runtime</artifactId>
+  <artifactId>term-kotlin-runtime</artifactId>
   <version>0.1.0</version>
   <packaging>jar</packaging>
 

@@ -1,6 +1,8 @@
 
 # Octal, Hex traits.
 
+note unstable
+
 mask text-transformation
   take encoding
 

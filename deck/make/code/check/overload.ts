@@ -14,6 +14,7 @@ import { showType } from '@term/make/code/compile/node'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import type { ImportScope } from '@term/make/code/compile/load'
+import { nestLeanCalls } from '@term/make/code/check/lean-nest'
 
 // same-name, same-arity overloads: the first candidate's (mangled) name -> every candidate's name. Filled here,
 // read by the checker, which picks the candidate whose parameter types fit the arguments (check/infer.ts,
@@ -77,6 +78,70 @@ function eachCall(node: unknown, visit: (call: Extract<Expression, { form: 'call
       eachCall(value, visit)
     }
   }
+}
+
+// Every name BOUND inside a node: parameters (of the task itself and of any closure in it), `save` locals, a walk's
+// item and index, and a case arm's renamed fields. This pass runs before the resolver, so no call carries a binding
+// yet, and a call to a name bound here is a call to that LOCAL, which shadows every top-level definition.
+//
+// Without it, `maybe/filter`'s `call test / read value`, where `test` is the task's own callback parameter, was
+// refused as ambiguous between the stdlib's `file/test` and the CLI's `work/app-verbs` `test`: a question about
+// imports asked of a call that names no import at all. It broke `@term/call`'s build and `pnpm term:cli-drift`
+// (found 2026-10-02 by the self-hosting work, note/term/self-host/).
+//
+// Over the WHOLE top-level statement rather than by block, which over-approximates in the safe direction: a call to
+// a global that a local of the same name hides elsewhere in the same task is left unbound, and fails later as a
+// visible unknown name rather than binding wrongly in silence.
+function boundIn(node: unknown, into = new Set<string>()): Set<string> {
+  if (!node || typeof node !== 'object') {
+    return into
+  }
+
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      boundIn(item, into)
+    }
+
+    return into
+  }
+
+  const record = node as Record<string, unknown>
+
+  if (record.form === 'let' && typeof record.name === 'string') {
+    into.add(record.name)
+  }
+
+  if (record.form === 'for-each') {
+    for (const key of ['item', 'index']) {
+      if (typeof record[key] === 'string') {
+        into.add(record[key] as string)
+      }
+    }
+  }
+
+  if (Array.isArray(record.params)) {
+    for (const param of record.params as { name?: unknown }[]) {
+      if (typeof param?.name === 'string') {
+        into.add(param.name)
+      }
+    }
+  }
+
+  if (Array.isArray(record.binds)) {
+    for (const name of record.binds) {
+      if (typeof name === 'string') {
+        into.add(name)
+      }
+    }
+  }
+
+  for (const [key, value] of Object.entries(record)) {
+    if (key !== 'span' && key !== 'type' && key !== 'result' && key !== 'declared' && key !== 'generics') {
+      boundIn(value, into)
+    }
+  }
+
+  return into
 }
 
 // TWO MODULES DEFINING ONE NAME (native-dom-0031). Names are package-global, so two definitions of one name, both with
@@ -166,9 +231,16 @@ function bindByImport(program: Program, scope: ImportScope | undefined): Diagnos
 
   for (const top of program) {
     const file = top.span.file
+    // the names a local binds inside this statement, which shadow every definition of the group (boundIn)
+    const local = boundIn(top)
 
     eachCall(top, call => {
       const callee = call.callee as Extract<Expression, { form: 'variable' }>
+
+      if (local.has(callee.name)) {
+        return
+      }
+
       const group = groups.find(
         g => g.name === callee.name && call.args.length >= g.min && call.args.length <= g.max,
       )
@@ -263,10 +335,46 @@ function bindSiblingMethods(program: Program): void {
   }
 }
 
+// A LEAN LABEL NAMING A TASK, READ AS THE NESTED CALL IT IS, before anything is renamed (check/lean-nest.ts).
+//
+// The resolver does this too, later, where the scope is known. But the import binding below renames every task of an
+// ambiguous name apart (`replace` becomes `replace__from3_1`), so by the time the resolver looks, a label spelled
+// `replace` names nothing callable and stays a label: `"replace__from3_1" has no parameter "replace"` in
+// deck/site/code/http/http.tree (`pnpm term:lean-equal`, 2026-10-02). Done here, the nested call is an ordinary call
+// when the binding runs, and is renamed with every other call to the name.
+//
+// Only under a call to a TASK the program defines, whose parameters are therefore known. A construction's labels are
+// its fields, and a field may share a task's name, so those are left to the checker.
+function nestLeanLabels(program: Program): void {
+  const definitions = definitionsOf(program)
+
+  for (const top of program) {
+    const local = boundIn(top)
+
+    eachCall(top, call => {
+      const callee = (call.callee as { name: string }).name
+      const defs = definitions.get(callee)
+
+      if (!defs) {
+        return
+      }
+
+      const params = new Set(defs.flatMap(d => d.params.map(p => p.name)))
+
+      nestLeanCalls(
+        call,
+        name => params.has(name),
+        name => definitions.has(name) || local.has(name),
+      )
+    })
+  }
+}
+
 // Returns the calls it could not bind: see bindByImport.
 export function disambiguateOverloads(program: Program, scope?: ImportScope): Diagnostic[] {
   overloadGroups.clear()
 
+  nestLeanLabels(program)
   bindSiblingMethods(program)
 
   const ambiguities = bindByImport(program, scope)

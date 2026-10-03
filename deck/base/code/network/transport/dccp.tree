@@ -2,6 +2,8 @@
 # DCCP: Datagram Congestion Control Protocol (RFC 4340). Unreliable datagrams with congestion control and
 # connection setup. Packets are distinguished by a type field in the header.
 
+note unstable
+
 form dccp-packet-type
   case request
   case response

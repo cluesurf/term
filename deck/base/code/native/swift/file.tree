@@ -1,4 +1,4 @@
-# Swift file system implementation. Forwards to the linked `io` runtime (code/compile/io-runtime SEED_IO_RUNTIME_SWIFT), which wraps Foundation and absorbs its `throws` so the public file API stays total. Internal: reached only through the public file API.
+# Swift file system implementation. Forwards to the linked `io` runtime (runtime/io in this directory), which wraps Foundation and absorbs its `throws` so the public file API stays total. Internal: reached only through the public file API.
 
 dock load
   load <global:io>, name io

@@ -981,7 +981,19 @@ export function runMint(
   match: MillMatch,
   // the CST node this match was read from: it becomes the built form's own node, so the bridge can span it
   node?: Node,
+  // what each sub-match already minted to, per rule, for this one top-level mint. SEVERAL CASES MAY READ ONE SITE,
+  // and each used to mint that site's sub-matches again, so the work doubled at every level a construct nested:
+  // 18 nested forks took 3.4 s, all of it here, and the stdlib's generated Unicode tables
+  // (deck/base/code/hold/text/code/human.tree) never finished. Minting is a pure function of (rule, match), so
+  // the second answer is the first. Found by `pnpm term:lean-equal` hanging on that file (self-hosting, 2026-10-02).
+  memo: Map<MillMatch, Map<string, Minted[]>> = new Map(),
 ): Minted[] {
+  const known = memo.get(match)?.get(name)
+
+  if (known) {
+    return known
+  }
+
   const mint = mints.get(name)
 
   if (!mint) {
@@ -999,7 +1011,7 @@ export function runMint(
     for (const cap of captures) {
       if (cap.kind === 'match') {
         const sub = c.mint ?? cap.rule
-        values.push(...runMint(mints, sub, cap.match, cap.node))
+        values.push(...runMint(mints, sub, cap.match, cap.node, memo))
       } else {
         values.push(cap)
       }
@@ -1010,8 +1022,16 @@ export function runMint(
     }
   }
 
+  const remember = (value: Minted[]): Minted[] => {
+    const forMatch = memo.get(match) ?? new Map<string, Minted[]>()
+    forMatch.set(name, value)
+    memo.set(match, forMatch)
+
+    return value
+  }
+
   if (mint.make) {
-    return [buildMake(mint.make, byCase, node)]
+    return remember([buildMake(mint.make, byCase, node)])
   }
 
   // Pass-through: the matched cases' values in case order (an alternation yields its one branch).
@@ -1032,7 +1052,7 @@ export function runMint(
     }
   }
 
-  return out
+  return remember(out)
 }
 
 function buildMake(

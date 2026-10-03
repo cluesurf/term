@@ -1,0 +1,39 @@
+load @term/base/code/list
+  find list
+  find push
+
+# the same sum as term.tree in one walk with an accumulator: no intermediate list, no task per element
+task run
+  take size, like number
+  like text
+  save items
+    make list
+  walk size
+    bind base, code 0
+    bind head, read size
+    hook next
+      take site, name i
+      call push
+        read items
+        read i
+  save total, code 0
+  walk list, read items
+    hook next
+      take site, name item
+      save tripled
+        call multiply
+          read item
+          code 3
+      fork test
+        hook test
+          call is-equal
+            call modulo
+              read tripled
+              code 2
+            code 0
+        hook hold
+          save total
+            call add
+              read total
+              read tripled
+  send back, text <{{total}}>

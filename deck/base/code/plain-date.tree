@@ -1,6 +1,9 @@
 # Plain date: a calendar date (year, month, day) with no time zone. Pure proleptic-Gregorian arithmetic, identical on every backend. The day-number conversions are Howard Hinnant's branch-free civil algorithm. Division must be exact integer division: `divide` is floating on some backends and `round-down` is a no-op on whole numbers, so all flooring goes through `quotient` (a - a modulo b, then divide), which is exact for non-negative operands (the algorithm stays non-negative for years from the common era on). Month is 1-12, day is 1-31, day-of-week is 0 (Sunday) through 6 (Saturday).
 
 # exact integer (floor) division for non-negative operands: subtract the remainder, then divide evenly
+
+note stable
+
 task quotient
   take a, like number
   take b, like number

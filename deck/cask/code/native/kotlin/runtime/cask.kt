@@ -85,7 +85,15 @@ class CaskWindow(val title: String, val width: Long, val height: Long) {
     var activity: Activity? = null
     var onMessage: (suspend (String) -> String)? = null
     var onReady: (() -> Unit)? = null
+    // what runs when this window closes: the Activity finishing (native-dom-0030)
+    val onClose = mutableListOf<() -> Unit>()
     internal var pending: PendingLoad? = null
+
+    internal fun closed() {
+        val handlers = onClose.toList()
+        onClose.clear()
+        handlers.forEach { it() }
+    }
 
     // build the WebView inside the Activity and run the load that was asked for
     internal fun attach(activity: Activity) {
@@ -135,6 +143,14 @@ abstract class CaskActivity : Activity() {
         cask.activity = this
         program()
         cask.pending?.attach(this)
+    }
+
+    // an Android app's one window is its Activity, so the Activity finishing is the window closing
+    override fun onDestroy() {
+        if (isFinishing) {
+            cask.pending?.closed()
+        }
+        super.onDestroy()
     }
 }
 
@@ -196,6 +212,16 @@ object cask {
         handle.onReady = handler
     }
 
+    // runs when the window closes; on Android, when its Activity finishes (native-dom-0030)
+    fun onClose(handle: CaskWindow, handler: () -> Unit) {
+        handle.onClose.add(handler)
+    }
+
+    // close the window: its Activity finishes, and every `on-close` handler runs
+    fun close(handle: CaskWindow) {
+        main.post { handle.activity?.finish() }
+    }
+
     // draws the WebView into a bitmap and writes it as a PNG, then calls `done`
     fun snapshot(handle: CaskWindow, path: String, done: () -> Unit) {
         main.post {
@@ -248,11 +274,21 @@ object cask {
         return target.path
     }
 
-    // where the app may write: its own files directory, under `name`
+    // where the app may write: its own files directory, under `name`. The directory is the APPLICATION's, so an app with
+    // no cask window (its views on the toolkit host, native-dom-0014) reads it off the running application instead
     fun dataPath(name: String): String {
-        val activity = activity ?: return ""
-        val directory = File(activity.filesDir, name)
+        val files = activity?.filesDir ?: runningApplication()?.filesDir ?: return ""
+        val directory = File(files, name)
         directory.mkdirs()
         return directory.path
     }
+
+    // the process's Application, which Android names only through ActivityThread: public since API 1, reached by
+    // reflection because the SDK hides it
+    private fun runningApplication(): android.content.Context? =
+        try {
+            Class.forName("android.app.ActivityThread").getMethod("currentApplication").invoke(null) as? android.content.Context
+        } catch (_: Exception) {
+            null
+        }
 }

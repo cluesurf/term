@@ -22,6 +22,8 @@ export type Signature = {
   names: string[]
   fallbacks: (Expression | undefined)[]
   positional: boolean[]
+  // which parameters are `need false`: one left out between two given ones takes its empty value, as a trailing one does
+  optional?: boolean[]
   // HOLES: the variables a generic signature's bare forms were seeded with (`like maybe`, `like signal`), which are not
   // among `generics`. One per signature, so every call shared it until each call was given its own (native-dom-0046)
   holes?: Set<number>
@@ -35,6 +37,7 @@ export type Instantiated = {
   names: string[]
   fallbacks: (Expression | undefined)[]
   positional: boolean[]
+  optional?: boolean[]
 }
 
 // instantiate a signature, freshening its generics via `sub`. A non-generic signature is returned as-is.
@@ -51,6 +54,7 @@ export function instantiate(
       names: signature.names,
       fallbacks: signature.fallbacks,
       positional: signature.positional,
+      optional: signature.optional,
     }
   }
 
@@ -131,5 +135,6 @@ export function instantiate(
     names: signature.names,
     fallbacks: signature.fallbacks,
     positional: signature.positional,
+    optional: signature.optional,
   }
 }

@@ -1,0 +1,100 @@
+# Digests, in the 8x8 tone shape every benchmark digest takes (note/term/bench/database.md): a sha256 lettered through
+# the standard library's tone alphabet, in eight groups of eight. `tone-encode` groups in fours, so its dashes are
+# dropped and the letters grouped again.
+
+load @term/base/code/bytes
+  find bytes
+  find from-text
+  find to-hex
+
+load @term/base/code/cryptography/digest
+  find sha256
+
+load @term/base/code/tone
+  find tone-encode
+
+load @term/base/code/text
+  find replace-all
+  find substring
+  find char-count
+
+load @term/base/code/list
+  find list
+  find push
+  find join
+
+load @term/base/code/file
+  find read-bytes
+
+# a tone run grouped in eights
+task in-eights
+  take letters, like text
+  like text
+  save groups
+    make list
+  save at, code 0
+  save count
+    call char-count
+      read letters
+  walk test
+    hook test
+      call is-below
+        read at
+        read count
+    hook hold
+      call push
+        read groups
+        call substring
+          read letters
+          read at
+          call add
+            read at
+            code 8
+      save at
+        call add
+          read at
+          code 8
+  send back
+    call join
+      read groups
+      text <->
+
+task tone-of-bytes
+  note async
+  take value, like bytes
+  like text
+  save hex
+    call to-hex
+      call sha256
+        read value
+        wait true
+  send back
+    call in-eights
+      call replace-all
+        call tone-encode
+          read hex
+        text <->
+        text <>
+
+# the sha256 of a text, in tone
+task tone-of-text
+  note async
+  take value, like text
+  like text
+  send back
+    call tone-of-bytes
+      call from-text
+        read value
+      wait true
+
+# the sha256 of a file's bytes, in tone
+task tone-of-file
+  note async
+  take path, like text
+  like text
+  send back
+    call tone-of-bytes
+      call read-bytes
+        read path
+        wait true
+      wait true

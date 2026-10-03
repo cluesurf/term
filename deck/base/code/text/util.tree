@@ -1,5 +1,7 @@
 # Text utilities built on the string primitives: `join` concatenates a list of strings with a separator, `count-occurrences` counts non-overlapping matches of a substring. Pure (over `concat` / `index-of`), so they lower to every backend.
 
+note unstable
+
 load @term/base/code/text/string
   find concat
 

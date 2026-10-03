@@ -1,3 +1,6 @@
+note draft
+
+# SHELVED 2026-10-02 (base-v1-0019): seventeen bodiless combinators (`run`, `map`, `bind`, `fail`, ...) with package-global names. Nothing loads it.
 
 load ./state
   find state

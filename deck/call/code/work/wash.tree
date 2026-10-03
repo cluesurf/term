@@ -36,102 +36,81 @@ load @term/base/code/file/directory
   find remove, name remove-directory
   find exists, name directory-exists
 
-
 # The directories a build writes and a clean removes. Both cache paths, for the reason above.
 task build-directories
-  like list
-    like text
-  send back
+  like list, like text
+
+  back
     make list
-      text <host>
-      text <make>
-      text <hold>
-      text <.base/@cluesurf/term/cache>
-      text <.base/term/cache>
+      <host>
+      <make>
+      <hold>
+      <.base/@cluesurf/term/cache>
+      <.base/term/cache>
 
 # `term wash tail` clears the logs and nothing else
 task wash-logs
   note async
   take root, like text
+
   like void
-  call log-step
-    text <Clearing logs...>
+
+  log-step <Clearing logs...>
+
   save log-directory
-    call join
-      call join
-        read root
-        text <.base/@cluesurf/term>
-      text <log>
+    join join(root, <.base/@cluesurf/term>), <log>
   fork test
-    call directory-exists
-      read log-directory
-    hook hold
-      call remove-directory
-        read log-directory
-  call log-good
-    text <Logs cleared>
+    directory-exists log-directory
+    hold
+      remove-directory log-directory
+  log-good <Logs cleared>
 
 # `term wash` with no target removes every build directory that is there
 task wash-build
   note async
   take root, like text
+
   like void
-  call log-step
-    text <Cleaning build artifacts...>
-  save cleaned
-    code 0
-  walk list, call build-directories
-    hook next
-      take site, name directory
-      save full
-        call join
-          read root
-          read directory
-      fork test
-        call directory-exists
-          read full
-        hook hold
-          call remove-directory
-            read full
-          call show-removed
-            read directory
-          save cleaned
-            call add
-              read cleaned
-              code 1
+
+  log-step <Cleaning build artifacts...>
+  save cleaned, code 0
+
+  walk
+    call build-directories
+    take site, name directory
+    save full, join root, directory
+    fork test
+      directory-exists full
+      hold
+        remove-directory full
+        show-removed directory
+        save cleaned, add cleaned, code 1
   fork test
-    call is-above
-      read cleaned
-      code 0
-    hook hold
-      call log-good
-        text <Cleaned {{cleaned}} directories>
+    is-above cleaned, code 0
+    hold
+      log-good <Cleaned {{cleaned}} directories>
       send back
-  call log-good
-    text <Nothing to clean>
+  log-good <Nothing to clean>
 
 # one removed directory, in the faded colour the rest of the CLI uses for detail
 task show-removed
   take directory, like text
+
   like void
-  call log-step
-    call fade
-      text <    removed {{directory}}/>
+
+  log-step fade <    removed {{directory}}/>
 
 # `term wash [target]`: the verb the command tree binds. `tail` clears the logs; anything else cleans the build.
 task wash
   take target, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   fork test
-    call is-equal
-      read target
-      text <tail>
-    hook hold
-      call wash-logs
-        read root
+    is-equal target, <tail>
+    hold
+      wash-logs root
       send back
-  call wash-build
-    read root
+  wash-build root

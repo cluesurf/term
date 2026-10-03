@@ -1,3 +1,5 @@
+note stable
+
 load @term/base/code/native/{platform}/process/current
   find read-process
   find exit-process

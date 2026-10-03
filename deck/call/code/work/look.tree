@@ -48,41 +48,24 @@ task entry-of
   note async
   take root, like text
   take target, like text
+
   like unknown
+
   fork test
-    call starts-with
-      read target
-      text <@>
-    hook hold
-      save found
-        call make-module/projectResolver
-          read root
-      send back
-        call found
-          read target
-          read root
-  save file
-    call node-path/resolve
-      read root
-      read target
-  save there
-    call file-test
-      read file
-      wait true
+    starts-with target, <@>
+    hold
+      save found, call make-module/projectResolver, root
+      back found target, root
+  save file, node-path/resolve root, target
+  save there, file-test file, wait true
+
   fork test
-    read there
-    hook miss
-      call log-fail
-        text <File not found: {{target}}>
-      call node-process/exit
-        code 1
-  send back
-    make source-ask
-      bind file, read file
-      bind text
-        call read-file
-          read file
-          wait true
+    there
+    miss
+      log-fail <File not found: {{target}}>
+      node-process/exit code 1
+  back
+    make source-ask, bind(file, file), bind text, read-file file, wait true
 
 task look
   note async
@@ -90,94 +73,69 @@ task look
   take json-out, like boolean
   take csv-out, like boolean
   take kind, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   fork test
-    call is-equal
-      read target
-      text <>
-    hook hold
-      call log-fail
-        text <Usage: term look MODULE, with --json or --csv, and --kind form or task>
-      call node-process/exit
-        code 1
-  save entry
-    call entry-of
-      read root
-      read target
-      wait true
+    is-equal target, <>
+    hold
+      log-fail <Usage: term look MODULE, with --json or --csv, and --kind form or task>
+      node-process/exit code 1
+  save entry, entry-of root, target, wait true
+
   save quiet
     fork test
-      read json-out
-      hook hold
-        true
-      hook miss
+      json-out
+      hold true
+      miss
         read csv-out
   fork test
-    read quiet
-    hook miss
-      call log-step
-        text <Inspecting {{target}}...>
+    quiet
+    miss
+      log-step <Inspecting {{target}}...>
   save answer
     call inspect-module/inspectModule
-      read entry
-      call make-module/projectResolver
-        read root
+      entry
+      call make-module/projectResolver, root
       call deck-of-module/projectDeckOf
   save symbols
-    call only-kind
-      read answer/symbols
-      read kind
+    only-kind read(answer/symbols), kind
   fork test
-    read json-out
-    hook hold
-      call console/log
-        call inspect-module/toJson
-          read symbols
+    json-out
+    hold
+      console/log call inspect-module/toJson, symbols
       send back
   fork test
-    read csv-out
-    hook hold
-      call console/log
-        call inspect-module/toCsv
-          read symbols
+    csv-out
+    hold
+      console/log call inspect-module/toCsv, symbols
       send back
-  call console/log
-    text <>
-  call console/log
-    call inspect-module/toTable
-      read symbols
-  call console/log
-    text <>
-  call console/log
-    call fade
-      text <  {{answer/modules}} module(s), {{symbols}} symbol(s)>
+  console/log <>
+  console/log call inspect-module/toTable, symbols
+  console/log <>
+  console/log fade <  {{answer/modules}} module(s), {{symbols}} symbol(s)>
 
 # the symbols of one kind, or all of them when no kind is asked for
 task only-kind
-  take symbols, like list
+  take symbols
+    like list
     like unknown
   take kind, like text
-  like list
-    like unknown
+
+  like list, like unknown
+
   fork test
-    call is-equal
-      read kind
-      text <>
-    hook hold
-      send back, read symbols
-  save found
-    make list
-  walk list, read symbols
-    hook next
-      take site, name one
-      fork test
-        call is-equal
-          read one/kind
-          read kind
-        hook hold
-          call found/push
-            read one
-  send back, read found
+    is-equal kind, <>
+    hold
+      back symbols
+  save found, make list
+
+  walk symbols
+    take site, name one
+    fork test
+      is-equal read(one/kind), kind
+      hold
+        found/push one
+  back found

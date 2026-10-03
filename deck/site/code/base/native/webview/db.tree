@@ -221,6 +221,7 @@ task release
   take row
     like row
   call bridge/release
+    wait true
     text <row>
     read row
     read row/handle

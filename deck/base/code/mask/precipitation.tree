@@ -1,6 +1,8 @@
 
 # Remainder / modulo trait.
 
+note unstable
+
 mask precipitation
   head other, base self
   take output

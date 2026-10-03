@@ -1,6 +1,8 @@
 
-# Seed: a value expression in a DSL binding. A literal, a path read, or a call result. The uniform value node used
+# Term: a value expression in a DSL binding. A literal, a path read, or a call result. The uniform value node used
 # across the routing, component, and CLI DSLs.
+
+note unstable
 
 load ./term
   find term

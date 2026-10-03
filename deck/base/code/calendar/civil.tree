@@ -1,0 +1,985 @@
+# The proleptic Gregorian calendar in pure Term: a day count to a civil date and back, by Howard Hinnant's
+# days-from-civil and civil-from-days (http://howardhinnant.github.io/date_algorithms.html), exact for every year an
+# integer reaches. `calendar` and `timezone` read every component, build every timestamp and lay out every pattern
+# here, so each backend gives the same date for the same instant: the host date libraries disagreed past their own
+# ranges, and on what a month added to January 31 is.
+
+note stable
+
+load @term/base/code/list
+  find list
+  find get
+  find size
+
+load @term/base/code/stop
+  find abandon
+
+load @term/base/code/text/unicode
+  find to-runes
+  find rune-to-text
+
+host day-millis, code 86400000
+
+# division rounded toward minus infinity, and the remainder that goes with it (never negative). A divisor that is not
+# positive stops: every caller here divides by a length of time or a count of months
+task floor-divide
+  take value, like number
+  take divisor, like number
+  like number
+  fork test
+    hook test
+      call is-above
+        read divisor
+        code 0
+    hook hold
+      save q
+        call divide
+          read value
+          read divisor
+      fork test
+        hook test
+          call is-above
+            call multiply
+              read q
+              read divisor
+            read value
+        hook hold
+          send back
+            call subtract
+              read q
+              code 1
+      send back, read q
+  send back
+    call abandon, text <floor-divide: a divisor that is not positive>
+
+task floor-modulo
+  take value, like number
+  take divisor, like number
+  like number
+  send back
+    call subtract
+      read value
+      call multiply
+        call floor-divide
+          read value
+          read divisor
+        read divisor
+
+task is-leap-year
+  take year, like number
+  like boolean
+  send back
+    call and
+      call is-equal
+        call floor-modulo
+          read year
+          code 4
+        code 0
+      call or
+        call is-unequal
+          call floor-modulo
+            read year
+            code 100
+          code 0
+        call is-equal
+          call floor-modulo
+            read year
+            code 400
+          code 0
+
+# the days in `month` (1 to 12) of `year`
+task days-in-month
+  take year, like number
+  take month, like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        read month
+        code 2
+    hook hold
+      fork test
+        hook test
+          call is-leap-year
+            read year
+        hook hold
+          send back, code 29
+      send back, code 28
+  fork test
+    hook test
+      call or
+        call or
+          call is-equal
+            read month
+            code 4
+          call is-equal
+            read month
+            code 6
+        call or
+          call is-equal
+            read month
+            code 9
+          call is-equal
+            read month
+            code 11
+    hook hold
+      send back, code 30
+  send back, code 31
+
+# the days from 1970-01-01 to the date (negative before it)
+task days-from-civil
+  take year, like number
+  take month, like number
+  take day, like number
+  like number
+  save y, read year
+  fork test
+    hook test
+      call is-maximum
+        read month
+        code 2
+    hook hold
+      save y
+        call subtract
+          read y
+          code 1
+  save era
+    call floor-divide
+      read y
+      code 400
+  save year-of-era
+    call subtract
+      read y
+      call multiply
+        read era
+        code 400
+  save shifted
+    call add
+      read month
+      code 9
+  fork test
+    hook test
+      call is-above
+        read month
+        code 2
+    hook hold
+      save shifted
+        call subtract
+          read month
+          code 3
+  save day-of-year
+    call add
+      call divide
+        call add
+          call multiply
+            code 153
+            read shifted
+          code 2
+        code 5
+      call subtract
+        read day
+        code 1
+  save day-of-era
+    call add
+      call subtract
+        call add
+          call multiply
+            read year-of-era
+            code 365
+          call divide
+            read year-of-era
+            code 4
+        call divide
+          read year-of-era
+          code 100
+      read day-of-year
+  send back
+    call subtract
+      call add
+        call multiply
+          read era
+          code 146097
+        read day-of-era
+      code 719468
+
+form civil-date
+  link year, like number
+  link month, like number
+  link day, like number
+
+# the date `days` after 1970-01-01
+task civil-from-days
+  take days, like number
+  like civil-date
+  save z
+    call add
+      read days
+      code 719468
+  save era
+    call floor-divide
+      read z
+      code 146097
+  save day-of-era
+    call subtract
+      read z
+      call multiply
+        read era
+        code 146097
+  save year-of-era
+    call divide
+      call subtract
+        call add
+          call subtract
+            read day-of-era
+            call divide
+              read day-of-era
+              code 1460
+          call divide
+            read day-of-era
+            code 36524
+        call divide
+          read day-of-era
+          code 146096
+      code 365
+  save day-of-year
+    call subtract
+      read day-of-era
+      call subtract
+        call add
+          call multiply
+            code 365
+            read year-of-era
+          call divide
+            read year-of-era
+            code 4
+        call divide
+          read year-of-era
+          code 100
+  save shifted
+    call divide
+      call add
+        call multiply
+          code 5
+          read day-of-year
+        code 2
+      code 153
+  save day
+    call add
+      call subtract
+        read day-of-year
+        call divide
+          call add
+            call multiply
+              code 153
+              read shifted
+            code 2
+          code 5
+      code 1
+  save month
+    call add
+      read shifted
+      code 3
+  fork test
+    hook test
+      call is-minimum
+        read shifted
+        code 10
+    hook hold
+      save month
+        call subtract
+          read shifted
+          code 9
+  save year
+    call add
+      read year-of-era
+      call multiply
+        read era
+        code 400
+  fork test
+    hook test
+      call is-maximum
+        read month
+        code 2
+    hook hold
+      save year
+        call add
+          read year
+          code 1
+  send back
+    make civil-date
+      bind year, read year
+      bind month, read month
+      bind day, read day
+
+# the day of the week, 0 for Sunday to 6 for Saturday (1970-01-01 was a Thursday)
+task weekday-of-days
+  take days, like number
+  like number
+  send back
+    call floor-modulo
+      call add
+        read days
+        code 4
+      code 7
+
+# `value` written with at least `width` digits, zeros in front, a minus first when negative
+task pad-number
+  take value, like number
+  take width, like number
+  like text
+  save magnitude, read value
+  fork test
+    hook test
+      call is-below
+        read value
+        code 0
+    hook hold
+      save magnitude
+        call subtract
+          code 0
+          read value
+  save digits, text <{{magnitude}}>
+  save count
+    call size
+      call to-runes
+        read digits
+  walk test
+    down
+      call subtract
+        read width
+        read count
+    hook test
+      call is-below
+        read count
+        read width
+    hook step
+      save digits, text <0{{digits}}>
+      save count
+        call add
+          read count
+          code 1
+  fork test
+    hook test
+      call is-below
+        read value
+        code 0
+    hook hold
+      send back, text <-{{digits}}>
+  send back, read digits
+
+task month-name
+  take month, like number
+  like text
+  save names
+    make list
+  call names/push, text <January>
+  call names/push, text <February>
+  call names/push, text <March>
+  call names/push, text <April>
+  call names/push, text <May>
+  call names/push, text <June>
+  call names/push, text <July>
+  call names/push, text <August>
+  call names/push, text <September>
+  call names/push, text <October>
+  call names/push, text <November>
+  call names/push, text <December>
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read month
+          code 1
+        call is-maximum
+          read month
+          code 12
+    hook hold
+      send back
+        call get
+          read names
+          call subtract
+            read month
+            code 1
+  send back, text <>
+
+task weekday-name
+  take weekday, like number
+  like text
+  save names
+    make list
+  call names/push, text <Sunday>
+  call names/push, text <Monday>
+  call names/push, text <Tuesday>
+  call names/push, text <Wednesday>
+  call names/push, text <Thursday>
+  call names/push, text <Friday>
+  call names/push, text <Saturday>
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read weekday
+          code 0
+        call is-maximum
+          read weekday
+          code 6
+    hook hold
+      send back
+        call get
+          read names
+          read weekday
+  send back, text <>
+
+# the first three code points of a name
+task abbreviate
+  take name, like text
+  like text
+  save r
+    call to-runes
+      read name
+  save out, text <>
+  save k, code 0
+  walk test
+    down
+      call subtract
+        code 3
+        read k
+    hook test
+      call and
+        call is-below
+          read k
+          code 3
+        call is-below
+          read k
+          call size
+            read r
+    hook step
+      save letter
+        call rune-to-text
+          call get
+            read r
+            read k
+      save out, text <{{out}}{{letter}}>
+      save k
+        call add
+          read k
+          code 1
+  send back, read out
+
+# the offset as `+05:45`, or `+0545` without the colon
+task offset-text
+  take minutes, like number
+  take colon, like boolean
+  like text
+  save sign, text <+>
+  save magnitude, read minutes
+  fork test
+    hook test
+      call is-below
+        read minutes
+        code 0
+    hook hold
+      save sign, text <->
+      save magnitude
+        call subtract
+          code 0
+          read minutes
+  save hours
+    call pad-number
+      call divide
+        read magnitude
+        code 60
+      code 2
+  save rest
+    call pad-number
+      call subtract
+        read magnitude
+        call multiply
+          call divide
+            read magnitude
+            code 60
+          code 60
+      code 2
+  fork test
+    hook test
+      read colon
+    hook hold
+      send back, text <{{sign}}{{hours}}:{{rest}}>
+  send back, text <{{sign}}{{hours}}{{rest}}>
+
+# how many times the code point at `at` repeats from there, up to `most`
+task run-length
+  take runes
+    like list
+      like number
+  take at, like number
+  take most, like number
+  like number
+  save c
+    call get-rune
+      read runes
+      read at
+  save k, code 1
+  walk test
+    down
+      call subtract
+        read most
+        read k
+    hook test
+      call and
+        call is-below
+          read k
+          read most
+        call is-equal
+          call get-rune
+            read runes
+            call add
+              read at
+              read k
+          read c
+    hook step
+      save k
+        call add
+          read k
+          code 1
+  send back, read k
+
+task get-rune
+  take runes
+    like list
+      like number
+  take at, like number
+  like number
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read at
+          code 0
+        call is-below
+          read at
+          call size
+            read runes
+    hook hold
+      send back
+        call get
+          read runes
+          read at
+  send back
+    call subtract
+      code 0
+      code 1
+
+# the instant laid out by `pattern`, read in the wall clock `offset` minutes east of UTC. Tokens:
+#
+#   YYYY  year, at least four digits      MMMM  January    MMM  Jan    MM  01    M  1
+#   DD    day of the month, 01            D     1          dddd Thursday           ddd Thu
+#   HH    hour 00-23    H  0-23           hh    hour 01-12  h  1-12    A  AM or PM
+#   mm    minute 00     m  0              ss    second 00   s  0       SSS millisecond 000
+#   Z     offset +05:45                   ZZ    offset +0545
+#   [...] the text inside, as written
+#
+# Anything else is itself. Names are English, the same in every locale.
+task format-pattern
+  take millis, like number
+  take pattern, like text
+  take offset, like number
+  like text
+  save local
+    call add
+      read millis
+      call multiply
+        read offset
+        code 60000
+  save days
+    call floor-divide
+      read local
+      read day-millis
+  save rest
+    call subtract
+      read local
+      call multiply
+        read days
+        read day-millis
+  save date
+    call civil-from-days
+      read days
+  save hour
+    call divide
+      read rest
+      code 3600000
+  save minute
+    call divide
+      call subtract
+        read rest
+        call multiply
+          read hour
+          code 3600000
+      code 60000
+  save second
+    call divide
+      call subtract
+        read rest
+        call add
+          call multiply
+            read hour
+            code 3600000
+          call multiply
+            read minute
+            code 60000
+      code 1000
+  save milli
+    call subtract
+      read rest
+      call add
+        call add
+          call multiply
+            read hour
+            code 3600000
+          call multiply
+            read minute
+            code 60000
+        call multiply
+          read second
+          code 1000
+  save twelve
+    call floor-modulo
+      read hour
+      code 12
+  fork test
+    hook test
+      call is-equal
+        read twelve
+        code 0
+    hook hold
+      save twelve, code 12
+  save r
+    call to-runes
+      read pattern
+  save n
+    call size
+      read r
+  save out, text <>
+  save i, code 0
+  # no `down`: each token moves `i` on by its own width, at least one, which the prover cannot read off the branches
+  walk test
+    hook test
+      call is-below
+        read i
+        read n
+    hook step
+      save c
+        call get-rune
+          read r
+          read i
+      save piece, text <>
+      save used, code 1
+      fork test
+        # [literal]
+        hook test
+          call is-equal
+            read c
+            code 91
+        hook hold
+          save k
+            call add
+              read i
+              code 1
+          walk test
+            down
+              call subtract
+                read n
+                read k
+            hook test
+              call and
+                call is-below
+                  read k
+                  read n
+                call is-unequal
+                  call get-rune
+                    read r
+                    read k
+                  code 93
+            hook step
+              save letter
+                call rune-to-text
+                  call get-rune
+                    read r
+                    read k
+              save piece, text <{{piece}}{{letter}}>
+              save k
+                call add
+                  read k
+                  code 1
+          save used
+            call add
+              call subtract
+                read k
+                read i
+              code 1
+        # Y
+        hook test
+          call and
+            call is-equal
+              read c
+              code 89
+            call is-equal
+              call run-length
+                read r
+                read i
+                code 4
+              code 4
+        hook hold
+          save piece
+            call pad-number
+              read date/year
+              code 4
+          save used, code 4
+        # M
+        hook test
+          call is-equal
+            read c
+            code 77
+        hook hold
+          save used
+            call run-length
+              read r
+              read i
+              code 4
+          fork test
+            hook test
+              call is-equal
+                read used
+                code 4
+            hook hold
+              save piece
+                call month-name
+                  read date/month
+            hook test
+              call is-equal
+                read used
+                code 3
+            hook hold
+              save piece
+                call abbreviate
+                  call month-name
+                    read date/month
+            hook test
+              call is-equal
+                read used
+                code 2
+            hook hold
+              save piece
+                call pad-number
+                  read date/month
+                  code 2
+            hook miss
+              save piece, text <{{date/month}}>
+        # D
+        hook test
+          call is-equal
+            read c
+            code 68
+        hook hold
+          save used
+            call run-length
+              read r
+              read i
+              code 2
+          fork test
+            hook test
+              call is-equal
+                read used
+                code 2
+            hook hold
+              save piece
+                call pad-number
+                  read date/day
+                  code 2
+            hook miss
+              save piece, text <{{date/day}}>
+        # d
+        hook test
+          call and
+            call is-equal
+              read c
+              code 100
+            call is-minimum
+              call run-length
+                read r
+                read i
+                code 4
+              code 3
+        hook hold
+          save used
+            call run-length
+              read r
+              read i
+              code 4
+          save name
+            call weekday-name
+              call weekday-of-days
+                read days
+          fork test
+            hook test
+              call is-equal
+                read used
+                code 4
+            hook hold
+              save piece, read name
+            hook miss
+              save piece
+                call abbreviate
+                  read name
+        # H
+        hook test
+          call is-equal
+            read c
+            code 72
+        hook hold
+          save used
+            call run-length
+              read r
+              read i
+              code 2
+          fork test
+            hook test
+              call is-equal
+                read used
+                code 2
+            hook hold
+              save piece
+                call pad-number
+                  read hour
+                  code 2
+            hook miss
+              save piece, text <{{hour}}>
+        # h
+        hook test
+          call is-equal
+            read c
+            code 104
+        hook hold
+          save used
+            call run-length
+              read r
+              read i
+              code 2
+          fork test
+            hook test
+              call is-equal
+                read used
+                code 2
+            hook hold
+              save piece
+                call pad-number
+                  read twelve
+                  code 2
+            hook miss
+              save piece, text <{{twelve}}>
+        # A
+        hook test
+          call is-equal
+            read c
+            code 65
+        hook hold
+          fork test
+            hook test
+              call is-below
+                read hour
+                code 12
+            hook hold
+              save piece, text <AM>
+            hook miss
+              save piece, text <PM>
+        # m
+        hook test
+          call is-equal
+            read c
+            code 109
+        hook hold
+          save used
+            call run-length
+              read r
+              read i
+              code 2
+          fork test
+            hook test
+              call is-equal
+                read used
+                code 2
+            hook hold
+              save piece
+                call pad-number
+                  read minute
+                  code 2
+            hook miss
+              save piece, text <{{minute}}>
+        # s
+        hook test
+          call is-equal
+            read c
+            code 115
+        hook hold
+          save used
+            call run-length
+              read r
+              read i
+              code 2
+          fork test
+            hook test
+              call is-equal
+                read used
+                code 2
+            hook hold
+              save piece
+                call pad-number
+                  read second
+                  code 2
+            hook miss
+              save piece, text <{{second}}>
+        # SSS
+        hook test
+          call and
+            call is-equal
+              read c
+              code 83
+            call is-equal
+              call run-length
+                read r
+                read i
+                code 3
+              code 3
+        hook hold
+          save piece
+            call pad-number
+              read milli
+              code 3
+          save used, code 3
+        # Z
+        hook test
+          call is-equal
+            read c
+            code 90
+        hook hold
+          save used
+            call run-length
+              read r
+              read i
+              code 2
+          save piece
+            call offset-text
+              read offset
+              call is-equal
+                read used
+                code 1
+        hook miss
+          save piece
+            call rune-to-text
+              read c
+      save out, text <{{out}}{{piece}}>
+      save i
+        call add
+          read i
+          read used
+  send back, read out

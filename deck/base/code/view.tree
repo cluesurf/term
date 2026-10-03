@@ -3,6 +3,8 @@
 # text, dynamic reads, a slot for children, conditional forks, list walks, and computed locals. The public surface
 # is documented in book/site (navigation, state, forms). Rendering is delegated per environment via dock to native.
 
+note unstable
+
 load ./term
   find term
 

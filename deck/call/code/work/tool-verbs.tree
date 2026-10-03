@@ -12,7 +12,7 @@ load @term/call/code/work/tint
   find mark
   find format-error
 
-# The remaining verbs: `term time`, `term hold` and `term zone`.
+# The remaining verbs: `term time`, `term hold`, `term zone` and `term mark`. `mark` is a forwarder like `zone`.
 #
 # `zone` is the one that CANNOT be more than this. It slices the argument vector at `zone` and hands everything
 # after it to the zone console untouched, because a zone invocation carries a `--` separating the zone path from
@@ -26,6 +26,7 @@ dock load
   load <@term/call/code/time>, name time-module
   load <@term/call/code/hold>, name hold-module
   load <@term/call/code/zone>, name zone-module
+  load <@term/call/code/mark>, name mark-module
   load <node:process>, name node-process
 
 form time-ask
@@ -56,6 +57,11 @@ form zone-ask
   link argv, like list
     like text
 
+form mark-ask
+  link root, like text
+  link argv, like list
+    like text
+
 # `term time [filter]`: run the benchmarks, or profile one file with --cpu / --memory
 task time
   note async
@@ -70,10 +76,11 @@ task time
   take cpu, like text
   take memory, like text
   take top, like number
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
     call time-module/callTime
       make time-ask
@@ -92,11 +99,8 @@ task time
       wait true
   halt take
     take error
-    call log-fail
-      call format-error
-        read error
-    call node-process/exit
-      code 1
+    log-fail format-error error
+    node-process/exit code 1
 
 # `term hold`: verify that the `.tree` files hold -- report gaps, run the cross checks
 task hold
@@ -105,10 +109,11 @@ task hold
   take cache, like boolean
   take force, like boolean
   take json, like boolean
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
     call hold-module/callHold
       make hold-ask
@@ -121,31 +126,46 @@ task hold
       wait true
   halt take
     take error
-    call log-fail
-      call format-error
-        read error
-    call node-process/exit
-      code 1
+    log-fail format-error error
+    node-process/exit code 1
 
 # `term zone ...`: the whole zone console, under one command, with its arguments handed over untouched
 task zone
   note async
-  take rest, like list
+
+  take rest
+    like list
     like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   note unsafe
     call zone-module/callZone
-      make zone-ask
-        bind root, read root
-        bind argv, read rest
+      make zone-ask, bind(root, read root), bind argv, read rest
       wait true
   halt take
     take error
-    call log-fail
-      call format-error
-        read error
-    call node-process/exit
-      code 1
+    log-fail format-error error
+    node-process/exit code 1
+
+# `term mark ...`: the benchmark runner in the Term repository's mark/, booted there with its arguments untouched
+task mark
+  note async
+
+  take rest
+    like list
+    like text
+
+  like void
+
+  save root, call project-root
+  note unsafe
+    call mark-module/callMark
+      make mark-ask, bind(root, read root), bind argv, read rest
+      wait true
+  halt take
+    take error
+    log-fail format-error error
+    node-process/exit code 1

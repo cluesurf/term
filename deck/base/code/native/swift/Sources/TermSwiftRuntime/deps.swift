@@ -10,6 +10,6 @@ import NIOPosix
 import _NIOFileSystem
 
 // the versions this stdlib was built against, so a mismatch shows up here rather than inside an emitted module
-public enum SeedSwiftRuntime {
+public enum TermSwiftRuntime {
     public static let wraps = ["swift-nio", "hummingbird", "hummingbird-http2", "hummingbird-tls"]
 }

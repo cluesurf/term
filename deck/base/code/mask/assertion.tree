@@ -1,6 +1,8 @@
 
 # Assertion: assert expectations about a value, raising a kink on failure. The basis of the test helpers.
 
+note unstable
+
 mask assertion
   head
     other

@@ -1,0 +1,48 @@
+host term, <term.tree>
+host input
+  host kind, <size>
+  host seed, 0
+  host sizes
+    host check, 1000
+    host timed, 10000000
+host output
+  host kind, <exact>
+host boundary, <process>
+list metrics
+  <wall>, <rss>, <size>
+host semantics
+  host integer, <64-bit, stops on overflow>
+  host float, <none>
+  host text, <none>
+  host map-order, <none>
+list baselines
+  mesh
+    host name, <lowered>
+    host file, <lowered.tree>
+    host track, <pair>
+    host source, <ours>
+    host license, <MIT>
+  mesh
+    host name, <same-node>
+    host file, <same.ts>
+    host track, <same>
+    host source, <ours>
+    host license, <MIT>
+  mesh
+    host name, <same-rust>
+    host file, <same.rs>
+    host track, <same>
+    host source, <ours>
+    host license, <MIT>
+  mesh
+    host name, <same-swift>
+    host file, <same.swift>
+    host track, <same>
+    host source, <ours>
+    host license, <MIT>
+  mesh
+    host name, <same-kotlin>
+    host file, <same.kt>
+    host track, <same>
+    host source, <ours>
+    host license, <MIT>

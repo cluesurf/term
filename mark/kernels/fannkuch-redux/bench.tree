@@ -1,0 +1,52 @@
+# fannkuch-redux, single-threaded: the Benchmarks Game's naive transliteration of Rex Kerr's Scala program. The
+# Benchmarks Game holds that program for Java, Swift and Node (upstream/, unchanged, from the source zip
+# public/download/benchmarksgame-sourcecode.zip in the pinned repository). same.swift is swift-8 unchanged. same.ts is
+# node-8 with one change beyond the argument: its four counters were implicit globals, which a module refuses, so
+# they are declared with `let`. Rust and Kotlin have no plain single-threaded entry, so same.rs and same.kt are ours,
+# line-for-line from java-8 at the commit below, and carry its BSD license. expect/check.txt is the upstream 7_out, and
+# expect/timed.txt equals hanabi1224's fannkuch-redux/10_out. The Benchmarks Game runs n = 12. timed is 10, where the
+# slowest hand version runs 0.5 to 5 seconds.
+host term, <term.tree>
+host input
+  host kind, <size>
+  host seed, 1
+  host sizes
+    host check, 7
+    host timed, 10
+host output
+  host kind, <exact>
+host boundary, <process>
+list metrics
+  <wall>, <rss>, <size>
+host semantics
+  host integer, <64-bit, stops on overflow. Values stay below n! = 3628800 at timed. The hand versions count in 32 bits (Rust i32 and usize, Kotlin Int) or the platform Int (Swift), which the same values fit>
+  host float, <none>
+  host text, <none>
+  host map-order, <none>
+list baselines
+  mesh
+    host name, <same-rust>
+    host file, <same.rs>
+    host track, <same>
+    host source, <ours>
+    host license, <BSD-3-Clause>
+  mesh
+    host name, <same-typescript>
+    host file, <same.ts>
+    host track, <same>
+    host source, <benchmarksgame-team/benchmarksgame, fannkuchredux/fannkuchredux.node-8.node>
+    host commit, <40296663ed350d5fe4a6ab5e367bab61cb77c219>
+    host license, <BSD-3-Clause>
+  mesh
+    host name, <same-swift>
+    host file, <same.swift>
+    host track, <same>
+    host source, <benchmarksgame-team/benchmarksgame, fannkuchredux/fannkuchredux.swift-8.swift>
+    host commit, <40296663ed350d5fe4a6ab5e367bab61cb77c219>
+    host license, <BSD-3-Clause>
+  mesh
+    host name, <same-kotlin>
+    host file, <same.kt>
+    host track, <same>
+    host source, <ours>
+    host license, <BSD-3-Clause>

@@ -1,6 +1,8 @@
 
 # Not trait.
 
+note unstable
+
 mask negation
   task negate
     take self

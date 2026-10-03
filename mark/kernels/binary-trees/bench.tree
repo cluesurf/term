@@ -1,0 +1,51 @@
+# binary-trees, single-threaded. The Benchmarks Game's own entries in this language set are all multi-threaded, so
+# the baselines are hanabi1224's plain single-threaded ones. Each same.* is its upstream/ file with only the argument
+# read changed: same.ts reads process.argv[2] where 1.ts read Deno.args[0], and the other three are unchanged copies.
+# upstream/LICENSE is the program directory's own license, the Benchmarks Game's revised BSD, inside a repository
+# that is MIT. The Benchmarks Game runs depth 21. timed is 16, where the slowest hand version runs 0.5 to 5 seconds.
+host term, <term.tree>
+host input
+  host kind, <size>
+  host seed, 1
+  host sizes
+    host check, 10
+    host timed, 16
+host output
+  host kind, <exact>
+host boundary, <process>
+list metrics
+  <wall>, <rss>, <size>
+host semantics
+  host integer, <64-bit, stops on overflow. The largest check, at timed, is 2097136. The hand versions count in 32 bits (Rust i32, Swift UInt32, Kotlin Int), which the same values fit>
+  host float, <none>
+  host text, <none>
+  host map-order, <none>
+list baselines
+  mesh
+    host name, <same-rust>
+    host file, <same.rs>
+    host track, <same>
+    host source, <hanabi1224/Programming-Language-Benchmarks, bench/algorithm/binarytrees/3.rs>
+    host commit, <ad18b203dd1769724f4eea94fc3ac1e99f6593e0>
+    host license, <BSD-3-Clause>
+  mesh
+    host name, <same-typescript>
+    host file, <same.ts>
+    host track, <same>
+    host source, <hanabi1224/Programming-Language-Benchmarks, bench/algorithm/binarytrees/1.ts>
+    host commit, <ad18b203dd1769724f4eea94fc3ac1e99f6593e0>
+    host license, <BSD-3-Clause>
+  mesh
+    host name, <same-swift>
+    host file, <same.swift>
+    host track, <same>
+    host source, <hanabi1224/Programming-Language-Benchmarks, bench/algorithm/binarytrees/1.swift>
+    host commit, <ad18b203dd1769724f4eea94fc3ac1e99f6593e0>
+    host license, <BSD-3-Clause>
+  mesh
+    host name, <same-kotlin>
+    host file, <same.kt>
+    host track, <same>
+    host source, <hanabi1224/Programming-Language-Benchmarks, bench/algorithm/binarytrees/1.kt>
+    host commit, <ad18b203dd1769724f4eea94fc3ac1e99f6593e0>
+    host license, <BSD-3-Clause>

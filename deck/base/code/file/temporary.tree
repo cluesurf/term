@@ -1,6 +1,8 @@
 # A temporary file or directory under the system temporary directory. The clean uniform interface, the per-env
 # native implementation selected at build time and hidden. Answers the path it made.
 
+note unstable
+
 load @term/base/code/native/{platform}/file/asynchronous/temporary
   find temporary-make
 

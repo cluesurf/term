@@ -38,6 +38,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.coroutines.startCoroutine
 
 // the log tag every line goes under, so `adb logcat -s native-dom` reads them
 private const val VIEW_TAG = "native-dom"
@@ -70,7 +71,9 @@ class TermNode(val key: Long, val tag: String, var text: String, context: Activi
             it.setTextColor(Color.BLACK)
         }
         Kind.BUTTON -> Button(context).also { it.isAllCaps = false }
-        Kind.FIELD -> EditText(context)
+        // an empty EditText is as wide as its text, which is nothing. A browser draws an empty input about 20 characters
+        // wide and AppKit 186 points, so this is the floor until a style states a width (native-dom-0014)
+        Kind.FIELD -> EditText(context).also { it.minimumWidth = (186 * context.resources.displayMetrics.density).toInt() }
         Kind.TOGGLE -> android.widget.Switch(context)
         // a SeekBar counts whole steps from zero; the node keeps min and step and maps the two (see `rangeOf`)
         Kind.RANGE -> android.widget.SeekBar(context).also { it.max = 100 }
@@ -154,6 +157,24 @@ abstract class TermViewActivity : Activity() {
         super.onConfigurationChanged(config)
         for (body in nativeView.configurationChanged.toList()) body()
     }
+}
+
+// a coroutine context whose every resumption runs on the main looper, the only thread a view may be touched from: an
+// awaited call (the database, a file) can finish on another, and the code after it must not touch a view there
+// (native-dom-0014). The standard library's own interceptor shape, so no kotlinx dependency
+object OnMain : kotlin.coroutines.AbstractCoroutineContextElement(kotlin.coroutines.ContinuationInterceptor),
+    kotlin.coroutines.ContinuationInterceptor {
+    override fun <T> interceptContinuation(continuation: kotlin.coroutines.Continuation<T>): kotlin.coroutines.Continuation<T> =
+        object : kotlin.coroutines.Continuation<T> {
+            override val context: kotlin.coroutines.CoroutineContext = continuation.context
+            override fun resumeWith(result: Result<T>) {
+                if (Looper.myLooper() == Looper.getMainLooper()) {
+                    continuation.resumeWith(result)
+                } else {
+                    Handler(Looper.getMainLooper()).post { continuation.resumeWith(result) }
+                }
+            }
+        }
 }
 
 object nativeView {
@@ -374,6 +395,8 @@ object nativeView {
             (property == "width" || property == "height") && dp(value) != null -> {
                 val params = node.view.layoutParams ?: ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 if (property == "width") params.width = dp(value)!! else params.height = dp(value)!!
+                // a stated width replaces a field's floor (see Kind.FIELD), as it does on Apple
+                if (property == "width") node.view.minimumWidth = 0
                 node.view.layoutParams = params
                 true
             }
@@ -893,6 +916,24 @@ object nativeView {
     // run `body` once `onCreate` has returned and the content is set
     fun afterLaunch(body: () -> Unit) {
         afterLaunch.add(body)
+    }
+
+    // the window's root once `open-root` made it: what `page-body` answers in a native app, as a page's body is its
+    // document's (native-dom-0014: a page written for the web mounts on it unchanged)
+    fun pageBody(): Any = root ?: make("main", "")
+
+    // run a SUSPEND body once the app is running: a page's `boot` awaits its data before it mounts. Started with the
+    // standard library's coroutines, as the cask runs its handlers, so no kotlinx dependency. Its context resumes every
+    // suspension on the main looper: a view may be touched from that thread only, and an await can finish on another
+    fun launch(body: suspend () -> Unit) {
+        afterLaunch {
+            body.startCoroutine(object : kotlin.coroutines.Continuation<Unit> {
+                override val context: kotlin.coroutines.CoroutineContext = OnMain
+                override fun resumeWith(result: Result<Unit>) {
+                    result.exceptionOrNull()?.let { Log.e(VIEW_TAG, "launch: ${it.message}") }
+                }
+            })
+        }
     }
 
     fun show() {}

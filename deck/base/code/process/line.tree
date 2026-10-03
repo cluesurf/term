@@ -9,6 +9,8 @@
 # the terminal, and the compiled backends hold a buffered reader over standard input. Reading a line through two
 # of them at once loses characters to whichever buffer got them first.
 
+note unstable
+
 load @term/base/code/native/{platform}/process/line
   find line-open
   find line-ask

@@ -1,6 +1,8 @@
 
 # File system operations. The platform implementation is selected at build time and hidden behind this API.
 
+note stable
+
 load @term/base/code/native/{platform}/file
   find read-file
   find write-file

@@ -107,7 +107,9 @@ function mergeParts(value: unknown): unknown {
   const out: Record<string, unknown> = {}
 
   for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
-    if (key === 'span') {
+    // `privateNote` is a span too, under its own name: where a `note private` line sits, for the warning
+    // (check/private.ts). Formatting moves it as it moves every span, so it is position, not meaning
+    if (key === 'span' || key === 'privateNote') {
       continue
     }
 

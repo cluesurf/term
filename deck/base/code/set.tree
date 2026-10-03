@@ -1,6 +1,8 @@
 
 # Set: a collection of unique values, backed by the native map for O(1) membership.
 
+note stable
+
 load @term/base/code/hash
   find hash
 

@@ -1,6 +1,8 @@
 
 # Handle to a concurrently-running task, generic over result type.
 
+note unstable
+
 form task-handle
   head result
   link id, like text

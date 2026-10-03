@@ -4,6 +4,8 @@
 # A replacement is literal text: no $1 or \1 is read in it, because each engine reads those differently. To build the
 # replacement from the match, use `rewrite-matches`.
 
+note stable
+
 load @term/base/code/native/{platform}/regex
   find do-search
   find end-anchor
@@ -86,20 +88,22 @@ task search-from
     make list
   save spans
     make list
+  # the length read once: a push in the body leaves the prover unsure of every list's size
+  save count
+    call size
+      read found
   save k, code 2
   walk test
     down
       call subtract
-        call size
-          read found
+        read count
         read k
     hook test
       call is-below
         call add
           read k
           code 1
-        call size
-          read found
+        read count
     hook step
       save a
         call get
@@ -232,13 +236,9 @@ task find-matches
   save out
     make list
   save at, code 0
+  # no `down`: `at` moves to a match's end, which the host reports, so the prover cannot see it rise. It does: a match
+  # never ends before the position it was searched from, and an empty one moves `at` on by one
   walk test
-    down
-      call subtract
-        call add
-          read n
-          code 1
-        read at
     hook test
       call is-maximum
         read at

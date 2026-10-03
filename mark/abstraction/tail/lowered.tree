@@ -1,0 +1,53 @@
+# the same count as term.tree's tail call, as a walk test loop
+task steps
+  take n, like number
+  like number
+  save at, read n
+  save count, code 0
+  walk test
+    hook test
+      call is-unequal
+        read at
+        code 1
+    hook hold
+      fork test
+        hook test
+          call is-equal
+            call modulo
+              read at
+              code 2
+            code 0
+        hook hold
+          save at
+            call divide
+              read at
+              code 2
+        hook miss
+          save at
+            call add
+              call multiply
+                read at
+                code 3
+              code 1
+      save count
+        call add
+          read count
+          code 1
+  send back, read count
+
+# the same total as term.tree
+task run
+  take size, like number
+  like text
+  save total, code 0
+  walk size
+    bind base, code 1
+    bind head, read size
+    hook next
+      take site, name i
+      save total
+        call add
+          read total
+          call steps
+            read i
+  send back, text <{{total}}>

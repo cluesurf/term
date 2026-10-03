@@ -18,7 +18,7 @@ host values
 
 # the one watcher, once installed
 form trait-watch
-  note shared
+  mark shared
   link handler
     like task
       take name, like text

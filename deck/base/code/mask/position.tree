@@ -1,6 +1,8 @@
 
 # Get by index
 
+note unstable
+
 mask position
   head i, like dimension-free
   take output, like dimension-free

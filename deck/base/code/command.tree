@@ -11,6 +11,8 @@
 # `errors`, in the order it was found, and `ok` is whether there is none. `help` lays out the usage. A command with
 # subcommands reads the first argument and parses the rest against that subcommand's schema.
 
+note stable
+
 load @term/base/code/text
   find starts-with
   find substring

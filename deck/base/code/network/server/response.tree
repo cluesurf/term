@@ -3,6 +3,9 @@
 # returns the response, so several calls chain to build a multi-header response (repeats allowed, e.g. multiple set-cookie).
 
 # one response header: a name and its value, kept as an ordered list so duplicates (set-cookie, ...) survive
+
+note unstable
+
 form header
   link name, like text
   link value, like text

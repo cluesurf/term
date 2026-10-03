@@ -1,6 +1,8 @@
 # Writing a file a chunk at a time, rather than building the whole thing in memory. The clean uniform interface,
 # the per-env native implementation selected at build time and hidden.
 
+note unstable
+
 load @term/base/code/native/{platform}/file/asynchronous/stream/writer
   find writer-create
   find writer-write

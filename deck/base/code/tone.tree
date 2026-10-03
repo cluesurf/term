@@ -4,6 +4,8 @@
 # Ported from the platform tone-code encoder (the encode half). Used for content-hashed asset names
 # (`/base/look-<tone>.css`, cutting-edge cache-busting) and opaque ids. A 16-hex-char input -> `4-4-4-4` (16 letters).
 
+note unstable
+
 load @term/base/code/list
   find list
   find push

@@ -7,12 +7,23 @@
 # A message is `{ id, command, arguments }`. The reply is `{ id, value }`, or `{ id, exception }` when the
 # command is not allowed, and then nothing runs. An opaque handle a task answers is kept in a table here under a
 # fresh id, and the id is what the page gets; a handle the page sends back is looked up in the same table.
+#
+# EVERY HANDLE IS OWNED BY THE WINDOW THAT ASKED FOR IT (native-dom-0030). `serve` gives a window a key of its
+# own and answers its page under it: a handle is kept under `<key>/<id>`, so an id one window's page was given
+# is unknown to every other window's (refused as `absence`, as a forged one is), and when the window closes
+# every handle under its key is dropped. `dispatch` answers as one window, for an app that opens only one.
 
 load @term/cask/code/cask
+  find window
+  find on-message
+  find on-close
   find exit
   find quit
   find bundle-path
   find data-path
+
+load @term/base/code/text
+  find starts-with
 
 load @term/base/code/console
   find log
@@ -204,9 +215,10 @@ task is-allowed
     hook miss
       send back, false
 
-# run one command with its arguments and answer the reply value as json
+# run one command with its arguments and answer the reply value as json, for the window whose key is `owner`
 task run-command
   note async
+  take owner, like text
   take command, like text
   take arguments, like dynamic
   like dynamic
@@ -492,6 +504,7 @@ task run-command
 # gets a rejection and the cask keeps running
 task answer
   note async
+  take owner, like text
   take message, like text
   like text
   save request
@@ -525,6 +538,7 @@ task answer
             text <value>
             call run-command
               wait true
+              read owner
               read command
               call get-field
                 read request
@@ -549,15 +563,18 @@ task answer
       read reply
 
 # every message answered, whatever it holds: one that is not JSON (`parse` raises `json-mismatch`) answers the
-# exception with no id, rather than raising out of the bridge and taking the cask down with it
-task dispatch
+# exception with no id, rather than raising out of the bridge and taking the cask down with it. Answered for
+# the window whose key is `owner`
+task dispatch-as
   note async
+  take owner, like text
   take message, like text
   like text
   note unsafe
     send back
       call answer
         wait true
+        read owner
         read message
   halt take
     take problem
@@ -572,3 +589,45 @@ task dispatch
           text <exception>
           call from-text
             text <{{problem/form}}: {{problem/note}}>
+
+# one message, for an app with one window: `on-message(window, dispatch)`
+task dispatch
+  note async
+  take message, like text
+  like text
+  send back
+    call dispatch-as
+      wait true
+      text <>
+      read message
+
+# every handle a window held, let go: what `serve` runs when the window closes
+task drop-window
+  take owner, like text
+  like void
+  save skip, code 0
+
+# serve one window: its page's messages answered under a key of its own, so a handle that window's page holds is
+# unknown to every other window's, and every one of them is let go when the window closes. Answers the key
+task serve
+  take place, like window
+  like text
+  save key
+    call version4
+  call on-message
+    read place
+    task reply
+      note async
+      take message, like text
+      like text
+      send back
+        call dispatch-as
+          wait true
+          read key
+          read message
+  call on-close
+    read place
+    task closed
+      call drop-window
+        read key
+  send back, read key

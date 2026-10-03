@@ -41,38 +41,30 @@ load @term/base/code/text
 # `deck/zone/link/@term/base/...` entries in `term form deck --check` were @term/base's own files reported twice.
 task is-skipped
   take name, like text
+
   like boolean
+
   fork test
-    call contains
-      read name
-      text </node_modules/>
-    hook hold
-      send back, true
+    contains read(name), </node_modules/>
+    hold
+      back true
   fork test
-    call contains
-      read name
-      text </host/>
-    hook hold
-      send back, true
+    contains read(name), </host/>
+    hold
+      back true
   fork test
-    call contains
-      read name
-      text </tail/>
-    hook hold
-      send back, true
+    contains read(name), </tail/>
+    hold
+      back true
   fork test
-    call contains
-      read name
-      text </link/>
-    hook hold
-      send back, true
+    contains read(name), </link/>
+    hold
+      back true
   fork test
-    call contains
-      read name
-      text </.git/>
-    hook hold
-      send back, true
-  send back, false
+    contains read(name), </.git/>
+    hold
+      back true
+  back false
 
 # does this file declare itself unfinished? `note draft` on its own line NEAR THE TOP, which is how the build walk
 # reads it (deck/call/code/make.ts) and how the TypeScript this ports did.
@@ -83,89 +75,66 @@ task is-skipped
 task is-draft
   note async
   take file, like text
+
   like boolean
-  save text
-    call read-file
-      read file
-      wait true
-  save size
-    call char-count
-      read text
+
+  save text, read-file file, wait true
+  save size, char-count read text
+
   save end
     fork test
-      call is-below
+      is-below read(size), code 2000
+      hold
         read size
-        code 2000
-      hook hold
-        read size
-      hook miss
+      miss
         code 2000
   save head
-    call substring
-      read text
-      code 0
-      read end
+    substring read(text), code 0, end
   # ON ITS OWN LINE, which is why this splits rather than searching. A `contains` over the head matches the phrase
   # wherever it appears, including inside a comment that MENTIONS the marker -- and this file has one, so the first
   # version excluded itself from its own walk. A multi-line text literal does not help: `text <` newline `note
   # draft` newline `>` collapses to `"note draft"`, so it reads as the same substring search.
   save lines
-    call split
-      read head
-      text <\n>
-  walk list, read lines
-    hook next
-      take site, name line
-      fork test
-        call is-equal
-          call trim
-            read line
-          text <note draft>
-        hook hold
-          send back, true
-  send back, false
+    split read(head), <\n>
+  walk lines
+    take site, name line
+    fork test
+      is-equal trim(line), <note draft>
+      hold
+        back true
+  back false
 
 # a `draft.tree` beside a file shelves its whole directory. Synchronous: `file/directory`'s `exists` and `walk`
 # are, and only `file/read` carries `note async`, so awaiting them is itself an effect error.
 task is-shelved
   take directory, like text
+
   like boolean
-  send back
-    call directory-exists
-      call join
-        read directory
-        text <draft.tree>
+
+  back directory-exists join directory, <draft.tree>
 
 # every `.tree` file under one directory that is not shelved
 task walk-trees
   note async
   take root, like text
-  like list
-    like text
-  save found
-    make list
-  save every
-    call walk-directory
-      read root
-  walk list, read every
-    hook next
-      take site, name item
-      fork test
-        call ends-with
-          read item
-          text <.tree>
-        hook hold
-          fork test
-            call is-skipped
-              read item
-            hook hold
-              turn next
-          fork test
-            call is-draft
-              read item
-              wait true
-            hook hold
-              turn next
-          call found/push
-            read item
-  send back, read found
+
+  like list, like text
+
+  save found, make list
+  save every, walk-directory root
+
+  walk every
+    take site, name item
+    fork test
+      ends-with item, <.tree>
+      hold
+        fork test
+          is-skipped item
+          hold
+            turn next
+        fork test
+          is-draft item, wait true
+          hold
+            turn next
+        found/push item
+  back found

@@ -44,144 +44,92 @@ task form
   note async
   take check, like boolean
   take list, like boolean
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
-  save files
-    call walk-trees
-      read root
-      wait true
+  save root, call project-root
+  save files, walk-trees root, wait true
+
   fork test
-    call is-equal
-      read files/length
-      code 0
-    hook hold
-      call log-fail
-        text <No .tree files found>
-      call node-process/exit
-        code 1
+    is-equal read(files/length), code 0
+    hold
+      log-fail <No .tree files found>
+      node-process/exit code 1
   fork test
-    read check
-    hook hold
-      call log-step
-        text <Checking formatting...>
-    hook miss
-      call log-step
-        text <Formatting...>
-  save changed
-    code 0
-  save broken
-    code 0
-  walk list, read files
-    hook next
-      take site, name file
-      save text
-        call read-file
-          read file
-          wait true
-      save shown
-        call node-path/relative
-          read root
-          read file
-      save analysis
-        call analyze-module/analyze
-          make analyze-ask
-            bind file, read shown
-            bind text, read text
-      save errors
-        call only-errors
-          read analysis/diagnostics
-      fork test
-        call is-above
-          read errors/length
-          code 0
-        hook hold
-          save broken
-            call add
-              read broken
-              code 1
-          call log-fail
-            text <{{shown}} could not be parsed>
-          turn next
-      save formatted
-        call analysis/format
-      fork test
-        call is-equal
-          read formatted
-          read text
-        hook hold
-          turn next
-      save changed
-        call add
-          read changed
-          code 1
-      fork test
-        read list
-        hook hold
-          call console/log
-            read formatted
-          turn next
-      fork test
-        read check
-        hook hold
-          call console/log
-            call fade
-              text <  would reformat {{shown}}>
-          turn next
-      call write-file
-        read file
-        read formatted
-        wait true
-      call console/log
-        call fade
-          text <  formatted {{shown}}>
+    check
+    hold
+      log-step <Checking formatting...>
+    miss
+      log-step <Formatting...>
+  save changed, code 0
+  save broken, code 0
+
+  walk files
+    take site, name file
+    save text, read-file file, wait true
+    save shown, node-path/relative root, file
+    save analysis
+      analyze-module/analyze
+        make analyze-ask, bind(file, shown), bind text, read text
+    save errors, only-errors read analysis/diagnostics
+    fork test
+      is-above read(errors/length), code 0
+      hold
+        save broken, add broken, code 1
+        log-fail <{{shown}} could not be parsed>
+        turn next
+    save formatted, call analysis/format
+    fork test
+      is-equal formatted, read text
+      hold
+        turn next
+    save changed, add changed, code 1
+    fork test
+      read list
+      hold
+        console/log formatted
+        turn next
+    fork test
+      check
+      hold
+        console/log fade <  would reformat {{shown}}>
+        turn next
+    write-file file, formatted, wait true
+    console/log fade <  formatted {{shown}}>
   fork test
-    call is-above
-      read broken
-      code 0
-    hook hold
-      call node-process/exit
-        code 1
+    is-above broken, code 0
+    hold
+      node-process/exit code 1
   fork test
-    read check
-    hook hold
+    check
+    hold
       fork test
-        call is-above
-          read changed
-          code 0
-        hook hold
-          call log-fail
-            text <{{changed}} file(s) need formatting>
-          call node-process/exit
-            code 1
+        is-above changed, code 0
+        hold
+          log-fail <{{changed}} file(s) need formatting>
+          node-process/exit code 1
   fork test
-    call is-equal
-      read changed
-      code 0
-    hook hold
-      call log-good
-        text <All files already formatted>
+    is-equal changed, code 0
+    hold
+      log-good <All files already formatted>
       send back
-  call log-good
-    text <Formatted {{changed}} file(s)>
+  log-good <Formatted {{changed}} file(s)>
 
 # the error-severity diagnostics of an analysis, which are the ones that stop a file being written
 task only-errors
-  take diagnostics, like list
+  take diagnostics
+    like list
     like unknown
-  like list
-    like unknown
-  save found
-    make list
-  walk list, read diagnostics
-    hook next
-      take site, name one
-      fork test
-        call is-equal
-          read one/severity
-          text <error>
-        hook hold
-          call found/push
-            read one
-  send back, read found
+
+  like list, like unknown
+
+  save found, make list
+
+  walk diagnostics
+    take site, name one
+    fork test
+      is-equal read(one/severity), <error>
+      hold
+        found/push one
+  back found

@@ -21,6 +21,8 @@ task outcome
         send back, text <outage {{thing}}>
       case timeout
         send back, text <timeout>
+      case failure
+        send back, text <failure>
 
 test <a port nobody listens on is an outage, not a status>
   want hold

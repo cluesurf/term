@@ -3,6 +3,8 @@
 # exact `big` arithmetic; this module adds the width bounds. (rust has a native i128/u128, but routing 128-bit through
 # `big` keeps one portable representation across every backend.) For unbounded integers use `big` directly.
 
+note unstable
+
 load @term/base/code/integer/big
   find big-integer
   find make-big-integer

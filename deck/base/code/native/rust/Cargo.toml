@@ -5,7 +5,7 @@
 # for asynchronous filesystem work, hyper (over hyper-util / http-body-util) for the HTTP server, and
 # tokio-rustls for its TLS. See note/term/stdlib/native-async-file-and-server.md.
 [package]
-name = "seed-rust-runtime"
+name = "term-rust-runtime"
 version = "0.1.0"
 edition = "2021"
 

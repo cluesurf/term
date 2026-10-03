@@ -1,0 +1,69 @@
+load @term/base/code/text
+  find char-count
+  find char-at
+  find char-code-at
+  find index-of
+  find last-index-of
+  find split
+  find substring
+  find trim
+  find pad-left
+
+load @term/base/code/list
+  find list
+
+# text is counted in code points on every backend (note/term/stdlib/semantics.md). Each value here crosses a surrogate
+# pair, where UTF-16 positions and code point positions part. Ordering two texts is not here: the checker refuses
+# `is-below` on text, so the emitters' text comparison is held by test/compile/text-order.ts instead
+task compute
+  like text
+  host s, text <x😀yz😀>
+  host length
+    call char-count
+      read s
+  host at
+    call char-at
+      read s
+      code 1
+  host point
+    call char-code-at
+      read s
+      code 1
+  host past
+    call char-at
+      read s
+      code 9
+  host y
+    call index-of
+      read s
+      text <y>
+  host later
+    call index-of
+      read s
+      text <😀>
+      code 2
+  host last
+    call last-index-of
+      read s
+      text <😀>
+  host middle
+    call substring
+      read s
+      code 1
+      code 3
+  host parts
+    call split
+      read s
+      text <>
+  host count
+    call size
+      read parts
+  host trimmed
+    call trim
+      text <  a😀  >
+  host padded
+    call pad-left
+      text <😀>
+      code 3
+      text <ab>
+  send back, text <length={{length}} at={{at}} code={{point}} past=[{{past}}] y={{y}} later={{later}} last={{last}} middle={{middle}} parts={{count}} trimmed=[{{trimmed}}] padded={{padded}}>

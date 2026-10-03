@@ -1,6 +1,8 @@
 # Unsigned 8-, 16-, and 32-bit integers (u8 / u16 / u32): values from 0 to the width maximum. Same template as the
 # signed widths with a sign bit of 0, so the sign-extension step is the identity and values stay non-negative.
 
+note unstable
+
 load @term/base/code/bit
   find bitwise-and
   find bitwise-or

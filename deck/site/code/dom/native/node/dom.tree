@@ -21,7 +21,7 @@ dock load
 
 # one node of the tree, held by its parent's children list and by every view handle at once, so `note shared`
 form page-element
-  note shared
+  mark shared
   link tag, like text
   link text, like text
   link value, like text
@@ -32,7 +32,9 @@ form page-element
   link listeners, like list
   link parent, like maybe
 
-form pair
+# one attribute or style, a name and its value. Not the stdlib `pair` (`first` / `second`): names are package-global,
+# so a second `form pair` here took the stdlib's place in any program that loaded both (`"pair" has no field "name"`)
+form page-pair
   link name, like text
   link value, like text
 
@@ -103,7 +105,7 @@ task set-attribute
     call filter
       read self/attributes
       task keep
-        take entry, like pair
+        take entry, like page-pair
         like boolean
         send back
           call is-unequal
@@ -113,7 +115,7 @@ task set-attribute
   call push
     bind list, read self/attributes
     bind item
-      make pair
+      make page-pair
         bind name, read name
         bind value, read value
 
@@ -127,7 +129,7 @@ task get-attribute
     call find
       read self/attributes
       task match
-        take entry, like pair
+        take entry, like page-pair
         like boolean
         send back
           call is-equal
@@ -146,7 +148,7 @@ task set-style
   call push
     bind list, read node/handle/styles
     bind item
-      make pair
+      make page-pair
         bind name, read property
         bind value, read value
 

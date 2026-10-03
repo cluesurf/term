@@ -676,17 +676,22 @@ function caskFromJson(kind: Kind, read: string, indent: string): { lines: string
     case 'handle': {
       // an id the table lacks is a page holding a handle the cask never gave it: `unwrap` raises
       const found = temporary('found')
+      const id = temporary('id')
 
       return {
         local,
         lines: [
           // a released id is one the table no longer holds, so `unwrap` refuses it with the stdlib `absence`, the
-          // same as a forged one. The page's call rejects and the cask keeps running
+          // same as a forged one. The page's call rejects and the cask keeps running. Looked up under THIS window's
+          // key (native-dom-0030): an id another window's page was given is not in this window's part of the table,
+          // so it is refused the same way
+          `${indent}save ${id}`,
+          `${indent}  call as-text`,
+          `${indent}    read ${read}`,
           `${indent}save ${found}`,
           `${indent}  call get`,
           `${indent}    read ${tableOf(kind.form)}`,
-          `${indent}    call as-text`,
-          `${indent}      read ${read}`,
+          `${indent}    text <{{owner}}/{{${id}}}>`,
           `${indent}save ${local}`,
           `${indent}  call unwrap`,
           `${indent}    read ${found}`,
@@ -711,11 +716,12 @@ function caskToJson(kind: Kind, read: string, indent: string): { lines: string[]
       return {
         local,
         lines: [
+          // kept under the window that asked (native-dom-0030); the page gets the id alone
           `${indent}save ${id}`,
           `${indent}  call version4`,
           `${indent}call set`,
           `${indent}  read ${tableOf(kind.form)}`,
-          `${indent}  read ${id}`,
+          `${indent}  text <{{owner}}/{{${id}}}>`,
           `${indent}  read ${read}`,
           `${indent}save ${local}`,
           `${indent}  call from-text`,
@@ -865,7 +871,9 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], term
         '  note async',
         `  take ${param.name}`,
         ...likeOf(param.kind).map(line => `    ${line}`),
+        // waited for: the cask's reply is what orders the release before the next call using the handle
         '  call bridge/release',
+        '    wait true',
         `    text <${form}>`,
         `    read ${param.name}`,
         `    read ${param.name}/handle`,
@@ -924,7 +932,8 @@ function releaseLines(forms: string[]): string[] {
   const lines = ['    hook test', '      call is-equal', '        read command', '        text <cask_release>', '    hook hold']
 
   if (forms.length > 0) {
-    lines.push('      fork test')
+    // the id under this window's key: a page can let go only of what its own window holds (native-dom-0030)
+    lines.push('      save released', '        call field-text', '          read arguments', '          text <handle>', '      fork test')
 
     for (const form of forms) {
       lines.push(
@@ -938,9 +947,7 @@ function releaseLines(forms: string[]): string[] {
         // the map primitive on the table, the one every backend lowers (`hash/remove` is written over it). A bare
         // `remove` resolved to whichever one-argument `remove` the scope held, and `/remove` is not lowered on Swift
         `          call ${tableOf(form)}/delete`,
-        '            call field-text',
-        '              read arguments',
-        '              text <handle>',
+        '            text <{{owner}}/{{released}}>',
       )
     }
 
@@ -948,6 +955,41 @@ function releaseLines(forms: string[]): string[] {
   }
 
   lines.push('      send back', '        call make-null')
+
+  return lines
+}
+
+// `drop-window`'s body: every handle in every table kept under the window's key, deleted. The keys are listed first,
+// so the deletes do not change what is being walked
+function dropLines(forms: string[]): string[] {
+  if (forms.length === 0) {
+    return ['  save skip, code 0']
+  }
+
+  const lines = ['  save prefix, text <{{owner}}/>']
+
+  for (const form of forms) {
+    // the keys into a local first: a walk straight over the call's result is not a list Swift can iterate
+    const keys = `${form}-keys`
+    lines.push(
+      `  save ${keys}`,
+      '    like list',
+      '      like text',
+      `    call ${tableOf(form)}/keys`,
+      '  walk list',
+      `    read ${keys}`,
+      '    hook next',
+      '      take site, name held',
+      '      fork test',
+      '        hook test',
+      '          call starts-with',
+      '            read held',
+      '            read prefix',
+      '        hook hold',
+      `          call ${tableOf(form)}/delete`,
+      '            read held',
+    )
+  }
 
   return lines
 }
@@ -966,12 +1008,23 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     '# A message is `{ id, command, arguments }`. The reply is `{ id, value }`, or `{ id, exception }` when the',
     '# command is not allowed, and then nothing runs. An opaque handle a task answers is kept in a table here under a',
     '# fresh id, and the id is what the page gets; a handle the page sends back is looked up in the same table.',
+    '#',
+    "# EVERY HANDLE IS OWNED BY THE WINDOW THAT ASKED FOR IT (native-dom-0030). `serve` gives a window a key of its",
+    "# own and answers its page under it: a handle is kept under `<key>/<id>`, so an id one window's page was given",
+    "# is unknown to every other window's (refused as `absence`, as a forged one is), and when the window closes",
+    '# every handle under its key is dropped. `dispatch` answers as one window, for an app that opens only one.',
     '',
     'load @term/cask/code/cask',
+    '  find window',
+    '  find on-message',
+    '  find on-close',
     '  find exit',
     '  find quit',
     '  find bundle-path',
     '  find data-path',
+    '',
+    'load @term/base/code/text',
+    '  find starts-with',
     '',
     'load @term/base/code/console',
     '  find log',
@@ -1060,9 +1113,10 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     '    hook miss',
     '      send back, false',
     '',
-    '# run one command with its arguments and answer the reply value as json',
+    "# run one command with its arguments and answer the reply value as json, for the window whose key is `owner`",
     'task run-command',
     '  note async',
+    '  take owner, like text',
     '  take command, like text',
     '  take arguments, like dynamic',
     '  like dynamic',
@@ -1153,6 +1207,7 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     '# gets a rejection and the cask keeps running',
     'task answer',
     '  note async',
+    '  take owner, like text',
     '  take message, like text',
     '  like text',
     '  save request',
@@ -1186,6 +1241,7 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     '            text <value>',
     '            call run-command',
     '              wait true',
+    '              read owner',
     '              read command',
     '              call get-field',
     '                read request',
@@ -1210,15 +1266,18 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     '      read reply',
     '',
     '# every message answered, whatever it holds: one that is not JSON (`parse` raises `json-mismatch`) answers the',
-    '# exception with no id, rather than raising out of the bridge and taking the cask down with it',
-    'task dispatch',
+    '# exception with no id, rather than raising out of the bridge and taking the cask down with it. Answered for',
+    "# the window whose key is `owner`",
+    'task dispatch-as',
     '  note async',
+    '  take owner, like text',
     '  take message, like text',
     '  like text',
     '  note unsafe',
     '    send back',
     '      call answer',
     '        wait true',
+    '        read owner',
     '        read message',
     '  halt take',
     '    take problem',
@@ -1233,6 +1292,48 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     '          text <exception>',
     '          call from-text',
     '            text <{{problem/form}}: {{problem/note}}>',
+    '',
+    '# one message, for an app with one window: `on-message(window, dispatch)`',
+    'task dispatch',
+    '  note async',
+    '  take message, like text',
+    '  like text',
+    '  send back',
+    '    call dispatch-as',
+    '      wait true',
+    '      text <>',
+    '      read message',
+    '',
+    "# every handle a window held, let go: what `serve` runs when the window closes",
+    'task drop-window',
+    '  take owner, like text',
+    '  like void',
+    ...dropLines(handleForms(signatures)),
+    '',
+    "# serve one window: its page's messages answered under a key of its own, so a handle that window's page holds is",
+    "# unknown to every other window's, and every one of them is let go when the window closes. Answers the key",
+    'task serve',
+    '  take place, like window',
+    '  like text',
+    '  save key',
+    '    call version4',
+    '  call on-message',
+    '    read place',
+    '    task reply',
+    '      note async',
+    '      take message, like text',
+    '      like text',
+    '      send back',
+    '        call dispatch-as',
+    '          wait true',
+    '          read key',
+    '          read message',
+    '  call on-close',
+    '    read place',
+    '    task closed',
+    '      call drop-window',
+    '        read key',
+    '  send back, read key',
     '',
   )
 

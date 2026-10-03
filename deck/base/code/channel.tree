@@ -9,6 +9,8 @@
 # variant. A message the receiver has no case for is a build error, which is what Erlang's untyped `receive` cannot
 # give (note/term/research/beam-otp-lessons.md, design 2). `make-text-channel` is the old text channel by name.
 
+note stable
+
 load @term/base/code/native/{platform}/channel
   find do-make
   find do-send

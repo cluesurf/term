@@ -3,6 +3,9 @@
 # `float` module; this module provides the width's bounds and the basic operations under the f64 name.
 
 # the largest finite magnitude of a 64-bit float (the smallest finite is its negation)
+
+note unstable
+
 bind f64-maximum-value
   like decimal
   case node

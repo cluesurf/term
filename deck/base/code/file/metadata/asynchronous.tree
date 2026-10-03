@@ -5,6 +5,8 @@
 # A separate module rather than a task in that one, because a dock is paid for by whoever imports the module: a
 # program asking `is-directory` should not link swift-nio for it.
 
+note unstable
+
 load @term/base/code/native/{platform}/file/asynchronous/metadata
   find meta-read
 

@@ -1,0 +1,688 @@
+# A session: one `term mark` run on one machine, written as ONE JSON export afterwards, exactly in the format of
+# note/term/bench/database.md ("The export"), under the Term repository's `.base/@cluesurf/term/mark/session/`.
+# Samples only, never summaries: every metric of every timed round is a whole number in its unit, and a median, a
+# ratio or an interval is computed from them when asked for, here or by `pnpm mark:save`'s readers.
+
+load @term/base/code/process/run
+  find run, name run-process
+  find run-result
+
+load @term/base/code/json
+  find make-object
+  find set-field
+  find make-array
+  find push-item
+  find from-text
+  find from-number
+  find from-boolean
+  find make-null
+  find is-null
+  find stringify
+
+load @term/base/code/list
+  find list
+  find push
+  find get
+  find size
+  find join
+
+load @term/base/code/text
+  find trim
+  find split
+  find contains, name text-contains
+  find replace-all
+
+load @term/base/code/float
+  find to-decimal
+
+load @term/base/code/time
+  find now
+
+load @term/base/code/calendar
+  find format
+
+load ./host
+  find platform-name
+  find arch-name
+  find processor-model
+  find core-count
+  find memory-bytes
+  find system-name
+
+load ./digest
+  find tone-of-text
+  find tone-of-file
+
+load ./disk
+  find file-text
+  find file-present
+
+load ./case
+  find case
+
+load ./time
+  find sample
+
+form machine
+  link digest, like text
+  # the cohort a number may be compared within: `macos-arm64`, `linux-x64`, `linux-arm64`, `windows-x64`
+  link label, like text
+  link model, like text
+  link chip, like text
+  link core-count, like number
+  link memory, like number
+  # `mains`, `battery` or `unknown`
+  link power, like text
+  link system, like text
+  link version, like text
+
+form session
+  link commit, like text
+  link dirty, like boolean
+  link compiler-version, like text
+  link compiler-digest, like text
+  link runner-version, like text
+  # `headline`, `diagnostic` or `development`
+  link purpose, like text
+  link machine, like machine
+  link warmup-count, like number
+  link round-count, like number
+  link start, like text
+
+# what a command printed, trimmed, or empty when it failed
+task output-of
+  note async
+  take command, like text
+  take words
+    like list
+      like text
+  like text
+  save found
+    call run-process
+      read command
+      read words
+      wait true
+  fork test
+    hook test
+      call is-unequal
+        read found/code
+        code 0
+    hook hold
+      send back, text <>
+  send back
+    call trim
+      read found/output
+
+task words
+  take line, like text
+  like list
+    like text
+  send back
+    call split
+      read line
+      text < >
+
+# the cohort, from the platform and the processor
+task machine-label
+  like text
+  save system, call platform-name
+  save kind, read system
+  fork test
+    hook test
+      call is-equal
+        read system
+        text <darwin>
+    hook hold
+      save kind, text <macos>
+  fork test
+    hook test
+      call is-equal
+        read system
+        text <win32>
+    hook hold
+      save kind, text <windows>
+  save arch, call arch-name
+  send back, text <{{kind}}-{{arch}}>
+
+task power-source
+  note async
+  like text
+  fork test
+    hook test
+      call is-unequal
+        call platform-name
+        text <darwin>
+    hook hold
+      send back, text <unknown>
+  save said
+    call output-of
+      text <pmset>
+      call words
+        text <-g batt>
+      wait true
+  fork test
+    hook test
+      call text-contains
+        read said
+        text <AC Power>
+    hook hold
+      send back, text <mains>
+  fork test
+    hook test
+      call text-contains
+        read said
+        text <Battery Power>
+    hook hold
+      send back, text <battery>
+  send back, text <unknown>
+
+# the machine, and its digest: the sha256 in tone of the stable JSON of the other fields, keys in sorted order
+task read-machine
+  note async
+  take label, like text
+  like machine
+  save chosen, read label
+  fork test
+    hook test
+      call is-equal
+        read chosen
+        text <>
+    hook hold
+      save chosen
+        call machine-label
+  save model, text <unknown>
+  save system
+    call system-name
+  save version, text <>
+  fork test
+    hook test
+      call is-equal
+        call platform-name
+        text <darwin>
+    hook hold
+      save model
+        call output-of
+          text <sysctl>
+          call words
+            text <-n hw.model>
+          wait true
+      save system
+        call output-of
+          text <sw_vers>
+          call words
+            text <-productName>
+          wait true
+      save version
+        call output-of
+          text <sw_vers>
+          call words
+            text <-productVersion>
+          wait true
+    hook miss
+      save named, text <>
+      save product, text </sys/devices/virtual/dmi/id/product_name>
+      fork test
+        hook test
+          call file-present
+            read product
+            wait true
+        hook hold
+          save named
+            call trim
+              call file-text
+                read product
+                wait true
+      fork test
+        hook test
+          call is-unequal
+            read named
+            text <>
+        hook hold
+          save model, read named
+      save parts
+        call words
+          read system
+      save system
+        call get
+          read parts
+          code 0
+      save version
+        call get
+          read parts
+          code 1
+  save chip
+    call processor-model
+  save cores
+    call core-count
+  save memory
+    call memory-bytes
+  save power
+    call power-source
+      wait true
+  save stable
+    call make-object
+  call set-field(read(stable), text <chip>, call(from-text, read(chip)))
+  call set-field(read(stable), text <core_count>, call(from-number, call(to-decimal, read(cores))))
+  call set-field(read(stable), text <label>, call(from-text, read(chosen)))
+  call set-field(read(stable), text <memory>, call(from-number, call(to-decimal, read(memory))))
+  call set-field(read(stable), text <model>, call(from-text, read(model)))
+  call set-field(read(stable), text <power>, call(from-text, read(power)))
+  send back
+    make machine
+      bind digest
+        call tone-of-text
+          call stringify
+            read stable
+          wait true
+      bind label, read chosen
+      bind model, read model
+      bind chip, read chip
+      bind core-count, read cores
+      bind memory, read memory
+      bind power, read power
+      bind system, read system
+      bind version, read version
+
+# the runner's own version, the `code <x>` line of mark/deck.tree
+task runner-version
+  note async
+  take mark-root, like text
+  like text
+  save body
+    call file-text
+      text <{{mark-root}}/deck.tree>
+      wait true
+  walk list
+    call split
+      read body
+      text <\n>
+    hook next
+      take site, name raw
+      save line
+        call trim
+          read raw
+      save parts
+        call words
+          read line
+      fork test
+        hook test
+          call and
+            call is-equal
+              call size
+                read parts
+              code 2
+            call is-equal
+              call get
+                read parts
+                code 0
+              text <code>
+        hook hold
+          send back
+            call replace-all
+              call replace-all
+                call get
+                  read parts
+                  code 1
+                text <\<>
+                text <>
+              text <\>>
+              text <>
+  send back, text <unknown>
+
+# the compiler's version, from the CLI package's manifest
+task compiler-version
+  note async
+  take term-root, like text
+  like text
+  save body
+    call file-text
+      text <{{term-root}}/package.json>
+      wait true
+  walk list
+    call split
+      read body
+      text <\n>
+    hook next
+      take site, name raw
+      save line
+        call trim
+          read raw
+      fork test
+        hook test
+          call text-contains
+            read line
+            text <"version":>
+        hook hold
+          save parts
+            call split
+              read line
+              text <">
+          send back
+            call get
+              read parts
+              code 3
+  send back, text <unknown>
+
+task read-session
+  note async
+  take term-root, like text
+  take mark-root, like text
+  take purpose, like text
+  take label, like text
+  take warmups, like number
+  take rounds, like number
+  like session
+  save commit
+    call output-of
+      text <git>
+      call words
+        text <-C {{term-root}} rev-parse HEAD>
+      wait true
+  save changes
+    call output-of
+      text <git>
+      call words
+        text <-C {{term-root}} status --porcelain -- .>
+      wait true
+  send back
+    make session
+      bind commit, read commit
+      bind dirty
+        call is-unequal
+          read changes
+          text <>
+      bind compiler-version
+        call compiler-version
+          read term-root
+          wait true
+      bind compiler-digest
+        call tone-of-file
+          text <{{term-root}}/host/line.js>
+          wait true
+      bind runner-version
+        call runner-version
+          read mark-root
+          wait true
+      bind purpose, read purpose
+      bind machine
+        call read-machine
+          read label
+          wait true
+      bind warmup-count, read warmups
+      bind round-count, read rounds
+      bind start
+        call format
+          call now
+
+task text-or-null
+  take value, like text
+  like dynamic
+  fork test
+    hook test
+      call is-equal
+        read value
+        text <>
+    hook hold
+      send back
+        call make-null
+  send back
+    call from-text
+      read value
+
+task whole
+  take value, like number
+  like dynamic
+  send back
+    call from-number
+      call to-decimal
+        read value
+
+# one metric of a case, every sample's value. Absent (no object at all) when any sample did not count it
+task measurement-of
+  take samples
+    like list
+      like sample
+  take metric, like text
+  take unit, like text
+  take collector, like text
+  like dynamic
+  save values
+    call make-array
+  save counted, true
+  walk list, read samples
+    hook next
+      take site, name one
+      save value, read one/wall
+      fork test
+        hook test
+          call is-equal
+            read metric
+            text <user>
+        hook hold
+          save value, read one/user
+      fork test
+        hook test
+          call is-equal
+            read metric
+            text <system>
+        hook hold
+          save value, read one/system
+      fork test
+        hook test
+          call is-equal
+            read metric
+            text <rss>
+        hook hold
+          save value, read one/rss
+      fork test
+        hook test
+          call is-equal
+            read metric
+            text <footprint>
+        hook hold
+          save value, read one/footprint
+      fork test
+        hook test
+          call is-equal
+            read metric
+            text <instructions>
+        hook hold
+          save value, read one/instructions
+      fork test
+        hook test
+          call is-equal
+            read metric
+            text <cycles>
+        hook hold
+          save value, read one/cycles
+      fork test
+        hook test
+          call is-equal
+            read metric
+            text <switches>
+        hook hold
+          save value, read one/switches
+      fork test
+        hook test
+          call is-below
+            read value
+            code 0
+        hook hold
+          save counted, false
+      call push-item
+        read values
+        call whole
+          read value
+  fork test
+    hook test
+      call or
+        call not
+          read counted
+        call is-equal
+          call size
+            read samples
+          code 0
+    hook hold
+      send back
+        call make-null
+  save out
+    call make-object
+  call set-field(read(out), text <metric>, call(from-text, read(metric)))
+  call set-field(read(out), text <unit>, call(from-text, read(unit)))
+  call set-field(read(out), text <collector>, call(from-text, read(collector)))
+  call set-field(read(out), text <values>, read(values))
+  send back, read out
+
+# a case as the export writes it
+task case-object
+  take one, like case
+  like dynamic
+  save out
+    call make-object
+  save size
+    call make-object
+  call set-field(read(size), text <name>, call(from-text, read(one/size-name)))
+  call set-field(read(size), text <value>, call(whole, read(one/size-value)))
+  save correctness
+    call get
+      read one/correctness
+      code 0
+  save note
+    call get
+      read one/note
+      code 0
+  call set-field(read(out), text <program>, call(from-text, read(one/program)))
+  call set-field(read(out), text <program_digest>, call(from-text, read(one/program-digest)))
+  call set-field(read(out), text <implementation>, call(from-text, read(one/implementation)))
+  call set-field(read(out), text <language>, call(from-text, read(one/language)))
+  call set-field(read(out), text <track>, call(from-text, read(one/track)))
+  call set-field(read(out), text <target>, call(from-text, read(one/target)))
+  call set-field(read(out), text <boundary>, call(from-text, read(one/boundary)))
+  call set-field(read(out), text <size>, read(size))
+  call set-field(read(out), text <expect_digest>, call(from-text, read(one/expect-digest)))
+  call set-field(read(out), text <correctness>, call(from-text, read(correctness)))
+  call set-field(read(out), text <correctness_note>, call(text-or-null, read(note)))
+  call set-field(read(out), text <toolchain>, call(text-or-null, read(one/toolchain)))
+  call set-field(read(out), text <build>, call(text-or-null, read(one/line)))
+  call set-field(read(out), text <source>, call(from-text, read(one/source)))
+  call set-field(read(out), text <source_commit>, call(text-or-null, read(one/commit)))
+  call set-field(read(out), text <license>, call(from-text, read(one/license)))
+  save measurements
+    call make-array
+  walk list
+    call split
+      text <wall:nanosecond:clock user:nanosecond:time system:nanosecond:time rss:byte:time footprint:byte:time instructions:count:time cycles:count:time switches:count:time>
+      text < >
+    hook next
+      take site, name spec
+      save parts
+        call split
+          read spec
+          text <:>
+      save metric
+        call measurement-of
+          read one/samples
+          call get
+            read parts
+            code 0
+          call get
+            read parts
+            code 1
+          call get
+            read parts
+            code 2
+      fork test
+        hook test
+          call not
+            call is-null
+              read metric
+        hook hold
+          call push-item
+            read measurements
+            read metric
+  fork test
+    hook test
+      call is-above
+        read one/artifact
+        code 0
+    hook hold
+      save sizes
+        call make-array
+      call push-item
+        read sizes
+        call whole
+          read one/artifact
+      save built
+        call make-object
+      call set-field(read(built), text <metric>, call(from-text, text <size>))
+      call set-field(read(built), text <unit>, call(from-text, text <byte>))
+      call set-field(read(built), text <collector>, call(from-text, text <build>))
+      call set-field(read(built), text <values>, read(sizes))
+      call push-item
+        read measurements
+        read built
+  call set-field(read(out), text <measurements>, read(measurements))
+  send back, read out
+
+# the whole export, as JSON text
+task export-text
+  take session, like session
+  take cases
+    like list
+      like case
+  take finish, like text
+  like text
+  save repository
+    call make-object
+  call set-field(read(repository), text <commit>, call(from-text, read(session/commit)))
+  call set-field(read(repository), text <dirty>, call(from-boolean, read(session/dirty)))
+  save compiler
+    call make-object
+  call set-field(read(compiler), text <version>, call(from-text, read(session/compiler-version)))
+  call set-field(read(compiler), text <digest>, call(from-text, read(session/compiler-digest)))
+  save runner
+    call make-object
+  call set-field(read(runner), text <version>, call(from-text, read(session/runner-version)))
+  save gear, read session/machine
+  save machine
+    call make-object
+  call set-field(read(machine), text <digest>, call(from-text, read(gear/digest)))
+  call set-field(read(machine), text <label>, call(from-text, read(gear/label)))
+  call set-field(read(machine), text <model>, call(from-text, read(gear/model)))
+  call set-field(read(machine), text <chip>, call(from-text, read(gear/chip)))
+  call set-field(read(machine), text <core_count>, call(whole, read(gear/core-count)))
+  call set-field(read(machine), text <memory>, call(whole, read(gear/memory)))
+  call set-field(read(machine), text <power>, call(from-text, read(gear/power)))
+  save system
+    call make-object
+  call set-field(read(system), text <name>, call(from-text, read(gear/system)))
+  call set-field(read(system), text <version>, call(from-text, read(gear/version)))
+  save block
+    call make-object
+  call set-field(read(block), text <repository>, read(repository))
+  call set-field(read(block), text <compiler>, read(compiler))
+  call set-field(read(block), text <runner>, read(runner))
+  call set-field(read(block), text <purpose>, call(from-text, read(session/purpose)))
+  call set-field(read(block), text <machine>, read(machine))
+  call set-field(read(block), text <operating_system>, read(system))
+  call set-field(read(block), text <warmup_count>, call(whole, read(session/warmup-count)))
+  call set-field(read(block), text <round_count>, call(whole, read(session/round-count)))
+  call set-field(read(block), text <start>, call(from-text, read(session/start)))
+  call set-field(read(block), text <finish>, call(from-text, read(finish)))
+  save all
+    call make-array
+  walk list, read cases
+    hook next
+      take site, name one
+      call push-item
+        read all
+        call case-object
+          read one
+  save out
+    call make-object
+  call set-field(read(out), text <version>, call(whole, code 1))
+  call set-field(read(out), text <session>, read(block))
+  call set-field(read(out), text <cases>, read(all))
+  send back
+    call stringify
+      read out

@@ -26,6 +26,9 @@
 # both already taken by bytes. So the short names are gone, and that is just
 # as well: `char-count` cannot be mistaken for a byte count the way `size`
 # can.
+
+note stable
+
 bind do-size
   take value, like text
   like number

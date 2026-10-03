@@ -21,6 +21,8 @@ load @term/base/code/maybe
   find maybe
 
 form hash-table
+  # one object: its methods move `front` / `start` / `size`, and a copy (a Swift struct, a Rust value) would not see it
+  mark shared
   head v
   link capacity, like number
   link size, like number

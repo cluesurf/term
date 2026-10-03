@@ -11,6 +11,8 @@
 # same everywhere rather than nearly the same. `next` on a closed watcher answers with the empty event, so a loop
 # over it ends instead of hanging.
 
+note unstable
+
 load @term/base/code/native/{platform}/file/asynchronous
   find watch-open
   find watch-next

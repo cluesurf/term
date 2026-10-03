@@ -5,6 +5,8 @@
 # A stored password is `pbkdf2-sha256$<iterations>$<salt>$<hash>`, salt and hash in base64: everything `verify-password`
 # needs travels with it, so the iteration count can rise later without breaking hashes already stored.
 
+note stable
+
 load @term/base/code/native/{platform}/cryptography/derive
   find pbkdf2-sha256
   find hkdf-sha256

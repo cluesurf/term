@@ -2,6 +2,8 @@
 # written the obvious way, and the twins below are the faster ways the compiler may choose instead
 # (note/term/optimize/readme.md). Until the selection pass lands (optimize-0008), every build runs the reference.
 
+note unstable
+
 load @term/base/code/hash
   find hash
 

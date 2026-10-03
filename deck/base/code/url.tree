@@ -4,6 +4,9 @@
 # resolved against `base` (default `http://localhost`), so a server can parse a bare request target like `/users?id=1`.
 
 # the platform's parsed-URL object, held opaque
+
+note stable
+
 dock type
   load <any>, name url-handle
 

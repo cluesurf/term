@@ -26,123 +26,97 @@ load @term/base/code/regex
 # how many spaces a line is indented by
 task indent-of
   take line, like text
+
   like number
-  save trimmed
-    call trim-start-of
-      read line
-  send back
-    call subtract
-      call char-count
-        read line
-      call char-count
-        read trimmed
+
+  save trimmed, trim-start-of line
+
+  back
+    subtract char-count(line), char-count trimmed
 
 # the line with its leading spaces removed. `text/trim` takes both ends, and an indent count needs only the front.
 task trim-start-of
   take line, like text
+
   like text
-  send back
-    call replace-pattern
-      text <^\s+>
-      read line
-      text <>
+
+  back
+    replace-pattern <^\s+>, line, <>
 
 # is there nothing on this line but space?
 task is-blank
   take line, like text
+
   like boolean
-  send back
-    call is-equal
-      call trim
-        read line
-      text <>
+
+  back
+    is-equal trim(line), <>
 
 # A phrase to the task name it becomes: lower case, every run of non-alphanumerics to one dash, no dash at either
 # end. An empty result is `case`, so a phrase of pure punctuation still names something.
 task slugify
   take phrase, like text
+
   like text
-  save lower
-    call to-lower-case
-      read phrase
+
+  save lower, to-lower-case phrase
+
   save dashed
-    call replace-pattern
-      text <[^a-z0-9]+>
-      read lower
-      text <->
+    replace-pattern <[^a-z0-9]+>, lower, <->
   save trimmed
-    call replace-pattern
-      text <^-+|-+$>
-      read dashed
-      text <>
+    replace-pattern <^-+|-+$>, dashed, <>
   fork test
-    call is-equal
-      read trimmed
-      text <>
-    hook hold
-      send back
-        text <case>
-  send back, read trimmed
+    is-equal trimmed, <>
+    hold
+      back <case>
+  back trimmed
 
 # The name a `test` header declares: a `<free text>` phrase, or a bare slug. This is the slug half, which is the
 # task's name.
 task name-slug
   take rest, like text
+
   like text
-  save bare
-    call trim
-      read rest
+
+  save bare, trim read rest
+
   fork test
-    call is-wrapped
-      read bare
-    hook hold
-      send back
-        call slugify
-          call unwrap
-            read bare
-  send back, read bare
+    is-wrapped bare
+    hold
+      back slugify unwrap bare
+  back bare
 
 # and the label half: the phrase as written, or the slug with its dashes shown as spaces
 task name-label
   take rest, like text
+
   like text
-  save bare
-    call trim
-      read rest
+
+  save bare, trim read rest
+
   fork test
-    call is-wrapped
-      read bare
-    hook hold
-      send back
-        call unwrap
-          read bare
-  send back
-    call replace-pattern
-      text <->
-      read bare
-      text < >
+    is-wrapped bare
+    hold
+      back unwrap bare
+  back
+    replace-pattern <->, bare, < >
 
 # is this a `<...>` phrase rather than a bare slug?
 task is-wrapped
   take value, like text
+
   like boolean
-  send back
-    call is-equal
-      call replace-pattern
-        text <^<.+>$>
-        read value
-        text <>
-      text <>
+
+  back
+    is-equal replace-pattern(<^<.+>$>, value, <>), <>
 
 # the text inside a `<...>` phrase
 task unwrap
   take value, like text
+
   like text
-  send back
-    call substring
-      read value
+
+  back
+    substring value
       code 1
-      call subtract
-        call char-count
-          read value
-        code 1
+      subtract char-count(value), code 1

@@ -11,6 +11,8 @@
 # Erlang's `Task.await` and its links are the model (note/term/research/beam-otp-lessons.md, G6, G8, G13): a failure
 # is not left running beside the caller that stopped listening. Held by test/compile/concurrency.ts.
 
+note stable
+
 load @term/base/code/boolean
   find not
 

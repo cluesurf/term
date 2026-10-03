@@ -62,95 +62,69 @@ dock load
 # the kinds a fact may carry. Anything else is a note, which is the kind that makes no claim.
 task is-kind
   take kind, like text
+
   like boolean
+
   fork test
-    call is-equal
-      read kind
-      text <decision>
-    hook hold
-      send back, true
+    is-equal kind, <decision>
+    hold
+      back true
   fork test
-    call is-equal
-      read kind
-      text <convention>
-    hook hold
-      send back, true
+    is-equal kind, <convention>
+    hold
+      back true
   fork test
-    call is-equal
-      read kind
-      text <constraint>
-    hook hold
-      send back, true
+    is-equal kind, <constraint>
+    hold
+      back true
   fork test
-    call is-equal
-      read kind
-      text <reference>
-    hook hold
-      send back, true
+    is-equal kind, <reference>
+    hold
+      back true
   fork test
-    call is-equal
-      read kind
-      text <note>
-    hook hold
-      send back, true
-  send back, false
+    is-equal kind, <note>
+    hold
+      back true
+  back false
 
 # a phrase to a file name: lower case, non-alphanumerics to dashes, no dash at either end, at most 48 characters
 task slug
   take text, like text
+
   like text
-  save lower
-    call to-lower-case
-      read text
+
+  save lower, to-lower-case read text
+
   save dashed
-    call replace-pattern
-      text <[^a-z0-9]+>
-      read lower
-      text <->
+    replace-pattern <[^a-z0-9]+>, lower, <->
   save trimmed
-    call replace-pattern
-      text <^-+|-+$>
-      read dashed
-      text <>
-  save size
-    call char-count
-      read trimmed
+    replace-pattern <^-+|-+$>, dashed, <>
+  save size, char-count trimmed
+
   save cut
     fork test
-      call is-below
-        read size
-        code 48
-      hook hold
+      is-below read(size), code 48
+      hold
         read trimmed
-      hook miss
-        call substring
-          read trimmed
-          code 0
-          code 48
+      miss
+        substring trimmed, code 0, code 48
   fork test
-    call is-equal
-      read cut
-      text <>
-    hook hold
-      send back
-        text <fact>
-  send back, read cut
+    is-equal cut, <>
+    hold
+      back <fact>
+  back cut
 
 # where a project keeps its memory, old location included
 task memory-directory
   note async
   take root, like text
+
   like text
-  send back
-    call kept-at
-      call join
-        call project-home
-          read root
-        text <memory>
-      call join
-        call legacy-project-home
-          read root
-        text <memory>
+
+  back
+    kept-at
+      join project-home(root), <memory>
+      join legacy-project-home(root), <memory>
       wait true
 
 # remember one fact, and keep the one-line index it is listed in
@@ -160,46 +134,32 @@ task remember
   take fact, like text
   take name, like text
   take kind, like text
+
   like text
-  save directory
-    call memory-directory
-      read root
-      wait true
-  call make-directory
-    read directory
+
+  save directory, memory-directory root, wait true
+  make-directory directory
+
   save chosen-kind
     fork test
-      call is-kind
+      is-kind kind
+      hold
         read kind
-      hook hold
-        read kind
-      hook miss
+      miss
         text <note>
   save chosen-name
     fork test
-      call is-equal
-        read name
-        text <>
-      hook hold
-        call slug
-          read fact
-      hook miss
-        call slug
-          read name
-  save lines
-    call split
-      read fact
-      text <\n>
-  save description
-    call trim
-      read lines/0
-  save file
-    call join
-      read directory
-      text <{{chosen-name}}.md>
-  call write-file
-    read file
-    text <---
+      is-equal read(name), <>
+      hold
+        slug fact
+      miss
+        slug read name
+  save lines, split fact, <\n>
+  save description, trim read lines/0
+  save file, join directory, <{{chosen-name}}.md>
+
+  write-file file
+    <---
 name: {{chosen-name}}
 kind: {{chosen-kind}}
 description: {{description}}
@@ -208,12 +168,8 @@ description: {{description}}
 {{fact}}
 >
     wait true
-  call write-index
-    read directory
-    read chosen-name
-    read description
-    wait true
-  send back, read chosen-name
+  write-index directory, chosen-name, description, wait true
+  back chosen-name
 
 # the index a session loads up front: one line per fact, deduped by name
 task write-index
@@ -221,70 +177,49 @@ task write-index
   take directory, like text
   take name, like text
   take description, like text
+
   like void
-  save path
-    call join
-      read directory
-      text <index.md>
-  save existing
-    call read-index
-      read path
-      wait true
-  save kept
-    make list
-  walk list
-    call split
-      read existing
-      text <\n>
-    hook next
-      take site, name line
-      save clean
-        call trim
-          read line
-      fork test
-        call is-equal
-          read clean
-          text <>
-        hook hold
-          turn next
-      fork test
-        call is-equal
-          read clean
-          text <# Memory>
-        hook hold
-          turn next
-      fork test
-        call contains
-          read line
-          text <- [{{name}}]>
-        hook hold
-          turn next
-      call kept/push
-        read line
-  call kept/push
-    text <- [{{name}}]({{name}}.md) - {{description}}>
-  call write-file
-    read path
-    text <# Memory
+
+  save path, join directory, <index.md>
+  save existing, read-index path, wait true
+  save kept, make list
+
+  walk
+    split existing, <\n>
+    take site, name line
+    save clean, trim line
+    fork test
+      is-equal clean, <>
+      hold
+        turn next
+    fork test
+      is-equal clean, <# Memory>
+      hold
+        turn next
+    fork test
+      contains line, <- [{{name}}]>
+      hold
+        turn next
+    kept/push line
+  kept/push <- [{{name}}]({{name}}.md) - {{description}}>
+  write-file path, <# Memory
 
 {{kept}}
->
-    wait true
+>, wait true
 
 # the index as it stands, or an empty one
 task read-index
   note async
   take path, like text
+
   like text
+
   note unsafe
     send back
-      call read-file
-        read path
-        wait true
+      call read-file, read(path), wait true
   halt take
     take error
-    send back
-      text <>
+    back <>
 
 # `term mind [fact]`: the verb the command tree binds. With a fact it remembers one; without, it lists what is
 # remembered.
@@ -294,41 +229,25 @@ task mind
   take name, like text
   take kind, like text
   take find, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
+  save root, call project-root
   fork test
-    call is-unequal
-      read fact
-      text <>
-    hook hold
+    is-unequal fact, <>
+    hold
       save saved
-        call remember
-          read root
-          read fact
-          read name
-          read kind
-          wait true
-      call log-good
-        text <remembered {{saved}}>
+        remember root, fact, read(name), kind, wait true
+      log-good <remembered {{saved}}>
       send back
-  save directory
-    call memory-directory
-      read root
-      wait true
-  save there
-    call directory-exists
-      read directory
+  save directory, memory-directory root, wait true
+  save there, directory-exists directory
+
   fork test
-    read there
-    hook miss
-      call log-step
-        text <no memories yet>
+    there
+    miss
+      log-step <no memories yet>
       send back
-  call log-step
-    call read-index
-      call join
-        read directory
-        text <index.md>
-      wait true
+  log-step
+    read-index join(directory, <index.md>), wait true

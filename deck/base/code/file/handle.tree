@@ -5,6 +5,8 @@
 # `clear`. "w+" is a node spelling and means nothing to tokio's OpenOptions, NIOFileSystem's, or a set of
 # java.nio.file.StandardOpenOption. See note/term/stdlib/native-async-file-and-server.md.
 
+note unstable
+
 load @term/base/code/native/{platform}/file/asynchronous/handle
   find handle-open
   find handle-close

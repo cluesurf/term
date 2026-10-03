@@ -1,0 +1,41 @@
+# browser channel implementation. Forwards to the linked channel runtime shim (an async queue). Declares the opaque handle
+# type a channel holds (the queue object). A message crosses as `unknown`, so one queue serves every message type, and
+# the public `channel` form types it on the way out. Internal: reached only through the public channel API.
+
+dock type
+  load <any>, name channel-handle
+
+dock load
+  load <global:channel>, name channel
+
+task do-make
+  like channel-handle
+  send back
+    call channel/make
+
+task do-send
+  note async
+  take target, like channel-handle
+  take item, like unknown
+  like void
+  call channel/send
+    read target
+    read item
+    wait true
+
+task do-receive
+  note async
+  take source, like channel-handle
+  like unknown
+  send back
+    call channel/receive
+      read source
+      wait true
+
+task do-close
+  note async
+  take target, like channel-handle
+  like void
+  call channel/close
+    read target
+    wait true

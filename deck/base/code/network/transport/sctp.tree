@@ -2,6 +2,8 @@
 # SCTP: Stream Control Transmission Protocol (RFC 4960). Message-oriented, multi-streamed transport. A packet is a
 # common header followed by one or more typed chunks.
 
+note unstable
+
 form sctp-common-header
   link source-port, like u16
   link destination-port, like u16

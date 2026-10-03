@@ -118,62 +118,78 @@ function camel(name: string): string {
 // The text operations by code point (note/term/stdlib/semantics.md), over unicodeScalars. Swift's String counts
 // grapheme clusters and its `range(of:)` and `==` match canonically equivalent text, so nothing here uses either:
 // every search compares scalar arrays, which is the literal match every other backend makes.
-const SWIFT_TEXT = `enum TermText {
-    static func scalars(_ s: String) -> [Unicode.Scalar] { Array(s.unicodeScalars) }
-    static func text(_ c: ArraySlice<Unicode.Scalar>) -> String { var v = String.UnicodeScalarView(); v.append(contentsOf: c); return String(v) }
-    static func find(_ h: [Unicode.Scalar], _ n: [Unicode.Scalar], _ from: Int) -> Int {
-        if n.isEmpty { return from }
+export const SWIFT_TEXT = `enum TermText {
+    // Positions count Unicode scalars (code points), as on every backend (note/term/stdlib/semantics.md), and each is
+    // found by stepping the String's own views where the text lies: a search runs over its UTF-8 bytes, which match only
+    // at scalar boundaries because UTF-8 is self-synchronizing, and an order compares UTF-8 bytes, which IS code point
+    // order. Nothing is copied into an array, so a loop reading a text by position is no longer quadratic in allocation.
+    // It copied every text into [Unicode.Scalar] on almost every call until 2026-10-02.
+    static func at(_ s: String, _ i: Int) -> String.Index? {
+        i < 0 ? nil : s.unicodeScalars.index(s.unicodeScalars.startIndex, offsetBy: i, limitedBy: s.unicodeScalars.endIndex)
+    }
+    static func clamped(_ s: String, _ i: Int) -> String.Index { at(s, max(i, 0)) ?? s.endIndex }
+    static func scalarsTo(_ s: String, _ i: String.Index) -> Int { s.unicodeScalars.distance(from: s.unicodeScalars.startIndex, to: i) }
+    static func find(_ s: String, _ n: String, _ from: String.Index) -> String.Index? {
+        let h = s.utf8
+        let m = n.utf8
+        if m.isEmpty { return from }
         var i = from
-        while i + n.count <= h.count {
-            var k = 0
-            while k < n.count && h[i + k] == n[k] { k += 1 }
-            if k == n.count { return i }
-            i += 1
+        while i < h.endIndex {
+            var a = i
+            var b = m.startIndex
+            while b < m.endIndex && a < h.endIndex && h[a] == m[b] { a = h.index(after: a); b = m.index(after: b) }
+            if b == m.endIndex { return i }
+            i = h.index(after: i)
         }
-        return -1
+        return nil
     }
     static func white(_ c: Unicode.Scalar) -> Bool { c.properties.isWhitespace }
     static func length(_ s: String) -> Int { s.unicodeScalars.count }
-    static func charAt(_ s: String, _ i: Int) -> String { let c = scalars(s); return i >= 0 && i < c.count ? text(c[i...i]) : "" }
-    static func charCodeAt(_ s: String, _ i: Int) -> Int { let c = scalars(s); return i >= 0 && i < c.count ? Int(c[i].value) : -1 }
-    static func indexOf(_ s: String, _ n: String, _ from: Int = 0) -> Int { let h = scalars(s); return find(h, scalars(n), min(max(from, 0), h.count)) }
+    static func charAt(_ s: String, _ i: Int) -> String {
+        guard let x = at(s, i), x < s.unicodeScalars.endIndex else { return "" }
+        return String(s.unicodeScalars[x])
+    }
+    static func charCodeAt(_ s: String, _ i: Int) -> Int {
+        guard let x = at(s, i), x < s.unicodeScalars.endIndex else { return -1 }
+        return Int(s.unicodeScalars[x].value)
+    }
+    static func indexOf(_ s: String, _ n: String, _ from: Int = 0) -> Int {
+        guard let found = find(s, n, clamped(s, from)) else { return -1 }
+        return scalarsTo(s, found)
+    }
     static func lastIndexOf(_ s: String, _ n: String) -> Int {
-        let h = scalars(s)
-        let m = scalars(n)
-        var i = h.count - m.count
-        while i >= 0 {
-            var k = 0
-            while k < m.count && h[i + k] == m[k] { k += 1 }
-            if k == m.count { return i }
-            i -= 1
+        var last: String.Index? = nil
+        var from = s.startIndex
+        while let found = find(s, n, from) {
+            last = found
+            if found == s.endIndex { break }
+            from = s.utf8.index(after: found)
         }
-        return -1
+        return last.map { scalarsTo(s, $0) } ?? -1
     }
     static func split(_ s: String, _ d: String) -> [String] {
-        let h = scalars(s)
-        let m = scalars(d)
-        if m.isEmpty { return h.indices.map { text(h[$0...$0]) } }
+        if d.isEmpty { return s.unicodeScalars.map { String($0) } }
         var out: [String] = []
-        var start = 0
-        var i = 0
-        while i + m.count <= h.count {
-            if find(Array(h[i..<(i + m.count)]), m, 0) == 0 { out.append(text(h[start..<i])); i += m.count; start = i } else { i += 1 }
+        var start = s.startIndex
+        while let found = find(s, d, start) {
+            out.append(String(s[start..<found]))
+            start = s.utf8.index(found, offsetBy: d.utf8.count)
         }
-        out.append(text(h[start..<h.count]))
+        out.append(String(s[start...]))
         return out
     }
     static func substring(_ s: String, _ a: Int, _ b: Int? = nil) -> String {
-        let h = scalars(s)
-        var x = min(max(a, 0), h.count)
-        var y = min(max(b ?? h.count, 0), h.count)
+        var x = clamped(s, a)
+        var y = b.map { clamped(s, $0) } ?? s.endIndex
         if x > y { swap(&x, &y) }
-        return text(h[x..<y])
+        return String(s.unicodeScalars[x..<y])
     }
     static func slice(_ s: String, _ a: Int, _ b: Int? = nil) -> String { substring(s, a, b) }
     // Unicode's default lowercase mapping with its one context rule, Final_Sigma, which JavaScript, Rust and the JDK
     // apply and Swift's lowercased() does not: a capital sigma after a cased letter and before none becomes final
     static func toLowerCase(_ s: String) -> String {
-        let h = scalars(s)
+        if !s.unicodeScalars.contains(where: { $0.value == 0x3A3 }) { return s.lowercased() }
+        let h = Array(s.unicodeScalars)
         var out = String.UnicodeScalarView()
         for (i, c) in h.enumerated() {
             if c.value != 0x3A3 { out.append(contentsOf: String(c).lowercased().unicodeScalars); continue }
@@ -187,41 +203,57 @@ const SWIFT_TEXT = `enum TermText {
         return String(out)
     }
     static func toUpperCase(_ s: String) -> String { s.uppercased() }
-    static func trimStart(_ s: String) -> String { let h = scalars(s); var i = 0; while i < h.count && white(h[i]) { i += 1 }; return text(h[i..<h.count]) }
-    static func trimEnd(_ s: String) -> String { let h = scalars(s); var j = h.count; while j > 0 && white(h[j - 1]) { j -= 1 }; return text(h[0..<j]) }
+    static func trimStart(_ s: String) -> String {
+        let v = s.unicodeScalars
+        var i = v.startIndex
+        while i < v.endIndex && white(v[i]) { i = v.index(after: i) }
+        return String(v[i...])
+    }
+    static func trimEnd(_ s: String) -> String {
+        let v = s.unicodeScalars
+        var j = v.endIndex
+        while j > v.startIndex && white(v[v.index(before: j)]) { j = v.index(before: j) }
+        return String(v[..<j])
+    }
     static func trim(_ s: String) -> String { trimEnd(trimStart(s)) }
     static func pad(_ s: String, _ w: Int, _ f: String, _ front: Bool) -> String {
         let n = length(s)
-        let fill = scalars(f)
-        if n >= w || fill.isEmpty { return s }
+        if n >= w || f.isEmpty { return s }
         var out = String.UnicodeScalarView()
-        for i in 0..<(w - n) { out.append(fill[i % fill.count]) }
+        var fill = f.unicodeScalars.makeIterator()
+        for _ in 0..<(w - n) {
+            if let c = fill.next() { out.append(c) } else { fill = f.unicodeScalars.makeIterator(); out.append(fill.next()!) }
+        }
         return front ? String(out) + s : s + String(out)
     }
     static func padStart(_ s: String, _ w: Int, _ f: String) -> String { pad(s, w, f, true) }
     static func padEnd(_ s: String, _ w: Int, _ f: String) -> String { pad(s, w, f, false) }
     static func replace(_ s: String, _ a: String, _ b: String) -> String {
-        let h = scalars(s)
-        let m = scalars(a)
-        let i = find(h, m, 0)
-        return i < 0 ? s : text(h[0..<i]) + b + text(h[(i + m.count)..<h.count])
+        guard let found = find(s, a, s.startIndex) else { return s }
+        return String(s[..<found]) + b + String(s[s.utf8.index(found, offsetBy: a.utf8.count)...])
     }
     static func replaceAll(_ s: String, _ a: String, _ b: String) -> String {
         if !a.isEmpty { return split(s, a).joined(separator: b) }
-        let h = scalars(s)
-        return b + h.indices.map { text(h[$0...$0]) + b }.joined()
+        return b + s.unicodeScalars.map { String($0) + b }.joined()
     }
-    static func includes(_ s: String, _ n: String) -> Bool { find(scalars(s), scalars(n), 0) >= 0 }
-    static func startsWith(_ s: String, _ n: String) -> Bool { scalars(s).starts(with: scalars(n)) }
-    static func endsWith(_ s: String, _ n: String) -> Bool { let h = scalars(s); let m = scalars(n); return h.count >= m.count && Array(h[(h.count - m.count)...]) == m }
+    static func includes(_ s: String, _ n: String) -> Bool { find(s, n, s.startIndex) != nil }
+    static func startsWith(_ s: String, _ n: String) -> Bool { s.utf8.starts(with: n.utf8) }
+    static func endsWith(_ s: String, _ n: String) -> Bool { s.utf8.count >= n.utf8.count && s.utf8.suffix(n.utf8.count).elementsEqual(n.utf8) }
     static func repeated(_ s: String, _ n: Int) -> String { n > 0 ? String(repeating: s, count: n) : "" }
     static func concat(_ s: String, _ b: String) -> String { s + b }
-    static func equal(_ a: String, _ b: String) -> Bool { a.unicodeScalars.elementsEqual(b.unicodeScalars) }
+    // by code point, never Swift's canonical equivalence (which makes a precomposed and a decomposed é equal)
+    static func equal(_ a: String, _ b: String) -> Bool { a.utf8.elementsEqual(b.utf8) }
     static func compare(_ a: String, _ b: String) -> Int {
-        let x = scalars(a)
-        let y = scalars(b)
-        for i in 0..<min(x.count, y.count) where x[i] != y[i] { return x[i].value < y[i].value ? -1 : 1 }
-        return x.count == y.count ? 0 : (x.count < y.count ? -1 : 1)
+        var x = a.utf8.makeIterator()
+        var y = b.utf8.makeIterator()
+        while true {
+            switch (x.next(), y.next()) {
+            case (nil, nil): return 0
+            case (nil, _): return -1
+            case (_, nil): return 1
+            case let (p?, q?): if p != q { return p < q ? -1 : 1 }
+            }
+        }
     }
 }`
 
@@ -291,6 +323,273 @@ const SWIFT_TAKEN = new Set([
   'Range',
   'Unit',
 ])
+
+// The prelude helpers a Swift program may use, each written once, in the order they are emitted. The emitter records a
+// helper in `needs` where it writes a use of it, and a list or map type anywhere in the program records the wrapper.
+// It used to be chosen by searching the emitted text for each helper's name.
+const SWIFT_HELPERS = {
+  text: SWIFT_TEXT,
+  number: SWIFT_NUMBER,
+  // the one exception value of a Term program on this backend (note/term/hive/11-native-exceptions.md)
+  exception: [
+    'struct TermException: Error { let host: String; let form: String; let note: String; let code: String; let time: Int; let link: Any?; let base: Any? }',
+    'func termException(_ thrown: Any) -> TermException { if let e = thrown as? TermException { return e }; return TermException(host: "", form: "failure", note: "\\(thrown)", code: "", time: 0, link: nil, base: thrown) }',
+  ].join('\n'),
+  // the reference wrapper for maps (a class so mutation persists across a struct copy). `data` is insertion-ordered
+  // (SeedOrdered), so a walk over a map's keys visits them in the order they were first set, as TypeScript's Map and
+  // Kotlin's LinkedHashMap do. A Swift Dictionary is seeded per process, and the same binary walked one map in a
+  // different order on every run (note/term/optimize/meaning.md, question 1). Keys and values live in two dense
+  // arrays beside an index, so a walk, `keys` and `values` allocate nothing while no entry has been removed. A
+  // removal marks its slot dead, and the arrays are compacted once half the slots are dead.
+  map: [
+    'struct SeedOrdered<K: Hashable, V>: Sequence {',
+    '    private var slot: [K: Int] = [:]',
+    '    private var ks: [K] = []',
+    '    private var vs: [V] = []',
+    '    private var live: [Bool] = []',
+    '    private var dead = 0',
+    '    init() {}',
+    '    init(_ data: [K: V]) { for (k, v) in data { self[k] = v } }',
+    '    var count: Int { slot.count }',
+    '    var isEmpty: Bool { slot.isEmpty }',
+    '    subscript(key: K) -> V? {',
+    '        get { if let i = slot[key] { return vs[i] }; return nil }',
+    '        set {',
+    '            guard let value = newValue else { removeValue(forKey: key); return }',
+    '            if let i = slot[key] { vs[i] = value } else { slot[key] = ks.count; ks.append(key); vs.append(value); live.append(true) }',
+    '        }',
+    '    }',
+    '    @discardableResult mutating func removeValue(forKey key: K) -> V? {',
+    '        guard let i = slot.removeValue(forKey: key) else { return nil }',
+    '        let out = vs[i]',
+    '        live[i] = false',
+    '        dead += 1',
+    '        if dead > 16 && dead * 2 > ks.count { compact() }',
+    '        return out',
+    '    }',
+    '    private mutating func compact() {',
+    '        var k2: [K] = []; var v2: [V] = []',
+    '        k2.reserveCapacity(slot.count); v2.reserveCapacity(slot.count)',
+    '        for i in 0..<ks.count where live[i] { slot[ks[i]] = k2.count; k2.append(ks[i]); v2.append(vs[i]) }',
+    '        ks = k2; vs = v2; live = Array(repeating: true, count: k2.count); dead = 0',
+    '    }',
+    '    var keys: [K] { dead == 0 ? ks : ks.indices.compactMap { live[$0] ? ks[$0] : nil } }',
+    '    var values: [V] { dead == 0 ? vs : vs.indices.compactMap { live[$0] ? vs[$0] : nil } }',
+    '    struct Iterator: IteratorProtocol {',
+    '        let map: SeedOrdered<K, V>',
+    '        var at = 0',
+    '        mutating func next() -> (key: K, value: V)? {',
+    '            while at < map.ks.count { let i = at; at += 1; if map.live[i] { return (key: map.ks[i], value: map.vs[i]) } }',
+    '            return nil',
+    '        }',
+    '    }',
+    '    func makeIterator() -> Iterator { Iterator(map: self) }',
+    '}',
+    'final class SeedMap<K: Hashable, V> {',
+    '    var data: SeedOrdered<K, V>',
+    '    init(_ data: [K: V] = [:]) { self.data = SeedOrdered(data) }',
+    '    init(pairs: [(K, V)]) { var d = SeedOrdered<K, V>(); for (k, v) in pairs { d[k] = v }; self.data = d }',
+    '    @discardableResult func setting(_ key: K, _ value: V) -> SeedMap<K, V> { data[key] = value; return self }',
+    '    @discardableResult func removing(_ key: K) -> Bool { let had = data[key] != nil; data.removeValue(forKey: key); return had }',
+    '}',
+    "// two maps are equal when they hold the same keys with equal values, in any order (Kotlin's Map.equals)",
+    'extension SeedMap: Equatable where V: Equatable {',
+    '    static func == (a: SeedMap<K, V>, b: SeedMap<K, V>) -> Bool { a.data.count == b.data.count && a.data.allSatisfy { b.data[$0.key] == $0.value } }',
+    '}',
+  ].join('\n'),
+  // the reference wrapper for lists (a class so an in-place `push` persists across a copy)
+  list: [
+    'final class SeedList<T> {',
+    '    var data: [T]',
+    '    init(_ data: [T] = []) { self.data = data }',
+    '    @discardableResult func appending(_ item: T) -> Int { data.append(item); return data.count }',
+    '    @discardableResult func popping() -> T { return data.removeLast() }',
+    '    func storing(_ index: Int, _ item: T) { data[index] = item }',
+    '    @discardableResult func unshifting(_ item: T) -> Int { data.insert(item, at: 0); return data.count }',
+    '    @discardableResult func shifting() -> T { return data.removeFirst() }',
+    // a splice and a slice clamp their bounds and never count from the end (note/term/stdlib/semantics.md)
+    '    @discardableResult func splicing(_ start: Int, _ count: Int, _ items: [T]) -> Int { let s = min(max(start, 0), data.count); let c = min(max(count, 0), data.count - s); data.replaceSubrange(s..<(s + c), with: items); return data.count }',
+    '    func slicing(_ start: Int, _ end: Int? = nil) -> SeedList<T> { let x = min(max(start, 0), data.count); let y = min(max(end ?? data.count, 0), data.count); return SeedList(x < y ? Array(data[x..<y]) : []) }',
+    '}',
+    '// a list compares and hashes by its items, as on every other backend (note/term/optimize/meaning.md, question 4)',
+    'extension SeedList: Equatable where T: Equatable {',
+    '    static func == (a: SeedList<T>, b: SeedList<T>) -> Bool { a.data == b.data }',
+    '}',
+    'extension SeedList: Hashable where T: Hashable {',
+    '    func hash(into hasher: inout Hasher) { hasher.combine(data) }',
+    '}',
+  ].join('\n'),
+} as const
+
+type SwiftHelper = keyof typeof SWIFT_HELPERS
+
+// every type kind the program's nodes carry, found by walking the program's objects: a list or map value has a list
+// or map type on some node even where the emitter writes no annotation for it
+function typeKindsIn(program: Program): string[] {
+  const kinds = new Set<string>()
+  const seen = new Set<object>()
+  const visit = (value: unknown): void => {
+    if (typeof value !== 'object' || value === null || seen.has(value)) {
+      return
+    }
+
+    seen.add(value)
+
+    if (Array.isArray(value)) {
+      value.forEach(visit)
+
+      return
+    }
+
+    const kind = (value as { kind?: unknown }).kind
+
+    if (typeof kind === 'string') {
+      kinds.add(kind)
+    }
+
+    for (const [key, inner] of Object.entries(value)) {
+      if (key !== 'span') {
+        visit(inner)
+      }
+    }
+  }
+
+  visit(program)
+
+  return [...kinds]
+}
+
+// The function-typed parameters a task may keep past its call (note/term/codegen/passes.md, P3, in its first and
+// most conservative form). A parameter stays NON-escaping only when every mention of it is the callee of a call made
+// directly in the task's body: passed as an argument, returned, stored, read inside a closure, or written (a written
+// parameter is copied into a `var`), it escapes. Anything this cannot see is treated as escaping, which is what every
+// parameter was before, so a mistake can only cost the optimization and never the build.
+function escapingParams(fn: Extract<Statement, { form: 'function' }>): Set<string> {
+  const names = new Set(fn.params.filter(p => p.type?.kind === 'function').map(p => p.name))
+  const escapes = new Set<string>()
+
+  if (names.size === 0) {
+    return escapes
+  }
+
+  type Loose = { form?: string; [key: string]: unknown }
+  const seen = new Set<object>()
+  const visit = (value: unknown, inClosure: boolean): void => {
+    if (typeof value !== 'object' || value === null || seen.has(value)) {
+      return
+    }
+
+    seen.add(value)
+
+    if (Array.isArray(value)) {
+      value.forEach(v => visit(v, inClosure))
+
+      return
+    }
+
+    const node = value as Loose
+    const inside = inClosure || node.form === 'closure'
+
+    if (node.form === 'variable' && names.has(node.name as string)) {
+      escapes.add(node.name as string)
+    }
+
+    if (node.form === 'assign' && (node.target as Loose).form === 'variable' && names.has((node.target as Loose).name as string)) {
+      escapes.add((node.target as Loose).name as string)
+    }
+
+    for (const [key, child] of Object.entries(node)) {
+      if (key === 'type' || key === 'span') {
+        continue
+      }
+
+      // the callee of a direct call outside any closure is the one use that does not escape
+      const callee = child as Loose | null
+      if (node.form === 'call' && key === 'callee' && !inside && callee?.form === 'variable' && names.has(callee.name as string)) {
+        continue
+      }
+
+      visit(child, inside)
+    }
+  }
+
+  visit(fn.body, false)
+
+  return escapes
+}
+
+// The enums that must be `indirect`: those on a cycle of forms that hold each other BY VALUE. A list, a map and a
+// function are references, and a `shared` form is a class, so none of them carries a cycle. A generic form applied to
+// arguments holds them (`maybe node` holds a `node`), so the edge runs from the holder to the generic and from the
+// generic to each argument, and an enum such as `maybe` that sits on someone's cycle is marked as well. Swift refuses a
+// value type that contains itself without an `indirect` somewhere on the cycle, and that refusal is what this keeps away.
+function recursiveEnums(program: Program): Set<string> {
+  const forms = new Map<string, Extract<Statement, { form: 'record-type' }>>()
+
+  for (const node of program) {
+    if (node.form === 'record-type') {
+      forms.set(node.name, node)
+    }
+  }
+
+  const edges = new Map<string, Set<string>>()
+  const edge = (from: string, to: string): void => {
+    if (forms.has(to) && !forms.get(to)!.shared) {
+      edges.set(from, (edges.get(from) ?? new Set()).add(to))
+    }
+  }
+  const held = (from: string, type: Type | undefined): void => {
+    if (type?.kind !== 'named') {
+      return
+    }
+
+    edge(from, type.name)
+
+    for (const arg of type.args ?? []) {
+      held(type.name, arg)
+      held(from, arg)
+    }
+  }
+
+  for (const [name, node] of forms) {
+    if (node.shared) {
+      continue
+    }
+
+    for (const field of node.fields) {
+      held(name, field.type)
+    }
+
+    for (const variant of node.variants) {
+      for (const field of variant.fields) {
+        held(name, field.type)
+      }
+    }
+  }
+
+  // an enum is on a cycle when it reaches itself
+  const reaches = (start: string): boolean => {
+    const seen = new Set<string>()
+    const stack = [...(edges.get(start) ?? [])]
+
+    while (stack.length) {
+      const next = stack.pop()!
+
+      if (next === start) {
+        return true
+      }
+
+      if (!seen.has(next)) {
+        seen.add(next)
+        stack.push(...(edges.get(next) ?? []))
+      }
+    }
+
+    return false
+  }
+
+  return new Set([...forms].filter(([name, node]) => node.variants.length > 0 && reaches(name)).map(([name]) => name))
+}
 
 function pascal(name: string): string {
   const c = camelize(name)
@@ -506,6 +805,19 @@ export function emitSwift(
   options?: { wake?: WakeGroup[] },
 ): string {
   const pad = (d: number) => '  '.repeat(d)
+  // the prelude helpers this program uses (SWIFT_HELPERS), recorded where each is written. A list or a map value
+  // carries a list or map type somewhere in the program even when no annotation is written for it (the result of a
+  // `map`, a temporary), so the program's types decide the two wrappers, and `swiftType` records them as well
+  const needs = new Set<SwiftHelper>(typeKindsIn(program).flatMap(kind => (kind === 'array' ? ['list' as const] : kind === 'map' ? ['map' as const] : [])))
+  const need = (helper: SwiftHelper, code: string): string => {
+    needs.add(helper)
+
+    return code
+  }
+  // the forms written as a struct or an enum, for the conformances emitted after them, and the enums that must be
+  // `indirect` because they can contain themselves
+  const declaredForms = new Set<string>()
+  const recursive = recursiveEnums(program)
   // when the stdlib hive is in the program, every new raise tells it (the throw lowering), and the compiler can
   // emit the wake chain (`wakeHive`) from the roll the driver hands over
   const hasHiveTell = program.some(
@@ -599,6 +911,8 @@ export function emitSwift(
       case 'array':
         // a reference class wrapping an Array, so a list mutated in place (`push`) through one binding is seen through
         // every binding. A bare Swift Array is a value type and would not carry the mutation across a copy.
+        needs.add('list')
+
         return `SeedList<${swiftType(type.element)}>`
       case 'map':
         // a reference class wrapping a Dictionary, so a map mutated through one binding (a `set.insert`) is seen
@@ -609,6 +923,8 @@ export function emitSwift(
           (type.key?.kind === 'variable' && !varNames.has(type.key.id)) || type.key?.kind === 'unknown' || type.key?.kind === 'dynamic'
             ? 'AnyHashable'
             : swiftType(type.key)
+
+        needs.add('map')
 
         return `SeedMap<${key}, ${swiftType(type.value)}>`
 
@@ -1037,6 +1353,11 @@ export function emitSwift(
 
   let currentThrows = false
   let guardDepth = 0
+  // the `note async` tasks, and whether the expression being emitted is the operand of a `wait true`
+  const asyncFns = new Set(
+    program.flatMap(node => (node.form === 'function' && node.async ? [node.name] : [])),
+  )
+  let awaiting = false
   const tryWord = (): string => (currentThrows || guardDepth > 0 ? 'try' : 'try!')
 
   const subSelf = (
@@ -1145,7 +1466,8 @@ export function emitSwift(
         return String(node.value)
       case 'float':
         // a float literal needs a decimal point so it is a Double, not an Int
-        return Number.isInteger(node.value)
+        // (JavaScript writes 1e21 and past as `1e+21`, already a float literal, which a `.0` would break)
+        return Number.isInteger(node.value) && !/e/i.test(String(node.value))
           ? `${node.value}.0`
           : String(node.value)
       case 'boolean':
@@ -1160,7 +1482,7 @@ export function emitSwift(
             typeof part === 'string'
               ? JSON.stringify(part).slice(1, -1)
               : part.type?.kind === 'float'
-                ? `\\(termNumber(${expr(part, bind)}))`
+                ? need('number', `\\(termNumber(${expr(part, bind)}))`)
                 : `\\(${expr(part, bind)})`,
           )
           .join('')}"`
@@ -1170,8 +1492,19 @@ export function emitSwift(
         // null in the dynamic currency (`Any`) is Foundation's null object, the JSON-null representation
         return 'NSNull()'
       case 'variable':
-      case 'hole':
+      case 'hole': {
+        // a throwing task passed as a VALUE goes where a Term task type is taken, which is a non-throwing Swift
+        // function type, so it is wrapped in a closure whose call is `try!`, as a raise in any closure body is
+        // (native-dom-0014: the blog's `keep` handed to the view as its store)
+        if (node.form === 'variable' && throwingFns.has(node.name) && node.type?.kind === 'function') {
+          const names = node.type.params.map((_, i) => `p${i}`)
+          const isAsync = asyncFns.has(node.name) || node.type.effects?.includes('async') === true
+
+          return `{ (${names.join(', ')})${isAsync ? ' async' : ''} in try! ${isAsync ? 'await ' : ''}${vname(node.name)}(${names.join(', ')}) }`
+        }
+
         return vname(node.name)
+      }
       case 'unary': {
         // an operator over a throwing call needs the `try` in front of the whole expression, not the call alone
         const operand = expr(node.operand, bind)
@@ -1239,11 +1572,11 @@ export function emitSwift(
         // Swift's `==` and `<` on String use canonical equivalence, so `"é" == "e\u{301}"` is true here only
         if (isText(node.left.type) && isText(node.right.type)) {
           if (node.op === '==' || node.op === '!=') {
-            return `(${node.op === '!=' ? '!' : ''}${mark}TermText.equal(${left}, ${right}))`
+            return need('text', `(${node.op === '!=' ? '!' : ''}${mark}TermText.equal(${left}, ${right}))`)
           }
 
           if (node.op === '<' || node.op === '>' || node.op === '<=' || node.op === '>=') {
-            return `(${mark}TermText.compare(${left}, ${right}) ${OP[node.op]} 0)`
+            return need('text', `(${mark}TermText.compare(${left}, ${right}) ${OP[node.op]} 0)`)
           }
         }
 
@@ -1251,6 +1584,10 @@ export function emitSwift(
       }
 
       case 'call': {
+        // whether this call sits directly under `wait true`, read before the arguments render their own calls
+        const awaited = awaiting
+        awaiting = false
+
         // `call fill / <data> / like <form>` and `call melt / <value> / like <form>`: a function per form, generated
         // from the form's fields at the end of the module (see swiftFormWalk below)
         if (
@@ -1332,6 +1669,19 @@ export function emitSwift(
           }
         }
 
+        // an async task called WITHOUT `wait true` runs on its own and the caller goes on, as a promise nobody awaits
+        // does on TypeScript: on Swift that is a Task, whose body is the awaited call (native-dom-0014: the blog's
+        // click handler starting `add-post`). A raise in it ends the program, as any unhandled raise does
+        if (
+          node.callee.form === 'variable' &&
+          asyncFns.has(node.callee.name) &&
+          !awaited
+        ) {
+          const raise = throwingFns.has(node.callee.name) ? 'try! ' : ''
+
+          return `Task { ${raise}await ${expr(node.callee, bind)}(${renderedArgs.join(', ')}) }`
+        }
+
         // a call to a throwing function is `try!`: fatal on error (there is no catch construct), and the caller's own
         // signature stays clean. Parenthesized so the call composes inside any surrounding expression.
         if (
@@ -1345,9 +1695,11 @@ export function emitSwift(
       }
 
       case 'array': {
-        // an empty literal gives Swift nothing to infer the element from, so name it explicitly
+        // an empty literal gives Swift nothing to infer the element from, so name it explicitly. A full one is left to
+        // Swift, which reads the element from the context: texts passed where a `like list, like unknown` is taken
+        // are a `SeedList<Any>` there, where the checked `SeedList<String>` would not convert (native-dom-0014)
         const arg =
-          node.type?.kind === 'array'
+          node.items.length === 0 && node.type?.kind === 'array'
             ? `<${swiftType(node.type.element)}>`
             : ''
 
@@ -1488,7 +1840,7 @@ export function emitSwift(
         const textLength = stringRead(node)
 
         if (textLength) {
-          return `TermText.length(${expr(textLength.target, bind)})`
+          return need('text', `TermText.length(${expr(textLength.target, bind)})`)
         }
 
         // a LITERAL index segment (`read parts/0`) on an array target subscripts the SeedList's storage
@@ -1508,12 +1860,25 @@ export function emitSwift(
       }
 
       case 'await':
-        return `await ${expr(node.expr, bind)}`
+      {
+        awaiting = true
+        const operand = expr(node.expr, bind)
+        awaiting = false
+
+        return `await ${operand}`
+      }
 
       case 'closure': {
         // a function literal as a Swift closure. The trailing `send back X` becomes the closure's value
         // expression when it stands alone; with statements before it the implicit-return rule no longer
         // applies, so the `return` stays explicit.
+        // A Term task type is a NON-throwing Swift function type, so a raise in a closure's body is `try!` (it ends
+        // the program, as a raise nothing handles does) even when the function around the closure is `throws`; a
+        // guard inside the closure still makes its own body `try` (native-dom-0014: `make-effect`'s body)
+        const outerThrows = currentThrows
+        const outerGuard = guardDepth
+        currentThrows = false
+        guardDepth = 0
         const last = node.body[node.body.length - 1]
         const lead = node.body
           .slice(0, -1)
@@ -1528,6 +1893,9 @@ export function emitSwift(
             : last
               ? stmt(last, 0, bind)
               : ''
+
+        currentThrows = outerThrows
+        guardDepth = outerGuard
 
         // an async closure carries an explicit `(params) async -> Ret in` signature: Swift closures express async in
         // the signature (there is no async-block form), and the explicit types let `let f = { ... }` infer the async
@@ -1612,8 +1980,9 @@ export function emitSwift(
       case 'get':
         return `${data}[${arg[0]}]`
       case 'set':
-        // wrapped in parens so two set statements in a row do not parse as a trailing closure on the first
-        return `({ ${target}.data[${arg[0]}] = ${arg[1]} }())`
+        // a method call, so two in a row cannot parse as a trailing closure (it was a closure called in place, which
+        // could not carry the `try` or `await` a value read through a throwing or async call needs)
+        return `${target}.storing(${arg[0]}, ${arg[1]})`
       case 'includes':
         return `${data}.contains(${arg[0]})`
       case 'indexOf':
@@ -1631,7 +2000,7 @@ export function emitSwift(
       case 'join':
         // each item as `to-text` renders it, so a float reads as on every backend
         return op.target.type?.kind === 'array' && op.target.type.element.kind === 'float'
-          ? `${data}.map { termNumber($0) }.joined(separator: ${arg[0]})`
+          ? need('number', `${data}.map { termNumber($0) }.joined(separator: ${arg[0]})`)
           : `${data}.map { String(describing: $0) }.joined(separator: ${arg[0]})`
       case 'map':
         return `SeedList(${data}.map(${arg[0]}))`
@@ -1667,7 +2036,7 @@ export function emitSwift(
   const stringExpr = (op: string, t: string, a: string[]): string => {
     // `repeat` is a Swift keyword, so the helper spells it `repeated`
     const name = op === 'at' ? 'charAt' : op === 'repeat' ? 'repeated' : op
-    const call = `TermText.${name}(${[t, ...a].join(', ')})`
+    const call = need('text', `TermText.${name}(${[t, ...a].join(', ')})`)
 
     return name === 'split' ? `SeedList(${call})` : call
   }
@@ -1720,16 +2089,30 @@ export function emitSwift(
         const carriesOwnType = initCall !== undefined
         // except a call with NO arguments to a generic task (`make-channel`): nothing at the call says what `T` is, so
         // the binding says it, when the checker knows it concretely
+        // A type argument nothing ever constrains (a deque made and only asked whether it is empty) is any type, so it
+        // is written `Never`, which every constraint a form puts on its argument accepts
         const uninferable =
           initCall !== undefined &&
           (initCall.args.length === 0 ||
             (initCall.callee.form === 'variable' && hiddenGeneric.has(initCall.callee.name))) &&
           node.type?.kind === 'named' &&
           (node.type.args?.length ?? 0) > 0 &&
-          !node.type.args!.some(a => a.kind === 'variable' || a.kind === 'unknown' || (a.kind === 'named' && /^[a-z]$/.test(a.name)))
+          !node.type.args!.some(
+            a => (a.kind === 'variable' && varNames.has(a.id)) || a.kind === 'unknown' || (a.kind === 'named' && /^[a-z]$/.test(a.name)),
+          )
+        const spell = (type: Type): string => {
+          const free = new Set<number>()
+          collectVars(type, free)
+          const saved = varNames
+          varNames = new Map([...saved, ...[...free].filter(id => !saved.has(id)).map(id => [id, 'Never'] as const)])
+          const text = swiftType(type)
+          varNames = saved
+
+          return text
+        }
         const annotation =
           node.type?.kind === 'named' && node.type.name && (!carriesOwnType || uninferable)
-            ? `: ${swiftType(node.type)}`
+            ? `: ${uninferable ? spell(node.type) : swiftType(node.type)}`
             : ''
 
         return `${(node.mutable && currentAssigned === undefined) || assignedHere(node.name) ? 'var' : 'let'} ${vname(
@@ -1797,9 +2180,16 @@ export function emitSwift(
       case 'throw': {
         // a raise carries the record whole in a TermException; a text raises `failure`; a caught value passes on.
         // When the program has the stdlib hive, a NEW carrier tells it before unwinding (a pass-on does not re-tell).
+        needs.add('exception')
+
         const tellPart = hasHiveTell
           ? '; hiveTell(HiveEntry(host: told.host, kind: "exception", name: told.form, site: "", base: told))'
           : ''
+
+        // a text raise with nothing to tell is the carrier itself, with no closure around it
+        if (node.value.form === 'string' && !hasHiveTell) {
+          return `throw TermException(host: "", form: "failure", note: ${expr(node.value, bind)}, code: "", time: 0, link: nil, base: nil)`
+        }
 
         return node.value.form === 'string'
           ? `throw ({ () -> TermException in let told = TermException(host: "", form: "failure", note: ${expr(node.value, bind)}, code: "", time: 0, link: nil, base: nil)${tellPart}; return told })()`
@@ -1820,6 +2210,11 @@ export function emitSwift(
         guardDepth++
         const body = block(node.body, d + 1, bind)
         guardDepth--
+
+        if (node.catch) {
+          needs.add('exception')
+        }
+
         const handler = node.catch
           ? `catch {\n${pad(d + 1)}let ${camel(node.catch.name)} = termException(error)\n${block(
               node.catch.body,
@@ -1838,13 +2233,15 @@ export function emitSwift(
             ? `${expr(node.iterable, bind)}.data`
             : expr(node.iterable, bind)
 
-        // a walk that names its INDEX enumerates; `Int64` because that is what a Term number is here. lean-0017
+        // a walk that names its INDEX enumerates, lazily: the offset is an `Int`, which is what a Term number is here.
+        // It mapped every pair into an array of `(Int64, T)` first, an allocation per walk and a second integer type.
+        // lean-0017
         const label = openLoop()
         const body = block(node.body, d + 1, bind)
         loopLabels.pop()
 
         return node.index
-          ? `${label}: for (${vname(node.index)}, ${vname(node.item)}) in ${iterable}.enumerated().map({ (Int64($0.offset), $0.element) }) {\n${body}\n${pad(d)}}`
+          ? `${label}: for (${vname(node.index)}, ${vname(node.item)}) in ${iterable}.enumerated() {\n${body}\n${pad(d)}}`
           : `${label}: for ${vname(node.item)} in ${iterable} {\n${body}\n${pad(d)}}`
       }
 
@@ -1857,7 +2254,7 @@ export function emitSwift(
           const arms = node.cases.map(b => {
             const arm = node.exceptionArms![b.label]!
             const bodyText = armBlock(b.body, d + 2, bind)
-            const locals = armLocals([...arm.shared, ...arm.link], b.binds)
+            const locals = armLocals([...arm.shared, ...arm.link], b.binds ?? [])
               .filter(({ local }) => new RegExp(`\\b${camel(local).replace(/[^\w$]/g, '\\$&')}\\b`).test(bodyText))
               .map(({ field, local }) =>
                 arm.link.includes(field)
@@ -1927,7 +2324,7 @@ export function emitSwift(
 
           // every field binds, positionally, under the local name the arm's `link` lines give it (see check/arm.ts)
           const locals = new Map(
-            armLocals(fields, b.binds).map(({ field, local }) => [field, local]),
+            armLocals(fields, b.binds ?? []).map(({ field, local }) => [field, local]),
           )
           const pattern =
             fields.length > 0
@@ -1990,12 +2387,15 @@ export function emitSwift(
 
       case 'function': {
         const generics = genericClause(node) // sets varNames for the param/result/body emission that follows
-        // a function-typed parameter is `@escaping`: the callee may store it (a hive ear, a route handler), and
-        // marking one that is only called is harmless
+        // a function-typed parameter is `@escaping` when the task may keep it past the call: stored, returned, passed
+        // on, captured by a closure, or copied into a variable (escapingParams). One the task only calls is left
+        // non-escaping, so Swift can keep the closure's context on the stack and inline the call. Every one was
+        // `@escaping` until 2026-10-02 (note/term/codegen/ios.md, S3)
+        const escaping = escapingParams(node)
         const params = node.params
           .map(
             p =>
-              `_ ${vname(p.name)}: ${p.type?.kind === 'function' ? '@escaping ' : ''}${swiftType(p.type)}`,
+              `_ ${vname(p.name)}: ${p.type?.kind === 'function' && escaping.has(p.name) ? '@escaping ' : ''}${swiftType(p.type)}`,
           )
           .join(', ')
 
@@ -2090,8 +2490,12 @@ export function emitSwift(
             }`
           })
 
-          // `indirect` lets a variant hold its own enum (a linked list's `next`); harmless when nothing recurses
-          return `indirect enum ${pascal(node.name)}${generics} {\n${cases.join(
+          // `indirect` lets a variant hold its own enum (a linked list's `next`). It boxes every value of the enum on
+          // the heap, so it goes only on an enum that can contain itself (recursiveEnums). It was on every enum until
+          // 2026-10-02, and a `maybe` or a field-less tag paid an allocation per value
+          declaredForms.add(node.name)
+
+          return `${recursive.has(node.name) ? 'indirect ' : ''}enum ${pascal(node.name)}${generics} {\n${cases.join(
             '\n',
           )}\n${pad(d)}}`
         }
@@ -2118,6 +2522,8 @@ export function emitSwift(
             '\n',
           )}\n${pad(d + 1)}init(${params.join(', ')}) {\n${assigns.join('\n')}\n${pad(d + 1)}}\n${pad(d)}}`
         }
+
+        declaredForms.add(node.name)
 
         return `struct ${pascal(node.name)}${generics}${exceptionForms.has(node.name) ? ': Error' : ''} {\n${fields.join(
           '\n',
@@ -2450,9 +2856,7 @@ export function emitSwift(
     const swiftName = pascal(name)
 
     // only a form this program actually declares as a struct or an enum
-    const declared = new RegExp(`^(struct|indirect enum) ${swiftName}\\b`)
-
-    if (!body.some(b => declared.test(b))) {
+    if (!declaredForms.has(name)) {
       continue
     }
 
@@ -2490,111 +2894,7 @@ export function emitSwift(
 
   body.push(...conformances)
 
-  const prelude: string[] = []
-
-  if (body.some(b => b.includes('SeedError('))) {
-    prelude.push(
-      'struct SeedError: Error { let message: String; init(_ m: String) { message = m } }',
-    )
-  }
-
-  if (body.some(b => b.includes('TermText.'))) {
-    prelude.push(SWIFT_TEXT)
-  }
-
-  if (body.some(b => b.includes('termNumber('))) {
-    prelude.push(SWIFT_NUMBER)
-  }
-
-  // the one exception value of a Term program on this backend (note/term/hive/11-native-exceptions.md)
-  if (body.some(b => b.includes('TermException(') || b.includes('termException('))) {
-    prelude.push(
-      'struct TermException: Error { let host: String; let form: String; let note: String; let code: String; let time: Int; let link: Any?; let base: Any? }',
-      'func termException(_ thrown: Any) -> TermException { if let e = thrown as? TermException { return e }; return TermException(host: "", form: "failure", note: "\\(thrown)", code: "", time: 0, link: nil, base: thrown) }',
-    )
-  }
-
-  // the reference wrapper for maps (a class so mutation persists across a struct copy); emitted only when used
-  // `data` is insertion-ordered (SeedOrdered), so a walk over a map's keys visits them in the order they were first set,
-  // as TypeScript's Map and Kotlin's LinkedHashMap do. A Swift Dictionary is seeded per process, and the same binary
-  // walked one map in a different order on every run (note/term/optimize/meaning.md, question 1). SeedOrdered keeps
-  // the Dictionary surface the emitter and the runtime shims use: a subscript, count, keys, values, removeValue and
-  // iteration as (key, value).
-  if (body.some(b => b.includes('SeedMap'))) {
-    prelude.push(
-      [
-        'struct SeedOrdered<K: Hashable, V>: Sequence {',
-        '    private var slot: [K: Int] = [:]',
-        '    private var entry: [(key: K, value: V)?] = []',
-        '    private var dead = 0',
-        '    init() {}',
-        '    init(_ data: [K: V]) { for (k, v) in data { self[k] = v } }',
-        '    var count: Int { slot.count }',
-        '    var isEmpty: Bool { slot.isEmpty }',
-        '    subscript(key: K) -> V? {',
-        '        get { if let i = slot[key] { return entry[i]?.value }; return nil }',
-        '        set {',
-        '            guard let value = newValue else { removeValue(forKey: key); return }',
-        '            if let i = slot[key] { entry[i] = (key: key, value: value) } else { slot[key] = entry.count; entry.append((key: key, value: value)) }',
-        '        }',
-        '    }',
-        '    @discardableResult mutating func removeValue(forKey key: K) -> V? {',
-        '        guard let i = slot.removeValue(forKey: key) else { return nil }',
-        '        let out = entry[i]?.value',
-        '        entry[i] = nil',
-        '        dead += 1',
-        '        if dead > 16 && dead * 2 > entry.count { compact() }',
-        '        return out',
-        '    }',
-        '    private mutating func compact() {',
-        '        entry = entry.filter { $0 != nil }',
-        '        dead = 0',
-        '        for (i, e) in entry.enumerated() { slot[e!.key] = i }',
-        '    }',
-        '    var keys: [K] { entry.compactMap { $0?.key } }',
-        '    var values: [V] { entry.compactMap { $0?.value } }',
-        '    func makeIterator() -> IndexingIterator<[(key: K, value: V)]> { entry.compactMap { $0 }.makeIterator() }',
-        '}',
-        'final class SeedMap<K: Hashable, V> {',
-        '    var data: SeedOrdered<K, V>',
-        '    init(_ data: [K: V] = [:]) { self.data = SeedOrdered(data) }',
-        '    init(pairs: [(K, V)]) { var d = SeedOrdered<K, V>(); for (k, v) in pairs { d[k] = v }; self.data = d }',
-        '    @discardableResult func setting(_ key: K, _ value: V) -> SeedMap<K, V> { data[key] = value; return self }',
-        '    @discardableResult func removing(_ key: K) -> Bool { let had = data[key] != nil; data.removeValue(forKey: key); return had }',
-        '}',
-        '// two maps are equal when they hold the same keys with equal values, in any order (Kotlin\'s Map.equals)',
-        'extension SeedMap: Equatable where V: Equatable {',
-        '    static func == (a: SeedMap<K, V>, b: SeedMap<K, V>) -> Bool { a.data.count == b.data.count && a.data.allSatisfy { b.data[$0.key] == $0.value } }',
-        '}',
-      ].join('\n'),
-    )
-  }
-
-  // the reference wrapper for lists (a class so an in-place `push` persists across a copy); emitted only when used
-  if (body.some(b => b.includes('SeedList'))) {
-    prelude.push(
-      [
-        'final class SeedList<T> {',
-        '    var data: [T]',
-        '    init(_ data: [T] = []) { self.data = data }',
-        '    @discardableResult func appending(_ item: T) -> Int { data.append(item); return data.count }',
-        '    @discardableResult func popping() -> T { return data.removeLast() }',
-        '    @discardableResult func unshifting(_ item: T) -> Int { data.insert(item, at: 0); return data.count }',
-        '    @discardableResult func shifting() -> T { return data.removeFirst() }',
-        // a splice and a slice clamp their bounds and never count from the end (note/term/stdlib/semantics.md)
-        '    @discardableResult func splicing(_ start: Int, _ count: Int, _ items: [T]) -> Int { let s = min(max(start, 0), data.count); let c = min(max(count, 0), data.count - s); data.replaceSubrange(s..<(s + c), with: items); return data.count }',
-        '    func slicing(_ start: Int, _ end: Int? = nil) -> SeedList<T> { let x = min(max(start, 0), data.count); let y = min(max(end ?? data.count, 0), data.count); return SeedList(x < y ? Array(data[x..<y]) : []) }',
-        '}',
-        '// a list compares and hashes by its items, as on every other backend (note/term/optimize/meaning.md, question 4)',
-        'extension SeedList: Equatable where T: Equatable {',
-        '    static func == (a: SeedList<T>, b: SeedList<T>) -> Bool { a.data == b.data }',
-        '}',
-        'extension SeedList: Hashable where T: Hashable {',
-        '    func hash(into hasher: inout Hasher) { hasher.combine(data) }',
-        '}',
-      ].join('\n'),
-    )
-  }
+  const prelude = (Object.keys(SWIFT_HELPERS) as SwiftHelper[]).filter(h => needs.has(h)).map(h => SWIFT_HELPERS[h])
 
   // the wake chain: one `hiveWake` per deck with its static entries, when the program has the stdlib hive and
   // the compile driver handed over the roll. A static entry's `base` is the declaration as JSON text; an entry

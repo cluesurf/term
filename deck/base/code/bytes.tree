@@ -1,5 +1,7 @@
 # Raw byte buffers: the `bytes` currency type, backed by the platform's native octet buffer (a JS Uint8Array, a rust byte vector, a swift Data, a kotlin ByteArray). This is the zero-copy currency for cryptography, encoding, file IO, and the network. Text (utf8), hex, and base64 are explicit codecs at the edges, not a tax paid on every call. The per-env native implementation is selected at build time and hidden.
 
+note stable
+
 load @term/base/code/native/{platform}/bytes
   find do-bytes-from-text
   find do-bytes-to-text
@@ -131,3 +133,36 @@ task slice
       read value
       read start
       read end
+
+# the bytes as a list of numbers, each 0 to 255
+bind to-byte-list
+  take value, like bytes
+  like list
+    like number
+  case node
+    text <Array.from($value)>
+  case browser
+    text <Array.from($value)>
+  case rust
+    text <std::rc::Rc::new(std::cell::RefCell::new($value.iter().map(|b| *b as i64).collect::<Vec<i64>>()))>
+  case swift
+    text <SeedList<Int>($value.map \{ Int($0) \})>
+  case kotlin
+    text <$value.map \{ (it.toInt() and 255).toLong() \}.toMutableList()>
+
+# bytes from a list of numbers; each number keeps its low eight bits (256 is 0, -1 is 255), on every backend
+bind from-byte-list
+  take values
+    like list
+      like number
+  like bytes
+  case node
+    text <Uint8Array.from($values, function (n) \{ return n & 255 \})>
+  case browser
+    text <Uint8Array.from($values, function (n) \{ return n & 255 \})>
+  case rust
+    text <$values.borrow().iter().map(|n| (*n & 255) as u8).collect::<Vec<u8>>()>
+  case swift
+    text <Data($values.data.map \{ UInt8(truncatingIfNeeded: $0) \})>
+  case kotlin
+    text <ByteArray($values.size) \{ ($values[it] and 255L).toByte() \}>

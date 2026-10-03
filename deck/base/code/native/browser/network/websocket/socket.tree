@@ -1,3 +1,6 @@
+note draft
+
+# SHELVED 2026-10-02 (base-v1-0019): the public module it serves is shelved.
 
 load @term/base/code/network/websocket
   find socket

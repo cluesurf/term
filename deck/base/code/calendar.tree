@@ -1,21 +1,23 @@
-# Calendar: formatting, components, construction, and arithmetic over a UTC timestamp (epoch milliseconds, an integer). The clean uniform interface; the per-env native implementation is selected at build time and hidden. Each platform delegates to its best date library (node / browser the host Date, rust chrono, swift Foundation, kotlin java.time). Everything is UTC, so results are deterministic across hosts. Formatting and parsing use ISO 8601 with millisecond precision and a Z suffix (2026-06-19T12:34:56.000Z). Fixed-length units (second / minute / hour / day) are pure integer arithmetic on the timestamp; calendar-aware units (month / year) delegate to the platform, which handles month lengths and leap years.
+# Calendar: formatting, components, construction and arithmetic over a UTC timestamp (epoch milliseconds, an integer).
+# Pure Term over the proleptic Gregorian calendar (calendar/civil.tree), so every backend reads the same date from the
+# same instant and builds the same instant from the same date; it used to delegate to five date libraries, which
+# disagreed past their ranges and on month arithmetic. Everything is UTC: `timezone` is the wall clock of a zone.
+# `format` writes RFC 3339 with milliseconds and a Z (2026-06-19T12:34:56.000Z); `format-pattern` lays out any pattern.
+
+note stable
 
 load @term/base/code/calendar/time-text
   find parse-rfc-3339
   find time-mismatch
 
-load @term/base/code/native/{platform}/calendar
-  find do-format
-  find do-year
-  find do-month
-  find do-day
-  find do-hour
-  find do-minute
-  find do-second
-  find do-weekday
-  find do-build
-  find do-add-months
-  find do-add-years
+load @term/base/code/calendar/civil
+  find floor-divide
+  find days-from-civil
+  find civil-from-days
+  find days-in-month
+  find weekday-of-days
+  find format-pattern
+  find day-millis
 
 form date-parts
   link year, like integer
@@ -30,8 +32,10 @@ task format
   take millis, like number
   like text
   send back
-    call do-format
+    call format-pattern
       read millis
+      text <YYYY-MM-DD[T]HH:mm:ss.SSS[Z]>
+      code 0
 
 # milliseconds since the epoch for an RFC 3339 timestamp, read in Term so every backend accepts the same texts and
 # gives the same answer; a text that is not one raises `time-mismatch` with the position and the reason
@@ -47,52 +51,87 @@ task parse
 task year
   take millis, like number
   like integer
-  send back
-    call do-year
-      read millis
+  save date
+    call civil-from-days
+      call floor-divide
+        read millis
+        read day-millis
+  send back, read date/year
 
 task month
   take millis, like number
   like integer
-  send back
-    call do-month
-      read millis
+  save date
+    call civil-from-days
+      call floor-divide
+        read millis
+        read day-millis
+  send back, read date/month
 
 task day
   take millis, like number
   like integer
-  send back
-    call do-day
-      read millis
+  save date
+    call civil-from-days
+      call floor-divide
+        read millis
+        read day-millis
+  send back, read date/day
 
 task hour
   take millis, like number
   like integer
   send back
-    call do-hour
-      read millis
+    call divide
+      call subtract
+        read millis
+        call multiply
+          call floor-divide
+            read millis
+            code 86400000
+          code 86400000
+      code 3600000
 
 task minute
   take millis, like number
   like integer
   send back
-    call do-minute
-      read millis
+    call divide
+      call subtract
+        read millis
+        call multiply
+          call floor-divide
+            read millis
+            code 3600000
+          code 3600000
+      code 60000
 
 task second
   take millis, like number
   like integer
   send back
-    call do-second
-      read millis
+    call divide
+      call subtract
+        read millis
+        call multiply
+          call floor-divide
+            read millis
+            code 60000
+          code 60000
+      code 1000
 
+# 0 for Sunday to 6 for Saturday
 task weekday
   take millis, like number
   like integer
   send back
-    call do-weekday
-      read millis
+    call weekday-of-days
+      call floor-divide
+        read millis
+        read day-millis
 
+# the instant of a UTC date and time. A month or day out of range carries into the next (month 13 is January of the
+# next year, day 0 the last day of the month before), the same on every backend
 task make-utc
   take year, like integer
   take month, like integer
@@ -101,14 +140,49 @@ task make-utc
   take minute, like integer
   take second, like integer
   like number
+  save months
+    call add
+      call multiply
+        read year
+        code 12
+      call subtract
+        read month
+        code 1
+  save days
+    call add
+      call days-from-civil
+        call floor-divide
+          read months
+          code 12
+        call add
+          call subtract
+            read months
+            call multiply
+              call floor-divide
+                read months
+                code 12
+              code 12
+          code 1
+        code 1
+      call subtract
+        read day
+        code 1
   send back
-    call do-build
-      read year
-      read month
-      read day
-      read hour
-      read minute
-      read second
+    call add
+      call multiply
+        read days
+        read day-millis
+      call add
+        call add
+          call multiply
+            read hour
+            code 3600000
+          call multiply
+            read minute
+            code 60000
+        call multiply
+          read second
+          code 1000
 
 task to-parts
   take millis, like number
@@ -167,20 +241,77 @@ task add-days
         read count
         code 86400000
 
+# the same day `count` months on, at the same time of day. A day the month lacks becomes its last day: January 31
+# plus one month is February 28, or 29 in a leap year, on every backend (JavaScript's Date rolled it to March 3)
 task add-months
   take millis, like number
   take count, like number
   like number
-  send back
-    call do-add-months
+  save days
+    call floor-divide
       read millis
+      read day-millis
+  save time
+    call subtract
+      read millis
+      call multiply
+        read days
+        read day-millis
+  save date
+    call civil-from-days
+      read days
+  save months
+    call add
+      call add
+        call multiply
+          read date/year
+          code 12
+        call subtract
+          read date/month
+          code 1
       read count
+  save year
+    call floor-divide
+      read months
+      code 12
+  save month
+    call add
+      call subtract
+        read months
+        call multiply
+          read year
+          code 12
+      code 1
+  save last
+    call days-in-month
+      read year
+      read month
+  save day, read date/day
+  fork test
+    hook test
+      call is-above
+        read day
+        read last
+    hook hold
+      save day, read last
+  send back
+    call add
+      call multiply
+        call days-from-civil
+          read year
+          read month
+          read day
+        read day-millis
+      read time
 
+# `count` years on, as twelve months each: February 29 lands on February 28 in a year that has none
 task add-years
   take millis, like number
   take count, like number
   like number
   send back
-    call do-add-years
+    call add-months
       read millis
-      read count
+      call multiply
+        read count
+        code 12

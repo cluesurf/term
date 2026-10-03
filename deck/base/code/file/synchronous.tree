@@ -12,6 +12,8 @@
 # The open modes are the same five independent booleans the asynchronous side uses, for the same reason: "w+" is a
 # node spelling. See note/term/stdlib/native-async-file-and-server.md.
 
+note unstable
+
 load @term/base/code/native/{platform}/file/synchronous
   find grip-open
   find grip-close

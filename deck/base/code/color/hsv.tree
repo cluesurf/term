@@ -1,5 +1,7 @@
 # HSV color (hue 0-360, saturation 0-100, value 0-100) and conversion from RGB. Integer-scaled, pure logic on top of the math interface.
 
+note unstable
+
 load @term/base/code/color/rgb
   find rgb-color
 

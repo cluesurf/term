@@ -1,0 +1,71 @@
+# An empty list that is later pushed lists is a list of lists on every backend (base-v1-0042). Held by
+# `pnpm term:base-gate`.
+
+load @term/base/code/list
+  find list
+  find size
+  find get
+  find join
+
+test <a list of lists built by pushing>
+  save rows
+    make list
+  save a
+    make list
+  call a/push, code 1
+  call a/push, code 2
+  call rows/push
+    read a
+  save b
+    make list
+  call b/push, code 3
+  call rows/push
+    read b
+  want hold
+    call and
+      call is-equal
+        call size
+          read rows
+        code 2
+      call is-equal
+        call size
+          call get
+            read rows
+            code 0
+        code 2
+
+test <a list of lists of text, read back>
+  save grid
+    make list
+  save k, code 0
+  walk test
+    hook test
+      call is-below
+        read k
+        code 3
+    hook step
+      save row
+        make list
+      call row/push, text <r{{k}}a>
+      call row/push, text <r{{k}}b>
+      call grid/push
+        read row
+      save k
+        call add
+          read k
+          code 1
+  save out
+    make list
+  walk list, read grid
+    hook next
+      take site, name row
+      call out/push
+        call join
+          read row
+          text <+>
+  want hold
+    call is-equal
+      call join
+        read out
+        text <,>
+      text <r0a+r0b,r1a+r1b,r2a+r2b>

@@ -24,123 +24,118 @@ load @term/base/code/console
 task colour
   take code, like text
   take text, like text
+
   like text
-  send back
-    text <\e[{{code}}m{{text}}\e[0m>
+
+  back <\e[{{code}}m{{text}}\e[0m>
 
 task good
   take text, like text
+
   like text
-  send back
-    call colour
-      text <32>
-      read text
+
+  back
+    colour <32>, read text
 
 task warn
   take text, like text
+
   like text
-  send back
-    call colour
-      text <33>
-      read text
+
+  back
+    colour <33>, read text
 
 task fail
   take text, like text
+
   like text
-  send back
-    call colour
-      text <31>
-      read text
+
+  back
+    colour <31>, read text
 
 task fade
   take text, like text
+
   like text
-  send back
-    call colour
-      text <90>
-      read text
+
+  back
+    colour <90>, read text
 
 task bold
   take text, like text
+
   like text
-  send back
-    call colour
-      text <1>
-      read text
+
+  back
+    colour <1>, read text
 
 task name
   take text, like text
+
   like text
-  send back
-    call colour
-      text <36>
-      read text
+
+  back
+    colour <36>, read text
 
 task mark
   take text, like text
+
   like text
-  send back
-    call colour
-      text <35>
-      read text
+
+  back
+    colour <35>, read text
 
 task log-good
   take text, like text
+
   like void
-  save marker
-    call good
-      text <  ok >
-  call log
-    text <{{marker}}{{text}}>
+
+  save marker, good <  ok >
+  log <{{marker}}{{text}}>
 
 task log-warn
   take text, like text
+
   like void
-  save marker
-    call warn
-      text <  warn >
-  call log
-    text <{{marker}}{{text}}>
+
+  save marker, warn <  warn >
+  log <{{marker}}{{text}}>
 
 task log-fail
   take text, like text
+
   like void
-  save marker
-    call fail
-      text <  fail >
-  call log-error
-    text <{{marker}}{{text}}>
+
+  save marker, fail <  fail >
+  log-error <{{marker}}{{text}}>
 
 task log-step
   take text, like text
+
   like void
-  save marker
-    call name
-      text <  -\> >
-  call log
-    text <{{marker}}{{text}}>
+
+  save marker, call name, <  -\> >
+  log <{{marker}}{{text}}>
 
 task log-head
   take text, like text
+
   like void
-  call log
-    text <>
-  call log
-    call bold
-      read text
+
+  log <>
+  log bold read text
 
 # What a caught error says. An exception carries a `message`; anything else is shown as it is, because a CLI that
 # prints `[object Object]` has told the reader nothing.
 task format-error
   take error, like unknown
+
   like text
-  save message
-    read error/message
+
+  save message, read error/message
+
   fork test
-    call is-unequal
-      read message
-      make void
-    hook hold
-      send back, read message
-  send back
-    text <{{error}}>
+    is-unequal message, make void
+    hold
+      back message
+  back <{{error}}>

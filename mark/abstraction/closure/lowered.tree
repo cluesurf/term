@@ -1,0 +1,25 @@
+# the same sum as term.tree with the closure's body written into the loop: no task value, no call per element
+task run
+  take size, like number
+  like text
+  save step
+    call add
+      call modulo
+        read size
+        code 7
+      code 3
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read size
+    hook next
+      take site, name i
+      save total
+        call add
+          read total
+          call modulo
+            call multiply
+              read i
+              read step
+            code 1000
+  send back, text <{{total}}>

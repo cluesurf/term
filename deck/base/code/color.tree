@@ -1,6 +1,8 @@
 
 # https://github.com/Evercoder/culori
 
+note unstable
+
 load @term/base/code/mixin/each
   find define-each
 

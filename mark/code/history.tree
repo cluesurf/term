@@ -1,0 +1,328 @@
+# Earlier sessions, for `--check`. The gate reads the session exports themselves and recomputes each ratio from
+# their samples, so there is no second store of summaries to go stale. Two cases are the same comparison when the
+# machine digest, the program and its digest, the implementation, the target, the size and its expected output's
+# digest all match (note/term/bench/database.md, "What makes a comparison the same comparison").
+
+load @term/base/code/json
+  find parse
+  find get-field
+  find get-item
+  find as-text
+  find as-number
+  find array-size
+  find is-null
+
+load @term/base/code/list
+  find list
+  find push
+  find sort
+  find reverse
+
+load @term/base/code/ordering
+  find ordering
+  find from-texts
+
+load @term/base/code/text
+  find ends-with
+
+load ./disk
+  find file-text
+  find folder-names
+  find file-present
+
+# what an earlier session measured for one comparison
+form earlier
+  link found, like boolean
+  link start, like text
+  # milliseconds per sample, paired by round
+  link term-wall
+    like list
+      like decimal
+  link base-wall
+    like list
+      like decimal
+  link term-instructions
+    like list
+      like decimal
+  link base-instructions
+    like list
+      like decimal
+
+# every session export in the directory, newest first, parsed
+task read-history
+  note async
+  take dir, like text
+  like list
+    like dynamic
+  save out
+    make list
+  fork test
+    hook test
+      call not
+        call file-present
+          read dir
+          wait true
+    hook hold
+      send back, read out
+  save names
+    call reverse
+      call sort
+        call folder-names
+          read dir
+        read from-texts
+  walk list, read names
+    hook next
+      take site, name name
+      fork test
+        hook test
+          call ends-with
+            read name
+            text <.json>
+        hook hold
+          call push
+            read out
+            call parse
+              call file-text
+                text <{{dir}}/{{name}}>
+                wait true
+  send back, read out
+
+task field-of
+  take value, like dynamic
+  take key, like text
+  like text
+  send back
+    call as-text
+      call get-field
+        read value
+        read key
+
+# one metric's values as decimals, wall in milliseconds. Empty when the case did not record it
+task values-of
+  take one, like dynamic
+  take metric, like text
+  like list
+    like decimal
+  save out
+    make list
+  save measurements
+    call get-field
+      read one
+      text <measurements>
+  walk size
+    bind base, code 0
+    bind head
+      call array-size
+        read measurements
+    hook next
+      take site, name at
+      save measured
+        call get-item
+          read measurements
+          read at
+      fork test
+        hook test
+          call is-equal
+            call field-of
+              read measured
+              text <metric>
+            read metric
+        hook hold
+          save values
+            call get-field
+              read measured
+              text <values>
+          walk size
+            bind base, code 0
+            bind head
+              call array-size
+                read values
+            hook next
+              take site, name k
+              save value
+                call as-number
+                  call get-item
+                    read values
+                    read k
+              fork test
+                hook test
+                  call is-equal
+                    read metric
+                    text <wall>
+                hook hold
+                  save value
+                    call divide
+                      read value
+                      code 1000000.0
+              call push
+                read out
+                read value
+  send back, read out
+
+# the last session on this machine, before `before`, holding both cases of the comparison, correct
+task earlier-of
+  take history
+    like list
+      like dynamic
+  take machine, like text
+  take before, like text
+  take program, like text
+  take program-digest, like text
+  take target, like text
+  take size-name, like text
+  take expect-digest, like text
+  take baseline, like text
+  like earlier
+  walk list, read history
+    hook next
+      take site, name export
+      save session
+        call get-field
+          read export
+          text <session>
+      save start
+        call field-of
+          read session
+          text <start>
+      fork test
+        hook test
+          call or
+            call is-unequal
+              call field-of
+                call get-field
+                  read session
+                  text <machine>
+                text <digest>
+              read machine
+            call not
+              call is-less
+                call from-texts
+                  read start
+                  read before
+        hook hold
+          turn next
+      save cases
+        call get-field
+          read export
+          text <cases>
+      save term-case
+        call get-item
+          read cases
+          code -1
+      save base-case
+        call get-item
+          read cases
+          code -1
+      walk size
+        bind base, code 0
+        bind head
+          call array-size
+            read cases
+        hook next
+          take site, name at
+          save one
+            call get-item
+              read cases
+              read at
+          save size
+            call get-field
+              read one
+              text <size>
+          fork test
+            hook test
+              call and
+                call and
+                  call and
+                    call is-equal
+                      call field-of
+                        read one
+                        text <program>
+                      read program
+                    call is-equal
+                      call field-of
+                        read one
+                        text <program_digest>
+                      read program-digest
+                  call and
+                    call is-equal
+                      call field-of
+                        read one
+                        text <target>
+                      read target
+                    call is-equal
+                      call field-of
+                        read size
+                        text <name>
+                      read size-name
+                call and
+                  call is-equal
+                    call field-of
+                      read one
+                      text <expect_digest>
+                    read expect-digest
+                  call is-equal
+                    call field-of
+                      read one
+                      text <correctness>
+                    text <correct>
+            hook hold
+              save implementation
+                call field-of
+                  read one
+                  text <implementation>
+              fork test
+                hook test
+                  call is-equal
+                    read implementation
+                    text <term>
+                hook hold
+                  save term-case, read one
+              fork test
+                hook test
+                  call is-equal
+                    read implementation
+                    read baseline
+                hook hold
+                  save base-case, read one
+      fork test
+        hook test
+          call and
+            call not
+              call is-null
+                read term-case
+            call not
+              call is-null
+                read base-case
+        hook hold
+          send back
+            make earlier
+              bind found, true
+              bind start, read start
+              bind term-wall
+                call values-of
+                  read term-case
+                  text <wall>
+              bind base-wall
+                call values-of
+                  read base-case
+                  text <wall>
+              bind term-instructions
+                call values-of
+                  read term-case
+                  text <instructions>
+              bind base-instructions
+                call values-of
+                  read base-case
+                  text <instructions>
+  send back
+    make earlier
+      bind found, false
+      bind start, text <>
+      bind term-wall
+        make list
+      bind base-wall
+        make list
+      bind term-instructions
+        make list
+      bind base-instructions
+        make list

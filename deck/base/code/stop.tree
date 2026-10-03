@@ -1,0 +1,24 @@
+# A stop: the run ends with the stdlib's `defect`, the way a list read past the end ends it, on every backend. For a
+# precondition a caller broke (zero to a negative power, a negative square root), never for a failure a program should
+# handle: a stop is not in any task's raise set, so no `fork case` has to name it, and a `note unsafe` guard is not
+# promised to catch it (note/term/stdlib/semantics.md, "Two kinds of failure"). Swift writes the reason to standard error and
+# then stops on an empty optional: `fatalError` is not a value of the number type, and a closure typed with an arrow
+# cannot sit in a text literal.
+
+# stop the run, saying what was wrong
+
+note stable
+
+bind abandon
+  take reason, like text
+  like number
+  case node
+    text <(function () \{ throw Object.assign(new Error("Invalid"), \{ host: "@term/base", form: "defect", note: "Invalid", code: "", time: Date.now(), link: \{ thing: $reason \} \}) \})()>
+  case browser
+    text <(function () \{ throw Object.assign(new Error("Invalid"), \{ host: "@term/base", form: "defect", note: "Invalid", code: "", time: Date.now(), link: \{ thing: $reason \} \}) \})()>
+  case rust
+    text <panic!("defect: \{\}", $reason)>
+  case swift
+    text <(\{ () in FileHandle.standardError.write(("defect: " + $reason + String(UnicodeScalar(UInt8(10)))).data(using: .utf8)!); return Optional<Int>.none! \})()>
+  case kotlin
+    text <throw IllegalStateException("defect: " + $reason)>

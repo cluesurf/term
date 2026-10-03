@@ -1,0 +1,92 @@
+# What the runner asks of the machine it runs on, which the standard library does not answer yet: a clock with the
+# fraction of a millisecond, the directory it was started in, and the machine's description. The runner runs on node
+# only (`term mark` boots it there), so these bind node modules directly. Each one is a stdlib gap, listed in
+# note/term/guides/commands/mark.md.
+
+load @term/base/code/json
+  find array-size
+  find get-item
+  find field-text
+  find as-number
+
+dock load
+  load <node:perf_hooks>, name perf
+  load <node:os>, name os
+  load <node:process>, name host-process
+
+# milliseconds since the process started, with the fraction. `clock/now` floors to whole milliseconds
+task stamp
+  like decimal
+  send back
+    call perf/performance/now
+
+# the directory the runner was started in. `environment/directory` declares `get` with no body
+task here
+  like text
+  send back
+    call host-process/cwd
+
+# `darwin`, `linux`, ...
+task platform-name
+  like text
+  send back
+    call os/platform
+
+# `arm64`, `x64`, ...
+task arch-name
+  like text
+  send back
+    call os/arch
+
+# the one-minute load average. 0 on Windows, which does not keep one
+task load-average
+  like decimal
+  save loads
+    call os/loadavg
+  send back
+    call as-number
+      call get-item
+        read loads
+        code 0
+
+# the processor's model, as the operating system names it
+task processor-model
+  like text
+  save cores
+    call os/cpus
+  fork test
+    hook test
+      call is-equal
+        call array-size
+          read cores
+        code 0
+    hook hold
+      send back, text <unknown>
+  send back
+    call field-text
+      call get-item
+        read cores
+        code 0
+      text <model>
+
+# how many logical cores
+task core-count
+  like number
+  send back
+    call array-size
+      call os/cpus
+
+# physical memory, in bytes
+task memory-bytes
+  like number
+  send back
+    call os/totalmem
+
+# the kernel's name and release, `Darwin 25.4.0`
+task system-name
+  like text
+  save kind
+    call os/type
+  save release
+    call os/release
+  send back, text <{{kind}} {{release}}>

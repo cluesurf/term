@@ -191,6 +191,12 @@ final class TermNode {
             #if canImport(UIKit)
             let field = UITextField()
             field.borderStyle = .roundedRect
+            // an empty UITextField is as wide as its text, which is nothing. A browser draws an empty input about 20
+            // characters wide and AppKit 186 points, so this is the floor, below a style's `width`, which still wins
+            // (native-dom-0014: the blog's two fields were bare squares)
+            let floor = field.widthAnchor.constraint(greaterThanOrEqualToConstant: 186)
+            floor.priority = .defaultHigh
+            floor.isActive = true
             view = field
             #endif
         } else {
@@ -319,6 +325,13 @@ enum nativeView {
     static var onWindow: [() -> Void] = []
     #endif
 
+    // every entry point runs on the main thread, the only one a toolkit may be touched from. A page's async `boot`
+    // resumes after an await on whatever thread Swift chose, so its calls can arrive here off the main one
+    // (native-dom-0014). The main thread is never blocked waiting on another, so the hop cannot deadlock
+    private static func onMain<T>(_ body: () -> T) -> T {
+        Thread.isMainThread ? body() : DispatchQueue.main.sync(execute: body)
+    }
+
     // the handle Term holds is `Any`, so every entry point takes `Any` and reads the node out of it
     private static func node(_ handle: Any) -> TermNode {
         guard let node = handle as? TermNode else {
@@ -333,99 +346,109 @@ enum nativeView {
     }
 
     static func createElement(_ tag: String) -> Any {
-        make(tag, "")
+        onMain {
+            make(tag, "")
+        }
     }
 
     static func createText(_ value: String) -> Any {
-        make("", value)
+        onMain {
+            make("", value)
+        }
     }
 
     static func setText(_ handle: Any, _ value: String) {
-        let node = node(handle)
-        node.text = value
-        #if canImport(AppKit)
-        (node.view as? NSTextField)?.stringValue = value
-        #endif
-        #if canImport(UIKit)
-        (node.view as? UILabel)?.text = value
-        #endif
-        node.drawingAncestor?.refreshTitle()
+        onMain {
+            let node = node(handle)
+            node.text = value
+            #if canImport(AppKit)
+            (node.view as? NSTextField)?.stringValue = value
+            #endif
+            #if canImport(UIKit)
+            (node.view as? UILabel)?.text = value
+            #endif
+            node.drawingAncestor?.refreshTitle()
+        }
     }
 
     static func setAttribute(_ handle: Any, _ name: String, _ value: String) {
-        let node = node(handle)
-        node.attributes.removeAll { $0.name == name }
-        node.attributes.append((name: name, value: value))
-        // the attributes a platform view has a place for
-        switch name {
-        case "style":
-            applyStyleAttribute(node, value)
-        case "placeholder":
-            #if canImport(AppKit)
-            (node.view as? NSTextField)?.placeholderString = value
-            #endif
-            #if canImport(UIKit)
-            (node.view as? UITextField)?.placeholder = value
-            #endif
-        case "aria-label":
-            #if canImport(AppKit)
-            node.view.setAccessibilityLabel(value)
-            #endif
-            #if canImport(UIKit)
-            node.view.accessibilityLabel = value
-            #endif
-        case "aria-checked" where node.kind == .toggle:
-            #if canImport(AppKit)
-            (node.view as? NSSwitch)?.state = value == "true" ? .on : .off
-            #endif
-            #if canImport(UIKit)
-            (node.view as? UISwitch)?.setOn(value == "true", animated: false)
-            #endif
-        case "min" where node.kind == .range, "max" where node.kind == .range:
-            if let number = Double(value) {
+        onMain {
+            let node = node(handle)
+            node.attributes.removeAll { $0.name == name }
+            node.attributes.append((name: name, value: value))
+            // the attributes a platform view has a place for
+            switch name {
+            case "style":
+                applyStyleAttribute(node, value)
+            case "placeholder":
                 #if canImport(AppKit)
-                if let slider = node.view as? NSSlider {
-                    if name == "min" { slider.minValue = number } else { slider.maxValue = number }
-                }
+                (node.view as? NSTextField)?.placeholderString = value
                 #endif
                 #if canImport(UIKit)
-                if let slider = node.view as? UISlider {
-                    if name == "min" { slider.minimumValue = Float(number) } else { slider.maximumValue = Float(number) }
-                }
+                (node.view as? UITextField)?.placeholder = value
                 #endif
+            case "aria-label":
+                #if canImport(AppKit)
+                node.view.setAccessibilityLabel(value)
+                #endif
+                #if canImport(UIKit)
+                node.view.accessibilityLabel = value
+                #endif
+            case "aria-checked" where node.kind == .toggle:
+                #if canImport(AppKit)
+                (node.view as? NSSwitch)?.state = value == "true" ? .on : .off
+                #endif
+                #if canImport(UIKit)
+                (node.view as? UISwitch)?.setOn(value == "true", animated: false)
+                #endif
+            case "min" where node.kind == .range, "max" where node.kind == .range:
+                if let number = Double(value) {
+                    #if canImport(AppKit)
+                    if let slider = node.view as? NSSlider {
+                        if name == "min" { slider.minValue = number } else { slider.maxValue = number }
+                    }
+                    #endif
+                    #if canImport(UIKit)
+                    if let slider = node.view as? UISlider {
+                        if name == "min" { slider.minimumValue = Float(number) } else { slider.maximumValue = Float(number) }
+                    }
+                    #endif
+                }
+            case "value" where node.kind == .range:
+                setValue(node, value)
+            case "open" where node.kind == .sheet:
+                value == "true" ? present(node) : dismissSheet(node)
+            case "title" where node.kind == .sheet:
+                #if canImport(AppKit)
+                (node.keep.first { $0 is NSPanel } as? NSPanel)?.title = value
+                #endif
+                #if canImport(UIKit)
+                (node.keep.first { $0 is UIViewController } as? UIViewController)?.title = value
+                #endif
+            case "options" where node.kind == .choice:
+                setChoices(node, value.split(separator: "\n").map(String.init))
+            case "disabled":
+                #if canImport(AppKit)
+                (node.view as? NSControl)?.isEnabled = value == "false"
+                #endif
+                #if canImport(UIKit)
+                (node.view as? UIControl)?.isEnabled = value == "false"
+                #endif
+            default:
+                break
             }
-        case "value" where node.kind == .range:
-            setValue(node, value)
-        case "open" where node.kind == .sheet:
-            value == "true" ? present(node) : dismissSheet(node)
-        case "title" where node.kind == .sheet:
-            #if canImport(AppKit)
-            (node.keep.first { $0 is NSPanel } as? NSPanel)?.title = value
-            #endif
-            #if canImport(UIKit)
-            (node.keep.first { $0 is UIViewController } as? UIViewController)?.title = value
-            #endif
-        case "options" where node.kind == .choice:
-            setChoices(node, value.split(separator: "\n").map(String.init))
-        case "disabled":
-            #if canImport(AppKit)
-            (node.view as? NSControl)?.isEnabled = value == "false"
-            #endif
-            #if canImport(UIKit)
-            (node.view as? UIControl)?.isEnabled = value == "false"
-            #endif
-        default:
-            break
-        }
 
-        // a state attribute a style row is keyed on (`data-state`, `disabled`): the node's rows are chosen again
-        if styleRules.contains(where: { $0.attribute == name }) {
-            restyle(node)
+            // a state attribute a style row is keyed on (`data-state`, `disabled`): the node's rows are chosen again
+            if styleRules.contains(where: { $0.attribute == name }) {
+                restyle(node)
+            }
         }
     }
 
     static func getAttribute(_ handle: Any, _ name: String) -> String {
-        node(handle).attributes.first { $0.name == name }?.value ?? ""
+        onMain {
+            node(handle).attributes.first { $0.name == name }?.value ?? ""
+        }
     }
 
     // ---- layout (native-dom-0007): the layout model mapped onto the platform's own stack, no solver of ours ----
@@ -461,9 +484,11 @@ enum nativeView {
     }
 
     static func setStyle(_ handle: Any, _ property: String, _ value: String) {
-        let node = node(handle)
-        node.inline.insert(property)
-        applyStyle(node, property, value)
+        onMain {
+            let node = node(handle)
+            node.inline.insert(property)
+            applyStyle(node, property, value)
+        }
     }
 
     // one declaration onto the platform, from `set-style` or from a style-table row
@@ -586,17 +611,21 @@ enum nativeView {
 
     // a `style` attribute is declarations, each one applied as `set-style` would apply it
     static func applyStyleAttribute(_ node: TermNode, _ text: String) {
-        for declaration in text.split(separator: ";") {
-            let parts = declaration.split(separator: ":", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
-            if parts.count == 2, !parts[0].isEmpty {
-                setStyle(node, parts[0], parts[1])
+        onMain {
+            for declaration in text.split(separator: ";") {
+                let parts = declaration.split(separator: ":", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+                if parts.count == 2, !parts[0].isEmpty {
+                    setStyle(node, parts[0], parts[1])
+                }
             }
         }
     }
 
     // every style no host could honor, sorted, one per line. Empty when everything mapped
     static func unsupportedStyles() -> String {
-        unsupported.sorted().joined(separator: "\n")
+        onMain {
+            unsupported.sorted().joined(separator: "\n")
+        }
     }
 
     // ---- the look (native-dom-0008): what a style-table row draws beyond layout ----
@@ -843,19 +872,23 @@ enum nativeView {
 
     // the light table and the dark one. An empty dark table means the sheet has no dark scheme: light serves both
     static func useStyles(_ light: String, _ dark: String) {
-        lightRules = rulesOf(light)
-        darkRules = dark.isEmpty ? lightRules : rulesOf(dark)
-        styleRules = darkScheme ? darkRules : lightRules
+        onMain {
+            lightRules = rulesOf(light)
+            darkRules = dark.isEmpty ? lightRules : rulesOf(dark)
+            styleRules = darkScheme ? darkRules : lightRules
+        }
     }
 
     // the device's color scheme, `dark` or anything else for light: every styled node takes its rows from that table
     static func useScheme(_ scheme: String) {
-        let dark = scheme == "dark"
-        guard dark != darkScheme else { return }
-        darkScheme = dark
-        styleRules = dark ? darkRules : lightRules
-        for node in styled.allObjects {
-            restyle(node)
+        onMain {
+            let dark = scheme == "dark"
+            guard dark != darkScheme else { return }
+            darkScheme = dark
+            styleRules = dark ? darkRules : lightRules
+            for node in styled.allObjects {
+                restyle(node)
+            }
         }
     }
 
@@ -912,167 +945,181 @@ enum nativeView {
 
     // for tests: a look property as the PLATFORM holds it, read off the view or its layer, never off the table
     static func styleOf(_ handle: Any, _ property: String) -> String {
-        let node = node(handle)
-        #if canImport(AppKit)
-        let typeface = (node.view as? NSTextField)?.font ?? (node.view as? NSButton)?.font
-        let ink = (node.view as? NSTextField)?.textColor
-        let fill = node.view.layer?.backgroundColor.flatMap { NSColor(cgColor: $0) }
-        let alpha = node.view.alphaValue
-        #else
-        let typeface = (node.view as? UILabel)?.font ?? (node.view as? UITextField)?.font
-        let ink = (node.view as? UILabel)?.textColor ?? (node.view as? UITextField)?.textColor
-        let fill = node.view.backgroundColor
-        let alpha = node.view.alpha
-        #endif
-        let edge = drawnLayer(node)?.borderColor.flatMap { Paint(cgColor: $0) }
+        onMain {
+            let node = node(handle)
+            #if canImport(AppKit)
+            let typeface = (node.view as? NSTextField)?.font ?? (node.view as? NSButton)?.font
+            let ink = (node.view as? NSTextField)?.textColor
+            let fill = node.view.layer?.backgroundColor.flatMap { NSColor(cgColor: $0) }
+            let alpha = node.view.alphaValue
+            #else
+            let typeface = (node.view as? UILabel)?.font ?? (node.view as? UITextField)?.font
+            let ink = (node.view as? UILabel)?.textColor ?? (node.view as? UITextField)?.textColor
+            let fill = node.view.backgroundColor
+            let alpha = node.view.alpha
+            #endif
+            let edge = drawnLayer(node)?.borderColor.flatMap { Paint(cgColor: $0) }
 
-        switch property {
-        // no fill and a clear one are the same to a reader: `none` on every platform
-        case "background":
-            let drawn = hex(fill)
-            return drawn.isEmpty || (drawn.count == 9 && drawn.hasSuffix("00")) ? "none" : drawn
-        case "border": return "\(plain(drawnLayer(node)?.borderWidth ?? 0))px \(hex(edge))"
-        case "border-radius": return "\(plain(drawnLayer(node)?.cornerRadius ?? 0))px"
-        case "opacity": return plain(alpha)
-        case "color": return hex(ink)
-        case "font-size": return typeface.map { "\(plain($0.pointSize))px" } ?? ""
-        case "font-weight": return cssWeight(typeface)
-        default: return ""
+            switch property {
+            // no fill and a clear one are the same to a reader: `none` on every platform
+            case "background":
+                let drawn = hex(fill)
+                return drawn.isEmpty || (drawn.count == 9 && drawn.hasSuffix("00")) ? "none" : drawn
+            case "border": return "\(plain(drawnLayer(node)?.borderWidth ?? 0))px \(hex(edge))"
+            case "border-radius": return "\(plain(drawnLayer(node)?.cornerRadius ?? 0))px"
+            case "opacity": return plain(alpha)
+            case "color": return hex(ink)
+            case "font-size": return typeface.map { "\(plain($0.pointSize))px" } ?? ""
+            case "font-weight": return cssWeight(typeface)
+            default: return ""
+            }
         }
     }
 
     // where a node is drawn, in points from the window's content origin: `x,y,width,height`. What a layout test reads
     static func frameOf(_ handle: Any) -> String {
-        let node = node(handle)
-        #if canImport(AppKit)
-        guard let content = node.view.window?.contentView else { return "0,0,0,0" }
-        content.layoutSubtreeIfNeeded()
-        var frame = node.view.convert(node.view.bounds, to: content)
-        // AppKit's origin is the bottom left; the web's and every other host's is the top left
-        if !content.isFlipped {
-            frame.origin.y = content.bounds.height - frame.origin.y - frame.height
+        onMain {
+            let node = node(handle)
+            #if canImport(AppKit)
+            guard let content = node.view.window?.contentView else { return "0,0,0,0" }
+            content.layoutSubtreeIfNeeded()
+            var frame = node.view.convert(node.view.bounds, to: content)
+            // AppKit's origin is the bottom left; the web's and every other host's is the top left
+            if !content.isFlipped {
+                frame.origin.y = content.bounds.height - frame.origin.y - frame.height
+            }
+            #endif
+            #if canImport(UIKit)
+            guard let root = node.view.window?.rootViewController?.view else { return "0,0,0,0" }
+            root.layoutIfNeeded()
+            let frame = node.view.convert(node.view.bounds, to: root)
+            #endif
+            return [frame.origin.x, frame.origin.y, frame.width, frame.height].map { String(Int($0.rounded())) }.joined(separator: ",")
         }
-        #endif
-        #if canImport(UIKit)
-        guard let root = node.view.window?.rootViewController?.view else { return "0,0,0,0" }
-        root.layoutIfNeeded()
-        let frame = node.view.convert(node.view.bounds, to: root)
-        #endif
-        return [frame.origin.x, frame.origin.y, frame.width, frame.height].map { String(Int($0.rounded())) }.joined(separator: ",")
     }
 
     static func addClass(_ handle: Any, _ name: String) {
-        let node = node(handle)
-        if !node.classes.contains(name) {
-            node.classes.append(name)
-            styled.add(node)
-            restyle(node)
+        onMain {
+            let node = node(handle)
+            if !node.classes.contains(name) {
+                node.classes.append(name)
+                styled.add(node)
+                restyle(node)
+            }
         }
     }
 
     static func removeClass(_ handle: Any, _ name: String) {
-        let node = node(handle)
-        node.classes.removeAll { $0 == name }
-        restyle(node)
+        onMain {
+            let node = node(handle)
+            node.classes.removeAll { $0 == name }
+            restyle(node)
+        }
     }
 
     static func focus(_ handle: Any) {
-        let node = node(handle)
-        #if canImport(AppKit)
-        node.view.window?.makeFirstResponder(node.view)
-        #endif
-        #if canImport(UIKit)
-        node.view.becomeFirstResponder()
-        #endif
+        onMain {
+            let node = node(handle)
+            #if canImport(AppKit)
+            node.view.window?.makeFirstResponder(node.view)
+            #endif
+            #if canImport(UIKit)
+            node.view.becomeFirstResponder()
+            #endif
+        }
     }
 
     static func blur(_ handle: Any) {
-        let node = node(handle)
-        #if canImport(AppKit)
-        if node.view.window?.firstResponder === node.view {
-            node.view.window?.makeFirstResponder(nil)
+        onMain {
+            let node = node(handle)
+            #if canImport(AppKit)
+            if node.view.window?.firstResponder === node.view {
+                node.view.window?.makeFirstResponder(nil)
+            }
+            #endif
+            #if canImport(UIKit)
+            node.view.resignFirstResponder()
+            #endif
         }
-        #endif
-        #if canImport(UIKit)
-        node.view.resignFirstResponder()
-        #endif
     }
 
     // a click is the platform's own: a button's action, or a tap on anything else
     static func listen(_ handle: Any, _ event: String, _ handler: @escaping () -> Void) {
-        let node = node(handle)
-        node.listeners.append((event: event, run: handler))
-        guard event == "click" else {
-            if event == "input", node.kind == .field {
-                installFieldEvents(node)
+        onMain {
+            let node = node(handle)
+            node.listeners.append((event: event, run: handler))
+            guard event == "click" else {
+                if event == "input", node.kind == .field {
+                    installFieldEvents(node)
+                }
+                // the macOS picker reports a choice through its action, as `change` (iOS's menu items fire it themselves)
+                #if canImport(AppKit)
+                if event == "change", node.kind == .choice, !node.keep.contains(where: { $0 is TermAction }),
+                   let popUp = node.view as? NSPopUpButton {
+                    let action = TermAction { [weak node] in node?.fire("change") }
+                    node.keep.append(action)
+                    popUp.target = action
+                    popUp.action = #selector(TermAction.fire)
+                }
+                #endif
+                // the slider reports its own moves as `input`, the event a web range input fires while it is dragged
+                if event == "input", node.kind == .range, !node.keep.contains(where: { $0 is TermAction }) {
+                    let action = TermAction { [weak node] in node?.fire("input") }
+                    node.keep.append(action)
+                    #if canImport(AppKit)
+                    if let slider = node.view as? NSSlider {
+                        slider.target = action
+                        slider.action = #selector(TermAction.fire)
+                    }
+                    #endif
+                    #if canImport(UIKit)
+                    (node.view as? UISlider)?.addTarget(action, action: #selector(TermAction.fire), for: .valueChanged)
+                    #endif
+                }
+                return
             }
-            // the macOS picker reports a choice through its action, as `change` (iOS's menu items fire it themselves)
-            #if canImport(AppKit)
-            if event == "change", node.kind == .choice, !node.keep.contains(where: { $0 is TermAction }),
-               let popUp = node.view as? NSPopUpButton {
-                let action = TermAction { [weak node] in node?.fire("change") }
-                node.keep.append(action)
-                popUp.target = action
-                popUp.action = #selector(TermAction.fire)
-            }
-            #endif
-            // the slider reports its own moves as `input`, the event a web range input fires while it is dragged
-            if event == "input", node.kind == .range, !node.keep.contains(where: { $0 is TermAction }) {
-                let action = TermAction { [weak node] in node?.fire("input") }
+            if node.kind == .toggle {
+                if node.keep.contains(where: { $0 is TermAction }) {
+                    return
+                }
+                let action = TermAction { [weak node] in node?.fire("click") }
                 node.keep.append(action)
                 #if canImport(AppKit)
-                if let slider = node.view as? NSSlider {
-                    slider.target = action
-                    slider.action = #selector(TermAction.fire)
+                if let control = node.view as? NSSwitch {
+                    control.target = action
+                    control.action = #selector(TermAction.fire)
                 }
                 #endif
                 #if canImport(UIKit)
-                (node.view as? UISlider)?.addTarget(action, action: #selector(TermAction.fire), for: .valueChanged)
+                (node.view as? UISwitch)?.addTarget(action, action: #selector(TermAction.fire), for: .valueChanged)
+                #endif
+            } else if node.kind == .button {
+                if node.keep.contains(where: { $0 is TermAction }) {
+                    return
+                }
+                let action = TermAction { [weak node] in node?.fire("click") }
+                node.keep.append(action)
+                #if canImport(AppKit)
+                if let button = node.view as? NSButton {
+                    button.target = action
+                    button.action = #selector(TermAction.fire)
+                }
+                #endif
+                #if canImport(UIKit)
+                (node.view as? UIButton)?.addTarget(action, action: #selector(TermAction.fire), for: .touchUpInside)
+                #endif
+            } else if !node.tapInstalled {
+                node.tapInstalled = true
+                let action = TermAction { [weak node] in node?.fire("click") }
+                node.keep.append(action)
+                #if canImport(AppKit)
+                node.view.addGestureRecognizer(NSClickGestureRecognizer(target: action, action: #selector(TermAction.fire)))
+                #endif
+                #if canImport(UIKit)
+                node.view.isUserInteractionEnabled = true
+                node.view.addGestureRecognizer(UITapGestureRecognizer(target: action, action: #selector(TermAction.fire)))
                 #endif
             }
-            return
-        }
-        if node.kind == .toggle {
-            if node.keep.contains(where: { $0 is TermAction }) {
-                return
-            }
-            let action = TermAction { [weak node] in node?.fire("click") }
-            node.keep.append(action)
-            #if canImport(AppKit)
-            if let control = node.view as? NSSwitch {
-                control.target = action
-                control.action = #selector(TermAction.fire)
-            }
-            #endif
-            #if canImport(UIKit)
-            (node.view as? UISwitch)?.addTarget(action, action: #selector(TermAction.fire), for: .valueChanged)
-            #endif
-        } else if node.kind == .button {
-            if node.keep.contains(where: { $0 is TermAction }) {
-                return
-            }
-            let action = TermAction { [weak node] in node?.fire("click") }
-            node.keep.append(action)
-            #if canImport(AppKit)
-            if let button = node.view as? NSButton {
-                button.target = action
-                button.action = #selector(TermAction.fire)
-            }
-            #endif
-            #if canImport(UIKit)
-            (node.view as? UIButton)?.addTarget(action, action: #selector(TermAction.fire), for: .touchUpInside)
-            #endif
-        } else if !node.tapInstalled {
-            node.tapInstalled = true
-            let action = TermAction { [weak node] in node?.fire("click") }
-            node.keep.append(action)
-            #if canImport(AppKit)
-            node.view.addGestureRecognizer(NSClickGestureRecognizer(target: action, action: #selector(TermAction.fire)))
-            #endif
-            #if canImport(UIKit)
-            node.view.isUserInteractionEnabled = true
-            node.view.addGestureRecognizer(UITapGestureRecognizer(target: action, action: #selector(TermAction.fire)))
-            #endif
         }
     }
 
@@ -1099,22 +1146,24 @@ enum nativeView {
 
     // DOM semantics: a node has one parent, so appending one that already has a parent moves it
     static func append(_ parentHandle: Any, _ childHandle: Any) {
-        let parent = node(parentHandle)
-        let child = node(childHandle)
-        detach(child)
-        child.parent = parent
-        parent.children.append(child)
-        // the color and font the new parent passes down, as CSS inherits them
-        restyleText(child)
-        if let drawing = parent.drawingAncestor {
-            drawing.refreshTitle()
-        } else if child.kind == .sheet {
-            // a dialog's content is never in the page: the platform presents it when it opens
-            return
-        } else if let stack = parent.view as? TermStack {
-            stack.addArrangedSubview(child.view)
-            if shouldFill(child, in: parent) {
-                fill(child.view, in: stack)
+        onMain {
+            let parent = node(parentHandle)
+            let child = node(childHandle)
+            detach(child)
+            child.parent = parent
+            parent.children.append(child)
+            // the color and font the new parent passes down, as CSS inherits them
+            restyleText(child)
+            if let drawing = parent.drawingAncestor {
+                drawing.refreshTitle()
+            } else if child.kind == .sheet {
+                // a dialog's content is never in the page: the platform presents it when it opens
+                return
+            } else if let stack = parent.view as? TermStack {
+                stack.addArrangedSubview(child.view)
+                if shouldFill(child, in: parent) {
+                    fill(child.view, in: stack)
+                }
             }
         }
     }
@@ -1171,7 +1220,9 @@ enum nativeView {
     }
 
     static func remove(_ handle: Any) {
-        detach(node(handle))
+        onMain {
+            detach(node(handle))
+        }
     }
 
     private static func detach(_ child: TermNode) {
@@ -1184,35 +1235,41 @@ enum nativeView {
 
     // `new` takes `old`'s place under the same parent, at the same position
     static func replace(_ oldHandle: Any, _ newHandle: Any) {
-        let old = node(oldHandle)
-        let fresh = node(newHandle)
-        detach(fresh)
-        guard let parent = old.parent, let index = parent.children.firstIndex(where: { $0 === old }) else { return }
-        // the position among the views actually installed, which is the stack's own index
-        let installedBefore = parent.children[..<index].filter { $0.view.superview === parent.view }.count
-        parent.children[index] = fresh
-        fresh.parent = parent
-        old.parent = nil
-        old.view.removeFromSuperview()
-        if let drawing = parent.drawingAncestor {
-            drawing.refreshTitle()
-        } else if let stack = parent.view as? TermStack {
-            stack.insertArrangedSubview(fresh.view, at: installedBefore)
+        onMain {
+            let old = node(oldHandle)
+            let fresh = node(newHandle)
+            detach(fresh)
+            guard let parent = old.parent, let index = parent.children.firstIndex(where: { $0 === old }) else { return }
+            // the position among the views actually installed, which is the stack's own index
+            let installedBefore = parent.children[..<index].filter { $0.view.superview === parent.view }.count
+            parent.children[index] = fresh
+            fresh.parent = parent
+            old.parent = nil
+            old.view.removeFromSuperview()
+            if let drawing = parent.drawingAncestor {
+                drawing.refreshTitle()
+            } else if let stack = parent.view as? TermStack {
+                stack.insertArrangedSubview(fresh.view, at: installedBefore)
+            }
         }
     }
 
     static func clear(_ handle: Any) {
-        let node = node(handle)
-        for child in node.children {
-            child.parent = nil
-            child.view.removeFromSuperview()
+        onMain {
+            let node = node(handle)
+            for child in node.children {
+                child.parent = nil
+                child.view.removeFromSuperview()
+            }
+            node.children = []
+            node.drawingAncestor?.refreshTitle()
         }
-        node.children = []
-        node.drawingAncestor?.refreshTitle()
     }
 
     static func childCount(_ handle: Any) -> Int {
-        node(handle).children.count
+        onMain {
+            node(handle).children.count
+        }
     }
 
     // ---- the dialog (native-dom-0026): the platform presents the sheet's content itself ----
@@ -1288,7 +1345,9 @@ enum nativeView {
     // work queued on the main queue, which cannot run while the block that asked is still running: a nested run loop
     // waited a full second and saw nothing (2026-10-02). A program that must see the result asks for it here
     static func later(_ body: @escaping () -> Void) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: body)
+        onMain {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: body)
+        }
     }
 
     private static func dismissSheet(_ node: TermNode) {
@@ -1308,9 +1367,11 @@ enum nativeView {
     // its report of that as `close`. Neither gesture can be made from code, so the dismissal is made as the platform
     // makes it and the report the platform sends is sent
     static func dismiss(_ handle: Any) {
-        let node = node(handle)
-        dismissSheet(node)
-        node.fire("close")
+        onMain {
+            let node = node(handle)
+            dismissSheet(node)
+            node.fire("close")
+        }
     }
 
     // ---- the select (native-dom-0026): the platform's own picker, its items the options, the chosen one its value ----
@@ -1370,18 +1431,20 @@ enum nativeView {
 
     // for tests: choose an item the way a person does, the control first and then its own report of the choice
     static func choose(_ handle: Any, _ value: String) {
-        let node = node(handle)
-        #if canImport(AppKit)
-        if let popUp = node.view as? NSPopUpButton {
-            popUp.selectItem(withTitle: value)
-            popUp.sendAction(popUp.action, to: popUp.target)
+        onMain {
+            let node = node(handle)
+            #if canImport(AppKit)
+            if let popUp = node.view as? NSPopUpButton {
+                popUp.selectItem(withTitle: value)
+                popUp.sendAction(popUp.action, to: popUp.target)
+            }
+            #endif
+            #if canImport(UIKit)
+            // a menu item cannot be tapped from code: the selection is made as the menu makes it, and its report sent
+            setChoice(node, value)
+            node.fire("change")
+            #endif
         }
-        #endif
-        #if canImport(UIKit)
-        // a menu item cannot be tapped from code: the selection is made as the menu makes it, and its report sent
-        setChoice(node, value)
-        node.fire("change")
-        #endif
     }
 
     // a slider's position as the control holds it, snapped to its `step` as a web range input is, and written the way
@@ -1399,272 +1462,322 @@ enum nativeView {
     }
 
     static func getValue(_ handle: Any) -> String {
-        let node = node(handle)
-        if node.kind == .range {
-            return rangeValue(node)
+        onMain {
+            let node = node(handle)
+            if node.kind == .range {
+                return rangeValue(node)
+            }
+            if node.kind == .choice {
+                return choiceValue(node)
+            }
+            #if canImport(AppKit)
+            if let field = node.view as? NSTextField, node.kind == .field {
+                return field.stringValue
+            }
+            #endif
+            #if canImport(UIKit)
+            if let field = node.view as? UITextField {
+                return field.text ?? ""
+            }
+            #endif
+            return node.value
         }
-        if node.kind == .choice {
-            return choiceValue(node)
-        }
-        #if canImport(AppKit)
-        if let field = node.view as? NSTextField, node.kind == .field {
-            return field.stringValue
-        }
-        #endif
-        #if canImport(UIKit)
-        if let field = node.view as? UITextField {
-            return field.text ?? ""
-        }
-        #endif
-        return node.value
     }
 
     static func setValue(_ handle: Any, _ value: String) {
-        let node = node(handle)
-        node.value = value
-        if node.kind == .choice {
-            setChoice(node, value)
-            return
-        }
-        if node.kind == .range, let number = Double(value) {
+        onMain {
+            let node = node(handle)
+            node.value = value
+            if node.kind == .choice {
+                setChoice(node, value)
+                return
+            }
+            if node.kind == .range, let number = Double(value) {
+                #if canImport(AppKit)
+                (node.view as? NSSlider)?.doubleValue = number
+                #endif
+                #if canImport(UIKit)
+                (node.view as? UISlider)?.setValue(Float(number), animated: false)
+                #endif
+                return
+            }
+            // a field that already holds the text is left alone: rewriting it moves the cursor to the end and throws away
+            // an input method's half-composed character, and the face input writes its signal back after every keystroke
+            // (native-dom-0026)
             #if canImport(AppKit)
-            (node.view as? NSSlider)?.doubleValue = number
+            if let field = node.view as? NSTextField, node.kind == .field, field.stringValue != value {
+                field.stringValue = value
+            }
             #endif
             #if canImport(UIKit)
-            (node.view as? UISlider)?.setValue(Float(number), animated: false)
+            if let field = node.view as? UITextField, field.text != value {
+                field.text = value
+            }
             #endif
-            return
         }
-        // a field that already holds the text is left alone: rewriting it moves the cursor to the end and throws away
-        // an input method's half-composed character, and the face input writes its signal back after every keystroke
-        // (native-dom-0026)
-        #if canImport(AppKit)
-        if let field = node.view as? NSTextField, node.kind == .field, field.stringValue != value {
-            field.stringValue = value
-        }
-        #endif
-        #if canImport(UIKit)
-        if let field = node.view as? UITextField, field.text != value {
-            field.text = value
-        }
-        #endif
     }
 
     // for tests: type into a field the way a person does, the field's text first and then its own report of the edit
     static func type(_ handle: Any, _ text: String) {
-        let node = node(handle)
-        #if canImport(AppKit)
-        if let field = node.view as? NSTextField {
-            field.stringValue = text
-            (field.delegate as? TermFieldDelegate)?.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+        onMain {
+            let node = node(handle)
+            #if canImport(AppKit)
+            if let field = node.view as? NSTextField {
+                field.stringValue = text
+                (field.delegate as? TermFieldDelegate)?.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+            }
+            #endif
+            #if canImport(UIKit)
+            if let field = node.view as? UITextField {
+                field.text = text
+                field.sendActions(for: .editingChanged)
+            }
+            #endif
         }
-        #endif
-        #if canImport(UIKit)
-        if let field = node.view as? UITextField {
-            field.text = text
-            field.sendActions(for: .editingChanged)
-        }
-        #endif
     }
 
     static func measureWidth(_ handle: Any) -> Int {
-        Int(node(handle).view.frame.width)
+        onMain {
+            Int(node(handle).view.frame.width)
+        }
     }
 
     // ---- the app around the tree ----
 
     // a window whose content is a new root container, returned as the node to mount into. On iOS the window is
     // built when the app launches; the root is ready at once either way
-    static func openRoot(_ title: String, _ width: Int, _ height: Int) -> Any {
-        let root = make("main", "")
-        #if canImport(AppKit)
-        let app = NSApplication.shared
-        if app.delegate == nil {
-            app.setActivationPolicy(.regular)
-            app.delegate = delegate
+    // the window's root once `open-root` made it: what `page-body` answers in a native app, as a page's body is its
+    // document's (native-dom-0014: a page written for the web mounts on it unchanged)
+    static var root: TermNode?
+
+    static func pageBody() -> Any {
+        onMain {
+            root ?? make("main", "")
         }
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = title
-        window.isReleasedWhenClosed = false
-        let content = NSView(frame: window.contentLayoutRect)
-        root.view.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(root.view)
-        NSLayoutConstraint.activate([
-            root.view.topAnchor.constraint(equalTo: content.topAnchor, constant: 24),
-            root.view.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
-            root.view.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -24),
-        ])
-        window.contentView = content
-        window.center()
-        self.window = window
-        #endif
-        #if canImport(UIKit)
-        TermViewAppDelegate.pendingRoot = root
-        TermViewAppDelegate.pendingTitle = title
-        #endif
-        return root
+    }
+
+    // run an ASYNC body once the app is running and its window exists: a page's `boot` awaits its data before it mounts
+    static func launch(_ body: @escaping () async -> Void) {
+        onMain {
+            afterLaunch {
+                Task { @MainActor in await body() }
+            }
+        }
+    }
+
+    static func openRoot(_ title: String, _ width: Int, _ height: Int) -> Any {
+        onMain {
+            let root = make("main", "")
+            nativeView.root = root
+            #if canImport(AppKit)
+            let app = NSApplication.shared
+            if app.delegate == nil {
+                app.setActivationPolicy(.regular)
+                app.delegate = delegate
+            }
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = title
+            window.isReleasedWhenClosed = false
+            let content = NSView(frame: window.contentLayoutRect)
+            root.view.translatesAutoresizingMaskIntoConstraints = false
+            content.addSubview(root.view)
+            NSLayoutConstraint.activate([
+                root.view.topAnchor.constraint(equalTo: content.topAnchor, constant: 24),
+                root.view.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
+                root.view.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -24),
+            ])
+            window.contentView = content
+            window.center()
+            self.window = window
+            #endif
+            #if canImport(UIKit)
+            TermViewAppDelegate.pendingRoot = root
+            TermViewAppDelegate.pendingTitle = title
+            #endif
+            return root
+        }
     }
 
     // run `body` once the app is running and its window exists
     static func afterLaunch(_ body: @escaping () -> Void) {
-        #if canImport(AppKit)
-        DispatchQueue.main.async(execute: body)
-        #endif
-        #if canImport(UIKit)
-        TermViewAppDelegate.afterLaunch.append(body)
-        #endif
+        onMain {
+            #if canImport(AppKit)
+            DispatchQueue.main.async(execute: body)
+            #endif
+            #if canImport(UIKit)
+            TermViewAppDelegate.afterLaunch.append(body)
+            #endif
+        }
     }
 
     // put the window on screen and in front
     static func show() {
-        #if canImport(AppKit)
-        window?.makeKeyAndOrderFront(nil)
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        #endif
+        onMain {
+            #if canImport(AppKit)
+            window?.makeKeyAndOrderFront(nil)
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            #endif
+        }
     }
 
     // hand the process to the toolkit. Returns only when the app quits
     static func run() {
-        setvbuf(stdout, nil, _IONBF, 0)
-        #if canImport(AppKit)
-        NSApplication.shared.run()
-        #endif
-        #if canImport(UIKit)
-        _ = UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv, nil, NSStringFromClass(TermViewAppDelegate.self))
-        #endif
+        onMain {
+            setvbuf(stdout, nil, _IONBF, 0)
+            #if canImport(AppKit)
+            NSApplication.shared.run()
+            #endif
+            #if canImport(UIKit)
+            _ = UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv, nil, NSStringFromClass(TermViewAppDelegate.self))
+            #endif
+        }
     }
 
     static func exit(_ status: Int) {
-        print("native-view exit \(status)")
-        Foundation.exit(Int32(status))
+        onMain {
+            print("native-view exit \(status)")
+            Foundation.exit(Int32(status))
+        }
     }
 
     // ---- what a test, or a person, does to the tree and sees of it ----
 
     static func childAt(_ handle: Any, _ index: Int) -> Any {
-        node(handle).children[index]
+        onMain {
+            node(handle).children[index]
+        }
     }
 
     // a line to standard output, which is unbuffered once `run` starts
     static func say(_ text: String) {
-        print(text)
+        onMain {
+            print(text)
+        }
     }
 
     // press a control the way a person would: the platform's own click, so the platform's own action runs
     static func press(_ handle: Any) {
-        let node = node(handle)
-        #if canImport(AppKit)
-        if let button = node.view as? NSButton {
-            button.performClick(nil)
-            return
+        onMain {
+            let node = node(handle)
+            #if canImport(AppKit)
+            if let button = node.view as? NSButton {
+                button.performClick(nil)
+                return
+            }
+            #endif
+            #if canImport(UIKit)
+            if let button = node.view as? UIButton {
+                button.sendActions(for: .touchUpInside)
+                return
+            }
+            #endif
+            #if canImport(AppKit)
+            if let control = node.view as? NSSwitch {
+                control.performClick(nil)
+                return
+            }
+            #endif
+            #if canImport(UIKit)
+            // a tap flips the switch and then reports it, in that order
+            if let control = node.view as? UISwitch {
+                control.setOn(!control.isOn, animated: false)
+                control.sendActions(for: .valueChanged)
+                return
+            }
+            #endif
+            node.fire("click")
         }
-        #endif
-        #if canImport(UIKit)
-        if let button = node.view as? UIButton {
-            button.sendActions(for: .touchUpInside)
-            return
-        }
-        #endif
-        #if canImport(AppKit)
-        if let control = node.view as? NSSwitch {
-            control.performClick(nil)
-            return
-        }
-        #endif
-        #if canImport(UIKit)
-        // a tap flips the switch and then reports it, in that order
-        if let control = node.view as? UISwitch {
-            control.setOn(!control.isOn, animated: false)
-            control.sendActions(for: .valueChanged)
-            return
-        }
-        #endif
-        node.fire("click")
     }
 
     // for tests: move a slider the way a finger does, the control first and then its own report of the move
     static func slide(_ handle: Any, _ value: String) {
-        let node = node(handle)
-        guard let number = Double(value) else { return }
-        #if canImport(AppKit)
-        if let slider = node.view as? NSSlider {
-            slider.doubleValue = number
-            slider.sendAction(slider.action, to: slider.target)
+        onMain {
+            let node = node(handle)
+            guard let number = Double(value) else { return }
+            #if canImport(AppKit)
+            if let slider = node.view as? NSSlider {
+                slider.doubleValue = number
+                slider.sendAction(slider.action, to: slider.target)
+            }
+            #endif
+            #if canImport(UIKit)
+            if let slider = node.view as? UISlider {
+                slider.setValue(Float(number), animated: false)
+                slider.sendActions(for: .valueChanged)
+            }
+            #endif
         }
-        #endif
-        #if canImport(UIKit)
-        if let slider = node.view as? UISlider {
-            slider.setValue(Float(number), animated: false)
-            slider.sendActions(for: .valueChanged)
-        }
-        #endif
     }
 
     // the tree as HTML, READ BACK FROM THE PLATFORM VIEWS: a button's text is its title as the toolkit holds it and a
     // label's is its string, so this proves the views were updated, not only the model beside them
     static func serialize(_ handle: Any) -> String {
-        let node = node(handle)
-        switch node.kind {
-        case .text:
-            #if canImport(AppKit)
-            return (node.view as? NSTextField)?.stringValue ?? ""
-            #else
-            return (node.view as? UILabel)?.text ?? ""
-            #endif
-        case .button:
-            #if canImport(AppKit)
-            let title = (node.view as? NSButton)?.title ?? ""
-            #else
-            // what the button DRAWS, not the title it was asked to show: those two differed while a title animated
-            let title = (node.view as? UIButton)?.titleLabel?.text ?? ""
-            #endif
-            return "<button>\(title)</button>"
-        case .field:
-            return "<\(node.tag) value=\"\(getValue(node))\"></\(node.tag)>"
-        case .toggle:
-            #if canImport(AppKit)
-            let on = (node.view as? NSSwitch)?.state == .on
-            #else
-            let on = (node.view as? UISwitch)?.isOn ?? false
-            #endif
-            return "<switch checked=\"\(on)\"></switch>"
-        case .range:
-            return "<slider value=\"\(rangeValue(node))\"></slider>"
-        case .choice:
-            return "<select value=\"\(choiceValue(node))\"></select>"
-        case .sheet:
-            let shown = node.children.filter { $0.view.superview === node.view }
-            return "<sheet open=\"\(presented(node))\">\(shown.map { serialize($0) }.joined())</sheet>"
-        case .container:
-            let installed = node.children.filter { $0.view.superview === node.view }
-            return "<\(node.tag)>\(installed.map { serialize($0) }.joined())</\(node.tag)>"
+        onMain {
+            let node = node(handle)
+            switch node.kind {
+            case .text:
+                #if canImport(AppKit)
+                return (node.view as? NSTextField)?.stringValue ?? ""
+                #else
+                return (node.view as? UILabel)?.text ?? ""
+                #endif
+            case .button:
+                #if canImport(AppKit)
+                let title = (node.view as? NSButton)?.title ?? ""
+                #else
+                // what the button DRAWS, not the title it was asked to show: those two differed while a title animated
+                let title = (node.view as? UIButton)?.titleLabel?.text ?? ""
+                #endif
+                return "<button>\(title)</button>"
+            case .field:
+                return "<\(node.tag) value=\"\(getValue(node))\"></\(node.tag)>"
+            case .toggle:
+                #if canImport(AppKit)
+                let on = (node.view as? NSSwitch)?.state == .on
+                #else
+                let on = (node.view as? UISwitch)?.isOn ?? false
+                #endif
+                return "<switch checked=\"\(on)\"></switch>"
+            case .range:
+                return "<slider value=\"\(rangeValue(node))\"></slider>"
+            case .choice:
+                return "<select value=\"\(choiceValue(node))\"></select>"
+            case .sheet:
+                let shown = node.children.filter { $0.view.superview === node.view }
+                return "<sheet open=\"\(presented(node))\">\(shown.map { serialize($0) }.joined())</sheet>"
+            case .container:
+                let installed = node.children.filter { $0.view.superview === node.view }
+                return "<\(node.tag)>\(installed.map { serialize($0) }.joined())</\(node.tag)>"
+            }
         }
     }
 
     // a PNG of the window's content as drawn
     static func snapshot(_ path: String) {
-        #if canImport(AppKit)
-        guard let content = window?.contentView else { return }
-        // let the platform's own animations land first: NSSwitch slides its knob after a click, and a capture taken at
-        // once showed the knob still on the left of a switch that read `on` (2026-10-02)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
-        content.layoutSubtreeIfNeeded()
-        guard let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { return }
-        content.cacheDisplay(in: content.bounds, to: bitmap)
-        if let png = bitmap.representation(using: .png, properties: [:]) {
+        onMain {
+            #if canImport(AppKit)
+            guard let content = window?.contentView else { return }
+            // let the platform's own animations land first: NSSwitch slides its knob after a click, and a capture taken at
+            // once showed the knob still on the left of a switch that read `on` (2026-10-02)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+            content.layoutSubtreeIfNeeded()
+            guard let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { return }
+            content.cacheDisplay(in: content.bounds, to: bitmap)
+            if let png = bitmap.representation(using: .png, properties: [:]) {
+                try? png.write(to: URL(fileURLWithPath: path))
+            }
+            #endif
+            #if canImport(UIKit)
+            guard let view = window?.rootViewController?.view else { return }
+            let renderer = UIGraphicsImageRenderer(bounds: view.bounds)
+            let png = renderer.pngData { _ in view.drawHierarchy(in: view.bounds, afterScreenUpdates: true) }
             try? png.write(to: URL(fileURLWithPath: path))
+            #endif
         }
-        #endif
-        #if canImport(UIKit)
-        guard let view = window?.rootViewController?.view else { return }
-        let renderer = UIGraphicsImageRenderer(bounds: view.bounds)
-        let png = renderer.pngData { _ in view.drawHierarchy(in: view.bounds, afterScreenUpdates: true) }
-        try? png.write(to: URL(fileURLWithPath: path))
-        #endif
     }
 }

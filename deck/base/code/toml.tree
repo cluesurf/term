@@ -1,0 +1,3449 @@
+# TOML 1.0 (https://toml.io/en/v1.0.0), read and written in Term, so every backend reads a document into the same
+# value, with its keys in the order they were written, and writes a value back the same way. A text that is not TOML
+# raises `toml-mismatch` with the code point position and the reason.
+#
+# A date or time stays the text it was written as (`1979-05-27T07:32:00Z`), with a space or `t` between date and time
+# written `T` and `z` written `Z`: it is the caller's to read with `calendar`. An integer is a `number`, a float a
+# `decimal` (`inf` and `nan` included).
+
+note stable
+
+load @term/base/code/text/unicode
+  find to-runes
+  find rune-to-text
+
+load @term/base/code/text
+  find starts-with
+  find substring
+  find last-index-of
+  find index-of
+  find char-count
+
+load @term/base/code/text/number
+  find parse-integer
+  find parse-float
+  find host-parse-float
+
+load @term/base/code/list
+  find list
+  find size
+  find get
+
+load @term/base/code/hash
+  find hash
+  find get-or-default
+
+load @term/base/code/maybe
+  find maybe
+
+load @term/base/code/exception
+  find mismatch
+
+form toml
+  case toml-table
+    link entries
+      like list
+        like toml-entry
+  case toml-array
+    link items
+      like list
+        like toml
+  case toml-text
+    link value, like text
+  case toml-integer
+    link value, like number
+  case toml-float
+    link value, like decimal
+  case toml-boolean
+    link value, like boolean
+  case toml-date-time
+    link value, like text
+
+form toml-entry
+  link name, like text
+  link value, like toml
+
+form toml-mismatch
+  like mismatch
+    bind note, <Not TOML>
+    link at, like number
+    link reason, like text
+
+task refuse-toml
+  mark private
+  take at, like number
+  take reason, like text
+  like number
+  halt toml-mismatch
+    bind thing, text <toml>
+    bind at, read at
+    bind reason, read reason
+
+# the value of `name` in a table, or none (and none for anything but a table)
+task toml-field
+  take value, like toml
+  take name, like text
+  like maybe
+    head toml
+  fork case, read value
+    case toml-table
+      walk list, read entries
+        hook next
+          take site, name entry
+          fork test
+            hook test
+              call is-equal
+                read entry/name
+                read name
+            hook hold
+              send back
+                make some
+                  bind value, read entry/value
+      send back, make none
+    case toml-array
+      send back, make none
+    case toml-text
+      send back, make none
+    case toml-integer
+      send back, make none
+    case toml-float
+      send back, make none
+    case toml-boolean
+      send back, make none
+    case toml-date-time
+      send back, make none
+
+# ---------------------------------------------------------------- the scanner: runes and a cursor held in a list
+
+task at-rune
+  mark private
+  take r
+    like list
+      like number
+  take at, like number
+  like number
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read at
+          code 0
+        call is-below
+          read at
+          call size
+            read r
+    hook hold
+      send back
+        call get
+          read r
+          read at
+  send back
+    call subtract
+      code 0
+      code 1
+
+task peek
+  mark private
+  take r
+    like list
+      like number
+  take cursor
+    like list
+      like number
+  take ahead, like number
+  like number
+  send back
+    call at-rune
+      read r
+      call add
+        call at-rune
+          read cursor
+          code 0
+        read ahead
+
+task place
+  mark private
+  take cursor
+    like list
+      like number
+  like number
+  send back
+    call at-rune
+      read cursor
+      code 0
+
+task move
+  mark private
+  take cursor
+    like list
+      like number
+  take count, like number
+  like number
+  call cursor/set
+    code 0
+    call add
+      call place
+        read cursor
+      read count
+  send back
+    call place
+      read cursor
+
+task skip-blank
+  mark private
+  take r
+    like list
+      like number
+  take cursor
+    like list
+      like number
+  like number
+  walk test
+    hook test
+      call or
+        call is-equal
+          call peek
+            read r
+            read cursor
+            code 0
+          code 32
+        call is-equal
+          call peek
+            read r
+            read cursor
+            code 0
+          code 9
+    hook step
+      call move
+        read cursor
+        code 1
+  send back
+    call place
+      read cursor
+
+# a comment runs to the end of the line; a control character inside one is refused, as the spec asks
+task skip-comment
+  mark private
+  take r
+    like list
+      like number
+  take cursor
+    like list
+      like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        call peek
+          read r
+          read cursor
+          code 0
+        code 35
+    hook hold
+      walk test
+        hook test
+          call and
+            call is-unequal
+              call peek
+                read r
+                read cursor
+                code 0
+              code 10
+            call is-minimum
+              call peek
+                read r
+                read cursor
+                code 0
+              code 0
+        hook step
+          save c
+            call peek
+              read r
+              read cursor
+              code 0
+          fork test
+            hook test
+              call or
+                call and
+                  call is-below
+                    read c
+                    code 32
+                  call and
+                    call is-unequal
+                      read c
+                      code 9
+                    call is-unequal
+                      read c
+                      code 13
+                call is-equal
+                  read c
+                  code 127
+            hook hold
+              call refuse-toml
+                call place
+                  read cursor
+                text <a control character in a comment>
+          call move
+            read cursor
+            code 1
+  send back
+    call place
+      read cursor
+
+# a line break (LF or CRLF) at the cursor, consumed; whether there was one
+task take-newline
+  mark private
+  take r
+    like list
+      like number
+  take cursor
+    like list
+      like number
+  like boolean
+  fork test
+    hook test
+      call is-equal
+        call peek
+          read r
+          read cursor
+          code 0
+        code 10
+    hook hold
+      call move
+        read cursor
+        code 1
+      send back, true
+  fork test
+    hook test
+      call and
+        call is-equal
+          call peek
+            read r
+            read cursor
+            code 0
+          code 13
+        call is-equal
+          call peek
+            read r
+            read cursor
+            code 1
+          code 10
+    hook hold
+      call move
+        read cursor
+        code 2
+      send back, true
+  send back, false
+
+# what may follow a key/value or a header: blanks, a comment, then the end of the line or of the text
+task end-line
+  mark private
+  take r
+    like list
+      like number
+  take cursor
+    like list
+      like number
+  like number
+  call skip-blank
+    read r
+    read cursor
+  call skip-comment
+    read r
+    read cursor
+  fork test
+    hook test
+      call is-below
+        call peek
+          read r
+          read cursor
+          code 0
+        code 0
+    hook hold
+      send back
+        call place
+          read cursor
+  fork test
+    hook test
+      call take-newline
+        read r
+        read cursor
+    hook miss
+      call refuse-toml
+        call place
+          read cursor
+        text <the line goes on after its value>
+  send back
+    call place
+      read cursor
+
+# blanks, comments and line breaks, as between the items of an array
+task skip-space
+  mark private
+  take r
+    like list
+      like number
+  take cursor
+    like list
+      like number
+  like number
+  save going, true
+  walk test
+    hook test
+      read going
+    hook step
+      call skip-blank
+        read r
+        read cursor
+      call skip-comment
+        read r
+        read cursor
+      fork test
+        hook test
+          call take-newline
+            read r
+            read cursor
+        hook miss
+          save going, false
+  send back
+    call place
+      read cursor
+
+task is-bare-key-rune
+  mark private
+  take c, like number
+  like boolean
+  send back
+    call or
+      call or
+        call and
+          call is-minimum
+            read c
+            code 65
+          call is-maximum
+            read c
+            code 90
+        call and
+          call is-minimum
+            read c
+            code 97
+          call is-maximum
+            read c
+            code 122
+      call or
+        call and
+          call is-minimum
+            read c
+            code 48
+          call is-maximum
+            read c
+            code 57
+        call or
+          call is-equal
+            read c
+            code 95
+          call is-equal
+            read c
+            code 45
+
+task hex-value
+  mark private
+  take c, like number
+  like number
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read c
+          code 48
+        call is-maximum
+          read c
+          code 57
+    hook hold
+      send back
+        call subtract
+          read c
+          code 48
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read c
+          code 97
+        call is-maximum
+          read c
+          code 102
+    hook hold
+      send back
+        call subtract
+          read c
+          code 87
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read c
+          code 65
+        call is-maximum
+          read c
+          code 70
+    hook hold
+      send back
+        call subtract
+          read c
+          code 55
+  send back
+    call subtract
+      code 0
+      code 1
+
+# one escape after a backslash in a basic string, the cursor on the letter; the text it stands for
+task read-escape
+  mark private
+  take r
+    like list
+      like number
+  take cursor
+    like list
+      like number
+  like text
+  save letter
+    call peek
+      read r
+      read cursor
+      code 0
+  save start
+    call place
+      read cursor
+  call move
+    read cursor
+    code 1
+  fork test
+    hook test
+      call is-equal
+        read letter
+        code 98
+    hook hold
+      send back
+        call rune-to-text, code 8
+    hook test
+      call is-equal
+        read letter
+        code 116
+    hook hold
+      send back
+        call rune-to-text, code 9
+    hook test
+      call is-equal
+        read letter
+        code 110
+    hook hold
+      send back
+        call rune-to-text, code 10
+    hook test
+      call is-equal
+        read letter
+        code 102
+    hook hold
+      send back
+        call rune-to-text, code 12
+    hook test
+      call is-equal
+        read letter
+        code 114
+    hook hold
+      send back
+        call rune-to-text, code 13
+    hook test
+      call is-equal
+        read letter
+        code 34
+    hook hold
+      send back
+        call rune-to-text, code 34
+    hook test
+      call is-equal
+        read letter
+        code 92
+    hook hold
+      send back
+        call rune-to-text, code 92
+    hook test
+      call or
+        call is-equal
+          read letter
+          code 117
+        call is-equal
+          read letter
+          code 85
+    hook hold
+      save width, code 4
+      fork test
+        hook test
+          call is-equal
+            read letter
+            code 85
+        hook hold
+          save width, code 8
+      save value, code 0
+      save k, code 0
+      walk test
+        down
+          call subtract
+            read width
+            read k
+        hook test
+          call is-below
+            read k
+            read width
+        hook step
+          save digit
+            call hex-value
+              call peek
+                read r
+                read cursor
+                code 0
+          fork test
+            hook test
+              call is-below
+                read digit
+                code 0
+            hook hold
+              call refuse-toml
+                call place
+                  read cursor
+                text <a hexadecimal digit was expected in a unicode escape>
+          save value
+            call add
+              call multiply
+                read value
+                code 16
+              read digit
+          call move
+            read cursor
+            code 1
+          save k
+            call add
+              read k
+              code 1
+      fork test
+        hook test
+          call or
+            call is-above
+              read value
+              code 1114111
+            call and
+              call is-minimum
+                read value
+                code 55296
+              call is-maximum
+                read value
+                code 57343
+        hook hold
+          call refuse-toml
+            read start
+            text <a unicode escape names no scalar value>
+      send back
+        call rune-to-text
+          read value
+  call refuse-toml
+    read start
+    text <this escape is not in TOML>
+  send back, text <>
+
+# a code point a string may hold as itself: not a control character but tab
+task is-string-rune
+  mark private
+  take c, like number
+  like boolean
+  send back
+    call and
+      call is-minimum
+        read c
+        code 0
+      call or
+        call is-equal
+          read c
+          code 9
+        call and
+          call is-minimum
+            read c
+            code 32
+          call is-unequal
+            read c
+            code 127
+
+# a basic string "..." or a literal string '...', single line, the cursor on the opening quote
+task read-string
+  mark private
+  take r
+    like list
+      like number
+  take cursor
+    like list
+      like number
+  like text
+  save quote
+    call peek
+      read r
+      read cursor
+      code 0
+  save start
+    call place
+      read cursor
+  call move
+    read cursor
+    code 1
+  save out, text <>
+  save going, true
+  walk test
+    hook test
+      read going
+    hook step
+      save c
+        call peek
+          read r
+          read cursor
+          code 0
+      fork test
+        hook test
+          call is-equal
+            read c
+            read quote
+        hook hold
+          call move
+            read cursor
+            code 1
+          save going, false
+        hook test
+          call and
+            call is-equal
+              read c
+              code 92
+            call is-equal
+              read quote
+              code 34
+        hook hold
+          call move
+            read cursor
+            code 1
+          save piece
+            call read-escape
+              read r
+              read cursor
+          save out, text <{{out}}{{piece}}>
+        hook test
+          call is-string-rune
+            read c
+        hook hold
+          save piece
+            call rune-to-text
+              read c
+          save out, text <{{out}}{{piece}}>
+          call move
+            read cursor
+            code 1
+        hook miss
+          fork test
+            hook test
+              call or
+                call is-below
+                  read c
+                  code 0
+                call or
+                  call is-equal
+                    read c
+                    code 10
+                  call is-equal
+                    read c
+                    code 13
+            hook hold
+              call refuse-toml
+                read start
+                text <a string is not closed on its line>
+          call refuse-toml
+            call place
+              read cursor
+            text <a control character in a string>
+  send back, read out
+
+# a multi-line string """...""" or '''...''', the cursor on the first of the three quotes
+task read-long-string
+  mark private
+  take r
+    like list
+      like number
+  take cursor
+    like list
+      like number
+  like text
+  save quote
+    call peek
+      read r
+      read cursor
+      code 0
+  save start
+    call place
+      read cursor
+  call move
+    read cursor
+    code 3
+  # a line break right after the opening quotes is not part of the string
+  call take-newline
+    read r
+    read cursor
+  save out, text <>
+  save going, true
+  walk test
+    hook test
+      read going
+    hook step
+      save c
+        call peek
+          read r
+          read cursor
+          code 0
+      fork test
+        hook test
+          call and
+            call is-equal
+              read c
+              read quote
+            call and
+              call is-equal
+                call peek
+                  read r
+                  read cursor
+                  code 1
+                read quote
+              call is-equal
+                call peek
+                  read r
+                  read cursor
+                  code 2
+                read quote
+        hook hold
+          # up to two more quotes just before the closing three belong to the string
+          save extra, code 0
+          walk test
+            down
+              call subtract
+                code 2
+                read extra
+            hook test
+              call and
+                call is-below
+                  read extra
+                  code 2
+                call is-equal
+                  call peek
+                    read r
+                    read cursor
+                    call add
+                      read extra
+                      code 3
+                  read quote
+            hook step
+              save extra
+                call add
+                  read extra
+                  code 1
+          save k, code 0
+          walk test
+            down
+              call subtract
+                read extra
+                read k
+            hook test
+              call is-below
+                read k
+                read extra
+            hook step
+              save piece
+                call rune-to-text
+                  read quote
+              save out, text <{{out}}{{piece}}>
+              save k
+                call add
+                  read k
+                  code 1
+          call move
+            read cursor
+            call add
+              read extra
+              code 3
+          save going, false
+        hook test
+          call and
+            call is-equal
+              read c
+              code 92
+            call is-equal
+              read quote
+              code 34
+        hook hold
+          call move
+            read cursor
+            code 1
+          # a backslash at the end of a line, blanks allowed before the break, trims the break and the white space
+          # after it
+          save before
+            call place
+              read cursor
+          call skip-blank
+            read r
+            read cursor
+          fork test
+            hook test
+              call or
+                call is-equal
+                  call peek
+                    read r
+                    read cursor
+                    code 0
+                  code 10
+                call is-equal
+                  call peek
+                    read r
+                    read cursor
+                    code 0
+                  code 13
+            hook hold
+              call skip-space-only
+                read r
+                read cursor
+            hook test
+              call is-above
+                call place
+                  read cursor
+                read before
+            hook hold
+              call refuse-toml
+                read before
+                text <a backslash before blanks must end the line>
+            hook miss
+              save piece
+                call read-escape
+                  read r
+                  read cursor
+              save out, text <{{out}}{{piece}}>
+        hook test
+          call take-newline
+            read r
+            read cursor
+        hook hold
+          save piece
+            call rune-to-text, code 10
+          save out, text <{{out}}{{piece}}>
+        hook test
+          call is-string-rune
+            read c
+        hook hold
+          save piece
+            call rune-to-text
+              read c
+          save out, text <{{out}}{{piece}}>
+          call move
+            read cursor
+            code 1
+        hook miss
+          fork test
+            hook test
+              call is-below
+                read c
+                code 0
+            hook hold
+              call refuse-toml
+                read start
+                text <a multi-line string is not closed>
+          call refuse-toml
+            call place
+              read cursor
+            text <a control character in a string>
+  send back, read out
+
+# line breaks and blanks only, for a line-ending backslash
+task skip-space-only
+  mark private
+  take r
+    like list
+      like number
+  take cursor
+    like list
+      like number
+  like number
+  save going, true
+  walk test
+    hook test
+      read going
+    hook step
+      call skip-blank
+        read r
+        read cursor
+      fork test
+        hook test
+          call take-newline
+            read r
+            read cursor
+        hook miss
+          save going, false
+  send back
+    call place
+      read cursor
+
+# one key segment: bare, "basic" or 'literal'
+task read-simple-key
+  mark private
+  take r
+    like list
+      like number
+  take cursor
+    like list
+      like number
+  like text
+  save c
+    call peek
+      read r
+      read cursor
+      code 0
+  fork test
+    hook test
+      call or
+        call is-equal
+          read c
+          code 34
+        call is-equal
+          read c
+          code 39
+    hook hold
+      fork test
+        hook test
+          call and
+            call is-equal
+              call peek
+                read r
+                read cursor
+                code 1
+              read c
+            call is-equal
+              call peek
+                read r
+                read cursor
+                code 2
+              read c
+        hook hold
+          call refuse-toml
+            call place
+              read cursor
+            text <a key cannot be a multi-line string>
+      send back
+        call read-string
+          read r
+          read cursor
+  save out, text <>
+  walk test
+    hook test
+      call is-bare-key-rune
+        call peek
+          read r
+          read cursor
+          code 0
+    hook step
+      save piece
+        call rune-to-text
+          call peek
+            read r
+            read cursor
+            code 0
+      save out, text <{{out}}{{piece}}>
+      call move
+        read cursor
+        code 1
+  fork test
+    hook test
+      call is-equal
+        read out
+        text <>
+    hook hold
+      call refuse-toml
+        call place
+          read cursor
+        text <a key was expected>
+  send back, read out
+
+# a dotted key, as its segments
+task read-key
+  mark private
+  take r
+    like list
+      like number
+  take cursor
+    like list
+      like number
+  like list
+    like text
+  save parts
+    make list
+  call skip-blank
+    read r
+    read cursor
+  call parts/push
+    call read-simple-key
+      read r
+      read cursor
+  call skip-blank
+    read r
+    read cursor
+  walk test
+    hook test
+      call is-equal
+        call peek
+          read r
+          read cursor
+          code 0
+        code 46
+    hook step
+      call move
+        read cursor
+        code 1
+      call skip-blank
+        read r
+        read cursor
+      call parts/push
+        call read-simple-key
+          read r
+          read cursor
+      call skip-blank
+        read r
+        read cursor
+  send back, read parts
+
+# ---------------------------------------------------------------- values
+
+task is-digit
+  mark private
+  take c, like number
+  like boolean
+  send back
+    call and
+      call is-minimum
+        read c
+        code 48
+      call is-maximum
+        read c
+        code 57
+
+# the token a number, a date or a word is written as: up to a space, a comma, a bracket, a brace, a comment or a break
+task read-token
+  mark private
+  take r
+    like list
+      like number
+  take cursor
+    like list
+      like number
+  like text
+  save out, text <>
+  walk test
+    hook test
+      call is-token-rune
+        call peek
+          read r
+          read cursor
+          code 0
+    hook step
+      save piece
+        call rune-to-text
+          call peek
+            read r
+            read cursor
+            code 0
+      save out, text <{{out}}{{piece}}>
+      call move
+        read cursor
+        code 1
+  send back, read out
+
+task is-token-rune
+  mark private
+  take c, like number
+  like boolean
+  send back
+    call and
+      call is-above
+        read c
+        code 32
+      call and
+        call and
+          call is-unequal
+            read c
+            code 44
+          call is-unequal
+            read c
+            code 93
+        call and
+          call and
+            call is-unequal
+              read c
+              code 125
+            call is-unequal
+              read c
+              code 35
+          call is-unequal
+            read c
+            code 127
+
+# whether `token` is digits and the given separators at the given places, e.g. "dddd-dd-dd"
+task fits-shape
+  mark private
+  take token
+    like list
+      like number
+  take shape
+    like list
+      like number
+  like boolean
+  fork test
+    hook test
+      call is-below
+        call size
+          read token
+        call size
+          read shape
+    hook hold
+      send back, false
+  save k, code 0
+  walk list, read shape
+    hook next
+      take site, name want
+      save c
+        call at-rune
+          read token
+          read k
+      fork test
+        hook test
+          call is-equal
+            read want
+            code 100
+        hook hold
+          fork test
+            hook test
+              call is-digit
+                read c
+            hook miss
+              send back, false
+        hook miss
+          fork test
+            hook test
+              call is-unequal
+                read c
+                read want
+            hook hold
+              send back, false
+      save k
+        call add
+          read k
+          code 1
+  send back, true
+
+# a date, a time, or both, checked: `YYYY-MM-DD`, `HH:MM:SS` with an optional fraction, an optional `Z` or offset
+task read-date-time
+  mark private
+  take text, like text
+  take at, like number
+  like text
+  save t
+    call to-runes
+      read text
+  save n
+    call size
+      read t
+  save out, text <>
+  save i, code 0
+  save has-date
+    call fits-shape
+      read t
+      call to-runes, text <dddd-dd-dd>
+  fork test
+    hook test
+      read has-date
+    hook hold
+      save month
+        call add
+          call multiply
+            call subtract
+              call at-rune
+                read t
+                code 5
+              code 48
+            code 10
+          call subtract
+            call at-rune
+              read t
+              code 6
+            code 48
+      save day
+        call add
+          call multiply
+            call subtract
+              call at-rune
+                read t
+                code 8
+              code 48
+            code 10
+          call subtract
+            call at-rune
+              read t
+              code 9
+            code 48
+      fork test
+        hook test
+          call or
+            call or
+              call is-below
+                read month
+                code 1
+              call is-above
+                read month
+                code 12
+            call or
+              call is-below
+                read day
+                code 1
+              call is-above
+                read day
+                code 31
+        hook hold
+          call refuse-toml
+            read at
+            text <a date is out of range>
+      save out
+        call substring
+          read text
+          code 0
+          code 10
+      save i, code 10
+      fork test
+        hook test
+          call is-equal
+            read i
+            read n
+        hook hold
+          send back, read out
+      save sep
+        call at-rune
+          read t
+          code 10
+      fork test
+        hook test
+          call or
+            call is-equal
+              read sep
+              code 84
+            call or
+              call is-equal
+                read sep
+                code 116
+              call is-equal
+                read sep
+                code 32
+        hook miss
+          call refuse-toml
+            call add
+              read at
+              code 10
+            text <a date and its time are joined by T>
+      save out, text <{{out}}T>
+      save i, code 11
+  save rest
+    call to-runes
+      call substring
+        read text
+        read i
+  fork test
+    hook test
+      call fits-shape
+        read rest
+        call to-runes, text <dd:dd:dd>
+    hook miss
+      call refuse-toml
+        call add
+          read at
+          read i
+        text <a time is HH:MM:SS>
+  save hour
+    call add
+      call multiply
+        call subtract
+          call at-rune
+            read rest
+            code 0
+          code 48
+        code 10
+      call subtract
+        call at-rune
+          read rest
+          code 1
+        code 48
+  save minute
+    call add
+      call multiply
+        call subtract
+          call at-rune
+            read rest
+            code 3
+          code 48
+        code 10
+      call subtract
+        call at-rune
+          read rest
+          code 4
+        code 48
+  save second
+    call add
+      call multiply
+        call subtract
+          call at-rune
+            read rest
+            code 6
+          code 48
+        code 10
+      call subtract
+        call at-rune
+          read rest
+          code 7
+        code 48
+  fork test
+    hook test
+      call or
+        call is-above
+          read hour
+          code 23
+        call or
+          call is-above
+            read minute
+            code 59
+          call is-above
+            read second
+            code 60
+    hook hold
+      call refuse-toml
+        call add
+          read at
+          read i
+        text <a time is out of range>
+  save time
+    call substring
+      read text
+      read i
+      call add
+        read i
+        code 8
+  save out, text <{{out}}{{time}}>
+  save j, code 8
+  save m
+    call size
+      read rest
+  fork test
+    hook test
+      call is-equal
+        call at-rune
+          read rest
+          read j
+        code 46
+    hook hold
+      save digits, code 0
+      save j
+        call add
+          read j
+          code 1
+      walk test
+        down
+          call subtract
+            read m
+            read j
+        hook test
+          call is-digit
+            call at-rune
+              read rest
+              read j
+        hook step
+          save piece
+            call rune-to-text
+              call at-rune
+                read rest
+                read j
+          save digits
+            call add
+              read digits
+              code 1
+          save j
+            call add
+              read j
+              code 1
+      fork test
+        hook test
+          call is-equal
+            read digits
+            code 0
+        hook hold
+          call refuse-toml
+            call add
+              read at
+              call add
+                read i
+                read j
+            text <a digit was expected after the point>
+      save out
+        call substring
+          read text
+          code 0
+          call add
+            read i
+            read j
+      save out
+        call replace-separator
+          read out
+  fork test
+    hook test
+      call is-below
+        read j
+        read m
+    hook hold
+      # an offset, only after a date
+      fork test
+        hook test
+          read has-date
+        hook miss
+          call refuse-toml
+            call add
+              read at
+              call add
+                read i
+                read j
+            text <a time without a date has no offset>
+      save z
+        call at-rune
+          read rest
+          read j
+      fork test
+        hook test
+          call and
+            call or
+              call is-equal
+                read z
+                code 90
+              call is-equal
+                read z
+                code 122
+            call is-equal
+              call add
+                read j
+                code 1
+              read m
+        hook hold
+          send back, text <{{out}}Z>
+      save offset
+        call to-runes
+          call substring
+            read text
+            call add
+              read i
+              call add
+                read j
+                code 1
+      fork test
+        hook test
+          call and
+            call or
+              call is-equal
+                read z
+                code 43
+              call is-equal
+                read z
+                code 45
+            call and
+              call is-equal
+                call size
+                  read offset
+                code 5
+              call fits-shape
+                read offset
+                call to-runes, text <dd:dd>
+        hook hold
+          save tail
+            call substring
+              read text
+              call add
+                read i
+                read j
+          send back, text <{{out}}{{tail}}>
+      call refuse-toml
+        call add
+          read at
+          call add
+            read i
+            read j
+        text <an offset is Z or +HH:MM>
+  send back, read out
+
+# the date and time as read, with the date-time separator written `T` (substring keeps the code points as they were)
+task replace-separator
+  mark private
+  take text, like text
+  like text
+  save t
+    call to-runes
+      read text
+  fork test
+    hook test
+      call and
+        call is-above
+          call size
+            read t
+          code 10
+        call is-equal
+          call at-rune
+            read t
+            code 4
+          code 45
+    hook hold
+      save date
+        call substring
+          read text
+          code 0
+          code 10
+      save time
+        call substring
+          read text
+          code 11
+      send back, text <{{date}}T{{time}}>
+  send back, read text
+
+# digits in base `radix` with single underscores between them; the text with the underscores taken out
+task strip-underscores
+  mark private
+  take text, like text
+  take at, like number
+  like text
+  save t
+    call to-runes
+      read text
+  save out, text <>
+  save previous, code 95
+  save k, code 0
+  walk list, read t
+    hook next
+      take site, name c
+      fork test
+        hook test
+          call is-equal
+            read c
+            code 95
+        hook hold
+          fork test
+            hook test
+              call or
+                call is-equal
+                  read previous
+                  code 95
+                call is-equal
+                  call at-rune
+                    read t
+                    call add
+                      read k
+                      code 1
+                  code 95
+            hook hold
+              call refuse-toml
+                call add
+                  read at
+                  read k
+                text <an underscore must sit between two digits>
+          fork test
+            hook test
+              call or
+                call is-below
+                  call hex-value
+                    call at-rune
+                      read t
+                      call add
+                        read k
+                        code 1
+                  code 0
+                call is-below
+                  call hex-value
+                    read previous
+                  code 0
+            hook hold
+              call refuse-toml
+                call add
+                  read at
+                  read k
+                text <an underscore must sit between two digits>
+        hook miss
+          save piece
+            call rune-to-text
+              read c
+          save out, text <{{out}}{{piece}}>
+      save previous, read c
+      save k
+        call add
+          read k
+          code 1
+  send back, read out
+
+# a number token: an integer in base 10, 16, 8 or 2, or a float, `inf` and `nan` with an optional sign
+task read-number-token
+  mark private
+  take token, like text
+  take at, like number
+  like toml
+  save t
+    call to-runes
+      read token
+  save first
+    call at-rune
+      read t
+      code 0
+  save body, read token
+  save sign, text <>
+  fork test
+    hook test
+      call or
+        call is-equal
+          read first
+          code 43
+        call is-equal
+          read first
+          code 45
+    hook hold
+      save sign
+        call rune-to-text
+          read first
+      save body
+        call substring
+          read token
+          code 1
+  fork test
+    hook test
+      call or
+        call is-equal
+          read body
+          text <inf>
+        call is-equal
+          read body
+          text <nan>
+    hook hold
+      save word, text <Infinity>
+      fork test
+        hook test
+          call is-equal
+            read body
+            text <nan>
+        hook hold
+          save word, text <NaN>
+          save sign, text <>
+      send back
+        make toml-float
+          bind value
+            call host-parse-float, text <{{sign}}{{word}}>
+  # 0x 0o 0b, no sign
+  save b
+    call to-runes
+      read body
+  fork test
+    hook test
+      call and
+        call is-equal
+          call at-rune
+            read b
+            code 0
+          code 48
+        call or
+          call is-equal
+            call at-rune
+              read b
+              code 1
+            code 120
+          call or
+            call is-equal
+              call at-rune
+                read b
+                code 1
+              code 111
+            call is-equal
+              call at-rune
+                read b
+                code 1
+              code 98
+    hook hold
+      fork test
+        hook test
+          call is-unequal
+            read sign
+            text <>
+        hook hold
+          call refuse-toml
+            read at
+            text <a hexadecimal, octal or binary integer has no sign>
+      save radix, code 16
+      fork test
+        hook test
+          call is-equal
+            call at-rune
+              read b
+              code 1
+            code 111
+        hook hold
+          save radix, code 8
+        hook test
+          call is-equal
+            call at-rune
+              read b
+              code 1
+            code 98
+        hook hold
+          save radix, code 2
+      save digits
+        call strip-underscores
+          call substring
+            read body
+            code 2
+          call add
+            read at
+            code 2
+      fork test
+        hook test
+          call starts-with
+            read digits
+            text <+>
+        hook hold
+          call refuse-toml
+            read at
+            text <a hexadecimal, octal or binary integer has no sign>
+      send back
+        make toml-integer
+          bind value
+            call read-integer
+              read digits
+              read radix
+              read at
+  # decimal: no leading zero before more digits
+  fork test
+    hook test
+      call and
+        call is-equal
+          call at-rune
+            read b
+            code 0
+          code 48
+        call is-digit
+          call at-rune
+            read b
+            code 1
+    hook hold
+      call refuse-toml
+        read at
+        text <a decimal number has no leading zero>
+  fork test
+    hook test
+      call or
+        call is-minimum
+          call index-of
+            read body
+            text <.>
+          code 0
+        call or
+          call is-minimum
+            call index-of
+              read body
+              text <e>
+            code 0
+          call is-minimum
+            call index-of
+              read body
+              text <E>
+            code 0
+    hook hold
+      save plain
+        call strip-underscores
+          read body
+          read at
+      # every point must have a digit on both sides
+      save p
+        call to-runes
+          read plain
+      save k, code 0
+      walk list, read p
+        hook next
+          take site, name c
+          fork test
+            hook test
+              call is-equal
+                read c
+                code 46
+            hook hold
+              fork test
+                hook test
+                  call or
+                    call is-equal
+                      call is-digit
+                        call at-rune
+                          read p
+                          call subtract
+                            read k
+                            code 1
+                      false
+                    call is-equal
+                      call is-digit
+                        call at-rune
+                          read p
+                          call add
+                            read k
+                            code 1
+                      false
+                hook hold
+                  call refuse-toml
+                    read at
+                    text <a point needs a digit on each side>
+          save k
+            call add
+              read k
+              code 1
+      # parse-float takes a minus and no plus
+      fork test
+        hook test
+          call is-equal
+            read sign
+            text <+>
+        hook hold
+          save sign, text <>
+      send back
+        make toml-float
+          bind value
+            call read-float
+              text <{{sign}}{{plain}}>
+              read at
+  send back
+    make toml-integer
+      bind value
+        call read-integer
+          text <{{sign}}{{body}}>
+          code 10
+          read at
+
+task read-integer
+  mark private
+  take text, like text
+  take radix, like number
+  take at, like number
+  like number
+  save plain
+    call strip-underscores
+      read text
+      read at
+  note unsafe
+    save value
+      call parse-integer
+        read plain
+        read radix
+    send back, read value
+  halt take
+    take problem
+    send back
+      call refuse-toml
+        read at
+        text <this is not a number>
+
+task read-float
+  mark private
+  take text, like text
+  take at, like number
+  like decimal
+  note unsafe
+    save value
+      call parse-float
+        read text
+    send back, read value
+  halt take
+    take problem
+    call refuse-toml
+      read at
+      text <this is not a number>
+    send back, 0.0
+
+# one value at the cursor
+task read-value
+  mark private
+  take r
+    like list
+      like number
+  take cursor
+    like list
+      like number
+  like toml
+  save c
+    call peek
+      read r
+      read cursor
+      code 0
+  save at
+    call place
+      read cursor
+  fork test
+    hook test
+      call or
+        call is-equal
+          read c
+          code 34
+        call is-equal
+          read c
+          code 39
+    hook hold
+      fork test
+        hook test
+          call and
+            call is-equal
+              call peek
+                read r
+                read cursor
+                code 1
+              read c
+            call is-equal
+              call peek
+                read r
+                read cursor
+                code 2
+              read c
+        hook hold
+          send back
+            make toml-text
+              bind value
+                call read-long-string
+                  read r
+                  read cursor
+      send back
+        make toml-text
+          bind value
+            call read-string
+              read r
+              read cursor
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 91
+    hook hold
+      call move
+        read cursor
+        code 1
+      save items
+        make list
+      save going, true
+      walk test
+        hook test
+          read going
+        hook step
+          call skip-space
+            read r
+            read cursor
+          fork test
+            hook test
+              call is-equal
+                call peek
+                  read r
+                  read cursor
+                  code 0
+                code 93
+            hook hold
+              call move
+                read cursor
+                code 1
+              save going, false
+            hook miss
+              call items/push
+                call read-value
+                  read r
+                  read cursor
+              call skip-space
+                read r
+                read cursor
+              save next
+                call peek
+                  read r
+                  read cursor
+                  code 0
+              fork test
+                hook test
+                  call is-equal
+                    read next
+                    code 44
+                hook hold
+                  call move
+                    read cursor
+                    code 1
+                hook test
+                  call is-equal
+                    read next
+                    code 93
+                hook hold
+                  call move
+                    read cursor
+                    code 1
+                  save going, false
+                hook miss
+                  call refuse-toml
+                    call place
+                      read cursor
+                    text <an array item is followed by a comma or the closing bracket>
+      send back
+        make toml-array
+          bind items, read items
+  fork test
+    hook test
+      call is-equal
+        read c
+        code 123
+    hook hold
+      send back
+        call read-inline-table
+          read r
+          read cursor
+  save token
+    call read-token
+      read r
+      read cursor
+  fork test
+    hook test
+      call is-equal
+        read token
+        text <true>
+    hook hold
+      send back
+        make toml-boolean
+          bind value, true
+  fork test
+    hook test
+      call is-equal
+        read token
+        text <false>
+    hook hold
+      send back
+        make toml-boolean
+          bind value, false
+  fork test
+    hook test
+      call is-equal
+        read token
+        text <>
+    hook hold
+      call refuse-toml
+        read at
+        text <a value was expected>
+  save t
+    call to-runes
+      read token
+  # a date, maybe with its time after one space
+  fork test
+    hook test
+      call fits-shape
+        read t
+        call to-runes, text <dddd-dd-dd>
+    hook hold
+      fork test
+        hook test
+          call and
+            call is-equal
+              call size
+                read t
+              code 10
+            call and
+              call is-equal
+                call peek
+                  read r
+                  read cursor
+                  code 0
+                code 32
+              call and
+                call is-digit
+                  call peek
+                    read r
+                    read cursor
+                    code 1
+                call and
+                  call is-digit
+                    call peek
+                      read r
+                      read cursor
+                      code 2
+                  call is-equal
+                    call peek
+                      read r
+                      read cursor
+                      code 3
+                    code 58
+        hook hold
+          call move
+            read cursor
+            code 1
+          save time
+            call read-token
+              read r
+              read cursor
+          save token, text <{{token}} {{time}}>
+      send back
+        make toml-date-time
+          bind value
+            call read-date-time
+              read token
+              read at
+  fork test
+    hook test
+      call fits-shape
+        read t
+        call to-runes, text <dd:dd>
+    hook hold
+      send back
+        make toml-date-time
+          bind value
+            call read-date-time
+              read token
+              read at
+  send back
+    call read-number-token
+      read token
+      read at
+
+# ---------------------------------------------------------------- building tables from paths
+
+# the registry while a document is read: each path the kind of thing there, in the order paths were first made
+form toml-registry
+  link order
+    like list
+      like text
+  link kinds
+    like hash
+      like text
+      like number
+  link counts
+    like hash
+      like text
+      like number
+  link leaves
+    like hash
+      like text
+      like toml
+
+# kinds: 1 a table a header defined, 2 a table made on the way to a header, 3 an array of tables, 4 a value,
+# 5 a table made by a dotted key
+task kind-of
+  mark private
+  take registry, like toml-registry
+  take path, like text
+  like number
+  send back
+    call get-or-default
+      read registry/kinds
+      read path
+      code 0
+
+task set-kind
+  mark private
+  take registry, like toml-registry
+  take path, like text
+  take kind, like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        call kind-of
+          read registry
+          read path
+        code 0
+    hook hold
+      call registry/order/push
+        read path
+  call registry/kinds/set
+    read path
+    read kind
+  send back, read kind
+
+task separator
+  mark private
+  like text
+  send back
+    call rune-to-text, code 1
+
+task join-path
+  mark private
+  take prefix, like text
+  take name, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read prefix
+        text <>
+    hook hold
+      send back, read name
+  save gap
+    call separator
+  send back, text <{{prefix}}{{gap}}{{name}}>
+
+# a path inside an array of tables names its element as a segment of its own
+task element-name
+  mark private
+  take index, like number
+  like text
+  save mark
+    call rune-to-text, code 2
+  send back, text <{{mark}}{{index}}>
+
+task check-key
+  mark private
+  take name, like text
+  take at, like number
+  like text
+  fork test
+    hook test
+      call or
+        call is-minimum
+          call index-of
+            read name
+            call rune-to-text, code 1
+          code 0
+        call is-minimum
+          call index-of
+            read name
+            call rune-to-text, code 2
+          code 0
+    hook hold
+      call refuse-toml
+        read at
+        text <a key may not hold U+0001 or U+0002>
+  send back, read name
+
+# the path a header's segments reach from the top, through the last element of any array of tables on the way
+task resolve-header
+  mark private
+  take registry, like toml-registry
+  take parts
+    like list
+      like text
+  take at, like number
+  like text
+  save path, text <>
+  save k, code 0
+  save last
+    call subtract
+      call size
+        read parts
+      code 1
+  walk list, read parts
+    hook next
+      take site, name part
+      save path
+        call join-path
+          read path
+          call check-key
+            read part
+            read at
+      fork test
+        hook test
+          call is-below
+            read k
+            read last
+        hook hold
+          save kind
+            call kind-of
+              read registry
+              read path
+          fork test
+            hook test
+              call is-equal
+                read kind
+                code 3
+            hook hold
+              save path
+                call join-path
+                  read path
+                  call element-name
+                    call subtract
+                      call get-or-default
+                        read registry/counts
+                        read path
+                        code 1
+                      code 1
+            hook test
+              call is-equal
+                read kind
+                code 4
+            hook hold
+              call refuse-toml
+                read at
+                text <a header goes through a key that is a value>
+            hook test
+              call is-equal
+                read kind
+                code 0
+            hook hold
+              call set-kind
+                read registry
+                read path
+                code 2
+      save k
+        call add
+          read k
+          code 1
+  send back, read path
+
+# a key/value line inside the table at `table`
+task assign
+  mark private
+  take registry, like toml-registry
+  take table, like text
+  take parts
+    like list
+      like text
+  take value, like toml
+  take at, like number
+  like text
+  save path, read table
+  save k, code 0
+  save last
+    call subtract
+      call size
+        read parts
+      code 1
+  walk list, read parts
+    hook next
+      take site, name part
+      save path
+        call join-path
+          read path
+          call check-key
+            read part
+            read at
+      fork test
+        hook test
+          call is-below
+            read k
+            read last
+        hook hold
+          save kind
+            call kind-of
+              read registry
+              read path
+          fork test
+            hook test
+              call is-equal
+                read kind
+                code 0
+            hook hold
+              call set-kind
+                read registry
+                read path
+                code 5
+            hook test
+              call is-equal
+                read kind
+                code 2
+            hook hold
+              call registry/kinds/set
+                read path
+                code 5
+            hook test
+              call is-unequal
+                read kind
+                code 5
+            hook hold
+              call refuse-toml
+                read at
+                text <a dotted key goes through a key already defined>
+      save k
+        call add
+          read k
+          code 1
+  fork test
+    hook test
+      call is-unequal
+        call kind-of
+          read registry
+          read path
+        code 0
+    hook hold
+      call refuse-toml
+        read at
+        text <this key is defined twice>
+  call set-kind
+    read registry
+    read path
+    code 4
+  call registry/leaves/set
+    read path
+    read value
+  send back, read path
+
+# the last segment of a path, and everything before it
+task last-segment
+  mark private
+  take path, like text
+  like text
+  save cut
+    call last-index-of
+      read path
+      call separator
+  fork test
+    hook test
+      call is-below
+        read cut
+        code 0
+    hook hold
+      send back, read path
+  send back
+    call substring
+      read path
+      call add
+        read cut
+        code 1
+
+task parent-path
+  mark private
+  take path, like text
+  like text
+  save cut
+    call last-index-of
+      read path
+      call separator
+  fork test
+    hook test
+      call is-below
+        read cut
+        code 0
+    hook hold
+      send back, text <>
+  send back
+    call substring
+      read path
+      code 0
+      read cut
+
+# the entries of the table at `prefix`, in the order their paths were made
+task build-table
+  mark private
+  take registry, like toml-registry
+  take prefix, like text
+  like list
+    like toml-entry
+  save entries
+    make list
+  walk list, read registry/order
+    hook next
+      take site, name path
+      fork test
+        hook test
+          call is-equal
+            call parent-path
+              read path
+            read prefix
+        hook hold
+          save name
+            call last-segment
+              read path
+          save kind
+            call kind-of
+              read registry
+              read path
+          save value
+            make toml-table
+              bind entries
+                call build-table
+                  read registry
+                  read path
+          fork test
+            hook test
+              call is-equal
+                read kind
+                code 4
+            hook hold
+              save value
+                call get-or-default
+                  read registry/leaves
+                  read path
+                  read value
+            hook test
+              call is-equal
+                read kind
+                code 3
+            hook hold
+              save items
+                make list
+              save count
+                call get-or-default
+                  read registry/counts
+                  read path
+                  code 0
+              save index, code 0
+              walk test
+                down
+                  call subtract
+                    read count
+                    read index
+                hook test
+                  call is-below
+                    read index
+                    read count
+                hook step
+                  call items/push
+                    make toml-table
+                      bind entries
+                        call build-table
+                          read registry
+                          call join-path
+                            read path
+                            call element-name
+                              read index
+                  save index
+                    call add
+                      read index
+                      code 1
+              save value
+                make toml-array
+                  bind items, read items
+          call entries/push
+            make toml-entry
+              bind name, read name
+              bind value, read value
+  send back, read entries
+
+task empty-registry
+  mark private
+  like toml-registry
+  send back
+    make toml-registry
+      bind order
+        make list
+      bind kinds
+        make hash
+      bind counts
+        make hash
+      bind leaves
+        make hash
+
+# an inline table { a = 1, b.c = 2 }, the cursor on the brace: one line, no trailing comma
+task read-inline-table
+  mark private
+  take r
+    like list
+      like number
+  take cursor
+    like list
+      like number
+  like toml
+  call move
+    read cursor
+    code 1
+  save registry
+    call empty-registry
+  call skip-blank
+    read r
+    read cursor
+  fork test
+    hook test
+      call is-equal
+        call peek
+          read r
+          read cursor
+          code 0
+        code 125
+    hook hold
+      call move
+        read cursor
+        code 1
+      send back
+        make toml-table
+          bind entries
+            make list
+  save going, true
+  walk test
+    hook test
+      read going
+    hook step
+      save at
+        call place
+          read cursor
+      save parts
+        call read-key
+          read r
+          read cursor
+      fork test
+        hook test
+          call is-unequal
+            call peek
+              read r
+              read cursor
+              code 0
+            code 61
+        hook hold
+          call refuse-toml
+            call place
+              read cursor
+            text <a key is followed by =>
+      call move
+        read cursor
+        code 1
+      call skip-blank
+        read r
+        read cursor
+      call assign
+        read registry
+        text <>
+        read parts
+        call read-value
+          read r
+          read cursor
+        read at
+      call skip-blank
+        read r
+        read cursor
+      save next
+        call peek
+          read r
+          read cursor
+          code 0
+      fork test
+        hook test
+          call is-equal
+            read next
+            code 44
+        hook hold
+          call move
+            read cursor
+            code 1
+          call skip-blank
+            read r
+            read cursor
+          fork test
+            hook test
+              call is-equal
+                call peek
+                  read r
+                  read cursor
+                  code 0
+                code 125
+            hook hold
+              call refuse-toml
+                call place
+                  read cursor
+                text <an inline table has no comma after its last entry>
+        hook test
+          call is-equal
+            read next
+            code 125
+        hook hold
+          call move
+            read cursor
+            code 1
+          save going, false
+        hook miss
+          call refuse-toml
+            call place
+              read cursor
+            text <an inline table entry is followed by a comma or the closing brace, on the same line>
+  send back
+    make toml-table
+      bind entries
+        call build-table
+          read registry
+          text <>
+
+# a whole TOML document, as its top table
+task parse-toml
+  take text, like text
+  like toml
+  save r
+    call to-runes
+      read text
+  save cursor
+    make list
+  call cursor/push, code 0
+  # a byte order mark is allowed first
+  fork test
+    hook test
+      call is-equal
+        call peek
+          read r
+          read cursor
+          code 0
+        code 65279
+    hook hold
+      call move
+        read cursor
+        code 1
+  save registry
+    call empty-registry
+  save table, text <>
+  save going, true
+  walk test
+    hook test
+      read going
+    hook step
+      call skip-space
+        read r
+        read cursor
+      save c
+        call peek
+          read r
+          read cursor
+          code 0
+      save at
+        call place
+          read cursor
+      fork test
+        hook test
+          call is-below
+            read c
+            code 0
+        hook hold
+          save going, false
+        hook test
+          call is-equal
+            read c
+            code 91
+        hook hold
+          save array
+            call is-equal
+              call peek
+                read r
+                read cursor
+                code 1
+              code 91
+          fork test
+            hook test
+              read array
+            hook hold
+              call move
+                read cursor
+                code 2
+            hook miss
+              call move
+                read cursor
+                code 1
+          save parts
+            call read-key
+              read r
+              read cursor
+          fork test
+            hook test
+              call is-unequal
+                call peek
+                  read r
+                  read cursor
+                  code 0
+                code 93
+            hook hold
+              call refuse-toml
+                call place
+                  read cursor
+                text <a header is closed by ]>
+          call move
+            read cursor
+            code 1
+          fork test
+            hook test
+              read array
+            hook hold
+              fork test
+                hook test
+                  call is-unequal
+                    call peek
+                      read r
+                      read cursor
+                      code 0
+                    code 93
+                hook hold
+                  call refuse-toml
+                    call place
+                      read cursor
+                    text <an array of tables header is closed by ]]>
+              call move
+                read cursor
+                code 1
+          save path
+            call resolve-header
+              read registry
+              read parts
+              read at
+          save kind
+            call kind-of
+              read registry
+              read path
+          fork test
+            hook test
+              read array
+            hook hold
+              fork test
+                hook test
+                  call is-equal
+                    read kind
+                    code 0
+                hook hold
+                  call set-kind
+                    read registry
+                    read path
+                    code 3
+                  call registry/counts/set
+                    read path
+                    code 1
+                hook test
+                  call is-equal
+                    read kind
+                    code 3
+                hook hold
+                  call registry/counts/set
+                    read path
+                    call add
+                      call get-or-default
+                        read registry/counts
+                        read path
+                        code 0
+                      code 1
+                hook miss
+                  call refuse-toml
+                    read at
+                    text <an array of tables is already something else>
+              save table
+                call join-path
+                  read path
+                  call element-name
+                    call subtract
+                      call get-or-default
+                        read registry/counts
+                        read path
+                        code 1
+                      code 1
+              call set-kind
+                read registry
+                read table
+                code 1
+            hook miss
+              fork test
+                hook test
+                  call is-equal
+                    read kind
+                    code 0
+                hook hold
+                  call set-kind
+                    read registry
+                    read path
+                    code 1
+                hook test
+                  call is-equal
+                    read kind
+                    code 2
+                hook hold
+                  call registry/kinds/set
+                    read path
+                    code 1
+                hook test
+                  call is-equal
+                    read kind
+                    code 1
+                hook hold
+                  call refuse-toml
+                    read at
+                    text <this table is defined twice>
+                hook test
+                  call is-equal
+                    read kind
+                    code 5
+                hook hold
+                  call refuse-toml
+                    read at
+                    text <this table was defined by dotted keys>
+                hook miss
+                  call refuse-toml
+                    read at
+                    text <this table is already something else>
+              save table, read path
+          call end-line
+            read r
+            read cursor
+        hook miss
+          save parts
+            call read-key
+              read r
+              read cursor
+          fork test
+            hook test
+              call is-unequal
+                call peek
+                  read r
+                  read cursor
+                  code 0
+                code 61
+            hook hold
+              call refuse-toml
+                call place
+                  read cursor
+                text <a key is followed by =>
+          call move
+            read cursor
+            code 1
+          call skip-blank
+            read r
+            read cursor
+          call assign
+            read registry
+            read table
+            read parts
+            call read-value
+              read r
+              read cursor
+            read at
+          call end-line
+            read r
+            read cursor
+  send back
+    make toml-table
+      bind entries
+        call build-table
+          read registry
+          text <>
+
+# ---------------------------------------------------------------- writing
+
+task write-key
+  mark private
+  take name, like text
+  like text
+  save r
+    call to-runes
+      read name
+  save bare
+    call is-above
+      call size
+        read r
+      code 0
+  walk list, read r
+    hook next
+      take site, name c
+      fork test
+        hook test
+          call is-bare-key-rune
+            read c
+        hook miss
+          save bare, false
+  fork test
+    hook test
+      read bare
+    hook hold
+      send back, read name
+  send back
+    call write-string
+      read name
+
+task write-string
+  mark private
+  take value, like text
+  like text
+  save backslash
+    call rune-to-text, code 92
+  save quote
+    call rune-to-text, code 34
+  save out, text <>
+  walk list
+    call to-runes
+      read value
+    hook next
+      take site, name c
+      fork test
+        hook test
+          call is-equal
+            read c
+            code 34
+        hook hold
+          save out, text <{{out}}{{backslash}}{{quote}}>
+        hook test
+          call is-equal
+            read c
+            code 92
+        hook hold
+          save out, text <{{out}}{{backslash}}{{backslash}}>
+        hook test
+          call is-equal
+            read c
+            code 10
+        hook hold
+          save out, text <{{out}}{{backslash}}n>
+        hook test
+          call is-equal
+            read c
+            code 9
+        hook hold
+          save out, text <{{out}}{{backslash}}t>
+        hook test
+          call is-equal
+            read c
+            code 13
+        hook hold
+          save out, text <{{out}}{{backslash}}r>
+        hook test
+          call or
+            call is-below
+              read c
+              code 32
+            call is-equal
+              read c
+              code 127
+        hook hold
+          save hex
+            call write-hex-4
+              read c
+          save out, text <{{out}}{{backslash}}u{{hex}}>
+        hook miss
+          save piece
+            call rune-to-text
+              read c
+          save out, text <{{out}}{{piece}}>
+  send back, text <{{quote}}{{out}}{{quote}}>
+
+task write-hex-4
+  mark private
+  take value, like number
+  like text
+  save digits, text <0123456789ABCDEF>
+  save d
+    call to-runes
+      read digits
+  save out, text <>
+  save rest, read value
+  save k, code 0
+  walk test
+    down
+      call subtract
+        code 4
+        read k
+    hook test
+      call is-below
+        read k
+        code 4
+    hook step
+      save piece
+        call rune-to-text
+          call at-rune
+            read d
+            call subtract
+              read rest
+              call multiply
+                call divide
+                  read rest
+                  code 16
+                code 16
+      save out, text <{{piece}}{{out}}>
+      save rest
+        call divide
+          read rest
+          code 16
+      save k
+        call add
+          read k
+          code 1
+  send back, read out
+
+task write-float
+  mark private
+  take value, like decimal
+  like text
+  save shown, text <{{value}}>
+  fork test
+    hook test
+      call is-equal
+        read shown
+        text <Infinity>
+    hook hold
+      send back, text <inf>
+  fork test
+    hook test
+      call is-equal
+        read shown
+        text <-Infinity>
+    hook hold
+      send back, text <-inf>
+  fork test
+    hook test
+      call is-equal
+        read shown
+        text <NaN>
+    hook hold
+      send back, text <nan>
+  # a float needs a point or an exponent, or TOML reads it as an integer
+  fork test
+    hook test
+      call or
+        call is-minimum
+          call index-of
+            read shown
+            text <.>
+          code 0
+        call is-minimum
+          call index-of
+            read shown
+            text <e>
+          code 0
+    hook hold
+      send back, read shown
+  send back, text <{{shown}}.0>
+
+# a value written inline: arrays and tables included
+task write-inline
+  mark private
+  take value, like toml
+  like text
+  fork case, read value
+    case toml-text
+      send back
+        call write-string
+          read value
+    case toml-integer
+      send back, text <{{value}}>
+    case toml-float
+      send back
+        call write-float
+          read value
+    case toml-boolean
+      fork test
+        hook test
+          read value
+        hook hold
+          send back, text <true>
+      send back, text <false>
+    case toml-date-time
+      send back, read value
+    case toml-array
+      save out, text <[>
+      save first, true
+      walk list, read items
+        hook next
+          take site, name item
+          save written
+            call write-inline
+              read item
+          fork test
+            hook test
+              read first
+            hook hold
+              save out, text <{{out}}{{written}}>
+            hook miss
+              save out, text <{{out}}, {{written}}>
+          save first, false
+      send back, text <{{out}}]>
+    case toml-table
+      save out, text <\{>
+      save first, true
+      walk list, read entries
+        hook next
+          take site, name entry
+          save key
+            call write-key
+              read entry/name
+          save written
+            call write-inline
+              read entry/value
+          fork test
+            hook test
+              read first
+            hook hold
+              save out, text <{{out}} {{key}} = {{written}}>
+            hook miss
+              save out, text <{{out}}, {{key}} = {{written}}>
+          save first, false
+      fork test
+        hook test
+          read first
+        hook hold
+          send back, text <\{\}>
+      send back, text <{{out}} \}>
+
+task is-table
+  mark private
+  take value, like toml
+  like boolean
+  fork case, read value
+    case toml-table
+      send back, true
+    case toml-array
+      send back, false
+    case toml-text
+      send back, false
+    case toml-integer
+      send back, false
+    case toml-float
+      send back, false
+    case toml-boolean
+      send back, false
+    case toml-date-time
+      send back, false
+
+# whether a value is written as an array of tables: a non-empty array of nothing but tables
+task is-table-array
+  mark private
+  take value, like toml
+  like boolean
+  fork case, read value
+    case toml-array
+      fork test
+        hook test
+          call is-equal
+            call size
+              read items
+            code 0
+        hook hold
+          send back, false
+      walk list, read items
+        hook next
+          take site, name item
+          fork test
+            hook test
+              call is-table
+                read item
+            hook miss
+              send back, false
+      send back, true
+    case toml-table
+      send back, false
+    case toml-text
+      send back, false
+    case toml-integer
+      send back, false
+    case toml-float
+      send back, false
+    case toml-boolean
+      send back, false
+    case toml-date-time
+      send back, false
+
+task entries-of
+  mark private
+  take value, like toml
+  like list
+    like toml-entry
+  fork case, read value
+    case toml-table
+      send back, read entries
+    case toml-array
+      send back, make list
+    case toml-text
+      send back, make list
+    case toml-integer
+      send back, make list
+    case toml-float
+      send back, make list
+    case toml-boolean
+      send back, make list
+    case toml-date-time
+      send back, make list
+
+task items-of
+  mark private
+  take value, like toml
+  like list
+    like toml
+  fork case, read value
+    case toml-array
+      send back, read items
+    case toml-table
+      send back, make list
+    case toml-text
+      send back, make list
+    case toml-integer
+      send back, make list
+    case toml-float
+      send back, make list
+    case toml-boolean
+      send back, make list
+    case toml-date-time
+      send back, make list
+
+# the body of a table: its plain entries, then each table under a header, then each array of tables
+task write-table
+  mark private
+  take entries
+    like list
+      like toml-entry
+  take path, like text
+  like text
+  save lf
+    call rune-to-text, code 10
+  save out, text <>
+  walk list, read entries
+    hook next
+      take site, name entry
+      fork test
+        hook test
+          call or
+            call is-table
+              read entry/value
+            call is-table-array
+              read entry/value
+        hook miss
+          save key
+            call write-key
+              read entry/name
+          save written
+            call write-inline
+              read entry/value
+          save out, text <{{out}}{{key}} = {{written}}{{lf}}>
+  walk list, read entries
+    hook next
+      take site, name entry
+      save key
+        call write-key
+          read entry/name
+      save full, read key
+      fork test
+        hook test
+          call is-unequal
+            read path
+            text <>
+        hook hold
+          save full, text <{{path}}.{{key}}>
+      fork test
+        hook test
+          call is-table
+            read entry/value
+        hook hold
+          save body
+            call write-table
+              call entries-of
+                read entry/value
+              read full
+          save out, text <{{out}}{{lf}}[{{full}}]{{lf}}{{body}}>
+        hook test
+          call is-table-array
+            read entry/value
+        hook hold
+          walk list
+            call items-of
+              read entry/value
+            hook next
+              take site, name item
+              save body
+                call write-table
+                  call entries-of
+                    read item
+                  read full
+              save out, text <{{out}}{{lf}}[[{{full}}]]{{lf}}{{body}}>
+  send back, read out
+
+# a table as a TOML document: plain entries first, then a header per table and per array of tables, keys bare where
+# they can be and quoted where they cannot
+task stringify-toml
+  take value, like toml
+  like text
+  send back
+    call write-table
+      call entries-of
+        read value
+      text <>

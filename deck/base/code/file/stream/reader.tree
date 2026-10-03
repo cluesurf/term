@@ -4,6 +4,8 @@
 # `create` opens the stream over a window of the file, `read` pulls the next chunk, and the empty text means the
 # end of the stream (or the end of the window). `close` releases the handle.
 
+note unstable
+
 load @term/base/code/native/{platform}/file/asynchronous/stream/reader
   find reader-create
   find reader-read

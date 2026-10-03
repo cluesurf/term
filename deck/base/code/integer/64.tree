@@ -7,6 +7,9 @@
 # the i64 range. The extremes are COMPUTED (-2^31 * 2^32, and -(min) - 1): a decimal literal this large
 # round-trips through a 64-bit float in the front end and prints an off-by-192 neighbor, which rustc and
 # kotlinc rightly refuse.
+
+note stable
+
 task i64-minimum-value
   like number
   send back

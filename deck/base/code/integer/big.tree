@@ -1,11 +1,18 @@
 # Arbitrary-precision integers (bignum): integers with no width limit, for cryptography, exact counting, and money. Each
-# backend uses its own bignum: JS `BigInt`, rust `num-bigint`, kotlin `java.math.BigInteger`. (Swift's stdlib has no
-# bignum; that backend needs a package decision before it can build this module.) The value lives in the opaque `dock`
+# backend uses its own bignum: JS `BigInt`, rust `num-bigint`, kotlin `java.math.BigInteger`. Swift's standard library has
+# none, so Swift runs native/swift/runtime/termbig.swift, which does the same arithmetic over 32-bit limbs. The value lives in the opaque `dock`
 # handle and every operation is one native expression -- no per-op logic here, just the platform's bignum arithmetic.
 
 # the platform's bignum value, held opaque
+
+note unstable
+
 dock type
   load <any>, name big-handle
+
+# Swift's arithmetic (native/swift/runtime/termbig.swift); the other backends never mention it, so it is not included
+dock load
+  load <global:termbig>, name termbig
 
 bind do-big-from-text
   take value, like text
@@ -18,6 +25,8 @@ bind do-big-from-text
     load <num_bigint::BigInt>
     load <std::str::FromStr>
     text <std::rc::Rc::new(num_bigint::BigInt::from_str(&$value).unwrap()) as std::rc::Rc\<dyn std::any::Any\>>
+  case swift
+    text <termbig.parse($value)>
   case kotlin
     text <java.math.BigInteger($value)>
 
@@ -30,6 +39,8 @@ bind do-big-from-number
     text <BigInt($value)>
   case rust
     text <std::rc::Rc::new(num_bigint::BigInt::from($value)) as std::rc::Rc\<dyn std::any::Any\>>
+  case swift
+    text <termbig.fromInt($value)>
   case kotlin
     text <java.math.BigInteger.valueOf($value)>
 
@@ -42,6 +53,8 @@ bind do-big-to-text
     text <$value.toString()>
   case rust
     text <$value.downcast_ref::\<num_bigint::BigInt\>().unwrap().to_string()>
+  case swift
+    text <termbig.text($value)>
   case kotlin
     text <($value as java.math.BigInteger).toString()>
 
@@ -55,6 +68,8 @@ bind do-big-add
     text <$a + $b>
   case rust
     text <std::rc::Rc::new($a.downcast_ref::\<num_bigint::BigInt\>().unwrap() + $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()) as std::rc::Rc\<dyn std::any::Any\>>
+  case swift
+    text <termbig.add($a, $b)>
   case kotlin
     text <($a as java.math.BigInteger).add($b as java.math.BigInteger)>
 
@@ -68,6 +83,8 @@ bind do-big-subtract
     text <$a - $b>
   case rust
     text <std::rc::Rc::new($a.downcast_ref::\<num_bigint::BigInt\>().unwrap() - $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()) as std::rc::Rc\<dyn std::any::Any\>>
+  case swift
+    text <termbig.subtract($a, $b)>
   case kotlin
     text <($a as java.math.BigInteger).subtract($b as java.math.BigInteger)>
 
@@ -81,6 +98,8 @@ bind do-big-multiply
     text <$a * $b>
   case rust
     text <std::rc::Rc::new($a.downcast_ref::\<num_bigint::BigInt\>().unwrap() * $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()) as std::rc::Rc\<dyn std::any::Any\>>
+  case swift
+    text <termbig.multiply($a, $b)>
   case kotlin
     text <($a as java.math.BigInteger).multiply($b as java.math.BigInteger)>
 
@@ -94,6 +113,8 @@ bind do-big-divide
     text <$a / $b>
   case rust
     text <std::rc::Rc::new($a.downcast_ref::\<num_bigint::BigInt\>().unwrap() / $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()) as std::rc::Rc\<dyn std::any::Any\>>
+  case swift
+    text <termbig.divide($a, $b)>
   case kotlin
     text <($a as java.math.BigInteger).divide($b as java.math.BigInteger)>
 
@@ -107,6 +128,8 @@ bind do-big-remainder
     text <$a % $b>
   case rust
     text <std::rc::Rc::new($a.downcast_ref::\<num_bigint::BigInt\>().unwrap() % $b.downcast_ref::\<num_bigint::BigInt\>().unwrap()) as std::rc::Rc\<dyn std::any::Any\>>
+  case swift
+    text <termbig.remainder($a, $b)>
   case kotlin
     text <($a as java.math.BigInteger).remainder($b as java.math.BigInteger)>
 
@@ -119,6 +142,8 @@ bind do-big-negate
     text <-$value>
   case rust
     text <std::rc::Rc::new(-$value.downcast_ref::\<num_bigint::BigInt\>().unwrap()) as std::rc::Rc\<dyn std::any::Any\>>
+  case swift
+    text <termbig.negate($value)>
   case kotlin
     text <($value as java.math.BigInteger).negate()>
 
@@ -132,6 +157,8 @@ bind do-big-compare
     text <$a < $b ? -1 : ($a > $b ? 1 : 0)>
   case rust
     text <match $a.downcast_ref::\<num_bigint::BigInt\>().unwrap().cmp($b.downcast_ref::\<num_bigint::BigInt\>().unwrap()) \{ std::cmp::Ordering::Less =\> -1i64, std::cmp::Ordering::Equal =\> 0i64, std::cmp::Ordering::Greater =\> 1i64 \}>
+  case swift
+    text <termbig.compare($a, $b)>
   case kotlin
     text <($a as java.math.BigInteger).compareTo($b as java.math.BigInteger).toLong()>
 

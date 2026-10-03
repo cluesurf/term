@@ -4,6 +4,7 @@ load @term/base/code/network/udp
   find open
   find send
   find receive
+  find close
 
 load @term/base/code/text
   find contains
@@ -29,6 +30,13 @@ test <udp datagram round-trips>
     call receive
       read receiver
       wait true
+  # closed, so the ports are free for the next backend: the gate's node leg runs in the gate's own process
+  call close
+    read receiver
+    wait true
+  call close
+    read sender
+    wait true
   want hold
     call contains
       read message/data

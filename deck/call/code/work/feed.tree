@@ -47,51 +47,38 @@ task feed
   take entry, like text
   take port, like number
   take env, like text
+
   like void
+
   # the project root is READ, not taken: a hook has no `root` argument to pass
-  save root
-    call project-root
-  call log-step
-    text <Starting dev server...>
-  save found
-    call boot-module/findEntry
-      read root
-      read entry
+  save root, call project-root
+  log-step <Starting dev server...>
+  save found, call boot-module/findEntry, root, entry
+
   save there
     fork test
-      call is-equal
-        read found
-        text <>
-      hook hold
-        false
-      hook miss
-        call file-test
-          read found
-          wait true
+      is-equal found, <>
+      hold false
+      miss
+        file-test found, wait true
   fork test
-    read there
-    hook miss
-      call log-fail
-        text <No entry to serve: pass one, or name it with a boot path in deck.tree>
-      call node-process/exit
-        code 1
+    there
+    miss
+      log-fail <No entry to serve: pass one, or name it with a boot path in deck.tree>
+      node-process/exit code 1
   save chosen
     fork test
-      call is-above
+      is-above port, code 0
+      hold
         read port
-        code 0
-      hook hold
-        read port
-      hook miss
+      miss
         read feed-port
   save chosen-env
     fork test
-      call is-equal
-        read env
-        text <>
-      hook hold
+      is-equal env, <>
+      hold
         text <browser>
-      hook miss
+      miss
         read env
   note unsafe
     # the watcher is the TypeScript's, for the reason in the header
@@ -104,8 +91,5 @@ task feed
       wait true
   halt take
     take error
-    call log-fail
-      call format-error
-        read error
-    call node-process/exit
-      code 1
+    log-fail format-error error
+    node-process/exit code 1
