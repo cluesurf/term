@@ -14,7 +14,7 @@ task mailbox-make
     call channel/make
 
 task mailbox-send
-  note async
+  mark async
   take target, like channel-handle
   take item, like unknown
   like void
@@ -24,7 +24,7 @@ task mailbox-send
     wait true
 
 task mailbox-receive
-  note async
+  mark async
   take source, like channel-handle
   like unknown
   send back
@@ -33,7 +33,7 @@ task mailbox-receive
       wait true
 
 task mailbox-close
-  note async
+  mark async
   take target, like channel-handle
   like void
   call channel/close

@@ -1,7 +1,7 @@
 # An HTTP request a server handler receives: the method, the full target, its parsed path and query, the headers, and the
 # body text. The handler routes on `method` / `path` and reads the payload with `read`.
 
-note unstable
+mark unstable
 
 form request
   link method, like text

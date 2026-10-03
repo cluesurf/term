@@ -41,12 +41,12 @@ task full-name
   back read manifest/name
 
 task note
-  note async
+  mark async
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  note unsafe
+  mark unsafe
     save manifest
       call deck-tree/loadManifest
         make manifest-ask, bind dir, read root

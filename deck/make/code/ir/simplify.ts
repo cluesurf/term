@@ -714,12 +714,68 @@ function bindingFacts(body: Statement[]): {
 
   scan(body)
 
+  // A record is a VALUE (D1): `save d, read c` then `save d/count, 7` writes d's copy and leaves c as it was. A field
+  // write does not reassign the name, so the rule above saw both as fixed and propagated `c` for `d`, and the write
+  // reached `c` on every backend (codegen-performance-0028). The base of a field write is treated as reassigned: never
+  // propagated, nor propagated into. A list slot is not a field: lists are references on every backend today, so
+  // propagating a list alias is exact (codegen-performance-0032)
+  for (const name of fieldWritten(body)) {
+    assigned.add(name)
+  }
+
   const safe = new Set<string>()
 
   for (const [name, count] of letCount)
     {if (count === 1 && !assigned.has(name)) {safe.add(name)}}
 
   return { safe, assigned }
+}
+
+// the names whose record fields some assignment writes: the base of `save x/f, ...` and `save x/f/g, ...`, never of a
+// list slot
+function fieldWritten(body: Statement[]): Set<string> {
+  const found = new Set<string>()
+
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== 'object') {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(visit)
+
+      return
+    }
+
+    const node = value as Statement
+
+    if (node.form === 'assign' && node.target.form === 'member') {
+      let at: Expression = node.target
+      let field = true
+
+      while (at.form === 'member') {
+        if (at.index !== undefined || /^\d+$/.test(at.name)) {
+          field = false
+        }
+
+        at = at.target
+      }
+
+      if (field && at.form === 'variable') {
+        found.add(at.name)
+      }
+    }
+
+    for (const [key, child] of Object.entries(node)) {
+      if (key !== 'span' && key !== 'type') {
+        visit(child)
+      }
+    }
+  }
+
+  visit(body)
+
+  return found
 }
 
 // collect every variable name read anywhere in an expression (descending into closures)

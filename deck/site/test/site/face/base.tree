@@ -22,26 +22,22 @@ load @term/site/dom/dom
 # the store: one post into the database
 task keep
   take item, like post
-  note async
+  mark async
   call create-post
     read item/id
     read item/title
     read item/body
-    wait true
 
 task boot
-  note async
+  mark async
   like void
   save directory
     call data-path
       text <Blog>
-      wait true
   call setup
     text <{{directory}}/blog.sqlite>
-    wait true
   save posts
     call list-posts
-      wait true
   call blog
     call page-body
     read posts

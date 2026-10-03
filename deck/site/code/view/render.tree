@@ -3,6 +3,11 @@
 # static nodes; `attribute` and `event` wire them; `dynamic` makes a text node an effect keeps in sync; `show` swaps
 # a subtree on a reactive condition; `each` renders a reactive list; `mount` attaches a built tree to a host. All host
 # work goes through the platform-agnostic dom API, so this logic is identical on browser and server.
+#
+# EVERY BRANCH IS BUILT IN AN OWNER OF ITS OWN (reactive-bridge-0005). A branch `show`, `each`, a dynamic view or a gate
+# replaces is disposed with it: its effects stop and its cleanups run, so a node that has left the tree is never
+# rewritten, and a portal opened inside it closes with it. The branches still mounted are disposed when the owner the
+# renderer was set up in is. The contract is note/term/view/12-render-seam.md.
 
 load ../dom/native/{platform}/dom
   find view
@@ -12,6 +17,7 @@ load ../dom/native/{platform}/dom
   find set-attribute
   find listen
   find append
+  find insert-before
   find replace
   find remove
 
@@ -21,8 +27,99 @@ load @term/base/list
   find get
 
 load ./reactive
+  find signal
+  find read-signal
+  find write-signal
+  find owner
   find make-effect
   find on-cleanup
+  find open-scope
+  find close-scope
+  find dispose-scope
+
+# the owner of the branch a renderer has mounted now. ONE object, shared, because the effect that swaps the branch and
+# the cleanup that disposes it both hold it
+form branch-slot
+  mark shared
+  link scope, like owner
+
+# the owners of the items a list renderer has mounted now, in the order of its nodes
+form branch-list
+  mark shared
+  link scopes
+    like list
+      like owner
+
+# an owner nothing is registered to and that is not open: the slot's value before the first build
+task make-idle-owner
+  like owner
+  send back
+    make owner
+      bind effects
+        make list
+      bind cleanups
+        make list
+
+task make-empty-owners
+  like list
+    like owner
+  send back
+    make list
+
+# a slot for one branch, disposed with the owner open now (the one the renderer is being set up in)
+task make-branch-slot
+  like branch-slot
+  save slot
+    make branch-slot
+      bind scope, call make-idle-owner
+  call on-cleanup
+    task drop-branch
+      call dispose-scope
+        read slot/scope
+  send back, read slot
+
+# a holder for a list's item owners, disposed with the owner open now
+task make-branch-list
+  like branch-list
+  save held
+    make branch-list
+      bind scopes, call make-empty-owners
+  call on-cleanup
+    task drop-branches
+      walk list, read held/scopes
+        hook next
+          take site, name scope
+          call dispose-scope
+            read scope
+  send back, read held
+
+# `build` called inside a fresh owner, which is left closed and returned through `into`, so whatever the build created
+# can be disposed as one
+task build-owned
+  take build
+    like task
+      like view
+  take into, like branch-slot
+  like view
+  save scope, call open-scope
+  save node, call build
+  call close-scope
+  save into/scope, read scope
+  send back, read node
+
+# dispose the branch in `slot`, then build its replacement in an owner of its own
+task rebuild
+  take slot, like branch-slot
+  take build
+    like task
+      like view
+  like view
+  call dispose-scope
+    read slot/scope
+  send back
+    call build-owned
+      bind build, read build
+      bind into, read slot
 
 task make-element
   take tag, like text
@@ -113,6 +210,7 @@ task show
   call append
     bind parent, read host
     bind child, read current
+  save slot, call make-branch-slot
   call make-effect
     bind run
       task swap
@@ -121,9 +219,13 @@ task show
             hook test
               call when
             hook hold
-              call then
+              call rebuild
+                bind slot, read slot
+                bind build, read then
             hook miss
-              call other
+              call rebuild
+                bind slot, read slot
+                bind build, read other
         call replace
           bind old, read current
           bind new, read next
@@ -131,7 +233,9 @@ task show
 
 # render each item of a list under a host, calling `build` per item. `items` is a getter, read inside an effect, so
 # the list re-renders whenever a signal it reads changes. Reconciliation is simple: remove the nodes built last time,
-# then build and append the current items.
+# then build the current items and insert them before a marker that holds the list's place, so a list followed by
+# siblings stays above them. It appended them to the host until 2026-10-03, which moved a re-rendered list below
+# whatever came after it in the same parent.
 # The items a counted walk needs. The `view` role's `walk size` lowers to a `walk list` over this, because the zone
 # AST carries only a list walk and adding a counted one would touch every pass that reads it.
 #
@@ -184,6 +288,13 @@ task render-each
     like list
       like view
     make list
+  save marker
+    call create-text
+      bind value, text <>
+  call append
+    bind parent, read host
+    bind child, read marker
+  save held, call make-branch-list
   call make-effect
     bind run
       task render
@@ -192,26 +303,39 @@ task render-each
             take site, name old
             call remove
               bind node, read old
+        walk list, read held/scopes
+          hook next
+            take site, name old-scope
+            call dispose-scope
+              read old-scope
         save fresh, call make-empty-views
+        save owned, call make-empty-owners
         save current, call items
         walk list, read current
           hook next
             take site, name item
+            save scope, call open-scope
             save node
               call build
                 bind item, read item
-            call append
-              bind parent, read host
-              bind child, read node
+            call close-scope
+            call insert-before
+              bind node, read node
+              bind reference, read marker
             call push
               bind list, read fresh
               bind item, read node
+            call push
+              bind list, read owned
+              bind item, read scope
         save mounted, read fresh
+        save held/scopes, read owned
 
 # keyed list (Solid For): like `each`, but reuses the existing node for an item whose key persists across renders, so
 # the node keeps its identity (focus, scroll, animation, component state) when the list reorders or items insert/remove.
 # `key` extracts a stable text key per item. Reconciliation: for each current item reuse its old node by key or build a
-# fresh one, drop nodes whose key vanished, then re-append all current nodes in order (append moves a node to the end).
+# fresh one, drop nodes whose key vanished, then insert every current node, in order, before the marker that holds the
+# list's place (an insert moves a node that is already in the tree), so siblings after the list stay after it.
 task render-each-keyed
   head t
   take host, like view
@@ -231,12 +355,20 @@ task render-each-keyed
     make list
   save nodes
     make list
+  save marker
+    call create-text
+      bind value, text <>
+  call append
+    bind parent, read host
+    bind child, read marker
+  save held, call make-branch-list
   call make-effect
     bind run
       task render
         save current, call items
         save next-keys, call make-empty-texts
         save next-nodes, call make-empty-views
+        save next-scopes, call make-empty-owners
         # build or reuse a node per current item, matched by key against the previous render
         walk list, read current
           hook next
@@ -263,6 +395,21 @@ task render-each-keyed
                   call add
                     read i
                     code 1
+            # a kept item keeps its owner with its node; a new one is built in an owner of its own
+            save scope
+              fork test
+                hook test
+                  call is-above
+                    read found
+                    code 0
+                hook hold
+                  call get
+                    read held/scopes
+                    call subtract
+                      read found
+                      code 1
+                hook miss
+                  call open-scope
             save node
               fork test
                 hook test
@@ -278,12 +425,22 @@ task render-each-keyed
                 hook miss
                   call build
                     bind item, read item
+            fork test
+              hook test
+                call is-equal
+                  read found
+                  code 0
+              hook hold
+                call close-scope
             call push
               bind list, read next-keys
               bind item, read k
             call push
               bind list, read next-nodes
               bind item, read node
+            call push
+              bind list, read next-scopes
+              bind item, read scope
         # remove old nodes whose key is no longer present
         save j, code 0
         walk list, read keys
@@ -314,19 +471,24 @@ task render-each-keyed
                     call get
                       read nodes
                       read j
+                call dispose-scope
+                  call get
+                    read held/scopes
+                    read j
             save j
               call add
                 read j
                 code 1
-        # re-append the current nodes in order (append moves an existing node to the end, fixing order)
+        # put the current nodes in order before the marker (an insert moves a node already in the tree)
         walk list, read next-nodes
           hook next
             take site, name node
-            call append
-              bind parent, read host
-              bind child, read node
+            call insert-before
+              bind node, read node
+              bind reference, read marker
         save keys, read next-keys
         save nodes, read next-nodes
+        save held/scopes, read next-scopes
 
 # a reactive view slot (component-valued Solid Dynamic): an effect rebuilds whenever `source` (a getter returning a
 # built view) changes, swapping the mounted node. Use for a runtime-chosen component, polymorphic `as`, or a view that
@@ -342,10 +504,14 @@ task render-dynamic-view
   call append
     bind parent, read host
     bind child, read current
+  save slot, call make-branch-slot
   call make-effect
     bind run
       task swap
-        save next, call source
+        save next
+          call rebuild
+            bind slot, read slot
+            bind build, read source
         call replace
           bind old, read current
           bind new, read next
@@ -375,31 +541,76 @@ task render-gate
   call append
     bind parent, read host
     bind child, read current
+  save slot, call make-branch-slot
   call make-effect
     bind run
       task swap
+        save state, call status
         save next
           fork test
             hook test
               call is-equal
-                call status
+                read state
                 text <pending>
             hook hold
-              call pending
+              call rebuild
+                bind slot, read slot
+                bind build, read pending
             hook miss
               fork test
                 hook test
                   call is-equal
-                    call status
+                    read state
                     text <error>
                 hook hold
-                  call failed
+                  call rebuild
+                    bind slot, read slot
+                    bind build, read failed
                 hook miss
-                  call ready
+                  call rebuild
+                    bind slot, read slot
+                    bind build, read ready
         call replace
           bind old, read current
           bind new, read next
         save current, read next
+
+# ---- a raise that escapes an event handler (swiftui-target-0003) ----
+#
+# The view lowering wraps every handler's body in a guard and hands what it caught to `keep-raise`. Without it a raise
+# in a click handler ended the program on Swift (`try!`) and on Kotlin (an exception out of the listener) while a
+# browser logged it and went on. Now every backend goes on, and the raise's note is kept in one signal: a view that
+# reads `last-raise` shows it, and one that does not loses nothing it had.
+
+# the latest raise a handler let escape, as its note: shared, because every handler writes it and any view may read it
+form raise-board
+  mark shared
+  link note
+    like signal text
+
+host raised
+  make raise-board
+    bind note
+      make signal
+        bind value, text <>
+        bind observers
+          make list
+
+# keep a caught raise's note. The view lowering passes the note rather than the caught value, which natively is the
+# backend's carrier (`TermException`) and not the `exception` form
+task keep-raise
+  take note, like text
+  call write-signal
+    bind self, read raised/note
+    bind value, read note
+
+# the note of the latest raise a handler let escape, or empty text. Read inside an effect, so a view showing it
+# redraws when another arrives
+task last-raise
+  like text
+  send back
+    call read-signal
+      bind self, read raised/note
 
 # attach a built child under a host
 task mount

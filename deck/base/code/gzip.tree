@@ -8,7 +8,7 @@
 # Data that is not gzip, or is cut short, or fails its check, raises `gzip-mismatch` with the byte position and the
 # reason. The inflater follows zlib's reference decoder, puff.c (Mark Adler).
 
-note stable
+mark stable
 
 load @term/base/bytes
   find to-byte-list

@@ -1,6 +1,6 @@
 # WebSocket client. The clean uniform interface; each backend wraps its platform WebSocket (node global WebSocket, rust tokio-tungstenite, swift URLSessionWebSocketTask, kotlin java.net.http.WebSocket) behind this API, selected at build time. `socket` is a live connection to a peer, with send / receive / close methods; `message` is one received frame. The platform connection lives in the opaque `dock` handle, typed per backend. Every operation is async.
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/network/websocket
   find websocket-connect
@@ -22,36 +22,40 @@ form socket
 
   # send a text message to the peer
   task send
-    note async
+    mark async
     take self, like socket
     take data, like text
     like void
     call websocket-socket-send
       read self
       read data
+      wait true
 
   # wait for and return the next message from the peer
   task receive
-    note async
+    mark async
     take self, like socket
     like message
     send back
       call websocket-socket-receive
         read self
+        wait true
 
   # close the connection
   task close
-    note async
+    mark async
     take self, like socket
     like void
     call websocket-socket-close
       read self
+      wait true
 
 # open a WebSocket connection to `url` (ws:// or wss://)
 task connect
-  note async
+  mark async
   take url, like text
   like socket
   send back
     call websocket-connect
       read url
+      wait true

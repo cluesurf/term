@@ -1,0 +1,225 @@
+
+# What a terminal sends, as the key names `press-key` takes (terminal-target-0006). A terminal in raw mode hands a
+# program bytes, and the same key arrives as different bytes depending on the key: a letter is itself, tab is 9, enter
+# is 13 (or 10 through a pipe), backspace is 127 (8 on some terminals), and an arrow is three, ESC `[` and a letter.
+# The decoder works on code points, so a character outside ASCII arrives whole once the reader has decoded UTF-8.
+#
+#   9                tab          ESC [ A   up        ESC [ Z   shift-tab
+#   13, 10           enter        ESC [ B   down      ESC alone escape
+#   127, 8           backspace    ESC [ C   right     3         ctrl-c
+#   32               space        ESC [ D   left      other controls are dropped
+#
+# An ESC `[` sequence this table does not name (a function key, a mouse report) is consumed whole, up to the letter or
+# `~` that ends it, and dropped, so its bytes never arrive as typed characters.
+
+load @term/base/list
+  find list
+  find push
+
+load @term/base/text/unicode
+  find rune-to-text
+
+# the key an ESC `[` sequence ending in `final` names, or empty text for one this table does not name
+task arrow-of
+  take final, like number
+  like text
+  fork test
+    hook test
+      call is-equal
+        read final
+        code 65
+    hook hold
+      send back, text <up>
+    hook test
+      call is-equal
+        read final
+        code 66
+    hook hold
+      send back, text <down>
+    hook test
+      call is-equal
+        read final
+        code 67
+    hook hold
+      send back, text <right>
+    hook test
+      call is-equal
+        read final
+        code 68
+    hook hold
+      send back, text <left>
+    hook test
+      call is-equal
+        read final
+        code 90
+    hook hold
+      send back, text <shift-tab>
+  send back, text <>
+
+# the name of a key that is one code point, or empty text for a control nothing names
+task single-of
+  take rune, like number
+  like text
+  fork test
+    hook test
+      call is-equal
+        read rune
+        code 9
+    hook hold
+      send back, text <tab>
+    hook test
+      meet or
+        call is-equal
+          read rune
+          code 13
+        call is-equal
+          read rune
+          code 10
+    hook hold
+      send back, text <enter>
+    hook test
+      meet or
+        call is-equal
+          read rune
+          code 127
+        call is-equal
+          read rune
+          code 8
+    hook hold
+      send back, text <backspace>
+    hook test
+      call is-equal
+        read rune
+        code 32
+    hook hold
+      send back, text <space>
+    hook test
+      call is-equal
+        read rune
+        code 3
+    hook hold
+      send back, text <ctrl-c>
+    hook test
+      call is-below
+        read rune
+        code 32
+    hook hold
+      send back, text <>
+  send back
+    call rune-to-text
+      read rune
+
+# whether a code point ends an ESC `[` sequence: a letter, or `~`
+task ends-sequence
+  take rune, like number
+  like boolean
+  send back
+    meet or
+      meet and
+        call is-minimum
+          read rune
+          code 64
+        call is-maximum
+          read rune
+          code 126
+      call is-equal
+        read rune
+        code 126
+
+# every key in what a terminal sent, in order
+task decode-keys
+  take runes
+    like list
+      like number
+  like list
+    like text
+  save keys
+    make list
+  save i, code 0
+  save count, read runes/length
+  walk test
+    hook test
+      call is-below
+        read i
+        read count
+    hook step
+      save rune, read runes/{i}
+      save name, text <>
+      save next
+        call add
+          read i
+          code 1
+      fork test
+        hook test
+          call is-equal
+            read rune
+            code 27
+        hook hold
+          fork test
+            hook test
+              meet and
+                call is-below
+                  call add
+                    read i
+                    code 2
+                  read count
+                call is-equal
+                  read runes/{next}
+                  code 91
+            hook hold
+              # ESC [ then parameters, ended by a letter or `~`
+              save at
+                call add
+                  read i
+                  code 2
+              save done, false
+              walk test
+                hook test
+                  meet and
+                    call is-equal
+                      read done
+                      false
+                    call is-below
+                      read at
+                      read count
+                hook step
+                  save ending, read runes/{at}
+                  fork test
+                    hook test
+                      call ends-sequence
+                        read ending
+                    hook hold
+                      save done, true
+                      fork test
+                        hook test
+                          call is-equal
+                            read at
+                            call add
+                              read i
+                              code 2
+                        hook hold
+                          save name
+                            call arrow-of
+                              read ending
+                  save at
+                    call add
+                      read at
+                      code 1
+              save next, read at
+            hook miss
+              save name, text <escape>
+        hook miss
+          save name
+            call single-of
+              read rune
+      fork test
+        hook test
+          call is-unequal
+            read name
+            text <>
+        hook hold
+          call push
+            bind list, read keys
+            bind item, read name
+      save i, read next
+  send back, read keys

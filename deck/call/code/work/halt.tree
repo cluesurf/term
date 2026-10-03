@@ -44,7 +44,7 @@ task boot-ids
 
   save found, make list
 
-  note unsafe
+  mark unsafe
     save out
       call child/execSync
         text <ps -ax -o pid=,command=>
@@ -77,7 +77,7 @@ task ids-on-port
 
   save found, make list
 
-  note unsafe
+  mark unsafe
     save out
       call child/execSync
         text <lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t>
@@ -115,7 +115,7 @@ task stop-one
 
   like boolean
 
-  note unsafe, call(node-process/kill, read(id), text <SIGTERM>), send back, true
+  mark unsafe, call(node-process/kill, read(id), text <SIGTERM>), send back, true
 
   halt take
     take error

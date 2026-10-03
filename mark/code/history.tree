@@ -50,7 +50,7 @@ form earlier
 
 # every session export in the directory, newest first, parsed
 task read-history
-  note async
+  mark async
   take dir, like text
   like list
     like dynamic
@@ -61,7 +61,6 @@ task read-history
       call is-equal
         call file-present
           read dir
-          wait true
         false
     hook hold
       send back, read out
@@ -85,7 +84,6 @@ task read-history
             call parse
               call file-text
                 text <{{dir}}/{{name}}>
-                wait true
   send back, read out
 
 task field-of

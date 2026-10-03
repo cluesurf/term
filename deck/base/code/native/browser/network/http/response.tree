@@ -3,7 +3,7 @@ load @term/base/network/http
   find response
 
 task read
-  note async
+  mark async
   take response, like response
   take
     format

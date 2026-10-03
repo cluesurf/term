@@ -129,13 +129,13 @@ task first-value
 
 # the same, read from a file. Unreadable or unparseable answers the empty text, the way a missing manifest does.
 task manifest-value-of
-  note async
+  mark async
   take file, like text
   take head, like text
 
   like text
 
-  note unsafe
+  mark unsafe
     send back
       call manifest-value
         call read-file, read(file)

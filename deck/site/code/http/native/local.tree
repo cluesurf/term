@@ -33,7 +33,7 @@ task ask
   take path, like text
   take body, like text
   like text
-  note async
+  mark async
   save found
     call get
       read servers

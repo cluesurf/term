@@ -1,7 +1,7 @@
 
 # Reflection: runtime information about a type. Carried by errors and diagnostics (see complication).
 
-note unstable
+mark unstable
 
 mask reflection
   head t

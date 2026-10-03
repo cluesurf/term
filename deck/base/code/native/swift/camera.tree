@@ -18,7 +18,7 @@ task check-authorization-status
     call camera/authorization
 
 task request-access
-  note async
+  mark async
   like boolean
 
   send back

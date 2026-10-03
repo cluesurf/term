@@ -11,7 +11,7 @@ load @term/base/process/line
   find tool
 
 task line-open
-  note async
+  mark async
   like tool
   save raw
     call prompt/line-open
@@ -21,7 +21,7 @@ task line-open
       bind dock, read raw
 
 task line-ask
-  note async
+  mark async
   take tool, like tool
   take prompt, like text
   like text
@@ -32,7 +32,7 @@ task line-ask
       wait true
 
 task line-read
-  note async
+  mark async
   take tool, like tool
   like text
   send back
@@ -41,7 +41,7 @@ task line-read
       wait true
 
 task line-close
-  note async
+  mark async
   take tool, like tool
   like void
   call prompt/line-close

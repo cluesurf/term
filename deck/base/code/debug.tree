@@ -6,7 +6,7 @@
 # RENAMED AND CUT 2026-10-02 (base-v1-0020): this module declared `inspect`, `print`, `pause` and `assert` with no
 # bodies, so a call built clean and failed at run time.
 
-note unstable
+mark unstable
 
 load @term/base/stop
   find abandon

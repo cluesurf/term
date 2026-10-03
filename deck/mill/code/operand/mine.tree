@@ -26,12 +26,16 @@ mine operand
       mine form, like shelved
         site note
 
-# `note draft`: the marker that keeps the file out of the build until this mill is wired in. Read rather than
-# refused, so the grammar describes the file as it actually sits on disk.
+# `mark draft` (or the older `note draft`): the marker that keeps the file out of the build until this mill is
+# wired in. Read rather than refused, so the grammar describes the file as it actually sits on disk.
 mine shelved
-  mine term, term note
-    mine term
-      site mark
+  mine any
+    mine term, term mark
+      mine term
+        site mark
+    mine term, term note
+      mine term
+        site mark
 
 # `force <mnemonic>` with its encoding beneath it.
 #

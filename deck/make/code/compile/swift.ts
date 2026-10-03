@@ -8,6 +8,9 @@
 import { armLocals } from '@term/make/code/check/arm'
 import { raiseSets } from '@term/make/code/check/effects'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
+import { boundedLoops } from '@term/make/code/ir/facts/bounds'
+import { valuePlaces } from '@term/make/code/compile/place'
+import type { SlotLocal } from '@term/make/code/compile/place'
 import type {
   Expression,
   Program,
@@ -760,6 +763,12 @@ export function emitSwift(
   const pad = (d: number) => '  '.repeat(d)
   // the `+` nodes proven not to overflow (ir/facts/range.ts): written as the wrapping `&+`
   const provenSteps = provenIncrements(program)
+  // the counted loops whose calls to a bounded task may run its wrapping copy (ir/facts/bounds.ts), the calls in the
+  // copy being emitted, the tasks some such call reached, and whether the body being emitted is such a copy
+  const loopGuards = boundedLoops(program)
+  let fastCalls = new Set<object>()
+  const fastTasks = new Set<string>()
+  let uncheckedInts = false
   // the prelude helpers this program uses (SWIFT_HELPERS), recorded where each is written. A list or a map value
   // carries a list or map type somewhere in the program even when no annotation is written for it (the result of a
   // `map`, a temporary), so the program's types decide the two wrappers, and `swiftType` records them as well
@@ -1333,6 +1342,10 @@ export function emitSwift(
   let plainNames = new Map<string, Lend>()
   // its owned locals, with whether anything writes them (`var` against `let`)
   let ownedNames = new Map<string, boolean>()
+  // F4 on Swift (compile/place.ts, `valuePlaces`): the record writes narrowed to their changed fields, the slot locals
+  // read through their slot, and the slot locals of the function being emitted, by name
+  const { writes: placed, locals: slotLocals } = valuePlaces(program)
+  let slotNames = new Map<string, SlotLocal>()
   // set while an owned local's init is emitted, so a fresh task's `[T]` is taken as it is
   let rawFresh = false
   // whether the function being emitted answers a fresh list
@@ -1570,10 +1583,22 @@ export function emitSwift(
           return `(${mark}${left} &+ ${right})`
         }
 
+        // in a task's unchecked copy (`integerBounds`) every integer `+`, `-` and `*` is proven inside the bound
+        if (uncheckedInts && (node.op === '+' || node.op === '-' || node.op === '*') && node.left.type?.kind === 'number' && node.right.type?.kind === 'number') {
+          return `(${mark}${left} &${OP[node.op]} ${right})`
+        }
+
         return `(${mark}${left} ${OP[node.op]} ${right})`
       }
 
       case 'call': {
+        // a call the guarded loop copy may make to the task's wrapping copy (`LoopGuard.fast`)
+        if (fastCalls.has(node) && node.callee.form === 'variable') {
+          fastTasks.add(node.callee.name)
+
+          return expr({ ...node, callee: { ...node.callee, name: `${node.callee.name}-fast` } } as Expression, bind)
+        }
+
         // whether this call sits directly under `wait true`, read before the arguments render their own calls
         const awaited = awaiting
         awaiting = false
@@ -1859,6 +1884,13 @@ export function emitSwift(
       }
 
       case 'member': {
+        // a field of a slot local is read off its slot (`valuePlaces`)
+        const slot = node.target.form === 'variable' && !node.index ? slotNames.get(node.target.name) : undefined
+
+        if (slot) {
+          return `${view(slot.list, bind)}[${expr(slot.index, bind)}].${camel(node.name)}`
+        }
+
         // a DYNAMIC segment (`read table/{key}`) subscripts the wrapper's storage
         if (node.index) {
           return `${view(node.target, bind)}[${expr(node.index, bind)}]`
@@ -2095,8 +2127,9 @@ export function emitSwift(
     // fannkuch-redux, `perm.data.swapAt(low, high)` through the SeedList property ran at a median 1,329 ms against
     // 865 ms for the three statements, 7 alternating rounds (tmp/swift-swap-ab.ts, 2026-10-02)
     body
-      .map(s => `${pad(d)}${stmt(s, d, bind)}`)
+      .map(s => stmt(s, d, bind))
       .filter(Boolean)
+      .map(line => `${pad(d)}${line}`)
       .join('\n')
 
   // a `switch` case with no statement in its body (Term's `fork case, ... / case none` with nothing under it, a
@@ -2111,6 +2144,16 @@ export function emitSwift(
     switch (node.form) {
       case 'let': {
         boundNames.add(node.name)
+
+        // a record read from a slot and only ever read through it after (compile/place.ts, `valuePlaces`): no copy is
+        // made, and each field is read off the slot itself
+        const slot = slotLocals.get(node)
+
+        if (slot) {
+          slotNames.set(node.name, slot)
+
+          return ''
+        }
 
         // an owned list local is a plain array (F1): made empty, or taken as it is from a fresh task
         if (ownedNames.has(node.name) && node.type?.kind === 'array') {
@@ -2185,13 +2228,30 @@ export function emitSwift(
         )}${annotation} = ${expr(node.init, bind)}`
       }
 
-      case 'assign':
+      case 'assign': {
+        // a record written back to the slot it was read from: only its changed fields
+        const place = placed.get(node)
+
+        if (place && node.target.form === 'member') {
+          const slot = `${view(node.target.target, bind)}[${node.target.index ? expr(node.target.index, bind) : node.target.name}]`
+
+          if (!place.temps) {
+            return place.fields.map(f => `${slot}.${camel(f.name)} = ${expr(f.value, bind)}`).join('; ')
+          }
+
+          const temps = place.fields.map((f, i) => `let __place${i} = ${expr(f.value, bind)}`)
+          const sets = place.fields.map((f, i) => `${slot}.${camel(f.name)} = __place${i}`)
+
+          return `do { ${[...temps, ...sets].join('; ')} }`
+        }
+
         return node.op === '='
           ? `${expr(node.target, bind)} = ${expr(node.value, bind)}`
           : `${expr(node.target, bind)} ${node.op} ${expr(
               node.value,
               bind,
             )}`
+      }
       case 'expression': {
         // a push onto an owned list whose new length nothing reads is the array's `append`
         if (
@@ -2291,11 +2351,28 @@ export function emitSwift(
             : `throw termException(${expr(node.value, bind)})`
       }
       case 'while': {
-        const label = openLoop()
-        const body = block(node.body, d + 1, bind)
-        loopLabels.pop()
+        // a counted loop calling a task whose arithmetic is safe below a bound (ir/facts/bounds.ts): written twice, the
+        // guard true running a copy that calls the task's wrapping copy (`aValueFast`). Only the call limits are asked
+        const guard = loopGuards.get(node)
+        const loop = (depth: number): string => {
+          const label = openLoop()
+          const body = block(node.body, depth + 1, bind)
+          loopLabels.pop()
 
-        return `${label}: while ${expr(node.cond, bind)} {\n${body}\n${pad(d)}}`
+          return `${label}: while ${expr(node.cond, bind)} {\n${body}\n${pad(depth)}}`
+        }
+
+        if (guard?.fast?.length && guard.limits?.length) {
+          const test = guard.limits.map(l => (l.low ? `${vname(l.name)} >= 0` : `${vname(l.name)} <= ${l.high}`)).join(' && ')
+          const outer = fastCalls
+          fastCalls = new Set([...outer, ...guard.fast])
+          const fast = loop(d + 1)
+          fastCalls = outer
+
+          return `if ${test} {\n${pad(d + 1)}${fast}\n${pad(d)}} else {\n${pad(d + 1)}${loop(d + 1)}\n${pad(d)}}`
+        }
+
+        return loop(d)
       }
       case 'guard': {
         // `note unsafe` / `halt take`: a do with its catch. Calls in the body are `try`, and the caught value is a
@@ -2540,6 +2617,8 @@ export function emitSwift(
         const previousPlain = plainNames
         const previousOwned = ownedNames
         const previousFresh = emittingFresh
+        const previousSlots = slotNames
+        slotNames = new Map()
         ownedNames = node.async ? new Map() : ownedLocals(node, freshLists, lendParams)
         emittingFresh = freshLists.has(node.name)
         plainNames = new Map([
@@ -2621,6 +2700,7 @@ export function emitSwift(
         fnReturnsArray = previousReturnsArray
         plainNames = previousPlain
         ownedNames = previousOwned
+        slotNames = previousSlots
         const fresh = emittingFresh
         emittingFresh = previousFresh
 
@@ -2930,6 +3010,18 @@ export function emitSwift(
       .filter(keepStatement)
       .map(n => stmt(n, 0, new Map())),
   ].filter(Boolean)
+
+  // each task a guarded loop calls unchecked, once more with wrapping arithmetic (`aValueFast`), behind the bound the
+  // guard proved its arguments inside (ir/facts/bounds.ts, `integerBounds`)
+  for (const name of fastTasks) {
+    const fn = program.find((n): n is Extract<Statement, { form: 'function' }> => n.form === 'function' && n.name === name)
+
+    if (fn) {
+      uncheckedInts = true
+      body.push(stmt({ ...fn, name: `${name}-fast` }, 0, new Map()))
+      uncheckedInts = false
+    }
+  }
 
   // `is-equal` on two records compares their fields, on every backend (note/term/optimize/meaning.md, question 4). A
   // struct or enum whose every field can be compared gets a synthesized `Equatable`, and `Hashable` too when every

@@ -1,7 +1,7 @@
 # Symbolic and hard links. The clean uniform interface, the per-env native implementation selected at build time
 # and hidden.
 
-note unstable
+mark unstable
 
 load @term/base/native/{platform}/file/asynchronous/link
   find link-make
@@ -9,7 +9,7 @@ load @term/base/native/{platform}/file/asynchronous/link
 
 # link `to` at `from`. With `hard`, a hard link rather than a symbolic one.
 task make
-  note async
+  mark async
   take from, like text
   take to, like text
   take
@@ -21,12 +21,14 @@ task make
     read from
     read to
     read hard
+    wait true
 
 # where a symbolic link points, or the empty text if the path is not one
 task read
-  note async
+  mark async
   take path, like text
   like text
   send back
     call link-read
       read path
+      wait true

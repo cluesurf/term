@@ -13,8 +13,7 @@ load @term/site/base/db
   find field
 
 task boot
-  note async
+  mark async
   like void
   save where
     call bundle-path
-      wait true

@@ -1,4 +1,4 @@
-note draft
+mark draft
 
 # SHELVED 2026-10-02 (base-v1-0038): it declared a top-level `get`, and names are package-global, so it shadowed list
 # `get` wherever it was built. Nothing loads it; `clock` reads the time through `current-time`.

@@ -3,7 +3,7 @@
 # subscribes. One per Term context. The compiler emits `wake-hive`, which calls `hive-wake` once per deck with the
 # deck's static entries, and `boot` calls that first. See note/term/hive/05-hive.md.
 
-note unstable
+mark unstable
 
 load @term/base/list
   find push

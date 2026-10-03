@@ -31,7 +31,7 @@
 # It compiled until now only because a stale build cache was serving it. The
 # rule that rejects it, `deck/make/code/check/extend.ts`, is new and correct.
 
-note draft
+mark draft
 
 load @term/base/result
   find result
@@ -62,7 +62,7 @@ task throw
 task catch
   take work, like task
   like result
-  note unsafe
+  mark unsafe
     save value
       call work
     send back

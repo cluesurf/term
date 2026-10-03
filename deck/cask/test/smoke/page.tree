@@ -23,7 +23,7 @@ load @term/base/list
 host expected, text <cask-smoke-ok>
 
 task boot
-  note async
+  mark async
   like void
   # the cask pushes `smoke` after every reply; the verdict requires having heard it, so a bridge that only answers
   # and never pushes fails here
@@ -41,10 +41,8 @@ task boot
         bind item, read text
   save bundle
     call bundle-path
-      wait true
   save content
     call read
-      wait true
       text <{{bundle}}/smoke.txt>
   fork test
     hook test
@@ -61,13 +59,10 @@ task boot
             code 0
         hook hold
           call exit
-            wait true
             code 0
         hook miss
           call exit
-            wait true
             code 2
     hook miss
       call exit
-        wait true
         code 1

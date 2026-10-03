@@ -1,7 +1,7 @@
 
 # Like: a type annotation. A named type with optional type arguments (e.g. `like list` of `like text`).
 
-note unstable
+mark unstable
 
 load ./term
   find term

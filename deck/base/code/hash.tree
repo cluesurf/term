@@ -1,7 +1,7 @@
 
 # Hash map: the stdlib map type, backed by the native map. Build a value with `make find`.
 
-note stable
+mark stable
 
 load @term/base/maybe
   find maybe

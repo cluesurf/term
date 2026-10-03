@@ -17,7 +17,7 @@
 #       load star
 #       need sentry-dsn
 
-note unstable
+mark unstable
 
 load ./text
   find text

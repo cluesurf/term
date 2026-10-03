@@ -1,4 +1,4 @@
-note draft
+mark draft
 # Checked spec, not compiled code — see ../head/mine.tree's note. The real reader is ./code.tree's
 # read-otf-os2-table, proven by deck/feed/test/otf-os2.tree (both an unversioned and a fully-versioned table).
 # Replaces the old pre-rename draft entirely. Through version 2 only, matching ./code.tree. This is the file

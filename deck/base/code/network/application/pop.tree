@@ -1,7 +1,7 @@
 
 # POP3: Post Office Protocol version 3. Commands and session states for retrieving mail from a server.
 
-note unstable
+mark unstable
 
 host pop-state
   term authorization

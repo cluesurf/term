@@ -1,6 +1,6 @@
 # Signed 8-bit integer: values -128 to 127. Operations wrap, check, or saturate at that range. See `n` for the template.
 
-note stable
+mark stable
 
 load @term/base/bit
   find bitwise-and

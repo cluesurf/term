@@ -2,7 +2,7 @@
 # types. Nothing loads it: scalar addition is a compiler intrinsic on every native backend, and the trait
 # impls this emits name forms (`I8`, `Addition`) that a standalone unit does not define, like the direction
 # sketch beside it. Delete `note draft` to bring it back.
-note draft
+mark draft
 
 
 fuse addition-form, like i8

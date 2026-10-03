@@ -63,7 +63,7 @@ load @term/base/console
   find log
 
 task boot
-  note async
+  mark async
   log <hello from term>
 >
 
@@ -94,7 +94,7 @@ node_modules
 >
 
 task wake
-  note async
+  mark async
   take name, like text
 
   like void
@@ -120,7 +120,7 @@ task wake
         node-path/basename target
   log-step <Waking {{label}}...>
 
-  note unsafe
+  mark unsafe
     call make-directory, read target
     fork test
       call directory-exists
@@ -135,19 +135,15 @@ task wake
     call write-file
       call join, read(target), text <deck.tree>
       call deck-text, read label
-      wait true
     call write-file
       call join, call(join, read(target), text <code>), text <boot.tree>
       call boot-text
-      wait true
     call write-file
       call join, read(target), text <readme.md>
       call readme-text, read label
-      wait true
     call write-file
       call join, read(target), text <.gitignore>
       call ignore-text
-      wait true
     call log-good, text <Woke {{label}}>
     fork test
       read named

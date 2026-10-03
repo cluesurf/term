@@ -1,6 +1,6 @@
 # The iterator (walk): a lazy pull-based sequence. A `walk` holds one `pull` closure that returns the next element as a `maybe` (`none` ends the sequence). Sources build a walk over a backing collection; lazy adapters (map / filter / take / drop / enumerate) wrap a source walk in a new pull; terminal sinks (collect / fold / count / find / each / any / all) drive the pull to exhaustion. State that must persist across pulls (a cursor, a counter) lives in a one-element list used as a mutable box, so the whole protocol is pure Term and lowers to every backend.
 
-note stable
+mark stable
 
 load @term/base/maybe
   find maybe
@@ -169,7 +169,7 @@ form walk
   # walk may be endless (a generator, a stream), and draining one never stops, so termination is not owed and the
   # task is never a proof. A finite walk still ends, by running out.
   task collect
-    note roam
+    mark roam
     take self
     like list
       like t
@@ -191,7 +191,7 @@ form walk
 
   # the number of remaining elements (drains the walk)
   task count
-    note roam
+    mark roam
     take self
     like number
     save total, code 0
@@ -213,7 +213,7 @@ form walk
 
   # fold the elements into one accumulated value
   task fold
-    note roam
+    mark roam
     head s
     take self
     take start, like s
@@ -242,7 +242,7 @@ form walk
 
   # the first element matching the predicate, or none
   task find
-    note roam
+    mark roam
     take self
     take keep
       like task
@@ -272,7 +272,7 @@ form walk
 
   # run a handler for each element (drains the walk)
   task each
-    note roam
+    mark roam
     take self
     take handle
       like task
@@ -292,7 +292,7 @@ form walk
 
   # whether any element passes the predicate
   task is-any
-    note roam
+    mark roam
     take self
     take keep
       like task
@@ -318,7 +318,7 @@ form walk
 
   # whether every element passes the predicate
   task is-all
-    note roam
+    mark roam
     take self
     take keep
       like task

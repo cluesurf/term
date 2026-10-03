@@ -9,7 +9,7 @@
 # variant. A message the receiver has no case for is a build error, which is what Erlang's untyped `receive` cannot
 # give (note/term/research/beam-otp-lessons.md, design 2). `make-text-channel` is the old text channel by name.
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/channel
   find mailbox-make
@@ -25,30 +25,33 @@ form channel
 
   # send a message (buffered; never blocks for an unbounded channel)
   task send
-    note async
+    mark async
     take self
     take item, like t
     like void
     call mailbox-send
       read self/dock
       read item
+      wait true
 
   # receive the next message, waiting if none is buffered yet
   task receive
-    note async
+    mark async
     take self
     like t
     send back
       call mailbox-receive
         read self/dock
+        wait true
 
   # close the channel
   task close
-    note async
+    mark async
     take self
     like void
     call mailbox-close
       read self/dock
+      wait true
 
 # make a new channel. Its message type comes from how it is used
 task make-channel

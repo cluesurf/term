@@ -69,7 +69,7 @@ task file-items-of
   send back, read items
 
 task read-file
-  note async
+  mark async
   take path
     like text
   like text
@@ -90,7 +90,7 @@ task read-file
       read arguments
 
 task write-file
-  note async
+  mark async
   take path
     like text
   take data
@@ -120,7 +120,7 @@ task write-file
     read arguments
 
 task append-file
-  note async
+  mark async
   take path
     like text
   take data
@@ -150,7 +150,7 @@ task append-file
     read arguments
 
 task remove-file
-  note async
+  mark async
   take path
     like text
   like void
@@ -170,7 +170,7 @@ task remove-file
     read arguments
 
 task copy-file
-  note async
+  mark async
   take from
     like text
   take to
@@ -200,7 +200,7 @@ task copy-file
     read arguments
 
 task move-file
-  note async
+  mark async
   take from
     like text
   take to
@@ -230,7 +230,7 @@ task move-file
     read arguments
 
 task file-exists
-  note async
+  mark async
   take path
     like text
   like boolean
@@ -251,7 +251,7 @@ task file-exists
       read arguments
 
 task stat-file
-  note async
+  mark async
   take path
     like text
   like path-info
@@ -280,14 +280,14 @@ task stat-file
 
 # not carried: result is bytes
 task read-file-bytes
-  note async
+  mark async
   take path, like unknown
   like unknown
   halt <file/read-bytes does not cross the cask bridge yet: result is bytes>
 
 # not carried: parameter data is bytes
 task write-file-bytes
-  note async
+  mark async
   take path, like unknown
   take data, like unknown
   like unknown

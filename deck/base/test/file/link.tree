@@ -61,10 +61,10 @@ task run-tests
     call is-equal
       bind a, read sym-content
       bind b, text <link content>
-    hook true
+    hook hold
       call console/log
         bind msg, text <pass: symlink-read>
-    hook false
+    hook miss
       call console/log
         bind msg, text <fail: symlink-read>
 
@@ -78,10 +78,10 @@ task run-tests
     call is-equal
       bind a, read target
       bind b, read source
-    hook true
+    hook hold
       call console/log
         bind msg, text <pass: readlink>
-    hook false
+    hook miss
       call console/log
         bind msg, text <fail: readlink>
 
@@ -106,10 +106,10 @@ task run-tests
     call is-equal
       bind a, read hard-content
       bind b, text <link content>
-    hook true
+    hook hold
       call console/log
         bind msg, text <pass: hard-link-read>
-    hook false
+    hook miss
       call console/log
         bind msg, text <fail: hard-link-read>
 

@@ -1,4 +1,4 @@
-note draft
+mark draft
 
 # SHELVED 2026-10-02 (base-v1-0019): a sketch with no native and no caller; a worker pool is its own item. It declared tasks that bound nothing, so a call built clean and
 # threw `stub` at run time; out of the build until it has bodies.
@@ -16,17 +16,17 @@ task make
   like pool
 
 task run
-  note async
+  mark async
   take pool, like pool
   take work, like task
 
 task map
-  note async
+  mark async
   take pool, like pool
   take list, like list
   take work, like task
   like list
 
 task close
-  note async
+  mark async
   take pool, like pool

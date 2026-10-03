@@ -36,7 +36,7 @@ task http2-serve-clear
     text <>
 
 task http2-start-clear
-  note async
+  mark async
   take port, like size
   take host, like text
   take handler
@@ -52,3 +52,4 @@ task http2-start-clear
       false
       text <>
       text <>
+      wait true

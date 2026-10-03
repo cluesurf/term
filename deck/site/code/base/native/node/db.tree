@@ -10,7 +10,7 @@ load ../db
 
 task connect
   take url, like text
-  note async
+  mark async
   call postgres/connect
     read url
 
@@ -20,7 +20,7 @@ task query
     like list
       like unknown
   like list
-  note async
+  mark async
   send back
     call postgres/query
       read sql
@@ -32,7 +32,7 @@ task run
   take params
     like list
       like unknown
-  note async
+  mark async
   call postgres/run
     read sql
     read params
@@ -42,7 +42,7 @@ task field
   take row, like row
   take name, like text
   like text
-  note async
+  mark async
   send back
     call postgres/field
       read row
@@ -51,5 +51,5 @@ task field
 # a row here is a plain value, so there is nothing to let go (native-dom-0029: `release` frees a row in a cask's page)
 task release
   take row, like row
-  note async
+  mark async
   save skip, code 0

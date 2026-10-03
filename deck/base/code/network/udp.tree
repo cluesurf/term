@@ -1,6 +1,6 @@
 # UDP sockets. The clean uniform interface; each backend wraps its platform datagram networking (node dgram, rust tokio, swift POSIX, kotlin java.net) behind this API, selected at build time. `socket` is a bound UDP endpoint with send / receive / close methods; `datagram` is one received message plus its sender. The platform socket lives in the opaque `dock` handle, typed per backend. Every operation is async.
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/network/udp
   find udp-open
@@ -24,7 +24,7 @@ form socket
 
   # send `data` to `host:port`, returning the number of bytes sent
   task send
-    note async
+    mark async
     take self
     take data, like text
     take host, like text
@@ -36,27 +36,30 @@ form socket
         read data
         read host
         read port
+        wait true
 
   # wait for and return the next incoming datagram
   task receive
-    note async
+    mark async
     take self
     like datagram
     send back
       call udp-socket-receive
         read self
+        wait true
 
   # close the socket and release the port
   task close
-    note async
+    mark async
     take self
     like void
     call udp-socket-close
       read self
+      wait true
 
 # open a UDP socket bound to `host:port`
 task open
-  note async
+  mark async
   take port, like number
   take
     host
@@ -67,3 +70,4 @@ task open
     call udp-open
       read port
       read host
+      wait true

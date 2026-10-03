@@ -77,7 +77,7 @@ hook list
   task list-suite
 
 task list-suite
-  note async
+  mark async
   take only, like text
   like number
   save root
@@ -85,7 +85,6 @@ task list-suite
   save names
     call program-names
       read root
-      wait true
   save refused, code 0
   save shown, code 0
   walk list, read names
@@ -107,7 +106,6 @@ task list-suite
         call read-contract
           text <{{root}}/{{name}}>
           read name
-          wait true
       fork test
         hook test
           call is-equal

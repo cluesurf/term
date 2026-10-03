@@ -22,7 +22,6 @@ load @term/base/text/unicode
   find to-runes
   find rune-to-text
 load @term/base/math
-  find round
   find round-down
 load @term/base/text/string
   find concat
@@ -30,7 +29,8 @@ load ./width
   find width-runs
   find width-run-count
 
-# one node of a view as the grid lays it out. `kind` is text, stack, spacer, divider or frame. Lengths are points;
+# one node of a view as the grid lays it out. `kind` is text, stack, spacer, divider, frame or box (one child inside a
+# one cell border, the dialog's shape). Lengths are points;
 # 0 is "not set" for a frame's bounds, where a bound of 0 cells would mean nothing could be drawn
 form cell-node
   link kind, like text
@@ -56,23 +56,29 @@ form cell-size
   link width, like number
   link height, like number
 
-# points to cells, rounded: 8 points to a cell across, 16 down
+# points to cells, half a cell rounding up: 8 points to a cell across, 16 down. Written as a floor of `points` plus
+# half a cell, never `round(points / 8)`: a division of two numbers is fractional on TypeScript and whole on Rust, so
+# 8 points down was 1 cell on one and 0 on the other. This is the same whole number on every backend
 task cells-across
   take points, like number
   like number
   send back
-    call round
+    call round-down
       call divide
-        read points
+        call add
+          read points
+          code 4
         code 8
 
 task cells-down
   take points, like number
   like number
   send back
-    call round
+    call round-down
       call divide
-        read points
+        call add
+          read points
+          code 8
         code 16
 
 # the cells one character takes, standing alone: 0 for a mark, a format character or a control, 2 for an East Asian
@@ -459,6 +465,16 @@ task measure
     hook test
       call is-equal
         read node/kind
+        text <box>
+    hook hold
+      send back
+        call measure-box
+          read node
+          read room
+  fork test
+    hook test
+      call is-equal
+        read node/kind
         text <frame>
     hook hold
       send back
@@ -469,6 +485,123 @@ task measure
     call measure-stack
       read node
       read room
+
+# a box: its one child measured in the room left inside a one cell border, and the border around it
+task measure-box
+  take node, like cell-node
+  take room, like number
+  like cell-size
+  save inside
+    make cell-size
+      bind width, code 0
+      bind height, code 0
+  fork test
+    hook test
+      call is-above
+        read node/children/length
+        code 0
+    hook hold
+      save inside
+        call measure
+          read node/children/0
+          call larger
+            call subtract
+              read room
+              code 2
+            code 0
+  send back
+    make cell-size
+      bind width
+        call add
+          read inside/width
+          code 2
+      bind height
+        call add
+          read inside/height
+          code 2
+
+# a box's border around the rectangle at (x, y), `width` by `height` cells: corners, then the four sides
+task paint-border
+  take grid
+    like list
+      like list
+        like text
+  take x, like number
+  take y, like number
+  take width, like number
+  take height, like number
+  save right
+    call subtract
+      call add
+        read x
+        read width
+      code 1
+  save bottom
+    call subtract
+      call add
+        read y
+        read height
+      code 1
+  call paint-line
+    read grid
+    call add
+      read x
+      code 1
+    read y
+    call subtract
+      read width
+      code 2
+    false
+  call paint-line
+    read grid
+    call add
+      read x
+      code 1
+    read bottom
+    call subtract
+      read width
+      code 2
+    false
+  call paint-line
+    read grid
+    read x
+    call add
+      read y
+      code 1
+    call subtract
+      read height
+      code 2
+    true
+  call paint-line
+    read grid
+    read right
+    call add
+      read y
+      code 1
+    call subtract
+      read height
+      code 2
+    true
+  call put-cell
+    read grid
+    read x
+    read y
+    text <┌>
+  call put-cell
+    read grid
+    read right
+    read y
+    text <┐>
+  call put-cell
+    read grid
+    read x
+    read bottom
+    text <└>
+  call put-cell
+    read grid
+    read right
+    read bottom
+    text <┘>
 
 # a frame: its one child measured inside the frame's bounds, the fixed size winning, min and max holding the rest
 task measure-frame
@@ -953,6 +1086,47 @@ task place
         call smaller
           read down
           read height
+  # a box: its border on the rectangle's edge, its child inside, when there is room for both
+  fork test
+    hook test
+      meet and
+        call is-equal
+          read node/kind
+          text <box>
+        call is-minimum
+          read width
+          code 2
+        call is-minimum
+          read height
+          code 2
+    hook hold
+      call paint-border
+        read grid
+        read x
+        read y
+        read width
+        read height
+      fork test
+        hook test
+          call is-above
+            read node/children/length
+            code 0
+        hook hold
+          call place
+            read node/children/0
+            read grid
+            call add
+              read x
+              code 1
+            call add
+              read y
+              code 1
+            call subtract
+              read width
+              code 2
+            call subtract
+              read height
+              code 2
   fork test
     hook test
       call is-equal

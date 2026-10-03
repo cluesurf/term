@@ -7,7 +7,7 @@
 
 # stop the run, saying what was wrong
 
-note stable
+mark stable
 
 bind abandon
   take reason, like text

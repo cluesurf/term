@@ -4,7 +4,7 @@
 
 # the largest finite magnitude of a 64-bit float (the smallest finite is its negation)
 
-note unstable
+mark unstable
 
 bind f64-maximum-value
   like decimal

@@ -1,4 +1,4 @@
-note unstable
+mark unstable
 
 form text-ascii
   like text-8

@@ -1,4 +1,4 @@
-note draft
+mark draft
 # Checked spec, not compiled code — see ../head/mint.tree's note. The real writer is ./code.tree's
 # write-otf-cmap-table, proven by deck/feed/test/otf-cmap.tree. The offset problem in reverse: a record's
 # subtable-offset has to be known before that subtable is written, so every subtable is serialized first (to

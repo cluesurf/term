@@ -1,0 +1,34 @@
+
+# The terminal's rounds on node (terminal-target-0006): read, press, then yield to the event loop before repainting.
+# A key's handler may start work that finishes later (the blog's store is asynchronous, and its post is appended when
+# that resolves): reading blocks the thread, so without the yield that work would wait for the next key and the screen
+# would always be one keypress behind.
+
+load @term/base/clock
+  find sleep
+
+load ../../../view
+  find view
+
+load ../screen
+  find terminal-screen
+  find show-screen
+  find take-input
+
+task drive
+  mark async
+  take root, like view
+  take shown, like terminal-screen
+  save running, true
+  walk test
+    hook test
+      read running
+    hook step
+      save running
+        call take-input
+          read root
+      call sleep
+        code 0
+      call show-screen
+        read shown
+        read root

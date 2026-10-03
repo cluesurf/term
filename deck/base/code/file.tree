@@ -1,7 +1,7 @@
 
 # File system operations. The platform implementation is selected at build time and hidden behind this API.
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/file
   find read-file
@@ -19,7 +19,7 @@ load @term/base/file/stat
   find path-info
 
 task read
-  note async
+  mark async
   take path, like text
   like text
   send back
@@ -27,7 +27,7 @@ task read
       read path
 
 task write
-  note async
+  mark async
   take path, like text
   take data, like text
   send back
@@ -38,7 +38,7 @@ task write
 # Raw byte IO. The data stays a native buffer end to end (node fs returns a Buffer, rust std::fs returns a byte vector), with no utf8 round-trip. This is the zero-copy path for binary files.
 
 task read-bytes
-  note async
+  mark async
   take path, like text
   like bytes
   send back
@@ -46,7 +46,7 @@ task read-bytes
       read path
 
 task write-bytes
-  note async
+  mark async
   take path, like text
   take data, like bytes
   send back
@@ -55,7 +55,7 @@ task write-bytes
       read data
 
 task append
-  note async
+  mark async
   take path, like text
   take data, like text
   send back
@@ -64,14 +64,14 @@ task append
       read data
 
 task remove
-  note async
+  mark async
   take path, like text
   send back
     call remove-file
       read path
 
 task copy
-  note async
+  mark async
   take from, like text
   take to, like text
   send back
@@ -80,7 +80,7 @@ task copy
       read to
 
 task move
-  note async
+  mark async
   take from, like text
   take to, like text
   send back
@@ -89,7 +89,7 @@ task move
       read to
 
 task test
-  note async
+  mark async
   take path, like text
   like boolean
   send back
@@ -98,7 +98,7 @@ task test
 
 # a path's size and whether it is a directory, in one record
 task stat
-  note async
+  mark async
   take path, like text
   like path-info
   send back

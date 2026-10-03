@@ -1,7 +1,7 @@
 
 # Binary heap of any item, ordered by `compare`: the item `compare` puts first is always at the root, so `from-numbers` makes a min-heap and its `reverse` a max-heap. `push` sifts up, `pop` removes the root and sifts down. Pops return `maybe`, so an empty heap is total. In-place index writes go through the native `set`, which lowers on every backend. The parent index `(i-1)/2` truncates, as integer division does everywhere. `make-heap` starts an empty one.
 
-note stable
+mark stable
 
 load @term/base/list
   find list

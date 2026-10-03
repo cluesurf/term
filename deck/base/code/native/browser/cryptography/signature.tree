@@ -4,13 +4,13 @@ dock load
   load <global:eddsa>, name eddsa
 
 task make-key-pair-bytes
-  note async
+  mark async
   like bytes
   send back
     call eddsa/make-key-pair
 
 task sign-message
-  note async
+  mark async
   take private-key, like bytes
   take message, like bytes
   like bytes
@@ -20,7 +20,7 @@ task sign-message
       read message
 
 task verify-message
-  note async
+  mark async
   take public-key, like bytes
   take message, like bytes
   take signature, like bytes

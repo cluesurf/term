@@ -1,4 +1,4 @@
-note draft
+mark draft
 # Checked spec, not compiled code — see ../head/mine.tree's note. The real reader is ./code.tree's
 # read-otf-hhea-table, proven by deck/feed/test/otf-hhea-maxp.tree. Replaces the old pre-rename draft.
 # `ushort`/`short` are the same rules every OTF table spec in this package reuses — defined once in

@@ -1,7 +1,7 @@
 
 # Time: the current epoch time. Implementation selected at build time, hidden behind this API.
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/time
   find epoch-millis

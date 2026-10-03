@@ -3,7 +3,7 @@
 # deck/base/test/integer-32.tree, with expectations in the signed values `i32-wrap` produces. The
 # rotate-head / rotate-base tables stay only here: the live integer template (code/integer/n.tree) has
 # no rotate tasks yet, and these tables are the spec for them when one is added.
-note draft
+mark draft
 
 host max
   call rise

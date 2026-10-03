@@ -1,6 +1,6 @@
 # Ordering: the result of a three-way comparison. `less` means the left value sorts before the right, `greater` after, `equal` the same. It is the currency type every comparator and ordered structure returns. The named predicates and `reverse` read off the case; `from-numbers` is the base comparator the rest build on.
 
-note stable
+mark stable
 
 form ordering
   case less

@@ -1,4 +1,4 @@
-note draft
+mark draft
 
 # SHELVED 2026-10-02 (base-v1-0019): a bodiless duplicate of network/websocket. Nothing loads it.
 
@@ -10,12 +10,12 @@ form message
   link data, like text
 
 task send
-  note async
+  mark async
   take socket, like socket
   take data, like text
 
 task close
-  note async
+  mark async
   take socket, like socket
   take
     code
@@ -27,6 +27,6 @@ task close
     need false
 
 task stream
-  note async
+  mark async
   take socket, like socket
   like list

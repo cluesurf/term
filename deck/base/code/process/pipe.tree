@@ -1,4 +1,4 @@
-note draft
+mark draft
 
 # SHELVED 2026-10-02 (base-v1-0019): a bodiless `connect`. Nothing loads it.
 
@@ -6,6 +6,6 @@ load @term/base/process
   find child
 
 task connect
-  note async
+  mark async
   take from, like child
   take to, like child

@@ -1,4 +1,4 @@
-note draft
+mark draft
 
 # SHELVED 2026-10-02 (base-v1-0019): the device tier, out of the v1 cut (note/term/stdlib/v1-release.md). It declared tasks that bound nothing, so a call built clean and
 # threw `stub` at run time; out of the build until it has bodies.

@@ -60,10 +60,10 @@ task run-tests
     call is-equal
       bind a, read content
       bind b, text <hello handle>
-    hook true
+    hook hold
       call console/log
         bind msg, text <pass: handle-write-read>
-    hook false
+    hook miss
       call console/log
         bind msg, text <fail: handle-write-read>
 
@@ -91,10 +91,10 @@ task run-tests
     call is-equal
       bind a, read truncated
       bind b, text <hello>
-    hook true
+    hook hold
       call console/log
         bind msg, text <pass: handle-truncate>
-    hook false
+    hook miss
       call console/log
         bind msg, text <fail: handle-truncate>
 
@@ -125,10 +125,10 @@ task run-tests
     call is-equal
       bind a, read flushed
       bind b, text <flushed>
-    hook true
+    hook hold
       call console/log
         bind msg, text <pass: handle-flush>
-    hook false
+    hook miss
       call console/log
         bind msg, text <fail: handle-flush>
 

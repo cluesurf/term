@@ -41,7 +41,7 @@ form remote-ask
 
 # `term make`: compile every `.tree` in the project
 task make
-  note async
+  mark async
   take ride, like boolean
   take separate, like boolean
   take trees, like boolean
@@ -50,7 +50,7 @@ task make
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  note unsafe
+  mark unsafe
     call make-module/callMake
       make make-ask
         bind root, read root
@@ -74,7 +74,7 @@ task role-of
 # warm the local cache from a remote one before a build, and push what is new after it. Content addressing makes
 # both safe: a key's bytes never change.
 task cache-pull
-  note async
+  mark async
   take directory, like text
   take endpoint, like text
   take token, like text
@@ -84,7 +84,7 @@ task cache-pull
   back call remote-module/pullRemoteCache, directory, endpoint, token, wait true
 
 task cache-push
-  note async
+  mark async
   take directory, like text
   take endpoint, like text
   take token, like text

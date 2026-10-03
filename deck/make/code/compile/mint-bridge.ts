@@ -1976,6 +1976,57 @@ function scopedFlow(
   return body
 }
 
+// Every free reference to the local `from` in a built body, read or written, renamed `to`. A construct that binds
+// `from` again (a closure's parameter, a walk's item or index, a nested task, a case arm's `link` names, a handler's
+// caught name) starts a new scope where `from` is that binding, so nothing under it is renamed
+function renameLocal<T>(value: T, from: string, to: string): T {
+  const visit = (node: unknown): unknown => {
+    if (Array.isArray(node)) {
+      return node.map(visit)
+    }
+
+    if (node === null || typeof node !== 'object') {
+      return node
+    }
+
+    const record = node as Record<string, unknown>
+
+    if (record.form === 'variable' && record.name === from) {
+      return { ...record, name: to }
+    }
+
+    const params = record.params as { name: string }[] | undefined
+    const rebinds =
+      (record.form === 'closure' || record.form === 'function') && params?.some(p => p.name === from)
+        ? true
+        : record.form === 'for-each' && (record.item === from || record.index === from)
+
+    if (rebinds) {
+      return node
+    }
+
+    const out: Record<string, unknown> = {}
+
+    for (const [key, child] of Object.entries(record)) {
+      if (key === 'span' || key === 'type' || key === 'binding') {
+        out[key] = child
+      } else if (key === 'cases' && Array.isArray(child)) {
+        out[key] = child.map(arm =>
+          (arm as { binds?: string[] }).binds?.includes(from) ? arm : visit(arm),
+        )
+      } else if (key === 'catch' && (child as { name?: string } | undefined)?.name === from) {
+        out[key] = child
+      } else {
+        out[key] = visit(child)
+      }
+    }
+
+    return out
+  }
+
+  return visit(value) as T
+}
+
 // Is this name a local in scope here: a parameter, a `save`, or any other binder the bridge has passed.
 function inScope(bridge: Bridge, name: string): boolean {
   return bridge.declared.has(name) || bridge.bound.has(name)
@@ -2354,6 +2405,9 @@ const WALK_MODES = new Set(['list', 'size', 'test'])
 // refusing them is a separate decision from this one.
 const WALK_TEST_PARTS = new Set(['hook', 'must', 'down', 'bind', 'take'])
 
+// the arms a `fork test` reads, by the word after `hook` (`conditionOf`)
+const FORK_TEST_ARMS = new Set(['test', 'hold', 'step', 'miss', 'else', 'fall'])
+
 // `walk list, <seq>` iterates; `walk test` loops while a condition holds. Both arrive as one `walk` form
 // distinguished by its mode word, which is the only thing that tells them apart.
 // a contract's lines: every `must <claim>` (an invariant on a walk, a postcondition on a task), every `have <claim>`
@@ -2556,7 +2610,9 @@ function loopOf(
     const from = boundOf('base') ?? { form: 'integer', value: 0, span }
     const to = boundOf('head')
     const next = hooks.find(h => wordAt(h, 'name') === 'next') ?? hooks[0]
-    const binder = formsAt(next, 'take')[0]
+    // the counter is named by a `take` inside `hook next`, or by one beside the `bind` lines, which used to be dropped
+    // and leave the counter `i` while the body read a name nothing bound
+    const binder = formsAt(next, 'take')[0] ?? formsAt(value, 'take')[0]
     const item =
       wordAt(firstAt(binder, 'alias'), 'name') ??
       textOf(firstAt(binder, 'alias')) ??
@@ -2567,7 +2623,13 @@ function loopOf(
       return unhandled(bridge, value, 'a walk size with no bound')
     }
 
-    const counter: Expression = { form: 'variable', name: item, span }
+    // A counter whose name is already a local here (the walk around this one, or a `save` of that name) gets a name of
+    // its own, unique by position, and the body's references are rewritten to it. The loop's `let` lands in the scope
+    // the walk is written in, so a second `let i` there was the same variable as the first: two nested `walk size`
+    // loops shared one counter, the outer step moved the inner one, and the outer loop never ended (guides:
+    // language/loops, 2026-10-03). The body still reads it as `i`, which shadows the outer `i` as it should
+    const name = inScope(bridge, item) ? `${item}-walk-${span.start.line}-${span.start.column}` : item
+    const counter: Expression = { form: 'variable', name, span }
 
     // the head is read ONCE, before the first turn, as a counted loop means. Written into the condition it was called
     // again every turn: `char-count` rebuilt the text's character array per character, and the prover could not read
@@ -2577,14 +2639,16 @@ function loopOf(
     const headName = `walk-head-${span.start.line}-${span.start.column}`
     const bound: Expression = steady ? to : { form: 'variable', name: headName, span }
 
+    const flow = scopedFlow(bridge, at(next, 'flow'), [item])
+
     return [
       ...(steady ? [] : [{ form: 'let', name: headName, init: to, mutable: false, span } as Statement]),
-      { form: 'let', name: item, init: from, mutable: true, span },
+      { form: 'let', name, init: from, mutable: true, span },
       {
       form: 'while',
       cond: { form: 'binary', op: '<', left: counter, right: bound, span },
       body: [
-        ...scopedFlow(bridge, at(next, 'flow'), [item]),
+        ...(name === item ? flow : renameLocal(flow, item, name)),
         {
           form: 'assign',
           target: counter,
@@ -2836,6 +2900,28 @@ function conditionOf(
 
   if (inline) {
     pending = inline
+  }
+
+  // A `hook <word>` the fork has no arm for never reaches the arm list: the grammar matches it so the file still reads,
+  // and it was dropped. `hook true` under `fork test` compiled to `if (n < 0) {}`, its body gone (guides:
+  // language/branching, 2026-10-03). Read off the parse tree, as `walk test` does for its stray lines
+  if (value.node?.kind === 'group') {
+    for (const child of value.node.nodes.slice(2)) {
+      if (child.kind !== 'group' || headWord(child) !== 'hook') {
+        continue
+      }
+
+      const second = child.nodes[1]
+      const word = second?.kind === 'term' ? second.value : second?.kind === 'group' ? headWord(second) : undefined
+
+      if (word !== undefined && !FORK_TEST_ARMS.has(word)) {
+        refuse(
+          bridge,
+          { kind: 'word', value: word, node: child },
+          `\`hook ${word}\` is not an arm of a \`fork test\`, which has \`hook test\` (a condition), \`hook hold\` (what runs when it holds) and \`hook miss\` (what runs otherwise)`,
+        )
+      }
+    }
   }
 
   for (const arm of formsAt(value, 'arm')) {

@@ -1,0 +1,31 @@
+
+# The terminal's rounds on Rust (terminal-target-0006): read, press, run what the keys started, repaint. A handler
+# that `tick`s an asynchronous task (the blog's `add-post`) queues it on Rust, and `run-pending` runs the queue before
+# the repaint, as node's loop yields to its event loop.
+
+load @term/base/pending
+  find run-pending
+
+load ../../../view
+  find view
+
+load ../screen
+  find terminal-screen
+  find show-screen
+  find take-input
+
+task drive
+  take root, like view
+  take shown, like terminal-screen
+  save running, true
+  walk test
+    hook test
+      read running
+    hook step
+      save running
+        call take-input
+          read root
+      call run-pending
+      call show-screen
+        read shown
+        read root

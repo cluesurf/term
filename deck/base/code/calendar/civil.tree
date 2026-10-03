@@ -4,7 +4,7 @@
 # here, so each backend gives the same date for the same instant: the host date libraries disagreed past their own
 # ranges, and on what a month added to January 31 is.
 
-note stable
+mark stable
 
 load @term/base/list
   find list

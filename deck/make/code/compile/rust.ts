@@ -43,6 +43,7 @@ import type { CollectionOp } from '@term/make/code/compile/backend'
 import { armLocals } from '@term/make/code/check/arm'
 import { raiseSets } from '@term/make/code/check/effects'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
+import { boundedLoops, unsignedDivisions } from '@term/make/code/ir/facts/bounds'
 import { formSpec, refuseAny, specForms } from '@term/make/code/compile/backend'
 import type { FormKind, FormSpec } from '@term/make/code/compile/backend'
 
@@ -462,6 +463,14 @@ function emitRustPass(
   let carries = false
   // the `+` nodes proven not to overflow (ir/facts/range.ts): written without the checked call
   const provenSteps = provenIncrements(program)
+  // the counted loops whose calls to a bounded task may run its unchecked copy (ir/facts/bounds.ts), the divisions that
+  // copy does unsigned, the calls in the loop copy being emitted, the tasks some such call reached, and whether the
+  // body being emitted is an unchecked copy
+  const loopGuards = boundedLoops(program)
+  const unsignedDivs = unsignedDivisions(program)
+  let fastCalls = new Set<object>()
+  const fastTasks = new Set<string>()
+  let uncheckedInts = false
   // when the stdlib hive is in the program, every new raise tells it (the throw lowering), and the compiler can
   // emit the wake chain (`wake_hive`) from the roll the driver hands over
   const hasHiveTell = program.some(
@@ -908,6 +917,13 @@ function emitRustPass(
       .filter((n): n is Extract<Statement, { form: 'function' }> => n.form === 'function' && Boolean(n.async))
       .map(n => n.name),
   )
+
+  // whether a call starts an asynchronous task: a task marked async, or a task value whose type says so
+  const isAsyncCall = (call: Extract<Expression, { form: 'call' }>): boolean =>
+    (call.callee.form === 'variable' && asyncFunctions.has(call.callee.name)) ||
+    (call.callee.type?.kind === 'function' && Boolean(call.callee.type.effects?.includes('async')))
+  // how many fire-and-forget calls were queued, so the executor is emitted only for a program that has one
+  let spawnUses = 0
 
   // every task's declared parameter types, for boxing an argument into an `unknown` parameter
   const functionParams = new Map<string, (Type | undefined)[]>(
@@ -1648,16 +1664,59 @@ function emitRustPass(
           checked &&
           node.left.type?.kind === 'number' &&
           node.right.type?.kind === 'number' &&
-          !provenSteps.has(node)
+          !provenSteps.has(node) &&
+          !uncheckedInts
         ) {
           // each operand is an argument here, so its grouping parentheses are redundant (rustc: unused_parens)
           return `i64::${checked}(${bare(expr(node.left))}, ${bare(expr(node.right))}).expect("excess: a number past i64")`
         }
 
-        return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
+        // in a task's unchecked copy, a division whose operands the interval fact proved non-negative is unsigned: `/ 2`
+        // is one shift, where a signed division needs a sign fix-up (`unsignedDivisions`)
+        if (uncheckedInts && (node.op === '/' || node.op === '%') && unsignedDivs.has(node)) {
+          // `as` binds tighter than every binary operator, so each operand keeps its grouping before the cast. A literal
+          // is inferred `u64` and takes no cast (clippy: unnecessary_cast)
+          const operand = (side: Expression): string => {
+            if (side.form === 'integer') {
+              return String(side.value)
+            }
+
+            const text = expr(side)
+
+            return `${/^[\w.]+$/.test(text) ? text : `(${bare(text)})`} as u64`
+          }
+
+          return `((${operand(node.left)} ${node.op} ${operand(node.right)}) as i64)`
+        }
+
+        // a left operand that is a block (a call hoisting its lent arguments) is parenthesized: once `bare` drops the
+        // outer pair at a statement or a tail, a leading `{ .. }` would be read as a statement of its own
+        const left = expr(node.left)
+
+        return `(${left.startsWith('{') ? `(${left})` : left} ${OP[node.op]} ${expr(node.right)})`
       }
 
       case 'call': {
+        // FIRE AND FORGET (`tick f(x)`, `background` on the call), wherever it stands: a statement, or the whole body
+        // of a handler (`seed click / tick add-post`). Its future is queued for `__term_drain` rather than dropped
+        // unpolled, which is all a bare call of an `async fn` does (terminal-target-0005). The call is emitted with the
+        // mark cleared and put back, so it is not queued twice
+        if (node.background && isAsyncCall(node)) {
+          spawnUses++
+          node.background = false
+          const started = expr(node)
+          node.background = true
+
+          return `__term_spawn(${started})`
+        }
+
+        // a call the guarded loop copy may make to the task's unchecked copy (`LoopGuard.fast`)
+        if (fastCalls.has(node) && node.callee.form === 'variable') {
+          fastTasks.add(node.callee.name)
+
+          return expr({ ...node, callee: { ...node.callee, name: `${node.callee.name}-fast` } } as Expression)
+        }
+
         // read once and cleared, so the call's own arguments never take a fresh `Vec` raw
         const raw = rawFresh
         rawFresh = false
@@ -1774,11 +1833,14 @@ function emitRustPass(
             return expr(a)
           }
 
+          // a parameter the callee only calls is `impl Fn` (implFnParams), and takes the value borrowed
+          const toImplFn =
+            node.callee.form === 'variable' && !localNames.has(node.callee.name) && Boolean(implFnParams.get(node.callee.name)?.has(i))
+
           const rendered = (() => {
             if (
               a.form === 'variable' &&
               a.type &&
-              a.type.kind !== 'function' &&
               moveArgs.has(a.name)
             ) {
               return expr(a)
@@ -1791,13 +1853,16 @@ function emitRustPass(
 
             // an UNTYPED variable is cloned too: the view lowering synthesizes `view0`-style locals with no type, and
             // passing one to `append` then reading it again moved it away (native-dom-0020). A function value here is
-            // an `Rc<dyn Fn>`, so its clone is a refcount bump as well
+            // an `Rc<dyn Fn>`, so its clone is a refcount bump as well, and it is cloned: a task value captured by a
+            // closure and passed on from inside it (render.tree's `rebuild(slot, then)` in `show`'s effect) was moved
+            // out of the `Fn` closure, E0507. Never one bound for an `impl Fn` parameter, which takes it borrowed.
+            // A parameter passed on is never itself `impl Fn` (escapingParams), so every function value here is an `Rc`
             // a `Copy` value (a number, a float, a boolean) is passed as it is, and a read that already clones (a list
             // element) is not cloned twice: clippy's clone_on_copy flagged every `n.clone()`
             const rendered = expr(a)
             const clones =
               (a.form === 'variable' || a.form === 'member') &&
-              (!a.type || a.type.kind !== 'function') &&
+              (!a.type || a.type.kind !== 'function' || !toImplFn) &&
               !copyType(a.type) &&
               !rendered.endsWith('.clone()')
 
@@ -1810,8 +1875,7 @@ function emitRustPass(
               : rendered
           })()
 
-          // a parameter the callee only calls is `impl Fn` (implFnParams)
-          if (node.callee.form === 'variable' && !localNames.has(node.callee.name) && implFnParams.get(node.callee.name)?.has(i)) {
+          if (toImplFn) {
             return implFnArg(a, rendered)
           }
 
@@ -1878,8 +1942,11 @@ function emitRustPass(
             const lentAs = lending.get(i)
 
             if (!simple) {
-              // a raw `Vec` lent for writing is borrowed `&mut`, so its local is `mut`
-              hoisted.push(`let ${rawLent.has(i) && lentAs === 'write' ? 'mut ' : ''}__lend_${i} = ${argList[i]};`)
+              // a raw `Vec` lent for writing is borrowed `&mut`, so its local is `mut`. A shared cell lent from a place
+              // (`cursor.position`) is held by reference: a `let` of the place itself moved the field out (E0382),
+              // and the cell borrows the same through the reference
+              const byRef = lentAs !== undefined && !rawLent.has(i) && !plainAt(i) && a.form === 'member'
+              hoisted.push(`let ${rawLent.has(i) && lentAs === 'write' ? 'mut ' : ''}__lend_${i} = ${byRef ? '&' : ''}${argList[i]};`)
               argList[i] = `__lend_${i}`
             }
 
@@ -2827,6 +2894,7 @@ function emitRustPass(
           }
         }
 
+        // a ticked call is queued by the call emission itself (`case 'call'`, `background`)
         return `${expr(node.expr)};`
       case 'return': {
 
@@ -2941,6 +3009,21 @@ function emitRustPass(
         // unreachable trailing value (E0308)
         if (node.cond.form === 'boolean' && node.cond.value === true) {
           return `loop {\n${budget}${block(node.body, d + 1)}\n${pad(d)}}`
+        }
+
+        // a counted loop calling a task whose arithmetic is safe below a bound (ir/facts/bounds.ts): written twice, the
+        // guard true running a copy that calls the task's unchecked copy (`a_value_fast`). Only the call limits
+        const guard = loopGuards.get(node)
+
+        if (guard?.fast?.length && guard.limits?.length && !budget) {
+          const test = guard.limits.map(l => (l.low ? `${vname(l.name)} >= 0` : `${vname(l.name)} <= ${l.high}`)).join(' && ')
+          const outer = fastCalls
+          fastCalls = new Set([...outer, ...guard.fast])
+          const fast = `while ${condExpr(node.cond)} {\n${block(node.body, d + 2)}\n${pad(d + 1)}}`
+          fastCalls = outer
+          const slow = `while ${condExpr(node.cond)} {\n${block(node.body, d + 2)}\n${pad(d + 1)}}`
+
+          return `if ${test} {\n${pad(d + 1)}${fast}\n${pad(d)}} else {\n${pad(d + 1)}${slow}\n${pad(d)}}`
         }
 
         return `while ${condExpr(node.cond)} {\n${budget}${block(
@@ -3954,6 +4037,18 @@ function emitRustPass(
       .map(n => (n.form === 'let' ? moduleLet(n) : stmt(n, 0))),
   ].filter(Boolean)
 
+  // each task a guarded loop calls unchecked, once more with plain arithmetic and its proven non-negative divisions
+  // unsigned (`a_value_fast`), behind the bound the guard proved its arguments inside (ir/facts/bounds.ts)
+  for (const name of fastTasks) {
+    const fn = program.find((n): n is Extract<Statement, { form: 'function' }> => n.form === 'function' && n.name === name)
+
+    if (fn) {
+      uncheckedInts = true
+      body.push(stmt({ ...fn, name: `${name}-fast` }, 0))
+      uncheckedInts = false
+    }
+  }
+
   // the Term `hash` on this backend: an insertion-ordered map, so a walk over its keys visits them in the order they
   // were first set, as TypeScript's Map and Kotlin's LinkedHashMap do. std's HashMap is seeded per process, and the
   // same binary walked one map in a different order on every run (note/term/optimize/meaning.md, question 1).
@@ -4110,6 +4205,50 @@ async fn __term_budget() {
       ]
     : []
 
+  // the executor for fire-and-forget calls (terminal-target-0005): a queue on this thread, and a drain that polls it
+  // until nothing more is ready, with a waker that does nothing. Standard library only, so a program that `tick`s an
+  // asynchronous task still builds with a bare rustc. What it runs either finishes without waiting on the outside
+  // world, or stays queued for the next drain. Emitted when a call is queued or a program drains (`run-pending`)
+  const drains = body.some(line => line.includes('__term_drain('))
+  const spawnHelpers = spawnUses > 0 || drains
+    ? [
+        `// fire and forget: a future nobody awaits is queued here and polled by \`__term_drain\`, never dropped unrun
+thread_local! { static __TERM_SPAWNED: std::cell::RefCell<Vec<std::pin::Pin<Box<dyn std::future::Future<Output = ()>>>>> = std::cell::RefCell::new(Vec::new()); }
+#[allow(dead_code)]
+fn __term_spawn<T: 'static>(work: impl std::future::Future<Output = T> + 'static) {
+    __TERM_SPAWNED.with(|queue| queue.borrow_mut().push(Box::pin(async move { let _ = work.await; })));
+}
+#[allow(dead_code)]
+fn __term_drain() {
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    loop {
+        let pending: Vec<_> = __TERM_SPAWNED.with(|queue| std::mem::take(&mut *queue.borrow_mut()));
+        if pending.is_empty() {
+            break;
+        }
+        let mut waiting = Vec::new();
+        let mut finished = false;
+        for mut work in pending {
+            if work.as_mut().poll(&mut context).is_ready() {
+                finished = true;
+            } else {
+                waiting.push(work);
+            }
+        }
+        // what the polled work queued in turn goes after what is still waiting
+        __TERM_SPAWNED.with(|queue| {
+            let mut queued = queue.borrow_mut();
+            waiting.append(&mut queued);
+            *queued = waiting;
+        });
+        if !finished {
+            break;
+        }
+    }
+}`,
+      ]
+    : []
+
   lastBudgetStats = { checked: budgetUses, elided: budgetElided }
 
   // `melt` clones every field of each form it melts (item 0029)
@@ -4117,7 +4256,7 @@ async fn __term_budget() {
     noteClone({ kind: 'named', name: form })
   }
 
-  return [...uses, ...termMap, ...carrier, ...budget, ...body, ...rustFormWalk(fillSpecs, meltSpecs), ...wake].join('\n\n') + '\n'
+  return [...uses, ...termMap, ...carrier, ...budget, ...spawnHelpers, ...body, ...rustFormWalk(fillSpecs, meltSpecs), ...wake].join('\n\n') + '\n'
 }
 
 // how many asynchronous loops the last `emitRust` gave a budget check, and how many it left one out of because a
@@ -4543,6 +4682,15 @@ function moveOnLastUse(body: Statement[]): Set<string> {
         // a nested closure body: its reads re-execute on every call (and a captured variable cannot be moved out of a
         // `Fn`), so they are restricted (never move-eligible)
         walkBody(node.body, true)
+        break
+      case 'template':
+        // `text <{p/inner/count}>` reads `p`: uncounted, `deep(p)` before it was taken as p's last use and moved it
+        // (E0382)
+        node.parts.forEach(part => {
+          if (typeof part !== 'string') {
+            walkExpr(part, restrict)
+          }
+        })
         break
       default:
         break

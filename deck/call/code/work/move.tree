@@ -57,7 +57,7 @@ task parse-level
   back code 3
 
 task bump-code
-  note async
+  mark async
   take target, like text
   take level, like text
 
@@ -77,7 +77,7 @@ task bump-code
   save chosen, parse-level level
   log-step <Bumping version...>
 
-  note unsafe
+  mark unsafe
     save manifest
       call deck-tree/loadManifest
         make manifest-ask, bind dir, read root

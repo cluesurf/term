@@ -12,7 +12,7 @@ load @term/base/process/run
   find run-result
 
 task run
-  note async
+  mark async
   take command, like text
   take
     arguments
@@ -54,7 +54,7 @@ task run
   send back, read output
 
 task spawn
-  note async
+  mark async
   take command, like text
   take
     arguments

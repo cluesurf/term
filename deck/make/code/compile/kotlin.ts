@@ -7,6 +7,7 @@
 
 import { armLocals } from '@term/make/code/check/arm'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
+import { boundedLoops } from '@term/make/code/ir/facts/bounds'
 import type {
   Expression,
   Program,
@@ -23,6 +24,7 @@ import {
   isText,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp, FormKind, FormSpec } from '@term/make/code/compile/backend'
+import { recordCopies } from '@term/make/code/compile/backend'
 import { recordPlaces } from '@term/make/code/compile/place'
 import {
   escapingParams,
@@ -416,6 +418,14 @@ export function emitKotlin(
   const needs = new Set<KotlinHelper>()
   // the `+` nodes proven not to overflow (ir/facts/range.ts): written as a plain `+`
   const provenSteps = provenIncrements(program)
+  // the counted loops whose calls to a bounded task may run its unchecked copy (ir/facts/bounds.ts), the calls in the
+  // copy being emitted, the tasks some such call reached, and whether the body being emitted is an unchecked copy
+  const loopGuards = boundedLoops(program)
+  // where a record is copied so a write through one name cannot reach another (backend.ts, `recordCopies`)
+  const copies = recordCopies(program)
+  let fastCalls = new Set<object>()
+  const fastTasks = new Set<string>()
+  let uncheckedInts = false
   // the field names some assignment in the program writes (`save p/x, ...`): every other field is a `val`
   const assignedFields = fieldsAssigned(program)
   // the slot writes of a record that assign the changed fields of the object already there (compile/place.ts): no
@@ -509,6 +519,8 @@ export function emitKotlin(
       .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type' && n.variants.length === 0)
       .map(n => [n.name, n.fields]),
   )
+  // the `mark shared` forms: a reference by design, written in place
+  const sharedForms = new Set(program.flatMap(n => (n.form === 'record-type' && n.shared ? [n.name] : [])))
 
   // a generic type parameter (`like t`), as opposed to a form the program declares
   const genericLetter = (type: Type | undefined): boolean =>
@@ -1038,12 +1050,17 @@ export function emitKotlin(
         // Long literal so two Int literals cannot pick the Int overload. note/term/proof-by-default/numbers.md
         const exact = { '+': 'addExact', '-': 'subtractExact', '*': 'multiplyExact' }[node.op as string]
 
-        if (exact && node.left.type?.kind === 'number' && node.right.type?.kind === 'number' && !provenSteps.has(node)) {
+        if (exact && node.left.type?.kind === 'number' && node.right.type?.kind === 'number' && !provenSteps.has(node) && !uncheckedInts) {
           return `Math.${exact}(${longOf(node.left)}, ${longOf(node.right)})`
         }
 
-        // `Long.MIN_VALUE / -1` wraps to MIN_VALUE on the JVM; termDivide stops on it as every backend does
+        // `Long.MIN_VALUE / -1` wraps to MIN_VALUE on the JVM; termDivide stops on it as every backend does. In a
+        // task's unchecked copy the interval fact proved the divisor nonzero and every value inside the bound
         if (node.op === '/' && node.left.type?.kind === 'number' && node.right.type?.kind === 'number') {
+          if (uncheckedInts) {
+            return `(${longOf(node.left)} / ${longOf(node.right)})`
+          }
+
           return need('divide', `termDivide(${longOf(node.left)}, ${longOf(node.right)})`)
         }
 
@@ -1061,6 +1078,13 @@ export function emitKotlin(
       }
 
       case 'call': {
+        // a call the guarded loop copy may make unchecked (`LoopGuard.fast`): the task's copy with no overflow checks
+        if (fastCalls.has(node) && node.callee.form === 'variable') {
+          fastTasks.add(node.callee.name)
+
+          return expr({ ...node, callee: { ...node.callee, name: `${node.callee.name}-fast` } } as Expression)
+        }
+
         // whether this call sits directly under `wait true`, read before the arguments render their own calls
         const awaited = awaiting
         awaiting = false
@@ -1138,8 +1162,15 @@ export function emitKotlin(
         // a fixed list parameter (fixedLists) takes its LongArray as it is, and a fresh task's list converted once
         const fixedAt =
           node.callee.form === 'variable' && !localNames.has(node.callee.name) ? fixed.params.get(node.callee.name) : undefined
+        // a record passed to a task that writes its fields is the task's own copy (D1, `recordCopies`): `.copy()`
+        const recordWrites =
+          node.callee.form === 'variable' && !localNames.has(node.callee.name) ? copies.params.get(node.callee.name) : undefined
         const rendered = node.args.map((a, i) => {
           const kind = fixedAt?.has(i) ? arrayKind(a.type?.kind === 'array' ? a.type.element : undefined) : undefined
+
+          if (recordWrites?.has(i) && a.form !== 'record') {
+            return `${expr(a)}.copy()`
+          }
 
           return kind && !(a.form === 'variable' && arrayNames.has(a.name)) ? toArray(kind, expr(a)) : expr(a)
         })
@@ -1654,9 +1685,12 @@ export function emitKotlin(
 
         // `var` only for a binding something reassigns: a `save` that is never written again, or a list only written
         // through, is a `val` (kotlinc warned "variable is never modified"). At module level, the declared mutability
+        // a second name for a record one of the two is written through: its own copy (D1, `recordCopies`)
+        const init = copies.lets.has(node) ? `${expr(node.init)}.copy()` : expr(node.init)
+
         return `${node.mutable && (fnAssigned === undefined || fnAssigned.has(node.name)) ? 'var' : 'val'} ${camel(
           node.name,
-        )}${ann} = ${expr(node.init)}`
+        )}${ann} = ${init}`
       }
       case 'assign': {
         const place = places.get(node)
@@ -1672,6 +1706,35 @@ export function emitKotlin(
           const sets = place.fields.map((f, i) => `${local}.${camel(f.name)} = __place${i}`)
 
           return `run { ${[...temps, ...sets].join('; ')} }`
+        }
+
+        // a write two or more fields deep never changes the nested record in place: it may be another name's too (a
+        // record built from a variable holds that variable's record), and a record is a value (D1). The path is rebuilt
+        // from its first field instead, `p.inner = p.inner.copy(count = 99)` (codegen-performance-0028)
+        const segments: string[] = []
+        let base: Expression = node.target
+        let rebuild = node.op === '='
+
+        while (base.form === 'member') {
+          const holder = base.target.type
+
+          if (base.index || /^\d+$/.test(base.name) || holder?.kind !== 'named' || !recordFields.has(holder.name) || sharedForms.has(holder.name)) {
+            rebuild = false
+          }
+
+          segments.unshift(base.name)
+          base = base.target
+        }
+
+        if (rebuild && segments.length > 1) {
+          const at = (k: number): string => `${expr(base)}.${segments.slice(0, k).map(camel).join('.')}`
+          let value = expr(node.value)
+
+          for (let k = segments.length - 1; k >= 1; k--) {
+            value = `${at(k)}.copy(${camel(segments[k]!)} = ${value})`
+          }
+
+          return `${at(1)} = ${value}`
         }
 
         return node.op === '='
@@ -1722,11 +1785,28 @@ export function emitKotlin(
             ? tell(`run { val raised = ${expr(node.value)}; TermException(raised.host, raised.form, raised.note, raised.code, raised.time, raised.link, raised) }`)
             : `throw termException(${expr(node.value)})`
       }
-      case 'while':
+      case 'while': {
+        // a counted loop calling a task whose arithmetic is safe below a bound (ir/facts/bounds.ts): written twice, the
+        // guard true running a copy that calls the task's unchecked copy. Only the call limits are asked: the list
+        // checks stay, since stripping them measured nothing on Kotlin (codegen-performance-0030)
+        const guard = loopGuards.get(node)
+        const loop = (): string => `while (${expr(node.cond)}) {\n${block(node.body, d + 2)}\n${pad(d + 1)}}`
+
+        if (guard?.fast?.length && guard.limits?.length) {
+          const test = guard.limits.map(l => (l.low ? `${camel(l.name)} >= 0L` : `${camel(l.name)} <= ${l.high}L`)).join(' && ')
+          const outer = fastCalls
+          fastCalls = new Set([...outer, ...guard.fast])
+          const fast = loop()
+          fastCalls = outer
+
+          return `if (${test}) {\n${pad(d + 1)}${fast}\n${pad(d)}} else {\n${pad(d + 1)}${loop()}\n${pad(d)}}`
+        }
+
         return `while (${expr(node.cond)}) {\n${block(
           node.body,
           d + 1,
         )}\n${pad(d)}}`
+      }
       case 'guard': {
         // the caught value is a TermException: a raise passes through, and a foreign throw (a Kotlin runtime error) is
         // wrapped as `failure`, so the handler sees one shape on every path
@@ -2276,6 +2356,18 @@ export function emitKotlin(
     ...kotlinFormWalk(fillSpecs, meltSpecs),
   ]
 
+  // each task a guarded loop calls unchecked, once more with no overflow checks (`aValueFast`), behind the bound the
+  // guard proved its arguments inside (ir/facts/bounds.ts, `integerBounds`)
+  for (const name of fastTasks) {
+    const fn = program.find((n): n is Extract<Statement, { form: 'function' }> => n.form === 'function' && n.name === name)
+
+    if (fn) {
+      uncheckedInts = true
+      body.push(stmt({ ...fn, name: `${name}-fast` }, 0))
+      uncheckedInts = false
+    }
+  }
+
   // the form walkers raise SeedError on a mismatch
   if (fillSpecs.size > 0 || meltSpecs.size > 0) {
     needs.add('error')
@@ -2434,8 +2526,11 @@ function fieldsAssigned(program: Program): Set<string> {
 
     const node = value as Loose
 
+    // every field along the path: a nested write is rebuilt from its first field (`p.inner = p.inner.copy(count = 9)`)
     if (node.form === 'assign' && (node.target as Loose).form === 'member') {
-      names.add((node.target as Loose).name as string)
+      for (let at = node.target as Loose; at.form === 'member'; at = at.target as Loose) {
+        names.add(at.name as string)
+      }
     }
 
     for (const [key, child] of Object.entries(node)) {

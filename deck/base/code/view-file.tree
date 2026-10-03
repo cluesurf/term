@@ -14,7 +14,7 @@
 # Named `view-file` rather than `view` for the reason `zone-file` is not `zone`: Term form names are
 # package-global, and `view` is the name the component AST takes when `zone` is renamed.
 
-note unstable
+mark unstable
 
 load ./term
   find term

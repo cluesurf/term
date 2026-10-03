@@ -6,7 +6,7 @@ dock load
   load <global:cryptography>, name cryptography
 
 task digest
-  note async
+  mark async
   take algorithm, like text
   take data, like text
 

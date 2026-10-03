@@ -1,4 +1,4 @@
-note draft
+mark draft
 
 # SHELVED 2026-10-02 (base-v1-0018): a mock, snapshot, coverage and suite sketch with bodiless public tasks whose names
 # (`make`, `read`, `replace`, `reset`, `match`) are package-global and shadow the real ones wherever this is built.

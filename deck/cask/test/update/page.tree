@@ -5,8 +5,7 @@ load @term/cask/cask
   find exit
 
 task boot
-  note async
+  mark async
   like void
   call exit
-    wait true
     code 11

@@ -91,7 +91,7 @@ form session
 
 # what a command printed, trimmed, or empty when it failed
 task output-of
-  note async
+  mark async
   take command, like text
   take words
     like list
@@ -145,7 +145,7 @@ task machine-label
   send back, text <{{kind}}-{{arch}}>
 
 task power-source
-  note async
+  mark async
   like text
   fork test
     hook test
@@ -159,7 +159,6 @@ task power-source
       text <pmset>
       call words
         text <-g batt>
-      wait true
   fork test
     hook test
       call text-contains
@@ -178,7 +177,7 @@ task power-source
 
 # the machine, and its digest: the sha256 in tone of the stable JSON of the other fields, keys in sorted order
 task read-machine
-  note async
+  mark async
   take label, like text
   like machine
   save chosen, read label
@@ -205,19 +204,16 @@ task read-machine
           text <sysctl>
           call words
             text <-n hw.model>
-          wait true
       save system
         call output-of
           text <sw_vers>
           call words
             text <-productName>
-          wait true
       save version
         call output-of
           text <sw_vers>
           call words
             text <-productVersion>
-          wait true
     hook miss
       save named, text <>
       save product, text </sys/devices/virtual/dmi/id/product_name>
@@ -225,13 +221,11 @@ task read-machine
         hook test
           call file-present
             read product
-            wait true
         hook hold
           save named
             call trim
               call file-text
                 read product
-                wait true
       fork test
         hook test
           call is-unequal
@@ -258,7 +252,6 @@ task read-machine
     call memory-bytes
   save power
     call power-source
-      wait true
   save stable
     call make-object
   call set-field(read(stable), text(<chip>), call(from-text, read chip))
@@ -273,7 +266,6 @@ task read-machine
         call tone-of-text
           call stringify
             read stable
-          wait true
       bind label, read chosen
       bind model, read model
       bind chip, read chip
@@ -285,13 +277,12 @@ task read-machine
 
 # the runner's own version, the `code <x>` line of mark/deck.tree
 task runner-version
-  note async
+  mark async
   take mark-root, like text
   like text
   save body
     call file-text
       text <{{mark-root}}/deck.tree>
-      wait true
   walk list
     call split
       read body
@@ -331,13 +322,12 @@ task runner-version
 
 # the compiler's version, from the CLI package's manifest
 task compiler-version
-  note async
+  mark async
   take term-root, like text
   like text
   save body
     call file-text
       text <{{term-root}}/package.json>
-      wait true
   walk list
     call split
       read body
@@ -364,7 +354,7 @@ task compiler-version
   send back, text <unknown>
 
 task read-session
-  note async
+  mark async
   take term-root, like text
   take mark-root, like text
   take purpose, like text
@@ -377,13 +367,11 @@ task read-session
       text <git>
       call words
         text <-C {{term-root}} rev-parse HEAD>
-      wait true
   save changes
     call output-of
       text <git>
       call words
         text <-C {{term-root}} status --porcelain -- .>
-      wait true
   send back
     make session
       bind commit, read commit
@@ -394,20 +382,16 @@ task read-session
       bind compiler-version
         call compiler-version
           read term-root
-          wait true
       bind compiler-digest
         call tone-of-file
           text <{{term-root}}/host/line.js>
-          wait true
       bind runner-version
         call runner-version
           read mark-root
-          wait true
       bind purpose, read purpose
       bind machine
         call read-machine
           read label
-          wait true
       bind warmup-count, read warmups
       bind round-count, read rounds
       bind start

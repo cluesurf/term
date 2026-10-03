@@ -50,7 +50,7 @@ task expand-with
       read expanding
 
 task find-tree
-  note private
+  mark private
   take trees
     like list
       like data-tree
@@ -73,7 +73,7 @@ task find-tree
     make none
 
 task expand-value
-  note private
+  mark private
   take value, like data
   take trees
     like list
@@ -126,7 +126,7 @@ task expand-value
 
 # later wins: an entry with a key already present replaces it in place
 task replace
-  note private
+  mark private
   take out
     like list
       like data-entry
@@ -162,7 +162,7 @@ task replace
     read entry
 
 task guard-cycle
-  note private
+  mark private
   take expanding
     like list
       like text
@@ -205,7 +205,7 @@ task guard-cycle
             bind line, code 0
 
 task expand-entries
-  note private
+  mark private
   take list
     like list
       like data-entry
@@ -315,7 +315,7 @@ task expand-entries
   send back, read out
 
 task expand-items
-  note private
+  mark private
   take list
     like list
       like data
@@ -419,7 +419,7 @@ task expand-items
   send back, read out
 
 task pop-last
-  note private
+  mark private
   take list
     like list
       like text

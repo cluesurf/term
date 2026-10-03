@@ -1,7 +1,7 @@
 
 # Handle to a concurrently-running task, generic over result type.
 
-note unstable
+mark unstable
 
 form task-handle
   head result

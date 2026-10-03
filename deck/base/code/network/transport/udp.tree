@@ -4,7 +4,7 @@
 
 # a datagram: an eight-byte header plus the payload bytes
 
-note unstable
+mark unstable
 
 form udp-datagram
   link source-port, like u16

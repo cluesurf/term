@@ -1,5 +1,5 @@
 
-note draft
+mark draft
 
 # SHELVED 2026-10-02: replaced by ./divider.tree, the vocabulary's `divider` (note/term/view/11-vocabulary.md), which is
 # an `hr` every target draws and turns vertical inside a row by itself. Nothing placed this one. Delete it once that is

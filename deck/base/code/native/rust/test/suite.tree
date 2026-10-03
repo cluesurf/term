@@ -16,7 +16,7 @@ task describe
     bind work, read work
 
 task run
-  note async
+  mark async
   take
     filter
     like text

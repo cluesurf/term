@@ -2,7 +2,7 @@
 # `mill` file. A `mine` is a reading rule (a tree shape and the sites it captures into), a `mint` a writing rule (a
 # form and how each captured site fills it), a `mill` a dialect (its mine and its mint). See `deck/mill/readme.md`.
 
-note unstable
+mark unstable
 
 load ./text
   find text

@@ -2,7 +2,7 @@
 # NDP: Neighbor Discovery Protocol (RFC 4861). The IPv6 mechanism for finding link-layer addresses, routers, and
 # prefixes. Messages ride inside ICMPv6.
 
-note unstable
+mark unstable
 
 load ./ip
   find ipv6-address

@@ -1,7 +1,7 @@
 # Environment: the working directory, environment variables and the locale. The implementation is selected at
 # build time per platform and hidden behind this API.
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/environment
   find current-directory

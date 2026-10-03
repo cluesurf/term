@@ -51,7 +51,7 @@ task melt
 
 # a value against a shape, the path of the value for the message
 task check-shape
-  note private
+  mark private
   take value, like data
   take shape, like data
   take path, like text
@@ -229,7 +229,7 @@ task check-shape
 # a scalar kind named by the shape: `<text>`, `<number>`, `<decimal>`, `<flag>`, `<blank>`, `<map>`, `<list>`,
 # `<any>`, with a `?` for one that may also be void. A number fits a decimal
 task check-kind
-  note private
+  mark private
   take value, like data
   take kind, like text
   take path, like text
@@ -283,7 +283,7 @@ task check-kind
             text < belongs>
 
 task kind-name
-  note private
+  mark private
   take value, like data
   like text
   fork case, read value
@@ -306,7 +306,7 @@ task kind-name
 
 # `<number?>` is a number that may be absent or void
 task is-optional
-  note private
+  mark private
   take shape, like data
   like boolean
   fork case, read shape
@@ -332,7 +332,7 @@ task is-optional
       send back, false
 
 task plain-kind
-  note private
+  mark private
   take kind, like text
   like text
   fork test
@@ -351,7 +351,7 @@ task plain-kind
   send back, read kind
 
 task join-path
-  note private
+  mark private
   take path, like text
   take key, like text
   like text
@@ -370,7 +370,7 @@ task join-path
         read key
 
 task index-text
-  note private
+  mark private
   take index, like number
   like text
   send back
@@ -380,7 +380,7 @@ load ./node
   find integer-text
 
 task refuse
-  note private
+  mark private
   take path, like text
   take reason, like text
   halt data-mismatch

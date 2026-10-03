@@ -1,4 +1,4 @@
-note draft
+mark draft
 # Checked spec, not compiled code — see ../head/mine.tree's note. The real reader is ./code.tree's
 # read-otf-cmap-table, proven by deck/feed/test/otf-cmap.tree. Replaces the old pre-rename draft (raw opentype.js
 # JS comments left mid-file — see note/term/feed/04-otf-case-study.md, which called this out directly) entirely.

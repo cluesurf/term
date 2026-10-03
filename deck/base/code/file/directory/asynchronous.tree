@@ -9,7 +9,7 @@
 #
 # These take what the synchronous three cannot: a depth bound, and entries that say what they are.
 
-note unstable
+mark unstable
 
 load @term/base/native/{platform}/file/asynchronous/directory
   find folder-make
@@ -21,15 +21,16 @@ load @term/base/file/directory
 
 # make the directory, and every missing directory above it
 task make
-  note async
+  mark async
   take path, like text
   like void
   call folder-make
     read path
+    wait true
 
 # the names in the directory. With `deep`, every path below it too, relative to `path`.
 task list
-  note async
+  mark async
   take path, like text
   take
     deep
@@ -41,10 +42,11 @@ task list
     call folder-list
       read path
       read deep
+      wait true
 
 # every entry beneath `path` with what it is and how far down it sits. `depth` 0 walks all the way down.
 task walk
-  note async
+  mark async
   take path, like text
   take
     depth
@@ -56,3 +58,4 @@ task walk
     call folder-walk
       read path
       read depth
+      wait true

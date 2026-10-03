@@ -11,7 +11,7 @@ import { mill } from '@term/make/code/compile/mill'
 import { checkView, lowerView } from '@term/make/code/compile/view'
 import type { ViewCatalog } from '@term/make/code/compile/view-catalog'
 import { compileProgram } from '@term/make/code/compile/compile'
-import { formatTree } from '@term/make/code/format/format'
+import { format, formatTree } from '@term/make/code/format/format'
 import { lint, applyFixes } from '@term/make/code/lint/lint'
 import type { LintConfig } from '@term/make/code/lint/lint'
 import type { Finding } from '@term/make/code/lint/rule'
@@ -115,7 +115,7 @@ export function analyze(
       kind: 'view',
       program,
       diagnostics: [...diagnostics, ...(read.ok ? [] : read.diagnostics)],
-      format: () => (diagnostics.length ? source.text : formatTree(tree)),
+      format: () => (diagnostics.length ? source.text : formatTree(tree, { role: 'view' })),
       lint: () => [],
       fix: () => source.text,
       // the gate already ran, so there is nothing left to check separately. A document has no type checker of its
@@ -133,7 +133,8 @@ export function analyze(
       kind: 'mill',
       program: null,
       diagnostics,
-      format: () => (diagnostics.length ? source.text : formatTree(tree)),
+      // a grammar is returned as written (format/format.ts isGrammar)
+      format: () => (diagnostics.length ? source.text : format(source, { role: 'mill' })),
       lint: () => [],
       fix: () => source.text,
       check: () => diagnostics,
@@ -161,7 +162,9 @@ export function analyze(
     kind: 'code',
     program,
     diagnostics: all,
-    format: () => (diagnostics.length ? source.text : formatTree(tree)),
+    // the layout, held to the file's own milled program (format/format.ts formatReport)
+    format: () =>
+      diagnostics.length ? source.text : format(source, { lean: options?.lean ?? false, role: options?.role ?? null }),
     lint: (config: LintConfig = {}) =>
       program
         ? lint(program, source.file, source.text, {
@@ -187,7 +190,7 @@ export function analyze(
 
       return reparsed.diagnostics.length
         ? fixed
-        : formatTree(reparsed.tree)
+        : format({ file: source.file, text: fixed }, { lean: options?.lean ?? false, role: options?.role ?? null })
     },
     check: () => {
       if (!program) {

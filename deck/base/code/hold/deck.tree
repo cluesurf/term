@@ -2,7 +2,7 @@
 # The live design is `code/deck.tree`: `form deck` and the deck-* family as plain stdlib forms. Names are
 # package-global, so this file's `form deck` collides with the live one and the two cannot coexist; the
 # @term/base-backed variant is a base-integration decision, not a missing module.
-note draft
+mark draft
 
 load @term/base
   find deck

@@ -1,4 +1,4 @@
 
 # Rust Clone trait.
 
-note unstable
+mark unstable

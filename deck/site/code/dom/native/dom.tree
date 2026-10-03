@@ -140,6 +140,12 @@ task append
   take parent, like view
   take child, like view
 
+# put `node` under `reference`'s parent just before it, moving it if it has a parent. A list keeps its place among its
+# siblings this way: the render runtime inserts its items before a marker rather than appending them to the parent
+task insert-before
+  take node, like view
+  take reference, like view
+
 task remove
   take node, like view
 

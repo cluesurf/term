@@ -1,4 +1,4 @@
-note stable
+mark stable
 
 form boolean
   # Boolean: the stdlib source of truth for the boolean type. The compiler uses its native representation.

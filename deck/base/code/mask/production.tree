@@ -1,4 +1,4 @@
 
 # Write I/O trait.
 
-note unstable
+mark unstable

@@ -46,7 +46,7 @@ form lint-ask
   link fix, like boolean
 
 task lint
-  note async
+  mark async
   take fix, like boolean
 
   like void

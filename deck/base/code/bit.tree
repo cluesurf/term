@@ -1,6 +1,6 @@
 # Bitwise operations on integers. The generic interface: each public verb delegates to the native implementation for the build target, which lives in its own per-backend file (`native/<env>/bit`). All backends operate on 64-bit integers (the node and browser shims run through BigInt, exact within the 53-bit safe-integer range a host number lives under). `shift-right` is arithmetic (sign-preserving).
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/bit
   find bit-and

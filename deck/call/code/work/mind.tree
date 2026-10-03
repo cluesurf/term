@@ -116,7 +116,7 @@ task slug
 
 # where a project keeps its memory, old location included
 task memory-directory
-  note async
+  mark async
   take root, like text
 
   like text
@@ -128,7 +128,7 @@ task memory-directory
 
 # remember one fact, and keep the one-line index it is listed in
 task remember
-  note async
+  mark async
   take root, like text
   take fact, like text
   take name, like text
@@ -166,13 +166,12 @@ description: {{description}}
 
 {{fact}}
 >
-    wait true
-  write-index directory, chosen-name, description, wait true
+  write-index directory, chosen-name, description
   back chosen-name
 
 # the index a session loads up front: one line per fact, deduped by name
 task write-index
-  note async
+  mark async
   take directory, like text
   take name, like text
   take description, like text
@@ -180,7 +179,7 @@ task write-index
   like void
 
   save path, join directory, <index.md>
-  save existing, read-index path, wait true
+  save existing, read-index path
   save kept, make list
 
   walk
@@ -208,14 +207,14 @@ task write-index
 
 # the index as it stands, or an empty one
 task read-index
-  note async
+  mark async
   take path, like text
 
   like text
 
-  note unsafe
+  mark unsafe
     send back
-      call read-file, read(path), wait true
+      call read-file, read(path)
   halt take
     take error
     back <>
@@ -223,7 +222,7 @@ task read-index
 # `term mind [fact]`: the verb the command tree binds. With a fact it remembers one; without, it lists what is
 # remembered.
 task mind
-  note async
+  mark async
   take fact, like text
   take name, like text
   take kind, like text
@@ -231,16 +230,16 @@ task mind
 
   like void
 
-  # the prt is READ, not taken:as no `root` argument to pass
+  # the pren:as no `roent to pass
   save root, call project-root
   fork test
     is-unequal fact, <>
     hold
       save saved
-        remember root, fact, read(name), kind, wait true
+        remember root, fact, read(name), kind
       log-good <remembered {{saved}}>
       send back
-  save directory, memory-directory root, wait true
+  save directory, memory-directory root
   save there, directory-exists directory
 
   fork test
@@ -249,4 +248,4 @@ task mind
       log-step <no memories yet>
       send back
   log-step
-    read-index join(directory, <index.md>), wait true
+    read-index join(directory, <index.md>)

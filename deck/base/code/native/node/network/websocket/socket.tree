@@ -8,7 +8,7 @@ load @term/base/network/websocket
   find message
 
 task websocket-socket-send
-  note async
+  mark async
   take socket, like socket
   take data, like text
   like void
@@ -18,7 +18,7 @@ task websocket-socket-send
     wait true
 
 task websocket-socket-receive
-  note async
+  mark async
   take socket, like socket
   like message
   send back
@@ -27,7 +27,7 @@ task websocket-socket-receive
       wait true
 
 task websocket-socket-close
-  note async
+  mark async
   take socket, like socket
   like void
   call websocket/close

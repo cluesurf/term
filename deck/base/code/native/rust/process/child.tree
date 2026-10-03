@@ -5,7 +5,7 @@ load @term/base/process
   find child
 
 task wait
-  note async
+  mark async
   take child, like child
   like size
 
@@ -33,7 +33,7 @@ task stop
         read child/dock
 
 task write
-  note async
+  mark async
   take child, like child
   take data, like text
 
@@ -42,14 +42,14 @@ task write
     read data
 
 task close
-  note async
+  mark async
   take child, like child
 
   call child-runtime/close
     read child/dock
 
 task read
-  note async
+  mark async
   take child, like child
   take
     kind

@@ -14,7 +14,7 @@ export const noteMetadata: Rule = {
   fixable: true,
   check() {},
   checkSource(tree, context) {
-    for (const site of noteMetadataSites(tree)) {
+    for (const site of noteMetadataSites(tree, context.source)) {
       const end = { line: site.span.start.line, column: site.span.start.column + 'note'.length }
 
       context.report({

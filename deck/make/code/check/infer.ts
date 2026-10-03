@@ -2666,13 +2666,29 @@ export function check(
 
     // a trailing optional collection or text left out is its empty value (a map, a list, or text nothing reads
     // through), typed as the parameter, so every backend passes an argument the callee can use; a trailing optional
-    // of any other type stays omitted (the arity range allows it, and the host's absent value is what it gets)
+    // of any other type stays omitted (the arity range allows it, and the host's absent value is what it gets).
+    // A REQUIRED one left out is refused. It used to be filled the same way, so `greet(<ada>)` against a `greet` that
+    // takes `name` and `punct` built and passed `punct` as `<>`, where a left-out number was already refused (guides:
+    // language/tasks, 2026-10-03)
     for (let i = 0; i < ordered.length; i++) {
       if (ordered[i] !== undefined) {
         continue
       }
 
       const param = resolve(signature.params[i] ?? UNKNOWN)
+
+      if (signature.optional?.[i] !== true) {
+        diagnostics.push(
+          diagnose('type-mismatch', {
+            file: currentFile,
+            span: node.span,
+            message: `"${callee}" needs "${signature.names[i]}", which this call leaves out`,
+          }),
+        )
+        // keep the positions aligned for the rest of the check; the diagnostic already stops the build
+        ordered[i] = { form: 'unit', span: node.span }
+        continue
+      }
 
       if (param.kind === 'map') {
         ordered[i] = { form: 'map', entries: [], span: node.span, type: param }

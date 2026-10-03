@@ -78,11 +78,10 @@ task posts-json
 task list-handler
   take request, like request
   take params, like hash
-  note async
+  mark async
   like response
   save posts
     call list-posts
-      wait true
   send back
     make response
       bind status, code 200
@@ -94,7 +93,7 @@ task list-handler
 task get-handler
   take request, like request
   take params, like hash
-  note async
+  mark async
   like response
   save id
     call unwrap-or
@@ -105,7 +104,6 @@ task get-handler
   save p
     call get-post
       read id
-      wait true
   send back
     make response
       bind status, code 200
@@ -146,20 +144,18 @@ task build-app
 task start
   take url, like text
   take port, like u16
-  note async
+  mark async
   call setup
     read url
-    wait true
   call serve
     call build-app
     read port
 
 # seed a few sample posts the first time (only when the table is empty), so a fresh `seed boot` shows content
 task seed-sample
-  note async
+  mark async
   save posts
     call list-posts
-      wait true
   fork test
     hook test
       call is-equal
@@ -170,47 +166,40 @@ task seed-sample
         text <hello-seed>
         text <Hello from Seed>
         text <This post lives in Postgres and was served through hono.>
-        wait true
       call create-post
         text <trie-router>
         text <The trie router>
         text <Static, :param, and ** catch-all, matched in O(path-depth).>
-        wait true
       call create-post
         text <full-loop>
         text <The full loop>
         text <fetch to hono to trie router to Postgres to JSON and back.>
-        wait true
 
 # the app entry `seed boot` runs: connect, ensure schema, seed samples if empty, then serve
 task boot
   take url, like text
   take port, like u16
-  note async
+  mark async
   call setup
     read url
-    wait true
   call seed-sample
-    wait true
   call serve
     call build-app
     read port
 
 # test helpers: reset the table and seed a post (so the loop test controls the data)
 task reset
-  note async
+  mark async
   call run
     text <DELETE FROM post>
     make list
-    wait true
 
 task seed-post
   take id, like text
   take title, like text
   take body, like text
-  note async
+  mark async
   call create-post
     read id
     read title
     read body
-    wait true

@@ -59,7 +59,7 @@ task local-items-of
   send back, read items
 
 task ask
-  note async
+  mark async
   take method
     like text
   take path
@@ -101,7 +101,7 @@ task ask
 
 # not carried: parameter server is type server
 task register
-  note async
+  mark async
   take server, like unknown
   like unknown
   halt <local/register does not cross the cask bridge yet: parameter server is type server>

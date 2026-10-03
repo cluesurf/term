@@ -7,7 +7,7 @@ load @term/base/file/stat
   find path-info
 
 task read-file
-  note async
+  mark async
   take path, like text
   like text
   send back
@@ -15,7 +15,7 @@ task read-file
       read path
 
 task write-file
-  note async
+  mark async
   take path, like text
   take data, like text
   send back
@@ -24,7 +24,7 @@ task write-file
       read data
 
 task read-file-bytes
-  note async
+  mark async
   take path, like text
   like bytes
   send back
@@ -32,7 +32,7 @@ task read-file-bytes
       read path
 
 task write-file-bytes
-  note async
+  mark async
   take path, like text
   take data, like bytes
   send back
@@ -41,7 +41,7 @@ task write-file-bytes
       read data
 
 task append-file
-  note async
+  mark async
   take path, like text
   take data, like text
   send back
@@ -50,14 +50,14 @@ task append-file
       read data
 
 task remove-file
-  note async
+  mark async
   take path, like text
   send back
     call io/file-remove
       read path
 
 task copy-file
-  note async
+  mark async
   take from, like text
   take to, like text
   send back
@@ -66,7 +66,7 @@ task copy-file
       read to
 
 task move-file
-  note async
+  mark async
   take from, like text
   take to, like text
   send back
@@ -75,7 +75,7 @@ task move-file
       read to
 
 task file-exists
-  note async
+  mark async
   take path, like text
   like boolean
   send back
@@ -84,7 +84,7 @@ task file-exists
 
 # a path's size and whether it is a directory, in one record. A missing path reads as size 0 and not a directory
 task stat-file
-  note async
+  mark async
   take path, like text
   like path-info
   save size

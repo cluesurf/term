@@ -10,7 +10,7 @@ load @term/base/network/websocket
   find socket
 
 task websocket-connect
-  note async
+  mark async
   take url, like text
   like socket
   save raw

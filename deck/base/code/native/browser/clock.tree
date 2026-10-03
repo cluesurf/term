@@ -8,7 +8,7 @@ load ./clock/now
   find clock-reading
 
 task delay
-  note async
+  mark async
   take duration, like size
 
   call clock/delay

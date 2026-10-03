@@ -118,7 +118,7 @@ task write
       text <\n>
 
 task pad
-  note private
+  mark private
   take depth, like number
   like text
   save out, text <>
@@ -141,7 +141,7 @@ task pad
 
 # a key that is a name is written bare; any other key as a text
 task key-text
-  note private
+  mark private
   take name, like text
   like text
   fork test
@@ -246,7 +246,7 @@ load @term/base/text
   find char-code-at
 
 task write-entries
-  note private
+  mark private
   take list
     like list
       like data-entry
@@ -352,7 +352,7 @@ task write-entries
                 read entry/base
 
 task entry-line
-  note private
+  mark private
   take prefix, like text
   take key, like text
   take value, like data
@@ -368,7 +368,7 @@ task entry-line
 
 # a run of scalars goes on one line, comma separated, wrapped at the width
 task write-items
-  note private
+  mark private
   take list
     like list
       like data
@@ -517,7 +517,7 @@ task write-items
                 call scalar read item
 
 task all-scalar
-  note private
+  mark private
   take list
     like list
       like data
@@ -580,7 +580,7 @@ task scalar
 
 # a number as JSON spells it, which is how the tree spells it too
 task number-text
-  note private
+  mark private
   take value, like number
   like text
   send back
@@ -588,7 +588,7 @@ task number-text
 
 # a decimal that happens to be whole keeps a `.0`, so it reads back as a decimal
 task decimal-text
-  note private
+  mark private
   take value, like decimal
   like text
   save shown
@@ -777,7 +777,7 @@ task pack
       text <\n>
 
 task pack-entry
-  note private
+  mark private
   take entry, like data-entry
   like text
   save key
@@ -912,7 +912,7 @@ task pack-entry
                       text <)>
 
 task pack-item
-  note private
+  mark private
   take item, like data
   like text
   fork case, read item

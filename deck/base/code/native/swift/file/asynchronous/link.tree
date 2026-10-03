@@ -5,7 +5,7 @@ dock load
   load <global:aio>, name aio
 
 task link-make
-  note async
+  mark async
   take from, like text
   take to, like text
   take
@@ -20,7 +20,7 @@ task link-make
     wait true
 
 task link-read
-  note async
+  mark async
   take path, like text
   like text
   send back

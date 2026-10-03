@@ -1,7 +1,7 @@
 
 # Console output. Platform implementation is selected at build time and hidden behind this API.
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/console
   find write-line

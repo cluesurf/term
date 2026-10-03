@@ -17,7 +17,7 @@ load ../../view
 
 dock load
   load <global:html>, name doc
-  note native
+  mark native
 
 # one node of the tree, held by its parent's children list and by every view handle at once, so `note shared`
 form page-element
@@ -295,9 +295,14 @@ task register-font
   like boolean
   send back, true
 
+# DOM semantics, the same as the memory host's (../memory/dom): a node has one parent, so appending a node that already
+# has one moves it. The render seam relies on it (note/term/view/12-render-seam.md): a keyed list reorders by appending
+# again, and until 2026-10-03 this host appended a second copy instead
 task append
   take parent, like view
   take child, like view
+  call remove
+    read child
   call push
     bind list, read parent/handle/children
     bind item, read child
@@ -305,6 +310,8 @@ task append
     make some
       bind value, read parent
 
+# a node's identity is its element: `page-element` is shared, so comparing two of them compares the objects, never
+# their contents (a parent link makes the tree a cycle)
 task remove
   take node, like view
   # retype the opaque view handle to this impl's concrete page-element, so `children` reads as a list and `filter`
@@ -325,16 +332,94 @@ task remove
             like boolean
             send back
               call is-unequal
-                read entry
-                read node
+                read entry/handle
+                read self
       save owner/children, read kept
+      save self/parent
+        make none
     case none
       send back
 
+# swap `new` into `old`'s place under the same parent, at the same position, and `old` leaves the tree. It repointed
+# `old`'s handle at `new`'s element until 2026-10-03, which changed only the one wrapper it was given: the parent's
+# list kept the wrapper it already held, so the second swap of one slot (any `show` that changed twice) did nothing
 task replace
   take old, like view
   take new, like view
-  save old/handle, read new/handle
+  call remove
+    read new
+  host gone, like page-element
+    read old/handle
+  host edge, like maybe
+    read gone/parent
+  fork case, read edge
+    case some
+      host owner, like page-element
+        read edge/value/handle
+      save swapped
+        make list
+      walk list, read owner/children
+        hook next
+          take site, name entry
+          fork test
+            hook test
+              call is-equal
+                read entry/handle
+                read gone
+            hook hold
+              call push
+                bind list, read swapped
+                bind item, read new
+            hook miss
+              call push
+                bind list, read swapped
+                bind item, read entry
+      save owner/children, read swapped
+      save new/handle/parent
+        make some
+          bind value, read edge/value
+      save gone/parent
+        make none
+    case none
+      send back
+
+# put `node` under `reference`'s parent just before it, moving it if it had a parent
+task insert-before
+  take node, like view
+  take reference, like view
+  call remove
+    read node
+  host anchor, like page-element
+    read reference/handle
+  host edge, like maybe
+    read anchor/parent
+  fork case, read edge
+    case some
+      host owner, like page-element
+        read edge/value/handle
+      save placed
+        make list
+      walk list, read owner/children
+        hook next
+          take site, name entry
+          fork test
+            hook test
+              call is-equal
+                read entry/handle
+                read anchor
+            hook hold
+              call push
+                bind list, read placed
+                bind item, read node
+          call push
+            bind list, read placed
+            bind item, read entry
+      save owner/children, read placed
+      save node/handle/parent
+        make some
+          bind value, read edge/value
+    case none
+      send back
 
 # clear every child by resetting the children list. Present so the abstract API is satisfied on the server too; the
 # SSR host builds a fresh root per request, so it never needs to clear (this is a browser-takeover concern).

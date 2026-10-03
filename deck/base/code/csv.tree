@@ -3,7 +3,7 @@
 # delimiter (tab gives TSV). `parse` yields the rows as a list of lists of text; `stringify` writes them back,
 # quoting a field only when it needs it.
 
-note stable
+mark stable
 
 load @term/base/text
   find char-at

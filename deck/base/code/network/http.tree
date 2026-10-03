@@ -9,7 +9,7 @@
 # (`waited` is the milliseconds); a server that cannot be reached raises `outage` (`thing` is the url). Any status,
 # 404 and 500 included, is an answer, not a raise.
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/network/http
   find send-request
@@ -43,7 +43,7 @@ load @term/base/exception
   find outage
 
 task request
-  note async
+  mark async
   take method, like text
   take url, like text
   take body, like text
@@ -61,6 +61,7 @@ task request
       read body
       read header
       read timeout
+      wait true
   save outcome, text <outage>
   fork test
     hook test
@@ -194,7 +195,7 @@ task request
 # a GET. Named `fetch`, not `get`: names are package-global, and a top-level `get` shadows list `get` in every
 # build that loads this module
 task fetch
-  note async
+  mark async
   take url, like text
   take header
     like hash
@@ -210,9 +211,10 @@ task fetch
       text <>
       read header
       read timeout
+      wait true
 
 task post
-  note async
+  mark async
   take url, like text
   take body, like text
   take header
@@ -229,6 +231,7 @@ task post
       read body
       read header
       read timeout
+      wait true
 
 # a streaming HTTP response: the status plus the raw platform response in the opaque `dock` handle. `read` in
 # `http/response` drains the body once, as text, bytes or json.

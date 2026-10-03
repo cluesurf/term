@@ -15,7 +15,7 @@
 
 dock load
   load <global:asset>, name asset
-  note native
+  mark native
 
 # Resolve a logical asset path to its current hashed URL on site.clue.surf. Throws if the asset is not in the
 # manifest (matching getSiteAssetPath), so a misspelled path fails loudly instead of producing a broken URL.

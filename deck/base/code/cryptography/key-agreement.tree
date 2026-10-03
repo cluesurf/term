@@ -1,6 +1,6 @@
 # Key agreement (X25519 ECDH). The generic interface; each public verb delegates to the per-backend native implementation, which lives in its own file (`native/<env>/cryptography/key-agreement`). Input and output stay in the currency types.
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/cryptography/key-agreement
   find make-key-pair-bytes
@@ -15,10 +15,11 @@ form exchange-pair
 
 # generate a matched private / public key pair
 task make-key-pair
-  note async
+  mark async
   like exchange-pair
   save raw
     call make-key-pair-bytes
+      wait true
   send back
     make exchange-pair
       bind private-key
@@ -34,7 +35,7 @@ task make-key-pair
 
 # derive the shared secret (your private key, their public key)
 task shared-secret
-  note async
+  mark async
   take private-key, like bytes
   take public-key, like bytes
   like bytes
@@ -42,3 +43,4 @@ task shared-secret
     call compute-shared-secret
       read private-key
       read public-key
+      wait true

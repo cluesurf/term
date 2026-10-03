@@ -123,10 +123,10 @@ task run-tests
     call is-equal
       bind a, read content
       bind b, text <hello world>
-    hook true
+    hook hold
       call console/log
         bind msg, text <pass: read-write-text>
-    hook false
+    hook miss
       call console/log
         bind msg, text <fail: read-write-text>
 
@@ -146,10 +146,10 @@ task run-tests
     call is-equal
       bind a, read appended
       bind b, text <aaabbb>
-    hook true
+    hook hold
       call console/log
         bind msg, text <pass: append>
-    hook false
+    hook miss
       call console/log
         bind msg, text <fail: append>
 
@@ -165,10 +165,10 @@ task run-tests
     call is-equal
       bind a, read copied
       bind b, text <hello world>
-    hook true
+    hook hold
       call console/log
         bind msg, text <pass: copy>
-    hook false
+    hook miss
       call console/log
         bind msg, text <fail: copy>
 
@@ -189,10 +189,10 @@ task run-tests
     call is-equal
       bind a, read moved
       bind b, text <hello world>
-    hook true
+    hook hold
       call console/log
         bind msg, text <pass: move>
-    hook false
+    hook miss
       call console/log
         bind msg, text <fail: move>
 

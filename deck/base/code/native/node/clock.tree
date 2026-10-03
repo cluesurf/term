@@ -14,7 +14,7 @@ task current-time
       call perf/performance/now
 
 task delay
-  note async
+  mark async
   take ms, like number
   send back
     call timers/set-timeout

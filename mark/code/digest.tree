@@ -60,14 +60,13 @@ task in-eights
       text <->
 
 task tone-of-bytes
-  note async
+  mark async
   take value, like bytes
   like text
   save hex
     call to-hex
       call sha256
         read value
-        wait true
   send back
     call in-eights
       call replace-all
@@ -78,23 +77,20 @@ task tone-of-bytes
 
 # the sha256 of a text, in tone
 task tone-of-text
-  note async
+  mark async
   take value, like text
   like text
   send back
     call tone-of-bytes
       call from-text
         read value
-      wait true
 
 # the sha256 of a file's bytes, in tone
 task tone-of-file
-  note async
+  mark async
   take path, like text
   like text
   send back
     call tone-of-bytes
       call read-bytes
         read path
-        wait true
-      wait true

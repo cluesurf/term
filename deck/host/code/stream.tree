@@ -131,7 +131,7 @@ task feed
 
 # what a line's value is: `<hash>` for entries, `<list>` for items, `<>` for a line that carried no data
 task kind-of
-  note private
+  mark private
   take value, like data
   like text
   fork case, read value
@@ -160,7 +160,7 @@ task kind-of
 
 # an anchor into the table, replacing one of the same name
 task put-tree
-  note private
+  mark private
   take trees
     like list
       like data-tree
@@ -311,7 +311,7 @@ task emit
 
 # every anchor a value fuses, not yet sent, with the anchors those fuse before them
 task collect-trees
-  note private
+  mark private
   take value, like data
   take trees
     like list

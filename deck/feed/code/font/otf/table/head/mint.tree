@@ -1,4 +1,4 @@
-note draft
+mark draft
 # Checked spec, not compiled code — see ../../../../hex/mine.tree's note. The real writer is ./code.tree's
 # write-otf-head-table, proven by deck/feed/test/otf-head.tree.
 

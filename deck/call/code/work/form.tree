@@ -41,7 +41,7 @@ form analyze-ask
   link text, like text
 
 task form
-  note async
+  mark async
   take check, like boolean
   take list, like boolean
 

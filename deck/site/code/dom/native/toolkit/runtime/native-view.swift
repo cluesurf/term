@@ -17,6 +17,10 @@
 //   hr                     a hairline: NSBox's separator, a 1 point UIView. Vertical in a row
 //   scroll                 NSScrollView, UIScrollView, around a vertical stack the children go into
 //   span a b i em strong   a horizontal stack (an inline run)
+//   swiftui                a SwiftUI view in a slot of the tree: its `name` picks a registered view, hosted in an
+//                          NSHostingView or a UIHostingController; its other attributes reach the view through an
+//                          observable `TermSlot`, and the view's events come back as the node's events
+//                          (swiftui-target-0001, note/term/view/12-render-seam.md)
 //   anything else          a vertical stack: the container every layout starts from
 //
 // Every call happens on the main thread, the only one a toolkit may be touched from. An event handler fires there and
@@ -24,6 +28,9 @@
 // `nativeView` entry point hops to the main thread first (`onMain`) when it is called from another (native-dom-0014).
 import Foundation
 import CoreText
+// every SwiftUI name below is written `SwiftUI.<name>`: the program this runtime is prepended to declares types of its
+// own (its `View` among them), and a module's own declarations shadow the ones it imports
+import SwiftUI
 
 #if canImport(AppKit)
 import AppKit
@@ -140,6 +147,8 @@ final class TermNode {
         case image
         case divider
         case scroll
+        // a SwiftUI view in a slot (swiftui-target-0001): a stack holding the hosting view once `name` is set
+        case hosted
     }
 
     let key: Int
@@ -171,6 +180,17 @@ final class TermNode {
     var line: NSLayoutConstraint?
     // an image's loaded picture (NSImage, UIImage), kept so a change of fit can draw it again
     var picture: AnyObject?
+    // a hosted SwiftUI view's slot, and the registered name installed in it ("" until one is)
+    var slot: TermSlot?
+    var hostedName = ""
+    // the flexible views `justify-content` center or end puts in the stack: a leading one for both, a trailing one
+    // for center. Not children, so every index a child is installed at skips the leading one (`leading`)
+    var spacers: [TermPlatformView] = []
+
+    // how many arranged views stand before the first child: the leading spacer, when there is one
+    var leading: Int {
+        spacers.isEmpty ? 0 : 1
+    }
 
     // the stack this node's children are installed in: its own view, or a scroll's content
     var box: TermStack? {
@@ -307,6 +327,20 @@ final class TermNode {
             thickness.isActive = true
             line = thickness
             view = rule
+        } else if tag == "swiftui" {
+            // the slot's stack, empty until `name` says which SwiftUI view goes in it
+            kind = .hosted
+            let stack = TermStack()
+            #if canImport(AppKit)
+            stack.orientation = .vertical
+            stack.alignment = .leading
+            #endif
+            #if canImport(UIKit)
+            stack.axis = .vertical
+            stack.alignment = .leading
+            #endif
+            stack.spacing = 0
+            view = stack
         } else if tag == "scroll" {
             // a frame whose content may be taller than it: the platform's scroll view around a vertical stack the
             // children go into, as wide as the frame, so only the height scrolls (native-dom-0049)
@@ -435,6 +469,63 @@ final class TermNode {
     }
 }
 
+// ---- a SwiftUI view in a slot of the retained tree (swiftui-target-0001) ----
+//
+// The retained tree stays the platform's view tree (reactive-bridge-0002), and a SwiftUI control goes in one node of
+// it: the node's attributes are the view's input, published so SwiftUI redraws when the program sets one, and the view
+// answers with an event on the node, which the program's handler hears like any click. A view is registered by name,
+// `registerSwiftUI`, two of them built in: `progress` and `stepper`.
+
+final class TermSlot: ObservableObject {
+    // the node's attributes, `name` aside: what the view draws from
+    @Published var attributes: [String: String] = [:]
+    weak var node: TermNode?
+    // what the view can be made to do from outside it, by name: a test's press of its control (`performHosted`)
+    var actions: [String: () -> Void] = [:]
+
+    // an attribute as a number, or `fall` when it is absent or not one
+    func number(_ name: String, _ fall: Double) -> Double {
+        attributes[name].flatMap(Double.init) ?? fall
+    }
+
+    // the view reports a change: it becomes the node's value and the node fires `event`
+    func send(_ event: String, value: String) {
+        guard let node else { return }
+        node.value = value
+        node.fire(event)
+    }
+}
+
+// a number as an attribute writes it: whole numbers without a fraction
+private func termNumberText(_ value: Double) -> String {
+    value.truncatingRemainder(dividingBy: 1) == 0 && abs(value) < 1e15 ? String(Int(value)) : String(value)
+}
+
+// `progress`: SwiftUI's ProgressView, `value` of `max` (1 when absent), titled by `label`
+struct TermProgressView: SwiftUI.View {
+    @ObservedObject var slot: TermSlot
+
+    var body: some SwiftUI.View {
+        let total = max(slot.number("max", 1), 0.000_001)
+        SwiftUI.ProgressView(slot.attributes["label"] ?? "", value: min(max(slot.number("value", 0), 0), total), total: total)
+    }
+}
+
+// `stepper`: SwiftUI's Stepper over `value` by `step` (1 when absent), its label then its value. A press fires `change`
+// with the next value; the program decides whether to take it, by writing `value` back
+struct TermStepperView: SwiftUI.View {
+    @ObservedObject var slot: TermSlot
+
+    var body: some SwiftUI.View {
+        SwiftUI.Stepper(
+            onIncrement: { slot.actions["increment"]?() },
+            onDecrement: { slot.actions["decrement"]?() }
+        ) {
+            SwiftUI.Text("\(slot.attributes["label"] ?? "") \(slot.attributes["value"] ?? "0")")
+        }
+    }
+}
+
 #if canImport(AppKit)
 // a scroll's clip view, flipped so its content is laid from the top down as a page is
 final class TermTopClip: NSClipView {
@@ -538,7 +629,89 @@ enum nativeView {
 
     static func createElement(_ tag: String) -> Any {
         onMain {
-            make(tag, "")
+            let made = make(tag, "")
+            if made.kind == .hosted {
+                let slot = TermSlot()
+                slot.node = made
+                made.slot = slot
+            }
+            return made
+        }
+    }
+
+    // ---- SwiftUI in a slot (swiftui-target-0001) ----
+
+    // the SwiftUI views a `swiftui` node can name, each made from the node's slot. An app adds its own with
+    // `registerSwiftUI` before it mounts
+    static var hostedViews: [String: (TermSlot) -> SwiftUI.AnyView] = [
+        "progress": { slot in SwiftUI.AnyView(TermProgressView(slot: slot)) },
+        "stepper": { slot in
+            let step = { (by: Double) in
+                slot.send("change", value: termNumberText(slot.number("value", 0) + by * slot.number("step", 1)))
+            }
+            slot.actions["increment"] = { step(1) }
+            slot.actions["decrement"] = { step(-1) }
+            return SwiftUI.AnyView(TermStepperView(slot: slot))
+        },
+    ]
+
+    static func registerSwiftUI(_ name: String, _ make: @escaping (TermSlot) -> SwiftUI.AnyView) {
+        onMain {
+            hostedViews[name] = make
+        }
+    }
+
+    // put the registered view `name` in the node's slot, replacing what was there. An unknown name leaves it empty
+    private static func installHosted(_ node: TermNode, _ name: String) {
+        guard let slot = node.slot, let stack = node.view as? TermStack, let make = hostedViews[name] else {
+            node.hostedName = ""
+            return
+        }
+        for old in stack.arrangedSubviews {
+            stack.removeArrangedSubview(old)
+            old.removeFromSuperview()
+        }
+        let content = make(slot)
+        #if canImport(AppKit)
+        let hosting = NSHostingView(rootView: content)
+        stack.addArrangedSubview(hosting)
+        #endif
+        #if canImport(UIKit)
+        let controller = UIHostingController(rootView: content)
+        controller.view.backgroundColor = .clear
+        node.keep.append(controller)
+        stack.addArrangedSubview(controller.view)
+        #endif
+        node.hostedName = name
+    }
+
+    // for tests: the registered name of the SwiftUI view a node hosts, read off the view tree (a hosting view must be
+    // installed in the slot), or empty text
+    static func hostedName(_ handle: Any) -> String {
+        onMain {
+            let node = node(handle)
+            guard let stack = node.view as? TermStack else { return "" }
+            #if canImport(AppKit)
+            let hosting = stack.arrangedSubviews.contains { $0 is NSHostingView<SwiftUI.AnyView> }
+            #endif
+            #if canImport(UIKit)
+            let hosting = node.keep.contains { ($0 as? UIHostingController<SwiftUI.AnyView>).map { controller in stack.arrangedSubviews.contains(controller.view) } ?? false }
+            #endif
+            return hosting ? node.hostedName : ""
+        }
+    }
+
+    // for tests: what the hosted view was handed for an attribute, read from its slot
+    static func hostedAttribute(_ handle: Any, _ name: String) -> String {
+        onMain {
+            node(handle).slot?.attributes[name] ?? ""
+        }
+    }
+
+    // for tests: press the hosted view's control by the name it registered (`increment` on a stepper), as a tap would
+    static func performHosted(_ handle: Any, _ action: String) {
+        onMain {
+            node(handle).slot?.actions[action]?()
         }
     }
 
@@ -567,6 +740,14 @@ enum nativeView {
             let node = node(handle)
             node.attributes.removeAll { $0.name == name }
             node.attributes.append((name: name, value: value))
+            // a hosted SwiftUI view: `name` picks it, and every other attribute is its input, redrawn when it changes
+            if node.kind == .hosted {
+                if name == "name" {
+                    installHosted(node, value)
+                } else {
+                    node.slot?.attributes[name] = value
+                }
+            }
             // the attributes a platform view has a place for
             switch name {
             case "style":
@@ -848,6 +1029,7 @@ enum nativeView {
             }
             return
         case ("justify-content", let stack?):
+            clearSpacers(node, stack)
             switch value {
             case "start", "flex-start":
                 #if canImport(AppKit)
@@ -858,6 +1040,12 @@ enum nativeView {
                 #endif
             case "space-between":
                 stack.distribution = .equalSpacing
+            // center and end (swiftui-target-0002): neither stack has a gravity along its axis that UIKit shares, so
+            // the free room is taken by flexible spacers, one before the children for end, one each side for center,
+            // held equal. They were "unsupported" until 2026-10-03 and the children sat at the start
+            case "center", "end", "flex-end":
+                stack.distribution = .fill
+                addSpacers(node, stack, both: value == "center")
             default:
                 unsupported.insert("\(property): \(value)")
             }
@@ -1715,6 +1903,61 @@ enum nativeView {
         #endif
     }
 
+    // ---- justify center and end (swiftui-target-0002): flexible spacers around the children ----
+
+    private static func clearSpacers(_ node: TermNode, _ stack: TermStack) {
+        for spacer in node.spacers {
+            stack.removeArrangedSubview(spacer)
+            spacer.removeFromSuperview()
+        }
+        node.spacers = []
+    }
+
+    // a view that takes whatever room the children leave along the stack's axis, and holds nothing
+    private static func makeSpacer(_ stack: TermStack) -> TermPlatformView {
+        let spacer = TermPlatformView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        #if canImport(AppKit)
+        let axis: NSLayoutConstraint.Orientation = stack.orientation == .horizontal ? .horizontal : .vertical
+        #endif
+        #if canImport(UIKit)
+        let axis: NSLayoutConstraint.Axis = stack.axis
+        #endif
+        spacer.setContentHuggingPriority(.init(1), for: axis)
+        spacer.setContentCompressionResistancePriority(.init(1), for: axis)
+        #if canImport(AppKit)
+        spacer.setAccessibilityElement(false)
+        #endif
+        #if canImport(UIKit)
+        spacer.isAccessibilityElement = false
+        #endif
+        return spacer
+    }
+
+    // one spacer before the children (end), or one each side held to the same size (center)
+    private static func addSpacers(_ node: TermNode, _ stack: TermStack, both: Bool) {
+        let first = makeSpacer(stack)
+        stack.insertArrangedSubview(first, at: 0)
+        node.spacers = [first]
+        if both {
+            let last = makeSpacer(stack)
+            stack.addArrangedSubview(last)
+            node.spacers.append(last)
+            #if canImport(AppKit)
+            let row = stack.orientation == .horizontal
+            #endif
+            #if canImport(UIKit)
+            let row = stack.axis == .horizontal
+            #endif
+            (row ? first.widthAnchor.constraint(equalTo: last.widthAnchor) : first.heightAnchor.constraint(equalTo: last.heightAnchor)).isActive = true
+        }
+    }
+
+    // where a child goes in its parent's stack to be the `installed`-th installed child: past the leading spacer
+    private static func arrangedIndex(_ parent: TermNode, installed: Int) -> Int {
+        parent.leading + installed
+    }
+
     // DOM semantics: a node has one parent, so appending one that already has a parent moves it
     static func append(_ parentHandle: Any, _ childHandle: Any) {
         onMain {
@@ -1733,7 +1976,40 @@ enum nativeView {
                 // a dialog's content is never in the page: the platform presents it when it opens
                 return
             } else if let stack = parent.box {
-                stack.addArrangedSubview(child.view)
+                // last among the children, which is before a trailing spacer when the stack is centered
+                let installed = parent.children.filter { $0 !== child && $0.view.superview === stack }.count
+                stack.insertArrangedSubview(child.view, at: arrangedIndex(parent, installed: installed))
+                if child.kind == .divider {
+                    orient(child, across: stack)
+                }
+                if shouldFill(child, in: parent) {
+                    fill(child.view, in: stack)
+                }
+            }
+        }
+    }
+
+    // `child` goes in under `reference`'s parent just before it, moved there if it has a parent. The render runtime keeps
+    // a list in its place among its siblings this way: its items go in before a marker, never at the end of the parent
+    // (note/term/view/12-render-seam.md)
+    static func insertBefore(_ childHandle: Any, _ referenceHandle: Any) {
+        onMain {
+            let child = node(childHandle)
+            let reference = node(referenceHandle)
+            detach(child)
+            guard let parent = reference.parent, let index = parent.children.firstIndex(where: { $0 === reference }) else { return }
+            // the position among the views actually installed, which is the stack's own index
+            let installedBefore = parent.children[..<index].filter { $0.view.superview === parent.box }.count
+            child.parent = parent
+            parent.children.insert(child, at: index)
+            child.adoptTraits()
+            restyleText(child)
+            if let drawing = parent.drawingAncestor {
+                drawing.refreshTitle()
+            } else if child.kind == .sheet {
+                return
+            } else if let stack = parent.box {
+                stack.insertArrangedSubview(child.view, at: arrangedIndex(parent, installed: installedBefore))
                 if child.kind == .divider {
                     orient(child, across: stack)
                 }
@@ -1843,7 +2119,7 @@ enum nativeView {
             if let drawing = parent.drawingAncestor {
                 drawing.refreshTitle()
             } else if let stack = parent.box {
-                stack.insertArrangedSubview(fresh.view, at: installedBefore)
+                stack.insertArrangedSubview(fresh.view, at: arrangedIndex(parent, installed: installedBefore))
             }
         }
     }
@@ -2444,6 +2720,16 @@ enum nativeView {
                 #endif
                 let installed = node.children.filter { $0.view.superview === node.box }
                 return "<scroll extent=\"\(Int(extent.width.rounded())),\(Int(extent.height.rounded()))\">\(installed.map { serialize($0) }.joined())</scroll>"
+            case .hosted:
+                // the SwiftUI view's name and its laid-out size, read off the hosting view: a size above zero is SwiftUI
+                // having drawn something there
+                #if canImport(AppKit)
+                node.view.window?.contentView?.layoutSubtreeIfNeeded()
+                #else
+                node.view.window?.layoutIfNeeded()
+                #endif
+                let hosting = (node.view as? TermStack)?.arrangedSubviews.first?.frame.size ?? .zero
+                return "<swiftui name=\"\(hostedName(node))\" size=\"\(Int(hosting.width.rounded())),\(Int(hosting.height.rounded()))\"></swiftui>"
             }
         }
     }

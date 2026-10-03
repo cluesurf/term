@@ -1,0 +1,51 @@
+
+# Which node of the terminal host has focus (terminal-target-0003). ONE record for the program, shared, because the
+# key handler that moves focus and the painter that draws the ring both read it. A node is named by its memory key,
+# which is never reused, so a removed node can never be mistaken for the focused one. 0 is no node.
+
+load ../memory/dom
+  find memory-element
+
+form terminal-focus
+  mark shared
+  link key, like number
+
+host focus
+  make terminal-focus
+    bind key, code 0
+
+# whether an element is the focused one
+task is-focused
+  take element, like memory-element
+  like boolean
+  send back
+    meet and
+      call is-above
+        read focus/key
+        code 0
+      call is-equal
+        read element/key
+        read focus/key
+
+# whether an element takes focus: the controls a person acts on, in the vocabulary's words (a button or toggle, a field
+# or range, a link, a choice)
+task is-focusable
+  take element, like memory-element
+  like boolean
+  send back
+    meet or
+      call is-equal
+        read element/tag
+        text <button>
+      call is-equal
+        read element/tag
+        text <input>
+      call is-equal
+        read element/tag
+        text <textarea>
+      call is-equal
+        read element/tag
+        text <a>
+      call is-equal
+        read element/tag
+        text <select>

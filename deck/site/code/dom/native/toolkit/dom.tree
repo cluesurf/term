@@ -18,7 +18,7 @@ load ../../view
 
 dock load
   load <global:native-view>, name native-view
-  note native
+  mark native
 
 task create-element
   take tag, like text
@@ -225,6 +225,43 @@ task append
   call native-view/append
     read parent/handle
     read child/handle
+
+# ---- a SwiftUI view in a slot (swiftui-target-0001): a `swiftui` element whose `name` attribute picks a registered
+# view (native-view.swift `hostedViews`), its other attributes the view's input, its events the node's. These three are
+# for tests: on Android, where the slot is Compose's (compose-target), they answer empty and do nothing ----
+
+# the registered name of the SwiftUI view the node hosts, read off the view tree, or empty text
+task hosted-name
+  take node, like view
+  like text
+  send back
+    call native-view/hosted-name
+      read node/handle
+
+# what the hosted view was handed for an attribute
+task hosted-attribute
+  take node, like view
+  take name, like text
+  like text
+  send back
+    call native-view/hosted-attribute
+      read node/handle
+      read name
+
+# press the hosted view's control by the name it registered (`increment`, `decrement` on a stepper)
+task perform-hosted
+  take node, like view
+  take action, like text
+  call native-view/perform-hosted
+    read node/handle
+    read action
+
+task insert-before
+  take node, like view
+  take reference, like view
+  call native-view/insert-before
+    read node/handle
+    read reference/handle
 
 task remove
   take node, like view

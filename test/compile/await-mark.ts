@@ -19,6 +19,7 @@ import { applyFixes } from '@term/make/code/lint/lint'
 import { setAwaitOutsideTasks, awaitsOutsideTasks } from '@term/make/code/check/effects'
 import { parse } from '@term/make/code/parser/tree'
 import { mill } from '@term/make/code/compile/mill'
+import { format } from '@term/make/code/format/format'
 
 let pass = 0
 let fail = 0
@@ -420,6 +421,10 @@ task risky
 
   ok('5. ...its fix writes `mark` for each', !/^\s*note /m.test(fixed) && /^mark stable$/m.test(fixed) && /^  mark async$/m.test(fixed) && /^  mark unsafe$/m.test(fixed), fixed)
   same('5. ...and the fixed file emits what the written one emits', build(source), build(fixed))
+
+  // the formatter lays `mark async` out where it laid `note async`, so the rewrite moves no line
+  const laid = 'task boot\n  note async\n  take x, like text\n  like text\n  log <hi>\n'
+  ok('5. `term form` lays out `mark async` exactly as it laid out `note async`', format({ file: 'f.tree', text: laid.replace('note', 'mark') }) === format({ file: 'f.tree', text: laid }).replace('note', 'mark'), format({ file: 'f.tree', text: laid.replace('note', 'mark') }))
 
   const waits = `${FETCH}
 dock load

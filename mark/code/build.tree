@@ -88,7 +88,7 @@ task tool-of
   send back, text <kotlinc>
 
 task has-tool
-  note async
+  mark async
   take target, like text
   like boolean
   save words
@@ -109,7 +109,7 @@ task has-tool
 
 # the toolchain's own version line, kept with every case
 task tool-version
-  note async
+  mark async
   take target, like text
   like text
   save words
@@ -143,7 +143,7 @@ task tool-version
 
 # what a command printed on both streams, or empty when it failed
 task said-by
-  note async
+  mark async
   take command, like text
   take line, like text
   like text
@@ -166,7 +166,7 @@ task said-by
 # the machine's own architecture, in node's names. On macOS the hardware is asked, because a node started under
 # Rosetta is told `x64` by `os.arch()` on an `arm64` machine
 task native-arch
-  note async
+  mark async
   like text
   fork test
     hook test
@@ -178,7 +178,6 @@ task native-arch
         call said-by
           text <sysctl>
           text <-n hw.optional.arm64>
-          wait true
       save lines
         call split
           call trim
@@ -200,7 +199,7 @@ task native-arch
 # whether the runner's own process is translated: `sysctl.proc_translated` is 1 under Rosetta, 0 natively, and
 # absent off macOS
 task runner-translated
-  note async
+  mark async
   like boolean
   fork test
     hook test
@@ -213,7 +212,6 @@ task runner-translated
     call said-by
       text <sysctl>
       text <-n sysctl.proc_translated>
-      wait true
   save lines
     call split
       call trim
@@ -293,7 +291,7 @@ task value-after
 # `rustc -vV`, since the runner passes no `--target`. Swift: `target.triple` of `swiftc -print-target-info`. Kotlin:
 # the JVM's `os.arch`, since `java` runs the jar. Node: `process.arch` of the `node` that runs the program
 task program-arch
-  note async
+  mark async
   take target, like text
   like text
   fork test
@@ -306,7 +304,6 @@ task program-arch
         call said-by
           text <node>
           text <-p process.arch>
-          wait true
       send back
         call trim
           read said
@@ -320,7 +317,6 @@ task program-arch
         call said-by
           text <rustc>
           text <-vV>
-          wait true
       send back
         call value-after
           read said
@@ -335,7 +331,6 @@ task program-arch
         call said-by
           text <swiftc>
           text <-print-target-info>
-          wait true
       save quoted
         call value-after
           read said
@@ -352,7 +347,6 @@ task program-arch
     call said-by
       text <java>
       text <-XshowSettings:properties -version>
-      wait true
   send back
     call value-after
       read said
@@ -360,14 +354,13 @@ task program-arch
 
 # a target's architecture against the machine's
 task check-arch
-  note async
+  mark async
   take target, like text
   take native, like text
   like build-arch
   save named
     call program-arch
       read target
-      wait true
   save family
     call arch-family
       read named
@@ -624,7 +617,7 @@ task unbuilt
 
 # build one source file for its target in release, into `dir`, as `name`
 task build-source
-  note async
+  mark async
   take term-root, like text
   take source, like text
   take target, like text
@@ -750,13 +743,12 @@ task build-source
       bind size
         call file-size
           read product
-          wait true
       bind toolchain, read toolchain
       bind line, read line
 
 # a Term program for a target: emitted by `term make --emit`, a `main` appended, then built like a hand version
 task build-term
-  note async
+  mark async
   take term-root, like text
   take file, like text
   take target, like text
@@ -798,7 +790,6 @@ task build-term
   save body
     call file-text
       read source
-      wait true
   save entry
     call main-for
       read target
@@ -808,7 +799,6 @@ task build-term
   call file-save
     read source
     text <{{body}}{{entry}}>
-    wait true
   send back
     call build-source
       read term-root
@@ -817,4 +807,3 @@ task build-term
       read dir
       read name
       read toolchain
-      wait true

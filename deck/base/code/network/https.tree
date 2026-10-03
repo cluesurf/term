@@ -4,7 +4,7 @@
 # This is `network/server` with a certificate, not a second server: HTTPS is HTTP with TLS in front, and a
 # separate implementation is how the two drift apart. `stop` on network/server shuts one of these down.
 
-note unstable
+mark unstable
 
 load @term/base/native/{platform}/network/https
   find https-serve
@@ -43,7 +43,7 @@ task serve
 
 # bind and answer over TLS without blocking. Shut it down with `stop` from network/server.
 task start
-  note async
+  mark async
   take port, like size
   take
     host
@@ -63,3 +63,4 @@ task start
       read handler
       read certificate
       read key
+      wait true

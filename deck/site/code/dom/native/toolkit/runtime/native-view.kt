@@ -456,7 +456,10 @@ object nativeView {
                 applyAlignment(node)
                 true
             }
-            property == "justify-content" && layout != null && value in setOf("start", "flex-start", "space-between") -> {
+            // center and end are LinearLayout's gravity along its axis (applyAlignment), start and space-between its
+            // weights (applySpread). Center and end were reported unsupported until 2026-10-03 (swiftui-target-0002)
+            property == "justify-content" && layout != null && value in setOf("start", "flex-start", "space-between", "center", "end", "flex-end") -> {
+                applyAlignment(node)
                 applySpread(node)
                 true
             }
@@ -555,11 +558,18 @@ object nativeView {
         val row = layout.orientation == LinearLayout.HORIZONTAL
         val declared = node.styles["align-items"]?.trim()
         val align = declared ?: "start"
-        layout.gravity = when (align) {
+        val across = when (align) {
             "center" -> if (row) android.view.Gravity.CENTER_VERTICAL else android.view.Gravity.CENTER_HORIZONTAL
             "end", "flex-end" -> if (row) android.view.Gravity.BOTTOM else android.view.Gravity.END
             else -> if (row) android.view.Gravity.TOP else android.view.Gravity.START
         }
+        // `justify-content` center and end: the same gravity along the axis, the free room before the children
+        val along = when (node.styles["justify-content"]?.trim()) {
+            "center" -> if (row) android.view.Gravity.CENTER_HORIZONTAL else android.view.Gravity.CENTER_VERTICAL
+            "end", "flex-end" -> if (row) android.view.Gravity.END else android.view.Gravity.BOTTOM
+            else -> if (row) android.view.Gravity.START else android.view.Gravity.TOP
+        }
+        layout.gravity = across or along
         for (child in node.children) {
             val params = child.view.layoutParams as? LinearLayout.LayoutParams ?: continue
             // a divider is a hairline across the stack: a full-width line in a column, a full-height one in a row
@@ -1096,9 +1106,53 @@ object nativeView {
         }
     }
 
+    // `child` goes in under `reference`'s parent just before it, moved there if it has a parent. The render runtime keeps
+    // a list in its place among its siblings this way: its items go in before a marker, never at the end of the parent
+    // (note/term/view/12-render-seam.md)
+    fun insertBefore(childHandle: Any, referenceHandle: Any) {
+        val child = node(childHandle)
+        val reference = node(referenceHandle)
+        detach(child)
+        val parent = reference.parent ?: return
+        val index = parent.children.indexOf(reference)
+        if (index < 0) return
+        val group = parent.box ?: parent.view as? ViewGroup
+        // the position among the views actually added, which is the group's own index
+        val installedBefore = parent.children.subList(0, index).count { it.view.parent === group }
+        child.parent = parent
+        parent.children.add(index, child)
+        if (child.view is TextView && Regex("h[1-6]").matches(parent.tag) && android.os.Build.VERSION.SDK_INT >= 28) {
+            child.view.isAccessibilityHeading = true
+        }
+        restyleText(child)
+        val drawing = parent.drawingAncestor
+        if (drawing != null) {
+            drawing.refreshTitle()
+        } else if (child.kind == TermNode.Kind.SHEET) {
+            return
+        } else if (parent.box != null) {
+            parent.box!!.addView(
+                child.view,
+                installedBefore,
+                LinearLayout.LayoutParams(sizeOf(child, "width"), sizeOf(child, "height")),
+            )
+            adopt(parent)
+        } else {
+            group?.addView(child.view, installedBefore)
+        }
+    }
+
     fun remove(handle: Any) {
         detach(node(handle))
     }
+
+    // a SwiftUI slot is Apple's (swiftui-target-0001): here a `swiftui` node is an empty container, hosts nothing, and
+    // these test hooks answer as for one that hosts nothing. Compose's own slot is compose-target's
+    fun hostedName(handle: Any): String = ""
+
+    fun hostedAttribute(handle: Any, name: String): String = ""
+
+    fun performHosted(handle: Any, action: String) {}
 
     private fun detach(child: TermNode) {
         val parent = child.parent ?: return

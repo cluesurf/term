@@ -1,4 +1,4 @@
-note draft
+mark draft
 
 # SHELVED 2026-10-02 (base-v1-0020): `measurement` and `trace` declared bodiless tasks named `start`, `stop`, `log` and
 # `format`, which are package-global and shadow the real ones wherever these are built. `clock/now` measures an

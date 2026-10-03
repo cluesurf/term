@@ -3,7 +3,7 @@
 # system refuses: a native list has no such fields. The native list is itself growable on every backend
 # (push reallocates), so the design solves a problem the stdlib no longer has. A capacity-managing list
 # would need its own form holding the array, which is `list/deque.tree`'s territory.
-note draft
+mark draft
 
 load @term/base/hold/text/code/utf-8
   find text-utf-8

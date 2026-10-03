@@ -1,7 +1,7 @@
 
 # DNS: Domain Name System. Query and response messages for resolving names to records.
 
-note unstable
+mark unstable
 
 form dns-record-type
   case a

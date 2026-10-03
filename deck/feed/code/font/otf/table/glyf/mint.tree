@@ -1,4 +1,4 @@
-note draft
+mark draft
 # Checked spec, not compiled code — see ../head/mine.tree's note. The real writer is ./code.tree's
 # write-otf-glyph, proven by deck/feed/test/otf-glyf.tree. A composite glyph refuses to write (`code.tree`'s
 # `halt <cannot write an unsupported composite glyph>`) — nothing to write it FROM, since a read only kept the

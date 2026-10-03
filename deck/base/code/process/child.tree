@@ -1,4 +1,4 @@
-note draft
+mark draft
 
 # SHELVED 2026-10-02 (base-v1-0019): bodiless `wait`, `stop`, `write`, `close`, `read`, `stream`; process/run runs a command. Nothing loads it.
 
@@ -6,7 +6,7 @@ load @term/base/process
   find child
 
 task wait
-  note async
+  mark async
   take child, like child
   like size
 
@@ -18,16 +18,16 @@ task stop
     fall text <gentle>
 
 task write
-  note async
+  mark async
   take child, like child
   take data, like text
 
 task close
-  note async
+  mark async
   take child, like child
 
 task read
-  note async
+  mark async
   take child, like child
   take
     kind
@@ -40,7 +40,7 @@ task read
   like text
 
 task stream
-  note async
+  mark async
   take child, like child
   take
     kind

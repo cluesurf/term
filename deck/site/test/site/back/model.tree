@@ -1,0 +1,9 @@
+
+# The post: the data the blog draws and stores. On its own, so a view that draws posts imports the record and not the
+# store beside it: ./post holds the repository over the database and re-exports this, and a program that only draws
+# (the blog in a terminal, with a store that keeps nothing) carries no database runtime (terminal-target-0005).
+
+form post
+  link id, like text
+  link title, like text
+  link body, like text

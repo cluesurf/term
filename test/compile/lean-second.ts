@@ -13,6 +13,7 @@ import { format } from '@term/make/code/format/format'
 import { analyze } from '@term/make/code/analyze'
 import { applyFixes } from '@term/make/code/lint/lint'
 import { parse, printTree } from '@term/make/code/parser/tree'
+import { programOf } from '@term/make/code/format/meaning'
 
 // the tree a source parses to, printed canonically, for "these two spellings are one tree"
 function shape(text: string): string {
@@ -421,7 +422,7 @@ task label
 
   ok('1. L042 prefer-sift reports `fork case` in a lean file', codes.includes('L042'), codes.join(' '))
   ok('2. L043 prefer-single-brace reports `{{n}}`', codes.includes('L043'), codes.join(' '))
-  ok('4. L044 inline-simple-value reports `back` over one value', codes.includes('L044'), codes.join(' '))
+  ok('4. L044 line-layout reports `back` over one value', codes.includes('L044'), codes.join(' '))
 
   const fixed = applyFixes(lean, findings)
 
@@ -437,10 +438,43 @@ task label
   ok('5. ...and `view h1` over `<Home>` to `view h1, <Home>`', viewFixed.includes('  view h1, <Home>\n'), viewFixed)
   same('5. the collapsed view emits what the stacked one emits', build(view, true), build(viewFixed, true))
 
-  const spaced = 'task boot\n  log\n    greet <ada>\n  save result\n    halt absence\n      bind thing, <k>\n'
+  // L044 is the five rules of format-rules.md "Where each part of a line goes", as `term form` lays them out. In a
+  // lean file a bare head under a call is a LABEL or a call, and only the checker knows which, so a part written on
+  // its own line stays there and one written closed stays closed: `shout` over `greet <ada>` is left alone, and
+  // `shout` over `greet(<ada>)` joins as `shout greet(<ada>)`
+  const spaced = 'task greet\n  take name, like text\n  like text\n\n  back name\n\ntask shout\n  take line, like text\n\n  back\n\ntask boot\n  shout\n    greet <ada>\n'
   const spacedCodes = analyze({ file: 's.tree', text: spaced }, { lean: true }).lint().map(f => f.code)
 
-  ok('4. L044 leaves a call written with a space on its own line (`log` over `greet <ada>`)', !spacedCodes.includes('L044'), spacedCodes.join(' '))
+  ok('3. L044 leaves a lean argument written open on its own line (`shout` over `greet <ada>`)', !spacedCodes.includes('L044'), spacedCodes.join(' '))
+
+  const closed = spaced.replace('greet <ada>', 'greet(<ada>)')
+  const closedFixed = applyFixes(closed, analyze({ file: 's.tree', text: closed }, { lean: true }).lint().filter(f => f.code === 'L044'))
+
+  ok('3. ...and joins one written closed: `shout greet(<ada>)`', closedFixed.includes('  shout greet(<ada>)\n'), closedFixed)
+  same('3. ...which emits what the stacked call emits', build(spaced, true), build(closedFixed, true))
+
+  // the page's own before and after: the fix writes the right-hand column, blank lines aside. Only L044's findings
+  // are applied, since another rule's fix on the same line (`save` to `host` for a name never reassigned) wins an
+  // overlap. Compared by milled program here, because this suite builds without the stdlib that holds `push`, `map`
+  // and `sum`; the guide's copy of the sample is built against it (tmp/lean-guide/page.sh)
+  const before = 'task list-demo\n  like number\n  save items\n    make list\n      3\n      1\n  push\n    items\n    2\n  save doubled\n    map\n      items\n      task twice\n        take n, like number\n        like number\n        back multiply(n, 2)\n  back sum(doubled)\n'
+  const after = 'task list-demo\n  like number\n  save items, make list, 3, 1\n  push items, 2\n  save doubled\n    map items\n      task twice\n        take n, like number\n        like number\n        back multiply(n, 2)\n  back sum(doubled)\n'
+  const demo = `load @term/base/list\n  find list\n\n${before}`
+  const demoFixed = applyFixes(demo, analyze({ file: 'd.tree', text: demo }, { lean: true }).lint().filter(f => f.code === 'L044'))
+  const dense = (text: string) => text.split('\n').filter(line => line.trim() !== '').join('\n')
+  const programAt = (text: string) => {
+    const parsed = parse({ file: 'd.tree', text })
+
+    return parsed.ok ? programOf(parsed.tree, 'd.tree', true) : undefined
+  }
+
+  ok('1 to 5. the L044 fix writes format-rules.md\'s after column', dense(demoFixed) === dense(`load @term/base/list\n  find list\n\n${after}`), demoFixed)
+  ok('1 to 5. ...and it mills to the program the before column mills to', programAt(demo) !== undefined && programAt(demo) === programAt(demoFixed))
+  ok('1 to 5. the after column has no L044 finding', !analyze({ file: 'a.tree', text: `load @term/base/list\n  find list\n\n${after}` }, { lean: true }).lint().some(f => f.code === 'L044'))
+
+  const longhandLayout = analyze({ file: 'l.tree', text: demo }, { lean: false })
+
+  ok('L044 leaves a longhand file alone', !longhandLayout.lint().some(f => f.code === 'L044'))
 
   const longhand = analyze({ file: 'l.tree', text: 'form shape\n  case circle\n\ntask f\n  take s, like shape\n  fork case, read s\n    case circle\n      send back\n' }, { lean: false })
 

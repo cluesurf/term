@@ -56,6 +56,20 @@ export function recordPlaces(program: Program): { writes: Map<Statement, PlaceWr
   return { writes, forms }
 }
 
+// the same for a backend whose records are VALUES (Swift's structs): no form needs to be slot-private, since a copy
+// held elsewhere cannot see a write, so every plain record form is read for its writes and its slot locals
+export function valuePlaces(program: Program): { writes: Map<Statement, PlaceWrite>; locals: Map<Statement, SlotLocal> } {
+  const forms = new Set(
+    program.flatMap(n =>
+      n.form === 'record-type' && !n.params.length && !n.variants.length && n.fields.length && !n.shared && !n.alias ? [n.name] : [],
+    ),
+  )
+  const locals = new Map<Statement, SlotLocal>()
+  const writes = placeWrites(program, forms, locals)
+
+  return { writes, locals }
+}
+
 const named = (t: Type | undefined, forms: Set<string>): string | undefined =>
   t?.kind === 'named' && forms.has(t.name) && !(t.args ?? []).length ? t.name : undefined
 
@@ -456,8 +470,37 @@ export function privateForms(
   return new Set([...candidates].filter(name => !refused.has(name)))
 }
 
-// the slot writes made in place (fact 2), for the forms `privateForms` answers
-export function placeWrites(program: Program, forms: Set<string>): Map<Statement, PlaceWrite> {
+// a slot local read through its slot: the list and the index it was read at
+export type SlotLocal = { list: Expression; index: Expression }
+
+// the list and index expressions of a slot read: `xs/{i}`, `xs/0`, `get(xs, i)`, `xs.at(i)`
+function slotParts(fns: Map<string, Fn>, node: Loose): SlotLocal | undefined {
+  if (!slotRead(fns, node)) {
+    return undefined
+  }
+
+  if (node.form === 'member') {
+    const index = (node.index as Expression | undefined) ?? ({ form: 'integer', value: Number(node.name), span: node.span, type: { kind: 'number' } } as Expression)
+
+    return { list: node.target as Expression, index }
+  }
+
+  const callee = node.callee as Loose
+  const args = node.args as Expression[]
+
+  return callee.form === 'member' ? { list: callee.target as Expression, index: args[0]! } : { list: args[0]!, index: args[1]! }
+}
+
+// the slot writes made in place (fact 2), for the forms `privateForms` answers. With `locals`, also the SLOT LOCALS
+// (Swift, where a record is a value and holding one copies it): a `let` read from a slot whose every later use is a
+// field read that the slot itself answers the same, because nothing between can change that slot but a write made in
+// place through the local, after which the local reads only unchanged fields. Read through the slot, no copy is made
+// (n-body on Swift: 202 ms to 161, the hand version 155, `tmp/swift-nbody-variants.ts`)
+export function placeWrites(
+  program: Program,
+  forms: Set<string>,
+  locals?: Map<Statement, SlotLocal>,
+): Map<Statement, PlaceWrite> {
   const writes = new Map<Statement, PlaceWrite>()
 
   if (!forms.size) {
@@ -620,6 +663,119 @@ export function placeWrites(program: Program, forms: Set<string>): Map<Statement
         }
       })
     })
+
+    if (locals) {
+      blocks(fn.body, block => {
+        block.forEach((s, p) => {
+          const local = slotLocal(block, p)
+
+          if (local) {
+            locals.set(s, local)
+          }
+        })
+      })
+    }
+
+    function slotLocal(block: Statement[], p: number): SlotLocal | undefined {
+      const s = block[p] as Loose
+      const read = s.form === 'let' ? slotRead(fns, s.init as Loose) : undefined
+      const form = s.form === 'let' ? named((s.type ?? (s.init as Loose).type) as Type, forms) : undefined
+
+      if (!read || !read.index || !form || (read.list as string | undefined) === undefined) {
+        return undefined
+      }
+
+      const b = s.name as string
+
+      if ((lets.get(b)?.length ?? 0) !== 1 || assigns.has(b)) {
+        return undefined
+      }
+
+      // the statements from the read to the local's last mention
+      let last = p
+
+      for (let k = p + 1; k < block.length; k++) {
+        if (namesIn(block[k]).has(b)) {
+          last = k
+        }
+      }
+
+      const window = block.slice(p + 1, last + 1)
+      const every = new Set(fieldsOf.get(form)!)
+      const reads = changedReads(window, b, every)
+
+      // every use a field read
+      if (reads === undefined) {
+        return undefined
+      }
+
+      const indexName = 'name' in read.index ? read.index.name : undefined
+      let clear = true
+      const scan = (value: unknown): void => {
+        if (!clear || typeof value !== 'object' || value === null) {
+          return
+        }
+
+        if (Array.isArray(value)) {
+          value.forEach(scan)
+
+          return
+        }
+
+        const node = value as Loose
+
+        if (node.form === 'closure') {
+          clear = false
+
+          return
+        }
+
+        if (node.form === 'assign') {
+          const target = node.target as Loose
+
+          if (target.form === 'variable' && (target.name === read.list || target.name === indexName)) {
+            clear = false
+
+            return
+          }
+
+          // a write to the list: made in place through this local, or at a slot provably another
+          const other = slotRead(fns, target)
+
+          if (other && other.list === read.list) {
+            const mine = writes.get(node as Statement)?.local === b
+
+            if (!mine && !distinct(other.index, read.index, [node, ...reads])) {
+              clear = false
+
+              return
+            }
+          }
+        }
+
+        if (node.form === 'call') {
+          const callee = node.callee as Loose
+          const passes = (node.args as Loose[]).some(a => a.form === 'variable' && a.name === read.list)
+          const onList = callee.form === 'member' && (callee.target as Loose).form === 'variable' && (callee.target as Loose).name === read.list
+
+          if ((passes && !listMethod(fns, callee, ['get', 'at'])) || (onList && !['at', 'get', 'length'].includes(callee.name as string))) {
+            clear = false
+
+            return
+          }
+        }
+
+        for (const [key, child] of Object.entries(node)) {
+          if (key !== 'type' && key !== 'span') {
+            scan(child)
+          }
+        }
+      }
+
+      scan(window)
+
+      return clear ? slotParts(fns, s.init as Loose) : undefined
+    }
 
     function inPlace(block: Statement[], q: number, ancestors: Statement[][]): PlaceWrite | undefined {
       const w = block[q] as Loose

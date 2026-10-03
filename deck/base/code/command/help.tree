@@ -1,4 +1,4 @@
-note draft
+mark draft
 
 # SHELVED 2026-10-02 (base-v1-0030): superseded by `help` in code/command.tree, which lays out a schema's usage. This
 # module declared `generate` and `format` and bound neither.

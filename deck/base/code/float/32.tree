@@ -5,7 +5,7 @@
 
 # round a value to the nearest 32-bit float (the building block of every f32 operation)
 
-note unstable
+mark unstable
 
 bind f32-round
   take value, like decimal

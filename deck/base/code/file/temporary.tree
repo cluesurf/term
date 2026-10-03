@@ -1,14 +1,14 @@
 # A temporary file or directory under the system temporary directory. The clean uniform interface, the per-env
 # native implementation selected at build time and hidden. Answers the path it made.
 
-note unstable
+mark unstable
 
 load @term/base/native/{platform}/file/asynchronous/temporary
   find temporary-make
 
 # `kind` is <file> or <directory>. The name is unique, so two calls never collide.
 task make
-  note async
+  mark async
   take
     kind
     like text
@@ -27,3 +27,4 @@ task make
       read kind
       read prefix
       read suffix
+      wait true

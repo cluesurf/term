@@ -14,7 +14,7 @@
 # See note/term/stdlib/native-async-file-and-server.md for what each backend runs underneath, and for the two
 # named gaps (h2c, and server push).
 
-note unstable
+mark unstable
 
 load @term/base/native/{platform}/network/http2
   find http2-serve
@@ -70,7 +70,7 @@ task serve
 
 # bind and answer over HTTP/2 without blocking. `stop` shuts it down.
 task start
-  note async
+  mark async
   take port, like size
   take
     host
@@ -101,10 +101,12 @@ task start
       read secure
       read certificate
       read key
+      wait true
 
 task stop
-  note async
+  mark async
   take server, like http2-server
   like void
   call http2-stop
     read server
+    wait true

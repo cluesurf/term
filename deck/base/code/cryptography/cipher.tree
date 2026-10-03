@@ -4,14 +4,14 @@
 #
 # No cryptography is implemented here. Every backend forwards to the platform's own AES-GCM (Web Crypto, javax.crypto, the aes-gcm crate, CryptoKit), and `extra` is a parameter each of those already defines.
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/cryptography/cipher
   find encrypt-aes-gcm
   find decrypt-aes-gcm
 
 task encrypt
-  note async
+  mark async
   take key, like bytes
   take nonce, like bytes
   take plain, like bytes
@@ -23,10 +23,11 @@ task encrypt
       read nonce
       read plain
       read extra
+      wait true
 
 # open ciphertext || tag under the same key, nonce and extra, returning the plaintext (fails if the tag does not verify, which includes the case where `extra` differs from the one it was sealed with)
 task decrypt
-  note async
+  mark async
   take key, like bytes
   take nonce, like bytes
   take sealed, like bytes
@@ -38,3 +39,4 @@ task decrypt
       read nonce
       read sealed
       read extra
+      wait true

@@ -1,0 +1,955 @@
+
+# THE TERMINAL PAINTER (terminal-target-0002): the retained tree the render runtime built in the terminal host, read
+# as the view vocabulary and laid out in the cell grid (../../../view/cells/grid). The tree is the memory host's
+# (../memory/dom), so the render ABI runs over it unchanged; this file only reads it.
+#
+# It reads what face places, the same words the toolkit hosts read (note/term/view/11-vocabulary.md):
+#
+#   a text node                  its text. An empty one is a placeholder the runtime left (`show`, a gate) and
+#                                takes no room
+#   display: flex                a stack: flex-direction, gap, padding, align-items, justify-content
+#   flex-grow: 1                 grows, on any child of a stack
+#   width, height, min-*, max-*  a frame around the element's content, in points (8 across, 16 down to a cell)
+#   hr                           a divider
+#   button                       `[ label ]`, its text inside, and `> label <` while it has focus
+#   img                          `[text]`, its `alt`, since a grid draws no pixels
+#   input, textarea              `[value ]`, or the placeholder while it is empty, and `>value█<` while it has focus:
+#                                the cell after the value is the cursor's, kept either way so focus never moves layout
+#   anything else                a block (a column) of its children, or ONE wrapped text when everything inside it
+#                                is inline (text, span, a, strong, em, b, i, code, label, small), so a paragraph with
+#                                a link in it wraps as one paragraph
+#
+# A length is the digits the value's first word starts with, so `16px` is 16; `padding: 8px 16px` reads as 8 all
+# round, because the grid's padding is one length.
+
+load ../memory/dom
+  find memory-element
+  find memory-pair
+  find element-of
+
+load ../../view
+  find view
+
+load ../../../view/cells/grid
+  find cell-node
+  find lay-out
+
+load ./focus
+  find is-focused
+
+load @term/base/list
+  find list
+  find push
+
+load @term/base/text/unicode
+  find to-runes
+  find rune-to-text
+
+load @term/base/text/string
+  find concat
+  find trim
+  find repeat
+
+load @term/base/math
+  find round-down
+
+# a cell node of `kind` with every length unset and every layout word at its default
+task blank-node
+  take kind, like text
+  like cell-node
+  send back
+    make cell-node
+      bind kind, read kind
+      bind text, text <>
+      bind direction, text <column>
+      bind gap, code 0
+      bind align, text <stretch>
+      bind justify, text <start>
+      bind padding, code 0
+      bind grow, code 0
+      bind width, code 0
+      bind height, code 0
+      bind min-width, code 0
+      bind max-width, code 0
+      bind min-height, code 0
+      bind max-height, code 0
+      bind children
+        make list
+
+task text-node
+  take value, like text
+  like cell-node
+  save made
+    call blank-node
+      text <text>
+  save made/text, read value
+  send back, read made
+
+# the value of an attribute, or empty text when the element has none by that name
+task attribute-of
+  take element, like memory-element
+  take name, like text
+  like text
+  save found, text <>
+  walk list, read element/attributes
+    hook next
+      take site, name pair
+      fork test
+        hook test
+          call is-equal
+            read pair/name
+            read name
+        hook hold
+          save found, read pair/value
+  send back, read found
+
+# one declaration's value out of a `style` attribute, or empty text: `gap` in `display: flex; gap: 16px` is `16px`
+task style-value
+  take style, like text
+  take property, like text
+  like text
+  save found, text <>
+  save name, text <>
+  save value, text <>
+  save in-value, false
+  walk list, call to-runes(read style)
+    hook next
+      take site, name rune
+      fork test
+        hook test
+          call is-equal
+            read rune
+            code 59
+        hook hold
+          fork test
+            hook test
+              call is-equal
+                call trim
+                  read name
+                read property
+            hook hold
+              save found
+                call trim
+                  read value
+          save name, text <>
+          save value, text <>
+          save in-value, false
+        hook test
+          meet and
+            call is-equal
+              read in-value
+              false
+            call is-equal
+              read rune
+              code 58
+        hook hold
+          save in-value, true
+        hook test
+          read in-value
+        hook hold
+          save value
+            call concat
+              read value
+              call rune-to-text
+                read rune
+        hook miss
+          save name
+            call concat
+              read name
+              call rune-to-text
+                read rune
+  # the last declaration need not end in `;`
+  fork test
+    hook test
+      call is-equal
+        call trim
+          read name
+        read property
+    hook hold
+      save found
+        call trim
+          read value
+  send back, read found
+
+# the text up to the first space
+task first-word
+  take value, like text
+  like text
+  save word, text <>
+  save done, false
+  walk list, call to-runes(read value)
+    hook next
+      take site, name rune
+      fork test
+        hook test
+          call is-equal
+            read rune
+            code 32
+        hook hold
+          save done, true
+        hook test
+          call is-equal
+            read done
+            false
+        hook hold
+          save word
+            call concat
+              read word
+              call rune-to-text
+                read rune
+  send back, read word
+
+# a CSS length in points: the digits its first word starts with, so `16px` is 16, `1` is 1, `12.5px` is 12, and
+# nothing is 0. Read here rather than with the stdlib's number reader, which raises on what it cannot read and loads
+# the whole text module: a painter must draw whatever it is given
+task length-of
+  take value, like text
+  like number
+  save total, code 0
+  save reading, true
+  walk list, call to-runes(call first-word(call trim(read value)))
+    hook next
+      take site, name rune
+      fork test
+        hook test
+          meet and
+            read reading
+            call is-minimum
+              read rune
+              code 48
+            call is-maximum
+              read rune
+              code 57
+        hook hold
+          save total
+            call add
+              call multiply
+                read total
+                code 10
+              call subtract
+                read rune
+                code 48
+        hook miss
+          save reading, false
+  send back, read total
+
+task align-of
+  take value, like text
+  like text
+  fork test
+    hook test
+      meet or
+        call is-equal
+          read value
+          text <flex-start>
+        call is-equal
+          read value
+          text <start>
+    hook hold
+      send back, text <start>
+    hook test
+      meet or
+        call is-equal
+          read value
+          text <flex-end>
+        call is-equal
+          read value
+          text <end>
+    hook hold
+      send back, text <end>
+    hook test
+      call is-equal
+        read value
+        text <center>
+    hook hold
+      send back, text <center>
+  send back, text <stretch>
+
+task justify-of
+  take value, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read value
+        text <center>
+    hook hold
+      send back, text <center>
+    hook test
+      meet or
+        call is-equal
+          read value
+          text <flex-end>
+        call is-equal
+          read value
+          text <end>
+    hook hold
+      send back, text <end>
+    hook test
+      call is-equal
+        read value
+        text <space-between>
+    hook hold
+      send back, text <between>
+  send back, text <start>
+
+# the tags whose content flows on a line rather than stacking
+task is-inline-tag
+  take tag, like text
+  like boolean
+  send back
+    meet or
+      call is-equal
+        read tag
+        text <span>
+      call is-equal
+        read tag
+        text <a>
+      call is-equal
+        read tag
+        text <strong>
+      call is-equal
+        read tag
+        text <em>
+      call is-equal
+        read tag
+        text <b>
+      call is-equal
+        read tag
+        text <i>
+      call is-equal
+        read tag
+        text <code>
+      call is-equal
+        read tag
+        text <label>
+      call is-equal
+        read tag
+        text <small>
+
+# whether everything under an element is inline: text nodes, and inline tags holding only the same
+task is-inline-content
+  take element, like memory-element
+  like boolean
+  save inline, true
+  walk list, read element/children
+    hook next
+      take site, name child
+      save inner
+        call element-of
+          read child
+      fork test
+        hook test
+          call is-equal
+            read inner/tag
+            text <>
+        hook hold
+          save skip, code 0
+        hook test
+          meet and
+            call is-inline-tag
+              read inner/tag
+            call is-inline-content
+              read inner
+        hook hold
+          save skip, code 0
+        hook miss
+          save inline, false
+  send back, read inline
+
+# every text under a node, joined in order
+task text-of
+  take node, like view
+  like text
+  save element
+    call element-of
+      read node
+  fork test
+    hook test
+      call is-equal
+        read element/tag
+        text <>
+    hook hold
+      send back, read element/text
+  save joined, text <>
+  walk list, read element/children
+    hook next
+      take site, name child
+      save joined
+        call concat
+          read joined
+          call text-of
+            read child
+  send back, read joined
+
+# text in brackets, the grid's mark for a control or a picture
+task bracket
+  take value, like text
+  like text
+  send back
+    call enclose
+      text <[>
+      read value
+      text <]>
+
+task enclose
+  take left, like text
+  take value, like text
+  take right, like text
+  like text
+  send back
+    call concat
+      call concat
+        read left
+        read value
+      read right
+
+# the cell nodes of an element's children, skipping the empty text nodes the runtime uses as placeholders
+task cell-children
+  take element, like memory-element
+  like list
+    like cell-node
+  save made
+    make list
+  walk list, read element/children
+    hook next
+      take site, name child
+      save inner
+        call element-of
+          read child
+      fork test
+        hook test
+          meet and
+            call is-equal
+              read inner/tag
+              text <>
+            call is-equal
+              read inner/text
+              text <>
+        hook hold
+          save skip, code 0
+        hook miss
+          call push
+            bind list, read made
+            bind item
+              call to-cell-node
+                read child
+  send back, read made
+
+# an element's style as one declaration list: its `style` attribute, then each property `set-style` wrote, so a later
+# declaration wins as it does in CSS (a dialog shows and hides itself with `set-style`, a stack with the attribute)
+task style-of
+  take element, like memory-element
+  like text
+  save joined
+    call attribute-of
+      read element
+      text <style>
+  walk list, read element/styles
+    hook next
+      take site, name pair
+      save joined
+        call concat
+          read joined
+          text <; {pair/name}: {pair/value}>
+  send back, read joined
+
+# a toggle (face's generic switch: a `button` with role `switch`): `[x]` on, `[ ]` off, `>x<` while it has focus, and
+# its label after it
+task toggle-node
+  take element, like memory-element
+  like cell-node
+  save mark, text < >
+  fork test
+    hook test
+      call is-equal
+        call attribute-of
+          read element
+          text <aria-checked>
+        text <true>
+    hook hold
+      save mark, text <x>
+  save drawn
+    call enclose
+      text <[>
+      read mark
+      text <]>
+  fork test
+    hook test
+      call is-focused
+        read element
+    hook hold
+      save drawn
+        call enclose
+          text <\>>
+          read mark
+          text <\<>
+  save label
+    call attribute-of
+      read element
+      text <aria-label>
+  fork test
+    hook test
+      call is-unequal
+        read label
+        text <>
+    hook hold
+      save drawn, text <{drawn} {label}>
+  send back
+    call text-node
+      read drawn
+
+# a range (face's generic slider: an `input` of type `range`): a bar of 10 cells filled as far as the value lies
+# between min and max, then the value. `>`, `<` for the bar's ends while it has focus
+task range-node
+  take element, like memory-element
+  like cell-node
+  save low
+    call length-of
+      call attribute-of
+        read element
+        text <min>
+  save high
+    call length-of
+      call attribute-of
+        read element
+        text <max>
+  save value
+    call length-of
+      read element/value
+  save filled, code 0
+  fork test
+    hook test
+      call is-above
+        read high
+        read low
+    hook hold
+      save filled
+        call round-down
+          call divide
+            call multiply
+              call subtract
+                read value
+                read low
+              code 10
+            call subtract
+              read high
+              read low
+  save filled
+    call smaller-of
+      call larger-of
+        read filled
+        code 0
+      code 10
+  save bar
+    call concat
+      call repeat
+        text <#>
+        read filled
+      call repeat
+        text <->
+        call subtract
+          code 10
+          read filled
+  fork test
+    hook test
+      call is-focused
+        read element
+    hook hold
+      send back
+        call text-node
+          text <\>{bar}\< {value}>
+  send back
+    call text-node
+      text <[{bar}] {value}>
+
+# a choice (face's generic select): the chosen label with a mark that says it opens, `>label ▾<` while it has focus
+task choice-node
+  take element, like memory-element
+  like cell-node
+  save chosen, read element/value
+  fork test
+    hook test
+      call is-focused
+        read element
+    hook hold
+      send back
+        call text-node
+          text <\>{chosen} ▾\<>
+  send back
+    call text-node
+      text <[{chosen} ▾]>
+
+# a dialog (face's generic dialog: a `div` with role `dialog`): its title and content, a column inside a border
+task dialog-node
+  take element, like memory-element
+  like cell-node
+  save inside
+    call blank-node
+      text <stack>
+  save inside/align, text <start>
+  save inside/children
+    call cell-children
+      read element
+  save made
+    call blank-node
+      text <box>
+  call push
+    bind list, read made/children
+    bind item, read inside
+  send back, read made
+
+task larger-of
+  take a, like number
+  take b, like number
+  like number
+  fork test
+    hook test
+      call is-above
+        read a
+        read b
+    hook hold
+      send back, read a
+  send back, read b
+
+task smaller-of
+  take a, like number
+  take b, like number
+  like number
+  fork test
+    hook test
+      call is-below
+        read a
+        read b
+    hook hold
+      send back, read a
+  send back, read b
+
+# one node of the retained tree as the grid's node, and everything under it
+task to-cell-node
+  take node, like view
+  like cell-node
+  save element
+    call element-of
+      read node
+  save tag, read element/tag
+  # a text node is its text
+  fork test
+    hook test
+      call is-equal
+        read tag
+        text <>
+    hook hold
+      send back
+        call text-node
+          read element/text
+  save style
+    call style-of
+      read element
+  # hidden (`display: none`, a closed dialog): it takes no room at all
+  fork test
+    hook test
+      call is-equal
+        call style-value
+          read style
+          text <display>
+        text <none>
+    hook hold
+      send back
+        call blank-node
+          text <spacer>
+  save role
+    call attribute-of
+      read element
+      text <role>
+  # the four words face's generic components build from plain elements: toggle, range, choice, dialog. And scroll, a
+  # column of its children (the viewport that moves is a key's work, and the grid already clips at the height)
+  fork test
+    hook test
+      meet and
+        call is-equal
+          read tag
+          text <button>
+        call is-equal
+          read role
+          text <switch>
+    hook hold
+      send back
+        call toggle-node
+          read element
+    hook test
+      meet and
+        call is-equal
+          read tag
+          text <input>
+        call is-equal
+          call attribute-of
+            read element
+            text <type>
+          text <range>
+    hook hold
+      send back
+        call range-node
+          read element
+    hook test
+      call is-equal
+        read tag
+        text <select>
+    hook hold
+      send back
+        call choice-node
+          read element
+    hook test
+      call is-equal
+        read role
+        text <dialog>
+    hook hold
+      send back
+        call dialog-node
+          read element
+    hook test
+      call is-equal
+        read tag
+        text <scroll>
+    hook hold
+      save column
+        call blank-node
+          text <stack>
+      save column/children
+        call cell-children
+          read element
+      send back, read column
+  fork test
+    hook test
+      call is-equal
+        read tag
+        text <hr>
+    hook hold
+      send back
+        call blank-node
+          text <divider>
+    hook test
+      call is-equal
+        read tag
+        text <button>
+    hook hold
+      fork test
+        hook test
+          call is-focused
+            read element
+        hook hold
+          send back
+            call text-node
+              call enclose
+                text <\> >
+                call text-of
+                  read node
+                text < \<>
+      send back
+        call text-node
+          call enclose
+            text <[ >
+            call text-of
+              read node
+            text < ]>
+    hook test
+      call is-equal
+        read tag
+        text <img>
+    hook hold
+      send back
+        call text-node
+          call bracket
+            call attribute-of
+              read element
+              text <alt>
+    hook test
+      meet or
+        call is-equal
+          read tag
+          text <input>
+        call is-equal
+          read tag
+          text <textarea>
+    hook hold
+      save shown, read element/value
+      fork test
+        hook test
+          call is-focused
+            read element
+        hook hold
+          send back
+            call text-node
+              call enclose
+                text <\>>
+                read shown
+                text <█\<>
+      fork test
+        hook test
+          call is-equal
+            read shown
+            text <>
+        hook hold
+          save shown
+            call attribute-of
+              read element
+              text <placeholder>
+      send back
+        call text-node
+          call enclose
+            text <[>
+            read shown
+            text < ]>
+  save grow
+    call length-of
+      call style-value
+        read style
+        text <flex-grow>
+  # a stack
+  fork test
+    hook test
+      call is-equal
+        call style-value
+          read style
+          text <display>
+        text <flex>
+    hook hold
+      save made
+        call blank-node
+          text <stack>
+      save direction
+        call style-value
+          read style
+          text <flex-direction>
+      fork test
+        hook test
+          call is-equal
+            read direction
+            text <row>
+        hook hold
+          save made/direction, text <row>
+      save made/gap
+        call length-of
+          call style-value
+            read style
+            text <gap>
+      save made/padding
+        call length-of
+          call style-value
+            read style
+            text <padding>
+      save made/align
+        call align-of
+          call style-value
+            read style
+            text <align-items>
+      save made/justify
+        call justify-of
+          call style-value
+            read style
+            text <justify-content>
+      save made/grow, read grow
+      save made/children
+        call cell-children
+          read element
+      send back, read made
+  # a frame: any bound in the style
+  save width
+    call length-of
+      call style-value
+        read style
+        text <width>
+  save height
+    call length-of
+      call style-value
+        read style
+        text <height>
+  save min-width
+    call length-of
+      call style-value
+        read style
+        text <min-width>
+  save max-width
+    call length-of
+      call style-value
+        read style
+        text <max-width>
+  save min-height
+    call length-of
+      call style-value
+        read style
+        text <min-height>
+  save max-height
+    call length-of
+      call style-value
+        read style
+        text <max-height>
+  save bounds
+    call add
+      call add
+        call add
+          read width
+          read height
+        call add
+          read min-width
+          read max-width
+      call add
+        read min-height
+        read max-height
+  # the content: one wrapped text when it is all inline, else a column of the children
+  save content
+    fork test
+      hook test
+        call is-inline-content
+          read element
+      hook hold
+        call text-node
+          call text-of
+            read node
+      hook miss
+        call blank-node
+          text <stack>
+  fork test
+    hook test
+      call is-equal
+        read content/kind
+        text <stack>
+    hook hold
+      save content/children
+        call cell-children
+          read element
+  fork test
+    hook test
+      call is-above
+        read bounds
+        code 0
+    hook hold
+      save frame
+        call blank-node
+          text <frame>
+      save frame/width, read width
+      save frame/height, read height
+      save frame/min-width, read min-width
+      save frame/max-width, read max-width
+      save frame/min-height, read min-height
+      save frame/max-height, read max-height
+      save frame/grow, read grow
+      call push
+        bind list, read frame/children
+        bind item, read content
+      send back, read frame
+  save content/grow, read grow
+  send back, read content
+
+# the tree under `root`, painted into a grid `width` cells across and `height` down, as its lines
+task paint-screen
+  take root, like view
+  take width, like number
+  take height, like number
+  like text
+  send back
+    call lay-out
+      call to-cell-node
+        read root
+      read width
+      read height

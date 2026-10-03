@@ -27,7 +27,7 @@
 # as well: `char-count` cannot be mistaken for a byte count the way `size`
 # can.
 
-note stable
+mark stable
 
 bind code-point-count
   take value, like text

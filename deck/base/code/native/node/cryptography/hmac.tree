@@ -4,7 +4,7 @@ dock load
   load <node:crypto>, name crypto
 
 task hmac-sha256
-  note async
+  mark async
   take key, like bytes
   take data, like bytes
   like bytes
@@ -19,7 +19,7 @@ task hmac-sha256
     call updated/digest
 
 task hmac-sha512
-  note async
+  mark async
   take key, like bytes
   take data, like bytes
   like bytes

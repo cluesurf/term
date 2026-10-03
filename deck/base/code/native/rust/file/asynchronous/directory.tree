@@ -11,7 +11,7 @@ load @term/base/file/directory
   find walk-entry
 
 task folder-list
-  note async
+  mark async
   take path, like text
   take
     deep
@@ -26,7 +26,7 @@ task folder-list
       wait true
 
 task folder-make
-  note async
+  mark async
   take path, like text
   like void
   call walk-file/dir-make
@@ -35,7 +35,7 @@ task folder-make
 
 # every entry beneath `path`, with what it is and how far down it sits. `depth` 0 walks all the way down.
 task folder-walk
-  note async
+  mark async
   take path, like text
   take
     depth

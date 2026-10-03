@@ -102,6 +102,7 @@ type Reply = {
   styleDark?: string
   error?: string
   openClaims?: string[]
+  warnings?: string[]
   obligations?: { total: number; proven: number }
 }
 
@@ -112,6 +113,7 @@ export function compileProjectParallel(
   compiled: number
   failed: number
   errors: string[]
+  warnings: string[]
   open: string[]
   obligations: { total: number; proven: number }
 }> {
@@ -127,6 +129,7 @@ export function compileProjectParallel(
       compiled: 0,
       failed: 0,
       errors: [],
+      warnings: [],
       open: [],
       obligations: { total: 0, proven: 0 },
     })
@@ -160,6 +163,7 @@ export function compileProjectParallel(
   let compiled = 0
   let failed = 0
   const errors: string[] = []
+  const warnings: string[] = []
   const open = new Set<string>()
   const obligations = { total: 0, proven: 0 }
   let next = 0
@@ -169,6 +173,8 @@ export function compileProjectParallel(
     for (const claim of reply.openClaims ?? []) {
       open.add(claim)
     }
+
+    warnings.push(...(reply.warnings ?? []))
 
     obligations.total += reply.obligations?.total ?? 0
     obligations.proven += reply.obligations?.proven ?? 0
@@ -248,6 +254,7 @@ export function compileProjectParallel(
       compiled,
       failed,
       errors,
+      warnings,
       open: [...open].sort(),
       obligations,
     }))

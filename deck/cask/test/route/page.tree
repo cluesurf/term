@@ -21,19 +21,16 @@ load @term/base/text
 host expected, text <cask-route-ok>
 
 task boot
-  note async
+  mark async
   like void
   save bundle
     call bundle-path
-      wait true
   save line
     call trim
       call read
-        wait true
         text <{{bundle}}/smoke.txt>
   save answer
     call ask
-      wait true
       text <GET>
       text </echo/{{line}}>
       text <>
@@ -44,9 +41,7 @@ task boot
         read expected
     hook hold
       call exit
-        wait true
         code 0
     hook miss
       call exit
-        wait true
         code 1

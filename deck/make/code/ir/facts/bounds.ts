@@ -29,12 +29,19 @@ type Loose = { form?: string; [key: string]: unknown }
 // (`low`) or with the list's length (`high`)
 export type BoundCheck = { list: string; base?: string; offset: number; side: 'low' | 'high' }
 
-export type LoopGuard = { checks: BoundCheck[] }
+// a bound on a name the guard also reads, for the arguments of a call made unchecked: `name >= 0` (`low`) or
+// `name <= high`
+export type Limit = { name: string; low?: true; high?: number }
+
+// `fast`: the call nodes in the body that may call the task's unchecked copy once the guard, `limits` included, holds
+export type LoopGuard = { checks: BoundCheck[]; fast?: object[]; limits?: Limit[] }
 
 export function boundedLoops(program: Program): WeakMap<Statement, LoopGuard> {
   const guards = new WeakMap<Statement, LoopGuard>()
   const closureWrites = namesWrittenInClosures(program)
   const pure = scalarTasks(program)
+  // a task may run unchecked only if it also reaches no list, so it is already a call the guard allows
+  const bounded = new Map([...integerBounds(program)].filter(([name]) => pure.has(name)))
   const seen = new Set<object>()
 
   const visit = (value: unknown): void => {
@@ -53,7 +60,7 @@ export function boundedLoops(program: Program): WeakMap<Statement, LoopGuard> {
     const node = value as Loose
 
     if (node.form === 'while') {
-      const guard = guardOf(node, closureWrites, pure)
+      const guard = guardOf(node, closureWrites, pure, bounded)
 
       if (guard) {
         guards.set(node as unknown as Statement, guard)
@@ -72,7 +79,12 @@ export function boundedLoops(program: Program): WeakMap<Statement, LoopGuard> {
   return guards
 }
 
-function guardOf(loop: Loose, closureWrites: Set<string>, pure: Set<string>): LoopGuard | undefined {
+function guardOf(
+  loop: Loose,
+  closureWrites: Set<string>,
+  pure: Set<string>,
+  bounded: Map<string, number> = new Map(),
+): LoopGuard | undefined {
   const cond = loop.cond as Loose | undefined
   const body = loop.body as Loose[]
 
@@ -348,9 +360,98 @@ function guardOf(loop: Loose, closureWrites: Set<string>, pure: Set<string>): Lo
 
   body.forEach((s, i) => uses(s, i))
 
-  if (refused || checks.length === 0) {
+  if (refused) {
     return undefined
   }
+
+  // the calls to a task whose integer arithmetic is safe below a bound (`integerBounds`), with every argument bounded
+  // here: the counter before either side steps (in [small0, big0 - 1], so `small >= 0` and `big <= L`), a name the
+  // loop never writes (`0 <= v <= L - 1`, read once at entry), or a literal inside [0, L)
+  const fast: object[] = []
+  const limits: Limit[] = []
+  const calls = (value: unknown, at: number): void => {
+    if (typeof value !== 'object' || value === null) {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(v => calls(v, at))
+
+      return
+    }
+
+    const node = value as Loose
+    const callee = node.callee as Loose | undefined
+    const limit = node.form === 'call' && callee?.form === 'variable' ? bounded.get(callee.name as string) : undefined
+
+    if (limit !== undefined) {
+      const mine: Limit[] = []
+      const fits = (node.args as Loose[]).every(arg => {
+        if (arg.form === 'integer') {
+          return Number(arg.value) >= 0 && Number(arg.value) < limit
+        }
+
+        if (arg.form !== 'variable') {
+          return false
+        }
+
+        const name = arg.name as string
+
+        if (name === smallName) {
+          if (at < 0 || at >= firstStep) {
+            return false
+          }
+
+          mine.push({ name: smallName, low: true })
+
+          if (bigName) {
+            mine.push({ name: bigName, high: limit })
+
+            return true
+          }
+
+          return Number(big.value) <= limit
+        }
+
+        if (name === bigName || (writes.get(name) ?? []).length > 0 || closureWrites.has(name)) {
+          return false
+        }
+
+        mine.push({ name, low: true }, { name, high: limit - 1 })
+
+        return true
+      })
+
+      if (fits) {
+        fast.push(node)
+        limits.push(...mine)
+      }
+    }
+
+    for (const [key, child] of Object.entries(node)) {
+      if (key !== 'type' && key !== 'span') {
+        calls(child, at)
+      }
+    }
+  }
+
+  body.forEach((s, i) => calls(s, i))
+
+  if (checks.length === 0 && fast.length === 0) {
+    return undefined
+  }
+
+  // per name, the strictest of each kind
+  const lows = new Set(limits.flatMap(l => (l.low ? [l.name] : [])))
+  const highs = new Map<string, number>()
+
+  for (const l of limits) {
+    if (l.high !== undefined) {
+      highs.set(l.name, Math.min(l.high, highs.get(l.name) ?? Infinity))
+    }
+  }
+
+  const bounds: Limit[] = [...[...lows].map(name => ({ name, low: true as const })), ...[...highs].map(([name, high]) => ({ name, high }))]
 
   // per list, base and side only the extreme bound: the lowest offset tested against 0 implies every higher one, and the
   // highest tested against the length implies every lower one (`high < len` makes `high - 1 < len` redundant)
@@ -365,7 +466,7 @@ function guardOf(loop: Loose, closureWrites: Set<string>, pure: Set<string>): Lo
     }
   }
 
-  return { checks: [...extreme.values()] }
+  return { checks: [...extreme.values()], ...(fast.length ? { fast, limits: bounds } : {}) }
 }
 
 // a number, a float, a flag or a text: a value that holds no list
@@ -378,6 +479,189 @@ function scalar(type: { kind?: string; name?: string } | undefined): boolean {
       type.kind === 'string' ||
       (type.kind === 'named' && ['text', 'boolean', 'number', 'integer', 'decimal'].includes(type.name ?? '')))
   )
+}
+
+// The tasks whose integer arithmetic cannot leave the safe integers while every argument is in [0, L): each answered
+// with the largest such L, a power of two up to 2^31. Interval arithmetic over a body of `let`s and one `send back`,
+// through `+`, `-`, `*`, integer `/` and `%` (by a divisor whose interval excludes 0) and the float operations, which
+// carry no check. A loop that calls one with arguments it can bound (`boundedLoops`) runs an unchecked copy of it
+// behind `n <= L` in its guard: spectral-norm's `a-value`, four checked operations 40 million times
+const SAFE = Number.MAX_SAFE_INTEGER
+
+export function integerBounds(program: Program): Map<string, number> {
+  const found = new Map<string, number>()
+
+  for (const fn of program) {
+    if (fn.form !== 'function' || fn.async || !fn.params.length || !fn.params.every(p => p.type?.kind === 'number')) {
+      continue
+    }
+
+    for (let power = 31; power >= 1; power--) {
+      if (fits(fn, 2 ** power)) {
+        found.set(fn.name, 2 ** power)
+
+        break
+      }
+    }
+  }
+
+  return found
+}
+
+// the integer `/` and `%` nodes of the bounded tasks whose both operands are proven non-negative (the divisor
+// positive) inside the bound: on Rust the task's unchecked copy divides them unsigned, one shift for `/ 2` where a
+// signed division needs a sign fix-up (spectral-norm's `a_value`, 227 ms to 218, the hand version 218)
+export function unsignedDivisions(program: Program): WeakSet<object> {
+  const found = new WeakSet<object>()
+  const bounds = integerBounds(program)
+
+  for (const fn of program) {
+    if (fn.form === 'function' && bounds.has(fn.name)) {
+      fits(fn, bounds.get(fn.name)!, found)
+    }
+  }
+
+  return found
+}
+
+// whether every integer operation in the body stays inside the safe integers with each parameter in [0, limit), and
+// into `divisions` each division or remainder whose operands it proved non-negative
+function fits(fn: Extract<Statement, { form: 'function' }>, limit: number, divisions?: WeakSet<object>): boolean {
+  type Range = { lo: number; hi: number } | 'float'
+  const env = new Map<string, Range>(fn.params.map(p => [p.name, { lo: 0, hi: limit - 1 }]))
+  let ok = true
+
+  const range = (e: Loose): Range => {
+    if (!ok) {
+      return 'float'
+    }
+
+    switch (e.form) {
+      case 'integer':
+        return { lo: e.value as number, hi: e.value as number }
+      case 'float':
+        return 'float'
+      case 'variable': {
+        const known = env.get(e.name as string)
+
+        if (known === undefined) {
+          ok = false
+        }
+
+        return known ?? 'float'
+      }
+      case 'unary': {
+        const inner = range(e.operand as Loose)
+
+        if (inner === 'float' || e.op !== '-') {
+          return inner
+        }
+
+        return { lo: -inner.hi, hi: -inner.lo }
+      }
+      case 'binary': {
+        const a = range(e.left as Loose)
+        const b = range(e.right as Loose)
+        const integer = (e.left as Loose).type && ((e.left as Loose).type as { kind?: string }).kind === 'number' &&
+          ((e.right as Loose).type as { kind?: string } | undefined)?.kind === 'number'
+
+        if (!integer) {
+          // a float operation, or a comparison: no check to remove, nothing to track
+          return 'float'
+        }
+
+        if (a === 'float' || b === 'float') {
+          ok = false
+
+          return 'float'
+        }
+
+        type Span = { lo: number; hi: number }
+        const corners = (f: (x: number, y: number) => number): Span => {
+          const all = [f(a.lo, b.lo), f(a.lo, b.hi), f(a.hi, b.lo), f(a.hi, b.hi)]
+
+          return { lo: Math.min(...all), hi: Math.max(...all) }
+        }
+        let out: Span
+
+        switch (e.op) {
+          case '+':
+            out = { lo: a.lo + b.lo, hi: a.hi + b.hi }
+            break
+          case '-':
+            out = { lo: a.lo - b.hi, hi: a.hi - b.lo }
+            break
+          case '*':
+            out = corners((x, y) => x * y)
+            break
+          case '/':
+            if (b.lo <= 0 && b.hi >= 0) {
+              ok = false
+
+              return 'float'
+            }
+
+            out = corners((x, y) => Math.trunc(x / y))
+
+            if (a.lo >= 0 && b.lo > 0) {
+              divisions?.add(e)
+            }
+
+            break
+          case '%':
+            if (b.lo <= 0 && b.hi >= 0) {
+              ok = false
+
+              return 'float'
+            }
+
+            out = { lo: Math.min(0, a.lo), hi: Math.max(0, a.hi) }
+
+            if (a.lo >= 0 && b.lo > 0) {
+              divisions?.add(e)
+            }
+
+            break
+          default:
+            // a comparison of two integers: a boolean
+            return 'float'
+        }
+
+        if (out.lo < -SAFE || out.hi > SAFE) {
+          ok = false
+        }
+
+        return out
+      }
+      case 'call': {
+        // its arguments are bounded like any operand; a call answering a float (`to-decimal`) needs no range of its
+        // own, and the callee keeps its own checks. One answering an integer is not followed
+        ;(e.args as Loose[]).forEach(range)
+
+        if ((e.type as { kind?: string } | undefined)?.kind !== 'float') {
+          ok = false
+        }
+
+        return 'float'
+      }
+      default:
+        ok = false
+
+        return 'float'
+    }
+  }
+
+  for (const s of fn.body as Loose[]) {
+    if (s.form === 'let') {
+      env.set(s.name as string, range(s.init as Loose))
+    } else if (s.form === 'return' && s.value) {
+      range(s.value as Loose)
+    } else {
+      return false
+    }
+  }
+
+  return ok
 }
 
 // A call to a native module's function (`fmath.sqrt`, through a `dock load` the checker leaves deferred, which a local

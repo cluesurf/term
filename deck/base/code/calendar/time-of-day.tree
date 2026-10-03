@@ -2,7 +2,7 @@
 # partial time, `HH:MM:SS` with an optional fraction of a second kept to the millisecond, in Term, the same on every
 # backend. A text that is not one raises `time-mismatch` with the position and the reason (calendar/time-text.tree).
 
-note stable
+mark stable
 
 load @term/base/calendar/time-text
   find time-mismatch

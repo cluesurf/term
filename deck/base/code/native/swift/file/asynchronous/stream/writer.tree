@@ -11,7 +11,7 @@ load @term/base/file/stream/writer
   find writer
 
 task writer-create
-  note async
+  mark async
   take path, like text
   take
     append
@@ -29,7 +29,7 @@ task writer-create
       bind path, read path
 
 task writer-write
-  note async
+  mark async
   take stream, like writer
   take data, like text
   like void
@@ -39,7 +39,7 @@ task writer-write
     wait true
 
 task writer-close
-  note async
+  mark async
   take stream, like writer
   like void
   call aio/writer-close

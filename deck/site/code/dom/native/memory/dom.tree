@@ -471,6 +471,51 @@ task replace
     case none
       save skip, code 0
 
+# put `node` under `reference`'s parent just before it, moving it if it had a parent
+task insert-before
+  take node, like view
+  take reference, like view
+  call remove
+    read node
+  save anchor
+    call element-of
+      read reference
+  save edge, read anchor/parent
+  fork case, read edge
+    case some
+      save owner
+        call element-of
+          read edge/value
+      save placed
+        make list
+      walk list, read owner/children
+        hook next
+          take site, name entry
+          save other
+            call element-of
+              read entry
+          fork test
+            hook test
+              call is-equal
+                read other/key
+                read anchor/key
+            hook hold
+              call push
+                bind list, read placed
+                bind item, read node
+          call push
+            bind list, read placed
+            bind item, read entry
+      save owner/children, read placed
+      save inner
+        call element-of
+          read node
+      save inner/parent
+        make some
+          bind value, read edge/value
+    case none
+      save skip, code 0
+
 task clear
   take node, like view
   save element

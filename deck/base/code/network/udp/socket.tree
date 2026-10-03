@@ -1,4 +1,4 @@
-note draft
+mark draft
 
 # SHELVED 2026-10-02 (base-v1-0019): a duplicate of network/udp. It declared tasks that bound nothing, so a call built clean and
 # threw `stub` at run time; out of the build until it has bodies.
@@ -13,7 +13,7 @@ form datagram
   link port, like size
 
 task send
-  note async
+  mark async
   take socket, like socket
   take data, like text
   take host, like text
@@ -21,15 +21,15 @@ task send
   like size
 
 task receive
-  note async
+  mark async
   take socket, like socket
   like datagram
 
 task stream
-  note async
+  mark async
   take socket, like socket
   like list
 
 task close
-  note async
+  mark async
   take socket, like socket

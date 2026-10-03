@@ -22,6 +22,20 @@ load ../../logic/disclosure
   find disclosure-state
   find toggle-disclosure
 
+# `aria-checked` as ARIA spells it, the text `true` or `false`. It was bound to `disclosure-open`, a boolean, which a
+# browser's `setAttribute` turns into text and a host that keeps what it is given does not: the terminal host read the
+# boolean and drew every switch off (test/view/terminal-words.ts)
+task checked-text
+  take control, like signal boolean
+  like text
+  fork test
+    hook test
+      call disclosure-open
+        bind self, read control
+    hook hold
+      send back, text <true>
+  send back, text <false>
+
 view switch
   take host, like view
   take class, like text
@@ -40,8 +54,8 @@ view switch
       call disclosure-state
         bind self, read control
     bind aria-checked
-      call disclosure-open
-        bind self, read control
+      call checked-text
+        read control
     bind class, read class
     hook click
       call toggle-disclosure

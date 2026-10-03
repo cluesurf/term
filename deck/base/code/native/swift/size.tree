@@ -126,15 +126,15 @@ tree integer
 
     # unchecked
     task free-add
-      note unsafe
+      mark unsafe
     task free-multiply
-      note unsafe
+      mark unsafe
     task free-shift-left
-      note unsafe
+      mark unsafe
     task free-shift-right
-      note unsafe
+      mark unsafe
     task free-subtract
-      note unsafe
+      mark unsafe
 
     task roll-test-add
     task roll-test-add-signed

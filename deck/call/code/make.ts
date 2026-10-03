@@ -584,6 +584,10 @@ export function compileProject(
   written: number
   failed: number
   errors: string[]
+  // each file's own warnings, rendered: an unused binding (a misspelled `save` is one), termination, and the rest.
+  // The build computed them and printed none, so `save totl` beside `save total` built in silence (guides:
+  // language/variables, 2026-10-03). A warning never fails the build
+  warnings: string[]
   // the claims this project states that nobody has proven: every `rule` carrying `mark open`. Reported on the
   // build line so an open claim is visible rather than silent. See note/term/project/law-proof-gate.md.
   open: string[]
@@ -608,6 +612,7 @@ export function compileProject(
 
   const open = new Set<string>()
   const errors: string[] = []
+  const warnings: string[] = []
 
   for (const file of files) {
     // a file carrying `test <phrase>` blocks is not plain Term until the test preprocessor has rewritten them into
@@ -692,6 +697,14 @@ export function compileProject(
 
     compiled++
 
+    // only this file's: every entry's program holds its whole import closure, and the stdlib's warnings would be
+    // printed once per file that loads it
+    for (const warning of result.warnings) {
+      if (warning.file === file) {
+        warnings.push(renderDiagnostic(warning, text))
+      }
+    }
+
     for (const claim of result.openClaims ?? []) {
       open.add(claim)
     }
@@ -771,6 +784,7 @@ export function compileProject(
     written,
     failed,
     errors,
+    warnings,
     open: [...open].sort(),
     obligations,
   }
@@ -1130,6 +1144,7 @@ export async function callMake(input: {
         compiled: number
         failed: number
         errors: string[]
+        warnings?: string[]
         written?: number
         open?: string[]
         obligations?: { total: number; proven: number }
@@ -1182,11 +1197,20 @@ export async function callMake(input: {
       if (compiled === 0) {
         console.log(fade('  No .tree files found.'))
       } else {
+        // the project's own warnings, each in its frame, then their count. None of them fails the build
+        for (const warning of result.warnings ?? []) {
+          console.error('\n' + warning)
+        }
+
         logGood(
           `Compiled ${compiled} file${
             compiled === 1 ? '' : 's'
           } to host/`,
         )
+
+        if (result.warnings?.length) {
+          console.log(fade(`  ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}`))
+        }
 
         // AN OPEN CLAIM IS NOT A PROVEN ONE. A `rule` carrying `mark open` compiles, because a book under
         // construction has to, but the count says so on every build rather than letting it pass in silence.

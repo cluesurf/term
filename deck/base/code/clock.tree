@@ -1,7 +1,7 @@
 
 # Clock: current time and delays. Platform implementation is selected at build time and hidden behind this API.
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/clock
   find current-time
@@ -13,8 +13,9 @@ task now
     call current-time
 
 task sleep
-  note async
+  mark async
   take ms, like number
   send back
     call delay
       read ms
+      wait true

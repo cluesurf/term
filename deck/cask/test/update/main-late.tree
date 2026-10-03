@@ -44,14 +44,13 @@ task boot
       call on-message
         read made
         task answer
-          note async
+          mark async
           take message, like text
           like text
           call update-ready
             read data
           send back
             call dispatch
-              wait true
               read message
       call on-ready
         read made

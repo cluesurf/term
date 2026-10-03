@@ -6,7 +6,7 @@
 # Not for secrets: `cryptography/random` is the secure source. Use this for tests, simulations, procedural content and
 # anything that must replay.
 
-note stable
+mark stable
 
 load @term/base/bit
   find bitwise-and

@@ -64,7 +64,7 @@ form mark-ask
 
 # `term time [filter]`: run the benchmarks, or profile one file with --cpu / --memory
 task time
-  note async
+  mark async
   take filter, like text
   take file, like text
   take json, like boolean
@@ -81,7 +81,7 @@ task time
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  note unsafe
+  mark unsafe
     call time-module/callTime
       make time-ask
         bind root, read root
@@ -104,7 +104,7 @@ task time
 
 # `term hold`: verify that the `.tree` files hold -- report gaps, run the cross checks
 task hold
-  note async
+  mark async
   take cross, like boolean
   take cache, like boolean
   take force, like boolean
@@ -114,7 +114,7 @@ task hold
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  note unsafe
+  mark unsafe
     call hold-module/callHold
       make hold-ask
         bind root, read root
@@ -131,7 +131,7 @@ task hold
 
 # `term zone ...`: the whole zone console, under one command, with its arguments handed over untouched
 task zone
-  note async
+  mark async
 
   take rest
     like list
@@ -141,7 +141,7 @@ task zone
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  note unsafe
+  mark unsafe
     call zone-module/callZone
       make zone-ask, bind(root, read root), bind argv, read rest
       wait true
@@ -152,7 +152,7 @@ task zone
 
 # `term mark ...`: the benchmark runner in the Term repository's mark/, booted there with its arguments untouched
 task mark
-  note async
+  mark async
 
   take rest
     like list
@@ -161,7 +161,7 @@ task mark
   like void
 
   save root, call project-root
-  note unsafe
+  mark unsafe
     call mark-module/callMark
       make mark-ask, bind(root, read root), bind argv, read rest
       wait true

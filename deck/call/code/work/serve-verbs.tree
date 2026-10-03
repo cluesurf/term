@@ -47,7 +47,7 @@ form daemon-ask
 
 # `term work`: start the worker and stay up
 task work
-  note async
+  mark async
   take port, like number
   take env, like text
 
@@ -64,7 +64,7 @@ task work
         read port
       miss
         read worker-port
-  note unsafe
+  mark unsafe
     save daemon
       call daemon-module/startDaemon
         make daemon-ask
@@ -83,12 +83,12 @@ task work
 # the source lines of a diagnostic's file, for the frame's context. An empty list when the file cannot be read,
 # because a diagnostic that cannot show its line is still worth printing.
 task source-lines
-  note async
+  mark async
   take file, like text
 
   like list, like text
 
-  note unsafe
+  mark unsafe
     save text
       call read-file, read(file)
     send back
@@ -99,7 +99,7 @@ task source-lines
 
 # render ONE diagnostic into its kink-style frame, with no trailing newline
 task render-diagnostic
-  note async
+  mark async
   take diagnostic, like unknown
 
   like text

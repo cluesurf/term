@@ -4,7 +4,7 @@
 # A replacement is literal text: no $1 or \1 is read in it, because each engine reads those differently. To build the
 # replacement from the match, use `rewrite-matches`.
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/regex
   find engine-search
@@ -543,7 +543,7 @@ task escape-pattern
 task is-valid-pattern
   take pattern, like text
   like boolean
-  note unsafe
+  mark unsafe
     call compile-pattern
       read pattern
     send back, true

@@ -48,7 +48,7 @@ task get-at
 
 # one segment: a key of a map, or an index of a list
 task step
-  note private
+  mark private
   take here, like data
   take part, like text
   like maybe
@@ -116,7 +116,7 @@ task step
 
 # digits only, or none
 task parse-index
-  note private
+  mark private
   take part, like text
   like maybe
   fork test

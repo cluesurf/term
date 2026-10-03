@@ -1,6 +1,6 @@
 # Cryptographic digests (one-way hashes). The generic interface; each public verb delegates to the per-backend native implementation, which lives in its own file (`native/<env>/cryptography/digest`). Input and output stay in the currency types.
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/cryptography/digest
   find digest-sha256
@@ -15,7 +15,7 @@ form digest-algorithm
 # compute a one-way hash of the input bytes with the chosen algorithm. The named sha256 / sha512 / md5 forms below are
 # the readable default; this verb is for an algorithm chosen at runtime.
 task digest
-  note async
+  mark async
   take input, like bytes
   take algorithm, like digest-algorithm
   like bytes
@@ -24,36 +24,42 @@ task digest
       send back
         call digest-sha256
           read input
+          wait true
     case sha-512
       send back
         call digest-sha512
           read input
+          wait true
     case md5
       send back
         call digest-md5
           read input
+          wait true
 
 # named algorithm forms: the readable, primary surface
 task sha256
-  note async
+  mark async
   take input, like bytes
   like bytes
   send back
     call digest-sha256
       read input
+      wait true
 
 task sha512
-  note async
+  mark async
   take input, like bytes
   like bytes
   send back
     call digest-sha512
       read input
+      wait true
 
 task md5
-  note async
+  mark async
   take input, like bytes
   like bytes
   send back
     call digest-md5
       read input
+      wait true

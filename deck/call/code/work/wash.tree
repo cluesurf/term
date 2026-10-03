@@ -50,7 +50,7 @@ task build-directories
 
 # `term wash tail` clears the logs and nothing else
 task wash-logs
-  note async
+  mark async
   take root, like text
 
   like void
@@ -67,7 +67,7 @@ task wash-logs
 
 # `term wash` with no target removes every build directory that is there
 task wash-build
-  note async
+  mark async
   take root, like text
 
   like void

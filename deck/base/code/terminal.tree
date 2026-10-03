@@ -2,7 +2,7 @@
 # when it is. Color is off when output is not a terminal (a pipe, a file) and whenever NO_COLOR is set to anything
 # (no-color.org), the same rule on every backend, so a log redirected to a file never holds escape codes.
 
-note stable
+mark stable
 
 load @term/base/environment
   find has-variable
@@ -121,6 +121,60 @@ task paint-always
   save escape
     call rune-to-text, code 27
   send back, text <{{escape}}[{{foreground}}m{{value}}{{escape}}[0m>
+
+# ---- a program that owns the terminal (terminal-target-0006): raw mode, its size, keys in, screens out ----
+#
+# A native's own locals are spelled `__term_*`: `$value` expands to the caller's expression, often a bare variable, and
+# a local of the same name would shadow it (a caller passing its `out` wrote the Stdout handle instead of the text).
+#
+# Raw mode goes through `stty`, the same command on macOS and Linux, run with the terminal as its input so it changes
+# the terminal the program sits in. On node that keeps `process.stdin` untouched: opening it as a stream switches the
+# descriptor to non-blocking, and `read-input` is a blocking read of it. Node and Rust only: a terminal is not where
+# Swift or Kotlin earn their place (note/term/project/terminal-target.md, out of scope).
+
+# turn raw mode on (keys arrive one at a time, unechoed, ctrl-c as a byte) or back off. True when the terminal took it,
+# false when input is not a terminal
+bind set-raw
+  take on, like boolean
+  like boolean
+  case node
+    text <(process.getBuiltinModule('node:child_process').spawnSync('stty', $on ? ['raw', '-echo'] : ['sane'], \{ stdio: ['inherit', 'ignore', 'ignore'] \}).status === 0)>
+  case rust
+    text <std::process::Command::new("stty").args(if $on \{ vec!["raw", "-echo"] \} else \{ vec!["sane"] \}).stdin(std::process::Stdio::inherit()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().map(|status| status.success()).unwrap_or(false)>
+
+# the terminal's width in cells, 80 when output is not a terminal
+bind terminal-columns
+  like number
+  case node
+    text <(process.stdout.columns ?? 80)>
+  case rust
+    text <std::process::Command::new("stty").arg("size").stdin(std::process::Stdio::inherit()).output().ok().and_then(|out| String::from_utf8(out.stdout).ok()).and_then(|size| size.split_whitespace().nth(1).and_then(|cells| cells.parse::\<i64\>().ok())).unwrap_or(80)>
+
+# the terminal's height in rows, 24 when output is not a terminal
+bind terminal-rows
+  like number
+  case node
+    text <(process.stdout.rows ?? 24)>
+  case rust
+    text <std::process::Command::new("stty").arg("size").stdin(std::process::Stdio::inherit()).output().ok().and_then(|out| String::from_utf8(out.stdout).ok()).and_then(|size| size.split_whitespace().nth(0).and_then(|rows| rows.parse::\<i64\>().ok())).unwrap_or(24)>
+
+# what the terminal has sent, waiting until it sends something: the bytes of one read, decoded as UTF-8. Empty text
+# when input has ended
+bind read-input
+  like text
+  case node
+    text <(function () \{ const fs = process.getBuiltinModule('node:fs'); const bytes = Buffer.alloc(256); for (;;) \{ try \{ const count = fs.readSync(0, bytes, 0, 256, null); return bytes.toString('utf8', 0, count) \} catch (error) \{ if (error.code !== 'EAGAIN') return '' \} \} \})()>
+  case rust
+    text <\{ use std::io::Read; let mut bytes = [0u8; 256]; let count = std::io::stdin().read(&mut bytes).unwrap_or(0); String::from_utf8_lossy(&bytes[..count]).to_string() \}>
+
+# write text to the terminal and flush it, so a screen appears whole and at once. True when it was written
+bind write-output
+  take value, like text
+  like boolean
+  case node
+    text <(process.getBuiltinModule('node:fs').writeSync(1, $value), true)>
+  case rust
+    text <\{ use std::io::Write; let __term_text: String = $value; let mut __term_stdout = std::io::stdout(); __term_stdout.write_all(__term_text.as_bytes()).is_ok() && __term_stdout.flush().is_ok() \}>
 
 # `value` in the color when output takes color (`uses-color`), and as it is otherwise
 task paint

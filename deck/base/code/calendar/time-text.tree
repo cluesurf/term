@@ -7,7 +7,7 @@
 # A `t` and a `z` are read as `T` and `Z`, as the RFC allows. A fraction is read to the millisecond and the rest is
 # dropped. A leap second (`:60`) is refused, since milliseconds since the epoch have no place for it.
 
-note stable
+mark stable
 
 load @term/base/text/unicode
   find to-runes

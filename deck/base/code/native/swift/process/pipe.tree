@@ -12,7 +12,7 @@ bind pipe-connect
     text <\{ let pipe = Pipe(); ($from.dock as! Process).standardOutput = pipe; ($to.dock as! Process).standardInput = pipe \}()>
 
 task connect
-  note async
+  mark async
   take from, like child
   take to, like child
 

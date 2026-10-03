@@ -11,7 +11,7 @@
 # Erlang's `Task.await` and its links are the model (note/term/research/beam-otp-lessons.md, G6, G8, G13): a failure
 # is not left running beside the caller that stopped listening. Held by test/compile/concurrency.ts.
 
-note stable
+mark stable
 
 load @term/base/boolean
   find not
@@ -39,11 +39,12 @@ form handle
   # wait for the task to finish and return its result. A task that raised raises the same exception here, and a
   # cancelled one raises `outage`, since its result will never come
   task wait
-    note async
+    mark async
     take self
     like r
     call job-settle
       read self/dock
+      wait true
     send back
       call outcome
         read self
@@ -51,7 +52,7 @@ form handle
   # wait at most `milliseconds`. Past it the task is cancelled, so nothing is left running that nobody waits for, and
   # `timeout` is raised with the time waited
   task wait-within
-    note async
+    mark async
     take self
     take milliseconds, like number
     like r
@@ -59,6 +60,7 @@ form handle
       call job-settle-within
         read self/dock
         read milliseconds
+        wait true
     fork test
       hook test
         call not
@@ -141,7 +143,7 @@ task spawn
 # the list, and every other task is cancelled before its exception surfaces, so no task is left running with nobody
 # waiting for it
 task gather
-  note async
+  mark async
   head r
   take works
     like list
@@ -165,6 +167,7 @@ task gather
         read started/dock
   call job-settle-group
     read docks
+    wait true
   # the first job, in source order, that failed or was cancelled. A job still running is not it: the group settled
   # because a LATER job failed. Every other job is cancelled, then that one's outcome raises
   walk list, read jobs

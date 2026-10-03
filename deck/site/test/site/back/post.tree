@@ -13,71 +13,64 @@ load @term/base/list
   find list
   find push
 
+# the record itself is ./model, re-exported here so an importer of the repository still finds `post`
+load ./model
+  find post
+
+bear ./model
+
 task setup
   take url, like text
-  note async
+  mark async
   call connect
     read url
-    wait true
   call ensure-schema
-    wait true
-
-form post
-  link id, like text
-  link title, like text
-  link body, like text
 
 task ensure-schema
-  note async
+  mark async
   call run
     text <CREATE TABLE IF NOT EXISTS post (id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL)>
     make list
-    wait true
 
 task create-post
   take id, like text
   take title, like text
   take body, like text
-  note async
+  mark async
   call run
     text <INSERT INTO post (id, title, body) VALUES ($1, $2, $3)>
     make list
       read id
       read title
       read body
-    wait true
 
 # a row to a post
 task post-of
   take r, like row
   like post
-  note async
+  mark async
   send back
     make post
       bind id
         call field
           read r
           text <id>
-          wait true
       bind title
         call field
           read r
           text <title>
-          wait true
       bind body
         call field
           read r
           text <body>
-          wait true
 
 task list-posts
   like list
-  note async
+  mark async
   save rows
     call query
       text <SELECT id, title, body FROM post ORDER BY id>
       make list
-      wait true
   save posts
     make list
   walk list, read rows
@@ -88,19 +81,17 @@ task list-posts
         bind item
           call post-of
             read r
-            wait true
   send back, read posts
 
 task get-post
   take id, like text
   like post
-  note async
+  mark async
   save rows
     call query
       text <SELECT id, title, body FROM post WHERE id = $1>
       make list
         read id
-      wait true
   save r
     call get
       read rows
@@ -108,4 +99,3 @@ task get-post
   send back
     call post-of
       read r
-      wait true

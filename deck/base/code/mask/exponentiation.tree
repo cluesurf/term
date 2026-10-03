@@ -1,7 +1,7 @@
 
 # Raise to power.
 
-note unstable
+mark unstable
 
 mask exponentiation
   task exponentiate

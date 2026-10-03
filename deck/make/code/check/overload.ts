@@ -379,6 +379,62 @@ function bindByImport(program: Program, scope: ImportScope | undefined, entry?: 
   return diagnostics
 }
 
+// A `host` VALUE AND A TASK OF ONE NAME IN TWO FILES (terminal-target-0003). `bindByImport` splits a task or a component
+// defined in two files and leaves a top-level value alone, so a `host focus` in one module (the terminal host's focus
+// record) and a `task focus` in another (the memory dom's) reached the TypeScript output as two declarations of `focus`,
+// and the bundle refused to load. A value is already told from a call by where its name stands (`read focus` is the
+// value, `call focus` the task), so the value is renamed apart, and every VALUE reference in a file that can see it
+// follows: the file that defines it, and any file whose `find` of the name reaches that file through the `bear` chain.
+// A call, and a value reference anywhere else, keeps the name, which is the task's.
+function bindValuesApart(program: Program, scope: ImportScope | undefined): void {
+  const callable = new Map<string, Set<string>>()
+
+  for (const s of program) {
+    if ((s.form === 'function' || s.form === 'view') && s.span.file) {
+      callable.set(s.name, (callable.get(s.name) ?? new Set()).add(s.span.file))
+    }
+  }
+
+  const hosts = program.filter(
+    (s): s is Extract<Statement, { form: 'let' }> =>
+      s.form === 'let' && Boolean(s.span.file) && [...(callable.get(s.name) ?? [])].some(file => file !== s.span.file),
+  )
+
+  // a file and everything it re-exports with `bear`, transitively
+  const exported = (file: string, into = new Set<string>()): Set<string> => {
+    if (!into.has(file)) {
+      into.add(file)
+      ;(scope?.get(file)?.bears ?? []).forEach(next => exported(next, into))
+    }
+
+    return into
+  }
+
+  hosts.forEach((host, i) => {
+    const original = host.name
+    const home = host.span.file!
+    const renamed = `${original}__value${i}`
+    const sees = (file: string): boolean =>
+      file === home || (scope?.get(file)?.finds.get(original) ?? []).some(target => exported(target).has(home))
+
+    host.name = renamed
+
+    for (const top of program) {
+      if (top === host || !top.span.file || !sees(top.span.file)) {
+        continue
+      }
+
+      const local = boundIn(top)
+
+      eachReference(top, (variable, arity) => {
+        if (arity === undefined && variable.form === 'variable' && variable.name === original && !local.has(original)) {
+          variable.name = renamed
+        }
+      })
+    }
+  })
+}
+
 // every reference to a name under a node: a call's callee with its argument count, and any other variable (a task passed
 // as a value) with none. Generic over the tree, as eachCall is
 function eachReference(
@@ -521,6 +577,7 @@ export function disambiguateOverloads(program: Program, scope?: ImportScope, ent
 
   nestLeanLabels(program)
   bindSiblingMethods(program)
+  bindValuesApart(program, scope)
 
   const ambiguities = bindByImport(program, scope, entry)
 
@@ -561,13 +618,27 @@ export function disambiguateOverloads(program: Program, scope?: ImportScope, ent
   // each definition's final name with its accepted argument range, for the call rewrite below
   const ranges = new Map<string, { name: string; min: number; max: number; group?: string }[]>()
 
+  // how many definitions of each name the ENTRY file holds. One that is its file's only definition of the name keeps
+  // the name, as `bindByImport` keeps it: the entry's roots and exported API are called by it. A program whose `run`
+  // shared its name with the db module's two-argument `run` emitted `run0`, and its host found no `run` to call
+  // (terminal-target-0005, 2026-10-03). The other arities still take their suffixes, so no two names collide
+  const ownedByEntry = new Map<string, number>()
+
+  for (const s of program) {
+    if (entry && s.form === 'function' && s.span.file === entry) {
+      ownedByEntry.set(s.name, (ownedByEntry.get(s.name) ?? 0) + 1)
+    }
+  }
+
   for (const s of program) {
     if (s.form === 'function' && overloaded.has(s.name)) {
       const original = s.name
       const base = mangle(s.name, s.params.length)
       let group: string | undefined
 
-      if (typed.has(base)) {
+      if (entry && s.span.file === entry && ownedByEntry.get(original) === 1 && !typed.has(base)) {
+        // the entry's one definition keeps its name; every other arity is mangled, so the names stay apart
+      } else if (typed.has(base)) {
         const index = seen.get(base) ?? 0
         seen.set(base, index + 1)
         s.name = `${base}__${index}`

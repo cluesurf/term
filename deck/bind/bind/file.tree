@@ -1,4 +1,4 @@
-note draft
+mark draft
 # A glob-to-role mapping from the repository these bindings were AUTHORED in, not from this one. Measured
 # 2026-08-30: it maps four `*.note` globs, and @term/bind holds ZERO `.note` files. `../book/**` does not exist
 # here at all, and the three `../code/{javascript,browser,node}/**` directories that do exist hold 392, 1768 and

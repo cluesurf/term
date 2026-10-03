@@ -54,7 +54,7 @@ form parallel-ask
 
 # `term base import <source>`: read records in and commit them
 task base-import
-  note async
+  mark async
   take source, like text
   take form, like text
   take key, like text
@@ -67,7 +67,7 @@ task base-import
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  note unsafe
+  mark unsafe
     call base-import-module/callBaseImport
       make import-ask
         bind root, read root
@@ -86,7 +86,7 @@ task base-import
 
 # a project built across a pool of workers, which is what a big package takes
 task build-parallel
-  note async
+  mark async
   take root, like text
   take concurrency, like number
   take env, like text
@@ -127,7 +127,7 @@ task compiler-version
 
 # run one test file and answer what held
 task run-test-file
-  note async
+  mark async
   take file, like text
   take text, like text
   take resolve, like unknown

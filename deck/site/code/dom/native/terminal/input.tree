@@ -1,0 +1,548 @@
+
+# Keys into the terminal host (terminal-target-0003): what a person types, turned into the vocabulary's events on the
+# focused node, the way a platform turns a tap into `click` (note/term/view/11-vocabulary.md, the cell grid column).
+#
+#   tab, shift-tab   focus moves to the next or the previous control in tree order, wrapping at the ends
+#   enter, space     a focused button or link fires `click`
+#   a character      a focused field takes it at the end of its value and fires `input`
+#   space            a focused field takes a space
+#   backspace        a focused field loses its last character and fires `input`
+#   left, right      a focused range moves one step down or up, held between its min and max, and fires `input`; a
+#                    focused choice moves to the option before or after, wrapping, and fires `change`
+#   enter, space     a focused toggle fires `click`, which is how it flips, as a tap does
+#
+# A key a focused node has no use for does nothing. The terminal's own byte sequences become these names in the reader
+# that feeds `press-key` (terminal-target-0004 on Rust, the pseudo-terminal smoke on node), so this file never sees an
+# escape code.
+
+load ../memory/dom
+  find memory-element
+  find element-of
+  find fire
+  find get-value
+  find set-value
+  find get-attribute
+
+load ./paint
+  find length-of
+
+load ../../view
+  find view
+
+load ./focus
+  find focus
+  find is-focusable
+
+load @term/base/list
+  find list
+  find push
+  find get
+
+load @term/base/text/unicode
+  find to-runes
+  find rune-to-text
+
+load @term/base/text/string
+  find concat
+
+# every control under `root` that takes focus, in tree order
+task list-focusable
+  take root, like view
+  like list
+    like view
+  save found
+    make list
+  call gather-focusable
+    read root
+    read found
+  send back, read found
+
+task gather-focusable
+  take node, like view
+  take found
+    like list
+      like view
+  save element
+    call element-of
+      read node
+  fork test
+    hook test
+      call is-focusable
+        read element
+    hook hold
+      call push
+        bind list, read found
+        bind item, read node
+  walk list, read element/children
+    hook next
+      take site, name child
+      call gather-focusable
+        read child
+        read found
+
+# the position of the focused control among `controls`, or -1 when none of them has focus
+task focused-at
+  take controls
+    like list
+      like view
+  like number
+  save at
+    call subtract
+      code 0
+      code 1
+  save i, code 0
+  walk list, read controls
+    hook next
+      take site, name control
+      save element
+        call element-of
+          read control
+      fork test
+        hook test
+          call is-equal
+            read element/key
+            read focus/key
+        hook hold
+          save at, read i
+      save i
+        call add
+          read i
+          code 1
+  send back, read at
+
+# move focus `step` places along the controls (1 forward, -1 back), wrapping at the ends. With nothing focused, forward
+# lands on the first control and back on the last
+task move-focus
+  take root, like view
+  take step, like number
+  save controls
+    call list-focusable
+      read root
+  save count, read controls/length
+  fork test
+    hook test
+      call is-equal
+        read count
+        code 0
+    hook hold
+      send back
+  save at
+    call focused-at
+      read controls
+  save last
+    call subtract
+      read count
+      code 1
+  # one step from where focus is, or from just outside the ends when nothing has it, then wrapped
+  save next
+    call add
+      read at
+      read step
+  fork test
+    hook test
+      meet and
+        call is-below
+          read at
+          code 0
+        call is-below
+          read step
+          code 0
+    hook hold
+      save next, read last
+  fork test
+    hook test
+      call is-above
+        read next
+        read last
+    hook hold
+      save next, code 0
+    hook test
+      call is-below
+        read next
+        code 0
+    hook hold
+      save next, read last
+  save target
+    call element-of
+      call get
+        read controls
+        read next
+  save focus/key, read target/key
+
+# the focused node, if a node under `root` has focus
+task find-focused
+  take root, like view
+  like list
+    like view
+  save found
+    make list
+  save controls
+    call list-focusable
+      read root
+  walk list, read controls
+    hook next
+      take site, name control
+      save element
+        call element-of
+          read control
+      fork test
+        hook test
+          call is-equal
+            read element/key
+            read focus/key
+        hook hold
+          call push
+            bind list, read found
+            bind item, read control
+  send back, read found
+
+# a field's value without its last character
+task drop-last
+  take value, like text
+  like text
+  save runes
+    call to-runes
+      read value
+  save kept, text <>
+  save i, code 0
+  walk list, read runes
+    hook next
+      take site, name rune
+      fork test
+        hook test
+          call is-below
+            read i
+            call subtract
+              read runes/length
+              code 1
+        hook hold
+          save kept
+            call concat
+              read kept
+              call rune-to-text
+                read rune
+      save i
+        call add
+          read i
+          code 1
+  send back, read kept
+
+# move a range one step (`by` is 1 or -1), held between its min and max, and fire `input` as a drag would
+task step-range
+  take node, like view
+  take by, like number
+  save step
+    call length-of
+      call get-attribute
+        read node
+        text <step>
+  fork test
+    hook test
+      call is-below
+        read step
+        code 1
+    hook hold
+      save step, code 1
+  save low
+    call length-of
+      call get-attribute
+        read node
+        text <min>
+  save high
+    call length-of
+      call get-attribute
+        read node
+        text <max>
+  save next
+    call add
+      call length-of
+        call get-value
+          read node
+      call multiply
+        read step
+        read by
+  fork test
+    hook test
+      call is-below
+        read next
+        read low
+    hook hold
+      save next, read low
+    hook test
+      call is-above
+        read next
+        read high
+    hook hold
+      save next, read high
+  call set-value
+    read node
+    text <{next}>
+  call fire
+    read node
+    text <input>
+
+# move a choice to the option before or after the chosen one, wrapping at the ends, and fire `change` as a pick would
+task step-choice
+  take node, like view
+  take element, like memory-element
+  take by, like number
+  save values
+    call make-texts
+  walk list, read element/children
+    hook next
+      take site, name child
+      save inner
+        call element-of
+          read child
+      fork test
+        hook test
+          call is-equal
+            read inner/tag
+            text <option>
+        hook hold
+          call push
+            bind list, read values
+            bind item
+              call get-attribute
+                read child
+                text <value>
+  save count, read values/length
+  fork test
+    hook test
+      call is-equal
+        read count
+        code 0
+    hook hold
+      send back
+  save at, code 0
+  save i, code 0
+  walk list, read values
+    hook next
+      take site, name value
+      fork test
+        hook test
+          call is-equal
+            read value
+            read element/value
+        hook hold
+          save at, read i
+      save i
+        call add
+          read i
+          code 1
+  save next
+    call add
+      read at
+      read by
+  fork test
+    hook test
+      call is-below
+        read next
+        code 0
+    hook hold
+      save next
+        call subtract
+          read count
+          code 1
+    hook test
+      call is-minimum
+        read next
+        read count
+    hook hold
+      save next, code 0
+  call set-value
+    read node
+    read values/{next}
+  call fire
+    read node
+    text <change>
+
+task make-texts
+  like list
+    like text
+  send back
+    make list
+
+# whether a key name is one character a field takes as typed
+task is-character
+  take key, like text
+  like boolean
+  save runes
+    call to-runes
+      read key
+  send back
+    call is-equal
+      read runes/length
+      code 1
+
+# one key, pressed with focus where it is. `root` is the screen's root, where focus moves among the controls
+task press-key
+  take root, like view
+  take key, like text
+  fork test
+    hook test
+      call is-equal
+        read key
+        text <tab>
+    hook hold
+      call move-focus
+        read root
+        code 1
+      send back
+    hook test
+      call is-equal
+        read key
+        text <shift-tab>
+    hook hold
+      call move-focus
+        read root
+        call subtract
+          code 0
+          code 1
+      send back
+  save focused
+    call find-focused
+      read root
+  fork test
+    hook test
+      call is-equal
+        read focused/length
+        code 0
+    hook hold
+      send back
+  save node
+    call get
+      read focused
+      code 0
+  save element
+    call element-of
+      read node
+  save step-by, code 0
+  fork test
+    hook test
+      call is-equal
+        read key
+        text <left>
+    hook hold
+      save step-by
+        call subtract
+          code 0
+          code 1
+    hook test
+      call is-equal
+        read key
+        text <right>
+    hook hold
+      save step-by, code 1
+  # a range: one step, held between its ends
+  fork test
+    hook test
+      meet and
+        call is-equal
+          read element/tag
+          text <input>
+        call is-equal
+          call get-attribute
+            read node
+            text <type>
+          text <range>
+    hook hold
+      fork test
+        hook test
+          call is-unequal
+            read step-by
+            code 0
+        hook hold
+          call step-range
+            read node
+            read step-by
+      send back
+  # a choice: the option before or after the chosen one
+  fork test
+    hook test
+      call is-equal
+        read element/tag
+        text <select>
+    hook hold
+      fork test
+        hook test
+          call is-unequal
+            read step-by
+            code 0
+        hook hold
+          call step-choice
+            read node
+            read element
+            read step-by
+      send back
+  save field
+    meet or
+      call is-equal
+        read element/tag
+        text <input>
+      call is-equal
+        read element/tag
+        text <textarea>
+  fork test
+    hook test
+      read field
+    hook hold
+      save typed, text <>
+      save edited, false
+      fork test
+        hook test
+          call is-equal
+            read key
+            text <backspace>
+        hook hold
+          call set-value
+            read node
+            call drop-last
+              call get-value
+                read node
+          save edited, true
+        hook test
+          call is-equal
+            read key
+            text <space>
+        hook hold
+          save typed, text < >
+        hook test
+          call is-character
+            read key
+        hook hold
+          save typed, read key
+      fork test
+        hook test
+          call is-unequal
+            read typed
+            text <>
+        hook hold
+          call set-value
+            read node
+            call concat
+              call get-value
+                read node
+              read typed
+          save edited, true
+      fork test
+        hook test
+          read edited
+        hook hold
+          call fire
+            read node
+            text <input>
+      send back
+  fork test
+    hook test
+      meet or
+        call is-equal
+          read key
+          text <enter>
+        call is-equal
+          read key
+          text <space>
+    hook hold
+      call fire
+        read node
+        text <click>

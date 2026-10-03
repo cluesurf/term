@@ -4,7 +4,7 @@ dock load
   load <global:cipher>, name cipher
 
 task encrypt-aes-gcm
-  note async
+  mark async
   take key, like bytes
   take nonce, like bytes
   take plain, like bytes
@@ -18,7 +18,7 @@ task encrypt-aes-gcm
       read extra
 
 task decrypt-aes-gcm
-  note async
+  mark async
   take key, like bytes
   take nonce, like bytes
   take sealed, like bytes

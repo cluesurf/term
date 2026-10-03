@@ -1,4 +1,4 @@
-note draft
+mark draft
 
 # SHELVED 2026-10-02 (base-v1-0019): the public module it serves is shelved.
 
@@ -9,7 +9,7 @@ load @term/base/network/websocket/socket
   find message
 
 task send
-  note async
+  mark async
   take socket, like socket
   take data, like text
 
@@ -32,7 +32,7 @@ task send
     halt kink
 
 task close
-  note async
+  mark async
   take socket, like socket
   take
     code
@@ -58,7 +58,7 @@ task close
     wait true
 
 task stream
-  note async
+  mark async
   take socket, like socket
 
   save raw, read socket/dock

@@ -71,6 +71,42 @@ view column-default
       text <a>
     view button
       text <bb>
+
+view center-row
+  take host, like view
+  view div
+    bind style, text <display: flex; flex-direction: row; width: 300px; justify-content: center>
+    view button
+      text <a>
+    view button
+      text <bb>
+
+view end-row
+  take host, like view
+  view div
+    bind style, text <display: flex; flex-direction: row; width: 300px; justify-content: end>
+    view button
+      text <a>
+    view button
+      text <bb>
+
+view start-column
+  take host, like view
+  view div
+    bind style, text <display: flex; flex-direction: column; width: 200px; align-items: start>
+    view button
+      text <a>
+    view button
+      text <bb>
+
+view end-column
+  take host, like view
+  view div
+    bind style, text <display: flex; flex-direction: column; width: 200px; align-items: end>
+    view button
+      text <a>
+    view button
+      text <bb>
 `
 
 // the rows in the order a program mounts them, each with the view that draws it
@@ -82,6 +118,12 @@ export const LAYOUT_LABELS: [label: string, view: string][] = [
   ['block', 'block-fill'],
   ['flex', 'flex-default'],
   ['column', 'column-default'],
+  // swiftui-target-0002: the vocabulary's justify center and end, and align start and end, in the words face's stack
+  // writes (`end`, `start`), which no host was held to before
+  ['center', 'center-row'],
+  ['end', 'end-row'],
+  ['start-column', 'start-column'],
+  ['end-column', 'end-column'],
 ]
 
 const near = (a: number, b: number) => Math.abs(a - b) <= 1
@@ -103,8 +145,34 @@ export function judgeLayout(output: string): [string, boolean, string][] {
   const block = rowsOf(output, 'block')
   const flex = rowsOf(output, 'flex')
   const column = rowsOf(output, 'column')
+  const center = rowsOf(output, 'center')
+  const end = rowsOf(output, 'end')
+  const startColumn = rowsOf(output, 'start-column')
+  const endColumn = rowsOf(output, 'end-column')
 
   return [
+    [
+      'justify-content center leaves equal room before the first child and after the last in a 300 row',
+      !!center && near(center[0]![2]!, 300) && center[1]![0]! - center[0]![0]! > 1 &&
+        Math.abs((center[1]![0]! - center[0]![0]!) - (center[0]![0]! + 300 - (center[2]![0]! + center[2]![2]!))) <= 2,
+      JSON.stringify(center),
+    ],
+    [
+      'justify-content end puts the last child at the right edge of a 300 row and the first away from the left',
+      !!end && near(end[0]![2]!, 300) && near(end[2]![0]! + end[2]![2]!, end[0]![0]! + 300) && end[1]![0]! - end[0]![0]! > 1,
+      JSON.stringify(end),
+    ],
+    [
+      'align-items start keeps both children of a 200 column at their own width, at the left edge',
+      !!startColumn && near(startColumn[1]![0]!, startColumn[0]![0]!) && startColumn[1]![2]! < 190 && startColumn[2]![2]! < 190,
+      JSON.stringify(startColumn),
+    ],
+    [
+      'align-items end keeps both children of a 200 column at their own width, against the right edge',
+      !!endColumn && near(endColumn[1]![0]! + endColumn[1]![2]!, endColumn[0]![0]! + 200) &&
+        near(endColumn[2]![0]! + endColumn[2]![2]!, endColumn[0]![0]! + 200) && endColumn[1]![2]! < 190,
+      JSON.stringify(endColumn),
+    ],
     // native-dom-0037: CSS's defaults, which every native host had the other way round
     [
       "a block container's block children fill its 300 width, one under the other",

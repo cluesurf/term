@@ -14,51 +14,46 @@ load @term/base/file/directory
   find list
 
 task file-text
-  note async
+  mark async
   take path, like text
   like text
   send back
     call read
       read path
-      wait true
 
 task file-save
-  note async
+  mark async
   take path, like text
   take body, like text
   call write
     read path
     read body
-    wait true
 
 task file-present
-  note async
+  mark async
   take path, like text
   like boolean
   send back
     call test
       read path
-      wait true
 
 # bytes, 0 when absent
 task file-size
-  note async
+  mark async
   take path, like text
   like number
   save info
     call stat
       read path
-      wait true
   send back, read info/size
 
 task is-directory
-  note async
+  mark async
   take path, like text
   like boolean
   save info
     call stat
       read path
-      wait true
   send back, read info/directory
 
 # make a directory and its parents

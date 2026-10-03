@@ -45,7 +45,7 @@ form source-ask
 
 # the entry a target names: a package path through the project resolver, or a file on disk
 task entry-of
-  note async
+  mark async
   take root, like text
   take target, like text
 
@@ -68,7 +68,7 @@ task entry-of
     make source-ask, bind(file, file), bind text, read-file file
 
 task look
-  note async
+  mark async
   take target, like text
   take json-out, like boolean
   take csv-out, like boolean

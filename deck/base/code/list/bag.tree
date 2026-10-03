@@ -2,7 +2,7 @@
 # Bag: a multiset. The same value may appear many times and insertion order is kept. Backed by a list, so each
 # method delegates to the native array operation.
 
-note unstable
+mark unstable
 
 form bag
   head t

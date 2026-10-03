@@ -16,7 +16,7 @@
 # `term make` refuses a `transient` worker whose work cannot raise (check/supervise.ts): it can never restart, so it is
 # a `temporary` with a misleading name. Design 4 in note/term/research/beam-otp-lessons.md.
 
-note unstable
+mark unstable
 
 load @term/base/task
   find spawn
@@ -103,11 +103,12 @@ task child-work
     case nested
       send back
         task run-nested
-          note async
+          mark async
           like text
           send back
             call supervise
               read tree
+              wait true
 
 # whether a child that stopped in `state` (`done` or `failed`) is started again
 task restarts
@@ -135,8 +136,8 @@ task restarts
 # cancelling every child it still runs. A supervisor that restarts permanent children runs until that happens or
 # forever, so it is marked to run forever
 task supervise
-  note async
-  note roam
+  mark async
+  mark roam
   take tree, like supervisor
   like text
   save handles
@@ -168,6 +169,7 @@ task supervise
             read started/dock
       call job-settle-any
         read docks
+        wait true
       # one child per turn, by index: the condition bounds every list the turn reads, each the same length by
       # construction (one entry pushed per child), and is asked again each turn
       save at, code 0

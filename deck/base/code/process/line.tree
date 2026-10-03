@@ -9,7 +9,7 @@
 # the terminal, and the compiled backends hold a buffered reader over standard input. Reading a line through two
 # of them at once loses characters to whichever buffer got them first.
 
-note unstable
+mark unstable
 
 load @term/base/native/{platform}/process/line
   find line-open
@@ -24,15 +24,16 @@ form tool
     mark private
 
 task open
-  note async
+  mark async
   like tool
   send back
     call line-open
+      wait true
 
 # write `prompt`, then answer with the line that comes back, without its newline. The empty text means the input
 # ended (the person pressed ctrl-d, or standard input was a file that ran out).
 task ask
-  note async
+  mark async
   take tool, like tool
   take prompt, like text
   like text
@@ -40,19 +41,22 @@ task ask
     call line-ask
       read tool
       read prompt
+      wait true
 
 # the next line, with no prompt written first
 task read
-  note async
+  mark async
   take tool, like tool
   like text
   send back
     call line-read
       read tool
+      wait true
 
 task close
-  note async
+  mark async
   take tool, like tool
   like void
   call line-close
     read tool
+    wait true

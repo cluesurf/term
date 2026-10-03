@@ -3,7 +3,7 @@
 # data at run time. The live test story is `code/test.tree` (case / run / want / deny) plus `test` blocks
 # executed by `term test`. The table sketches this was meant to drive are in hold/integer/, their
 # portable vectors ported to deck/base/test/integer-32.tree as ordinary test blocks.
-note draft
+mark draft
 
 task test-suite
   take suite

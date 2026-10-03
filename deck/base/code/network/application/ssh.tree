@@ -1,7 +1,7 @@
 
 # SSH: Secure Shell. Message types and the binary packet structure of the transport-layer protocol.
 
-note unstable
+mark unstable
 
 form ssh-message-type
   case disconnect

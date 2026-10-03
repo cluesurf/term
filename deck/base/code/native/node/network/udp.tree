@@ -10,7 +10,7 @@ load @term/base/network/udp
   find socket
 
 task udp-open
-  note async
+  mark async
   take port, like number
   take host, like text
   like socket

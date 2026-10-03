@@ -3,7 +3,7 @@
 # (`now`) and conveniences that decompose it, so an app rarely touches the raw timestamp. Everything is UTC; name a zone
 # with `timezone` for wall-clock time.
 
-note unstable
+mark unstable
 
 load @term/base/time
   find now

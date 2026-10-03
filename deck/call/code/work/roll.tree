@@ -72,7 +72,7 @@ task is-known-kind
   back false
 
 task roll
-  note async
+  mark async
   take kind, like text
   take json-out, like boolean
   take show-path, like boolean

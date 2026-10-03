@@ -11,7 +11,7 @@
 # same everywhere rather than nearly the same. `next` on a closed watcher answers with the empty event, so a loop
 # over it ends instead of hanging.
 
-note unstable
+mark unstable
 
 load @term/base/native/{platform}/file/asynchronous
   find watch-open
@@ -33,7 +33,7 @@ form watcher
 
 # start watching `path`. With `deep`, everything beneath it too.
 task watch
-  note async
+  mark async
   take path, like text
   take
     deep
@@ -47,7 +47,7 @@ task watch
 
 # the next change. Waits until one happens, or answers with the empty event once the watcher is closed.
 task next
-  note async
+  mark async
   take watcher, like watcher
   like watch-event
   send back
@@ -56,7 +56,7 @@ task next
 
 # stop watching, releasing the platform handle
 task close
-  note async
+  mark async
   take watcher, like watcher
   like void
   call watch-close

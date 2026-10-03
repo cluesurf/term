@@ -93,7 +93,7 @@ task run
   like void
 
 task quit
-  note async
+  mark async
   like void
   call bridge/invoke-void
     wait true
@@ -101,7 +101,7 @@ task quit
     call make-object
 
 task exit
-  note async
+  mark async
   take status, like number
   like void
   call bridge/invoke-void
@@ -115,7 +115,7 @@ task exit
           read status
 
 task bundle-path
-  note async
+  mark async
   like text
   send back
     call bridge/invoke-text
@@ -124,7 +124,7 @@ task bundle-path
       call make-object
 
 task data-path
-  note async
+  mark async
   take name, like text
   like text
   send back

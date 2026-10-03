@@ -6,7 +6,7 @@ dock load
   load <global:request>, name request
 
 task send-request
-  note async
+  mark async
   take url, like text
   like text
 
@@ -16,7 +16,7 @@ task send-request
       read url
 
 task upload-file
-  note async
+  mark async
   take url, like text
   take data, like text
   like text
@@ -28,7 +28,7 @@ task upload-file
       read data
 
 task download-file-from-url
-  note async
+  mark async
   take url, like text
   like text
 

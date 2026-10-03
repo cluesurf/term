@@ -5,7 +5,7 @@
 # A separate module rather than a task in that one, because a dock is paid for by whoever imports the module: a
 # program asking `is-directory` should not link swift-nio for it.
 
-note unstable
+mark unstable
 
 load @term/base/native/{platform}/file/asynchronous/metadata
   find meta-read
@@ -16,7 +16,7 @@ load @term/base/file/metadata
 # With `follow`, a symbolic link is followed and the record describes what it points at; without it, the link
 # itself. One stat, rather than the three the synchronous module would take.
 task read
-  note async
+  mark async
   take path, like text
   take
     follow
@@ -27,3 +27,4 @@ task read
     call meta-read
       read path
       read follow
+      wait true

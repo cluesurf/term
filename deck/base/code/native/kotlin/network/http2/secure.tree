@@ -37,7 +37,7 @@ task http2-serve-secure
     read key
 
 task http2-start-secure
-  note async
+  mark async
   take port, like size
   take host, like text
   take handler
@@ -55,3 +55,4 @@ task http2-start-secure
       true
       read certificate
       read key
+      wait true

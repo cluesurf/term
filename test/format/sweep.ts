@@ -1,13 +1,19 @@
 // The formatter, over every .tree file in the repository rather than a handful of cases.
 //
-// Two properties. Both are the kind that a per-case test cannot give you, because the interesting inputs are the
+// Four properties. All are the kind that a per-case test cannot give you, because the interesting inputs are the
 // ones nobody thought to write down.
 //
 //   MEANING PRESERVED  The mill's Program for a file is identical before and after formatting, with spans
 //                      stripped. Compared at the MILL level, not on the raw tree, on purpose: `call f(a, b)`
 //                      and `call f` with indented arguments build different trees that the mill resolves to the
 //                      same call, and moving between those forms is exactly what a formatter is allowed to do.
-//                      A tree-level comparison would refuse a correct formatter.
+//                      A tree-level comparison would refuse a correct formatter. A file is milled with ITS OWN
+//                      `mark lean` (projectLeanOf), since a lean file milled as longhand is another program. The
+//                      comparison itself is format/meaning.ts, the one the formatter makes before it accepts a
+//                      layout, so a file the formatter REFUSES (returns as written) is a failure here too.
+//
+//   COMMENTS KEPT      Every word of every comment, in order, before and after. A comment is not meaning, so the
+//                      mill cannot see one go missing.
 //
 //   IMPORTS PRESERVED  The `load` / `bear` paths a file names are identical before and after. Compared SEPARATELY
 //                      because a load directive never becomes a mill Statement: it is resolved by the loader, so
@@ -27,10 +33,10 @@
 
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { format } from '@term/make/code/format/format'
+import { formatReport } from '@term/make/code/format/format'
 import { parse } from '@term/make/code/parser/tree'
-import { importPathsOf, makeParseMemo } from '@term/make/code/compile/load'
-import { mill } from '@term/make/code/compile/mill'
+import { importsOf, programOf } from '@term/make/code/format/meaning'
+import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import { makeMemo } from '../memo'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
@@ -86,85 +92,49 @@ function treeFiles(dir: string, out: string[] = []): string[] {
   return out
 }
 
-// the `load` / `bear` paths a file names, through the compiler's own reader so this cannot disagree with the build
-function importsOf(file: string, text: string): string {
-  return importPathsOf({ file, text }, makeParseMemo()).join('|')
-}
-
-// Adjacent literal pieces of a template mean the same thing however they are split: `["<", "<", x]` and
-// `["<<", x]` both render `<<` then x. The formatter re-emits a literal as one chunk where the source had two, so
-// comparing the split would report a meaning change where there is none. Merged before comparing, for the same
-// reason spans are dropped: this compares MEANING, not representation.
-function mergeParts(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(mergeParts)
-  }
-
-  if (!value || typeof value !== 'object') {
-    return value
-  }
-
-  const out: Record<string, unknown> = {}
-
-  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
-    // `privateNote` is a span too, under its own name: where a `note private` line sits, for the warning
-    // (check/private.ts). Formatting moves it as it moves every span, so it is position, not meaning
-    if (key === 'span' || key === 'privateNote') {
-      continue
-    }
-
-    if (key === 'parts' && Array.isArray(raw)) {
-      const merged: unknown[] = []
-
-      for (const part of raw) {
-        const last = merged[merged.length - 1]
-
-        if (typeof part === 'string' && typeof last === 'string') {
-          merged[merged.length - 1] = last + part
-        } else {
-          merged.push(mergeParts(part))
-        }
-      }
-
-      out[key] = merged
-      continue
-    }
-
-    out[key] = mergeParts(raw)
-  }
-
-  return out
-}
-
 // the mill's Program with spans dropped and template pieces merged, so only the MEANING is compared
-function program(file: string, text: string): string | undefined {
+function program(file: string, text: string, lean: boolean): string | undefined {
   const parsed = parse({ file, text })
 
-  if (!parsed.ok) {
-    return undefined
-  }
+  return parsed.ok ? programOf(parsed.tree, file, lean) : undefined
+}
 
-  const built = mill(parsed.tree, file)
+// every word of every comment, in order: COMMENTS KEPT. The formatter dropped the comment above a line that opens
+// with a literal (`# the second` over `2`) until 2026-10-03. Compared as words because a long comment is re-wrapped.
+function commentWords(file: string, text: string): string {
+  const parsed = parse({ file, text })
+  const words: string[] = []
 
-  if (!built.ok) {
-    return undefined
-  }
-
-  // a walk's bound is held in a temporary the mill names after its POSITION (`walk-head-<line>-<column>`, in
-  // compile/mint-bridge.ts), and position is exactly what formatting moves: a call compacted onto one line above a
-  // walk renamed every temporary below it, and the sweep reported the meaning changed (2026-10-02, nine files). The
-  // temporaries are renumbered in order of first appearance, so a consistent renaming compares equal and a different
-  // structure still does not
-  const temporaries = new Map<string, string>()
-
-  return JSON.stringify(mergeParts(built.program)).replace(/walk-head-\d+-\d+/g, name => {
-    if (!temporaries.has(name)) {
-      temporaries.set(name, `walk-head-${temporaries.size}`)
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') {
+      return
     }
 
-    return temporaries.get(name)!
-  })
+    const record = node as { comments?: { text: string }[]; nodes?: unknown[] }
+
+    for (const comment of record.comments ?? []) {
+      words.push(...comment.text.replace(/^\s*#+/, '').split(/\s+/).filter(Boolean))
+    }
+
+    for (const child of record.nodes ?? []) {
+      visit(child)
+    }
+  }
+
+  if (parsed.ok) {
+    parsed.tree.nodes.forEach(visit)
+  }
+
+  return words.join(' ')
 }
+
+// each file's role and `mark lean`, as the build reads them
+const roleOf = projectRoleOf(TERM)
+const leanOf = projectLeanOf(TERM)
+
+// files where the formatter's own meaning check refused its layout and it returned the file as written. Not a
+// drift (the file is unchanged), but a layout the rules ask for and the formatter could not prove, so it is listed
+let refused = 0
 
 const files = treeFiles(join(TERM, 'deck')).concat(treeFiles(join(TERM, 'test')))
 
@@ -190,10 +160,10 @@ for (const file of files) {
 
   const text = readFileSync(file, 'utf8')
 
-  // the three properties held last time, on these bytes, by this code
+  // the four properties held last time, on these bytes, by this code
   if (memo.passed(label, text)) {
     checked++
-    pass += 3
+    pass += 4
     continue
   }
 
@@ -202,7 +172,9 @@ for (const file of files) {
     continue
   }
 
-  const before = program(file, text)
+  const lean = leanOf(file)
+  const role = roleOf(file)
+  const before = program(file, text, lean)
 
   // a file the parser or the mill refuses has no meaning to preserve
   if (before === undefined) {
@@ -217,7 +189,14 @@ for (const file of files) {
   let once: string
 
   try {
-    once = format({ file, text })
+    const report = formatReport({ file, text }, { lean, role })
+
+    once = report.text
+
+    if (report.refused) {
+      refused++
+      note(`${label}: the formatter's meaning check refused its own layout (${report.refused})`)
+    }
   } catch (error) {
     note(`${label}: the formatter threw: ${(error as Error).message.slice(0, 160)}`)
     continue
@@ -226,7 +205,7 @@ for (const file of files) {
   checked++
 
   // MEANING PRESERVED
-  const after = program(file, once)
+  const after = program(file, once, lean)
   const same = after !== undefined && after === before
 
   if (KNOWN_MEANING.includes(label)) {
@@ -249,11 +228,18 @@ for (const file of files) {
     pass++
   }
 
+  // COMMENTS KEPT
+  if (commentWords(file, text) !== commentWords(file, once)) {
+    note(`${label}: formatting dropped or reordered a comment`)
+  } else {
+    pass++
+  }
+
   // IDEMPOTENT
   let twice: string
 
   try {
-    twice = format({ file, text: once })
+    twice = formatReport({ file, text: once }, { lean, role }).text
   } catch (error) {
     note(`${label}: the formatter threw on its own output: ${(error as Error).message.slice(0, 160)}`)
     continue
@@ -269,8 +255,8 @@ for (const file of files) {
     pass++
   }
 
-  // remembered only when all three properties held and nothing was on a known list
-  if (pass - passedBefore === 3 && fail === failedBefore) {
+  // remembered only when all four properties held and nothing was on a known list
+  if (pass - passedBefore === 4 && fail === failedBefore) {
     memo.pass(label, text)
   }
 }
@@ -286,7 +272,7 @@ for (const line of failures) {
 }
 
 console.log(
-  `\nfiles ${files.length}, checked ${checked}, skipped ${skipped} (do not parse or do not mill), known meaning ${knownMeaning}, known unstable ${knownUnstable}`,
+  `\nfiles ${files.length}, checked ${checked}, skipped ${skipped} (do not parse or do not mill), known meaning ${knownMeaning}, known unstable ${knownUnstable}, refused by the formatter's own check ${refused}`,
 )
 console.log(`format-sweep: ${pass} pass, ${fail} fail`)
 

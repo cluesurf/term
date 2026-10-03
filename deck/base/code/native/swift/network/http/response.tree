@@ -19,7 +19,7 @@ bind body-as-json
     text <(try? JSONSerialization.jsonObject(with: ($raw as? Data) ?? Data())) as Any>
 
 task read
-  note async
+  mark async
   take response, like response
   take
     format

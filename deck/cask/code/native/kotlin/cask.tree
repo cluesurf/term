@@ -135,25 +135,25 @@ task run
   call cask/run
 
 task quit
-  note async
+  mark async
   like void
   call cask/quit
 
 task exit
-  note async
+  mark async
   take status, like number
   like void
   call cask/exit
     read status
 
 task bundle-path
-  note async
+  mark async
   like text
   send back
     call cask/bundle-path
 
 task data-path
-  note async
+  mark async
   take name, like text
   like text
   send back

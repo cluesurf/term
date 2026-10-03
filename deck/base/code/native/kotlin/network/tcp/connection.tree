@@ -7,7 +7,7 @@ load @term/base/network/tcp
   find connection
 
 task wire-read
-  note async
+  mark async
   take connection, like connection
   like text
   send back
@@ -16,7 +16,7 @@ task wire-read
       wait true
 
 task wire-write
-  note async
+  mark async
   take connection, like connection
   take data, like text
   like number
@@ -27,7 +27,7 @@ task wire-write
       wait true
 
 task tcp-close
-  note async
+  mark async
   take connection, like connection
   like void
   call tcp/close

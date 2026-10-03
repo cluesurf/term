@@ -1,4 +1,4 @@
-note draft
+mark draft
 # Checked spec, not compiled code — see ../head/mint.tree's note. The real writer is ./code.tree's
 # write-otf-hhea-table, proven by deck/feed/test/otf-hhea-maxp.tree. `ushort`/`short` shared with ../head/mint.tree.
 

@@ -5,7 +5,7 @@
 # `clear`. "w+" is a node spelling and means nothing to tokio's OpenOptions, NIOFileSystem's, or a set of
 # java.nio.file.StandardOpenOption. See note/term/stdlib/native-async-file-and-server.md.
 
-note unstable
+mark unstable
 
 load @term/base/native/{platform}/file/asynchronous/handle
   find handle-open
@@ -24,7 +24,7 @@ form file
   link path, like text
 
 task open
-  note async
+  mark async
   take path, like text
   take
     read
@@ -55,17 +55,19 @@ task open
       read create
       read append
       read clear
+      wait true
 
 task close
-  note async
+  mark async
   take file, like file
   like void
   call handle-close
     read file
+    wait true
 
 # the next `size` bytes from the cursor, as text. The cursor moves by what was read.
 task read
-  note async
+  mark async
   take file, like file
   take size, like size
   like text
@@ -73,10 +75,11 @@ task read
     call handle-read
       read file
       read size
+      wait true
 
 # write at the cursor, and answer how many bytes went in
 task write
-  note async
+  mark async
   take file, like file
   take data, like text
   like size
@@ -84,11 +87,12 @@ task write
     call handle-write
       read file
       read data
+      wait true
 
 # move the cursor. `frame` is <start> (absolute), <relative> (from where the cursor is) or <end> (back from the
 # end), the same three SEEK_SET / SEEK_CUR / SEEK_END mean.
 task seek
-  note async
+  mark async
   take file, like file
   take offset, like size
   take
@@ -100,17 +104,19 @@ task seek
     read file
     read offset
     read frame
+    wait true
 
 task flush
-  note async
+  mark async
   take file, like file
   like void
   call handle-flush
     read file
+    wait true
 
 # cut the file to `size` bytes, 0 for empty
 task clear
-  note async
+  mark async
   take file, like file
   take
     size
@@ -120,3 +126,4 @@ task clear
   call handle-clear
     read file
     read size
+    wait true

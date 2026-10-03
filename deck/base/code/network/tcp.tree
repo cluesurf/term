@@ -1,6 +1,6 @@
 # TCP sockets. The clean uniform interface; each backend wraps its platform networking (node net / tls, rust tokio, swift Network / POSIX, kotlin java.net) behind this API, selected at build time. `connection` is a live duplex stream to a peer, with read / write / close methods; `listener` accepts incoming connections. The platform socket lives in the opaque `dock` handle, typed per backend. Every operation is async, since networking runs over time.
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/network/tcp
   find tcp-connect
@@ -24,16 +24,17 @@ form connection
 
   # read the next chunk of incoming data (empty text at end of stream)
   task read
-    note async
+    mark async
     take self
     like text
     send back
       call wire-read
         read self
+        wait true
 
   # write `data` to the peer, returning the number of bytes written
   task write
-    note async
+    mark async
     take self
     take data, like text
     like number
@@ -41,14 +42,16 @@ form connection
       call wire-write
         read self
         read data
+        wait true
 
   # close the connection
   task close
-    note async
+    mark async
     take self
     like void
     call tcp-close
       read self
+      wait true
 
 # a TCP listener accepting incoming connections
 form listener
@@ -58,24 +61,26 @@ form listener
 
   # wait for and return the next incoming connection
   task accept
-    note async
+    mark async
     take self
     like connection
     send back
       call tcp-accept
         read self
+        wait true
 
   # stop listening and release the port
   task close
-    note async
+    mark async
     take self
     like void
     call tcp-close-server
       read self
+      wait true
 
 # open a connection to `host:port` (TLS when `secure`)
 task connect
-  note async
+  mark async
   take host, like text
   take port, like number
   take
@@ -88,10 +93,11 @@ task connect
       read host
       read port
       read secure
+      wait true
 
 # bind a listener on `host:port` (TLS when `secure`, using `certificate` / `key`)
 task listen
-  note async
+  mark async
   take port, like number
   take
     host
@@ -117,3 +123,4 @@ task listen
       read secure
       read certificate
       read key
+      wait true

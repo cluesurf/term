@@ -41,7 +41,7 @@ task server-serve
 
 # bind the port and answer, without blocking. The returned server is what `server-stop` shuts down.
 task server-start
-  note async
+  mark async
   take port, like size
   take host, like text
   take handler
@@ -68,7 +68,7 @@ task server-start
       bind port, read port
 
 task server-stop
-  note async
+  mark async
   take server, like server
   like void
   call runtime/stop

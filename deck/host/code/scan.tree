@@ -182,7 +182,7 @@ task scan
 
 # a deeper line's group becomes a child of the shallower line's first group
 task attach
-  note private
+  mark private
   take parents
     like list
       like scan-node
@@ -216,7 +216,7 @@ task attach
 
 # leading spaces, two per level
 task depth-of
-  note private
+  mark private
   take line, like text
   like number
   save count, code 0
@@ -254,7 +254,7 @@ task depth-of
 
 # the tokens of one line
 task tokenize
-  note private
+  mark private
   take line, like text
   take number, like number
   like list
@@ -443,7 +443,7 @@ task tokenize
   send back, read out
 
 task is-break
-  note private
+  mark private
   take glyph, like text
   like boolean
   send back
@@ -465,7 +465,7 @@ task is-break
 
 # the character an escape stands for
 task unescape
-  note private
+  mark private
   take glyph, like text
   like text
   fork test
@@ -493,7 +493,7 @@ task unescape
 
 # a word is a number when it starts with a digit, or a minus and a digit
 task classify
-  note private
+  mark private
   take word, like text
   like token
   save first
@@ -569,7 +569,7 @@ task classify
           read word
 
 task is-digit
-  note private
+  mark private
   take code, like number
   like boolean
   send back
@@ -582,7 +582,7 @@ task is-digit
         code 57
 
 task is-radix-mark
-  note private
+  mark private
   take glyph, like text
   like boolean
   send back
@@ -599,7 +599,7 @@ task is-radix-mark
           text <o>
 
 task contains-dot
-  note private
+  mark private
   take word, like text
   like boolean
   save index, code 0
@@ -626,7 +626,7 @@ task contains-dot
 
 # `0x1f`, `0b1010`, `0o17` to a number
 task parse-radix
-  note private
+  mark private
   take word, like text
   like number
   save mark
@@ -692,7 +692,7 @@ task parse-radix
 
 # the groups of one line: a head word with its children, comma-separated siblings returning to the line's head
 task scan-line
-  note private
+  mark private
   take line, like text
   take number, like number
   like list
@@ -817,7 +817,7 @@ task scan-line
   send back, read out
 
 task is-group
-  note private
+  mark private
   take one, like scan-node
   like boolean
   fork case, read one
@@ -833,7 +833,7 @@ task is-group
       send back, false
 
 task attach-item
-  note private
+  mark private
   take owner, like scan-node
   take item, like scan-node
   fork case, read owner
@@ -866,7 +866,7 @@ form scanned-item
 
 # an item: a literal, a bare word, a word followed by a word (the key nests), or a word with a parenthesis
 task scan-item
-  note private
+  mark private
   take tokens
     like list
       like token

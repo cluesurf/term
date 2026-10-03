@@ -1,4 +1,4 @@
-note draft
+mark draft
 
 # SHELVED 2026-10-02 (base-v1-0017): superseded by code/environment.tree, which now holds has-variable, set-variable, remove-variable and variables. This module
 # declared its tasks and bound nothing, so every call built clean and threw `stub` at run time; its natives are

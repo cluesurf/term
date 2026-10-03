@@ -36,12 +36,18 @@ const DECK = path.resolve(SEED, '..')
 const resolve = projectResolver(SEED, 'browser')
 
 // a minimal DOM stub. Inputs carry a `value`; get-value/set-value read and write it. Elements support the subset the
-// render runtime + bind use: setAttribute, appendChild, addEventListener, replaceWith, textContent, value.
+// render runtime + bind use: setAttribute, appendChild, addEventListener, replaceWith, before, remove, textContent,
+// value. As in a browser, `childNodes` holds every child, text nodes included, and `children` only the elements: a list
+// keeps its place with an empty text node as a marker (note/term/view/12-render-seam.md), which is a child node and
+// not an element child.
 function makeStubElement(tag: string): any {
   return {
     tagName: tag,
     parent: null as any,
-    children: [] as any[],
+    childNodes: [] as any[],
+    get children(): any[] {
+      return this.childNodes.filter((c: any) => c.tagName !== '')
+    },
     attributes: {} as Record<string, string>,
     listeners: {} as Record<string, (() => void)[]>,
     textContent: '',
@@ -50,8 +56,9 @@ function makeStubElement(tag: string): any {
       this.attributes[n] = v
     },
     appendChild(c: any) {
+      c.remove()
       c.parent = this
-      this.children.push(c)
+      this.childNodes.push(c)
 
       return c
     },
@@ -61,9 +68,20 @@ function makeStubElement(tag: string): any {
     replaceWith(n: any) {
       void n
     },
+    // ChildNode.before(): put `n` in this node's parent just before it, moving it from wherever it was. The reactive
+    // `each` inserts its items before its marker this way
+    before(n: any) {
+      const parent = this.parent
+
+      if (!parent) {return}
+
+      n.remove()
+      parent.childNodes.splice(parent.childNodes.indexOf(this), 0, n)
+      n.parent = parent
+    },
     // ChildNode.remove(): detach from the parent. The reactive `each` uses it to reconcile the list on every change.
     remove() {
-      const siblings = this.parent?.children
+      const siblings = this.parent?.childNodes
 
       if (siblings) {
         const i = siblings.indexOf(this)
@@ -79,9 +97,9 @@ function makeStubElement(tag: string): any {
   }
 }
 
-// the rendered text of a post node (its first text-child's content)
+// the rendered text of a post node (its first child node's content, a text node)
 function textOf(node: any): string {
-  return node?.children?.[0]?.textContent ?? ''
+  return node?.childNodes?.[0]?.textContent ?? ''
 }
 
 async function main(): Promise<void> {

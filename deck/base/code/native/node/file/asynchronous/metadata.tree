@@ -8,7 +8,7 @@ load @term/base/file/metadata
   find file-metadata
 
 task meta-read
-  note async
+  mark async
   take path, like text
   take
     follow

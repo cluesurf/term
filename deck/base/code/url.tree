@@ -5,7 +5,7 @@
 
 # the platform's parsed-URL object, held opaque
 
-note stable
+mark stable
 
 dock type
   load <any>, name url-handle

@@ -1,4 +1,4 @@
-note draft
+mark draft
 
 # SHELVED 2026-10-02 (base-v1-0019): a sketch with no native and no caller. It declared tasks that bound nothing, so a call built clean and
 # threw `stub` at run time; out of the build until it has bodies.
@@ -12,10 +12,10 @@ task send
   take data
 
 task receive
-  note async
+  mark async
   take handle, like handle
 
 task stream
-  note async
+  mark async
   take handle, like handle
   like list

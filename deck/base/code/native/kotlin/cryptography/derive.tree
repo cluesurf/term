@@ -5,7 +5,7 @@ dock load
   load <global:crypto>, name crypto
 
 task pbkdf2-sha256
-  note async
+  mark async
   take password, like bytes
   take salt, like bytes
   take iterations, like number
@@ -19,7 +19,7 @@ task pbkdf2-sha256
       read length
 
 task hkdf-sha256
-  note async
+  mark async
   take secret, like bytes
   take salt, like bytes
   take info, like bytes

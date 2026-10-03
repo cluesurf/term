@@ -1,4 +1,4 @@
-note draft
+mark draft
 
 # SHELVED 2026-10-02 (base-v1-0019): bodiless `make`, `add` and `handle`, package-global names that shadow real ones. Nothing loads it.
 

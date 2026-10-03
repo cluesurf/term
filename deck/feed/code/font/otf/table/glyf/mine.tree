@@ -1,4 +1,4 @@
-note draft
+mark draft
 # Checked spec, not compiled code — see ../head/mine.tree's note. The real reader is ./code.tree's
 # read-otf-glyph, proven by deck/feed/test/otf-glyf.tree. Replaces the old pre-rename draft entirely (raw
 # opentype.js-style JS calls — `glyphset.GlyphSet`, `glyphset.ttfGlyphLoader` — mixed into `weave`/`share`/`cause`

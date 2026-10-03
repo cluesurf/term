@@ -100,14 +100,13 @@ task statement
 # a row of the first window's, as the second window or the first asks for it: true when the cask answered with the
 # line, false when it refused
 task reads
-  note async
+  mark async
   take owner, like text
   take row, like text
   take expected, like text
   like boolean
   save reply
     call dispatch-as
-      wait true
       read owner
       call message
         text <db_field>
@@ -126,18 +125,16 @@ task reads
       read expected
 
 task check
-  note async
+  mark async
   take first, like window
   take first-key, like text
   take second-key, like text
   like number
   save bundle
     call bundle-path
-      wait true
   save expected
     call trim
       call read
-        wait true
         text <{{bundle}}/smoke.txt>
   fork test
     hook test
@@ -149,11 +146,9 @@ task check
   save directory
     call data-path
       text <TermWindows>
-      wait true
   # the FIRST window opens the database and makes its row; the rows come back as ids under the first window's key
   save opened
     call dispatch-as
-      wait true
       read first-key
       call message
         text <db_connect>
@@ -164,7 +159,6 @@ task check
             text <{{directory}}/windows.sqlite>
   save made
     call dispatch-as
-      wait true
       read first-key
       call message
         text <db_run>
@@ -172,7 +166,6 @@ task check
           text <CREATE TABLE IF NOT EXISTS note (id TEXT PRIMARY KEY, title TEXT NOT NULL)>
   save cleared
     call dispatch-as
-      wait true
       read first-key
       call message
         text <db_run>
@@ -180,7 +173,6 @@ task check
           text <DELETE FROM note>
   save written
     call dispatch-as
-      wait true
       read first-key
       call message
         text <db_run>
@@ -189,7 +181,6 @@ task check
   save rows
     call parse
       call dispatch-as
-        wait true
         read first-key
         call message
           text <db_query>
@@ -204,7 +195,6 @@ task check
         code 0
   save own
     call reads
-      wait true
       read first-key
       read row
       read expected
@@ -215,7 +205,6 @@ task check
   # the SECOND window, holding the first's id, is refused: the id is not in its part of the table
   save stolen
     call reads
-      wait true
       read second-key
       read row
       read expected
@@ -226,7 +215,6 @@ task check
   # nor can the second window let it go: a release under its key finds nothing of the first's
   save released
     call dispatch-as
-      wait true
       read second-key
       call message
         text <cask_release>
@@ -241,7 +229,6 @@ task check
             read row
   save still
     call reads
-      wait true
       read first-key
       read row
       read expected
@@ -253,7 +240,6 @@ task check
   save theirs
     call parse
       call dispatch-as
-        wait true
         read second-key
         call message
           text <db_query>
@@ -271,7 +257,7 @@ task check
 
 # after the first window closed, through the platform: its row is let go, and the second window still answers
 task after-close
-  note async
+  mark async
   take first-key, like text
   take second-key, like text
   take expected, like text
@@ -288,7 +274,6 @@ task after-close
         hook hold
           halt
       call sleep
-        wait true
         code 100
   fork test
     hook test, read held/closed
@@ -296,7 +281,6 @@ task after-close
       send back, code 6
   save gone
     call reads
-      wait true
       read first-key
       read held/first-row
       read expected
@@ -306,7 +290,6 @@ task after-close
       send back, code 6
   save kept
     call reads
-      wait true
       read second-key
       read held/second-row
       read expected
@@ -345,18 +328,16 @@ task boot
   call on-message
     read control
     task drive
-      note async
+      mark async
       take message, like text
       like text
       save where
         call bundle-path
-          wait true
       # a check that raises (a reply that is not JSON) is a failed run with its own status, never a crash
       save verdict, code 8
-      note unsafe
+      mark unsafe
         save verdict
           call check
-            wait true
             read first
             read first-key
             read second-key
@@ -380,20 +361,16 @@ task boot
           save expected
             call trim
               call read
-                wait true
                 text <{{where}}/smoke.txt>
           save verdict
             call after-close
-              wait true
               read first-key
               read second-key
               read expected
       call exit
-        wait true
         read verdict
       send back
         call dispatch-as
-          wait true
           text <control>
           read message
   call load-bundle

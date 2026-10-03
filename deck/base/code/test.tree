@@ -1,6 +1,6 @@
 # The test library. A test is a meta object: a name and a work that runs and reports whether it held. `case` builds one, `run` executes a list of them, prints each result, and returns a tally. Assertions return a boolean: `want` for equality, `deny` for inequality. Every other check is an ordinary operator call (`is-above`, `is-below`, `contains`) returned directly. Tests are ordinary Term, so the compiler handles them with no special case. See note/library/seed/test-dsl.md.
 
-note unstable
+mark unstable
 
 load @term/base/console
   find log
@@ -66,7 +66,7 @@ task deny
 # run a list of tests, print each name and result, return a pass/fail tally
 
 task run
-  note async
+  mark async
   take cases
     like list
       like test

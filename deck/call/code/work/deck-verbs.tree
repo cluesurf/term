@@ -45,7 +45,7 @@ dock load
 
 # `term load`: install every dependency the manifest names
 task load
-  note async
+  mark async
   take clean, like boolean
   take offline, like boolean
 
@@ -55,7 +55,7 @@ task load
   save root, call project-root
   log-step <Installing dependencies...>
 
-  note unsafe
+  mark unsafe
     call deck-tree/install
       make install-ask
         bind root, read root
@@ -70,7 +70,7 @@ task load
 
 # `term save <deck>`: add a dependency
 task save
-  note async
+  mark async
   take deck, like text
 
   like void
@@ -84,7 +84,7 @@ task save
       node-process/exit code 1
   log-step <Adding {{deck}}...>
 
-  note unsafe
+  mark unsafe
     call deck-tree/addDependency
       make deck-ask, bind(root, read root), bind name, read deck
       wait true
@@ -96,7 +96,7 @@ task save
 
 # `term toss <deck>`: remove a dependency
 task toss
-  note async
+  mark async
   take deck, like text
 
   like void
@@ -110,7 +110,7 @@ task toss
       node-process/exit code 1
   log-step <Removing {{deck}}...>
 
-  note unsafe
+  mark unsafe
     call deck-tree/removeDependency
       make deck-ask, bind(root, read root), bind name, read deck
       wait true

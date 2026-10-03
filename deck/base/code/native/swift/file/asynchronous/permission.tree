@@ -5,7 +5,7 @@ dock load
   load <global:aio>, name aio
 
 task permission-read
-  note async
+  mark async
   take path, like text
   like size
   send back
@@ -14,7 +14,7 @@ task permission-read
       wait true
 
 task permission-write
-  note async
+  mark async
   take path, like text
   take mode, like size
   like void

@@ -1,4 +1,4 @@
-note unstable
+mark unstable
 
 bear ./and
 bear ./any

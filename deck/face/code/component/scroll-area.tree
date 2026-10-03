@@ -1,5 +1,5 @@
 
-note draft
+mark draft
 
 # SHELVED 2026-10-02: replaced by ./scroll.tree, the vocabulary's `scroll` (note/term/view/11-vocabulary.md), which is
 # the platform's own scroll view on every toolkit. A custom scrollbar is left out of the vocabulary. Nothing placed this

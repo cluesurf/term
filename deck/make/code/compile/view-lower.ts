@@ -28,6 +28,9 @@ import type {
 import type { Span } from '@term/make/code/parser/diagnostic'
 import { RENDER } from '@term/make/code/compile/render-names'
 
+// the name a guarded event handler binds what it caught to, before handing it to the render runtime's `keep-raise`
+const HANDLER_RAISE = 'raised-in-handler'
+
 // The render-runtime + component functions are referenced by bare name (a
 // `variable` callee with no binding -> the emitter writes `name(args)`); the
 // page imports the render runtime, and component names resolve to their lowered
@@ -435,22 +438,42 @@ function lowerZone(
       })
 
       for (const attribute of node.attributes) {
+        // a handler is a function: a single expression (`seed click / call submit`) is wrapped in one, and a body of
+        // several statements, which the mill already made a closure, is passed as it is. Wrapping that closure again
+        // built the handler and never called it, so a click whose handler had two statements did nothing (found by
+        // test/view/terminal-input.ts, 2026-10-03). typescript.ts's emitZone makes the same distinction
+        //
+        // And every handler's body is GUARDED (swiftui-target-0003): a raise that escapes it goes to the render runtime's
+        // `keep-raise`, which keeps its note where a view can show it, and the app goes on. Unguarded, a raise in a click
+        // handler ended the program on Swift (`try!` in the closure) and Kotlin (an exception out of the listener)
+        const body: Statement[] =
+          attribute.value.form === 'closure' ? attribute.value.body : [{ form: 'expression', expr: attribute.value, span }]
+        const params = attribute.value.form === 'closure' ? attribute.value.params : []
+        const guarded: Statement = {
+          form: 'guard',
+          body,
+          catch: {
+            name: HANDLER_RAISE,
+            // the note, read off the caught value: natively that value is the backend's carrier (`TermException`), not
+            // the generic `exception` form, and every backend's carrier has the note
+            body: [
+              {
+                form: 'expression',
+                expr: call(RENDER.raise, [{ form: 'member', target: variable(HANDLER_RAISE), name: 'note', span }]),
+                span,
+              },
+            ],
+            span,
+          },
+          span,
+        }
+        const handler: Expression = attribute.value.form === 'closure'
+          ? { ...attribute.value, params, body: [guarded] }
+          : { form: 'closure', params, body: [guarded], span }
+
         out.push(
           attribute.event
-            ? exprStatement(
-                call(RENDER.event, [
-                  variable(ref),
-                  string(attribute.name),
-                  {
-                    form: 'closure',
-                    params: [],
-                    body: [
-                      { form: 'return', value: attribute.value, span },
-                    ],
-                    span,
-                  },
-                ]),
-              )
+            ? exprStatement(call(RENDER.event, [variable(ref), string(attribute.name), handler]))
             : attributeStatement(ref, attribute.name, attribute.value),
         )
       }

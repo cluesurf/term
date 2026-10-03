@@ -4,7 +4,7 @@
 # `create` opens the stream over a window of the file, `read` pulls the next chunk, and the empty text means the
 # end of the stream (or the end of the window). `close` releases the handle.
 
-note unstable
+mark unstable
 
 load @term/base/native/{platform}/file/asynchronous/stream/reader
   find reader-create
@@ -19,7 +19,7 @@ form reader
 
 # `start` is where to begin, `size` how many bytes to read from there. `size` 0 reads to the end of the file.
 task create
-  note async
+  mark async
   take path, like text
   take
     start
@@ -35,18 +35,21 @@ task create
       read path
       read start
       read size
+      wait true
 
 task read
-  note async
+  mark async
   take stream, like reader
   like text
   send back
     call reader-read
       read stream
+      wait true
 
 task close
-  note async
+  mark async
   take stream, like reader
   like void
   call reader-close
     read stream
+    wait true

@@ -21,23 +21,21 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { compile } from '@term/make/code/compile/compile'
-import { nativePrelude } from '@term/make/code/compile/native'
-import { emitRust } from '@term/make/code/compile/rust'
-import { emitSwift } from '@term/make/code/compile/swift'
-import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
+import {
+  EMIT_TARGETS,
+  emitTarget,
+  isEmitTarget,
+} from '@term/make/code/compile/emit-target'
+import type { EmitTarget } from '@term/make/code/compile/emit-target'
 import { projectResolver } from '@term/call/code/make'
 import { findProjectRoot } from '@term/call/code/boot'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import { renderDiagnostic } from '@term/call/code/report'
 
-export const EMIT_TARGETS = ['node', 'rust', 'swift', 'kotlin'] as const
-
-export type EmitTarget = (typeof EMIT_TARGETS)[number]
-
-export function isEmitTarget(value: string): value is EmitTarget {
-  return (EMIT_TARGETS as readonly string[]).includes(value)
-}
+// the per-target emit is make/code/compile/emit-target.ts, shared with the browser worker (make/code/browser/)
+export { EMIT_TARGETS, isEmitTarget }
+export type { EmitTarget }
 
 const readRuntime = (file: string): string | undefined =>
   existsSync(file) ? readFileSync(file, 'utf8') : undefined
@@ -87,20 +85,14 @@ export function emitProgram(input: {
     }
   }
 
-  const prelude = nativePrelude(result.program, env, readRuntime)
-
-  switch (env) {
-    case 'node':
-      return { ok: true, source: `${prelude}\n${result.typescript}` }
-    case 'rust':
-      return { ok: true, source: `${prelude}\n${emitRust(result.program)}` }
-    case 'swift':
-      return { ok: true, source: `${prelude}\n${emitSwift(result.program)}` }
-    case 'kotlin':
-      return {
-        ok: true,
-        source: hoistKotlinImports(`${prelude}\n${emitKotlin(result.program)}`),
-      }
+  return {
+    ok: true,
+    source: emitTarget({
+      program: result.program,
+      typescript: result.typescript,
+      target: env,
+      readRuntime,
+    }),
   }
 }
 

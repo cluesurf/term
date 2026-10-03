@@ -299,7 +299,7 @@ task clipped
 # warmups then timed rounds over one group: every case of one program at one size on one target. Each round runs
 # the cases in a new shuffled order, and every run's output is checked before its sample is kept
 task run-rounds
-  note async
+  mark async
   take group
     like list
       like case
@@ -348,7 +348,6 @@ task run-rounds
               read one/command
               read words
               read flag
-              wait true
           save printed
             call trim
               read taken/output
@@ -721,7 +720,7 @@ task targets-of
 
 # the whole session. Answers the exit code
 task run-suite
-  note async
+  mark async
   take only, like text
   take target, like text
   take runs, like number
@@ -795,7 +794,6 @@ task run-suite
   save names
     call program-names
       read mark-root
-      wait true
   save chosen
     make list
   walk list, read names
@@ -831,7 +829,6 @@ task run-suite
         call read-contract
           text <{{mark-root}}/{{name}}>
           read name
-          wait true
       fork test
         hook test
           call is-above
@@ -861,7 +858,6 @@ task run-suite
       read label
       read warmup-count
       read runs
-      wait true
   save gear, read session/machine
   call log
     text <term mark: {{contracts/length}} of {{chosen/length}} programs, {{runs}} rounds after {{warmup-count}} warmups, purpose {{purpose}}>
@@ -920,7 +916,6 @@ task run-suite
           text </usr/bin/true>
           read nothing
           read flag
-          wait true
   save floor
     call median-of
       call decimals-of
@@ -936,7 +931,6 @@ task run-suite
   # headline session, and refused in one
   save native
     call native-arch
-      wait true
   save headline
     call is-equal
       read purpose
@@ -945,7 +939,6 @@ task run-suite
   fork test
     hook test
       call runner-translated
-        wait true
     hook hold
       save own
         call arch-name
@@ -971,7 +964,6 @@ task run-suite
       save have
         call has-tool
           read one
-          wait true
       call push
         read installed
         read have
@@ -985,12 +977,10 @@ task run-suite
             call check-arch
               read one
               read native
-              wait true
           save version
             call toolchain-text
               call tool-version
                 read one
-                wait true
               read arch
           save emulated, read arch/emulated
           call log
@@ -1150,7 +1140,6 @@ task run-suite
                       read dir
                       read one/name
                       read version
-                      wait true
                 hook miss
                   save one-made
                     call build-source
@@ -1160,7 +1149,6 @@ task run-suite
                       read dir
                       read one/name
                       read version
-                      wait true
               fork test
                 hook test
                   call is-equal
@@ -1224,7 +1212,6 @@ task run-suite
                     read runs
                     read flag
                     read cell
-                    wait true
                   call print-cases
                     read group
               walk list, read group
@@ -1294,7 +1281,6 @@ task run-suite
       save history
         call read-history
           read session-dir
-          wait true
       save checked, code 0
       save fresh, code 0
       walk list, read comparisons
@@ -1379,7 +1365,6 @@ task run-suite
       call file-save
         read path
         read body
-        wait true
       call log
         text <session export: {{path}} ({{cases/length}} cases)>
       fork test
@@ -1391,7 +1376,6 @@ task run-suite
           call file-save
             read export
             read body
-            wait true
           call log
             text <copied to {{export}}>
   fork test

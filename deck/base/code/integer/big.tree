@@ -5,7 +5,7 @@
 
 # the platform's bignum value, held opaque
 
-note unstable
+mark unstable
 
 dock type
   load <any>, name big-handle

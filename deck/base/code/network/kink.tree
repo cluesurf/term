@@ -9,7 +9,7 @@
 # forms: connection-refused is `refusal`, dns-not-found is `absence`, timeout is
 # `timeout`, connection-reset is `outage`. Nothing imports this module.
 
-note draft
+mark draft
 
 
 form network-kink

@@ -5,7 +5,7 @@ dock load
   load <global:aio>, name aio
 
 task temporary-make
-  note async
+  mark async
   take
     kind
     like text

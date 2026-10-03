@@ -9,7 +9,7 @@ task current-time
     call clock/current-time
 
 task delay
-  note async
+  mark async
   take ms, like number
   like void
   call clock/sleep

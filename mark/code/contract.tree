@@ -191,7 +191,7 @@ task sorted-texts
 
 # every file under a directory, as paths relative to it, in sorted order
 task files-under
-  note async
+  mark async
   take dir, like text
   take prefix, like text
   like list
@@ -210,7 +210,6 @@ task files-under
       save inward
         call is-directory
           read full
-          wait true
       fork test
         hook test
           read inward
@@ -219,7 +218,6 @@ task files-under
             call files-under
               read full
               text <{{relative}}/>
-              wait true
           walk list, read inner
             hook next
               take site, name one
@@ -235,14 +233,13 @@ task files-under
 # the program's digest: every file under its directory, by relative path and content, in sorted order. A changed
 # program is a new workload, never compared with its earlier self
 task program-digest
-  note async
+  mark async
   take dir, like text
   like text
   save files
     call files-under
       read dir
       text <>
-      wait true
   save parts
     make list
   walk list, read files
@@ -251,7 +248,6 @@ task program-digest
       save body
         call file-text
           text <{{dir}}/{{relative}}>
-          wait true
       call push
         read parts
         text <{{relative}}\n{{body}}\n>
@@ -260,7 +256,6 @@ task program-digest
       call join
         read parts
         text <>
-      wait true
 
 # a text field of a dynamic map, or empty when absent or not text
 task text-field
@@ -275,7 +270,7 @@ task text-field
 
 # read one program's bench.tree. The contract comes back either way; `refused` holds every reason it may not run
 task read-contract
-  note async
+  mark async
   take dir, like text
   take name, like text
   like contract
@@ -301,7 +296,6 @@ task read-contract
       call not
         call file-present
           read file
-          wait true
     hook hold
       call push
         read refused
@@ -310,7 +304,6 @@ task read-contract
   save body
     call file-text
       read file
-      wait true
   save value
     call data-value
       read body
@@ -332,7 +325,6 @@ task read-contract
       call not
         call file-present
           read term
-          wait true
     hook hold
       call push
         read refused
@@ -403,13 +395,11 @@ task read-contract
                 hook test
                   call file-present
                     read expect-file
-                    wait true
                 hook hold
                   save expect
                     call trim
                       call file-text
                         read expect-file
-                        wait true
                   call push
                     read sizes
                     make named-size
@@ -422,7 +412,6 @@ task read-contract
                       bind digest
                         call tone-of-text
                           read expect
-                          wait true
                 hook miss
                   call push
                     read refused
@@ -653,7 +642,6 @@ task read-contract
                   call not
                     call file-present
                       text <{{dir}}/{{path}}>
-                      wait true
                 hook hold
                   call push
                     read refused
@@ -723,7 +711,6 @@ task read-contract
       save digest
         call program-digest
           read dir
-          wait true
   send back
     make contract
       bind name, read name
@@ -737,7 +724,7 @@ task read-contract
 
 # every program directory: `mark/<family>/<program>/`, where a family is any directory but the runner's own
 task program-names
-  note async
+  mark async
   take root, like text
   like list
     like text
@@ -757,7 +744,6 @@ task program-names
       save family-folder
         call is-directory
           text <{{root}}/{{family}}>
-          wait true
       fork test
         hook test
           call or
@@ -782,7 +768,6 @@ task program-names
           save program-folder
             call is-directory
               text <{{root}}/{{family}}/{{program}}>
-              wait true
           fork test
             hook test
               call or

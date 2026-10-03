@@ -7,7 +7,7 @@
 #   an optional minus first, then digits, then optionally a point and more digits:  42  -7  3.25  -0.5  .5  5.
 #   none:  the empty text, a letter or a space anywhere, a second point, a minus anywhere but first, no digit at all
 
-note stable
+mark stable
 
 load @term/base/maybe
   find maybe

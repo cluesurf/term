@@ -32,6 +32,8 @@ import {
 } from '@term/make/code/check/private'
 import { checkTells } from '@term/make/code/check/tell'
 import { checkRaiseBounds } from '@term/make/code/check/effects'
+import { checkMissingBacks } from '@term/make/code/check/returns'
+import { checkTypeNames } from '@term/make/code/check/type-names'
 import { checkSupervision } from '@term/make/code/check/supervise'
 import { buildRoll } from '@term/make/code/compile/roll'
 import type { Roll } from '@term/make/code/compile/roll'
@@ -455,7 +457,7 @@ export function compile(
     const entryTree = parsed(source)
     const spelled =
       compiled.ok && entryTree.ok
-        ? noteMetadataSites(entryTree.tree)
+        ? noteMetadataSites(entryTree.tree, source.text)
             .filter(site => site.word !== 'private')
             .map(site =>
               diagnose('note-metadata', {
@@ -597,6 +599,14 @@ export function compileProgram(
 
   if (extendDiagnostics.length) {
     return { ok: false, diagnostics: extendDiagnostics }
+  }
+
+  // every type a task or form of this file names is one the program has, read before seeding turns an unknown name
+  // into a hole (check/type-names.ts)
+  const typeNameDiagnostics = checkTypeNames(program, file)
+
+  if (typeNameDiagnostics.length) {
+    return { ok: false, diagnostics: typeNameDiagnostics }
   }
 
   // arity overloading: rename same-name / different-arity functions (and their calls) to unique `name__<arity>` names,
@@ -879,6 +889,13 @@ export function compileProgram(
 
   if (boundDiagnostics.length) {
     return { ok: false, diagnostics: boundDiagnostics }
+  }
+
+  // every path through a task that promises a value sends one back (check/returns.ts)
+  const backDiagnostics = checkMissingBacks(program, file)
+
+  if (backDiagnostics.length) {
+    return { ok: false, diagnostics: backDiagnostics }
   }
 
   // supervision trees: a transient worker whose work can raise nothing never restarts (check/supervise.ts)

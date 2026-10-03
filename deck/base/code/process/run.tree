@@ -1,6 +1,6 @@
 # Run a subprocess to completion and capture its result. The clean uniform interface; each backend wraps its platform process API (node child_process, rust std::process::Command, swift Process, kotlin ProcessBuilder), selected at build time. Async, because a subprocess runs over time. `run-result` carries the exit code plus whatever the process wrote to standard output and standard error.
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/process/run
   find spawn-process
@@ -15,7 +15,7 @@ form run-result
 
 # run `command` with `argument-list`, wait for it to finish, return its result
 task run
-  note async
+  mark async
   take command, like text
   take argument-list
     like list
@@ -25,12 +25,13 @@ task run
     call spawn-process
       read command
       read argument-list
+      wait true
 
 # run `command` on this terminal: it reads the keyboard and writes as it goes, so a password prompt or a progress bar
 # reaches the person at the terminal, and nothing is captured. The answer is the exit code, -1 when the command could
 # not be started (and always -1 in a browser, which runs no processes)
 task run-attached
-  note async
+  mark async
   take command, like text
   take argument-list
     like list
@@ -40,11 +41,12 @@ task run-attached
     call spawn-on-terminal
       read command
       read argument-list
+      wait true
 
 # run `command` with `input` written to its standard input, then closed: the answers to a program's prompts (the `y` an
 # installer asks for), handed over without a shell or a pipe. Output is captured as `run` captures it
 task run-with-input
-  note async
+  mark async
   take command, like text
   take argument-list
     like list
@@ -56,3 +58,4 @@ task run-with-input
       read command
       read argument-list
       read input
+      wait true

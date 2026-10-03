@@ -1,4 +1,4 @@
-note draft
+mark draft
 # Checked spec, not compiled code — see the note at the top of ../../../../hex/mine.tree. The real reader is
 # ./code.tree's read-otf-head-table, proven by deck/feed/test/otf-head.tree. This replaces the old pre-rename
 # draft (share/mark/turn-seed syntax with raw opentype.js comments mixed in) entirely rather than porting it —

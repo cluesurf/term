@@ -311,6 +311,14 @@ export const CATALOG = {
     severity: 'warning',
     fix: 'write `mark` for the `note`: `term lint --fix` rewrites it, and `note` is left for documentation',
   },
+  // A task that promises a value and has a path that ends without `back`. It built, and the TypeScript it emitted fell
+  // out of the bottom with `undefined` where the type said a value (guides: language/branching, check/returns.ts)
+  'missing-back': {
+    code: 0x28,
+    message: 'a path through this task ends without sending a value back',
+    severity: 'error',
+    fix: 'end every path with `back`, or add a `hook miss` that does',
+  },
 } satisfies Record<string, CatalogEntry>
 
 export type DiagnosticName = keyof typeof CATALOG

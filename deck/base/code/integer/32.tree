@@ -1,6 +1,6 @@
 # Signed 32-bit integer: values -2147483648 to 2147483647. See `n` for the operation template.
 
-note stable
+mark stable
 
 load @term/base/bit
   find bitwise-and

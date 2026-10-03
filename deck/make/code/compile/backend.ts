@@ -1498,6 +1498,183 @@ export function rebinds(
 // and an arm's field that is itself a record is held to the same rule, except that it may not be matched again (a
 // match through `&Rc<R>` does not dereference). Any other field is copied (a scalar) or cloned (anything else) out of
 // the reference at the arm's entry, so the arm's body reads it as it always did
+// D1 for records on the backends whose records are objects (TypeScript, Kotlin): where a copy must be made so a write
+// through one name cannot reach another. A record is a value, so a task that writes a field of a record it was passed
+// works on its own copy, and `save b, read a` followed by a field write through either name leaves the other as it was.
+// Rust and Swift copy by construction and never read this.
+//   - `params`: per task, the record parameters whose fields it writes (a field write whose base is the parameter, or
+//     the parameter passed on at a position its callee writes), each with whether some written path is deeper than one
+//     field (`t/inner/x`), which a one-level copy would not separate
+//   - `lets`: the `let`s that alias a record (`save b, read a`) where either name is written through, same flag
+// A `mark shared` form is a reference by design and is never copied.
+//   - `plain`: the record forms all this reads, every one with fields that is not `mark shared` and has no variants
+export type RecordCopies = { params: Map<string, Map<number, boolean>>; lets: Map<Statement, boolean>; plain: Set<string> }
+
+export function recordCopies(program: Statement[]): RecordCopies {
+  type Fn = Extract<Statement, { form: 'function' }>
+  type Loose = Record<string, unknown> & { form?: string }
+  const plain = new Set(
+    program.flatMap(n => (n.form === 'record-type' && !n.shared && n.fields.length && !n.variants.length ? [n.name] : [])),
+  )
+  const isRecord = (t: Type | undefined): boolean => t?.kind === 'named' && plain.has(t.name)
+  const fns = program.filter((n): n is Fn => n.form === 'function')
+  const params = new Map<string, Map<number, boolean>>()
+  const lets = new Map<Statement, boolean>()
+
+  // every field write in a body: its base variable and its depth
+  const fieldWrites = (body: Statement[]): Map<string, boolean> => {
+    const found = new Map<string, boolean>()
+    const visit = (value: unknown): void => {
+      if (typeof value !== 'object' || value === null) {
+        return
+      }
+
+      if (Array.isArray(value)) {
+        value.forEach(visit)
+
+        return
+      }
+
+      const node = value as Loose
+
+      if (node.form === 'assign' && (node.target as Loose).form === 'member') {
+        let at = node.target as Loose
+        let depth = 0
+
+        while (at.form === 'member') {
+          // a slot of a list is not a field: the list's own facts hold it
+          if (at.index !== undefined || /^\d+$/.test(at.name as string)) {
+            depth = -1
+
+            break
+          }
+
+          depth += 1
+          at = at.target as Loose
+        }
+
+        if (depth > 0 && at.form === 'variable' && isRecord(at.type as Type)) {
+          found.set(at.name as string, (found.get(at.name as string) ?? false) || depth > 1)
+        }
+      }
+
+      for (const [key, child] of Object.entries(node)) {
+        if (key !== 'type' && key !== 'span') {
+          visit(child)
+        }
+      }
+    }
+
+    visit(body)
+
+    return found
+  }
+
+  // the parameters, to a fixpoint: one passed on at a written position is written here
+  for (let changed = true; changed; ) {
+    changed = false
+
+    for (const fn of fns) {
+      const written = fieldWrites(fn.body)
+      const passOn = (value: unknown): void => {
+        if (typeof value !== 'object' || value === null) {
+          return
+        }
+
+        if (Array.isArray(value)) {
+          value.forEach(passOn)
+
+          return
+        }
+
+        const node = value as Loose
+
+        if (node.form === 'call' && (node.callee as Loose).form === 'variable') {
+          const target = params.get((node.callee as Loose).name as string)
+
+          ;(node.args as Loose[]).forEach((arg, i) => {
+            if (target?.has(i) && arg.form === 'variable') {
+              written.set(arg.name as string, (written.get(arg.name as string) ?? false) || target.get(i)!)
+            }
+          })
+        }
+
+        for (const [key, child] of Object.entries(node)) {
+          if (key !== 'type' && key !== 'span') {
+            passOn(child)
+          }
+        }
+      }
+
+      passOn(fn.body)
+
+      const mine = params.get(fn.name) ?? new Map<number, boolean>()
+
+      fn.params.forEach((p, i) => {
+        if (isRecord(p.type) && written.has(p.name) && mine.get(i) !== written.get(p.name)) {
+          mine.set(i, (mine.get(i) ?? false) || written.get(p.name)!)
+          changed = true
+        }
+      })
+
+      if (mine.size) {
+        params.set(fn.name, mine)
+      }
+    }
+  }
+
+  // the aliasing `let`s, per task: every name written through, by a field write or a callee, then each alias of one
+  const walk = (value: unknown, see: (node: Loose) => void): void => {
+    if (typeof value !== 'object' || value === null) {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(v => walk(v, see))
+
+      return
+    }
+
+    const node = value as Loose
+    see(node)
+
+    for (const [key, child] of Object.entries(node)) {
+      if (key !== 'type' && key !== 'span') {
+        walk(child, see)
+      }
+    }
+  }
+
+  for (const fn of fns) {
+    const written = fieldWrites(fn.body)
+
+    walk(fn.body, node => {
+      if (node.form === 'call' && (node.callee as Loose).form === 'variable') {
+        const target = params.get((node.callee as Loose).name as string)
+
+        ;(node.args as Loose[]).forEach((arg, i) => {
+          if (target?.has(i) && arg.form === 'variable') {
+            written.set(arg.name as string, (written.get(arg.name as string) ?? false) || target.get(i)!)
+          }
+        })
+      }
+    })
+
+    walk(fn.body, node => {
+      if (node.form === 'let' && (node.init as Loose).form === 'variable' && isRecord((node.type ?? (node.init as Loose).type) as Type)) {
+        const from = (node.init as Loose).name as string
+        const to = node.name as string
+
+        if (written.has(from) || written.has(to)) {
+          lets.set(node as unknown as Statement, (written.get(from) ?? false) || (written.get(to) ?? false))
+        }
+      }
+    })
+  }
+
+  return { params, lets, plain }
+}
+
 export function borrowedRecords(program: Statement[], gated: Extract<Statement, { form: 'function' }>[]): Map<string, Set<number>> {
   type Loose = Record<string, unknown> & { form?: string }
   const records = new Map(

@@ -1,0 +1,226 @@
+
+# The parts of owning a terminal that are the same on every platform (terminal-target-0006): the rows the terminal
+# shows, writing only the ones that changed, and one round of input turned into keys and pressed on the tree. ./app
+# wraps them in raw mode, and ./loop/{platform} runs the rounds.
+
+load @term/base/terminal
+  find terminal-columns
+  find terminal-rows
+  find read-input
+  find write-output
+
+load ../../view
+  find view
+
+load ./paint
+  find paint-screen
+
+load ./input
+  find press-key
+
+load ./keys
+  find decode-keys
+
+load @term/base/list
+  find list
+  find push
+
+load @term/base/text/unicode
+  find to-runes
+  find rune-to-text
+
+load @term/base/text/string
+  find concat
+
+# the rows the terminal shows now, so a repaint writes only what changed. ONE record, shared, because every repaint
+# reads and replaces it
+form terminal-screen
+  mark shared
+  link lines
+    like list
+      like text
+  link width, like number
+  link height, like number
+
+task make-lines
+  like list
+    like text
+  send back
+    make list
+
+# a screen's rows: the text between its line breaks
+task split-lines
+  take value, like text
+  like list
+    like text
+  save lines, call make-lines
+  save line, text <>
+  walk list, call to-runes(read value)
+    hook next
+      take site, name rune
+      fork test
+        hook test
+          call is-equal
+            read rune
+            code 10
+        hook hold
+          call push
+            bind list, read lines
+            bind item, read line
+          save line, text <>
+        hook miss
+          save line
+            call concat
+              read line
+              call rune-to-text
+                read rune
+  call push
+    bind list, read lines
+    bind item, read line
+  send back, read lines
+
+# the escape sequence that starts a control: ESC `[`
+task control
+  take rest, like text
+  like text
+  send back
+    call concat
+      call concat
+        call rune-to-text, code 27
+        text <[>
+      read rest
+
+# the terminal's size, or 80 by 24 when it reports none
+task screen-width
+  like number
+  save width, call terminal-columns
+  fork test
+    hook test
+      call is-below
+        read width
+        code 1
+    hook hold
+      send back, code 80
+  send back, read width
+
+task screen-height
+  like number
+  save height, call terminal-rows
+  fork test
+    hook test
+      call is-below
+        read height
+        code 1
+    hook hold
+      send back, code 24
+  send back, read height
+
+# a screen record at the terminal's size, showing nothing yet
+task make-screen
+  like terminal-screen
+  send back
+    make terminal-screen
+      bind lines, call make-lines
+      bind width, call screen-width
+      bind height, call screen-height
+
+# paint the tree under `root` and write the rows that differ from what the terminal shows, each placed at its row and
+# cleared to its end
+task show-screen
+  take shown, like terminal-screen
+  take root, like view
+  save lines
+    call split-lines
+      call paint-screen
+        read root
+        read shown/width
+        read shown/height
+  save out, text <>
+  save row, code 0
+  walk test
+    hook test
+      call is-below
+        read row
+        read shown/height
+    hook step
+      save line, text <>
+      fork test
+        hook test
+          call is-below
+            read row
+            read lines/length
+        hook hold
+          save line, read lines/{row}
+      save before, text <>
+      fork test
+        hook test
+          call is-below
+            read row
+            read shown/lines/length
+        hook hold
+          save before, read shown/lines/{row}
+      save changed
+        meet or
+          call is-unequal
+            read line
+            read before
+          call is-minimum
+            read row
+            read shown/lines/length
+      fork test
+        hook test
+          read changed
+        hook hold
+          save at
+            call add
+              read row
+              code 1
+          save out
+            call concat
+              call concat
+                call concat
+                  read out
+                  call control
+                    text <{at};1H>
+                read line
+              call control
+                text <K>
+      save row
+        call add
+          read row
+          code 1
+  call write-output
+    read out
+  save shown/lines, read lines
+
+# one read from the terminal, its keys pressed on the tree under `root`. False when the program should stop: ctrl-c,
+# or the end of input
+task take-input
+  take root, like view
+  like boolean
+  save input, call read-input
+  fork test
+    hook test
+      call is-equal
+        read input
+        text <>
+    hook hold
+      send back, false
+  save running, true
+  walk list, call decode-keys(call to-runes(read input))
+    hook next
+      take site, name key
+      fork test
+        hook test
+          call is-equal
+            read key
+            text <ctrl-c>
+        hook hold
+          save running, false
+        hook test
+          read running
+        hook hold
+          call press-key
+            read root
+            read key
+  send back, read running

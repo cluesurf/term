@@ -36,28 +36,25 @@ load @term/base/list
 task refused-after-release
   take row, like row
   like boolean
-  note async
-  note unsafe
+  mark async
+  mark unsafe
     save again
       call field
         read row
         text <title>
-        wait true
     send back, false
   halt take
     take problem
     send back, true
 
 task boot
-  note async
+  mark async
   like void
   save directory
     call data-path
       text <TermData>
-      wait true
   call connect
     text <{{directory}}/smoke.sqlite>
-    wait true
   call run
     text <CREATE TABLE IF NOT EXISTS note (id TEXT PRIMARY KEY, title TEXT NOT NULL, rank INTEGER NOT NULL)>
     make list
@@ -80,14 +77,11 @@ task boot
       text <SELECT id, title, rank FROM note WHERE rank = $1>
       make list
         code 7
-      wait true
   save bundle
     call bundle-path
-      wait true
   save expected
     call trim
       call read
-        wait true
         text <{{bundle}}/smoke.txt>
   fork test
     hook test
@@ -104,7 +98,6 @@ task boot
         call field
           read row
           text <title>
-          wait true
       fork test
         hook test
           call is-equal
@@ -114,11 +107,9 @@ task boot
           # the row read back; now let it go, and the cask must no longer answer for it
           call release
             read row
-            wait true
           save refused
             call refused-after-release
               read row
-              wait true
           fork test
             hook test, read refused
             hook hold
@@ -128,16 +119,13 @@ task boot
               save info
                 call stat
                   text <{{bundle}}/smoke.txt>
-                  wait true
               save folder
                 call stat
                   read bundle
-                  wait true
               fork test
                 hook test, read info/directory
                 hook hold
                   call exit
-                    wait true
                     code 4
                 hook miss
                   fork test
@@ -150,25 +138,19 @@ task boot
                             code 0
                         hook hold
                           call exit
-                            wait true
                             code 0
                         hook miss
                           call exit
-                            wait true
                             code 4
                     hook miss
                       call exit
-                        wait true
                         code 4
             hook miss
               call exit
-                wait true
                 code 3
         hook miss
           call exit
-            wait true
             code 1
     hook miss
       call exit
-        wait true
         code 2

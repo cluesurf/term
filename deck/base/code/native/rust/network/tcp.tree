@@ -12,7 +12,7 @@ load @term/base/network/tcp
   find listener
 
 task tcp-connect
-  note async
+  mark async
   take host, like text
   take port, like number
   take secure, like boolean
@@ -31,7 +31,7 @@ task tcp-connect
       bind secure, read secure
 
 task tcp-listen
-  note async
+  mark async
   take port, like number
   take host, like text
   take secure, like boolean

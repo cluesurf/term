@@ -121,7 +121,7 @@ task suite-describe
     read group-stack
 
 task suite-run
-  note async
+  mark async
   take
     filter
     like text

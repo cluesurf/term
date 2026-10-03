@@ -1,4 +1,4 @@
-note draft
+mark draft
 # Checked spec, not compiled code — see ../head/mine.tree's note. The real writer is ./code.tree's
 # write-otf-loca-table, proven by deck/feed/test/otf-loca.tree. Same short/long split and same open notation
 # question as mine.tree.

@@ -4,7 +4,7 @@
 
 # one response header: a name and its value, kept as an ordered list so duplicates (set-cookie, ...) survive
 
-note unstable
+mark unstable
 
 form header
   link name, like text

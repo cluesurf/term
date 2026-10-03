@@ -3,7 +3,7 @@
 # stack symbol, a Kotlin stack element): the names in a frame are the compiled ones, so the text differs by backend
 # while the shape does not. For a person reading a failure, never for a program to parse.
 
-note unstable
+mark unstable
 
 load @term/base/list
   find list

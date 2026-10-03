@@ -1,4 +1,4 @@
-note draft
+mark draft
 # `mine`/`form`/`any`/`range`/`send` are the feed grammar DSL's own vocabulary (note/term/feed/01-grammar.md) and
 # not Term identifiers, so this file is not compiled AS code. It is compiled FROM: `term make` recognises a
 # grammar, generates the reader it describes and compiles that (deck/call/code/make.ts, held by

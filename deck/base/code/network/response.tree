@@ -1,7 +1,7 @@
 # An HTTP response: the status code, the body text, and the headers, each name in lower case and the names in code
 # point order, a header the server sent twice joined with ", ". Built by network/http.tree on every backend.
 
-note stable
+mark stable
 
 load @term/base/hash
   find hash

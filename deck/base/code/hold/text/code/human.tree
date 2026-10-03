@@ -23125,8 +23125,10 @@ task get-grapheme-break-property
                                                       code 0xe0fff
                                                 hook hold
                                                   send back, make control
-      # unlisted code points are treated as a break property of "Other"
-      send back, make other
+  # unlisted code points are treated as a break property of "Other". At the task's own level, so every path that
+  # finds no range reaches it: under the outer `hook miss` it served only code points from 0xbeb4 up, and one below
+  # that in a gap between ranges came back with no value (found by `missing-back`, 2026-10-03)
+  send back, make other
 
 task get-emoji-property
   take code
@@ -24820,6 +24822,6 @@ task get-emoji-property
                                       code 0x1fffd
                                 hook hold
                                   send back, make extended-pictographic
-      # unlisted code points are treated as a break property of "Other"
-      send back, make other
+  # unlisted code points are treated as "Other", at the task's own level for the reason given above
+  send back, make other
 

@@ -11,7 +11,7 @@
 # promises (`must`) never to move backward, which is what lets each walk's measure fall: `term hold` proves the check
 # always ends.
 
-note stable
+mark stable
 
 load @term/base/text/unicode
   find to-runes

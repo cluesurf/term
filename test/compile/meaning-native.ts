@@ -161,6 +161,11 @@ const BOXES_WANT = 'sum=15 first=1'
 const PLACE = readFileSync(join(import.meta.dirname, 'meaning-native/place.tree'), 'utf8')
 const PLACE_WANT = 'p0=107,10 p1=5,35 p2=3,73 old=6 pin=1'
 
+// a record is a value (D1): a task's field write, a second name written through, a write two fields deep and a record
+// read from a list, none reaching the caller's (codegen-performance-0028)
+const RECORDS = readFileSync(join(import.meta.dirname, 'meaning-native/records.tree'), 'utf8')
+const RECORDS_WANT = 'inside=6 twice=6 caller=5 alias=7 deep=99 outer=5 list=4 kept=3'
+
 const baseTree = join(process.cwd(), 'deck', 'base')
 const STDLIB_PREFIX = /^@term\/base\//
 
@@ -301,6 +306,7 @@ for (const backend of ['typescript', 'rust', 'swift', 'kotlin']) {
   run(backend, 'boxes', BOXES, BOXES_WANT)
   run(backend, 'alias', ALIAS, ALIAS_WANT)
   run(backend, 'place', PLACE, PLACE_WANT)
+  run(backend, 'records', RECORDS, RECORDS_WANT)
 }
 
 console.log(`\nmeaning-native: ${pass} pass, ${fail} fail, ${skip} skipped`)

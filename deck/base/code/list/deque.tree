@@ -4,7 +4,7 @@
 # item on each front operation. Pops return `maybe`, so an empty deque is total. Build one with `make deque` and an
 # empty `items` list (or `make-deque`); `start` and `filled` begin at zero.
 
-note stable
+mark stable
 
 load @term/base/list
   find list

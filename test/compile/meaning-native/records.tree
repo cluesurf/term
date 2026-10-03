@@ -1,0 +1,78 @@
+load @term/base/list
+  find list
+  find push
+  find get
+
+# a record is a VALUE (D1): a task that writes a field of a record it was passed changes its own copy, and a second
+# name for a record written through either name leaves the other as it was. Rust and Swift copy by construction;
+# TypeScript and Kotlin copy where `recordCopies` says (codegen-performance-0028)
+
+form counter
+  link count, like number
+
+form holder
+  link inner, like counter
+  link label, like number
+
+task bumped
+  take t, like counter
+  like number
+  save t/count
+    call add
+      read t/count
+      code 1
+  send back, read t/count
+
+# passes its record on to a task that writes it: each call writes its own copy, so both answer 6
+task twice-bumped
+  take t, like counter
+  like number
+  call bumped
+    read t
+  send back
+    call bumped
+      read t
+
+# a write two fields deep
+task deep
+  take p, like holder
+  like number
+  save p/inner/count, code 99
+  send back, read p/inner/count
+
+task compute
+  like text
+  host c
+    make counter
+      bind count, code 5
+  host b
+    call bumped
+      read c
+  host b2
+    call twice-bumped
+      read c
+  save d, read c
+  save d/count, code 7
+  host p
+    make holder
+      bind inner, read c
+      bind label, code 1
+  host deep-in
+    call deep
+      read p
+  save list-of
+    make list
+  call push
+    read list-of
+    make counter
+      bind count, code 3
+  host from-list
+    call bumped
+      call get
+        read list-of
+        code 0
+  host listed
+    call get
+      read list-of
+      code 0
+  send back, text <inside={b} twice={b2} caller={c/count} alias={d/count} deep={deep-in} outer={p/inner/count} list={from-list} kept={listed/count}>

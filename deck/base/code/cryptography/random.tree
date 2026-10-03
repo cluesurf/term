@@ -1,6 +1,6 @@
 # Cryptographically secure random bytes. The generic interface; each public verb delegates to the per-backend native implementation, which lives in its own file (`native/<env>/cryptography/random`). Input and output stay in the currency types.
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/cryptography/random
   find random-bytes

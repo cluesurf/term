@@ -12,7 +12,7 @@ load @term/base/file/stream/reader
 
 # `start` is where to begin, `size` how many bytes to read from there. `size` 0 reads to the end.
 task reader-create
-  note async
+  mark async
   take path, like text
   take
     start
@@ -36,7 +36,7 @@ task reader-create
 
 # the next chunk, or the empty text at the end of the stream
 task reader-read
-  note async
+  mark async
   take stream, like reader
   like text
   send back
@@ -45,7 +45,7 @@ task reader-read
       wait true
 
 task reader-close
-  note async
+  mark async
   take stream, like reader
   like void
   call aio/reader-close

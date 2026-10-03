@@ -1,6 +1,6 @@
 # Floating-point math. The clean uniform interface over the host float library, hidden per-env. Operates on the float type (decimal literals, JSON numbers, fractional results). Distinct from the integer `math` module.
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/float
   find float-square-root

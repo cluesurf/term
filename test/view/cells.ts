@@ -116,6 +116,53 @@ const CASES: Case[] = [
     want: '\n  x\n',
   },
   {
+    // half a cell rounds up and less rounds down, the same whole number on every backend: 8 points down is 1 row, 4 is 0
+    name: 'an 8 point gap in a column is one blank row, a 4 point gap none',
+    tree: 'stack(<column>, 0, <stretch>, <start>, 0, two(stack(<column>, 8, <stretch>, <start>, 0, two(text-node(<a>), text-node(<b>))), stack(<column>, 4, <stretch>, <start>, 0, two(text-node(<c>), text-node(<d>)))))',
+    width: 4,
+    height: 5,
+    want: 'a\n\nb\nc\nd',
+  },
+  {
+    // align end in a 6 cell column: each child keeps its own width, against the right edge
+    name: 'align end puts each child of a column against its far edge, at its own width',
+    tree: 'stack(<column>, 0, <end>, <start>, 0, two(text-node(<ab>), text-node(<c>)))',
+    width: 6,
+    height: 2,
+    want: '    ab\n     c',
+  },
+  {
+    // justify center in an 8 cell row: 4 cells of children, the 4 free split 2 before and 2 after
+    name: 'justify center leaves equal room before and after the children of a row',
+    tree: 'stack(<row>, 0, <stretch>, <center>, 0, two(text-node(<ab>), text-node(<cd>)))',
+    width: 8,
+    height: 1,
+    want: '  abcd',
+  },
+  {
+    name: 'justify end puts the children of a row against its far edge',
+    tree: 'stack(<row>, 0, <stretch>, <end>, 0, two(text-node(<ab>), text-node(<cd>)))',
+    width: 8,
+    height: 1,
+    want: '    abcd',
+  },
+  {
+    // a 64 point minimum is 8 cells: the frame around `ab` is 8 wide, so `x` starts in the ninth
+    name: 'a minimum width holds a frame wider than its content',
+    tree: 'stack(<row>, 0, <stretch>, <start>, 0, two(bounded-node(64, 0, text-node(<ab>)), text-node(<x>)))',
+    width: 12,
+    height: 1,
+    want: 'ab      x',
+  },
+  {
+    // a 32 point maximum is 4 cells: the text inside wraps there
+    name: 'a maximum width holds a frame narrower than its content, which wraps inside it',
+    tree: 'stack(<column>, 0, <start>, <start>, 0, one(bounded-node(0, 32, text-node(<abc def>))))',
+    width: 12,
+    height: 2,
+    want: 'abc\ndef',
+  },
+  {
     name: 'a row inside a column is stretched across, so its grower reaches the far edge',
     tree: 'stack(<column>, 0, <stretch>, <start>, 0, one(stack(<row>, 0, <stretch>, <start>, 0, three(text-node(<a>), spacer-node(), text-node(<b>)))))',
     width: 6,
@@ -184,6 +231,20 @@ task frame-node
     call blank
   save made/kind, text <frame>
   save made/width, read width
+  call made/children/push
+    read child
+  send back, read made
+
+task bounded-node
+  take low, like number
+  take high, like number
+  take child, like cell-node
+  like cell-node
+  save made
+    call blank
+  save made/kind, text <frame>
+  save made/min-width, read low
+  save made/max-width, read high
   call made/children/push
     read child
   send back, read made

@@ -1,0 +1,22 @@
+
+# Work started without waiting (`tick f(x)`), run until none of it can go further. A program with its own loop calls
+# this between turns, the way a terminal app does after each key, so what a key started lands before the next paint.
+#
+# On node and in a browser the event loop already does this between turns, so it is nothing there. On Rust a
+# fire-and-forget call is queued rather than dropped, and this drains the queue (compile/rust.ts, `__term_drain`). On
+# Swift and Kotlin a `tick` is still the bare call it always was. True always.
+
+mark unstable
+
+bind run-pending
+  like boolean
+  case node
+    text <true>
+  case browser
+    text <true>
+  case rust
+    text <\{ __term_drain(); true \}>
+  case swift
+    text <true>
+  case kotlin
+    text <true>

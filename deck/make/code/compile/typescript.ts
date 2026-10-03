@@ -10,7 +10,9 @@ import type {
   Type,
   ViewNode,
 } from '@term/make/code/compile/node'
+import type { RecordCopies } from '@term/make/code/compile/backend'
 import {
+  recordCopies,
   exhausted,
   mapCollect,
   stringCall,
@@ -1166,10 +1168,22 @@ function makeEmitter(
   loopGuards: WeakMap<Statement, LoopGuard> = new WeakMap(),
   // the slot writes of a record that assign the changed fields of the object already there (compile/place.ts)
   places: Map<Statement, PlaceWrite> = new Map(),
+  // where a record is copied so a write through one name cannot reach another (backend.ts, `recordCopies`)
+  copies: RecordCopies = { params: new Map(), lets: new Map(), plain: new Set() },
 ) {
   const pad = (depth: number) => '  '.repeat(depth)
+  // a record's copy: one level, a spread. A nested write rebuilds its path rather than writing the nested record, so a
+  // copy one level deep separates every write
+  const copyRecord = (text: string, _deep: boolean): string => `{ ...${text} }`
+  // the forms a nested write rebuilds through: every record form that is not `mark shared`
+  const plainRecords = copies.plain
   // the lists whose slots the loop copy being emitted reads and writes unchecked: its guard holds (loopGuards)
   let uncheckedLists = new Set<string>()
+  // the calls in that copy that may call their task's unchecked copy (`LoopGuard.fast`), the tasks some such call
+  // reached (each emitted once more, unchecked, behind the program), and whether the body being emitted is one
+  let fastCalls = new Set<object>()
+  const fastTasks = new Set<string>()
+  let uncheckedInts = false
 
   let assignedNames = new Set<string>()
 
@@ -1231,6 +1245,14 @@ function makeEmitter(
         return toCamel(node.name)
 
       case 'call': {
+        // a call inside a guarded loop copy whose guard bounds its arguments (`integerBounds`): the task's copy with no
+        // overflow checks, `aValueFast`
+        if (fastCalls.has(node) && node.callee.form === 'variable') {
+          fastTasks.add(node.callee.name)
+
+          return expression({ ...node, callee: { ...node.callee, name: `${node.callee.name}-fast` } } as Expression, parentPrecedence)
+        }
+
         // `get` / `set` / `at` on an ARRAY receiver: JavaScript arrays have no `get` or `set`; they are
         // indexing. `at` is a real method and was left alone until 2026-09-13, and that was the outlier:
         // Rust, Swift and Kotlin all lower `at` to a direct index read, so its negative-index reading was
@@ -1330,7 +1352,9 @@ function makeEmitter(
           binds.has(node.callee.name)
         ) {
           const bind = binds.get(node.callee.name)!
-          const args = node.args.map(arg => expression(arg))
+          // each argument as an operand, grouped when compound: a template that is the argument alone (`to-decimal`'s
+          // `$value`) stands where the call stood, so `1 / to-decimal(a + b)` must keep `(a + b)`
+          const args = node.args.map(arg => expression(arg, 100))
 
           return (
             renderBind(bind, env, args) ??
@@ -1377,7 +1401,12 @@ function makeEmitter(
           return `Array.from(${expression(collected.target)}.${collected.name}())`
         }
 
-        const rendered = node.args.map(arg => expression(arg))
+        // a record passed to a task that writes its fields is the task's own copy (D1, `recordCopies`): a spread for a
+        // one-level write, a deep copy where some written path goes further
+        const writes = node.callee.form === 'variable' ? copies.params.get(node.callee.name) : undefined
+        const rendered = node.args.map((arg, i) =>
+          writes?.has(i) && arg.form !== 'record' ? copyRecord(expression(arg), writes.get(i)!) : expression(arg),
+        )
         const declared = node.callee.form === 'variable' ? tsFunctionParams.get(node.callee.name) : undefined
 
         if (declared) {
@@ -1595,6 +1624,11 @@ function makeEmitter(
         // Rust, Swift and Kotlin. JavaScript's `/` is the float quotient. note/term/proof-by-default/numbers.md
         // (and a division by zero, `Infinity` or `NaN` here, is refused by the same check below)
         if (node.op === '/' && integerDivision(node)) {
+          // in a task's unchecked copy the interval fact proved the quotient finite and safe
+          if (uncheckedInts) {
+            return `Math.trunc(${text})`
+          }
+
           tsIntUsed = true
 
           return `__termInt(Math.trunc(${text}))`
@@ -1607,7 +1641,8 @@ function makeEmitter(
         if (
           (node.op === '+' || node.op === '-' || node.op === '*' || node.op === '%') &&
           integerDivision(node) &&
-          !provenSteps.has(node)
+          !provenSteps.has(node) &&
+          !uncheckedInts
         ) {
           tsIntUsed = true
 
@@ -1930,9 +1965,11 @@ function makeEmitter(
         const spelled = node.type ? tsType(node.type) : ''
         const declared = spelled ? `: ${spelled}` : ''
 
-        return `${keyword} ${toCamel(node.name)}${declared} = ${expression(
-          node.init,
-        )}`
+        // a second name for a record one of the two is written through: its own copy (D1, `recordCopies`)
+        const alias = copies.lets.get(node)
+        const init = alias === undefined ? expression(node.init) : copyRecord(expression(node.init), alias)
+
+        return `${keyword} ${toCamel(node.name)}${declared} = ${init}`
       }
 
       case 'assign': {
@@ -1982,6 +2019,37 @@ function makeEmitter(
           return `__termAt(${list}, ${at}); ${list}[${at}] ${node.op} ${expression(node.value)}`
         }
 
+        // a write two or more fields deep never changes the nested record in place: it may be another name's too (a
+        // record built from a variable holds that variable's record), and a record is a value (D1). The path is rebuilt
+        // from its first field instead, `p.inner = { ...p.inner, count: 99 }` (codegen-performance-0028)
+        if (node.op === '=' && node.target.form === 'member') {
+          const segments: string[] = []
+          let base: Expression = node.target
+          let rebuild = true
+
+          while (base.form === 'member') {
+            const holder = base.target.type
+
+            if (base.index || /^\d+$/.test(base.name) || holder?.kind !== 'named' || !plainRecords.has(holder.name)) {
+              rebuild = false
+            }
+
+            segments.unshift(base.name)
+            base = base.target
+          }
+
+          if (rebuild && segments.length > 1) {
+            const at = (k: number): string => `${expression(base)}.${segments.slice(0, k).map(toCamel).join('.')}`
+            let value = expression(node.value)
+
+            for (let k = segments.length - 1; k >= 1; k--) {
+              value = `{ ...${at(k)}, ${toCamel(segments[k]!)}: ${value} }`
+            }
+
+            return `${at(1)} = ${value}`
+          }
+        }
+
         const target = expression(node.target)
 
         return node.op === '='
@@ -2006,8 +2074,11 @@ function makeEmitter(
           return `throw new ${EXCEPTION_CLASS}(${expression(node.value)})`
         }
 
+        // a text raises `failure`, the carrier every native backend builds for one (rust.ts `throw`): a handler reads
+        // `form` and `note` off it alike everywhere. It was a bare `Error`, so `problem/form` was `undefined` here
+        // and `failure` there (guides: language/errors, 2026-10-03)
         return node.value.form === 'string' || node.value.form === 'template'
-          ? `throw new Error(${expression(node.value)})`
+          ? `throw ((note: string) => Object.assign(new Error(note), { name: "TermException", host: "", form: "failure", note, code: "", time: Date.now(), link: {} }))(${expression(node.value)})`
           : `throw ${expression(node.value)}`
       case 'while': {
         // a counted loop whose list indexes a guard proves in bounds (ir/facts/bounds.ts) is written twice: the guard
@@ -2032,11 +2103,16 @@ function makeEmitter(
 
             return c.side === 'low' ? `${value} >= 0` : `${value} < ${name(c.list)}.length`
           })
+          .concat((guard.limits ?? []).map(l => (l.low ? `${name(l.name)} >= 0` : `${name(l.name)} <= ${l.high}`)))
+          .filter((term, i, all) => all.indexOf(term) === i)
           .join(' && ')
         const outer = uncheckedLists
+        const outerCalls = fastCalls
         uncheckedLists = new Set([...outer, ...guard.checks.map(c => c.list)])
+        fastCalls = new Set([...outerCalls, ...(guard.fast ?? [])])
         const fast = `while (${expression(node.cond)}) ${block(node.body, depth + 1)}`
         uncheckedLists = outer
+        fastCalls = outerCalls
         const slow = `while (${expression(node.cond)}) ${block(node.body, depth + 1)}`
 
         return `if (${test}) {\n${pad(depth + 1)}${fast}\n${pad(depth)}} else {\n${pad(depth + 1)}${slow}\n${pad(depth)}}`
@@ -2411,7 +2487,16 @@ function makeEmitter(
     }
   }
 
-  return { statement, expression }
+  // a task's body emitted with no overflow checks, for its unchecked copy
+  const unchecked = (fn: Statement): string => {
+    uncheckedInts = true
+    const text = statement(fn, 0)
+    uncheckedInts = false
+
+    return text
+  }
+
+  return { statement, expression, unchecked, fastTasks }
 }
 
 export function emitTypeScript(
@@ -2519,6 +2604,7 @@ export function emitTypeScript(
     provenIncrements(program),
     boundedLoops(program),
     recordPlaces(program).writes,
+    recordCopies(program),
   )
 
   // native module bindings (`dock load`) become host imports at the top. A `<global:X>` binding refers to a host
@@ -2644,6 +2730,16 @@ export function emitTypeScript(
     })
     // an ambient host global whose seed name already spells the global emits nothing; drop the blank line
     .filter(line => line.length > 0)
+
+  // each task a guarded loop calls unchecked, once more with no overflow checks (`aValueFast`): the guard proved its
+  // arguments inside the bound under which its arithmetic cannot leave the safe integers (ir/facts/bounds.ts)
+  for (const name of emitter.fastTasks) {
+    const fn = emittable.find((n): n is Extract<Statement, { form: 'function' }> => n.form === 'function' && n.name === name)
+
+    if (fn) {
+      lines.push(`export ${emitter.unchecked({ ...fn, name: `${name}-fast` })}`)
+    }
+  }
 
   // the exception class rides in front of the first module that raises or declares one
   const prelude =

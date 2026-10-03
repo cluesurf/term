@@ -9,7 +9,7 @@ dock load
   load <global:aio>, name aio
 
 task file-read
-  note async
+  mark async
   take path, like text
   like text
   send back
@@ -18,7 +18,7 @@ task file-read
       wait true
 
 task file-read-bytes
-  note async
+  mark async
   take path, like text
   like bytes
   send back
@@ -27,7 +27,7 @@ task file-read-bytes
       wait true
 
 task file-write
-  note async
+  mark async
   take path, like text
   take data, like text
   like void
@@ -37,7 +37,7 @@ task file-write
     wait true
 
 task file-write-bytes
-  note async
+  mark async
   take path, like text
   take data, like bytes
   like void
@@ -47,7 +47,7 @@ task file-write-bytes
     wait true
 
 task file-append
-  note async
+  mark async
   take path, like text
   take data, like text
   like void
@@ -57,7 +57,7 @@ task file-append
     wait true
 
 task file-copy
-  note async
+  mark async
   take from, like text
   take to, like text
   take
@@ -72,7 +72,7 @@ task file-copy
     wait true
 
 task file-move
-  note async
+  mark async
   take from, like text
   take to, like text
   like void
@@ -82,7 +82,7 @@ task file-move
     wait true
 
 task file-remove
-  note async
+  mark async
   take path, like text
   take
     deep
@@ -96,7 +96,7 @@ task file-remove
 
 # an empty `kind` asks only whether the path exists; <file>, <directory> and <link> ask what it is
 task file-test
-  note async
+  mark async
   take path, like text
   take
     kind
@@ -128,7 +128,7 @@ load @term/base/file/watch
   find watcher
 
 task watch-open
-  note async
+  mark async
   take path, like text
   take deep, like boolean
   like watcher
@@ -143,7 +143,7 @@ task watch-open
       bind path, read path
 
 task watch-next
-  note async
+  mark async
   take watcher, like watcher
   like watch-event
   send back
@@ -152,7 +152,7 @@ task watch-next
       wait true
 
 task watch-close
-  note async
+  mark async
   take watcher, like watcher
   like void
   call watch-file/watch-close

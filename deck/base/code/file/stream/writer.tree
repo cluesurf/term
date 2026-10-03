@@ -1,7 +1,7 @@
 # Writing a file a chunk at a time, rather than building the whole thing in memory. The clean uniform interface,
 # the per-env native implementation selected at build time and hidden.
 
-note unstable
+mark unstable
 
 load @term/base/native/{platform}/file/asynchronous/stream/writer
   find writer-create
@@ -16,7 +16,7 @@ form writer
 
 # with `append`, writes go after what is already there; without it the file starts empty
 task create
-  note async
+  mark async
   take path, like text
   take
     append
@@ -27,19 +27,22 @@ task create
     call writer-create
       read path
       read append
+      wait true
 
 task write
-  note async
+  mark async
   take stream, like writer
   take data, like text
   like void
   call writer-write
     read stream
     read data
+    wait true
 
 task close
-  note async
+  mark async
   take stream, like writer
   like void
   call writer-close
     read stream
+    wait true

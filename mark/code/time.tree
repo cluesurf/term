@@ -162,7 +162,7 @@ task time-flag
 
 # run `command` with `arguments` once, under /usr/bin/time, and read what it reports
 task take-sample
-  note async
+  mark async
   take command, like text
   take arguments
     like list

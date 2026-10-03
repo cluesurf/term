@@ -1,4 +1,4 @@
-note draft
+mark draft
 # An x86 instruction table written in its own dialect (`force adc` / `start` / `shift` / `write`), not ordinary
 # Term. deck/term/CLAUDE.md's rule is that a custom .tree dialect is integrated by defining a MILL, never by
 # teaching the core compiler its heads, so this is shelved until that mill exists. Shelved rather than deleted:

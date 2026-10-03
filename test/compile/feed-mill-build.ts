@@ -59,13 +59,13 @@ const DECK = 'deck @term/probe\n'
 
 // ---- a real grammar builds ----
 //
-// hex's own shipped grammar, with its `note draft` removed. That marker says the file "can never pass term make's
+// hex's own shipped grammar, with its `mark draft` (or the older `note draft`) removed. That marker says the file "can never pass term make's
 // type checker", which was true of a grammar compiled as CODE and is the thing this change retires: what has to
 // pass the checker is the reader generated FROM it.
 
 const hex = readFileSync(join(TERM, 'deck/feed/code/hex/mine.tree'), 'utf8')
   .split('\n')
-  .filter(line => line.trim() !== 'note draft')
+  .filter(line => line.trim() !== 'mark draft' && line.trim() !== 'note draft')
   .join('\n')
 
 // The helper hex's `mine value` calls, which the grammar imports with its own `load ./code`. The real dialect has
@@ -169,7 +169,7 @@ ok(
 ok(
   'and says why, and what to do about it',
   vagueResult.errors.some(
-    e => e.includes('bytes or text') && e.includes('note draft'),
+    e => e.includes('bytes or text') && e.includes('mark draft'),
   ),
   vagueResult.errors.join(' | ').slice(0, 200),
 )

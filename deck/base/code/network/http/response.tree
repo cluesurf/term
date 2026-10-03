@@ -1,4 +1,4 @@
-note draft
+mark draft
 
 # SHELVED 2026-10-02 (base-v1-0019): a bodiless `read`; network/http answers the whole response. Nothing loads it.
 
@@ -6,7 +6,7 @@ load @term/base/network/http
   find response
 
 task read
-  note async
+  mark async
   take response, like response
   take
     format

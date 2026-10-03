@@ -5,7 +5,7 @@ load @term/base/process
   find child
 
 task connect
-  note async
+  mark async
   take from, like child
   take to, like child
 

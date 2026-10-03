@@ -1,0 +1,60 @@
+
+# A program that owns the terminal (terminal-target-0006). The app builds its tree under a root, the way a page mounts
+# under its body, and hands the root to `run-terminal`, which:
+#
+#   1. turns raw mode on, hides the cursor and clears the screen
+#   2. paints the tree at the terminal's size
+#   3. reads what the terminal sends, decodes it into keys, and presses each on the tree (./screen `take-input`)
+#   4. repaints, writing only the rows that changed, each one placed by row and cleared to its end
+#   5. stops on ctrl-c or when input ends, shows the cursor again, puts it under the screen, and turns raw mode off
+#
+# Steps 3 and 4 repeat in ./loop/{platform}, the one part that differs: on node the loop yields to the event loop
+# after each round, so work a key started asynchronously (a store, a fetch) lands before the repaint; on Rust it does
+# not, because nothing there runs later. A terminal that reports no size is taken as 80 by 24.
+
+load @term/base/terminal
+  find set-raw
+  find write-output
+
+load ../../view
+  find view
+
+load ./screen
+  find control
+  find make-screen
+  find show-screen
+
+load ./loop/{platform}
+  find drive
+
+load @term/base/text/string
+  find concat
+
+# own the terminal until ctrl-c or the end of input, drawing the tree under `root` and pressing every key on it
+task run-terminal
+  take root, like view
+  call set-raw
+    true
+  call write-output
+    call concat
+      call control
+        text <?25l>
+      call control
+        text <2J>
+  save shown, call make-screen
+  call show-screen
+    read shown
+    read root
+  call drive
+    read root
+    read shown
+  call write-output
+    call concat
+      call concat
+        call control
+          text <?25h>
+        call control
+          text <{shown/height};1H>
+      text <\n>
+  call set-raw
+    false

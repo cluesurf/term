@@ -7,7 +7,7 @@ dock load
   load <global:runner>, name runner
 
 task spawn-process
-  note async
+  mark async
   take command, like text
   take argument-list
     like list
@@ -20,7 +20,7 @@ task spawn-process
       wait true
 
 task spawn-on-terminal
-  note async
+  mark async
   take command, like text
   take argument-list
     like list
@@ -33,7 +33,7 @@ task spawn-on-terminal
       wait true
 
 task spawn-with-input
-  note async
+  mark async
   take command, like text
   take argument-list
     like list

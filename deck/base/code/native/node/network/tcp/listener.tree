@@ -8,7 +8,7 @@ load @term/base/network/tcp
   find connection
 
 task tcp-accept
-  note async
+  mark async
   take listener, like listener
   like connection
   save raw
@@ -23,7 +23,7 @@ task tcp-accept
       bind secure, false
 
 task tcp-close-server
-  note async
+  mark async
   take listener, like listener
   like void
   call tcp/close-server

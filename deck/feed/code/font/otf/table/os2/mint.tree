@@ -1,4 +1,4 @@
-note draft
+mark draft
 # Checked spec, not compiled code — see ../head/mint.tree's note. The real writer is ./code.tree's
 # write-otf-os2-table, proven by deck/feed/test/otf-os2.tree. `ushort`/`short` shared with ../head/mint.tree. The
 # version-1/version-2 tails don't need a version test on the write side, unlike the read side's `mine maybe` /

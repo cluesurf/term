@@ -1,4 +1,4 @@
-note draft
+mark draft
 # Checked spec, not compiled code — see ../head/mine.tree's note. The real reader is ./code.tree's
 # read-otf-maxp-table, proven by deck/feed/test/otf-hhea-maxp.tree. Version 1.0 only (TrueType outlines) —
 # version 0.5 (CFF-flavored, 6 bytes) is out of scope until a dialect needs it, same as ./code.tree.

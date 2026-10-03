@@ -6,7 +6,7 @@
 # Its head is `hook suite`, which the compiler reads as the routing / CLI dialect rather than as data, so
 # the tables lower to a route nobody serves. The live pattern for the same intent is a `test` block per
 # vector; see deck/base/test/integer-32.tree.
-note draft
+mark draft
 
 
 hook suite

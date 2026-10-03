@@ -10,7 +10,7 @@ dock load
 # `ok`, the status and the body, then each response header as a lower-case name and its value; or `timeout` or
 # `outage` and the host's own message
 task send-request
-  note async
+  mark async
   take method, like text
   take url, like text
   take body, like text

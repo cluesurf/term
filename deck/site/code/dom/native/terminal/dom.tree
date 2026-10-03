@@ -1,0 +1,15 @@
+
+# The terminal host (terminal-target-0002): the dom contract for a program drawn in a terminal's cells. The tree is the
+# memory host's, so every node operation the render runtime calls (create, set, append, remove, replace, listen) is
+# the one the differential test already holds on four backends (test/compile/render-native.ts), and ./paint reads that
+# tree into the cell grid. A terminal has no document, so the page tasks are the memory host's no-ops as well.
+# The contract is note/term/view/12-render-seam.md.
+
+bear ../memory/dom
+bear ./paint
+bear ./focus
+bear ./input
+bear ./keys
+
+# ./app, the loop that owns a real terminal, is loaded by the program that wants it rather than borne here: its natives
+# are node's and Rust's only, and the host itself compiles on every backend

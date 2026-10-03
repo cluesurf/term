@@ -1,4 +1,4 @@
-note draft
+mark draft
 # Checked spec, not compiled code: see the note at the top of ../hex/mine.tree. The real reader is ./code.tree's
 # read-json / parse-json-value, RFC 8259, case names matching ./form.tree's prefixed json-* names.
 

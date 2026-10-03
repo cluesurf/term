@@ -49,7 +49,7 @@ form missing-answer
   link file, like text
 
 task scan
-  note async
+  mark async
   take file, like text
   take back, like text
 

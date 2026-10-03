@@ -4,7 +4,7 @@
 # disagreed past their ranges and on month arithmetic. Everything is UTC: `timezone` is the wall clock of a zone.
 # `format` writes RFC 3339 with milliseconds and a Z (2026-06-19T12:34:56.000Z); `format-pattern` lays out any pattern.
 
-note stable
+mark stable
 
 load @term/base/calendar/time-text
   find parse-rfc-3339

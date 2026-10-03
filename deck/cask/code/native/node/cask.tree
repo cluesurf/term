@@ -90,20 +90,20 @@ task run
   like void
 
 task quit
-  note async
+  mark async
   like void
 
 task exit
-  note async
+  mark async
   take status, like number
   like void
 
 task bundle-path
-  note async
+  mark async
   like text
 
 task data-path
-  note async
+  mark async
   take name, like text
   like text
 

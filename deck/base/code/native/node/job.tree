@@ -20,7 +20,7 @@ task job-spawn
 
 # wait until the job is no longer running: settled, or cancelled
 task job-settle
-  note async
+  mark async
   take dock, like job-handle
   like void
   call job/settle
@@ -29,7 +29,7 @@ task job-settle
 
 # the same, giving up after `milliseconds`: true when it stopped running in time
 task job-settle-within
-  note async
+  mark async
   take dock, like job-handle
   take milliseconds, like number
   like boolean
@@ -41,7 +41,7 @@ task job-settle-within
 
 # wait until every job has stopped running, or until the first one fails or is cancelled
 task job-settle-group
-  note async
+  mark async
   take docks
     like list
       like job-handle
@@ -52,7 +52,7 @@ task job-settle-group
 
 # wait until any one job has stopped running, for any reason
 task job-settle-any
-  note async
+  mark async
   take docks
     like list
       like job-handle

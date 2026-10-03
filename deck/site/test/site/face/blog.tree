@@ -9,7 +9,8 @@
 # it out, `text` draws a post's title (a level 2 heading) and body, a field is the `input` element and the button the
 # `button` element (the tags those two words draw on every target), and the list is a `walk`.
 
-load ../back/post
+# the record only: the store is the caller's, handed in as `on-add`, so the view carries no database
+load ../back/model
   find post
 
 load @term/site/dom/dom
@@ -46,7 +47,7 @@ task add-post
     like task
       take item, like post
       wait true
-  note async
+  mark async
   save title-text
     call get-value, read title-field
   save body-text
@@ -97,7 +98,7 @@ view blog
       name body-input
     view button
       seed click
-        call add-post
+        tick add-post
           read title-input
           read body-input
           read posts

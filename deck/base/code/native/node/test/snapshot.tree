@@ -18,7 +18,7 @@ load @term/base/native/shared/test/compare
   find deep-equal
 
 task match
-  note async
+  mark async
   take value
   take name, like text
   take
@@ -95,7 +95,7 @@ task match
             bind actual, read value
 
 task update
-  note async
+  mark async
   take value
   take name, like text
   take

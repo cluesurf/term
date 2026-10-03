@@ -577,10 +577,10 @@ function tickOnSync(file: string, span: Span, called: string): Diagnostic {
 // bound a promise typed as the config. Under the switch that is an error naming `tick`, which is how a place that
 // cannot wait says it means the pending value.
 //
-// OFF until `pnpm term:await-migrate` has rewritten every such call in the repository to `tick`, each file proven to
-// emit what it emitted before. The migration compiles under both settings, which is why it is a switch and not a
-// constant. The compile cache keys on it (compile/compile.ts).
-let awaitOutsideTasks = false
+// ON since 2026-10-03, after `pnpm term:await-migrate --commit` rewrote every such call in the repository to `tick`,
+// each file proven to emit what it emitted before. The migration compiles under both settings, which is why it is a
+// switch and not a constant. The compile cache keys on it (compile/compile.ts).
+let awaitOutsideTasks = true
 
 export function setAwaitOutsideTasks(on: boolean): void {
   awaitOutsideTasks = on
@@ -653,7 +653,9 @@ export function checkCallsOutsideTasks(program: Program, file: string): Diagnost
       bound.add(record.name)
     }
 
-    if (record.form === 'call') {
+    // an EXPRESSION call: a view's setup statement is also `form: 'call'`, holding its call under `value`, and is
+    // walked through to that call below
+    if (record.form === 'call' && record.callee && typeof record.callee === 'object') {
       const call = record as unknown as Extract<Expression, { form: 'call' }>
 
       if (

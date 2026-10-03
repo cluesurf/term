@@ -3,6 +3,7 @@ import path from 'path'
 import { analyze } from '@term/make/code/analyze'
 import { render } from '@term/make/code/parser/diagnostic'
 import { collectTreeFiles } from '@term/call/code/files'
+import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import {
   logGood,
   logFail,
@@ -31,10 +32,16 @@ export async function callForm(input: {
   let changed = 0
   let broken = 0
 
+  // each file's role and `mark lean`, as the build reads them: a lean file's layout is checked against the program
+  // the build compiles, and a `mill` or `view` file gets no call parentheses (format-rules.md, rule 3)
+  const roleOf = projectRoleOf(input.root)
+  const leanOf = projectLeanOf(input.root)
+
   for (const file of files) {
     const text = await fs.readFile(file, 'utf-8')
     const relative = path.relative(input.root, file)
-    const analysis = analyze({ file: relative, text })
+    const absolute = path.resolve(input.root, file)
+    const analysis = analyze({ file: relative, text }, { role: roleOf(absolute), lean: leanOf(absolute) })
 
     const errors = analysis.diagnostics.filter(
       d => d.severity === 'error',

@@ -10,7 +10,7 @@ load @term/base/file/stat
   find path-info
 
 task read-file
-  note async
+  mark async
   take path, like text
   like text
   send back
@@ -19,7 +19,7 @@ task read-file
       text <utf8>
 
 task write-file
-  note async
+  mark async
   take path, like text
   take data, like text
   send back
@@ -28,7 +28,7 @@ task write-file
       read data
 
 task read-file-bytes
-  note async
+  mark async
   take path, like text
   like bytes
   send back
@@ -36,7 +36,7 @@ task read-file-bytes
       read path
 
 task write-file-bytes
-  note async
+  mark async
   take path, like text
   take data, like bytes
   send back
@@ -45,7 +45,7 @@ task write-file-bytes
       read data
 
 task append-file
-  note async
+  mark async
   take path, like text
   take data, like text
   send back
@@ -54,14 +54,14 @@ task append-file
       read data
 
 task remove-file
-  note async
+  mark async
   take path, like text
   send back
     call fs/rm
       read path
 
 task copy-file
-  note async
+  mark async
   take from, like text
   take to, like text
   send back
@@ -70,7 +70,7 @@ task copy-file
       read to
 
 task move-file
-  note async
+  mark async
   take from, like text
   take to, like text
   send back

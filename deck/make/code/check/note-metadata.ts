@@ -47,7 +47,7 @@ export type NoteSite = {
 }
 
 // every metadata `note` in a parsed file, in source order
-export function noteMetadataSites(tree: RootNode): NoteSite[] {
+export function noteMetadataSites(tree: RootNode, source?: string): NoteSite[] {
   const sites: NoteSite[] = []
 
   const visit = (group: GroupNode, parent: string | undefined): void => {
@@ -72,7 +72,7 @@ export function noteMetadataSites(tree: RootNode): NoteSite[] {
     visit(group, undefined)
   }
 
-  return sites
+  return source === undefined ? sites : realigned(sites, source, site => `note ${site.word}`)
 }
 
 function metadataOf(group: GroupNode): NoteSite | undefined {
@@ -95,6 +95,30 @@ function metadataOf(group: GroupNode): NoteSite | undefined {
 
 function isName(node: Node): boolean {
   return node.kind === 'group' && headWord(node) === 'name'
+}
+
+// A token's line is off by the newlines inside any multi-line text literal above it: the tokenizer counts a
+// literal that spans lines as one line. So a span read off the tree is the START of a search, and the site is the
+// first line at or after it (and after the previous site) whose text at that column is what the site says is
+// there. The two readers that edit text by these spans (the lint fixes and the repository fixer) need the real line.
+function realigned<T extends { span: Span }>(sites: T[], source: string, needle: (site: T) => string): T[] {
+  const lines = source.split('\n')
+  let floor = 0
+
+  return sites.map(site => {
+    const { line, column } = site.span.start
+    const want = needle(site)
+
+    for (let at = Math.max(line, floor); at < lines.length; at++) {
+      if ((lines[at] ?? '').slice(column, column + want.length) === want) {
+        floor = at + 1
+
+        return at === line ? site : { ...site, span: { ...site.span, start: { line: at, column }, end: { line: at, column: site.span.end.column } } }
+      }
+    }
+
+    return site
+  })
 }
 
 // ---- the `wait true` markers ----
@@ -130,7 +154,7 @@ export function waitTrueSites(tree: RootNode, source: string): WaitSite[] {
       const callee = calleeOf(parent)
 
       if (span && callee) {
-        sites.push({ ...callee, span, remove: removalOf(span, lines) })
+        sites.push({ ...callee, span, remove: span })
       }
     }
 
@@ -145,7 +169,7 @@ export function waitTrueSites(tree: RootNode, source: string): WaitSite[] {
     visit(group, undefined)
   }
 
-  return sites
+  return realigned(sites, source, () => 'wait true').map(site => ({ ...site, remove: removalOf(site.span, lines) }))
 }
 
 // the call a `wait true` sits under: `call f ...` names f, a bare head `f(x)` or `f` over arguments names f, and a

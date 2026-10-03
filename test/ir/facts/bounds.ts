@@ -4,7 +4,7 @@
 // Run: npx tsx test/ir/facts/bounds.ts
 
 import { compile } from '@term/make/code/compile/compile'
-import { boundedLoops } from '@term/make/code/ir/facts/bounds'
+import { boundedLoops, integerBounds } from '@term/make/code/ir/facts/bounds'
 import type { LoopGuard } from '@term/make/code/ir/facts/bounds'
 import { emitTypeScript } from '@term/make/code/compile/typescript'
 import type { Program, Statement } from '@term/make/code/compile/node'
@@ -223,6 +223,96 @@ ${loop(`      save xs/{i}
           read xs
 ${step}`)}`).found.length === 0,
 )
+
+// 11. the integer bound of a scalar task: the largest power of two below which no checked operation leaves the safe
+// integers, by interval arithmetic. spectral-norm's `a-value` (i + j, then ij * (ij + 1) / 2 + i + 1) is safe below 2^25
+const boundOf = (text: string): number | undefined => {
+  const built = compile({ file: 'main.tree', text }, { optimize: false })
+
+  if (!built.ok) {
+    throw new Error(built.diagnostics.map(d => d.message).join(' | '))
+  }
+
+  return integerBounds(built.program).get('f')
+}
+const pairSum = `task f
+  take i, like number
+  take j, like number
+  like number
+  save ij
+    call add
+      read i
+      read j
+  send back
+    call add
+      call divide
+        call multiply
+          read ij
+          call add
+            read ij
+            code 1
+        code 2
+      read i
+`
+ok('a-value\'s arithmetic is safe below 2^25', boundOf(pairSum) === 2 ** 25, String(boundOf(pairSum)))
+ok(
+  'a cube is safe only below a smaller bound',
+  boundOf(`task f
+  take i, like number
+  like number
+  send back
+    call multiply
+      call multiply
+        read i
+        read i
+      read i
+`) === 2 ** 17,
+)
+ok(
+  'a division by an argument, which can be 0, has NO bound',
+  boundOf(`task f
+  take i, like number
+  take j, like number
+  like number
+  send back
+    call divide
+      read i
+      read j
+`) === undefined,
+)
+
+// 12. a counted loop calling such a task with its counter and a name it never writes runs the unchecked copy behind
+// `n <= L`; with any other argument the call keeps its checks
+const caller = (args: string): LoopGuard[] =>
+  guards(`${pairSum}
+task g
+  take xs, like list, like number
+  take n, like number
+  take k, like number
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        read n
+    hook hold
+      save xs/{i}
+        call f
+${args}
+      save i
+        call add
+          read i
+          code 1
+`).found
+const counted = caller('          read i\n          read k')
+ok(
+  'the counter and an unwritten name are bounded: the call runs unchecked behind i >= 0, k in [0, 2^25), n <= 2^25',
+  counted[0]?.fast?.length === 1 &&
+    JSON.stringify(counted[0]?.limits) ===
+      JSON.stringify([{ name: 'i', low: true }, { name: 'k', low: true }, { name: 'n', high: 2 ** 25 }, { name: 'k', high: 2 ** 25 - 1 }]),
+  JSON.stringify(counted[0]?.limits),
+)
+ok('an argument of any other shape (i + 1) keeps the call checked', !caller('          call add\n            read i\n            code 1\n          read k')[0]?.fast)
 
 console.log(`\nbounds: ${pass} pass, ${fail} fail`)
 

@@ -1,7 +1,10 @@
 
 # https://github.com/Evercoder/culori
 
-note unstable
+# A sketch, shelved: 48 conversions declared with no bodies, over color forms (`rgb-color`, `a98-color` and the rest)
+# this file does not load and most of which are declared nowhere. It built only while an unknown type was read as no
+# type at all, and the build refuses that since 2026-10-03 (check/type-names.ts). Nothing loads it
+mark draft
 
 load @term/base/mixin/each
   find define-each

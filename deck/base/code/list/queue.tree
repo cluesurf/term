@@ -3,7 +3,7 @@
 # operation is constant time on average. It used to shift a native array, which moves every item on each dequeue.
 # Build one with `make queue` and an empty `items` list; `front` begins at zero.
 
-note stable
+mark stable
 
 load @term/base/list
   find list

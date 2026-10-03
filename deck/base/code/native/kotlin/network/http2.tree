@@ -39,7 +39,7 @@ task http2-serve
 
 # bind and answer over HTTP/2 without blocking. The returned server is what `http2-stop` shuts down.
 task http2-start
-  note async
+  mark async
   take port, like size
   take host, like text
   take handler
@@ -66,7 +66,7 @@ task http2-start
       bind port, read port
 
 task http2-stop
-  note async
+  mark async
   take server, like http2-server
   like void
   call http2/stop

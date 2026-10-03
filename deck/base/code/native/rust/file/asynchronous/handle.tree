@@ -15,7 +15,7 @@ load @term/base/file/handle
 # `read` / `write` / `create` / `append` / `clear` are the five independent bits every platform's open flags are
 # built from, rather than a mode string one backend happens to spell "w+"
 task handle-open
-  note async
+  mark async
   take path, like text
   take
     read
@@ -53,7 +53,7 @@ task handle-open
       bind path, read path
 
 task handle-close
-  note async
+  mark async
   take file, like file
   like void
   call aio/handle-close
@@ -61,7 +61,7 @@ task handle-close
     wait true
 
 task handle-read
-  note async
+  mark async
   take file, like file
   take size, like size
   like text
@@ -72,7 +72,7 @@ task handle-read
       wait true
 
 task handle-write
-  note async
+  mark async
   take file, like file
   take data, like text
   like size
@@ -84,7 +84,7 @@ task handle-write
 
 # `frame` is <start> (absolute), <relative> (from the cursor) or <end> (back from the end)
 task handle-seek
-  note async
+  mark async
   take file, like file
   take offset, like size
   take
@@ -99,7 +99,7 @@ task handle-seek
     wait true
 
 task handle-flush
-  note async
+  mark async
   take file, like file
   like void
   call aio/handle-flush
@@ -107,7 +107,7 @@ task handle-flush
     wait true
 
 task handle-clear
-  note async
+  mark async
   take file, like file
   take
     size

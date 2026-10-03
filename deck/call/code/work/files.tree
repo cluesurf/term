@@ -76,7 +76,7 @@ task is-skipped
 # real `note draft` line in this source, so a whole-file search matches it and `files.tree` disappeared from its own
 # walk. The first version did exactly that and the comparison against the TypeScript caught it, 2 files against 3.
 task is-draft
-  note async
+  mark async
   take file, like text
 
   like boolean
@@ -115,7 +115,7 @@ task is-draft
 # a `draft.tree` in a directory shelves it. `draft.tree` is a FILE, so this asks whether a file exists. It asked
 # `file/directory`'s `exists`, which is false for a file, so no directory was ever shelved (found 2026-10-02).
 task is-shelved
-  note async
+  mark async
   take directory, like text
 
   like boolean
@@ -131,7 +131,7 @@ task is-shelved
 # `is-shelved` was written and never CALLED, from the first version of this port: every walked package was free of
 # `draft.tree` until 2026-10-02, when two arrived in the stdlib and `pnpm term:cli-port` read 821 files against 797.
 task is-under-shelved
-  note async
+  mark async
   take root, like text
   take file, like text
 
@@ -155,7 +155,7 @@ task is-under-shelved
 
 # every `.tree` file under one directory that is not shelved
 task walk-trees
-  note async
+  mark async
   take root, like text
 
   like list, like text

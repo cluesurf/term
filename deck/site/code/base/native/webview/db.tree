@@ -63,7 +63,7 @@ task db-items-of
   send back, read items
 
 task connect
-  note async
+  mark async
   take url
     like text
   like void
@@ -83,7 +83,7 @@ task connect
     read arguments
 
 task query
-  note async
+  mark async
   take sql
     like text
   take params
@@ -146,7 +146,7 @@ task query
   send back, read value-7
 
 task run
-  note async
+  mark async
   take sql
     like text
   take params
@@ -185,7 +185,7 @@ task run
     read arguments
 
 task field
-  note async
+  mark async
   take row
     like row
   take name
@@ -217,7 +217,7 @@ task field
 
 # let row go now: the cask drops it from its table, and a use after this is refused
 task release
-  note async
+  mark async
   take row
     like row
   call bridge/release

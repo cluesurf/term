@@ -228,7 +228,7 @@ task from-dynamic
       bind value, read number
 
 task is-whole
-  note private
+  mark private
   take value, like decimal
   like boolean
   send back
@@ -269,7 +269,7 @@ task kebab
   send back, read key
 
 task is-snake
-  note private
+  mark private
   take key, like text
   like boolean
   fork test

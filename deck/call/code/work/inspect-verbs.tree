@@ -66,7 +66,7 @@ form boot-ask
 
 # `term view [path]`: check a document in the view role and print what it uses
 task view
-  note async
+  mark async
   take path, like text
   take find, like boolean
 
@@ -74,7 +74,7 @@ task view
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  note unsafe
+  mark unsafe
     call view-module/callView
       make view-ask
         bind root, read root
@@ -88,7 +88,7 @@ task view
 
 # `term seek`: are the packages installed correctly, and with `--audit` are they safe
 task seek
-  note async
+  mark async
   take audit, like boolean
   take code, like boolean
   take sarif, like text
@@ -99,7 +99,7 @@ task seek
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  note unsafe
+  mark unsafe
     call seek-module/callSeek
       make seek-ask
         bind root, read root
@@ -116,7 +116,7 @@ task seek
 
 # `term mold [file]`: shape Term data, long or compact or JSON
 task mold
-  note async
+  mark async
   take file, like text
   take pack, like boolean
   take json, like boolean
@@ -130,7 +130,7 @@ task mold
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  note unsafe
+  mark unsafe
     call mold-module/callMold
       make mold-ask
         bind root, read root
@@ -150,7 +150,7 @@ task mold
 
 # `term boot [entry]`: compile and run the app
 task boot
-  note async
+  mark async
   take entry, like text
   take env, like text
   take port, like number
@@ -161,7 +161,7 @@ task boot
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  note unsafe
+  mark unsafe
     call boot-module/callBoot
       make boot-ask
         bind root, read root

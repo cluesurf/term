@@ -208,7 +208,7 @@ task is-allowed
 
 # run one command with its arguments and answer the reply value as json, for the window whose key is `owner`
 task run-command
-  note async
+  mark async
   take owner, like text
   take command, like text
   take arguments, like dynamic
@@ -458,7 +458,7 @@ task run-command
 # one message in, one reply out. A command that raises answers the exception by name and note, so the page
 # gets a rejection and the cask keeps running
 task answer
-  note async
+  mark async
   take owner, like text
   take message, like text
   like text
@@ -486,7 +486,7 @@ task answer
       call is-allowed
         read command
     hook hold
-      note unsafe
+      mark unsafe
         save reply
           call set-field
             read reply
@@ -521,11 +521,11 @@ task answer
 # exception with no id, rather than raising out of the bridge and taking the cask down with it. Answered for
 # the window whose key is `owner`
 task dispatch-as
-  note async
+  mark async
   take owner, like text
   take message, like text
   like text
-  note unsafe
+  mark unsafe
     send back
       call answer
         wait true
@@ -547,7 +547,7 @@ task dispatch-as
 
 # one message, for an app with one window: `on-message(window, dispatch)`
 task dispatch
-  note async
+  mark async
   take message, like text
   like text
   send back
@@ -572,7 +572,7 @@ task serve
   call on-message
     read place
     task reply
-      note async
+      mark async
       take message, like text
       like text
       send back

@@ -1,6 +1,6 @@
 # HSL color (hue 0-360, saturation 0-100, lightness 0-100) and conversion from RGB. Integer-scaled, pure logic on top of the math interface.
 
-note unstable
+mark unstable
 
 load @term/base/color/rgb
   find rgb-color

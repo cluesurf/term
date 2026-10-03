@@ -1,4 +1,4 @@
-note draft
+mark draft
 # Checked spec, not compiled code — see the note at the top of ../hex/mine.tree. The real reader is ./code.tree's
 # read-gzip. Matches it field for field; see note/term/feed/03-worked-examples.md for the walkthrough.
 #

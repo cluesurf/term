@@ -4,7 +4,7 @@
 
 # control flags carried in a segment header
 
-note unstable
+mark unstable
 
 form tcp-flags
   link fin, like boolean

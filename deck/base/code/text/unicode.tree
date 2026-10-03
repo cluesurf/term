@@ -5,7 +5,7 @@
 
 # the number of Unicode code points (runes) in the text
 
-note stable
+mark stable
 
 bind rune-count
   take value, like text

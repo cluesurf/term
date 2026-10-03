@@ -5,7 +5,7 @@
 # (note/term/stdlib/semantics.md). The logarithm and the trigonometric functions are in `float`: their results are not
 # whole numbers.
 
-note stable
+mark stable
 
 load @term/base/stop
   find abandon

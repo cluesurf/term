@@ -6,7 +6,7 @@
 # written `T` and `z` written `Z`: it is the caller's to read with `calendar`. An integer is a `number`, a float a
 # `decimal` (`inf` and `nan` included).
 
-note stable
+mark stable
 
 load @term/base/text/unicode
   find to-runes
@@ -2098,7 +2098,7 @@ task read-integer
     call strip-underscores
       read text
       read at
-  note unsafe
+  mark unsafe
     save value
       call parse-integer
         read plain
@@ -2116,7 +2116,7 @@ task read-float
   take text, like text
   take at, like number
   like decimal
-  note unsafe
+  mark unsafe
     save value
       call parse-float
         read text

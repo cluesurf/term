@@ -18,6 +18,9 @@ export const RENDER = {
   gate: 'render-gate',
   mount: 'mount',
   portal: 'mount-portal',
+  // where a raise that escapes an event handler goes: the view lowering guards every handler and hands what it caught
+  // to this, so the app keeps running and a view can show it (swiftui-target-0003)
+  raise: 'keep-raise',
   // the items a counted `walk size` walks, made by render.tree for the view role's lowering
   integers: 'list-integers',
 } as const

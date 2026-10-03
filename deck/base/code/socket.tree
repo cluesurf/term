@@ -1,4 +1,4 @@
-note draft
+mark draft
 
 # SHELVED 2026-10-02 (base-v1-0019): a duplicate of network/tcp and network/udp, which work. It declared tasks that bound nothing, so a call built clean and
 # threw `stub` at run time; out of the build until it has bodies.
@@ -18,7 +18,7 @@ form socket
   task close
 
   task connect
-    note async
+    mark async
     take host, like text
     take port, like integer
 
@@ -32,7 +32,7 @@ form socket
     like socket-address
 
   task read
-    note async
+    mark async
     like text
 
   task set-blocking
@@ -49,8 +49,8 @@ form socket
     take write, like boolean
 
   task wait-for-read
-    note async
+    mark async
 
   task write
-    note async
+    mark async
     take content, like text

@@ -1,4 +1,4 @@
-note draft
+mark draft
 # Checked spec, not compiled code — see ../head/mine.tree's note. The real reader is ./code.tree's
 # read-otf-loca-table, proven by deck/feed/test/otf-loca.tree. `short-format` comes from `head`'s own
 # `index-to-loc-format` (0 = short, 1 = long) — resolved by whatever reads `loca` after `head`, not carried here,

@@ -1,4 +1,4 @@
-note unstable
+mark unstable
 
 mask incomplete-comparison
   # Partial Equality.

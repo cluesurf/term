@@ -50,14 +50,14 @@ form host-ask
 
 # `term test [filter]`: run the project's tests, or the ones whose name matches
 task test
-  note async
+  mark async
   take filter, like text
 
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  note unsafe
+  mark unsafe
     call test-module/callTest
       make test-ask, bind(root, read root), bind filter, read filter
       wait true
@@ -68,12 +68,12 @@ task test
 
 # `term walk`: the REPL
 task walk
-  note async
+  mark async
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  note unsafe
+  mark unsafe
     call walk-module/callWalk, make(root-ask, bind root, read root), wait true
   halt take
     take error
@@ -83,7 +83,7 @@ task walk
 # `term cast [entry]`: build a server-rendered app into something deployable. Cloudflare is the one target, and
 # anything else is named rather than ignored.
 task cast
-  note async
+  mark async
   take entry, like text
   take target, like text
 
@@ -103,7 +103,7 @@ task cast
     hold
       log-fail <Unknown cast target: {{chosen}}. The one target is cloudflare.>
       node-process/exit code 1
-  note unsafe
+  mark unsafe
     call cast-module/callCast
       make cast-ask
         bind root, read root
@@ -117,7 +117,7 @@ task cast
 
 # `term host`: publish this package to the registry
 task host
-  note async
+  mark async
   take dry, like boolean
   take registry, like text
   take trust, like text
@@ -127,7 +127,7 @@ task host
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  note unsafe
+  mark unsafe
     call host-module/callHost
       make host-ask
         bind root, read root
@@ -143,14 +143,14 @@ task host
 
 # `term show`: what this toolchain is -- its version and where it is installed
 task show
-  note async
+  mark async
   take what, like text
 
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  note unsafe
+  mark unsafe
     call line-module/callShow, make(root-ask, bind root, read root), wait true
   halt take
     take error
@@ -159,12 +159,12 @@ task show
 
 # `term fill`: print the shell completion script
 task fill
-  note async
+  mark async
   like void
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  note unsafe
+  mark unsafe
     call line-module/callFill, make(root-ask, bind root, read root), wait true
   halt take
     take error

@@ -8,7 +8,7 @@ load @term/base/network/udp
   find datagram
 
 task udp-socket-send
-  note async
+  mark async
   take socket, like socket
   take data, like text
   take host, like text
@@ -23,7 +23,7 @@ task udp-socket-send
       wait true
 
 task udp-socket-receive
-  note async
+  mark async
   take socket, like socket
   like datagram
   send back
@@ -32,7 +32,7 @@ task udp-socket-receive
       wait true
 
 task udp-socket-close
-  note async
+  mark async
   take socket, like socket
   like void
   call udp/close

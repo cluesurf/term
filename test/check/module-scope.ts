@@ -203,6 +203,36 @@ const TOTAL_TASK = `task total\n  take n, like number\n  like number\n  send bac
   ok('a field bound by a record\'s own arm is the field, not a same-named task', result.ok, said(result))
 }
 
+// a `host` VALUE in one module and a TASK of the same name in another (terminal-target-0003: the terminal host's
+// `host focus` beside the memory dom's `task focus`). Both reached the output as declarations of one name, and the
+// bundle refused to load. `read level/n` is the value and `call level` the task, so each keeps its own
+const GAUGE = `form gauge\n  mark shared\n  link n, like number\n\nhost level\n  make gauge\n    bind n, code 4\n\ntask read-level\n  like number\n  send back, read level/n\n`
+const LEVEL_TASK = `task level\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      code 100\n`
+
+{
+  const main = `load @app/v\n  find read-level\n\nload @app/t\n  find level\n\ntask run\n  like number\n  send back\n    call add\n      call read-level\n      call level\n        code 1\n`
+  const result = build({ '@app/v': GAUGE, '@app/t': LEVEL_TASK }, main)
+  const declared = result.ok ? (result.typescript.match(/(?:const|let|var|function) level\b/g) ?? []).length : -1
+  ok('a host value and a same-named task of another module compile side by side', result.ok, said(result))
+  // at most once: the optimizer may inline the task, and two is what the collision produced
+  ok('the output never declares the name twice: the value has its own', declared >= 0 && declared <= 1, `${declared} declarations of "level"`)
+  ok('the value reference still reads the host', result.ok && /level__value\d*\.n|levelValue\d*\.n/.test(result.typescript), said(result))
+}
+
+// the ENTRY file's task keeps its name beside another module's task of the same name at another arity. An abstract
+// module's signature (no body, as deck/site/code/base/native/db.tree declares `run`) is not split by file, so the two
+// were mangled by arity, and the entry's `run` was emitted as `run0`: its host found no `run` to call
+// (terminal-target-0005)
+const RUN_SIGNATURE = `task run\n  take sql, like text\n  take params, like text\n  like text\n`
+
+{
+  const main = `load @app/sig\n  find run\n\ntask run\n  like text\n  send back, text <done>\n\ntask other\n  like text\n  send back\n    call run\n      text <a>\n      text <b>\n`
+  const result = build({ '@app/sig': RUN_SIGNATURE }, main)
+  ok('an entry task and an imported signature of one name at two arities compile', result.ok, said(result))
+  ok('the entry\'s task keeps its own name', result.ok && /function run\(\)/.test(result.typescript), said(result))
+  ok('the other arity is still told apart', result.ok && !/function run\(sql/.test(result.typescript), said(result))
+}
+
 console.log(`\nmodule-scope: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

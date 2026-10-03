@@ -43,7 +43,7 @@ form feed-ask
 host feed-port, code 5173
 
 task feed
-  note async
+  mark async
   take entry, like text
   take port, like number
   take env, like text
@@ -80,7 +80,7 @@ task feed
         text <browser>
       miss
         read env
-  note unsafe
+  mark unsafe
     # the watcher is the TypeScript's, for the reason in the header
     call feed-module/callFeed
       make feed-ask

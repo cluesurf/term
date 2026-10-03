@@ -25,7 +25,7 @@ dock load
 
 # the package root of a file: the nearest directory above it holding a manifest, or the project root
 task deck-root-of
-  note async
+  mark async
   take file, like text
   take root, like text
 
@@ -58,7 +58,7 @@ task deck-root-of
 
 # the deck NAME a file belongs to, or the empty text when nothing above it is a manifest
 task deck-name-of
-  note async
+  mark async
   take file, like text
   take root, like text
 

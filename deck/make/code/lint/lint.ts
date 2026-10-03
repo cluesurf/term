@@ -53,7 +53,7 @@ import { noDuplicateMapKey } from '@term/make/code/lint/rules/no-duplicate-map-k
 import { dataGrammar } from '@term/make/code/lint/rules/data-grammar'
 import { preferSift } from '@term/make/code/lint/rules/prefer-sift'
 import { preferSingleBrace } from '@term/make/code/lint/rules/prefer-single-brace'
-import { inlineSimpleValue } from '@term/make/code/lint/rules/inline-simple-value'
+import { lineLayout } from '@term/make/code/lint/rules/line-layout'
 import { noteMetadata } from '@term/make/code/lint/rules/note-metadata'
 import { redundantWait } from '@term/make/code/lint/rules/redundant-wait'
 import { parse } from '@term/make/code/parser/tree'
@@ -97,7 +97,7 @@ export const RULES: Rule[] = [
   dataGrammar,
   preferSift,
   preferSingleBrace,
-  inlineSimpleValue,
+  lineLayout,
   noteMetadata,
   redundantWait,
   tellMissing,

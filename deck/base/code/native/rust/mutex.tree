@@ -15,7 +15,7 @@ task latch-make
     call mutex/make
 
 task latch-lock
-  note async
+  mark async
   take self, like mutex
   like void
   call mutex/lock
@@ -23,7 +23,7 @@ task latch-lock
     wait true
 
 task latch-unlock
-  note async
+  mark async
   take self, like mutex
   like void
   call mutex/unlock

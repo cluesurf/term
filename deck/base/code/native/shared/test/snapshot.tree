@@ -74,7 +74,7 @@ task deserialize
   send back, read raw
 
 task match
-  note async
+  mark async
   take value, like unknown
   take name, like text
   take
@@ -135,7 +135,7 @@ task match
             bind actual, read value
 
 task update
-  note async
+  mark async
   take value, like unknown
   take name, like text
   take

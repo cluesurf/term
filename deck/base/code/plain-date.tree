@@ -2,7 +2,7 @@
 
 # exact integer (floor) division for non-negative operands: subtract the remainder, then divide evenly
 
-note stable
+mark stable
 
 task quotient
   take a, like number

@@ -1,6 +1,6 @@
 # Statistics over a list of numbers. Pure folds, identical on every backend. Integer results: `mean` truncates, and `total` of an empty list is zero. `least`, `greatest` and `span` take a non-empty list, which each states as a `have` its callers must prove. `variance` and `standard-deviation` need floats and live in a float-stats follow-up.
 
-note unstable
+mark unstable
 
 load @term/base/list
   find list

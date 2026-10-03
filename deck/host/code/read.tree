@@ -175,7 +175,7 @@ task read-raw
 
 # the data head a group's head word means, or empty text
 task head-kind
-  note private
+  mark private
   take root, like scan-node
   like text
   save head
@@ -239,7 +239,7 @@ task head-kind
   send back, text <>
 
 task head-of
-  note private
+  mark private
   take root, like scan-node
   like text
   fork case, read root
@@ -258,7 +258,7 @@ task head-of
 
 # the key of `host <key>`: the first child, a bare word or a text
 task key-of
-  note private
+  mark private
   take root, like scan-node
   like text
   fork case, read root
@@ -304,7 +304,7 @@ task key-of
 
 # the children after the key
 task rest-of
-  note private
+  mark private
   take root, like scan-node
   like list
     like scan-node
@@ -341,7 +341,7 @@ task rest-of
 
 # a bare `true` / `false` / `void`, or a literal
 task is-scalar
-  note private
+  mark private
   take one, like scan-node
   like boolean
   fork case, read one
@@ -384,7 +384,7 @@ task is-scalar
       send back, true
 
 task read-scalar
-  note private
+  mark private
   take one, like scan-node
   like data
   fork case, read one
@@ -415,7 +415,7 @@ task read-scalar
           read head
 
 task read-word
-  note private
+  mark private
   take word, like text
   like data
   fork test
@@ -441,7 +441,7 @@ task read-word
 
 # `host <key>, <scalar>` / `host <key>` + entries / `list <key>` + items
 task read-entry
-  note private
+  mark private
   take root, like scan-node
   take kind, like text
   like data-entry
@@ -574,7 +574,7 @@ task read-entry
 
 # the entries of a map block
 task read-entries
-  note private
+  mark private
   take blocks
     like list
       like scan-node
@@ -660,7 +660,7 @@ task read-entries
 
 # the items of a list: scalars, mesh maps, nested lists, fuses
 task read-items
-  note private
+  mark private
   take rest
     like list
       like scan-node
@@ -760,7 +760,7 @@ task read-items
   send back, read out
 
 task kids-of
-  note private
+  mark private
   take root, like scan-node
   like list
     like scan-node
@@ -782,7 +782,7 @@ task kids-of
         make list
 
 task read-mesh
-  note private
+  mark private
   take root, like scan-node
   like data
   send back
@@ -794,7 +794,7 @@ task read-mesh
           text <mesh>
 
 task read-tree
-  note private
+  mark private
   take root, like scan-node
   like data-tree
   save name
@@ -868,7 +868,7 @@ task read-tree
 
 # a key given twice in one map, with no fuse between, is an error
 task check-keys
-  note private
+  mark private
   take value, like data
   fork case, read value
     case hash
@@ -942,7 +942,7 @@ task check-keys
 
 # a bare word where a value belongs is text without its brackets; a head with children is code, not data
 task not-value-rule
-  note private
+  mark private
   take one, like scan-node
   like text
   fork case, read one
@@ -984,7 +984,7 @@ task not-value-rule
 
 # is the key of `host <key>` / `list <key>` written as a bare word (not as `<text>`)?
 task key-is-word
-  note private
+  mark private
   take root, like scan-node
   like boolean
   fork case, read root
@@ -1023,7 +1023,7 @@ task key-is-word
       send back, false
 
 task is-scalar-word
-  note private
+  mark private
   take word, like text
   like boolean
   send back

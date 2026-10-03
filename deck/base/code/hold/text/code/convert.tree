@@ -5,7 +5,7 @@
 # deck/base/test/utf-convert.tree.
 
 load @term/base/hold/text/code/utf-8
-  find text-utf-8
+  find text-utf-8-hold
 
 load @term/base/hold/text/code/utf-16
   find text-utf-16
@@ -376,12 +376,14 @@ task utf-16-of-code-points
       save i, call increment(read i)
   send back, read units
 
-# a UTF-8 text from a UTF-16 text
+# a UTF-8 text from a UTF-16 text. The buffer form is `text-utf-8-hold`, the one `hold/text/code/utf-8` declares: this
+# file found `text-utf-8` there after it was renamed, and the type was read as no type at all until the build began
+# refusing unknown type names (2026-10-03)
 task make-utf-8-from-utf-16
   take text, like text-utf-16
-  like text-utf-8
+  like text-utf-8-hold
   send back
-    make text-utf-8
+    make text-utf-8-hold
       bind list
         call utf-8-of-code-points
           call utf-16-code-points
@@ -389,7 +391,7 @@ task make-utf-8-from-utf-16
 
 # a UTF-16 text from a UTF-8 text
 task make-utf-16-from-utf-8
-  take text, like text-utf-8
+  take text, like text-utf-8-hold
   like text-utf-16
   send back
     make text-utf-16

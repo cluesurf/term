@@ -22,20 +22,20 @@ task job-spawn
 
 # a job here is settled when its handle exists, so there is nothing to wait for
 task job-settle
-  note async
+  mark async
   take dock, like job-handle
   like void
   send back
 
 task job-settle-within
-  note async
+  mark async
   take dock, like job-handle
   take milliseconds, like number
   like boolean
   send back, true
 
 task job-settle-group
-  note async
+  mark async
   take docks
     like list
       like job-handle
@@ -43,7 +43,7 @@ task job-settle-group
   send back
 
 task job-settle-any
-  note async
+  mark async
   take docks
     like list
       like job-handle

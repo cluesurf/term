@@ -1,6 +1,6 @@
 # Keyed-hash message authentication (HMAC). The generic interface; each public verb delegates to the per-backend native implementation, which lives in its own file (`native/<env>/cryptography/hmac`). Input and output stay in the currency types.
 
-note stable
+mark stable
 
 load @term/base/native/{platform}/cryptography/hmac
   find hmac-sha256
@@ -14,7 +14,7 @@ form hmac-algorithm
 # authenticate data under a key with the chosen algorithm. The named sha256 / sha512 forms below are the readable
 # default; this verb is for an algorithm chosen at runtime. A constant algorithm specializes to the one native call.
 task hmac
-  note async
+  mark async
   take key, like bytes
   take data, like bytes
   take algorithm, like hmac-algorithm
@@ -25,15 +25,17 @@ task hmac
         call hmac-sha256
           read key
           read data
+          wait true
     case sha-512
       send back
         call hmac-sha512
           read key
           read data
+          wait true
 
 # named algorithm forms: the readable, primary surface
 task sha256
-  note async
+  mark async
   take key, like bytes
   take data, like bytes
   like bytes
@@ -41,9 +43,10 @@ task sha256
     call hmac-sha256
       read key
       read data
+      wait true
 
 task sha512
-  note async
+  mark async
   take key, like bytes
   take data, like bytes
   like bytes
@@ -51,6 +54,7 @@ task sha512
     call hmac-sha512
       read key
       read data
+      wait true
 
 # are two secrets (a tag, a token, a hash) the same bytes, compared without leaking where they differ: every byte is
 # read whatever the earlier ones held, on every backend. `is-equal` stops at the first difference, so its timing
@@ -66,7 +70,7 @@ task is-equal-secret
 
 # is `tag` the HMAC of `data` under `key`: computes it and compares in constant time. The way to check a MAC
 task verify-hmac
-  note async
+  mark async
   take key, like bytes
   take data, like bytes
   take tag, like bytes
@@ -77,6 +81,7 @@ task verify-hmac
       read key
       read data
       read algorithm
+      wait true
   send back
     call equal-secret
       read expected

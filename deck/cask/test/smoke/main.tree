@@ -26,12 +26,11 @@ task boot
   call on-message
     read made
     task answer
-      note async
+      mark async
       take message, like text
       like text
       save reply
         call dispatch
-          wait true
           read message
       call emit
         read made

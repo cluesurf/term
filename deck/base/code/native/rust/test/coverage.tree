@@ -11,7 +11,7 @@ load @term/base/test/coverage
   find file-coverage
 
 task read
-  note async
+  mark async
   like coverage
 
   send back

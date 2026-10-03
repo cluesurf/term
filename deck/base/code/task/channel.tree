@@ -1,4 +1,4 @@
-note draft
+mark draft
 
 # SHELVED 2026-10-02 (base-v1-0019): a duplicate of code/channel.tree, which works on four backends. It declared tasks that bound nothing, so a call built clean and
 # threw `stub` at run time; out of the build until it has bodies.
@@ -16,16 +16,16 @@ task make
   like channel
 
 task send
-  note async
+  mark async
   take sender
   take data
 
 task receive
-  note async
+  mark async
   take receiver
 
 task stream
-  note async
+  mark async
   take receiver
   like list
 

@@ -406,6 +406,27 @@ export function extendForms(
       }
     }
 
+    // A field with no `need false` and no `fall` is required, and a construction that leaves it out is refused. It
+    // used to be filled with its type's empty value, so `make person / bind name, <ada>` built a person of age 0
+    // (guides: language/forms, 2026-10-03). An exception's own fields are the runtime's to fill, and a pin fills its
+    // field below
+    if (!rt.chain?.length) {
+      const pinned = new Set((rt.pins ?? []).map(p => p.name))
+      const missing = rt.fields.filter(
+        f => !f.optional && !pinned.has(f.name) && !node.fields.some(x => x.name === f.name),
+      )
+
+      if (missing.length > 0) {
+        error(
+          s,
+          node.span,
+          `"${rt.name}" needs ${missing.map(f => `"${f.name}"`).join(', ')}, which this construction leaves out. Give ${
+            missing.length === 1 ? 'it' : 'each'
+          } with \`bind\`, or mark the field \`need false\` or give it a \`fall\``,
+        )
+      }
+    }
+
     if (!rt.pins?.length) {
       return
     }

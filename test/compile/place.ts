@@ -9,8 +9,9 @@ import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import { gatedTasks, listFacts } from '@term/make/code/compile/backend'
-import { placeWrites, privateForms } from '@term/make/code/compile/place'
+import { placeWrites, privateForms, valuePlaces } from '@term/make/code/compile/place'
 import { emitTypeScript } from '@term/make/code/compile/typescript'
+import { emitSwift } from '@term/make/code/compile/swift'
 import type { Program } from '@term/make/code/compile/node'
 
 let pass = 0
@@ -216,6 +217,33 @@ task compute
     call again
       read xs
 `).writes.length === 1,
+)
+
+// 9-11. Swift, where a record is a value: the slot locals read through their slot, and the hazards kept as copies
+const swiftFacts = (text: string): { locals: string[]; swift: string } => {
+  const built = compile({ file: 'main.tree', text }, { resolve: withNativeEnv('swift', stdlib), env: 'swift' })
+
+  if (!built.ok) {
+    throw new Error(built.diagnostics.map(d => d.message).join(' | '))
+  }
+
+  const { locals } = valuePlaces(built.program)
+
+  return { locals: [...locals.keys()].map(s => (s as { name?: string }).name ?? ''), swift: emitSwift(built.program) }
+}
+
+const swiftBody = swiftFacts(readFileSync(join(TERM, 'mark/kernels/n-body/term.tree'), 'utf8'))
+ok(
+  'Swift reads n-body\'s bodies through their slots and writes only the changed fields',
+  /bodies\[i\]\.vx = \(bodies\[i\]\.vx - \(dx \* mj\)\)/.test(swiftBody.swift) && !/let bi = /.test(swiftBody.swift),
+  swiftBody.locals.join(' '),
+)
+
+const swiftFixture = swiftFacts(readFileSync(join(TERM, 'test/compile/meaning-native/place.tree'), 'utf8'))
+ok(
+  'in the fixture, the pair loop\'s locals and the plain reads are read through the slot, and no hazard\'s local is',
+  JSON.stringify(swiftFixture.locals.sort()) === JSON.stringify(['first', 'p', 'p0', 'p1', 'p2', 'q']),
+  swiftFixture.locals.join(' '),
 )
 
 console.log(`\nplace: ${pass} pass, ${fail} fail`)

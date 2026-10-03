@@ -3,7 +3,7 @@
 # Membership compares structurally through the compare runtime, so the element type needs no
 # equality mask on the native backends (rust would otherwise demand PartialEq on `t`).
 
-note unstable
+mark unstable
 
 dock load
   load <global:compare>, name compare-runtime

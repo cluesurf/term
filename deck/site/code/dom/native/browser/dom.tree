@@ -33,7 +33,7 @@ dock load
   load <global:resize>, name resize
   load <global:position>, name position
   load <global:fontset>, name fontset
-  note native
+  mark native
 
 task create-element
   take tag, like text
@@ -293,6 +293,15 @@ task replace
     read old/handle
   call made/replace-with
     read new/handle
+
+# ChildNode.before: the reference puts the node in front of itself, moving it if it is elsewhere in the document
+task insert-before
+  take node, like view
+  take reference, like view
+  host made, like child-node
+    read reference/handle
+  call made/before
+    read node/handle
 
 # clear every child: setting textContent to empty removes all child nodes. The host calls this on the SSR body before
 # the client re-renders, so the takeover replaces the server markup rather than appending a duplicate beneath it.

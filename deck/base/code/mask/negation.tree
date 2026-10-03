@@ -1,7 +1,7 @@
 
 # Not trait.
 
-note unstable
+mark unstable
 
 mask negation
   task negate

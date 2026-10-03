@@ -4,7 +4,7 @@
 # ten, so it is one portable implementation on every backend (no native decimal type needed). Parsing and formatting --
 # the only text work -- are a one-line native expression per backend.
 
-note stable
+mark stable
 
 load @term/base/integer/big
   find big-integer
