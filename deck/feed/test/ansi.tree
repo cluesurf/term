@@ -3,10 +3,10 @@
 # `\x1b` isn't a valid Term text escape (only \< \> \{ \} \n \r \t \\ are), so the expected strings below build ESC
 # through `rune-to-text` too, the same way ./code/ansi/code.tree itself has to.
 
-load @term/base/code/rune
+load @term/base/rune
   find rune-to-text
 
-load @term/base/code/text/string
+load @term/base/text/string
   find concat
 
 load ../code/ansi/code
@@ -57,7 +57,7 @@ test <move-cursor-to-home-position is ESC[H>
 test <move-cursor-to-line-and-column interpolates both numbers>
   want hold
     call is-equal
-      call move-cursor-to-line-and-column(code 3, code 12)
+      call move-cursor-to-line-and-column(code(3), code 12)
       call concat
         call esc
         text <[3;12H>
@@ -73,7 +73,7 @@ test <set-color-foreground-256 interpolates the palette index>
 test <set-color-foreground-rgb interpolates all three channels>
   want hold
     call is-equal
-      call set-color-foreground-rgb(code 10, code 20, code 30)
+      call set-color-foreground-rgb(code(10), code(20), code 30)
       call concat
         call esc
         text <[38;2;10;20;30m>

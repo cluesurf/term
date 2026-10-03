@@ -7,22 +7,13 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Repl } from '@term/call/code/walk'
 import type { Source } from '@term/make/code/compile/load'
+import { stdlibResolver } from '@term/make/code/resolve'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const baseTree = join(here, '..', '..', 'deck', 'base')
 
-const resolver = (path: string): Source | undefined => {
-  const prefix = '@term/base/'
-  path = path.replace(/^@term\/base\//, prefix)
-
-  if (!path.startsWith(prefix)) {return undefined}
-
-  const file = join(baseTree, `${path.slice(prefix.length)}.tree`)
-
-  return existsSync(file)
-    ? { file, text: readFileSync(file, 'utf8') }
-    : undefined
-}
+// the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+const resolver = stdlibResolver()!
 
 let pass = 0
 let fail = 0

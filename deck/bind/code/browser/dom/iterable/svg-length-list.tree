@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/svg-length
+load @term/bind/browser/dom/svg-length
   find svg-length
 
-load @term/bind/code/browser/dom/svg-length-list
+load @term/bind/browser/dom/svg-length-list
   find svg-length-list
 
 load @term/bind/code/javascript/iterable-iterator

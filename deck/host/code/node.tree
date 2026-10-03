@@ -28,7 +28,7 @@ task quote
         read name
         text <">
 
-load @term/base/code/text/string
+load @term/base/text/string
   find concat
 
 # an integer as digits, with its sign. Host-free, so every backend spells a count the same way
@@ -52,7 +52,7 @@ task integer-text
     hook hold
       save negative, true
       save rest
-        call subtract(code 0, read value)
+        call subtract(code(0), read value)
   save out, text <>
   walk test
     hook test
@@ -66,7 +66,7 @@ task integer-text
           code 10
       save out
         call concat
-          call char-at(text <0123456789>, read digit)
+          call char-at(text(<0123456789>), read digit)
           read out
       save rest
         call divide
@@ -79,7 +79,7 @@ task integer-text
       read negative
     hook hold
       send back
-        call concat(text <->, read out)
+        call concat(text(<->), read out)
   send back, read out
 
 # digits, with an optional leading sign, as an integer. Only what the scanner has already classified as an integer
@@ -135,10 +135,10 @@ task parse-integer
       read negative
     hook hold
       send back
-        call subtract(code 0, read value)
+        call subtract(code(0), read value)
   send back, read value
 
-load @term/base/code/text
+load @term/base/text
   find char-at
   find char-code-at
   find starts-with

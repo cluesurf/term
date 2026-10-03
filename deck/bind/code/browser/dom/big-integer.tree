@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript/es5/uint8-array
+load @term/bind/javascript/es5/uint8-array
   find uint8-array
 
 form big-integer, name <BigInteger>

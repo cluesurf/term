@@ -2,28 +2,28 @@
 # the standard library's tone alphabet, in eight groups of eight. `tone-encode` groups in fours, so its dashes are
 # dropped and the letters grouped again.
 
-load @term/base/code/bytes
+load @term/base/bytes
   find bytes
   find from-text
   find to-hex
 
-load @term/base/code/cryptography/digest
+load @term/base/cryptography/digest
   find sha256
 
-load @term/base/code/tone
+load @term/base/tone
   find tone-encode
 
-load @term/base/code/text
+load @term/base/text
   find replace-all
   find substring
   find char-count
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
   find join
 
-load @term/base/code/file
+load @term/base/file
   find read-bytes
 
 # a tone run grouped in eights

@@ -165,6 +165,7 @@ export function analyze(
     lint: (config: LintConfig = {}) =>
       program
         ? lint(program, source.file, source.text, {
+            lean: options?.lean ?? false,
             ...config,
             suppress,
           })
@@ -175,6 +176,7 @@ export function analyze(
       }
 
       const findings = lint(program, source.file, source.text, {
+        lean: options?.lean ?? false,
         ...config,
         suppress,
       })

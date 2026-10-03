@@ -1,8 +1,8 @@
 
 # Empty — headless. An empty-state placeholder with media / title / description / content parts.
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 

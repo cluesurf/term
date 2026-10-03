@@ -2,7 +2,7 @@
 load @term/bind
   find or
 
-load @term/bind/code/node/crypto
+load @term/bind/node/crypto
   find binary-to-text-encoding
   find character-encoding
   find legacy-character-encoding

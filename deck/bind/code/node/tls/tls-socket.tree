@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find error
   find native-boolean
@@ -20,10 +20,10 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/tls
+load @term/bind/node/tls
   find cipher-name-and-protocol
   find detailed-peer-certificate
   find ephemeral-key-info
@@ -32,9 +32,9 @@ load @term/bind/code/node/tls
 
 form tls-socket, name <TLSSocket>
   base net-socket
-  link authorized, name <authorized>, like native-boolean
-  link authorization-error, name <authorizationError>, like error
-  link encrypted, name <encrypted>, like native-boolean
+  link authorized, name(<authorized>), like native-boolean
+  link authorization-error, name(<authorizationError>), like error
+  link encrypted, name(<encrypted>), like native-boolean
   link alpn-protocol, name <alpnProtocol>
     like or
       like native-string

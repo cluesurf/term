@@ -1,7 +1,7 @@
-load @term/call/code/work/home
+load @term/call/work/home
   find root, name project-root
 
-load @term/call/code/work/tint
+load @term/call/work/tint
   find log-good
   find log-fail
   find log-step
@@ -24,7 +24,7 @@ load @term/call/code/work/tint
 #
 # Ported from deck/call/code/roll.ts (cli-in-term-0004).
 
-load @term/base/code/text
+load @term/base/text
   find contains
 
 dock load

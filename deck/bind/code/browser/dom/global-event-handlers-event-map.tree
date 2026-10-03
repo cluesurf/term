@@ -1,53 +1,53 @@
 
-load @term/bind/code/browser/dom/animation-event
+load @term/bind/browser/dom/animation-event
   find animation-event
 
-load @term/bind/code/browser/dom/composition-event
+load @term/bind/browser/dom/composition-event
   find composition-event
 
-load @term/bind/code/browser/dom/drag-event
+load @term/bind/browser/dom/drag-event
   find drag-event
 
-load @term/bind/code/browser/dom/error-event
+load @term/bind/browser/dom/error-event
   find error-event
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/focus-event
+load @term/bind/browser/dom/focus-event
   find focus-event
 
-load @term/bind/code/browser/dom/form-data-event
+load @term/bind/browser/dom/form-data-event
   find form-data-event
 
-load @term/bind/code/browser/dom/input-event
+load @term/bind/browser/dom/input-event
   find input-event
 
-load @term/bind/code/browser/dom/keyboard-event
+load @term/bind/browser/dom/keyboard-event
   find keyboard-event
 
-load @term/bind/code/browser/dom/mouse-event
+load @term/bind/browser/dom/mouse-event
   find mouse-event
 
-load @term/bind/code/browser/dom/pointer-event
+load @term/bind/browser/dom/pointer-event
   find pointer-event
 
-load @term/bind/code/browser/dom/progress-event
+load @term/bind/browser/dom/progress-event
   find progress-event
 
-load @term/bind/code/browser/dom/security-policy-violation-event
+load @term/bind/browser/dom/security-policy-violation-event
   find security-policy-violation-event
 
-load @term/bind/code/browser/dom/touch-event
+load @term/bind/browser/dom/touch-event
   find touch-event
 
-load @term/bind/code/browser/dom/transition-event
+load @term/bind/browser/dom/transition-event
   find transition-event
 
-load @term/bind/code/browser/dom/ui-event
+load @term/bind/browser/dom/ui-event
   find ui-event
 
-load @term/bind/code/browser/dom/wheel-event
+load @term/bind/browser/dom/wheel-event
   find wheel-event
 
 form global-event-handlers-event-map, name <GlobalEventHandlersEventMap>

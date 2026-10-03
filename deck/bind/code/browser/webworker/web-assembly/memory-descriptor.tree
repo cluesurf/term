@@ -2,10 +2,10 @@
 load @term/bind/code/browser/dom/memory-descriptor
   find memory-descriptor
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form memory-descriptor, name <MemoryDescriptor>

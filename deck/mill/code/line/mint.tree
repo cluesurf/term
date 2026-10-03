@@ -1,11 +1,11 @@
 
-load @term/mill/code/code/call/mint
+load @term/mill/code/call/mint
   find call
 
-load @term/mill/code/code/fuse/mint
+load @term/mill/code/fuse/mint
   find fuse
 
-load @term/mill/code/code/save/mint
+load @term/mill/code/save/mint
   find save
 
 mint dock

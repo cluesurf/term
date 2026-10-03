@@ -1022,7 +1022,7 @@ const cli = yargs(hideBin(process.argv))
       yargs
         .positional('target', {
           type: 'string',
-          description: 'What to move (code)',
+          description: 'What to move (mark, the version; code is the old spelling)',
         })
         .positional('level', {
           type: 'string',
@@ -1301,16 +1301,16 @@ const cli = yargs(hideBin(process.argv))
     yargs =>
       yargs.positional('what', {
         type: 'string',
-        description: '`code` for this package\'s version; omit for the toolchain version and platform',
+        description: '`mark` for this package\'s version (`code` is the old spelling); omit for the toolchain version and platform',
       }),
     async argv => {
-      if (argv.what === 'code') {
+      if (argv.what === 'mark' || argv.what === 'code') {
         const { loadManifest, showCode } =
           await import('@cluesurf/deck.tree')
 
         try {
           const manifest = await loadManifest({ dir: root })
-          console.log(showCode(manifest.code))
+          console.log(showCode(manifest.mark))
         } catch {
           logFail('No deck.tree found')
         }

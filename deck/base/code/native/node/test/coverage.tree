@@ -1,21 +1,21 @@
 
-load @term/base/code/list
+load @term/base/list
   find push
 
-load @term/base/code/text/util
+load @term/base/text/util
   find join, name text-join
 
-load @term/base/code/json
+load @term/base/json
   find stringify, name json-serialize
 
-load @term/base/code/text/string
+load @term/base/text/string
   find concat
   find to-text
 
 dock load
   load <node:v8>, name v8
 
-load @term/base/code/test/coverage
+load @term/base/test/coverage
   find coverage
   find file-coverage
 

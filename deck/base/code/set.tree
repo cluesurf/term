@@ -3,7 +3,7 @@
 
 note stable
 
-load @term/base/code/hash
+load @term/base/hash
   find hash
 
 form set

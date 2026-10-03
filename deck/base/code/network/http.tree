@@ -11,34 +11,34 @@
 
 note stable
 
-load @term/base/code/native/{platform}/network/http
+load @term/base/native/{platform}/network/http
   find send-request
 
-load @term/base/code/network/response
+load @term/base/network/response
   find http-response
 
-load @term/base/code/hash
+load @term/base/hash
   find hash
 
-load @term/base/code/list
+load @term/base/list
   find list
   find size
   find get
   find sort
 
-load @term/base/code/ordering
+load @term/base/ordering
   find from-texts
 
-load @term/base/code/text/number
+load @term/base/text/number
   find read-number
 
-load @term/base/code/float
+load @term/base/float
   find to-number
 
-load @term/base/code/maybe
+load @term/base/maybe
   find unwrap-or
 
-load @term/base/code/exception
+load @term/base/exception
   find timeout
   find outage
 
@@ -61,7 +61,6 @@ task request
       read body
       read header
       read timeout
-      wait true
   save outcome, text <outage>
   fork test
     hook test
@@ -96,12 +95,22 @@ task request
     hook hold
       halt outage
         bind thing, read url
+  # the status and the body, read while the three places are known to be there
+  save status-text
+    call get
+      read got
+      code 1
+  save body
+    call get
+      read got
+      code 2
   # a header the server sent twice is one entry, the values joined with ", "; then the names in code point order
   save seen
     make hash
   save names
     make list
-  # the length read once: a push in the body leaves the prover unsure of every list's size
+  # the length read once for the measure; the writes in the body leave the prover unsure of every list's size, so
+  # the list's own length is tested on each turn too
   save count
     call size
       read got
@@ -112,11 +121,17 @@ task request
         read count
         read k
     hook test
-      call is-below
-        call add
-          read k
-          code 1
-        read count
+      call and
+        call is-below
+          call add
+            read k
+            code 1
+          read count
+        call is-below
+          call add
+            read k
+            code 1
+          read got/length
     hook step
       save name
         call get
@@ -165,9 +180,7 @@ task request
   # outage
   save status
     call read-number
-      call get
-        read got
-        code 1
+      read status-text
   send back
     make http-response
       bind status
@@ -175,10 +188,7 @@ task request
           call unwrap-or
             read status
             0.0
-      bind body
-        call get
-          read got
-          code 2
+      bind body, read body
       bind headers, read headers
 
 # a GET. Named `fetch`, not `get`: names are package-global, and a top-level `get` shadows list `get` in every
@@ -200,7 +210,6 @@ task fetch
       text <>
       read header
       read timeout
-      wait true
 
 task post
   note async
@@ -220,7 +229,6 @@ task post
       read body
       read header
       read timeout
-      wait true
 
 # a streaming HTTP response: the status plus the raw platform response in the opaque `dock` handle. `read` in
 # `http/response` drains the body once, as text, bytes or json.

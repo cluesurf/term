@@ -1,5 +1,5 @@
 
-load @term/bind/code/node/inspector/runtime
+load @term/bind/node/inspector/runtime
   find remote-object-id
 
 form query-objects-parameter-type, name <QueryObjectsParameterType>

@@ -1,23 +1,23 @@
 
-load @term/bind/code/browser/dom/media-metadata
+load @term/bind/browser/dom/media-metadata
   find media-metadata
 
-load @term/bind/code/browser/dom/media-position-state
+load @term/bind/browser/dom/media-position-state
   find media-position-state
 
-load @term/bind/code/browser/dom/media-session-action
+load @term/bind/browser/dom/media-session-action
   find media-session-action
 
-load @term/bind/code/browser/dom/media-session-action-handler
+load @term/bind/browser/dom/media-session-action-handler
   find media-session-action-handler
 
-load @term/bind/code/browser/dom/media-session-playback-state
+load @term/bind/browser/dom/media-session-playback-state
   find media-session-playback-state
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form media-session, name <MediaSession>

@@ -1,5 +1,5 @@
 
-load @term/base/code/book
+load @term/base/book
   find book-term
 
 mint term, like book-term

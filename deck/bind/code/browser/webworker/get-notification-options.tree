@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/get-notification-options
+load @term/bind/browser/dom/get-notification-options
   find get-notification-options
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form get-notification-options, name <GetNotificationOptions>

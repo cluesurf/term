@@ -1,8 +1,8 @@
 
-load @term/mill/code/code/form/case/mine
+load @term/mill/code/form/case/mine
   find base
 
-load @term/mill/code/code/tool/flow/mine
+load @term/mill/code/tool/flow/mine
   find flow
 
 tree hook

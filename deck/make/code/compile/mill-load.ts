@@ -7,7 +7,9 @@
 // loader is how the mine and the mint start disagreeing about what the grammar says.
 
 import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { resolvePackagePath } from '@term/make/code/resolve'
+import { packageRest } from '@term/make/code/deck/resolve'
 import { parse, renderHead } from '@term/make/code/parser/tree'
 import type {
   GroupNode,
@@ -97,27 +99,32 @@ function readPart(
   }
 }
 
-// resolve one `load` path against the mill root: `@term/mill/code/<p>` or a `./<p>` relative to the importer
-function resolveImport(
+// resolve one `load` path against the mill: `@term/mill/<p>` by the package path rule every resolver calls
+// (`resolvePackagePath`: the mill's code root, then its package root, so `@term/mill/deck/role/mine` and the older
+// `@term/mill/code/deck/role/mine` both reach deck/mill/code/deck/role/mine.tree), or a `./<p>` relative to the
+// importer. `millRoot` is the mill's code root, deck/mill/code, so the package is the directory above it.
+export function resolveMillImport(
   millRoot: string,
   from: string,
   path: string,
 ): string | undefined {
-  const inMill = /^@term\/mill\/code\/(.+)$/.exec(path)
-  const nearby = /^\.\/(.+)$/.exec(path)
-  const bases = inMill
-    ? [
-        join(millRoot, `${inMill[1]!}.tree`),
-        join(millRoot, inMill[1]!, 'base.tree'),
-      ]
-    : nearby
-      ? [
-          `${join(from, '..', nearby[1]!)}.tree`,
-          join(from, '..', nearby[1]!, 'base.tree'),
-        ]
-      : []
+  const named = packageRest(path)
 
-  return bases.find(candidate => existsSync(candidate))
+  if (named) {
+    return named.pkg === '@term/mill'
+      ? resolvePackagePath({ dir: dirname(millRoot), rest: named.rest }).file
+      : undefined
+  }
+
+  const nearby = /^\.\/(.+)$/.exec(path)
+
+  if (!nearby) {
+    return undefined
+  }
+
+  return [`${join(from, '..', nearby[1]!)}.tree`, join(from, '..', nearby[1]!, 'base.tree')].find(candidate =>
+    existsSync(candidate),
+  )
 }
 
 // One rule as a grammar FILE holds it: its name, the `like` it annotates, the form its `hook make` builds, and
@@ -307,7 +314,7 @@ function collect(
     }
 
     for (const path of imports) {
-      const resolved = resolveImport(millRoot, file, path)
+      const resolved = resolveMillImport(millRoot, file, path)
 
       if (resolved) {
         walk(resolved)
@@ -321,6 +328,20 @@ function collect(
   walk(entry)
 
   return { text: parts.join('\n\n'), files }
+}
+
+// ONE grammar file with its load closure inlined and every import block removed: the text a generator bakes into a
+// package that cannot read the mill at run time (deck/deck/task/make-grammar.ts writes the manifest and lockfile
+// grammars this way). The same walk and the same resolver `loadRoleGrammar` uses, so the two cannot disagree about
+// which files a grammar reaches.
+export function grammarTextOf(
+  millRoot: string,
+  entry: string,
+): { text: string; files: string[]; problems: string[] } {
+  const problems: string[] = []
+  const part = collect(millRoot, entry, problems, 'mine', new Map())
+
+  return { ...part, problems }
 }
 
 export function loadRoleGrammar(

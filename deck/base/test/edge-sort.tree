@@ -1,14 +1,14 @@
 # A sort is the same on every backend: stable (equal items keep their order), and text by code point. Held by
 # `pnpm term:base-gate`.
 
-load @term/base/code/list
+load @term/base/list
   find list
   find sort
   find join
   find size
   find map
 
-load @term/base/code/ordering
+load @term/base/ordering
   find ordering
   find from-numbers
   find from-texts

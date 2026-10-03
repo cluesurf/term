@@ -1,0 +1,151 @@
+
+# The font contract (native-text-0001): which face a run of text is set in, on every target. One table, the web's:
+# ./table.tree is generated from @cluesurf/belt by `pnpm term:font-table`, so the web registry and this contract read
+# the same records, and test/face/font-registry.ts holds this resolver to the web's (mesh/deck/face/code/tool/font/
+# resolve.ts) on every script and every alias.
+#
+# Four parts, the four the web registry has:
+#   a font per script   `resolve-font`: an explicit family, else the script's default family, else the house face
+#   load                the target registers the face (CoreText on Apple, a Typeface on Android, @font-face on the web)
+#   ready               ../logic/font-ready: one status signal per family, `pending` until the target answers
+#   fallback            `house-font`, the face every unresolved run is set in, and the `error` status a load ends in
+# Load and ready already exist below this file, in the dom's `check-font` / `watch-font` and the font-ready registry.
+# What this file adds is the choice they are asked about. The records are in ./record.tree.
+
+load ./record
+  find font
+load ./table
+  find list-fonts
+  find list-script-fonts
+  find list-script-aliases
+load @term/base/list
+  find list
+
+# the face every run falls back to: the brand face, self-hosted, never fetched from a third party
+host house-family
+  like text
+  text <CrowMark>
+
+# the name the table knows a script by: the script itself when the table sets it, else what it is an alias of, else
+# nothing (<>), which is a script this app has no font for
+task know-script
+  take script, like text
+  like text
+  walk list
+    call list-script-fonts
+    hook next
+      take site, name entry
+      fork test
+        hook test
+          call is-equal
+            read entry/script
+            read script
+        hook hold
+          send back, read script
+  walk list
+    call list-script-aliases
+    hook next
+      take site, name alias
+      fork test
+        hook test
+          call is-equal
+            read alias/name
+            read script
+        hook hold
+          send back, read alias/script
+  send back, text <>
+
+# the record for a family, when the table holds one, else the house face
+task house-font
+  like font
+  walk list
+    call list-fonts
+    hook next
+      take site, name face
+      fork test
+        hook test
+          call is-equal
+            read face/family
+            read house-family
+        hook hold
+          send back, read face
+  # unreachable while the generator refuses a table without the house face; a total task still needs an answer
+  send back
+    make font
+      bind family, read house-family
+      bind sample, text <abc>
+      bind scale, code 1.0
+      bind heading-height, code 1.4
+      bind body-height, code 1.6
+      bind base-height, code 1.0
+      bind source, text <local>
+
+# the face a run is set in, in the web resolver's order: a family named outright (when the table has it), else the
+# default family of the run's script (under any of its names), else the house face
+task resolve-font
+  take
+    family
+    like text
+    fall <>
+  take
+    script
+    like text
+    fall <>
+  like font
+  save fonts
+    call list-fonts
+  walk list, read fonts
+    hook next
+      take site, name face
+      fork test
+        hook test
+          call is-equal
+            read face/family
+            read family
+        hook hold
+          send back, read face
+  save known
+    call know-script
+      read script
+  walk list
+    call list-script-fonts
+    hook next
+      take site, name entry
+      fork test
+        hook test
+          call is-equal
+            read entry/script
+            read known
+        hook hold
+          walk list, read fonts
+            hook next
+              take site, name face
+              fork test
+                hook test
+                  call is-equal
+                    read face/family
+                    read entry/family
+                hook hold
+                  send back, read face
+  send back
+    call house-font
+
+# the weight a script is set at, 0 when nobody has decided (see `script-font`)
+task resolve-weight
+  take script, like text
+  like number
+  save known
+    call know-script
+      read script
+  walk list
+    call list-script-fonts
+    hook next
+      take site, name entry
+      fork test
+        hook test
+          call is-equal
+            read entry/script
+            read known
+        hook hold
+          send back, read entry/weight
+  send back, code 0

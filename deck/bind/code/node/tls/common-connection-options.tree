@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find error
   find native-boolean
@@ -12,10 +12,10 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find uint8-array
 
-load @term/bind/code/node/tls
+load @term/bind/node/tls
   find secure-context
 
 form common-connection-options, name <CommonConnectionOptions>

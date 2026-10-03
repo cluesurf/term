@@ -7,10 +7,10 @@
 
 note stable
 
-load @term/base/code/stop
+load @term/base/stop
   find abandon
 
-load @term/base/code/native/{platform}/math
+load @term/base/native/{platform}/math
   find abs
   find min
   find max
@@ -162,12 +162,22 @@ task square-root
         read guess
         code 1
       code 2
-  # no `down`: what moves the loop on is not something the prover can bound here; each turn still advances
+  # `guess` falls every turn and stays at 1 or more: integer Newton from above never goes below the root, which is 1
+  # or more here, and the test says so where the prover can see it
   walk test
-    hook test
-      call is-below
-        read next
+    must
+      call is-minimum
         read guess
+        code 1
+    down, read guess
+    hook test
+      call and
+        call is-below
+          read next
+          read guess
+        call is-minimum
+          read next
+          code 1
     hook step
       save guess, read next
       save next
@@ -274,6 +284,14 @@ task least-common-multiple
         read a
       call absolute
         read b
+  # above zero, since neither is zero; tested as a bound, which the prover reads where it reads no `is-unequal`
+  fork test
+    hook test
+      call is-maximum
+        read divisor
+        code 0
+    hook hold
+      send back, code 0
   send back
     call absolute
       call multiply

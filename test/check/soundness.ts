@@ -1188,6 +1188,185 @@ task use
     refused('unproven'),
   )
 
+  // ---- what a write into a field states ----
+
+  const written = (body: string): string => `form pair
+  link count, like number
+
+form box
+  link items
+    like list
+      like number
+
+task use
+  take a, like pair
+  take b, like box
+  take k, like number
+${body}`
+
+  expect(
+    'a write into a number field states its new value',
+    written('  save a/count, read k\n  hold\n    call is-equal\n      read a/count\n      read k\n'),
+    proven,
+  )
+  expect(
+    'a field written from itself states no equation between its old and new value',
+    written(
+      '  save a/count\n    call add\n      read a/count\n      code 1\n  hold\n    call is-equal\n      code 0\n      code 1\n',
+    ),
+    refused('unproven'),
+  )
+  expect(
+    'a list stored in a field has that list`s length',
+    written(
+      '  save next, make list\n  call next/push\n    code 1\n  save b/items, read next\n' +
+        '  hold\n    call is-equal\n      read b/items/length\n      code 1\n',
+    ),
+    proven,
+  )
+  expect(
+    'not after a push to the list it was given',
+    written(
+      '  save next, make list\n  call next/push\n    code 1\n  save b/items, read next\n' +
+        '  call next/push\n    code 2\n  hold\n    call is-equal\n      read b/items/length\n      code 1\n',
+    ),
+    refused('unproven'),
+  )
+  expect(
+    'nor is the given list`s length kept after a push through the field',
+    written(
+      '  save next, make list\n  call next/push\n    code 1\n  save b/items, read next\n' +
+        '  call b/items/push\n    code 2\n  hold\n    call is-equal\n      read next/length\n      code 1\n',
+    ),
+    refused('unproven'),
+  )
+
+  // ---- a join no path reaches ----
+
+  expect(
+    'a walk whose every branch ends its turn is held to each branch, not to the state the turn began in',
+    `task passes
+  take total, like number
+  have
+    call is-minimum
+      read total
+      code 0
+  like number
+  save width, code 1
+  walk test
+    must
+      call is-minimum
+        read width
+        code 1
+    must
+      call is-maximum
+        read width
+        call add
+          read total
+          code 1
+    down
+      call subtract
+        call add
+          read total
+          code 1
+        read width
+    hook test
+      call is-below
+        read width
+        read total
+    hook step
+      fork test
+        hook test
+          call is-above
+            call multiply
+              read width
+              code 2
+            read total
+        hook hold
+          save width, read total
+          turn next
+        hook miss
+          save width
+            call multiply
+              read width
+              code 2
+          turn next
+  send back, read width
+`,
+    proven,
+  )
+  expect(
+    'but a join one path still reaches is not taken as unreachable',
+    `task stuck
+  take total, like number
+  like number
+  save width, code 1
+  walk test
+    down
+      call subtract
+        read total
+        read width
+    hook test
+      call is-below
+        read width
+        read total
+    hook step
+      fork test
+        hook test
+          call is-above
+            read width
+            code 5
+        hook hold
+          save width
+            call add
+              read width
+              code 1
+          turn next
+  send back, read width
+`,
+    refused('unproven'),
+  )
+
+  expect(
+    'what the facts before a fork imply about names no branch writes survives it, the written names projected out',
+    `task kept
+  take n, like number
+  take c, like boolean
+  like number
+  save i, code 0
+  fork test
+    hook test
+      call is-below
+        read i
+        read n
+    hook hold
+      save at, read i
+      save i
+        call add
+          read i
+          code 1
+      fork test
+        hook test
+          read c
+        hook hold
+          save i
+            call add
+              read i
+              code 2
+        hook miss
+          save i
+            call add
+              read i
+              code 5
+      hold
+        call is-below
+          read at
+          read n
+  send back, read i
+`,
+    proven,
+  )
+
   // ---- a module's constant table beside a fresh list ----
 
   expect(

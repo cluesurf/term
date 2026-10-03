@@ -1,20 +1,20 @@
 
-load @term/bind/code/browser/dom/html-canvas-element
+load @term/bind/browser/dom/html-canvas-element
   find html-canvas-element
 
-load @term/bind/code/browser/dom/html-image-element
+load @term/bind/browser/dom/html-image-element
   find html-image-element
 
-load @term/bind/code/browser/dom/html-video-element
+load @term/bind/browser/dom/html-video-element
   find html-video-element
 
-load @term/bind/code/browser/dom/image-bitmap
+load @term/bind/browser/dom/image-bitmap
   find image-bitmap
 
-load @term/bind/code/browser/dom/image-data
+load @term/bind/browser/dom/image-data
   find image-data
 
-load @term/bind/code/browser/dom/offscreen-canvas
+load @term/bind/browser/dom/offscreen-canvas
   find offscreen-canvas
 
 form tex-image-source, name <TexImageSource>

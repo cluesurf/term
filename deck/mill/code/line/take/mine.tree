@@ -1,8 +1,8 @@
 
-load @term/mill/code/code/seed/mine
+load @term/mill/code/seed/mine
   find seed
 
-load @term/mill/code/line/mill/mine
+load @term/mill/line/mill/mine
   find dock-mill
 
 mine dock-take

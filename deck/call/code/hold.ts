@@ -6,7 +6,7 @@
  *   - a file does not compile, which covers every error the checker raises: an unproven `hold`, an unproven
  *     contract (`have` / `must` / `down`), a proof the kernel did not verify, a claim filled by a looping or
  *     impure task, an unfilled claim;
- *   - a claim is left `note open`, because an open claim is a promise and a gate cannot pass a promise;
+ *   - a claim is left `mark open`, because an open claim is a promise and a gate cannot pass a promise;
  *   - a TIER-0 obligation fails that the project's baseline does not list. Tier 0 is what every task is proven free
  *     of with nothing written: every list read inside its list, every division by something other than zero. The
  *     baseline (`hold.json` at the project root) names what was already unproven the day the gate went up, and it

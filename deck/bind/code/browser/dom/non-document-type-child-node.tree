@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/element
+load @term/bind/browser/dom/element
   find element
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
 form non-document-type-child-node, name <NonDocumentTypeChildNode>

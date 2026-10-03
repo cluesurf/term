@@ -5,7 +5,9 @@
 // See note/research/vibe/computation/plans/11-elaboration.md.
 
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { diagnose } from '@term/make/code/parser/diagnostic'
 import { parse } from '@term/make/code/parser/tree'
+import { noteMetadataSites } from '@term/make/code/check/note-metadata'
 import {
   expandTemplates,
   collectTemplates,
@@ -37,7 +39,7 @@ import { elaborateReport } from '@term/make/code/check/elaborate'
 import { checkHolds } from '@term/make/code/check/holds'
 import type { Tally } from '@term/make/code/check/holds'
 import { checkTraits } from '@term/make/code/check/traits'
-import { checkEffects } from '@term/make/code/check/effects'
+import { awaitsOutsideTasks, checkCallsOutsideTasks, checkEffects } from '@term/make/code/check/effects'
 import {
   checkClaims,
   fillClaims,
@@ -72,6 +74,7 @@ import { pruneToReachable } from '@term/make/code/ir/prune'
 import { simplify } from '@term/make/code/ir/simplify'
 import { passDictionaries } from '@term/make/code/ir/dictionary'
 import { lowerZones } from '@term/make/code/compile/view-lower'
+import { lowerRoutes } from '@term/make/code/compile/route-lower'
 import { RENDER } from '@term/make/code/compile/render-names'
 import { compileLookCss } from '@term/make/code/compile/look-css'
 import { compileLookTable, styleTableText } from '@term/make/code/compile/look-table'
@@ -314,6 +317,9 @@ export function compile(
     (options?.optimize === false ? '|raw' : '') +
     (options?.env ? `|env:${options.env}` : '') +
     (treeShake ? '|shake' : '') +
+    // the await switch decides whether an un-ticked async call outside a task is refused, so a result cached under
+    // one setting is not an answer under the other (check/effects.ts, `setAwaitOutsideTasks`)
+    (awaitsOutsideTasks() ? '|await-outside' : '') +
     (options?.roll ? '|roll' : '') +
     // a different choice of implementation is a different program
     (options?.twins && Object.keys(options.twins).length ? `|twins:${JSON.stringify(options.twins)}` : '') +
@@ -443,15 +449,34 @@ export function compile(
         : undefined,
     )
 
+    // `note <word>` written as metadata in the ENTRY file: the old spelling of `mark <word>`, read the same and warned
+    // about (check/note-metadata.ts). Only the entry's own, the way `note-private` is, so a build does not repeat
+    // every imported module's. `note private` keeps its own older warning
+    const entryTree = parsed(source)
+    const spelled =
+      compiled.ok && entryTree.ok
+        ? noteMetadataSites(entryTree.tree)
+            .filter(site => site.word !== 'private')
+            .map(site =>
+              diagnose('note-metadata', {
+                file: source.file,
+                span: { ...site.span, file: source.file },
+                message: `\`note ${site.word}\` is the old spelling of \`mark ${site.word}\``,
+              }),
+            )
+        : []
+    const warned: CompileResult =
+      compiled.ok && spelled.length > 0 ? { ...compiled, warnings: [...compiled.warnings, ...spelled] } : compiled
+
     // a twin is checked against the program it twins a task of: what can be refused without running anything
     // (check/twin.ts). A refusal fails the build the way an unproven claim does
-    if (twins.length === 0 || !compiled.ok) {
-      return compiled
+    if (twins.length === 0 || !warned.ok) {
+      return warned
     }
 
     const refused = checkTwins(program, twins, source.file)
 
-    return refused.length > 0 ? { ok: false, diagnostics: refused } : { ...compiled, twins }
+    return refused.length > 0 ? { ok: false, diagnostics: refused } : { ...warned, twins }
   }
 
   // the output cache stores a JSON-serialized result, which cannot hold the per-module `Map`. So in per-module mode we
@@ -550,6 +575,20 @@ export function compileProgram(
 
   if (formScope.length) {
     return { ok: false, diagnostics: formScope }
+  }
+
+  // ROUTE TABLES LOWER HERE, before names are bound and checked (native-navigation-0002). The lowering used to run
+  // inside the TypeScript emitter alone, after the checker, so Swift, Kotlin and Rust got no `route` and no `boot` (a
+  // native app could not use a `hook` table), the dispatcher's parameters were never typed, and the helpers it calls
+  // could be shaken out first. Lowered here, every backend receives a checked dispatcher, and the route runtime it
+  // calls arrives through compile/load.ts's injection. The two functions are the app's entry: nothing in the program
+  // calls them, the platform does, so they are roots
+  const routed = lowerRoutes(program, env ?? 'node')
+
+  if (routed !== program) {
+    program = routed
+    roots?.add('route')
+    roots?.add('boot')
   }
 
   // form extension: resolve every `form x` that is `like <base>` with children into an ordinary record, and finish
@@ -706,7 +745,9 @@ export function compileProgram(
   }
 
   // effect checking: async / await discipline (the surface slice of the effect system)
-  const effectDiagnostics = checkEffects(program, file)
+  // and outside every task, where nothing can wait, a call to an async task is `tick`ed or refused (behind the
+  // switch until the repository is migrated: check/effects.ts, `setAwaitOutsideTasks`)
+  const effectDiagnostics = [...checkEffects(program, file), ...checkCallsOutsideTasks(program, file)]
 
   if (effectDiagnostics.length) {
     return { ok: false, diagnostics: effectDiagnostics }

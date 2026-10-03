@@ -10,7 +10,7 @@
 # (test/compile/toolkit-words.ts holds min-width and max-width on AppKit, UIKit and Android views). Aspect ratio is
 # left out: a cell grid's cells cannot hold one.
 
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
 
 # one bound as a style declaration, or nothing when it was left out (0)
@@ -36,12 +36,12 @@ task frame-style
   take min-height, like number
   take max-height, like number
   like text
-  save a, call bound-part(text <width>, read width)
-  save b, call bound-part(text <height>, read height)
-  save c, call bound-part(text <min-width>, read min-width)
-  save d, call bound-part(text <max-width>, read max-width)
-  save e, call bound-part(text <min-height>, read min-height)
-  save f, call bound-part(text <max-height>, read max-height)
+  save a, call bound-part(text(<width>), read width)
+  save b, call bound-part(text(<height>), read height)
+  save c, call bound-part(text(<min-width>), read min-width)
+  save d, call bound-part(text(<max-width>), read max-width)
+  save e, call bound-part(text(<min-height>), read min-height)
+  save f, call bound-part(text(<max-height>), read max-height)
   send back, text <{{a}}{{b}}{{c}}{{d}}{{e}}{{f}}>
 
 view frame

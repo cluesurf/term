@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/webworker/message-port
+load @term/bind/browser/webworker/message-port
   find message-port
 
-load @term/bind/code/browser/webworker/service-worker
+load @term/bind/browser/webworker/service-worker
   find service-worker
 
 form message-event-source, name <MessageEventSource>

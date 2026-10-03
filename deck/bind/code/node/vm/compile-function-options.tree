@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-boolean
   find native-undefined
@@ -8,10 +8,10 @@ load @term/bind/code/javascript
 load @term/bind
   find or
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/vm
+load @term/bind/node/vm
   find base-options
   find context
 

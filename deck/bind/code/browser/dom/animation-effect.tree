@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/computed-effect-timing
+load @term/bind/browser/dom/computed-effect-timing
   find computed-effect-timing
 
-load @term/bind/code/browser/dom/effect-timing
+load @term/bind/browser/dom/effect-timing
   find effect-timing
 
-load @term/bind/code/browser/dom/optional-effect-timing
+load @term/bind/browser/dom/optional-effect-timing
   find optional-effect-timing
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form animation-effect, name <AnimationEffect>

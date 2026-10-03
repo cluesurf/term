@@ -9,10 +9,10 @@
 
 note stable
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
-load @term/base/code/text
+load @term/base/text
   find char-at
   find char-count
 
@@ -193,14 +193,14 @@ task read-number
 # same way on every backend (note/term/stdlib/semantics.md). `read-number` above is the lenient one that answers a
 # maybe.
 
-load @term/base/code/exception
+load @term/base/exception
   find mismatch
 
-load @term/base/code/text/unicode
+load @term/base/text/unicode
   find to-runes
   find rune-to-text
 
-load @term/base/code/list
+load @term/base/list
   find size
   find get
 
@@ -361,10 +361,15 @@ task parse-integer
       call subtract
         read n
         read i
+    # the calls in the body leave the prover unsure of the list's length, so it is tested beside `n`
     hook test
-      call is-below
-        read i
-        read n
+      call and
+        call is-below
+          read i
+          read n
+        call is-below
+          read i
+          read r/length
     hook step
       save d
         call digit-value
@@ -417,20 +422,28 @@ task number-digits-end
   take at, like number
   like number
   save i, read at
-  # no `down`: what moves the loop on is not something the prover can bound here; each turn still advances
+  # past the end there is no digit (`number-rune-at` answers -1 there), which the test states where the prover sees it
   walk test
+    down
+      call subtract
+        read runes/length
+        read i
     hook test
       call and
-        call is-minimum
-          call number-rune-at
-            read runes
-            read i
-          code 48
-        call is-maximum
-          call number-rune-at
-            read runes
-            read i
-          code 57
+        call is-below
+          read i
+          read runes/length
+        call and
+          call is-minimum
+            call number-rune-at
+              read runes
+              read i
+            code 48
+          call is-maximum
+            call number-rune-at
+              read runes
+              read i
+            code 57
     hook step
       save i
         call add
@@ -612,13 +625,27 @@ task to-radix
   save out, text <>
   save rest, read value
   # the remainder is taken with the sign of the value (division truncates), and its size is the digit, so the least
-  # integer writes without being negated
+  # integer writes without being negated. A 64-bit integer has at most 64 digits in base 2, the least radix, so the
+  # count of turns bounds the walk where the prover cannot follow a division by a variable
+  save turns, code 0
   walk test
+    down
+      call subtract
+        code 64
+        read turns
     hook test
-      call is-unequal
-        read rest
-        code 0
+      call and
+        call is-unequal
+          read rest
+          code 0
+        call is-below
+          read turns
+          code 64
     hook step
+      save turns
+        call add
+          read turns
+          code 1
       save next
         call divide
           read rest
@@ -905,17 +932,26 @@ task to-fixed
           read carry
         hook hold
           call kept/unshift, code 1
-  # at least places + 1 digits, so there is a whole part (no `down`: the prover loses a list's size at an unshift)
+  # at least places + 1 digits, so there is a whole part: the missing count is taken first, since the prover loses a
+  # list's size at an unshift
+  save missing
+    call subtract
+      call add
+        read places
+        code 1
+      read kept/length
+  save pad, code 0
   walk test
     hook test
       call is-below
-        call size
-          read kept
-        call add
-          read places
-          code 1
+        read pad
+        read missing
     hook step
       call kept/unshift, code 0
+      save pad
+        call add
+          read pad
+          code 1
   save whole-count
     call subtract
       call size

@@ -1,191 +1,191 @@
 
-load @term/bind/code/browser/dom/svg-animate-element
+load @term/bind/browser/dom/svg-animate-element
   find svg-animate-element
 
-load @term/bind/code/browser/dom/svg-animate-motion-element
+load @term/bind/browser/dom/svg-animate-motion-element
   find svg-animate-motion-element
 
-load @term/bind/code/browser/dom/svg-animate-transform-element
+load @term/bind/browser/dom/svg-animate-transform-element
   find svg-animate-transform-element
 
-load @term/bind/code/browser/dom/svg-circle-element
+load @term/bind/browser/dom/svg-circle-element
   find svg-circle-element
 
-load @term/bind/code/browser/dom/svg-clip-path-element
+load @term/bind/browser/dom/svg-clip-path-element
   find svg-clip-path-element
 
-load @term/bind/code/browser/dom/svg-defs-element
+load @term/bind/browser/dom/svg-defs-element
   find svg-defs-element
 
-load @term/bind/code/browser/dom/svg-desc-element
+load @term/bind/browser/dom/svg-desc-element
   find svg-desc-element
 
-load @term/bind/code/browser/dom/svg-ellipse-element
+load @term/bind/browser/dom/svg-ellipse-element
   find svg-ellipse-element
 
-load @term/bind/code/browser/dom/svg-filter-element
+load @term/bind/browser/dom/svg-filter-element
   find svg-filter-element
 
-load @term/bind/code/browser/dom/svg-foreign-object-element
+load @term/bind/browser/dom/svg-foreign-object-element
   find svg-foreign-object-element
 
-load @term/bind/code/browser/dom/svg-image-element
+load @term/bind/browser/dom/svg-image-element
   find svg-image-element
 
-load @term/bind/code/browser/dom/svg-line-element
+load @term/bind/browser/dom/svg-line-element
   find svg-line-element
 
-load @term/bind/code/browser/dom/svg-linear-gradient-element
+load @term/bind/browser/dom/svg-linear-gradient-element
   find svg-linear-gradient-element
 
-load @term/bind/code/browser/dom/svg-marker-element
+load @term/bind/browser/dom/svg-marker-element
   find svg-marker-element
 
-load @term/bind/code/browser/dom/svg-mask-element
+load @term/bind/browser/dom/svg-mask-element
   find svg-mask-element
 
-load @term/bind/code/browser/dom/svg-metadata-element
+load @term/bind/browser/dom/svg-metadata-element
   find svg-metadata-element
 
-load @term/bind/code/browser/dom/svg-path-element
+load @term/bind/browser/dom/svg-path-element
   find svg-path-element
 
-load @term/bind/code/browser/dom/svg-pattern-element
+load @term/bind/browser/dom/svg-pattern-element
   find svg-pattern-element
 
-load @term/bind/code/browser/dom/svg-polygon-element
+load @term/bind/browser/dom/svg-polygon-element
   find svg-polygon-element
 
-load @term/bind/code/browser/dom/svg-polyline-element
+load @term/bind/browser/dom/svg-polyline-element
   find svg-polyline-element
 
-load @term/bind/code/browser/dom/svg-radial-gradient-element
+load @term/bind/browser/dom/svg-radial-gradient-element
   find svg-radial-gradient-element
 
-load @term/bind/code/browser/dom/svg-rect-element
+load @term/bind/browser/dom/svg-rect-element
   find svg-rect-element
 
-load @term/bind/code/browser/dom/svg-script-element
+load @term/bind/browser/dom/svg-script-element
   find svg-script-element
 
-load @term/bind/code/browser/dom/svg-set-element
+load @term/bind/browser/dom/svg-set-element
   find svg-set-element
 
-load @term/bind/code/browser/dom/svg-stop-element
+load @term/bind/browser/dom/svg-stop-element
   find svg-stop-element
 
-load @term/bind/code/browser/dom/svg-style-element
+load @term/bind/browser/dom/svg-style-element
   find svg-style-element
 
-load @term/bind/code/browser/dom/svg-switch-element
+load @term/bind/browser/dom/svg-switch-element
   find svg-switch-element
 
-load @term/bind/code/browser/dom/svg-symbol-element
+load @term/bind/browser/dom/svg-symbol-element
   find svg-symbol-element
 
-load @term/bind/code/browser/dom/svg-text-element
+load @term/bind/browser/dom/svg-text-element
   find svg-text-element
 
-load @term/bind/code/browser/dom/svg-text-path-element
+load @term/bind/browser/dom/svg-text-path-element
   find svg-text-path-element
 
-load @term/bind/code/browser/dom/svg-title-element
+load @term/bind/browser/dom/svg-title-element
   find svg-title-element
 
-load @term/bind/code/browser/dom/svg-use-element
+load @term/bind/browser/dom/svg-use-element
   find svg-use-element
 
-load @term/bind/code/browser/dom/svg-view-element
+load @term/bind/browser/dom/svg-view-element
   find svg-view-element
 
-load @term/bind/code/browser/dom/svga-element
+load @term/bind/browser/dom/svga-element
   find svga-element
 
-load @term/bind/code/browser/dom/svgfe-blend-element
+load @term/bind/browser/dom/svgfe-blend-element
   find svgfe-blend-element
 
-load @term/bind/code/browser/dom/svgfe-color-matrix-element
+load @term/bind/browser/dom/svgfe-color-matrix-element
   find svgfe-color-matrix-element
 
-load @term/bind/code/browser/dom/svgfe-component-transfer-element
+load @term/bind/browser/dom/svgfe-component-transfer-element
   find svgfe-component-transfer-element
 
-load @term/bind/code/browser/dom/svgfe-composite-element
+load @term/bind/browser/dom/svgfe-composite-element
   find svgfe-composite-element
 
-load @term/bind/code/browser/dom/svgfe-convolve-matrix-element
+load @term/bind/browser/dom/svgfe-convolve-matrix-element
   find svgfe-convolve-matrix-element
 
-load @term/bind/code/browser/dom/svgfe-diffuse-lighting-element
+load @term/bind/browser/dom/svgfe-diffuse-lighting-element
   find svgfe-diffuse-lighting-element
 
-load @term/bind/code/browser/dom/svgfe-displacement-map-element
+load @term/bind/browser/dom/svgfe-displacement-map-element
   find svgfe-displacement-map-element
 
-load @term/bind/code/browser/dom/svgfe-distant-light-element
+load @term/bind/browser/dom/svgfe-distant-light-element
   find svgfe-distant-light-element
 
-load @term/bind/code/browser/dom/svgfe-drop-shadow-element
+load @term/bind/browser/dom/svgfe-drop-shadow-element
   find svgfe-drop-shadow-element
 
-load @term/bind/code/browser/dom/svgfe-flood-element
+load @term/bind/browser/dom/svgfe-flood-element
   find svgfe-flood-element
 
-load @term/bind/code/browser/dom/svgfe-func-a-element
+load @term/bind/browser/dom/svgfe-func-a-element
   find svgfe-func-a-element
 
-load @term/bind/code/browser/dom/svgfe-func-b-element
+load @term/bind/browser/dom/svgfe-func-b-element
   find svgfe-func-b-element
 
-load @term/bind/code/browser/dom/svgfe-func-g-element
+load @term/bind/browser/dom/svgfe-func-g-element
   find svgfe-func-g-element
 
-load @term/bind/code/browser/dom/svgfe-func-r-element
+load @term/bind/browser/dom/svgfe-func-r-element
   find svgfe-func-r-element
 
-load @term/bind/code/browser/dom/svgfe-gaussian-blur-element
+load @term/bind/browser/dom/svgfe-gaussian-blur-element
   find svgfe-gaussian-blur-element
 
-load @term/bind/code/browser/dom/svgfe-image-element
+load @term/bind/browser/dom/svgfe-image-element
   find svgfe-image-element
 
-load @term/bind/code/browser/dom/svgfe-merge-element
+load @term/bind/browser/dom/svgfe-merge-element
   find svgfe-merge-element
 
-load @term/bind/code/browser/dom/svgfe-merge-node-element
+load @term/bind/browser/dom/svgfe-merge-node-element
   find svgfe-merge-node-element
 
-load @term/bind/code/browser/dom/svgfe-morphology-element
+load @term/bind/browser/dom/svgfe-morphology-element
   find svgfe-morphology-element
 
-load @term/bind/code/browser/dom/svgfe-offset-element
+load @term/bind/browser/dom/svgfe-offset-element
   find svgfe-offset-element
 
-load @term/bind/code/browser/dom/svgfe-point-light-element
+load @term/bind/browser/dom/svgfe-point-light-element
   find svgfe-point-light-element
 
-load @term/bind/code/browser/dom/svgfe-specular-lighting-element
+load @term/bind/browser/dom/svgfe-specular-lighting-element
   find svgfe-specular-lighting-element
 
-load @term/bind/code/browser/dom/svgfe-spot-light-element
+load @term/bind/browser/dom/svgfe-spot-light-element
   find svgfe-spot-light-element
 
-load @term/bind/code/browser/dom/svgfe-tile-element
+load @term/bind/browser/dom/svgfe-tile-element
   find svgfe-tile-element
 
-load @term/bind/code/browser/dom/svgfe-turbulence-element
+load @term/bind/browser/dom/svgfe-turbulence-element
   find svgfe-turbulence-element
 
-load @term/bind/code/browser/dom/svgg-element
+load @term/bind/browser/dom/svgg-element
   find svgg-element
 
-load @term/bind/code/browser/dom/svgm-path-element
+load @term/bind/browser/dom/svgm-path-element
   find svgm-path-element
 
-load @term/bind/code/browser/dom/svgsvg-element
+load @term/bind/browser/dom/svgsvg-element
   find svgsvg-element
 
-load @term/bind/code/browser/dom/svgt-span-element
+load @term/bind/browser/dom/svgt-span-element
   find svgt-span-element
 
 form svg-element-tag-name-map, name <SVGElementTagNameMap>

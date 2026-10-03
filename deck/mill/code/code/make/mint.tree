@@ -1,13 +1,13 @@
-load @term/mill/code/code/call/mint
+load @term/mill/code/call/mint
   find call-link
 
-load @term/mill/code/code/bind/mint
+load @term/mill/code/bind/mint
   find bind
 
-load @term/mill/code/code/save/mint
+load @term/mill/code/save/mint
   find save
 
-load @term/mill/code/code/seed/mint
+load @term/mill/code/seed/mint
   find seed
 
 mint make

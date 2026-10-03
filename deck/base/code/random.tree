@@ -2,7 +2,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/random
+load @term/base/native/{platform}/random
   find random-number
   find random-integer
 

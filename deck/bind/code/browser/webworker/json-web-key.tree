@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/dom/json-web-key
+load @term/bind/browser/dom/json-web-key
   find json-web-key
 
-load @term/bind/code/browser/webworker/rsa-other-primes-info
+load @term/bind/browser/webworker/rsa-other-primes-info
   find rsa-other-primes-info
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form json-web-key, name <JsonWebKey>

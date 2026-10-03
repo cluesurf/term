@@ -7,7 +7,7 @@ describe('validateManifest', () => {
     const manifest: DeckManifest = {
       host: 'cluesurf',
       name: 'seed',
-      code: { major: 1, minor: 0, patch: 2 },
+      mark: { major: 1, minor: 0, patch: 2 },
       link: [],
     }
     const errors = await validateManifest({ manifest })
@@ -18,7 +18,7 @@ describe('validateManifest', () => {
     const manifest: DeckManifest = {
       host: 'cluesurf',
       name: '',
-      code: { major: 1, minor: 0, patch: 2 },
+      mark: { major: 1, minor: 0, patch: 2 },
       link: [],
     }
     const errors = await validateManifest({ manifest })
@@ -29,31 +29,30 @@ describe('validateManifest', () => {
     const manifest: DeckManifest = {
       host: 'cluesurf',
       name: 'seed',
-      code: { major: 0, minor: 0, patch: 0 },
+      mark: { major: 0, minor: 0, patch: 0 },
       link: [],
     }
     const errors = await validateManifest({ manifest })
     expect(errors).toContain('Version must be set (not 0.0.0)')
   })
 
-  it('fails on odd patch number', async () => {
+  // an even-patch rule is an author's convention, not the toolchain's, so both parities publish
+  it('passes an odd patch number', async () => {
     const manifest: DeckManifest = {
       host: 'cluesurf',
       name: 'seed',
-      code: { major: 1, minor: 0, patch: 3 },
+      mark: { major: 1, minor: 0, patch: 3 },
       link: [],
     }
     const errors = await validateManifest({ manifest })
-    expect(errors).toContain(
-      'Published versions must use even patch numbers',
-    )
+    expect(errors).toEqual([])
   })
 
-  it('passes even patch number', async () => {
+  it('passes an even patch number', async () => {
     const manifest: DeckManifest = {
       host: 'cluesurf',
       name: 'seed',
-      code: { major: 1, minor: 0, patch: 4 },
+      mark: { major: 1, minor: 0, patch: 4 },
       link: [],
     }
     const errors = await validateManifest({ manifest })

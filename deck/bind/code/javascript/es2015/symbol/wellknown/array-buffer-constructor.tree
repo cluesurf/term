@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript/es5/array-buffer-constructor
+load @term/bind/javascript/es5/array-buffer-constructor
   find array-buffer-constructor
 
 form array-buffer-constructor, name <ArrayBufferConstructor>

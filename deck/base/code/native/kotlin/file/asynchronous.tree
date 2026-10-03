@@ -123,7 +123,7 @@ dock type
 dock load
   load <global:watch>, name watch-file
 
-load @term/base/code/file/watch
+load @term/base/file/watch
   find watch-event
   find watcher
 

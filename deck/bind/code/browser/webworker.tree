@@ -1,1003 +1,1003 @@
 
-bear @term/bind/code/browser/webworker/add-event-listener-options
-bear @term/bind/code/browser/webworker/aes-cbc-params
-bear @term/bind/code/browser/webworker/aes-ctr-params
-bear @term/bind/code/browser/webworker/aes-derived-key-params
-bear @term/bind/code/browser/webworker/aes-gcm-params
-bear @term/bind/code/browser/webworker/aes-key-algorithm
-bear @term/bind/code/browser/webworker/aes-key-gen-params
-bear @term/bind/code/browser/webworker/algorithm
-bear @term/bind/code/browser/webworker/blob-property-bag
-bear @term/bind/code/browser/webworker/cache-query-options
-bear @term/bind/code/browser/webworker/canvas-rendering-context2-d-settings
-bear @term/bind/code/browser/webworker/client-query-options
-bear @term/bind/code/browser/webworker/close-event-init
-bear @term/bind/code/browser/webworker/crypto-key-pair
-bear @term/bind/code/browser/webworker/custom-event-init
-bear @term/bind/code/browser/webworker/dom-matrix2-d-init
-bear @term/bind/code/browser/webworker/dom-matrix-init
-bear @term/bind/code/browser/webworker/dom-point-init
-bear @term/bind/code/browser/webworker/dom-quad-init
-bear @term/bind/code/browser/webworker/dom-rect-init
-bear @term/bind/code/browser/webworker/device-permission-descriptor
-bear @term/bind/code/browser/webworker/ec-key-gen-params
-bear @term/bind/code/browser/webworker/ec-key-import-params
-bear @term/bind/code/browser/webworker/ecdh-key-derive-params
-bear @term/bind/code/browser/webworker/ecdsa-params
-bear @term/bind/code/browser/webworker/error-event-init
-bear @term/bind/code/browser/webworker/event-init
-bear @term/bind/code/browser/webworker/event-listener-options
-bear @term/bind/code/browser/webworker/event-source-init
-bear @term/bind/code/browser/webworker/extendable-event-init
-bear @term/bind/code/browser/webworker/extendable-message-event-init
-bear @term/bind/code/browser/webworker/fetch-event-init
-bear @term/bind/code/browser/webworker/file-property-bag
-bear @term/bind/code/browser/webworker/get-notification-options
-bear @term/bind/code/browser/webworker/hkdf-params
-bear @term/bind/code/browser/webworker/hmac-import-params
-bear @term/bind/code/browser/webworker/hmac-key-gen-params
-bear @term/bind/code/browser/webworker/idb-index-parameters
-bear @term/bind/code/browser/webworker/idb-object-store-parameters
-bear @term/bind/code/browser/webworker/idb-version-change-event-init
-bear @term/bind/code/browser/webworker/image-bitmap-options
-bear @term/bind/code/browser/webworker/image-bitmap-rendering-context-settings
-bear @term/bind/code/browser/webworker/image-encode-options
-bear @term/bind/code/browser/webworker/import-meta
-bear @term/bind/code/browser/webworker/json-web-key
-bear @term/bind/code/browser/webworker/key-algorithm
-bear @term/bind/code/browser/webworker/message-event-init
-bear @term/bind/code/browser/webworker/midi-permission-descriptor
-bear @term/bind/code/browser/webworker/multi-cache-query-options
-bear @term/bind/code/browser/webworker/navigation-preload-state
-bear @term/bind/code/browser/webworker/notification-action
-bear @term/bind/code/browser/webworker/notification-event-init
-bear @term/bind/code/browser/webworker/notification-options
-bear @term/bind/code/browser/webworker/pbkdf2-params
-bear @term/bind/code/browser/webworker/performance-observer-init
-bear @term/bind/code/browser/webworker/permission-descriptor
-bear @term/bind/code/browser/webworker/post-message-options
-bear @term/bind/code/browser/webworker/progress-event-init
-bear @term/bind/code/browser/webworker/promise-rejection-event-init
-bear @term/bind/code/browser/webworker/push-event-init
-bear @term/bind/code/browser/webworker/push-permission-descriptor
-bear @term/bind/code/browser/webworker/push-subscription-json
-bear @term/bind/code/browser/webworker/push-subscription-options-init
-bear @term/bind/code/browser/webworker/queuing-strategy
-bear @term/bind/code/browser/webworker/queuing-strategy-init
-bear @term/bind/code/browser/webworker/readable-stream-default-read-done-result
-bear @term/bind/code/browser/webworker/readable-stream-default-read-value-result
-bear @term/bind/code/browser/webworker/readable-writable-pair
-bear @term/bind/code/browser/webworker/registration-options
-bear @term/bind/code/browser/webworker/request-init
-bear @term/bind/code/browser/webworker/response-init
-bear @term/bind/code/browser/webworker/rsa-hashed-import-params
-bear @term/bind/code/browser/webworker/rsa-hashed-key-gen-params
-bear @term/bind/code/browser/webworker/rsa-key-gen-params
-bear @term/bind/code/browser/webworker/rsa-oaep-params
-bear @term/bind/code/browser/webworker/rsa-other-primes-info
-bear @term/bind/code/browser/webworker/rsa-pss-params
-bear @term/bind/code/browser/webworker/storage-estimate
-bear @term/bind/code/browser/webworker/stream-pipe-options
-bear @term/bind/code/browser/webworker/sync-event-init
-bear @term/bind/code/browser/webworker/text-decode-options
-bear @term/bind/code/browser/webworker/text-decoder-options
-bear @term/bind/code/browser/webworker/text-encoder-encode-into-result
-bear @term/bind/code/browser/webworker/transformer
-bear @term/bind/code/browser/webworker/underlying-sink
-bear @term/bind/code/browser/webworker/underlying-source
-bear @term/bind/code/browser/webworker/web-gl-context-attributes
-bear @term/bind/code/browser/webworker/web-gl-context-event-init
-bear @term/bind/code/browser/webworker/worker-options
-bear @term/bind/code/browser/webworker/event-listener
-bear @term/bind/code/browser/webworker/angle-instanced-arrays
-bear @term/bind/code/browser/webworker/abort-controller
-bear @term/bind/code/browser/webworker/abort-signal-event-map
-bear @term/bind/code/browser/webworker/abort-signal
-bear @term/bind/code/browser/webworker/abstract-worker-event-map
-bear @term/bind/code/browser/webworker/abstract-worker
-bear @term/bind/code/browser/webworker/aes-cfb-params
-bear @term/bind/code/browser/webworker/aes-cmac-params
-bear @term/bind/code/browser/webworker/animation-frame-provider
-bear @term/bind/code/browser/webworker/blob
-bear @term/bind/code/browser/webworker/body
-bear @term/bind/code/browser/webworker/broadcast-channel-event-map
-bear @term/bind/code/browser/webworker/broadcast-channel
-bear @term/bind/code/browser/webworker/byte-length-queuing-strategy
-bear @term/bind/code/browser/webworker/cache
-bear @term/bind/code/browser/webworker/cache-storage
-bear @term/bind/code/browser/webworker/canvas-compositing
-bear @term/bind/code/browser/webworker/canvas-draw-image
-bear @term/bind/code/browser/webworker/canvas-draw-path
-bear @term/bind/code/browser/webworker/canvas-fill-stroke-styles
-bear @term/bind/code/browser/webworker/canvas-filters
-bear @term/bind/code/browser/webworker/canvas-gradient
-bear @term/bind/code/browser/webworker/canvas-image-data
-bear @term/bind/code/browser/webworker/canvas-image-smoothing
-bear @term/bind/code/browser/webworker/canvas-path
-bear @term/bind/code/browser/webworker/canvas-path-drawing-styles
-bear @term/bind/code/browser/webworker/canvas-pattern
-bear @term/bind/code/browser/webworker/canvas-rect
-bear @term/bind/code/browser/webworker/canvas-shadow-styles
-bear @term/bind/code/browser/webworker/canvas-state
-bear @term/bind/code/browser/webworker/canvas-text
-bear @term/bind/code/browser/webworker/canvas-text-drawing-styles
-bear @term/bind/code/browser/webworker/canvas-transform
-bear @term/bind/code/browser/webworker/client
-bear @term/bind/code/browser/webworker/clients
-bear @term/bind/code/browser/webworker/close-event
-bear @term/bind/code/browser/webworker/concat-params
-bear @term/bind/code/browser/webworker/count-queuing-strategy
-bear @term/bind/code/browser/webworker/crypto
-bear @term/bind/code/browser/webworker/crypto-key
-bear @term/bind/code/browser/webworker/custom-event
-bear @term/bind/code/browser/webworker/dom-exception
-bear @term/bind/code/browser/webworker/dom-matrix
-bear @term/bind/code/browser/webworker/dom-matrix-read-only
-bear @term/bind/code/browser/webworker/dom-point
-bear @term/bind/code/browser/webworker/dom-point-read-only
-bear @term/bind/code/browser/webworker/dom-quad
-bear @term/bind/code/browser/webworker/dom-rect
-bear @term/bind/code/browser/webworker/dom-rect-read-only
-bear @term/bind/code/browser/webworker/dom-string-list
-bear @term/bind/code/browser/webworker/dedicated-worker-global-scope-event-map
-bear @term/bind/code/browser/webworker/dedicated-worker-global-scope
-bear @term/bind/code/browser/webworker/dh-import-key-params
-bear @term/bind/code/browser/webworker/dh-key-algorithm
-bear @term/bind/code/browser/webworker/dh-key-derive-params
-bear @term/bind/code/browser/webworker/dh-key-gen-params
-bear @term/bind/code/browser/webworker/ext-blend-minmax
-bear @term/bind/code/browser/webworker/ext-frag-depth
-bear @term/bind/code/browser/webworker/ext-s-rgb
-bear @term/bind/code/browser/webworker/ext-shader-texture-lod
-bear @term/bind/code/browser/webworker/ext-texture-filter-anisotropic
-bear @term/bind/code/browser/webworker/error-event
-bear @term/bind/code/browser/webworker/event
-bear @term/bind/code/browser/webworker/event-listener-object
-bear @term/bind/code/browser/webworker/event-source-event-map
-bear @term/bind/code/browser/webworker/event-source
-bear @term/bind/code/browser/webworker/event-target
-bear @term/bind/code/browser/webworker/extendable-event
-bear @term/bind/code/browser/webworker/extendable-message-event
-bear @term/bind/code/browser/webworker/fetch-event
-bear @term/bind/code/browser/webworker/file
-bear @term/bind/code/browser/webworker/file-list
-bear @term/bind/code/browser/webworker/file-reader-event-map
-bear @term/bind/code/browser/webworker/file-reader
-bear @term/bind/code/browser/webworker/file-reader-sync
-bear @term/bind/code/browser/webworker/form-data
-bear @term/bind/code/browser/webworker/generic-transform-stream
-bear @term/bind/code/browser/webworker/headers
-bear @term/bind/code/browser/webworker/idb-array-key
-bear @term/bind/code/browser/webworker/idb-cursor
-bear @term/bind/code/browser/webworker/idb-cursor-with-value
-bear @term/bind/code/browser/webworker/idb-database-event-map
-bear @term/bind/code/browser/webworker/idb-database
-bear @term/bind/code/browser/webworker/idb-factory
-bear @term/bind/code/browser/webworker/idb-index
-bear @term/bind/code/browser/webworker/idb-key-range
-bear @term/bind/code/browser/webworker/idb-object-store
-bear @term/bind/code/browser/webworker/idb-open-db-request-event-map
-bear @term/bind/code/browser/webworker/idb-open-db-request
-bear @term/bind/code/browser/webworker/idb-request-event-map
-bear @term/bind/code/browser/webworker/idb-request
-bear @term/bind/code/browser/webworker/idb-transaction-event-map
-bear @term/bind/code/browser/webworker/idb-transaction
-bear @term/bind/code/browser/webworker/idb-version-change-event
-bear @term/bind/code/browser/webworker/image-bitmap
-bear @term/bind/code/browser/webworker/image-bitmap-rendering-context
-bear @term/bind/code/browser/webworker/image-data
-bear @term/bind/code/browser/webworker/message-channel
-bear @term/bind/code/browser/webworker/message-event
-bear @term/bind/code/browser/webworker/message-port-event-map
-bear @term/bind/code/browser/webworker/message-port
-bear @term/bind/code/browser/webworker/navigation-preload-manager
-bear @term/bind/code/browser/webworker/navigator-concurrent-hardware
-bear @term/bind/code/browser/webworker/navigator-id
-bear @term/bind/code/browser/webworker/navigator-language
-bear @term/bind/code/browser/webworker/navigator-on-line
-bear @term/bind/code/browser/webworker/navigator-storage
-bear @term/bind/code/browser/webworker/notification-event-map
-bear @term/bind/code/browser/webworker/notification
-bear @term/bind/code/browser/webworker/notification-event
-bear @term/bind/code/browser/webworker/oes-element-index-uint
-bear @term/bind/code/browser/webworker/oes-standard-derivatives
-bear @term/bind/code/browser/webworker/oes-texture-float
-bear @term/bind/code/browser/webworker/oes-texture-float-linear
-bear @term/bind/code/browser/webworker/oes-texture-half-float
-bear @term/bind/code/browser/webworker/oes-texture-half-float-linear
-bear @term/bind/code/browser/webworker/oes-vertex-array-object
-bear @term/bind/code/browser/webworker/offscreen-canvas
-bear @term/bind/code/browser/webworker/offscreen-canvas-rendering-context2-d
-bear @term/bind/code/browser/webworker/path2-d
-bear @term/bind/code/browser/webworker/performance-event-map
-bear @term/bind/code/browser/webworker/performance
-bear @term/bind/code/browser/webworker/performance-entry
-bear @term/bind/code/browser/webworker/performance-mark
-bear @term/bind/code/browser/webworker/performance-measure
-bear @term/bind/code/browser/webworker/performance-observer
-bear @term/bind/code/browser/webworker/performance-observer-entry-list
-bear @term/bind/code/browser/webworker/performance-resource-timing
-bear @term/bind/code/browser/webworker/permission-status-event-map
-bear @term/bind/code/browser/webworker/permission-status
-bear @term/bind/code/browser/webworker/permissions
-bear @term/bind/code/browser/webworker/progress-event
-bear @term/bind/code/browser/webworker/promise-rejection-event
-bear @term/bind/code/browser/webworker/push-event
-bear @term/bind/code/browser/webworker/push-manager
-bear @term/bind/code/browser/webworker/push-message-data
-bear @term/bind/code/browser/webworker/push-subscription
-bear @term/bind/code/browser/webworker/push-subscription-options
-bear @term/bind/code/browser/webworker/readable-stream
-bear @term/bind/code/browser/webworker/readable-stream-default-controller
-bear @term/bind/code/browser/webworker/readable-stream-default-reader
-bear @term/bind/code/browser/webworker/readable-stream-generic-reader
-bear @term/bind/code/browser/webworker/request
-bear @term/bind/code/browser/webworker/response
-bear @term/bind/code/browser/webworker/service-worker-event-map
-bear @term/bind/code/browser/webworker/service-worker
-bear @term/bind/code/browser/webworker/service-worker-container-event-map
-bear @term/bind/code/browser/webworker/service-worker-container
-bear @term/bind/code/browser/webworker/service-worker-global-scope-event-map
-bear @term/bind/code/browser/webworker/service-worker-global-scope
-bear @term/bind/code/browser/webworker/service-worker-registration-event-map
-bear @term/bind/code/browser/webworker/service-worker-registration
-bear @term/bind/code/browser/webworker/shared-worker
-bear @term/bind/code/browser/webworker/shared-worker-global-scope-event-map
-bear @term/bind/code/browser/webworker/shared-worker-global-scope
-bear @term/bind/code/browser/webworker/storage-manager
-bear @term/bind/code/browser/webworker/subtle-crypto
-bear @term/bind/code/browser/webworker/sync-event
-bear @term/bind/code/browser/webworker/sync-manager
-bear @term/bind/code/browser/webworker/text-decoder
-bear @term/bind/code/browser/webworker/text-decoder-common
-bear @term/bind/code/browser/webworker/text-decoder-stream
-bear @term/bind/code/browser/webworker/text-encoder
-bear @term/bind/code/browser/webworker/text-encoder-common
-bear @term/bind/code/browser/webworker/text-encoder-stream
-bear @term/bind/code/browser/webworker/text-metrics
-bear @term/bind/code/browser/webworker/transform-stream
-bear @term/bind/code/browser/webworker/transform-stream-default-controller
-bear @term/bind/code/browser/webworker/url
-bear @term/bind/code/browser/webworker/url-search-params
-bear @term/bind/code/browser/webworker/webgl-color-buffer-float
-bear @term/bind/code/browser/webworker/webgl-compressed-texture-astc
-bear @term/bind/code/browser/webworker/webgl-compressed-texture-s3tc
-bear @term/bind/code/browser/webworker/webgl-compressed-texture-s3tc-srgb
-bear @term/bind/code/browser/webworker/webgl-debug-renderer-info
-bear @term/bind/code/browser/webworker/webgl-debug-shaders
-bear @term/bind/code/browser/webworker/webgl-depth-texture
-bear @term/bind/code/browser/webworker/webgl-draw-buffers
-bear @term/bind/code/browser/webworker/webgl-lose-context
-bear @term/bind/code/browser/webworker/web-gl2-rendering-context
-bear @term/bind/code/browser/webworker/web-gl2-rendering-context-base
-bear @term/bind/code/browser/webworker/web-gl2-rendering-context-overloads
-bear @term/bind/code/browser/webworker/web-gl-active-info
-bear @term/bind/code/browser/webworker/web-gl-buffer
-bear @term/bind/code/browser/webworker/web-gl-context-event
-bear @term/bind/code/browser/webworker/web-gl-framebuffer
-bear @term/bind/code/browser/webworker/web-gl-program
-bear @term/bind/code/browser/webworker/web-gl-query
-bear @term/bind/code/browser/webworker/web-gl-renderbuffer
-bear @term/bind/code/browser/webworker/web-gl-rendering-context
-bear @term/bind/code/browser/webworker/web-gl-rendering-context-base
-bear @term/bind/code/browser/webworker/web-gl-rendering-context-overloads
-bear @term/bind/code/browser/webworker/web-gl-sampler
-bear @term/bind/code/browser/webworker/web-gl-shader
-bear @term/bind/code/browser/webworker/web-gl-shader-precision-format
-bear @term/bind/code/browser/webworker/web-gl-sync
-bear @term/bind/code/browser/webworker/web-gl-texture
-bear @term/bind/code/browser/webworker/web-gl-transform-feedback
-bear @term/bind/code/browser/webworker/web-gl-uniform-location
-bear @term/bind/code/browser/webworker/web-gl-vertex-array-object
-bear @term/bind/code/browser/webworker/web-gl-vertex-array-object-oes
-bear @term/bind/code/browser/webworker/web-socket-event-map
-bear @term/bind/code/browser/webworker/web-socket
-bear @term/bind/code/browser/webworker/window-client
-bear @term/bind/code/browser/webworker/window-or-worker-global-scope
-bear @term/bind/code/browser/webworker/worker-event-map
-bear @term/bind/code/browser/webworker/worker
-bear @term/bind/code/browser/webworker/worker-global-scope-event-map
-bear @term/bind/code/browser/webworker/worker-global-scope
-bear @term/bind/code/browser/webworker/worker-location
-bear @term/bind/code/browser/webworker/worker-navigator
-bear @term/bind/code/browser/webworker/writable-stream
-bear @term/bind/code/browser/webworker/writable-stream-default-controller
-bear @term/bind/code/browser/webworker/writable-stream-default-writer
-bear @term/bind/code/browser/webworker/xml-http-request-event-map
-bear @term/bind/code/browser/webworker/xml-http-request
-bear @term/bind/code/browser/webworker/xml-http-request-event-target-event-map
-bear @term/bind/code/browser/webworker/xml-http-request-event-target
-bear @term/bind/code/browser/webworker/xml-http-request-upload
-bear @term/bind/code/browser/webworker/event-listener-or-event-listener-object
-bear @term/bind/code/browser/webworker/console
-bear @term/bind/code/browser/webworker/web-assembly
-bear @term/bind/code/browser/webworker/frame-request-callback
-bear @term/bind/code/browser/webworker/on-error-event-handler-non-null
-bear @term/bind/code/browser/webworker/performance-observer-callback
-bear @term/bind/code/browser/webworker/queuing-strategy-size
-bear @term/bind/code/browser/webworker/transformer-flush-callback
-bear @term/bind/code/browser/webworker/transformer-start-callback
-bear @term/bind/code/browser/webworker/transformer-transform-callback
-bear @term/bind/code/browser/webworker/underlying-sink-abort-callback
-bear @term/bind/code/browser/webworker/underlying-sink-close-callback
-bear @term/bind/code/browser/webworker/underlying-sink-start-callback
-bear @term/bind/code/browser/webworker/underlying-sink-write-callback
-bear @term/bind/code/browser/webworker/underlying-source-cancel-callback
-bear @term/bind/code/browser/webworker/underlying-source-pull-callback
-bear @term/bind/code/browser/webworker/underlying-source-start-callback
-bear @term/bind/code/browser/webworker/void-function
-bear @term/bind/code/browser/webworker/headers-init
-bear @term/bind/code/browser/webworker/body-init
-bear @term/bind/code/browser/webworker/request-info
-bear @term/bind/code/browser/webworker/blob-part
-bear @term/bind/code/browser/webworker/dom-high-res-time-stamp
-bear @term/bind/code/browser/webworker/canvas-image-source
-bear @term/bind/code/browser/webworker/offscreen-rendering-context
-bear @term/bind/code/browser/webworker/message-event-source
-bear @term/bind/code/browser/webworker/image-bitmap-source
-bear @term/bind/code/browser/webworker/on-error-event-handler
-bear @term/bind/code/browser/webworker/timer-handler
-bear @term/bind/code/browser/webworker/performance-entry-list
-bear @term/bind/code/browser/webworker/push-message-data-init
-bear @term/bind/code/browser/webworker/readable-stream-reader
-bear @term/bind/code/browser/webworker/readable-stream-controller
-bear @term/bind/code/browser/webworker/vibrate-pattern
-bear @term/bind/code/browser/webworker/algorithm-identifier
-bear @term/bind/code/browser/webworker/hash-algorithm-identifier
-bear @term/bind/code/browser/webworker/big-integer
-bear @term/bind/code/browser/webworker/named-curve
-bear @term/bind/code/browser/webworker/g-lenum
-bear @term/bind/code/browser/webworker/g-lboolean
-bear @term/bind/code/browser/webworker/g-lbitfield
-bear @term/bind/code/browser/webworker/g-lint
-bear @term/bind/code/browser/webworker/g-lsizei
-bear @term/bind/code/browser/webworker/g-lintptr
-bear @term/bind/code/browser/webworker/g-lsizeiptr
-bear @term/bind/code/browser/webworker/g-luint
-bear @term/bind/code/browser/webworker/g-lfloat
-bear @term/bind/code/browser/webworker/g-lclampf
-bear @term/bind/code/browser/webworker/tex-image-source
-bear @term/bind/code/browser/webworker/float32-list
-bear @term/bind/code/browser/webworker/int32-list
-bear @term/bind/code/browser/webworker/g-lint64
-bear @term/bind/code/browser/webworker/g-luint64
-bear @term/bind/code/browser/webworker/uint32-list
-bear @term/bind/code/browser/webworker/buffer-source
-bear @term/bind/code/browser/webworker/dom-time-stamp
-bear @term/bind/code/browser/webworker/form-data-entry-value
-bear @term/bind/code/browser/webworker/idb-valid-key
-bear @term/bind/code/browser/webworker/transferable
-bear @term/bind/code/browser/webworker/readable-stream-default-read-result
-bear @term/bind/code/browser/webworker/binary-type
-bear @term/bind/code/browser/webworker/canvas-direction
-bear @term/bind/code/browser/webworker/canvas-fill-rule
-bear @term/bind/code/browser/webworker/canvas-line-cap
-bear @term/bind/code/browser/webworker/canvas-line-join
-bear @term/bind/code/browser/webworker/canvas-text-align
-bear @term/bind/code/browser/webworker/canvas-text-baseline
-bear @term/bind/code/browser/webworker/client-types
-bear @term/bind/code/browser/webworker/color-space-conversion
-bear @term/bind/code/browser/webworker/ending-type
-bear @term/bind/code/browser/webworker/frame-type
-bear @term/bind/code/browser/webworker/idb-cursor-direction
-bear @term/bind/code/browser/webworker/idb-request-ready-state
-bear @term/bind/code/browser/webworker/idb-transaction-mode
-bear @term/bind/code/browser/webworker/image-orientation
-bear @term/bind/code/browser/webworker/image-smoothing-quality
-bear @term/bind/code/browser/webworker/key-format
-bear @term/bind/code/browser/webworker/key-type
-bear @term/bind/code/browser/webworker/key-usage
-bear @term/bind/code/browser/webworker/notification-direction
-bear @term/bind/code/browser/webworker/notification-permission
-bear @term/bind/code/browser/webworker/offscreen-rendering-context-id
-bear @term/bind/code/browser/webworker/permission-name
-bear @term/bind/code/browser/webworker/permission-state
-bear @term/bind/code/browser/webworker/premultiply-alpha
-bear @term/bind/code/browser/webworker/push-encryption-key-name
-bear @term/bind/code/browser/webworker/push-permission-state
-bear @term/bind/code/browser/webworker/referrer-policy
-bear @term/bind/code/browser/webworker/request-cache
-bear @term/bind/code/browser/webworker/request-credentials
-bear @term/bind/code/browser/webworker/request-destination
-bear @term/bind/code/browser/webworker/request-mode
-bear @term/bind/code/browser/webworker/request-redirect
-bear @term/bind/code/browser/webworker/resize-quality
-bear @term/bind/code/browser/webworker/response-type
-bear @term/bind/code/browser/webworker/service-worker-state
-bear @term/bind/code/browser/webworker/service-worker-update-via-cache
-bear @term/bind/code/browser/webworker/visibility-state
-bear @term/bind/code/browser/webworker/web-gl-power-preference
-bear @term/bind/code/browser/webworker/worker-type
-bear @term/bind/code/browser/webworker/xml-http-request-response-type
-bear @term/bind/code/browser/webworker/importscripts
-bear @term/bind/code/browser/webworker/iterable
+bear @term/bind/browser/webworker/add-event-listener-options
+bear @term/bind/browser/webworker/aes-cbc-params
+bear @term/bind/browser/webworker/aes-ctr-params
+bear @term/bind/browser/webworker/aes-derived-key-params
+bear @term/bind/browser/webworker/aes-gcm-params
+bear @term/bind/browser/webworker/aes-key-algorithm
+bear @term/bind/browser/webworker/aes-key-gen-params
+bear @term/bind/browser/webworker/algorithm
+bear @term/bind/browser/webworker/blob-property-bag
+bear @term/bind/browser/webworker/cache-query-options
+bear @term/bind/browser/webworker/canvas-rendering-context2-d-settings
+bear @term/bind/browser/webworker/client-query-options
+bear @term/bind/browser/webworker/close-event-init
+bear @term/bind/browser/webworker/crypto-key-pair
+bear @term/bind/browser/webworker/custom-event-init
+bear @term/bind/browser/webworker/dom-matrix2-d-init
+bear @term/bind/browser/webworker/dom-matrix-init
+bear @term/bind/browser/webworker/dom-point-init
+bear @term/bind/browser/webworker/dom-quad-init
+bear @term/bind/browser/webworker/dom-rect-init
+bear @term/bind/browser/webworker/device-permission-descriptor
+bear @term/bind/browser/webworker/ec-key-gen-params
+bear @term/bind/browser/webworker/ec-key-import-params
+bear @term/bind/browser/webworker/ecdh-key-derive-params
+bear @term/bind/browser/webworker/ecdsa-params
+bear @term/bind/browser/webworker/error-event-init
+bear @term/bind/browser/webworker/event-init
+bear @term/bind/browser/webworker/event-listener-options
+bear @term/bind/browser/webworker/event-source-init
+bear @term/bind/browser/webworker/extendable-event-init
+bear @term/bind/browser/webworker/extendable-message-event-init
+bear @term/bind/browser/webworker/fetch-event-init
+bear @term/bind/browser/webworker/file-property-bag
+bear @term/bind/browser/webworker/get-notification-options
+bear @term/bind/browser/webworker/hkdf-params
+bear @term/bind/browser/webworker/hmac-import-params
+bear @term/bind/browser/webworker/hmac-key-gen-params
+bear @term/bind/browser/webworker/idb-index-parameters
+bear @term/bind/browser/webworker/idb-object-store-parameters
+bear @term/bind/browser/webworker/idb-version-change-event-init
+bear @term/bind/browser/webworker/image-bitmap-options
+bear @term/bind/browser/webworker/image-bitmap-rendering-context-settings
+bear @term/bind/browser/webworker/image-encode-options
+bear @term/bind/browser/webworker/import-meta
+bear @term/bind/browser/webworker/json-web-key
+bear @term/bind/browser/webworker/key-algorithm
+bear @term/bind/browser/webworker/message-event-init
+bear @term/bind/browser/webworker/midi-permission-descriptor
+bear @term/bind/browser/webworker/multi-cache-query-options
+bear @term/bind/browser/webworker/navigation-preload-state
+bear @term/bind/browser/webworker/notification-action
+bear @term/bind/browser/webworker/notification-event-init
+bear @term/bind/browser/webworker/notification-options
+bear @term/bind/browser/webworker/pbkdf2-params
+bear @term/bind/browser/webworker/performance-observer-init
+bear @term/bind/browser/webworker/permission-descriptor
+bear @term/bind/browser/webworker/post-message-options
+bear @term/bind/browser/webworker/progress-event-init
+bear @term/bind/browser/webworker/promise-rejection-event-init
+bear @term/bind/browser/webworker/push-event-init
+bear @term/bind/browser/webworker/push-permission-descriptor
+bear @term/bind/browser/webworker/push-subscription-json
+bear @term/bind/browser/webworker/push-subscription-options-init
+bear @term/bind/browser/webworker/queuing-strategy
+bear @term/bind/browser/webworker/queuing-strategy-init
+bear @term/bind/browser/webworker/readable-stream-default-read-done-result
+bear @term/bind/browser/webworker/readable-stream-default-read-value-result
+bear @term/bind/browser/webworker/readable-writable-pair
+bear @term/bind/browser/webworker/registration-options
+bear @term/bind/browser/webworker/request-init
+bear @term/bind/browser/webworker/response-init
+bear @term/bind/browser/webworker/rsa-hashed-import-params
+bear @term/bind/browser/webworker/rsa-hashed-key-gen-params
+bear @term/bind/browser/webworker/rsa-key-gen-params
+bear @term/bind/browser/webworker/rsa-oaep-params
+bear @term/bind/browser/webworker/rsa-other-primes-info
+bear @term/bind/browser/webworker/rsa-pss-params
+bear @term/bind/browser/webworker/storage-estimate
+bear @term/bind/browser/webworker/stream-pipe-options
+bear @term/bind/browser/webworker/sync-event-init
+bear @term/bind/browser/webworker/text-decode-options
+bear @term/bind/browser/webworker/text-decoder-options
+bear @term/bind/browser/webworker/text-encoder-encode-into-result
+bear @term/bind/browser/webworker/transformer
+bear @term/bind/browser/webworker/underlying-sink
+bear @term/bind/browser/webworker/underlying-source
+bear @term/bind/browser/webworker/web-gl-context-attributes
+bear @term/bind/browser/webworker/web-gl-context-event-init
+bear @term/bind/browser/webworker/worker-options
+bear @term/bind/browser/webworker/event-listener
+bear @term/bind/browser/webworker/angle-instanced-arrays
+bear @term/bind/browser/webworker/abort-controller
+bear @term/bind/browser/webworker/abort-signal-event-map
+bear @term/bind/browser/webworker/abort-signal
+bear @term/bind/browser/webworker/abstract-worker-event-map
+bear @term/bind/browser/webworker/abstract-worker
+bear @term/bind/browser/webworker/aes-cfb-params
+bear @term/bind/browser/webworker/aes-cmac-params
+bear @term/bind/browser/webworker/animation-frame-provider
+bear @term/bind/browser/webworker/blob
+bear @term/bind/browser/webworker/body
+bear @term/bind/browser/webworker/broadcast-channel-event-map
+bear @term/bind/browser/webworker/broadcast-channel
+bear @term/bind/browser/webworker/byte-length-queuing-strategy
+bear @term/bind/browser/webworker/cache
+bear @term/bind/browser/webworker/cache-storage
+bear @term/bind/browser/webworker/canvas-compositing
+bear @term/bind/browser/webworker/canvas-draw-image
+bear @term/bind/browser/webworker/canvas-draw-path
+bear @term/bind/browser/webworker/canvas-fill-stroke-styles
+bear @term/bind/browser/webworker/canvas-filters
+bear @term/bind/browser/webworker/canvas-gradient
+bear @term/bind/browser/webworker/canvas-image-data
+bear @term/bind/browser/webworker/canvas-image-smoothing
+bear @term/bind/browser/webworker/canvas-path
+bear @term/bind/browser/webworker/canvas-path-drawing-styles
+bear @term/bind/browser/webworker/canvas-pattern
+bear @term/bind/browser/webworker/canvas-rect
+bear @term/bind/browser/webworker/canvas-shadow-styles
+bear @term/bind/browser/webworker/canvas-state
+bear @term/bind/browser/webworker/canvas-text
+bear @term/bind/browser/webworker/canvas-text-drawing-styles
+bear @term/bind/browser/webworker/canvas-transform
+bear @term/bind/browser/webworker/client
+bear @term/bind/browser/webworker/clients
+bear @term/bind/browser/webworker/close-event
+bear @term/bind/browser/webworker/concat-params
+bear @term/bind/browser/webworker/count-queuing-strategy
+bear @term/bind/browser/webworker/crypto
+bear @term/bind/browser/webworker/crypto-key
+bear @term/bind/browser/webworker/custom-event
+bear @term/bind/browser/webworker/dom-exception
+bear @term/bind/browser/webworker/dom-matrix
+bear @term/bind/browser/webworker/dom-matrix-read-only
+bear @term/bind/browser/webworker/dom-point
+bear @term/bind/browser/webworker/dom-point-read-only
+bear @term/bind/browser/webworker/dom-quad
+bear @term/bind/browser/webworker/dom-rect
+bear @term/bind/browser/webworker/dom-rect-read-only
+bear @term/bind/browser/webworker/dom-string-list
+bear @term/bind/browser/webworker/dedicated-worker-global-scope-event-map
+bear @term/bind/browser/webworker/dedicated-worker-global-scope
+bear @term/bind/browser/webworker/dh-import-key-params
+bear @term/bind/browser/webworker/dh-key-algorithm
+bear @term/bind/browser/webworker/dh-key-derive-params
+bear @term/bind/browser/webworker/dh-key-gen-params
+bear @term/bind/browser/webworker/ext-blend-minmax
+bear @term/bind/browser/webworker/ext-frag-depth
+bear @term/bind/browser/webworker/ext-s-rgb
+bear @term/bind/browser/webworker/ext-shader-texture-lod
+bear @term/bind/browser/webworker/ext-texture-filter-anisotropic
+bear @term/bind/browser/webworker/error-event
+bear @term/bind/browser/webworker/event
+bear @term/bind/browser/webworker/event-listener-object
+bear @term/bind/browser/webworker/event-source-event-map
+bear @term/bind/browser/webworker/event-source
+bear @term/bind/browser/webworker/event-target
+bear @term/bind/browser/webworker/extendable-event
+bear @term/bind/browser/webworker/extendable-message-event
+bear @term/bind/browser/webworker/fetch-event
+bear @term/bind/browser/webworker/file
+bear @term/bind/browser/webworker/file-list
+bear @term/bind/browser/webworker/file-reader-event-map
+bear @term/bind/browser/webworker/file-reader
+bear @term/bind/browser/webworker/file-reader-sync
+bear @term/bind/browser/webworker/form-data
+bear @term/bind/browser/webworker/generic-transform-stream
+bear @term/bind/browser/webworker/headers
+bear @term/bind/browser/webworker/idb-array-key
+bear @term/bind/browser/webworker/idb-cursor
+bear @term/bind/browser/webworker/idb-cursor-with-value
+bear @term/bind/browser/webworker/idb-database-event-map
+bear @term/bind/browser/webworker/idb-database
+bear @term/bind/browser/webworker/idb-factory
+bear @term/bind/browser/webworker/idb-index
+bear @term/bind/browser/webworker/idb-key-range
+bear @term/bind/browser/webworker/idb-object-store
+bear @term/bind/browser/webworker/idb-open-db-request-event-map
+bear @term/bind/browser/webworker/idb-open-db-request
+bear @term/bind/browser/webworker/idb-request-event-map
+bear @term/bind/browser/webworker/idb-request
+bear @term/bind/browser/webworker/idb-transaction-event-map
+bear @term/bind/browser/webworker/idb-transaction
+bear @term/bind/browser/webworker/idb-version-change-event
+bear @term/bind/browser/webworker/image-bitmap
+bear @term/bind/browser/webworker/image-bitmap-rendering-context
+bear @term/bind/browser/webworker/image-data
+bear @term/bind/browser/webworker/message-channel
+bear @term/bind/browser/webworker/message-event
+bear @term/bind/browser/webworker/message-port-event-map
+bear @term/bind/browser/webworker/message-port
+bear @term/bind/browser/webworker/navigation-preload-manager
+bear @term/bind/browser/webworker/navigator-concurrent-hardware
+bear @term/bind/browser/webworker/navigator-id
+bear @term/bind/browser/webworker/navigator-language
+bear @term/bind/browser/webworker/navigator-on-line
+bear @term/bind/browser/webworker/navigator-storage
+bear @term/bind/browser/webworker/notification-event-map
+bear @term/bind/browser/webworker/notification
+bear @term/bind/browser/webworker/notification-event
+bear @term/bind/browser/webworker/oes-element-index-uint
+bear @term/bind/browser/webworker/oes-standard-derivatives
+bear @term/bind/browser/webworker/oes-texture-float
+bear @term/bind/browser/webworker/oes-texture-float-linear
+bear @term/bind/browser/webworker/oes-texture-half-float
+bear @term/bind/browser/webworker/oes-texture-half-float-linear
+bear @term/bind/browser/webworker/oes-vertex-array-object
+bear @term/bind/browser/webworker/offscreen-canvas
+bear @term/bind/browser/webworker/offscreen-canvas-rendering-context2-d
+bear @term/bind/browser/webworker/path2-d
+bear @term/bind/browser/webworker/performance-event-map
+bear @term/bind/browser/webworker/performance
+bear @term/bind/browser/webworker/performance-entry
+bear @term/bind/browser/webworker/performance-mark
+bear @term/bind/browser/webworker/performance-measure
+bear @term/bind/browser/webworker/performance-observer
+bear @term/bind/browser/webworker/performance-observer-entry-list
+bear @term/bind/browser/webworker/performance-resource-timing
+bear @term/bind/browser/webworker/permission-status-event-map
+bear @term/bind/browser/webworker/permission-status
+bear @term/bind/browser/webworker/permissions
+bear @term/bind/browser/webworker/progress-event
+bear @term/bind/browser/webworker/promise-rejection-event
+bear @term/bind/browser/webworker/push-event
+bear @term/bind/browser/webworker/push-manager
+bear @term/bind/browser/webworker/push-message-data
+bear @term/bind/browser/webworker/push-subscription
+bear @term/bind/browser/webworker/push-subscription-options
+bear @term/bind/browser/webworker/readable-stream
+bear @term/bind/browser/webworker/readable-stream-default-controller
+bear @term/bind/browser/webworker/readable-stream-default-reader
+bear @term/bind/browser/webworker/readable-stream-generic-reader
+bear @term/bind/browser/webworker/request
+bear @term/bind/browser/webworker/response
+bear @term/bind/browser/webworker/service-worker-event-map
+bear @term/bind/browser/webworker/service-worker
+bear @term/bind/browser/webworker/service-worker-container-event-map
+bear @term/bind/browser/webworker/service-worker-container
+bear @term/bind/browser/webworker/service-worker-global-scope-event-map
+bear @term/bind/browser/webworker/service-worker-global-scope
+bear @term/bind/browser/webworker/service-worker-registration-event-map
+bear @term/bind/browser/webworker/service-worker-registration
+bear @term/bind/browser/webworker/shared-worker
+bear @term/bind/browser/webworker/shared-worker-global-scope-event-map
+bear @term/bind/browser/webworker/shared-worker-global-scope
+bear @term/bind/browser/webworker/storage-manager
+bear @term/bind/browser/webworker/subtle-crypto
+bear @term/bind/browser/webworker/sync-event
+bear @term/bind/browser/webworker/sync-manager
+bear @term/bind/browser/webworker/text-decoder
+bear @term/bind/browser/webworker/text-decoder-common
+bear @term/bind/browser/webworker/text-decoder-stream
+bear @term/bind/browser/webworker/text-encoder
+bear @term/bind/browser/webworker/text-encoder-common
+bear @term/bind/browser/webworker/text-encoder-stream
+bear @term/bind/browser/webworker/text-metrics
+bear @term/bind/browser/webworker/transform-stream
+bear @term/bind/browser/webworker/transform-stream-default-controller
+bear @term/bind/browser/webworker/url
+bear @term/bind/browser/webworker/url-search-params
+bear @term/bind/browser/webworker/webgl-color-buffer-float
+bear @term/bind/browser/webworker/webgl-compressed-texture-astc
+bear @term/bind/browser/webworker/webgl-compressed-texture-s3tc
+bear @term/bind/browser/webworker/webgl-compressed-texture-s3tc-srgb
+bear @term/bind/browser/webworker/webgl-debug-renderer-info
+bear @term/bind/browser/webworker/webgl-debug-shaders
+bear @term/bind/browser/webworker/webgl-depth-texture
+bear @term/bind/browser/webworker/webgl-draw-buffers
+bear @term/bind/browser/webworker/webgl-lose-context
+bear @term/bind/browser/webworker/web-gl2-rendering-context
+bear @term/bind/browser/webworker/web-gl2-rendering-context-base
+bear @term/bind/browser/webworker/web-gl2-rendering-context-overloads
+bear @term/bind/browser/webworker/web-gl-active-info
+bear @term/bind/browser/webworker/web-gl-buffer
+bear @term/bind/browser/webworker/web-gl-context-event
+bear @term/bind/browser/webworker/web-gl-framebuffer
+bear @term/bind/browser/webworker/web-gl-program
+bear @term/bind/browser/webworker/web-gl-query
+bear @term/bind/browser/webworker/web-gl-renderbuffer
+bear @term/bind/browser/webworker/web-gl-rendering-context
+bear @term/bind/browser/webworker/web-gl-rendering-context-base
+bear @term/bind/browser/webworker/web-gl-rendering-context-overloads
+bear @term/bind/browser/webworker/web-gl-sampler
+bear @term/bind/browser/webworker/web-gl-shader
+bear @term/bind/browser/webworker/web-gl-shader-precision-format
+bear @term/bind/browser/webworker/web-gl-sync
+bear @term/bind/browser/webworker/web-gl-texture
+bear @term/bind/browser/webworker/web-gl-transform-feedback
+bear @term/bind/browser/webworker/web-gl-uniform-location
+bear @term/bind/browser/webworker/web-gl-vertex-array-object
+bear @term/bind/browser/webworker/web-gl-vertex-array-object-oes
+bear @term/bind/browser/webworker/web-socket-event-map
+bear @term/bind/browser/webworker/web-socket
+bear @term/bind/browser/webworker/window-client
+bear @term/bind/browser/webworker/window-or-worker-global-scope
+bear @term/bind/browser/webworker/worker-event-map
+bear @term/bind/browser/webworker/worker
+bear @term/bind/browser/webworker/worker-global-scope-event-map
+bear @term/bind/browser/webworker/worker-global-scope
+bear @term/bind/browser/webworker/worker-location
+bear @term/bind/browser/webworker/worker-navigator
+bear @term/bind/browser/webworker/writable-stream
+bear @term/bind/browser/webworker/writable-stream-default-controller
+bear @term/bind/browser/webworker/writable-stream-default-writer
+bear @term/bind/browser/webworker/xml-http-request-event-map
+bear @term/bind/browser/webworker/xml-http-request
+bear @term/bind/browser/webworker/xml-http-request-event-target-event-map
+bear @term/bind/browser/webworker/xml-http-request-event-target
+bear @term/bind/browser/webworker/xml-http-request-upload
+bear @term/bind/browser/webworker/event-listener-or-event-listener-object
+bear @term/bind/browser/webworker/console
+bear @term/bind/browser/webworker/web-assembly
+bear @term/bind/browser/webworker/frame-request-callback
+bear @term/bind/browser/webworker/on-error-event-handler-non-null
+bear @term/bind/browser/webworker/performance-observer-callback
+bear @term/bind/browser/webworker/queuing-strategy-size
+bear @term/bind/browser/webworker/transformer-flush-callback
+bear @term/bind/browser/webworker/transformer-start-callback
+bear @term/bind/browser/webworker/transformer-transform-callback
+bear @term/bind/browser/webworker/underlying-sink-abort-callback
+bear @term/bind/browser/webworker/underlying-sink-close-callback
+bear @term/bind/browser/webworker/underlying-sink-start-callback
+bear @term/bind/browser/webworker/underlying-sink-write-callback
+bear @term/bind/browser/webworker/underlying-source-cancel-callback
+bear @term/bind/browser/webworker/underlying-source-pull-callback
+bear @term/bind/browser/webworker/underlying-source-start-callback
+bear @term/bind/browser/webworker/void-function
+bear @term/bind/browser/webworker/headers-init
+bear @term/bind/browser/webworker/body-init
+bear @term/bind/browser/webworker/request-info
+bear @term/bind/browser/webworker/blob-part
+bear @term/bind/browser/webworker/dom-high-res-time-stamp
+bear @term/bind/browser/webworker/canvas-image-source
+bear @term/bind/browser/webworker/offscreen-rendering-context
+bear @term/bind/browser/webworker/message-event-source
+bear @term/bind/browser/webworker/image-bitmap-source
+bear @term/bind/browser/webworker/on-error-event-handler
+bear @term/bind/browser/webworker/timer-handler
+bear @term/bind/browser/webworker/performance-entry-list
+bear @term/bind/browser/webworker/push-message-data-init
+bear @term/bind/browser/webworker/readable-stream-reader
+bear @term/bind/browser/webworker/readable-stream-controller
+bear @term/bind/browser/webworker/vibrate-pattern
+bear @term/bind/browser/webworker/algorithm-identifier
+bear @term/bind/browser/webworker/hash-algorithm-identifier
+bear @term/bind/browser/webworker/big-integer
+bear @term/bind/browser/webworker/named-curve
+bear @term/bind/browser/webworker/g-lenum
+bear @term/bind/browser/webworker/g-lboolean
+bear @term/bind/browser/webworker/g-lbitfield
+bear @term/bind/browser/webworker/g-lint
+bear @term/bind/browser/webworker/g-lsizei
+bear @term/bind/browser/webworker/g-lintptr
+bear @term/bind/browser/webworker/g-lsizeiptr
+bear @term/bind/browser/webworker/g-luint
+bear @term/bind/browser/webworker/g-lfloat
+bear @term/bind/browser/webworker/g-lclampf
+bear @term/bind/browser/webworker/tex-image-source
+bear @term/bind/browser/webworker/float32-list
+bear @term/bind/browser/webworker/int32-list
+bear @term/bind/browser/webworker/g-lint64
+bear @term/bind/browser/webworker/g-luint64
+bear @term/bind/browser/webworker/uint32-list
+bear @term/bind/browser/webworker/buffer-source
+bear @term/bind/browser/webworker/dom-time-stamp
+bear @term/bind/browser/webworker/form-data-entry-value
+bear @term/bind/browser/webworker/idb-valid-key
+bear @term/bind/browser/webworker/transferable
+bear @term/bind/browser/webworker/readable-stream-default-read-result
+bear @term/bind/browser/webworker/binary-type
+bear @term/bind/browser/webworker/canvas-direction
+bear @term/bind/browser/webworker/canvas-fill-rule
+bear @term/bind/browser/webworker/canvas-line-cap
+bear @term/bind/browser/webworker/canvas-line-join
+bear @term/bind/browser/webworker/canvas-text-align
+bear @term/bind/browser/webworker/canvas-text-baseline
+bear @term/bind/browser/webworker/client-types
+bear @term/bind/browser/webworker/color-space-conversion
+bear @term/bind/browser/webworker/ending-type
+bear @term/bind/browser/webworker/frame-type
+bear @term/bind/browser/webworker/idb-cursor-direction
+bear @term/bind/browser/webworker/idb-request-ready-state
+bear @term/bind/browser/webworker/idb-transaction-mode
+bear @term/bind/browser/webworker/image-orientation
+bear @term/bind/browser/webworker/image-smoothing-quality
+bear @term/bind/browser/webworker/key-format
+bear @term/bind/browser/webworker/key-type
+bear @term/bind/browser/webworker/key-usage
+bear @term/bind/browser/webworker/notification-direction
+bear @term/bind/browser/webworker/notification-permission
+bear @term/bind/browser/webworker/offscreen-rendering-context-id
+bear @term/bind/browser/webworker/permission-name
+bear @term/bind/browser/webworker/permission-state
+bear @term/bind/browser/webworker/premultiply-alpha
+bear @term/bind/browser/webworker/push-encryption-key-name
+bear @term/bind/browser/webworker/push-permission-state
+bear @term/bind/browser/webworker/referrer-policy
+bear @term/bind/browser/webworker/request-cache
+bear @term/bind/browser/webworker/request-credentials
+bear @term/bind/browser/webworker/request-destination
+bear @term/bind/browser/webworker/request-mode
+bear @term/bind/browser/webworker/request-redirect
+bear @term/bind/browser/webworker/resize-quality
+bear @term/bind/browser/webworker/response-type
+bear @term/bind/browser/webworker/service-worker-state
+bear @term/bind/browser/webworker/service-worker-update-via-cache
+bear @term/bind/browser/webworker/visibility-state
+bear @term/bind/browser/webworker/web-gl-power-preference
+bear @term/bind/browser/webworker/worker-type
+bear @term/bind/browser/webworker/xml-http-request-response-type
+bear @term/bind/browser/webworker/importscripts
+bear @term/bind/browser/webworker/iterable
 
-load @term/bind/code/browser/webworker/abort-controller
+load @term/bind/browser/webworker/abort-controller
   find abort-controller
 
-load @term/bind/code/browser/webworker/abort-signal
+load @term/bind/browser/webworker/abort-signal
   find abort-signal
 
-load @term/bind/code/browser/webworker/add-event-listener-options
+load @term/bind/browser/webworker/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/webworker/blob
+load @term/bind/browser/webworker/blob
   find blob
 
-load @term/bind/code/browser/webworker/blob-part
+load @term/bind/browser/webworker/blob-part
   find blob-part
 
-load @term/bind/code/browser/webworker/blob-property-bag
+load @term/bind/browser/webworker/blob-property-bag
   find blob-property-bag
 
-load @term/bind/code/browser/webworker/body-init
+load @term/bind/browser/webworker/body-init
   find body-init
 
-load @term/bind/code/browser/webworker/broadcast-channel
+load @term/bind/browser/webworker/broadcast-channel
   find broadcast-channel
 
-load @term/bind/code/browser/webworker/byte-length-queuing-strategy
+load @term/bind/browser/webworker/byte-length-queuing-strategy
   find byte-length-queuing-strategy
 
-load @term/bind/code/browser/webworker/cache
+load @term/bind/browser/webworker/cache
   find cache
 
-load @term/bind/code/browser/webworker/cache-storage
+load @term/bind/browser/webworker/cache-storage
   find cache-storage
 
-load @term/bind/code/browser/webworker/canvas-gradient
+load @term/bind/browser/webworker/canvas-gradient
   find canvas-gradient
 
-load @term/bind/code/browser/webworker/canvas-pattern
+load @term/bind/browser/webworker/canvas-pattern
   find canvas-pattern
 
-load @term/bind/code/browser/webworker/client
+load @term/bind/browser/webworker/client
   find client
 
-load @term/bind/code/browser/webworker/clients
+load @term/bind/browser/webworker/clients
   find clients
 
-load @term/bind/code/browser/webworker/close-event
+load @term/bind/browser/webworker/close-event
   find close-event
 
-load @term/bind/code/browser/webworker/close-event-init
+load @term/bind/browser/webworker/close-event-init
   find close-event-init
 
-load @term/bind/code/browser/webworker/console
+load @term/bind/browser/webworker/console
   find console
 
-load @term/bind/code/browser/webworker/count-queuing-strategy
+load @term/bind/browser/webworker/count-queuing-strategy
   find count-queuing-strategy
 
-load @term/bind/code/browser/webworker/crypto
+load @term/bind/browser/webworker/crypto
   find crypto
 
-load @term/bind/code/browser/webworker/crypto-key
+load @term/bind/browser/webworker/crypto-key
   find crypto-key
 
-load @term/bind/code/browser/webworker/custom-event
+load @term/bind/browser/webworker/custom-event
   find custom-event
 
-load @term/bind/code/browser/webworker/custom-event-init
+load @term/bind/browser/webworker/custom-event-init
   find custom-event-init
 
-load @term/bind/code/browser/webworker/dedicated-worker-global-scope
+load @term/bind/browser/webworker/dedicated-worker-global-scope
   find dedicated-worker-global-scope
 
-load @term/bind/code/browser/webworker/dedicated-worker-global-scope-event-map
+load @term/bind/browser/webworker/dedicated-worker-global-scope-event-map
   find dedicated-worker-global-scope-event-map
 
-load @term/bind/code/browser/webworker/dom-exception
+load @term/bind/browser/webworker/dom-exception
   find dom-exception
 
-load @term/bind/code/browser/webworker/dom-matrix
+load @term/bind/browser/webworker/dom-matrix
   find dom-matrix
 
-load @term/bind/code/browser/webworker/dom-matrix-init
+load @term/bind/browser/webworker/dom-matrix-init
   find dom-matrix-init
 
-load @term/bind/code/browser/webworker/dom-matrix-read-only
+load @term/bind/browser/webworker/dom-matrix-read-only
   find dom-matrix-read-only
 
-load @term/bind/code/browser/webworker/dom-point
+load @term/bind/browser/webworker/dom-point
   find dom-point
 
-load @term/bind/code/browser/webworker/dom-point-init
+load @term/bind/browser/webworker/dom-point-init
   find dom-point-init
 
-load @term/bind/code/browser/webworker/dom-point-read-only
+load @term/bind/browser/webworker/dom-point-read-only
   find dom-point-read-only
 
-load @term/bind/code/browser/webworker/dom-quad
+load @term/bind/browser/webworker/dom-quad
   find dom-quad
 
-load @term/bind/code/browser/webworker/dom-quad-init
+load @term/bind/browser/webworker/dom-quad-init
   find dom-quad-init
 
-load @term/bind/code/browser/webworker/dom-rect
+load @term/bind/browser/webworker/dom-rect
   find dom-rect
 
-load @term/bind/code/browser/webworker/dom-rect-init
+load @term/bind/browser/webworker/dom-rect-init
   find dom-rect-init
 
-load @term/bind/code/browser/webworker/dom-rect-read-only
+load @term/bind/browser/webworker/dom-rect-read-only
   find dom-rect-read-only
 
-load @term/bind/code/browser/webworker/dom-string-list
+load @term/bind/browser/webworker/dom-string-list
   find dom-string-list
 
-load @term/bind/code/browser/webworker/error-event
+load @term/bind/browser/webworker/error-event
   find error-event
 
-load @term/bind/code/browser/webworker/error-event-init
+load @term/bind/browser/webworker/error-event-init
   find error-event-init
 
-load @term/bind/code/browser/webworker/event
+load @term/bind/browser/webworker/event
   find event
 
-load @term/bind/code/browser/webworker/event-init
+load @term/bind/browser/webworker/event-init
   find event-init
 
-load @term/bind/code/browser/webworker/event-listener-options
+load @term/bind/browser/webworker/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/webworker/event-listener-or-event-listener-object
+load @term/bind/browser/webworker/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/webworker/event-source
+load @term/bind/browser/webworker/event-source
   find event-source
 
-load @term/bind/code/browser/webworker/event-source-init
+load @term/bind/browser/webworker/event-source-init
   find event-source-init
 
-load @term/bind/code/browser/webworker/event-target
+load @term/bind/browser/webworker/event-target
   find event-target
 
-load @term/bind/code/browser/webworker/extendable-event
+load @term/bind/browser/webworker/extendable-event
   find extendable-event
 
-load @term/bind/code/browser/webworker/extendable-event-init
+load @term/bind/browser/webworker/extendable-event-init
   find extendable-event-init
 
-load @term/bind/code/browser/webworker/extendable-message-event
+load @term/bind/browser/webworker/extendable-message-event
   find extendable-message-event
 
-load @term/bind/code/browser/webworker/extendable-message-event-init
+load @term/bind/browser/webworker/extendable-message-event-init
   find extendable-message-event-init
 
-load @term/bind/code/browser/webworker/fetch-event
+load @term/bind/browser/webworker/fetch-event
   find fetch-event
 
-load @term/bind/code/browser/webworker/fetch-event-init
+load @term/bind/browser/webworker/fetch-event-init
   find fetch-event-init
 
-load @term/bind/code/browser/webworker/file
+load @term/bind/browser/webworker/file
   find file
 
-load @term/bind/code/browser/webworker/file-list
+load @term/bind/browser/webworker/file-list
   find file-list
 
-load @term/bind/code/browser/webworker/file-property-bag
+load @term/bind/browser/webworker/file-property-bag
   find file-property-bag
 
-load @term/bind/code/browser/webworker/file-reader
+load @term/bind/browser/webworker/file-reader
   find file-reader
 
-load @term/bind/code/browser/webworker/file-reader-sync
+load @term/bind/browser/webworker/file-reader-sync
   find file-reader-sync
 
-load @term/bind/code/browser/webworker/form-data
+load @term/bind/browser/webworker/form-data
   find form-data
 
-load @term/bind/code/browser/webworker/frame-request-callback
+load @term/bind/browser/webworker/frame-request-callback
   find frame-request-callback
 
-load @term/bind/code/browser/webworker/g-lenum
+load @term/bind/browser/webworker/g-lenum
   find g-lenum
 
-load @term/bind/code/browser/webworker/g-lint64
+load @term/bind/browser/webworker/g-lint64
   find g-lint64
 
-load @term/bind/code/browser/webworker/headers
+load @term/bind/browser/webworker/headers
   find headers
 
-load @term/bind/code/browser/webworker/headers-init
+load @term/bind/browser/webworker/headers-init
   find headers-init
 
-load @term/bind/code/browser/webworker/idb-cursor
+load @term/bind/browser/webworker/idb-cursor
   find idb-cursor
 
-load @term/bind/code/browser/webworker/idb-cursor-with-value
+load @term/bind/browser/webworker/idb-cursor-with-value
   find idb-cursor-with-value
 
-load @term/bind/code/browser/webworker/idb-database
+load @term/bind/browser/webworker/idb-database
   find idb-database
 
-load @term/bind/code/browser/webworker/idb-factory
+load @term/bind/browser/webworker/idb-factory
   find idb-factory
 
-load @term/bind/code/browser/webworker/idb-index
+load @term/bind/browser/webworker/idb-index
   find idb-index
 
-load @term/bind/code/browser/webworker/idb-key-range
+load @term/bind/browser/webworker/idb-key-range
   find idb-key-range
 
-load @term/bind/code/browser/webworker/idb-object-store
+load @term/bind/browser/webworker/idb-object-store
   find idb-object-store
 
-load @term/bind/code/browser/webworker/idb-open-db-request
+load @term/bind/browser/webworker/idb-open-db-request
   find idb-open-db-request
 
-load @term/bind/code/browser/webworker/idb-request
+load @term/bind/browser/webworker/idb-request
   find idb-request
 
-load @term/bind/code/browser/webworker/idb-transaction
+load @term/bind/browser/webworker/idb-transaction
   find idb-transaction
 
-load @term/bind/code/browser/webworker/idb-version-change-event
+load @term/bind/browser/webworker/idb-version-change-event
   find idb-version-change-event
 
-load @term/bind/code/browser/webworker/idb-version-change-event-init
+load @term/bind/browser/webworker/idb-version-change-event-init
   find idb-version-change-event-init
 
-load @term/bind/code/browser/webworker/image-bitmap
+load @term/bind/browser/webworker/image-bitmap
   find image-bitmap
 
-load @term/bind/code/browser/webworker/image-bitmap-options
+load @term/bind/browser/webworker/image-bitmap-options
   find image-bitmap-options
 
-load @term/bind/code/browser/webworker/image-bitmap-rendering-context
+load @term/bind/browser/webworker/image-bitmap-rendering-context
   find image-bitmap-rendering-context
 
-load @term/bind/code/browser/webworker/image-bitmap-source
+load @term/bind/browser/webworker/image-bitmap-source
   find image-bitmap-source
 
-load @term/bind/code/browser/webworker/image-data
+load @term/bind/browser/webworker/image-data
   find image-data
 
-load @term/bind/code/browser/webworker/message-channel
+load @term/bind/browser/webworker/message-channel
   find message-channel
 
-load @term/bind/code/browser/webworker/message-event
+load @term/bind/browser/webworker/message-event
   find message-event
 
-load @term/bind/code/browser/webworker/message-event-init
+load @term/bind/browser/webworker/message-event-init
   find message-event-init
 
-load @term/bind/code/browser/webworker/message-port
+load @term/bind/browser/webworker/message-port
   find message-port
 
-load @term/bind/code/browser/webworker/navigation-preload-manager
+load @term/bind/browser/webworker/navigation-preload-manager
   find navigation-preload-manager
 
-load @term/bind/code/browser/webworker/notification
+load @term/bind/browser/webworker/notification
   find notification
 
-load @term/bind/code/browser/webworker/notification-event
+load @term/bind/browser/webworker/notification-event
   find notification-event
 
-load @term/bind/code/browser/webworker/notification-event-init
+load @term/bind/browser/webworker/notification-event-init
   find notification-event-init
 
-load @term/bind/code/browser/webworker/notification-options
+load @term/bind/browser/webworker/notification-options
   find notification-options
 
-load @term/bind/code/browser/webworker/notification-permission
+load @term/bind/browser/webworker/notification-permission
   find notification-permission
 
-load @term/bind/code/browser/webworker/offscreen-canvas
+load @term/bind/browser/webworker/offscreen-canvas
   find offscreen-canvas
 
-load @term/bind/code/browser/webworker/offscreen-canvas-rendering-context2-d
+load @term/bind/browser/webworker/offscreen-canvas-rendering-context2-d
   find offscreen-canvas-rendering-context2-d
 
-load @term/bind/code/browser/webworker/path2-d
+load @term/bind/browser/webworker/path2-d
   find path2-d
 
-load @term/bind/code/browser/webworker/performance
+load @term/bind/browser/webworker/performance
   find performance
 
-load @term/bind/code/browser/webworker/performance-entry
+load @term/bind/browser/webworker/performance-entry
   find performance-entry
 
-load @term/bind/code/browser/webworker/performance-mark
+load @term/bind/browser/webworker/performance-mark
   find performance-mark
 
-load @term/bind/code/browser/webworker/performance-measure
+load @term/bind/browser/webworker/performance-measure
   find performance-measure
 
-load @term/bind/code/browser/webworker/performance-observer
+load @term/bind/browser/webworker/performance-observer
   find performance-observer
 
-load @term/bind/code/browser/webworker/performance-observer-callback
+load @term/bind/browser/webworker/performance-observer-callback
   find performance-observer-callback
 
-load @term/bind/code/browser/webworker/performance-observer-entry-list
+load @term/bind/browser/webworker/performance-observer-entry-list
   find performance-observer-entry-list
 
-load @term/bind/code/browser/webworker/performance-resource-timing
+load @term/bind/browser/webworker/performance-resource-timing
   find performance-resource-timing
 
-load @term/bind/code/browser/webworker/permission-status
+load @term/bind/browser/webworker/permission-status
   find permission-status
 
-load @term/bind/code/browser/webworker/permissions
+load @term/bind/browser/webworker/permissions
   find permissions
 
-load @term/bind/code/browser/webworker/post-message-options
+load @term/bind/browser/webworker/post-message-options
   find post-message-options
 
-load @term/bind/code/browser/webworker/progress-event
+load @term/bind/browser/webworker/progress-event
   find progress-event
 
-load @term/bind/code/browser/webworker/progress-event-init
+load @term/bind/browser/webworker/progress-event-init
   find progress-event-init
 
-load @term/bind/code/browser/webworker/promise-rejection-event
+load @term/bind/browser/webworker/promise-rejection-event
   find promise-rejection-event
 
-load @term/bind/code/browser/webworker/promise-rejection-event-init
+load @term/bind/browser/webworker/promise-rejection-event-init
   find promise-rejection-event-init
 
-load @term/bind/code/browser/webworker/push-event
+load @term/bind/browser/webworker/push-event
   find push-event
 
-load @term/bind/code/browser/webworker/push-event-init
+load @term/bind/browser/webworker/push-event-init
   find push-event-init
 
-load @term/bind/code/browser/webworker/push-manager
+load @term/bind/browser/webworker/push-manager
   find push-manager
 
-load @term/bind/code/browser/webworker/push-message-data
+load @term/bind/browser/webworker/push-message-data
   find push-message-data
 
-load @term/bind/code/browser/webworker/push-subscription
+load @term/bind/browser/webworker/push-subscription
   find push-subscription
 
-load @term/bind/code/browser/webworker/push-subscription-options
+load @term/bind/browser/webworker/push-subscription-options
   find push-subscription-options
 
-load @term/bind/code/browser/webworker/queuing-strategy
+load @term/bind/browser/webworker/queuing-strategy
   find queuing-strategy
 
-load @term/bind/code/browser/webworker/queuing-strategy-init
+load @term/bind/browser/webworker/queuing-strategy-init
   find queuing-strategy-init
 
-load @term/bind/code/browser/webworker/readable-stream
+load @term/bind/browser/webworker/readable-stream
   find readable-stream
 
-load @term/bind/code/browser/webworker/readable-stream-default-controller
+load @term/bind/browser/webworker/readable-stream-default-controller
   find readable-stream-default-controller
 
-load @term/bind/code/browser/webworker/readable-stream-default-reader
+load @term/bind/browser/webworker/readable-stream-default-reader
   find readable-stream-default-reader
 
-load @term/bind/code/browser/webworker/request
+load @term/bind/browser/webworker/request
   find request
 
-load @term/bind/code/browser/webworker/request-info
+load @term/bind/browser/webworker/request-info
   find request-info
 
-load @term/bind/code/browser/webworker/request-init
+load @term/bind/browser/webworker/request-init
   find request-init
 
-load @term/bind/code/browser/webworker/response
+load @term/bind/browser/webworker/response
   find response
 
-load @term/bind/code/browser/webworker/response-init
+load @term/bind/browser/webworker/response-init
   find response-init
 
-load @term/bind/code/browser/webworker/service-worker
+load @term/bind/browser/webworker/service-worker
   find service-worker
 
-load @term/bind/code/browser/webworker/service-worker-container
+load @term/bind/browser/webworker/service-worker-container
   find service-worker-container
 
-load @term/bind/code/browser/webworker/service-worker-global-scope
+load @term/bind/browser/webworker/service-worker-global-scope
   find service-worker-global-scope
 
-load @term/bind/code/browser/webworker/service-worker-registration
+load @term/bind/browser/webworker/service-worker-registration
   find service-worker-registration
 
-load @term/bind/code/browser/webworker/shared-worker
+load @term/bind/browser/webworker/shared-worker
   find shared-worker
 
-load @term/bind/code/browser/webworker/shared-worker-global-scope
+load @term/bind/browser/webworker/shared-worker-global-scope
   find shared-worker-global-scope
 
-load @term/bind/code/browser/webworker/storage-manager
+load @term/bind/browser/webworker/storage-manager
   find storage-manager
 
-load @term/bind/code/browser/webworker/subtle-crypto
+load @term/bind/browser/webworker/subtle-crypto
   find subtle-crypto
 
-load @term/bind/code/browser/webworker/sync-event
+load @term/bind/browser/webworker/sync-event
   find sync-event
 
-load @term/bind/code/browser/webworker/sync-event-init
+load @term/bind/browser/webworker/sync-event-init
   find sync-event-init
 
-load @term/bind/code/browser/webworker/sync-manager
+load @term/bind/browser/webworker/sync-manager
   find sync-manager
 
-load @term/bind/code/browser/webworker/text-decoder
+load @term/bind/browser/webworker/text-decoder
   find text-decoder
 
-load @term/bind/code/browser/webworker/text-decoder-options
+load @term/bind/browser/webworker/text-decoder-options
   find text-decoder-options
 
-load @term/bind/code/browser/webworker/text-decoder-stream
+load @term/bind/browser/webworker/text-decoder-stream
   find text-decoder-stream
 
-load @term/bind/code/browser/webworker/text-encoder
+load @term/bind/browser/webworker/text-encoder
   find text-encoder
 
-load @term/bind/code/browser/webworker/text-encoder-stream
+load @term/bind/browser/webworker/text-encoder-stream
   find text-encoder-stream
 
-load @term/bind/code/browser/webworker/text-metrics
+load @term/bind/browser/webworker/text-metrics
   find text-metrics
 
-load @term/bind/code/browser/webworker/timer-handler
+load @term/bind/browser/webworker/timer-handler
   find timer-handler
 
-load @term/bind/code/browser/webworker/transferable
+load @term/bind/browser/webworker/transferable
   find transferable
 
-load @term/bind/code/browser/webworker/transform-stream
+load @term/bind/browser/webworker/transform-stream
   find transform-stream
 
-load @term/bind/code/browser/webworker/transform-stream-default-controller
+load @term/bind/browser/webworker/transform-stream-default-controller
   find transform-stream-default-controller
 
-load @term/bind/code/browser/webworker/transformer
+load @term/bind/browser/webworker/transformer
   find transformer
 
-load @term/bind/code/browser/webworker/underlying-sink
+load @term/bind/browser/webworker/underlying-sink
   find underlying-sink
 
-load @term/bind/code/browser/webworker/underlying-source
+load @term/bind/browser/webworker/underlying-source
   find underlying-source
 
-load @term/bind/code/browser/webworker/url
+load @term/bind/browser/webworker/url
   find url
 
-load @term/bind/code/browser/webworker/url-search-params
+load @term/bind/browser/webworker/url-search-params
   find url-search-params
 
-load @term/bind/code/browser/webworker/void-function
+load @term/bind/browser/webworker/void-function
   find void-function
 
-load @term/bind/code/browser/webworker/web-gl-active-info
+load @term/bind/browser/webworker/web-gl-active-info
   find web-gl-active-info
 
-load @term/bind/code/browser/webworker/web-gl-buffer
+load @term/bind/browser/webworker/web-gl-buffer
   find web-gl-buffer
 
-load @term/bind/code/browser/webworker/web-gl-context-event
+load @term/bind/browser/webworker/web-gl-context-event
   find web-gl-context-event
 
-load @term/bind/code/browser/webworker/web-gl-context-event-init
+load @term/bind/browser/webworker/web-gl-context-event-init
   find web-gl-context-event-init
 
-load @term/bind/code/browser/webworker/web-gl-framebuffer
+load @term/bind/browser/webworker/web-gl-framebuffer
   find web-gl-framebuffer
 
-load @term/bind/code/browser/webworker/web-gl-program
+load @term/bind/browser/webworker/web-gl-program
   find web-gl-program
 
-load @term/bind/code/browser/webworker/web-gl-query
+load @term/bind/browser/webworker/web-gl-query
   find web-gl-query
 
-load @term/bind/code/browser/webworker/web-gl-renderbuffer
+load @term/bind/browser/webworker/web-gl-renderbuffer
   find web-gl-renderbuffer
 
-load @term/bind/code/browser/webworker/web-gl-rendering-context
+load @term/bind/browser/webworker/web-gl-rendering-context
   find web-gl-rendering-context
 
-load @term/bind/code/browser/webworker/web-gl-sampler
+load @term/bind/browser/webworker/web-gl-sampler
   find web-gl-sampler
 
-load @term/bind/code/browser/webworker/web-gl-shader
+load @term/bind/browser/webworker/web-gl-shader
   find web-gl-shader
 
-load @term/bind/code/browser/webworker/web-gl-shader-precision-format
+load @term/bind/browser/webworker/web-gl-shader-precision-format
   find web-gl-shader-precision-format
 
-load @term/bind/code/browser/webworker/web-gl-sync
+load @term/bind/browser/webworker/web-gl-sync
   find web-gl-sync
 
-load @term/bind/code/browser/webworker/web-gl-texture
+load @term/bind/browser/webworker/web-gl-texture
   find web-gl-texture
 
-load @term/bind/code/browser/webworker/web-gl-transform-feedback
+load @term/bind/browser/webworker/web-gl-transform-feedback
   find web-gl-transform-feedback
 
-load @term/bind/code/browser/webworker/web-gl-uniform-location
+load @term/bind/browser/webworker/web-gl-uniform-location
   find web-gl-uniform-location
 
-load @term/bind/code/browser/webworker/web-gl-vertex-array-object
+load @term/bind/browser/webworker/web-gl-vertex-array-object
   find web-gl-vertex-array-object
 
-load @term/bind/code/browser/webworker/web-gl2-rendering-context
+load @term/bind/browser/webworker/web-gl2-rendering-context
   find web-gl2-rendering-context
 
-load @term/bind/code/browser/webworker/web-socket
+load @term/bind/browser/webworker/web-socket
   find web-socket
 
-load @term/bind/code/browser/webworker/window-client
+load @term/bind/browser/webworker/window-client
   find window-client
 
-load @term/bind/code/browser/webworker/worker
+load @term/bind/browser/webworker/worker
   find worker
 
-load @term/bind/code/browser/webworker/worker-global-scope
+load @term/bind/browser/webworker/worker-global-scope
   find worker-global-scope
 
-load @term/bind/code/browser/webworker/worker-location
+load @term/bind/browser/webworker/worker-location
   find worker-location
 
-load @term/bind/code/browser/webworker/worker-navigator
+load @term/bind/browser/webworker/worker-navigator
   find worker-navigator
 
-load @term/bind/code/browser/webworker/worker-options
+load @term/bind/browser/webworker/worker-options
   find worker-options
 
-load @term/bind/code/browser/webworker/writable-stream
+load @term/bind/browser/webworker/writable-stream
   find writable-stream
 
-load @term/bind/code/browser/webworker/writable-stream-default-controller
+load @term/bind/browser/webworker/writable-stream-default-controller
   find writable-stream-default-controller
 
-load @term/bind/code/browser/webworker/writable-stream-default-writer
+load @term/bind/browser/webworker/writable-stream-default-writer
   find writable-stream-default-writer
 
-load @term/bind/code/browser/webworker/xml-http-request
+load @term/bind/browser/webworker/xml-http-request
   find xml-http-request
 
-load @term/bind/code/browser/webworker/xml-http-request-event-target
+load @term/bind/browser/webworker/xml-http-request-event-target
   find xml-http-request-event-target
 
-load @term/bind/code/browser/webworker/xml-http-request-upload
+load @term/bind/browser/webworker/xml-http-request-upload
   find xml-http-request-upload
 
-load @term/bind/code/javascript/es5/float32-array
+load @term/bind/javascript/es5/float32-array
   find float32-array
 
-load @term/bind/code/javascript/es5/float64-array
+load @term/bind/javascript/es5/float64-array
   find float64-array
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/es5/readonly-array
+load @term/bind/javascript/es5/readonly-array
   find readonly-array
 
-load @term/bind/code/javascript/es5/record
+load @term/bind/javascript/es5/record
   find record
 
-load @term/bind/code/javascript/es5/uint8-clamped-array
+load @term/bind/javascript/es5/uint8-clamped-array
   find uint8-clamped-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 host abort-controller, name <AbortController>

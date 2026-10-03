@@ -2,11 +2,11 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
   find native-undefined
 
-load @term/bind/code/node/repl
+load @term/bind/node/repl
   find repl-command-action
 
 form repl-command, name <REPLCommand>

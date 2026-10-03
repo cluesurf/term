@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find runtime-remote-object
 
 form get-object-by-heap-object-id-return-type, name <GetObjectByHeapObjectIdReturnType>

@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/es5/function
+load @term/bind/javascript/es5/function
   find function
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form timer-handler, name <TimerHandler>

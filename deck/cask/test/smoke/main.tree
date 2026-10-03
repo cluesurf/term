@@ -3,7 +3,7 @@
 # posts through the GENERATED dispatcher in ./dispatch.tree, which `pnpm term:cask-generate --app deck/cask/test/smoke`
 # writes from the page's own docks. No window is shown: a test only talks over the bridge.
 
-load @term/cask/code/cask
+load @term/cask/cask
   find window
   find open-window
   find load-bundle

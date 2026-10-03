@@ -3,9 +3,9 @@
 # breadcrumb-list (ol), breadcrumb-item (li), breadcrumb-link (a), breadcrumb-page (current, span), breadcrumb-separator
 # (li). aria wires it up; theme via data-slot.
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 

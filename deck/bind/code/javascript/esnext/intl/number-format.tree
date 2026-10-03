@@ -2,16 +2,16 @@
 load @term/bind/code/javascript/es2020/bigint/number-format
   find number-format
 
-load @term/bind/code/javascript/esnext/intl/number-format-part
+load @term/bind/javascript/esnext/intl/number-format-part
   find number-format-part
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-bigint
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form number-format, name <NumberFormat>

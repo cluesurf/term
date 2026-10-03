@@ -8,23 +8,23 @@
 
 note stable
 
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-and
   find bitwise-or
   find bitwise-exclusive-or
   find shift-left
   find unsigned-shift-right
 
-load @term/base/code/list
+load @term/base/list
   find list
   find size
   find get
   find set
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
-load @term/base/code/float
+load @term/base/float
   find to-decimal
 
 form random-source
@@ -129,6 +129,15 @@ task next-word
   like number
   save s
     read source/state
+  # a source built by hand may carry fewer than four words; the missing ones are zero. One made by `seeded` has four,
+  # and this takes no turns
+  walk test
+    hook test
+      call is-below
+        read s/length
+        code 4
+    hook step
+      call s/push, code 0
   save s0
     call get
       read s
@@ -242,15 +251,30 @@ task between
   save word
     call next-word
       read source
+  # each draw lands in the stretch with chance below one half, so 64 draws all landing there is rarer than 2^-64;
+  # past them the word is taken as it is, which keeps the walk finite without changing any answer in practice
+  save tries, code 0
   walk test
+    down
+      call subtract
+        code 64
+        read tries
     hook test
-      call is-minimum
-        read word
-        read limit
+      call and
+        call is-minimum
+          read word
+          read limit
+        call is-below
+          read tries
+          code 64
     hook step
       save word
         call next-word
           read source
+      save tries
+        call add
+          read tries
+          code 1
   send back
     call add
       read low
@@ -292,20 +316,36 @@ task shuffle
           read source
           code 0
           read i
-      save held
-        call get
-          read out
-          read i
-      call set
-        read out
-        read i
-        call get
-          read out
-          read j
-      call set
-        read out
-        read j
-        read held
+      # j is inside 0 to i and i inside the list, always; tested, since `between` does not promise the first, and a
+      # call that writes the source leaves the prover unsure of every list's length
+      fork test
+        hook test
+          call and
+            call and
+              call is-minimum
+                read j
+                code 0
+              call is-maximum
+                read j
+                read i
+            call is-below
+              read i
+              read out/length
+        hook hold
+          save held
+            call get
+              read out
+              read i
+          call set
+            read out
+            read i
+            call get
+              read out
+              read j
+          call set
+            read out
+            read j
+            read held
       save i
         call subtract
           read i
@@ -329,15 +369,29 @@ task pick
         code 0
     hook hold
       send back, make none
-  send back
-    make some
-      bind value
-        call get
-          read items
-          call between
-            read source
-            code 0
-            call subtract
-              call size
-                read items
-              code 1
+  save at
+    call between
+      read source
+      code 0
+      call subtract
+        read items/length
+        code 1
+  # inside the list, always; tested, since `between` does not promise it, and its write to the source leaves the
+  # prover unsure of the list's length
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read at
+          code 0
+        call is-below
+          read at
+          read items/length
+    hook hold
+      send back
+        make some
+          bind value
+            call get
+              read items
+              read at
+  send back, make none

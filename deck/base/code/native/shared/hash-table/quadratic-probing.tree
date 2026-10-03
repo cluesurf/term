@@ -11,13 +11,13 @@
 # (`have`), and every method that writes one promises it back, so `term hold` proves every slot read inside its
 # list. The triangular offset is kept as a running sum (`offset`, the previous one plus `step`) rather than computed
 # as `step * (step + 1) / 2`, which is the same number and a sum the prover can read.
-load @term/base/code/boolean
+load @term/base/boolean
   find not
 
-load @term/base/code/hold/hash
+load @term/base/hold/hash
   find hash-djb2-xor, name hash
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
 form hash-table

@@ -1,5 +1,5 @@
 
-load @term/bind/code/node/inspector/debugger
+load @term/bind/node/inspector/debugger
   find breakpoint-id
   find location
 

@@ -1,7 +1,7 @@
 # An empty list that is later pushed lists is a list of lists on every backend (base-v1-0042). Held by
 # `pnpm term:base-gate`.
 
-load @term/base/code/list
+load @term/base/list
   find list
   find size
   find get

@@ -11,7 +11,7 @@
 #      own row                               7  the second window stopped working when the first closed
 #                                            8  a check raised (a reply that was not JSON)
 
-load @term/cask/code/cask
+load @term/cask/cask
   find window
   find open-window
   find load-bundle
@@ -23,14 +23,14 @@ load @term/cask/code/cask
   find bundle-path
   find data-path
 
-load @term/base/code/file
+load @term/base/file
   find read
 
-load @term/base/code/text
+load @term/base/text
   find trim
   find contains
 
-load @term/base/code/json
+load @term/base/json
   find make-object
   find set-field
   find from-text
@@ -42,7 +42,7 @@ load @term/base/code/json
   find get-item
   find as-text
 
-load @term/base/code/clock
+load @term/base/clock
   find sleep
 
 load ./dispatch

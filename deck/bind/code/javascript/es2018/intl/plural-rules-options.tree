@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/es2018/intl/plural-rule-type
+load @term/bind/javascript/es2018/intl/plural-rule-type
   find plural-rule-type
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form plural-rules-options, name <PluralRulesOptions>

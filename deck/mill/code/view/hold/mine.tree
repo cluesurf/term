@@ -17,7 +17,7 @@
 # Which predicates a field accepts is declared per field by the query catalog, and one the resolver cannot push
 # down to an index is refused. See note/term/view/03-find.md.
 
-load @term/mill/code/view/seed/mine
+load @term/mill/view/seed/mine
   find view-seed
   find view-bind
 

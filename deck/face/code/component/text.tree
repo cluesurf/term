@@ -6,14 +6,14 @@
 # Every target draws it: the DOM its elements, the platform toolkits a label (a heading level is an accessibility hint
 # there, and a link a run that takes focus). Rich runs inside one text are left out: that is two texts in a row stack.
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
   find make-text
   find write-attribute
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
-load @term/base/code/boolean
+load @term/base/boolean
   find not
 
 # the element a text is: a link's `a`, a heading's `h<level>`, else a span

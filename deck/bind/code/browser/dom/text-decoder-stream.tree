@@ -1,20 +1,20 @@
 
-load @term/bind/code/browser/dom/buffer-source
+load @term/bind/browser/dom/buffer-source
   find buffer-source
 
-load @term/bind/code/browser/dom/generic-transform-stream
+load @term/bind/browser/dom/generic-transform-stream
   find generic-transform-stream
 
-load @term/bind/code/browser/dom/readable-stream
+load @term/bind/browser/dom/readable-stream
   find readable-stream
 
-load @term/bind/code/browser/dom/text-decoder-common
+load @term/bind/browser/dom/text-decoder-common
   find text-decoder-common
 
-load @term/bind/code/browser/dom/writable-stream
+load @term/bind/browser/dom/writable-stream
   find writable-stream
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form text-decoder-stream, name <TextDecoderStream>

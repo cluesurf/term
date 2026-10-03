@@ -41,7 +41,7 @@ bear @term/bind/code/javascript/node/dns/resolve-any
 bear @term/bind/code/javascript/node/dns/resolver-options
 bear @term/bind/code/javascript/node/dns/resolver
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-null
   find native-number
@@ -54,7 +54,7 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/dns
+load @term/bind/node/dns
   find any-record
   find caa-record
   find lookup-address

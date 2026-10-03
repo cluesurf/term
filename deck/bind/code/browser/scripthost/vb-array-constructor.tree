@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/scripthost/vb-array
+load @term/bind/browser/scripthost/vb-array
   find vb-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
 load @term/bind/code/javascript/safe-array

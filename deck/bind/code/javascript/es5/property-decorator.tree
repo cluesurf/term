@@ -1,14 +1,14 @@
 
-load @term/bind/code/javascript/es5/object
+load @term/bind/javascript/es5/object
   find object
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-symbol
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form property-decorator, name <PropertyDecorator>

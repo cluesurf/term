@@ -1,7 +1,7 @@
-load @term/call/code/work/home
+load @term/call/work/home
   find root, name project-root
 
-load @term/call/code/work/tint
+load @term/call/work/tint
   find log-good
   find log-fail
   find log-step
@@ -24,10 +24,10 @@ load @term/call/code/work/tint
 # Ported from deck/call/code/{work,report}.ts (cli-in-term-0004). Both dock the compiler, which is TypeScript, so
 # both are complete on the TypeScript target and neither is native until the compiler is Term.
 
-load @term/base/code/file
+load @term/base/file
   find read, name read-file
 
-load @term/base/code/text
+load @term/base/text
   find split
 
 dock load
@@ -90,7 +90,7 @@ task source-lines
 
   note unsafe
     save text
-      call read-file, read(file), wait true
+      call read-file, read(file)
     send back
       call split, read(text), text <\n>
   halt take
@@ -107,4 +107,4 @@ task render-diagnostic
   back
     call diagnostic-module/renderKink
       diagnostic
-      source-lines read(diagnostic/file), wait true
+      source-lines read(diagnostic/file)

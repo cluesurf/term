@@ -2,11 +2,11 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-undefined
 
-load @term/bind/code/node/events/event-emitter
+load @term/bind/node/events/event-emitter
   find abortable
 
 form timer-options, name <TimerOptions>

@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/webworker/algorithm
+load @term/bind/browser/webworker/algorithm
   find algorithm
 
-load @term/bind/code/javascript/es5/uint8-array
+load @term/bind/javascript/es5/uint8-array
   find uint8-array
 
 form dh-key-gen-params, name <DhKeyGenParams>

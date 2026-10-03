@@ -1,32 +1,32 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/clipboard-event
+load @term/bind/browser/dom/clipboard-event
   find clipboard-event
 
-load @term/bind/code/browser/dom/document-and-element-event-handlers-event-map
+load @term/bind/browser/dom/document-and-element-event-handlers-event-map
   find document-and-element-event-handlers-event-map
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form document-and-element-event-handlers, name <DocumentAndElementEventHandlers>

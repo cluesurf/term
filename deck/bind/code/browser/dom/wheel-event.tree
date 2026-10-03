@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/mouse-event
+load @term/bind/browser/dom/mouse-event
   find mouse-event
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form wheel-event, name <WheelEvent>

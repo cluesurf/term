@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/readable-stream
+load @term/bind/browser/dom/readable-stream
   find readable-stream
 
-load @term/bind/code/browser/dom/writable-stream
+load @term/bind/browser/dom/writable-stream
   find writable-stream
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
 form readable-writable-pair, name <ReadableWritablePair>

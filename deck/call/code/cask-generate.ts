@@ -81,7 +81,7 @@ type Refused = { module: string; task: string; native: string; params: { name: s
 // a module with a native half, found through the page's closure
 type Module = {
   name: string
-  // the `load` path a program writes for the public module: `@term/site/code/base/db`
+  // the `load` path a program writes for the public module: `@term/site/base/db`
   importPath: string
   // the public module, the abstract module beside the env directories when it exists, and where the shim goes
   publicFile: string
@@ -117,11 +117,13 @@ function importedNames(file: string, term: string): Map<string, string[]> {
 
 const realOf = (file: string): string => (existsSync(file) ? realpathSync(file) : file)
 
-// the load path a program writes for a file: `<...>/deck/<package>/code/<rest>.tree` is `@term/<package>/code/<rest>`
+// the load path a program writes for a file: `<...>/deck/<package>/code/<rest>.tree` is `@term/<package>/<rest>`, the
+// short form, since a package path resolves inside the package's code root first
+// (note/term/plan/manifest-mark-and-code-root.md)
 function importPathOf(file: string): string | undefined {
   const match = /\/deck\/([^/]+)\/code\/(.+)\.tree$/.exec(realOf(file))
 
-  return match ? `@term/${match[1]}/code/${match[2]}` : undefined
+  return match ? `@term/${match[1]}/${match[2]}` : undefined
 }
 
 // a form whose one field is a private `handle` is an opaque handle: the value stays in the cask, the page holds an id
@@ -420,7 +422,7 @@ function dockedModules(page: string, root: string): { modules: Module[]; orphans
     }
 
     const abstractFile = join(codeDir!, 'native', `${name}.tree`)
-    const importPath = `@term/${packageName}/code/${under ? `${under}/` : ''}${name}`
+    const importPath = `@term/${packageName}/${under ? `${under}/` : ''}${name}`
 
     found.set(importPath, {
       name: name!,
@@ -627,10 +629,10 @@ function recordLoads(records: { form: string; from: string }[]): string[] {
     ...records.flatMap(({ form, from }) => [`load ${from}`, `  find ${form}`, '']),
     // under names of their own, never aliases: the dispatcher imports `file` too, whose `read` and `write` share their
     // names with the host dialect's, and an alias is rewritten to the original name inside its file
-    'load @term/host/code/base',
+    'load @term/host/base',
     '  find data',
     '',
-    'load @term/host/code/text',
+    'load @term/host/text',
     '  find data-from-text',
     '  find data-to-text',
     '',
@@ -840,14 +842,14 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], term
     'dock load',
     '  load <global:bridge>, name bridge',
     '',
-    'load @term/base/code/json',
+    'load @term/base/json',
     ...JSON_FINDS.map(name => `  find ${name}`),
     '',
-    'load @term/base/code/float',
+    'load @term/base/float',
     '  find to-decimal',
     '  find to-number',
     '',
-    'load @term/base/code/list',
+    'load @term/base/list',
     '  find list',
     '  find push',
     '',
@@ -868,7 +870,7 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], term
       lines.push(
         `# let ${param.name} go now: the cask drops it from its table, and a use after this is refused`,
         `task ${signature.native}`,
-        '  note async',
+        '  mark async',
         `  take ${param.name}`,
         ...likeOf(param.kind).map(line => `    ${line}`),
         // waited for: the cask's reply is what orders the release before the next call using the handle
@@ -882,7 +884,7 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], term
       continue
     }
 
-    lines.push(`task ${signature.native}`, '  note async')
+    lines.push(`task ${signature.native}`, '  mark async')
 
     for (const param of signature.params) {
       lines.push(`  take ${param.name}`, ...likeOf(param.kind).map(line => `    ${line}`))
@@ -914,7 +916,7 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], term
   }
 
   for (const one of refused) {
-    lines.push(`# not carried: ${one.reason}`, `task ${one.native}`, '  note async')
+    lines.push(`# not carried: ${one.reason}`, `task ${one.native}`, '  mark async')
 
     for (const param of one.params) {
       lines.push(`  take ${param.name}, like unknown`)
@@ -1014,7 +1016,7 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     "# is unknown to every other window's (refused as `absence`, as a forged one is), and when the window closes",
     '# every handle under its key is dropped. `dispatch` answers as one window, for an app that opens only one.',
     '',
-    'load @term/cask/code/cask',
+    'load @term/cask/cask',
     '  find window',
     '  find on-message',
     '  find on-close',
@@ -1023,10 +1025,10 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     '  find bundle-path',
     '  find data-path',
     '',
-    'load @term/base/code/text',
+    'load @term/base/text',
     '  find starts-with',
     '',
-    'load @term/base/code/console',
+    'load @term/base/console',
     '  find log',
     '',
   ]
@@ -1052,7 +1054,7 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
   }
 
   lines.push(
-    'load @term/base/code/json',
+    'load @term/base/json',
     '  find parse',
     '  find stringify',
     '  find field-text',
@@ -1061,23 +1063,23 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     '  find get-field',
     ...JSON_FINDS.filter(name => !['make-object', 'set-field'].includes(name) || true).map(name => `  find ${name}`),
     '',
-    'load @term/base/code/float',
+    'load @term/base/float',
     '  find to-number',
     '  find to-decimal',
     '',
-    'load @term/base/code/list',
+    'load @term/base/list',
     '  find list',
     '  find push',
     '',
-    'load @term/base/code/hash',
+    'load @term/base/hash',
     '  find hash',
     '  find get',
     '  find set',
     '',
-    'load @term/base/code/uuid',
+    'load @term/base/uuid',
     '  find version4',
     '',
-    'load @term/base/code/maybe',
+    'load @term/base/maybe',
     '  find maybe',
     '  find unwrap',
 
@@ -1115,7 +1117,7 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     '',
     "# run one command with its arguments and answer the reply value as json, for the window whose key is `owner`",
     'task run-command',
-    '  note async',
+    '  mark async',
     '  take owner, like text',
     '  take command, like text',
     '  take arguments, like dynamic',
@@ -1206,7 +1208,7 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     '# one message in, one reply out. A command that raises answers the exception by name and note, so the page',
     '# gets a rejection and the cask keeps running',
     'task answer',
-    '  note async',
+    '  mark async',
     '  take owner, like text',
     '  take message, like text',
     '  like text',
@@ -1234,7 +1236,7 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     '      call is-allowed',
     '        read command',
     '    hook hold',
-    '      note unsafe',
+    '      mark unsafe',
     '        save reply',
     '          call set-field',
     '            read reply',
@@ -1269,11 +1271,11 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     '# exception with no id, rather than raising out of the bridge and taking the cask down with it. Answered for',
     "# the window whose key is `owner`",
     'task dispatch-as',
-    '  note async',
+    '  mark async',
     '  take owner, like text',
     '  take message, like text',
     '  like text',
-    '  note unsafe',
+    '  mark unsafe',
     '    send back',
     '      call answer',
     '        wait true',
@@ -1295,7 +1297,7 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     '',
     '# one message, for an app with one window: `on-message(window, dispatch)`',
     'task dispatch',
-    '  note async',
+    '  mark async',
     '  take message, like text',
     '  like text',
     '  send back',
@@ -1320,7 +1322,7 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     '  call on-message',
     '    read place',
     '    task reply',
-    '      note async',
+    '      mark async',
     '      take message, like text',
     '      like text',
     '      send back',

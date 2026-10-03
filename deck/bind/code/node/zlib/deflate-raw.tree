@@ -1,15 +1,15 @@
 
-load @term/bind/code/node/zlib
+load @term/bind/node/zlib
   find input-type
   find zlib
   find zlib-options
   find zlib-params
   find zlib-reset
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find promise
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
 form deflate-raw, name <DeflateRaw>

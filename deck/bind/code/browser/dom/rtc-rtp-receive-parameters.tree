@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/rtc-rtp-parameters
+load @term/bind/browser/dom/rtc-rtp-parameters
   find rtc-rtp-parameters
 
 form rtc-rtp-receive-parameters, name <RTCRtpReceiveParameters>

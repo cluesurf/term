@@ -4,7 +4,7 @@
 // browser / rust / swift — the user only ever sees the uniform public API and never names a platform. An import that
 // is already env-qualified (`.../native/node/...`) is left alone. See feedback_stdlib_clean_api_dock_native.
 
-import type { Resolver, Source } from '@term/make/code/compile/load'
+import type { LoadHow, Resolver, Source } from '@term/make/code/compile/load'
 import type { Program } from '@term/make/code/compile/node'
 import { stdlibBase } from '@term/make/code/resolve'
 
@@ -319,7 +319,9 @@ export function withNativeEnv(
   env: NativeEnv,
   base: Resolver,
 ): Resolver {
-  return (importPath: string, fromFile: string): Source | undefined => {
+  // `how` (a `base <dir>` under the load) passes through untouched: each rung of the env chain is a whole path,
+  // resolved by the package path rule (code root, then package root) the way an explicit path is
+  return (importPath: string, fromFile: string, how?: LoadHow): Source | undefined => {
     // the explicit spelling: `load .../native/{platform}/<name>` says on its face that the path is chosen by the
     // target. The env fills the slot; an env with no impl of its own borrows its sibling's (cloudflare -> browser)
     if (importPath.includes('{platform}')) {
@@ -327,6 +329,7 @@ export function withNativeEnv(
         const resolved = base(
           importPath.replaceAll('{platform}', candidate),
           fromFile,
+          how,
         )
 
         if (resolved) {
@@ -339,12 +342,13 @@ export function withNativeEnv(
       return base(
         importPath.replaceAll('/{platform}', ''),
         fromFile,
+        how,
       )
     }
 
     // the implicit rewrite (`.../native/<name>` -> `.../native/<env>/<name>`) is RETIRED (stdlib-parity-0002):
     // every public stdlib module now spells `native/{platform}/<name>` explicitly, so an abstract path resolves
     // as written or not at all
-    return base(importPath, fromFile)
+    return base(importPath, fromFile, how)
   }
 }

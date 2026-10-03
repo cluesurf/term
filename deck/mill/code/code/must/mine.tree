@@ -1,4 +1,4 @@
-load @term/mill/code/code/seed/mine
+load @term/mill/code/seed/mine
   find seed
 
 # A task's CONTRACT, and a walk's. Three words, all from hold/base/terms.json, each holding one expression the way

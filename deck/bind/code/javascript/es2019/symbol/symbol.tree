@@ -1,11 +1,11 @@
 
-load @term/bind/code/javascript/es2015/symbol/wellknown/symbol
+load @term/bind/javascript/es2015/symbol/wellknown/symbol
   find symbol
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-undefined
 
 form symbol, name <Symbol>

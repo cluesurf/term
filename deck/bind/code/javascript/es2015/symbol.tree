@@ -1,8 +1,8 @@
 
-bear @term/bind/code/javascript/es2015/symbol/symbol-constructor
-bear @term/bind/code/javascript/es2015/symbol/wellknown
+bear @term/bind/javascript/es2015/symbol/symbol-constructor
+bear @term/bind/javascript/es2015/symbol/wellknown
 
-load @term/bind/code/javascript/es2015/symbol/symbol-constructor
+load @term/bind/javascript/es2015/symbol/symbol-constructor
   find symbol-constructor
 
 host symbol, name <Symbol>

@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { transformSync } from 'esbuild'
 import { compile } from '@term/make/code/compile/compile'
+import { stdlibResolver } from '@term/make/code/resolve'
 import {
   withNativeEnv,
   nativePrelude,
@@ -24,18 +25,8 @@ import type { Source } from '@term/make/code/compile/load'
 const here = dirname(fileURLToPath(import.meta.url))
 const baseTree = join(here, '..', '..', 'deck', 'base')
 
-const stdlib = (path: string): Source | undefined => {
-  const prefix = '@term/base/'
-  path = path.replace(/^@term\/base\//, prefix)
-
-  if (!path.startsWith(prefix)) {return undefined}
-
-  const file = join(baseTree, `${path.slice(prefix.length)}.tree`)
-
-  return existsSync(file)
-    ? { file, text: readFileSync(file, 'utf8') }
-    : undefined
-}
+// the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+const stdlib = stdlibResolver()!
 
 const readRuntime = (path: string): string | undefined => {
   const prefix = '@term/base/'

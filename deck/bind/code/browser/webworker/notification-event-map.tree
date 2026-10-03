@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/notification-event-map
+load @term/bind/browser/dom/notification-event-map
   find notification-event-map
 
-load @term/bind/code/browser/webworker/event
+load @term/bind/browser/webworker/event
   find event
 
 form notification-event-map, name <NotificationEventMap>

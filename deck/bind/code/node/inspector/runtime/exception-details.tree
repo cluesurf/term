@@ -2,12 +2,12 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
   find native-string
   find native-undefined
 
-load @term/bind/code/node/inspector/runtime
+load @term/bind/node/inspector/runtime
   find execution-context-id
   find remote-object
   find script-id

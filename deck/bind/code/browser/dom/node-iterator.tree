@@ -1,20 +1,20 @@
 
-load @term/bind/code/browser/dom/node
+load @term/bind/browser/dom/node
   find node
 
-load @term/bind/code/browser/dom/node-filter
+load @term/bind/browser/dom/node-filter
   find node-filter
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form node-iterator, name <NodeIterator>

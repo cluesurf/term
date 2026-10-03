@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/generic-transform-stream
+load @term/bind/browser/dom/generic-transform-stream
   find generic-transform-stream
 
-load @term/bind/code/browser/webworker/readable-stream
+load @term/bind/browser/webworker/readable-stream
   find readable-stream
 
-load @term/bind/code/browser/webworker/writable-stream
+load @term/bind/browser/webworker/writable-stream
   find writable-stream
 
 form generic-transform-stream, name <GenericTransformStream>

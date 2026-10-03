@@ -6,6 +6,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { dirname, join, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse } from '@term/make/code/parser/tree'
+import { stdlibResolver } from '@term/make/code/resolve'
 import { mill } from '@term/make/code/compile/mill'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import { lint } from '@term/make/code/lint/lint'
@@ -16,18 +17,8 @@ const here = dirname(fileURLToPath(import.meta.url))
 const seedRoot = resolvePath(here, '..', '..')
 const baseTree = resolvePath(seedRoot, 'deck', 'base')
 
-const stdlib = (path: string): Source | undefined => {
-  const prefix = '@term/base/'
-  path = path.replace(/^@term\/base\//, prefix)
-
-  if (!path.startsWith(prefix)) {return undefined}
-
-  const file = join(baseTree, `${path.slice(prefix.length)}.tree`)
-
-  return existsSync(file)
-    ? { file, text: readFileSync(file, 'utf8') }
-    : undefined
-}
+// the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+const stdlib = stdlibResolver()!
 
 const readRuntime = (path: string): string | undefined => {
   const prefix = '@term/base/'

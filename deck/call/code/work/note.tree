@@ -1,7 +1,7 @@
-load @term/call/code/work/home
+load @term/call/work/home
   find root, name project-root
 
-load @term/call/code/work/tint
+load @term/call/work/tint
   find log-good
   find log-fail
   find log-step
@@ -52,7 +52,7 @@ task note
         make manifest-ask, bind dir, read root
         wait true
     save shown, call full-name, read manifest
-    save version, call deck-tree/showCode, read manifest/code
+    save version, call deck-tree/showCode, read manifest/mark
     call console/log, text <>
     call console/log, text <  {{shown}} {{version}}>
     save head, read manifest/head

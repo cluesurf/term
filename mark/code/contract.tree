@@ -5,7 +5,7 @@
 load ./data
   find data-value
 
-load @term/base/code/json
+load @term/base/json
   find get-field
   find get-item
   find as-text
@@ -18,7 +18,7 @@ load @term/base/code/json
   find array-size
   find object-keys
 
-load @term/base/code/float
+load @term/base/float
   find to-number
 
 load ./disk
@@ -27,7 +27,7 @@ load ./disk
   find is-directory
   find folder-names
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
   find size
@@ -37,10 +37,10 @@ load @term/base/code/list
 load ./lists
   find holds-text
 
-load @term/base/code/ordering
+load @term/base/ordering
   find from-texts
 
-load @term/base/code/text
+load @term/base/text
   find trim
   find split
   find starts-with

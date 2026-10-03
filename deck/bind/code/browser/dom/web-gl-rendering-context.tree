@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/web-gl-rendering-context-base
+load @term/bind/browser/dom/web-gl-rendering-context-base
   find web-gl-rendering-context-base
 
-load @term/bind/code/browser/dom/web-gl-rendering-context-overloads
+load @term/bind/browser/dom/web-gl-rendering-context-overloads
   find web-gl-rendering-context-overloads
 
 form web-gl-rendering-context, name <WebGLRenderingContext>

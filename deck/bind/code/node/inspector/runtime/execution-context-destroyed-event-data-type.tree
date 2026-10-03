@@ -1,5 +1,5 @@
 
-load @term/bind/code/node/inspector/runtime
+load @term/bind/node/inspector/runtime
   find execution-context-id
 
 form execution-context-destroyed-event-data-type, name <ExecutionContextDestroyedEventDataType>

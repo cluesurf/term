@@ -3,7 +3,7 @@
 dock load
   load <global:aio>, name aio
 
-load @term/base/code/file/owner
+load @term/base/file/owner
   find file-owner
 
 task owner-read

@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/text-decoder-options
+load @term/bind/browser/dom/text-decoder-options
   find text-decoder-options
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
 form text-decoder-options, name <TextDecoderOptions>

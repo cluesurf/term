@@ -2,14 +2,14 @@
 load @term/bind
   find form
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
   find promise
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/crypto
+load @term/bind/node/crypto
   find dsa-key-pair-key-object-options
   find dsa-key-pair-options
   find ec-key-pair-key-object-options

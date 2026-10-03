@@ -81,7 +81,8 @@ const ends = (location: Location | null, suffix: string): boolean => !!location 
   ok('name: a call of a task in this file goes to it', own?.uri === halt.uri && halt.text.split('\n')[own!.range.start.line]!.startsWith('task first-number'), JSON.stringify(own))
 
   const list = await openFile('deck/base/code/list.tree')
-  const like = await definition(list.uri, at(list.text, 552, 'ordering'))
+  // found by its text, not a line number: list.tree is edited often, and a number drifts in silence
+  const like = await definition(list.uri, at(list.text, '      like ordering', 'ordering'))
   ok('name: a type after `like` goes to its `form` in the loaded module', ends(like, 'base/code/ordering.tree') && /ordering/.test(lineAt(like)), JSON.stringify(like))
 
   const keyword = await definition(halt.uri, at(halt.text, 'call first-number', 'call'))
@@ -91,10 +92,11 @@ const ends = (location: Location | null, suffix: string): boolean => !!location 
 // ---- 2. the path of a load ----
 {
   const halt = await openFile('deck/call/code/work/halt.tree')
-  const tint = await definition(halt.uri, at(halt.text, 'load @term/call/code/work/tint', 'work/tint'))
+  // the short form: `@term/call/work/tint` resolves in @term/call's code root first
+  const tint = await definition(halt.uri, at(halt.text, 'load @term/call/work/tint', 'work/tint'))
   ok('path: a package path opens the module, line 1', ends(tint, 'deck/call/code/work/tint.tree') && tint!.range.start.line === 0, JSON.stringify(tint))
 
-  const text = await definition(halt.uri, at(halt.text, 'load @term/base/code/text', '@term'))
+  const text = await definition(halt.uri, at(halt.text, 'load @term/base/text', '@term'))
   ok('path: a stdlib path opens the stdlib module', ends(text, 'deck/base/code/text.tree'), JSON.stringify(text))
 
   const time = await openFile('deck/base/code/time.tree')
@@ -136,7 +138,8 @@ const ends = (location: Location | null, suffix: string): boolean => !!location 
 // ---- 5. mill definitions and manifests ----
 {
   const mine = await openFile('deck/mill/code/code/fork/mine.tree')
-  const path = await definition(mine.uri, at(mine.text, 'load @term/mill/code/code/form/link/mine', 'form/link'))
+  // the short form: `@term/mill/<path>` resolves in the mill's code root, deck/mill/code, first
+  const path = await definition(mine.uri, at(mine.text, 'load @term/mill/code/form/link/mine', 'form/link'))
   ok('mill: a grammar `load` path opens the grammar file', ends(path, 'deck/mill/code/code/form/link/mine.tree') && path!.range.start.line === 0, JSON.stringify(path))
 
   const find = await definition(mine.uri, at(mine.text, '  find link', 'link'))
@@ -155,9 +158,13 @@ const ends = (location: Location | null, suffix: string): boolean => !!location 
   const links = (await server.dispatch({ jsonrpc: '2.0', id: id++, method: 'textDocument/documentLink', params: { textDocument: { uri: base.uri } } }))[0]!.result as { target: string }[]
   ok('mill: base.tree links both its grammar files', links.length === 2 && links.some(l => l.target.endsWith('fork/mine.tree')) && links.some(l => l.target.endsWith('fork/mint.tree')), JSON.stringify(links))
 
-  const manifest = await openFile('deck/base/deck.tree')
-  const bear = await definition(manifest.uri, at(manifest.text, 'bear ./code', './code'))
-  ok('manifest: `bear ./code` opens the folder\'s entry file', !!bear && bear.uri.startsWith(pathToFileURL(join(term, 'deck/base/code')).href) && bear.range.start.line === 0, JSON.stringify(bear))
+  // `code ./code` is the default and no manifest in the tree writes it, so the buffer says it
+  const manifest = await openFile('deck/base/deck.tree', 'deck @term/base\n  mark <0.0.16>\n  code ./code\n  lock mit\n')
+  const code = await definition(manifest.uri, at(manifest.text, 'code ./code', './code'))
+  ok('manifest: `code ./code` opens the code root\'s entry file', !!code && code.uri.startsWith(pathToFileURL(join(term, 'deck/base/code')).href) && code.range.start.line === 0, JSON.stringify(code))
+
+  const version = await definition(manifest.uri, at(manifest.text, 'mark <0.0.16>', '0.0.16'))
+  ok('manifest: the version `mark <0.0.16>` names no file', version === null, JSON.stringify(version))
 
   const site = await openFile('deck/site/deck.tree')
   const link = await definition(site.uri, at(site.text, 'link @term/base', '@term/base'))

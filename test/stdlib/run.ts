@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { compile } from '@term/make/code/compile/compile'
+import { stdlibResolver } from '@term/make/code/resolve'
 import { nativePrelude } from '@term/make/code/compile/native'
 import type { Source } from '@term/make/code/compile/load'
 import { render } from '@term/make/code/parser/diagnostic'
@@ -15,19 +16,8 @@ import { render } from '@term/make/code/parser/diagnostic'
 const here = dirname(fileURLToPath(import.meta.url))
 const baseTree = join(here, '..', '..', 'deck', 'base') // the stdlib package
 
-// resolve `@term/base/code/<path>` (or the renamed `@term/base/...`) to the stdlib .tree file on disk
-function resolveStdlib(importPath: string): Source | undefined {
-  const prefix = '@term/base/'
-  importPath = importPath.replace(/^@term\/base\//, prefix)
-
-  if (!importPath.startsWith(prefix)) {return undefined}
-
-  const file = join(baseTree, `${importPath.slice(prefix.length)}.tree`)
-
-  if (!existsSync(file)) {return undefined}
-
-  return { file, text: readFileSync(file, 'utf8') }
-}
+// the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+const resolveStdlib = stdlibResolver()!
 
 let pass = 0
 let fail = 0

@@ -1,119 +1,119 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/event-target
+load @term/bind/browser/dom/event-target
   find event-target
 
-load @term/bind/code/browser/dom/media-stream
+load @term/bind/browser/dom/media-stream
   find media-stream
 
-load @term/bind/code/browser/dom/media-stream-track
+load @term/bind/browser/dom/media-stream-track
   find media-stream-track
 
-load @term/bind/code/browser/dom/rtc-answer-options
+load @term/bind/browser/dom/rtc-answer-options
   find rtc-answer-options
 
-load @term/bind/code/browser/dom/rtc-configuration
+load @term/bind/browser/dom/rtc-configuration
   find rtc-configuration
 
-load @term/bind/code/browser/dom/rtc-data-channel
+load @term/bind/browser/dom/rtc-data-channel
   find rtc-data-channel
 
-load @term/bind/code/browser/dom/rtc-data-channel-event
+load @term/bind/browser/dom/rtc-data-channel-event
   find rtc-data-channel-event
 
-load @term/bind/code/browser/dom/rtc-data-channel-init
+load @term/bind/browser/dom/rtc-data-channel-init
   find rtc-data-channel-init
 
-load @term/bind/code/browser/dom/rtc-ice-candidate-init
+load @term/bind/browser/dom/rtc-ice-candidate-init
   find rtc-ice-candidate-init
 
-load @term/bind/code/browser/dom/rtc-ice-connection-state
+load @term/bind/browser/dom/rtc-ice-connection-state
   find rtc-ice-connection-state
 
-load @term/bind/code/browser/dom/rtc-ice-gathering-state
+load @term/bind/browser/dom/rtc-ice-gathering-state
   find rtc-ice-gathering-state
 
-load @term/bind/code/browser/dom/rtc-local-session-description-init
+load @term/bind/browser/dom/rtc-local-session-description-init
   find rtc-local-session-description-init
 
-load @term/bind/code/browser/dom/rtc-offer-options
+load @term/bind/browser/dom/rtc-offer-options
   find rtc-offer-options
 
-load @term/bind/code/browser/dom/rtc-peer-connection-error-callback
+load @term/bind/browser/dom/rtc-peer-connection-error-callback
   find rtc-peer-connection-error-callback
 
-load @term/bind/code/browser/dom/rtc-peer-connection-event-map
+load @term/bind/browser/dom/rtc-peer-connection-event-map
   find rtc-peer-connection-event-map
 
-load @term/bind/code/browser/dom/rtc-peer-connection-ice-event
+load @term/bind/browser/dom/rtc-peer-connection-ice-event
   find rtc-peer-connection-ice-event
 
-load @term/bind/code/browser/dom/rtc-peer-connection-state
+load @term/bind/browser/dom/rtc-peer-connection-state
   find rtc-peer-connection-state
 
-load @term/bind/code/browser/dom/rtc-rtp-receiver
+load @term/bind/browser/dom/rtc-rtp-receiver
   find rtc-rtp-receiver
 
-load @term/bind/code/browser/dom/rtc-rtp-sender
+load @term/bind/browser/dom/rtc-rtp-sender
   find rtc-rtp-sender
 
-load @term/bind/code/browser/dom/rtc-rtp-transceiver
+load @term/bind/browser/dom/rtc-rtp-transceiver
   find rtc-rtp-transceiver
 
-load @term/bind/code/browser/dom/rtc-rtp-transceiver-init
+load @term/bind/browser/dom/rtc-rtp-transceiver-init
   find rtc-rtp-transceiver-init
 
-load @term/bind/code/browser/dom/rtc-session-description
+load @term/bind/browser/dom/rtc-session-description
   find rtc-session-description
 
-load @term/bind/code/browser/dom/rtc-session-description-callback
+load @term/bind/browser/dom/rtc-session-description-callback
   find rtc-session-description-callback
 
-load @term/bind/code/browser/dom/rtc-session-description-init
+load @term/bind/browser/dom/rtc-session-description-init
   find rtc-session-description-init
 
-load @term/bind/code/browser/dom/rtc-signaling-state
+load @term/bind/browser/dom/rtc-signaling-state
   find rtc-signaling-state
 
-load @term/bind/code/browser/dom/rtc-stats-report
+load @term/bind/browser/dom/rtc-stats-report
   find rtc-stats-report
 
-load @term/bind/code/browser/dom/rtc-track-event
+load @term/bind/browser/dom/rtc-track-event
   find rtc-track-event
 
-load @term/bind/code/browser/dom/void-function
+load @term/bind/browser/dom/void-function
   find void-function
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form rtc-peer-connection, name <RTCPeerConnection>

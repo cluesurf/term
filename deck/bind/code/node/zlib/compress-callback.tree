@@ -3,12 +3,12 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find error
   find native-null
   find native-void
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
 form compress-callback, name <CompressCallback>

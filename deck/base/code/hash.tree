@@ -3,11 +3,11 @@
 
 note stable
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
   find unwrap-or
 
-load @term/base/code/pair
+load @term/base/pair
   find pair
 
 form hash
@@ -146,10 +146,17 @@ form hash
     walk list, read ks
       hook next
         take site, name key
-        call out/push
-          make pair
-            bind first, read key
-            bind second, read vs/{at}
+        # the values come from a second call, one for each key; tested, since nothing ties the two lists' lengths
+        fork test
+          hook test
+            call is-below
+              read at
+              read vs/length
+          hook hold
+            call out/push
+              make pair
+                bind first, read key
+                bind second, read vs/{at}
         save at
           call add
             read at
@@ -200,10 +207,17 @@ form hash
         read self
       hook next
         take site, name key
-        call out/set
-          read key
-          call call
-            read vs/{at}
+        # one value for each key, as in `entries`
+        fork test
+          hook test
+            call is-below
+              read at
+              read vs/length
+          hook hold
+            call out/set
+              read key
+              call call
+                read vs/{at}
         save at
           call add
             read at

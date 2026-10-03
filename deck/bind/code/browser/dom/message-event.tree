@@ -1,32 +1,32 @@
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/message-event-source
+load @term/bind/browser/dom/message-event-source
   find message-event-source
 
-load @term/bind/code/browser/dom/message-port
+load @term/bind/browser/dom/message-port
   find message-port
 
-load @term/bind/code/javascript/es5/readonly-array
+load @term/bind/javascript/es5/readonly-array
   find readonly-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form message-event, name <MessageEvent>

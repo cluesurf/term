@@ -2,16 +2,16 @@
 
 note unstable
 
-load @term/base/code/text/string
+load @term/base/text/string
   find concat
 
-load @term/base/code/text
+load @term/base/text
   find index-of
   find char-at
   find substring
   find contains
 
-load @term/base/code/list
+load @term/base/list
   find list
 
 # join the items into one string, placing the separator between each

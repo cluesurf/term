@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/html-script-element
+load @term/bind/browser/dom/html-script-element
   find html-script-element
 
-load @term/bind/code/browser/dom/svg-script-element
+load @term/bind/browser/dom/svg-script-element
   find svg-script-element
 
 form html-or-svg-script-element, name <HTMLOrSVGScriptElement>

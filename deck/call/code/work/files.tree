@@ -3,7 +3,7 @@
 # A path may be a FILE, taken as it is, or a DIRECTORY, walked for everything under it. With no paths at all the
 # project root is walked.
 #
-# A SHELVED FILE IS SKIPPED WHEN WALKING, the same two ways the build shelves one: `note draft` on its own line
+# A SHELVED FILE IS SKIPPED WHEN WALKING, the same two ways the build shelves one: `mark draft` on its own line
 # near the top of a file, and a `draft.tree` in a directory, which shelves that directory and everything under it.
 # Without this, `term form deck --check` could never reach zero: it reported 33 files it could not parse and 32 of
 # them were deliberately shelved drafts, several not written in Term at all. A check that cannot reach zero is a
@@ -14,23 +14,23 @@
 #
 # This is the Term port of deck/call/code/files.ts (cli-in-term-0003).
 
-load @term/base/code/path
+load @term/base/path
   find join
   find directory
 
-load @term/base/code/file
+load @term/base/file
   find read, name read-file
   find test, name file-test
 
-load @term/base/code/file/directory
+load @term/base/file/directory
   find walk, name walk-directory
   find exists, name directory-exists
 
-load @term/base/code/file/metadata
+load @term/base/file/metadata
   find is-directory
   find is-file
 
-load @term/base/code/text
+load @term/base/text
   find contains
   find ends-with
   find starts-with
@@ -69,8 +69,8 @@ task is-skipped
       back true
   back false
 
-# does this file declare itself unfinished? `note draft` on its own line NEAR THE TOP, which is how the build walk
-# reads it (deck/call/code/make.ts) and how the TypeScript this ports did.
+# does this file declare itself unfinished? `mark draft` on its own line NEAR THE TOP, which is how the build walk
+# reads it (deck/call/code/make.ts) and how the TypeScript this ports did. `note draft`, the old spelling, counts too.
 #
 # THE HEAD LIMIT IS LOAD-BEARING, not an optimization. Without it this file excluded ITSELF: the marker below is a
 # real `note draft` line in this source, so a whole-file search matches it and `files.tree` disappeared from its own
@@ -81,7 +81,7 @@ task is-draft
 
   like boolean
 
-  save text, read-file file, wait true
+  save text, read-file file
   save size, char-count read text
 
   save end
@@ -92,7 +92,7 @@ task is-draft
       miss
         code 2000
   save head
-    substring read(text), code 0, end
+    substring read(text), code(0), end
   # ON ITS OWN LINE, which is why this splits rather than searching. A `contains` over the head matches the phrase
   # wherever it appears, including inside a comment that MENTIONS the marker -- and this file has one, so the first
   # version excluded itself from its own walk. A multi-line text literal does not help: `text <` newline `note
@@ -101,6 +101,11 @@ task is-draft
     split read(head), <\n>
   walk lines
     take site, name line
+    fork test
+      is-equal trim(line), <mark draft>
+      hold
+        back true
+    # the old spelling still shelves
     fork test
       is-equal trim(line), <note draft>
       hold
@@ -138,7 +143,7 @@ task is-under-shelved
       starts-with at, root
     hook hold
       fork test
-        is-shelved at, wait true
+        is-shelved at
         hold
           back true
       fork test
@@ -168,11 +173,11 @@ task walk-trees
           hold
             turn next
         fork test
-          is-draft item, wait true
+          is-draft item
           hold
             turn next
         fork test
-          is-under-shelved root, item, wait true
+          is-under-shelved root, item
           hold
             turn next
         found/push item

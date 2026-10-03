@@ -5,10 +5,10 @@
 # would duplicate that. The hebcal links matter if a Hebrew calendar is ever wanted.
 note draft
 
-load @term/base/code/math
+load @term/base/math
   find round-down
 
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-and
   find shift-left
   find shift-right

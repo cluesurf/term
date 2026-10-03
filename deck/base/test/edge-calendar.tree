@@ -1,7 +1,7 @@
 # Dates, patterns, zones and times of day read the same on every backend: calendar/civil.tree is pure Term. Held by
 # `pnpm term:base-gate`.
 
-load @term/base/code/calendar
+load @term/base/calendar
   find format
   find year
   find month
@@ -14,19 +14,19 @@ load @term/base/code/calendar
   find add-months
   find add-years
 
-load @term/base/code/calendar/civil
+load @term/base/calendar/civil
   find format-pattern
 
-load @term/base/code/timezone
+load @term/base/timezone
   find format-in-zone
   find from-local
 
-load @term/base/code/calendar/time-of-day
+load @term/base/calendar/time-of-day
   find parse-time-of-day
   find format-time-of-day
   find time-of-day
 
-load @term/base/code/calendar/time-text
+load @term/base/calendar/time-text
   find time-mismatch
 
 task day-of

@@ -6,7 +6,7 @@ dock load
 dock load
   load <global:json>, name json
 
-load @term/base/code/network/http
+load @term/base/network/http
   find response
 
 task read

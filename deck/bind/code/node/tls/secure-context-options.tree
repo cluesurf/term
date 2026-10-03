@@ -2,19 +2,19 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-number
   find native-string
   find native-undefined
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find array
 
-load @term/bind/code/node/tls
+load @term/bind/node/tls
   find key-object
   find pxf-object
   find secure-version

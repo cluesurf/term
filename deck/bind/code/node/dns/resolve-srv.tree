@@ -1,10 +1,10 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-string
   find promise
 
-load @term/bind/code/node/dns
+load @term/bind/node/dns
   find srv-record
 
 task promisify, name <__promisify__>

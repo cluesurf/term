@@ -2,9 +2,9 @@
 # alert-dialog — headless, behavior-complete via the shared disclosure controller (mirrors dialog). Parts: alert-dialog,
 # alert-dialog-trigger, alert-dialog-overlay, alert-dialog-content, alert-dialog-header, alert-dialog-title, alert-dialog-description, alert-dialog-footer,
 # alert-dialog-close. Overlay + content mount when open with reactive data-state. Consumer passes a `control`.
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 load ../logic/disclosure

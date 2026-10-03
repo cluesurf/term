@@ -5,7 +5,7 @@
 
 note unstable
 
-load @term/base/code/decimal
+load @term/base/decimal
   find big-decimal
   find make-big-decimal
 

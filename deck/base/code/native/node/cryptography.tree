@@ -2,7 +2,7 @@
 dock type
   load <any>, name nodejs-ecdh
 
-load @term/base/code/void
+load @term/base/void
   find void
 
 form ecdh

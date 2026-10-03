@@ -16,15 +16,15 @@
 
 note unstable
 
-load @term/base/code/native/{platform}/network/http2
+load @term/base/native/{platform}/network/http2
   find http2-serve
   find http2-start
   find http2-stop
 
-load @term/base/code/network/server/request
+load @term/base/network/server/request
   find request
 
-load @term/base/code/network/server/response
+load @term/base/network/server/response
   find response
 
 # a running HTTP/2 server: the platform server object in the opaque `dock`, plus the bound host and port
@@ -101,7 +101,6 @@ task start
       read secure
       read certificate
       read key
-      wait true
 
 task stop
   note async
@@ -109,4 +108,3 @@ task stop
   like void
   call http2-stop
     read server
-    wait true

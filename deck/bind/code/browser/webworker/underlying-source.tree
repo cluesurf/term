@@ -1,20 +1,20 @@
 
-load @term/bind/code/browser/dom/underlying-source
+load @term/bind/browser/dom/underlying-source
   find underlying-source
 
-load @term/bind/code/browser/webworker/underlying-source-cancel-callback
+load @term/bind/browser/webworker/underlying-source-cancel-callback
   find underlying-source-cancel-callback
 
-load @term/bind/code/browser/webworker/underlying-source-pull-callback
+load @term/bind/browser/webworker/underlying-source-pull-callback
   find underlying-source-pull-callback
 
-load @term/bind/code/browser/webworker/underlying-source-start-callback
+load @term/bind/browser/webworker/underlying-source-start-callback
   find underlying-source-start-callback
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-undefined
 
 form underlying-source, name <UnderlyingSource>

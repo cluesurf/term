@@ -1,14 +1,25 @@
 
-# Browser host: mount the matched page on the document body, then re-render on navigation (back/forward + intercepted
-# same-origin link clicks). The client side of the env-abstracted `host`. `port` is ignored in the browser.
+# Browser host: mount the matched page on the document body, and draw it again wherever the app moves. The client side
+# of the env-abstracted `host`. `port` is ignored in the browser.
+#
+# WHERE THE APP IS comes from the navigation contract (../../navigation, native-navigation-0001), never from the address
+# bar directly: the contract holds the history, a `navigate` from the app moves it, and the browser's own back, forward
+# and intercepted link clicks reach it through `listen-pop` and `follow-address`. One effect reads the current path and
+# draws the route, so all three move the page the same way.
 
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find page-body
   find clear
-load @term/site/code/dom/page
-  find page-path
+load @term/site/dom/page
   find listen-pop
+load @term/site/view/reactive
+  find make-effect
+  find untrack
+load @term/site/view/navigation
+  find start-navigation
+  find current-path
+  find follow-address
 
 task host
   take route
@@ -18,16 +29,26 @@ task host
   take port, like number
   save body
     call page-body
-  # render clears the body first, then dispatches the matched route into it. On first load this replaces the SSR
-  # markup with the client-rendered, reactive tree (the takeover); on navigation it swaps the page in place. The
-  # reactive runtime then keeps it live (signals / effects / events), so there is no second server round-trip.
-  save go
+  call start-navigation
+  # one draw per place. The effect reads the current path and nothing else; the route is drawn untracked, so a signal
+  # the page itself reads keeps its own effects and does not draw the whole page again. On first load this replaces
+  # the SSR markup with the client-rendered, reactive tree (the takeover); on a move it swaps the page in place.
+  call make-effect
     task render
-      call clear
-        read body
-      call route
-        read body
-        call page-path
-  call go
+      save path
+        call current-path
+      save drawn
+        call untrack
+          task draw
+            like number
+            call clear
+              read body
+            call route
+              read body
+              read path
+            send back, code 0
+  # the person moved the address themselves (back, forward, a same-origin link): the contract follows, and the effect
+  # above draws where it now is
   call listen-pop
-    read go
+    task moved
+      call follow-address

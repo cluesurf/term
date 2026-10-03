@@ -65,13 +65,35 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
     span,
   })
 
-  const cond = (path: string) => ({
-    form: 'binary' as const,
-    op: '==' as const,
-    left: variable('path'),
-    right: string(path),
-    span,
-  })
+  // a pattern with `:name` segments matches through the navigation contract's `route-matches` (the route runtime,
+  // view/route-runtime.tree); a plain path is compared as text. Until 2026-10-03 every path was compared as text, so
+  // `hook /users/:id` matched only the literal `/users/:id` and never a user (native-navigation-0002)
+  const cond = (path: string): Expression =>
+    path.includes('/:')
+      ? call('route-matches', [string(path), variable('path')])
+      : {
+          form: 'binary' as const,
+          op: '==' as const,
+          left: variable('path'),
+          right: string(path),
+          span,
+        }
+
+  // each `:name` segment of a pattern, a local of that name in its branch, so a prop reads it (`bind id, read id`)
+  const parameters = (path: string): Statement[] =>
+    path
+      .split('/')
+      .filter(segment => segment.startsWith(':') && segment.length > 1)
+      .map(segment => ({
+        form: 'let' as const,
+        name: segment.slice(1),
+        init: call('route-param', [string(path), variable('path'), string(segment.slice(1))]),
+        mutable: false,
+        span,
+      }))
+
+  // the types the dispatcher and the boot are checked at, so every backend emits them typed rather than inferred
+  const named = (name: string) => ({ kind: 'named' as const, name })
 
   // one `if (path == "<path>") { [set-title;] component(host, ...props); return }` per route
   const branches = routes.map(node => {
@@ -94,7 +116,24 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
     }
 
     const component = route.component!
-    const body: Statement[] = []
+    // the path's parameters first, so the load and the props can read them
+    const body: Statement[] = [...parameters(route.path)]
+
+    // `seed load, read <task>`: the route's data, loaded where the program runs and passed to the props as `data`.
+    // Where the data itself lives is the data layer's own env choice (SQLite on a device, the bridge in a cask, the
+    // database behind a server), never the router's, so one table and one `load` serve every target
+    // (native-navigation-0002, note/term/project/native-navigation.md, "Where a route's load runs")
+    const load = route.directives.find(d => d.name === 'load' && d.value)
+
+    if (load) {
+      body.push({
+        form: 'let',
+        name: 'data',
+        init: { form: 'call', callee: load.value!, args: [variable('path')], span },
+        mutable: false,
+        span,
+      })
+    }
 
     // a route's `seed` directives become the page's SEO metadata, declared separately from the component (Remix-style):
     // `title` sets the document title; `layout` (handled below) wraps the page; every other directive (`description`,
@@ -108,7 +147,7 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
       layout?.value?.form === 'string' ? layout.value.value : undefined
 
     for (const directive of route.directives) {
-      if (!directive.value || directive.name === 'layout') {
+      if (!directive.value || directive.name === 'layout' || directive.name === 'load') {
         continue
       }
 
@@ -169,7 +208,10 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
   const router: Statement = {
     form: 'function',
     name: 'route',
-    params: [{ name: 'host' }, { name: 'path' }],
+    params: [
+      { name: 'host', type: named('view') },
+      { name: 'path', type: named('text') },
+    ],
     body: [{ form: 'if', branches, span }],
     generics: [],
     span,
@@ -185,7 +227,10 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
   const boot: Statement = {
     form: 'function',
     name: 'boot',
-    params: [{ name: 'url' }, { name: 'port' }],
+    params: [
+      { name: 'url', type: named('text') },
+      { name: 'port', type: named('number') },
+    ],
     body: [
       {
         form: 'return',

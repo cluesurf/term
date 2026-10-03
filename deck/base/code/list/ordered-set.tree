@@ -8,7 +8,7 @@ note unstable
 dock load
   load <global:compare>, name compare-runtime
 
-load @term/base/code/list
+load @term/base/list
   find list
   find get
 

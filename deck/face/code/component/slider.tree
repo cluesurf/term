@@ -8,4 +8,4 @@
 # This replaced a set of headless parts (slider, slider-track, slider-range, slider-thumb) that nothing used and that
 # had no value of their own: a slider is now one control that holds a number, two ways.
 
-bear @term/face/code/component/native/{platform}/slider
+bear @term/face/component/native/{platform}/slider

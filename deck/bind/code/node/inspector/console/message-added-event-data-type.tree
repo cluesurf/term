@@ -1,5 +1,5 @@
 
-load @term/bind/code/node/inspector/console
+load @term/bind/node/inspector/console
   find console-message
 
 form message-added-event-data-type, name <MessageAddedEventDataType>

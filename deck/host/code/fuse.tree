@@ -1,19 +1,19 @@
 # Anchors: expand every `fuse` in a data file against its `tree`s. Later keys win, a cycle is refused, and a tree of
 # entries cannot be fused into a list or the other way round. See note/term/host/03-anchors.md.
 
-load @term/base/code/list
+load @term/base/list
   find push
   find size
   find get
   find set
 
-load @term/base/code/text/string
+load @term/base/text/string
   find concat
 
 load ./node
   find quote
 
-load @term/base/code/list
+load @term/base/list
   find join
 
 load ./base
@@ -425,14 +425,14 @@ task pop-last
       like text
   fork test
     hook test
-      call is-above(call size(read list), code 0)
+      call is-above(call(size(read list)), code 0)
     hook hold
       call pop
         read list
 
-load @term/base/code/list
+load @term/base/list
   find pop
   find copy
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe

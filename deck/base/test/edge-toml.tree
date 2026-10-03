@@ -1,20 +1,20 @@
 # TOML reads and writes the same on every backend: toml.tree is pure Term. Held by `pnpm term:base-gate`.
 
-load @term/base/code/toml
+load @term/base/toml
   find parse-toml
   find stringify-toml
   find toml-field
   find toml
   find toml-mismatch
 
-load @term/base/code/text/unicode
+load @term/base/text/unicode
   find rune-to-text
 
-load @term/base/code/list
+load @term/base/list
   find list
   find join
 
-load @term/base/code/maybe
+load @term/base/maybe
   find is-some
 
 task lines

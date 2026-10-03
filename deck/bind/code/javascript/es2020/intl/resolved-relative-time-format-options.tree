@@ -1,14 +1,14 @@
 
-load @term/bind/code/javascript/es2020/intl/relative-time-format-numeric
+load @term/bind/javascript/es2020/intl/relative-time-format-numeric
   find relative-time-format-numeric
 
-load @term/bind/code/javascript/es2020/intl/relative-time-format-style
+load @term/bind/javascript/es2020/intl/relative-time-format-style
   find relative-time-format-style
 
-load @term/bind/code/javascript/es2020/intl/unicode-bcp47-locale-identifier
+load @term/bind/javascript/es2020/intl/unicode-bcp47-locale-identifier
   find unicode-bcp47-locale-identifier
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form resolved-relative-time-format-options, name <ResolvedRelativeTimeFormatOptions>

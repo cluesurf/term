@@ -13,10 +13,10 @@ load ../back/post
   find create-post
   find list-posts
 
-load @term/cask/code/cask
+load @term/cask/cask
   find data-path
 
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find page-body
 
 # the store: one post into the database

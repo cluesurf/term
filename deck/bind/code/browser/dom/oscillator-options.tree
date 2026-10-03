@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/audio-node-options
+load @term/bind/browser/dom/audio-node-options
   find audio-node-options
 
-load @term/bind/code/browser/dom/oscillator-type
+load @term/bind/browser/dom/oscillator-type
   find oscillator-type
 
-load @term/bind/code/browser/dom/periodic-wave
+load @term/bind/browser/dom/periodic-wave
   find periodic-wave
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form oscillator-options, name <OscillatorOptions>

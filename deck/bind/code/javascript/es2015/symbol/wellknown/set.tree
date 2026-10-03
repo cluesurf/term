@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/es2015/iterable/set
+load @term/bind/javascript/es2015/iterable/set
   find set
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form set, name <Set>

@@ -1,14 +1,14 @@
-load @term/base/code/list
+load @term/base/list
   find list
   find push
   find get
 
-load @term/base/code/float
+load @term/base/float
   find square-root
   find round
   find to-number
 
-load @term/base/code/text
+load @term/base/text
   find pad-left
 
 # n-body, single-threaded: the Benchmarks Game's "naive transliteration from Michael Ferguson's Chapel program"

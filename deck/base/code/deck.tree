@@ -9,7 +9,10 @@ load ./term
 form deck
   # Package manifest: every head the manifest grammar reads (deck/mill/code/deck)
   link name, like text
+  # `mark <1.4.2>`: the version
   link mark, like text
+  # `code ./code`: the code root, the folder a package path resolves in first. Absent means `./code`
+  link code, like text
   link head, like text
   link lock, like text
   link sort, like text

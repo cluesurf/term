@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/dom-point
+load @term/bind/browser/dom/dom-point
   find dom-point
 
-load @term/bind/code/browser/dom/svg-point-list
+load @term/bind/browser/dom/svg-point-list
   find svg-point-list
 
 load @term/bind/code/javascript/iterable-iterator

@@ -51,6 +51,12 @@ import { preferIsEmpty } from '@term/make/code/lint/rules/prefer-is-empty'
 import { noEmptyForkCase } from '@term/make/code/lint/rules/no-empty-fork-case'
 import { noDuplicateMapKey } from '@term/make/code/lint/rules/no-duplicate-map-key'
 import { dataGrammar } from '@term/make/code/lint/rules/data-grammar'
+import { preferSift } from '@term/make/code/lint/rules/prefer-sift'
+import { preferSingleBrace } from '@term/make/code/lint/rules/prefer-single-brace'
+import { inlineSimpleValue } from '@term/make/code/lint/rules/inline-simple-value'
+import { noteMetadata } from '@term/make/code/lint/rules/note-metadata'
+import { redundantWait } from '@term/make/code/lint/rules/redundant-wait'
+import { parse } from '@term/make/code/parser/tree'
 
 // the line-length limit enforced by the formatter and the max-line-length lint rule (L019)
 const MAX_LINE_LENGTH = 84
@@ -89,6 +95,11 @@ export const RULES: Rule[] = [
   noEmptyForkCase,
   noDuplicateMapKey,
   dataGrammar,
+  preferSift,
+  preferSingleBrace,
+  inlineSimpleValue,
+  noteMetadata,
+  redundantWait,
   tellMissing,
   tellOfFailure,
   tellReveals,
@@ -100,6 +111,8 @@ export type LintConfig = {
   severity?: Record<string, Severity | 'off'>
   // codes suppressed on a given zero-based line (from `# lint off Lxxx` comments)
   suppress?: Map<number, Set<string>>
+  // the file's role rule carries `mark lean` (projectLeanOf in call/code/role-of.ts)
+  lean?: boolean
 }
 
 function eachExpression(
@@ -353,6 +366,7 @@ export function lint(
       duplicateLoads,
       program,
       memo,
+      lean: config.lean ?? false,
       slice,
       report(finding) {
         // honor inline suppression (`# lint off Lxxx` on the line above the node)
@@ -386,6 +400,16 @@ export function lint(
 
   for (const stmt of program) {
     eachStatement(stmt, onStatement, onExpression)
+  }
+
+  // the rules about how a line is WRITTEN read the concrete tree, once per file. Parsed only when one is enabled,
+  // and skipped when the source does not parse (the program could not have milled either)
+  if (enabled.some(rule => rule.checkSource)) {
+    const parsed = parse({ file, text: source })
+
+    if (parsed.ok) {
+      enabled.forEach((rule, i) => rule.checkSource?.(parsed.tree, contexts[i]!))
+    }
   }
 
   // line-based checks (over the raw source lines, not the AST): maximum line length and tab indentation. They cannot

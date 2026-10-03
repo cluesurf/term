@@ -8,16 +8,16 @@
 #
 # Run with: term test
 
-load @term/base/code/tone
+load @term/base/tone
   find tone-encode
   find tone-pack
   find tone-unpack
 
-load @term/base/code/bytes
+load @term/base/bytes
   find to-hex
   find from-hex
 
-load @term/base/code/text
+load @term/base/text
   find text
 
 # Sixteen symbols, one per hex nibble, grouped in fours. Unchanged.

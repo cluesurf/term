@@ -1,14 +1,14 @@
 
-load @term/bind/code/javascript/es2015/symbol/wellknown/promise
+load @term/bind/javascript/es2015/symbol/wellknown/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-undefined
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form promise, name <Promise>

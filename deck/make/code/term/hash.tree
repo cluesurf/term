@@ -14,13 +14,13 @@
 # different number, so the hash would not have been cyrb53. `bit/multiply-32` was added for this and is the first
 # language gap the self-hosting port closed.
 
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-exclusive-or
   find unsigned-shift-right
   find multiply-32
   find bitwise-and
 
-load @term/base/code/text
+load @term/base/text
   find split
   find char-code-at
 
@@ -69,7 +69,7 @@ task hash-text
 
   back
     to-base-36
-      add multiply(code 4294967296, high), low
+      add multiply(code(4294967296), high), low
 
 # `>>>` IS A 32-BIT SHIFT IN JAVASCRIPT and the stdlib's `unsigned-shift-right` is 64-bit, so a negative
 # intermediate shifts in a completely different number. Masking to the low 32 bits first is what makes the two

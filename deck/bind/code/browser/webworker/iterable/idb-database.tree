@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/webworker/idb-database
+load @term/bind/browser/webworker/idb-database
   find idb-database
 
-load @term/bind/code/browser/webworker/idb-transaction
+load @term/bind/browser/webworker/idb-transaction
   find idb-transaction
 
-load @term/bind/code/browser/webworker/idb-transaction-mode
+load @term/bind/browser/webworker/idb-transaction-mode
   find idb-transaction-mode
 
 load @term/bind/code/javascript/iterable
   find iterable
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form idb-database, name <IDBDatabase>

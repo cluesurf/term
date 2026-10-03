@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-number
   find native-string
@@ -8,7 +8,7 @@ load @term/bind/code/javascript
 load @term/bind
   find or
 
-load @term/bind/code/node/dns
+load @term/bind/node/dns
   find lookup-address
   find lookup-all-options
   find lookup-one-options

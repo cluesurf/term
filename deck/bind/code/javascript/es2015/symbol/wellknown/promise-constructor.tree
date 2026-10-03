@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript/es2015/promise/promise-constructor
+load @term/bind/javascript/es2015/promise/promise-constructor
   find promise-constructor
 
 form promise-constructor, name <PromiseConstructor>

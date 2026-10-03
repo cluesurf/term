@@ -13,7 +13,7 @@ load @term/bind
   find or
   find test
 
-load @term/bind/code/node/url
+load @term/bind/node/url
   find url
   find url-format-options
   find url-object
@@ -21,12 +21,12 @@ load @term/bind/code/node/url
   find url-with-parsed-query
   find url-with-string-query
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-string
   find native-undefined
 
-load @term/bind/code/node/http
+load @term/bind/node/http
   find client-request-args
 
 host url, name <URL>

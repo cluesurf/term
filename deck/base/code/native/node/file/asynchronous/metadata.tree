@@ -4,7 +4,7 @@
 dock load
   load <global:stat>, name stat
 
-load @term/base/code/file/metadata
+load @term/base/file/metadata
   find file-metadata
 
 task meta-read

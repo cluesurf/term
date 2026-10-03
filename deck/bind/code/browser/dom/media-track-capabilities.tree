@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/dom/double-range
+load @term/bind/browser/dom/double-range
   find double-range
 
-load @term/bind/code/browser/dom/u-long-range
+load @term/bind/browser/dom/u-long-range
   find u-long-range
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form media-track-capabilities, name <MediaTrackCapabilities>

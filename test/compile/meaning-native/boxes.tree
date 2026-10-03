@@ -1,0 +1,81 @@
+# a recursive form nothing ever clones, which Rust holds in a `Box` (rust.ts, `boxableForms`, item 0029): built,
+# consumed by a reversal that moves each child out (`*rest`), and summed through a borrow. The same answers on every
+# backend, whichever of `Box` and `Rc` Rust chose
+form chain
+  case stop
+  case node
+    link head, like number
+    link rest, like chain
+
+task build
+  take n, like number
+  like chain
+  fork test
+    hook test
+      call is-above
+        read n
+        code 0
+    hook hold
+      send back
+        make node
+          bind head, read n
+          bind rest
+            call build
+              call subtract
+                read n
+                code 1
+  send back
+    make stop
+
+# consumes its chain: each child moves out into the next call
+task reversed
+  take c, like chain
+  take into, like chain
+  like chain
+  fork case, read c
+    case stop
+      send back, read into
+    case node
+      send back
+        call reversed
+          read rest
+          make node
+            bind head, read head
+            bind rest, read into
+
+task sum
+  take c, like chain
+  like number
+  fork case, read c
+    case stop
+      send back, code 0
+    case node
+      send back
+        call add
+          read head
+          call sum
+            read rest
+
+task first
+  take c, like chain
+  like number
+  fork case, read c
+    case stop
+      send back, code 0
+    case node
+      send back, read head
+
+task compute
+  like text
+  host back
+    call reversed
+      call build
+        code 5
+      make stop
+  host total
+    call sum
+      read back
+  host lead
+    call first
+      read back
+  send back, text <sum={{total}} first={{lead}}>

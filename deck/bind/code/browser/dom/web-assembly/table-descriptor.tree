@@ -2,7 +2,7 @@
 load @term/bind/code/browser/dom/table-kind
   find table-kind
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form table-descriptor, name <TableDescriptor>

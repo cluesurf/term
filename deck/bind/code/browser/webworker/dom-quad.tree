@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/dom-quad
+load @term/bind/browser/dom/dom-quad
   find dom-quad
 
-load @term/bind/code/browser/webworker/dom-point
+load @term/bind/browser/webworker/dom-point
   find dom-point
 
-load @term/bind/code/browser/webworker/dom-rect
+load @term/bind/browser/webworker/dom-rect
   find dom-rect
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
 form dom-quad, name <DOMQuad>

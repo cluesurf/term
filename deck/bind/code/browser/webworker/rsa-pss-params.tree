@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/rsa-pss-params
+load @term/bind/browser/dom/rsa-pss-params
   find rsa-pss-params
 
-load @term/bind/code/browser/webworker/algorithm
+load @term/bind/browser/webworker/algorithm
   find algorithm
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form rsa-pss-params, name <RsaPssParams>

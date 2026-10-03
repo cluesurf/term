@@ -1,10 +1,10 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find error
 
 form recoverable, name <Recoverable>
   base syntax-error
-  link err, name <err>, like error
+  link err, name(<err>), like error
 
 form recoverable-constructor
   hook make

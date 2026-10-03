@@ -7,7 +7,7 @@
 # A reactive read is a bare `read` with the getter nested beneath it: the mill turns that into a `dynamic` text node
 # whose effect re-runs the read, so the node updates when the signal is written and nothing else re-renders.
 
-load @term/site/code/view/reactive
+load @term/site/view/reactive
   find make-signal
   find read-signal
   find write-signal

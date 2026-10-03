@@ -1,38 +1,38 @@
 
-load @term/bind/code/browser/dom/request
+load @term/bind/browser/dom/request
   find request
 
-load @term/bind/code/browser/webworker/abort-signal
+load @term/bind/browser/webworker/abort-signal
   find abort-signal
 
-load @term/bind/code/browser/webworker/body
+load @term/bind/browser/webworker/body
   find body
 
-load @term/bind/code/browser/webworker/headers
+load @term/bind/browser/webworker/headers
   find headers
 
-load @term/bind/code/browser/webworker/referrer-policy
+load @term/bind/browser/webworker/referrer-policy
   find referrer-policy
 
-load @term/bind/code/browser/webworker/request-cache
+load @term/bind/browser/webworker/request-cache
   find request-cache
 
-load @term/bind/code/browser/webworker/request-credentials
+load @term/bind/browser/webworker/request-credentials
   find request-credentials
 
-load @term/bind/code/browser/webworker/request-destination
+load @term/bind/browser/webworker/request-destination
   find request-destination
 
-load @term/bind/code/browser/webworker/request-mode
+load @term/bind/browser/webworker/request-mode
   find request-mode
 
-load @term/bind/code/browser/webworker/request-redirect
+load @term/bind/browser/webworker/request-redirect
   find request-redirect
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form request, name <Request>

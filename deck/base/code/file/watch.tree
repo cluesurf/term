@@ -13,7 +13,7 @@
 
 note unstable
 
-load @term/base/code/native/{platform}/file/asynchronous
+load @term/base/native/{platform}/file/asynchronous
   find watch-open
   find watch-next
   find watch-close

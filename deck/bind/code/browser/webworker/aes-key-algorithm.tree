@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/aes-key-algorithm
+load @term/bind/browser/dom/aes-key-algorithm
   find aes-key-algorithm
 
-load @term/bind/code/browser/webworker/key-algorithm
+load @term/bind/browser/webworker/key-algorithm
   find key-algorithm
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form aes-key-algorithm, name <AesKeyAlgorithm>

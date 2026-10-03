@@ -2,12 +2,12 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
   find native-string
   find native-undefined
 
-load @term/bind/code/node/crypto
+load @term/bind/node/crypto
   find cipher-mode
 
 form cipher-info, name <CipherInfo>

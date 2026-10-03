@@ -7,6 +7,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
+import { stdlibResolver } from '@term/make/code/resolve'
 import type { Source } from '@term/make/code/compile/load'
 import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
 import { emitKotlin } from '@term/make/code/compile/kotlin'
@@ -26,11 +27,8 @@ function ok(name: string, holds: boolean, detail = ''): void {
 
 const JDK21 = /\.(removeLast|removeFirst|getFirst|getLast)\(\)/g
 const base = join(import.meta.dirname, '../../deck/base')
-const stdlib = (path: string): Source | undefined => {
-  const file = join(base, `${path.replace(/^@term\/base\//, '')}.tree`)
-
-  return /^@term\/base\//.test(path) && existsSync(file) ? { file, text: readFileSync(file, 'utf8') } : undefined
-}
+// the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+const stdlib = stdlibResolver()!
 const readRuntime = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, 'utf8') : undefined)
 
 // 1. programs that pop, shift and walk lists, through the whole emitter and the shims they pull in

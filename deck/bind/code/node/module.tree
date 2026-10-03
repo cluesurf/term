@@ -5,7 +5,7 @@ bear @term/bind/code/javascript/node/module/source-map
 bear @term/bind/code/javascript/node/module/module
 bear @term/bind/code/javascript/node/module/import-meta
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find error
   find native-string
   find native-void

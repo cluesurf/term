@@ -103,8 +103,8 @@ async function findTestFiles(input: {
       } else if (entry.name.endsWith('.tree')) {
         const text = await fs.readFile(full, 'utf-8')
 
-        // likewise for a single shelved file
-        if (/^note draft\s*$/m.test(text.slice(0, 2000))) {
+        // likewise for a single shelved file, `mark draft` or the old `note draft`
+        if (/^(mark|note) draft\s*$/m.test(text.slice(0, 2000))) {
           continue
         }
 

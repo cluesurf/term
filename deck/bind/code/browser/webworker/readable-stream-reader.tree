@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/webworker/readable-stream-default-reader
+load @term/bind/browser/webworker/readable-stream-default-reader
   find readable-stream-default-reader
 
 form readable-stream-reader, name <ReadableStreamReader>

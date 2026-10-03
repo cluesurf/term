@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/web-gl-query
+load @term/bind/browser/dom/web-gl-query
   find web-gl-query
 
 form web-gl-query, name <WebGLQuery>

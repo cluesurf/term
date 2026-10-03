@@ -1,8 +1,8 @@
 
-load @term/base/code/hold/integer
+load @term/base/hold/integer
   find reverse-bits-8
 
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-and
   find bitwise-or
   find shift-left

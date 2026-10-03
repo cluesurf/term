@@ -1,11 +1,11 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/es5
+load @term/bind/javascript/es5
   find array-like
   find property-descriptor
   find typed-property-descriptor

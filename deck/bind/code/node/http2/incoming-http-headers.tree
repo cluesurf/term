@@ -2,12 +2,12 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find http1-incoming-http-headers
   find native-string
   find native-undefined
 
-load @term/bind/code/node/http/incoming-http-headers
+load @term/bind/node/http/incoming-http-headers
   find incoming-http-headers
 
 form incoming-http-headers, name <IncomingHttpHeaders>

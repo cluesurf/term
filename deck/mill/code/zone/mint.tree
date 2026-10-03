@@ -1,16 +1,16 @@
 
-load @term/base/code/zone-file
+load @term/base/zone-file
   find zone-file
   find zone-hold
 
-load @term/mill/code/zone/hold/mint
+load @term/mill/zone/hold/mint
   find zone-hold
 
-load @term/mill/code/zone/need/mint
+load @term/mill/zone/need/mint
   find zone-need
   find zone-want
 
-load @term/mill/code/zone/code/mint
+load @term/mill/zone/code/mint
   find zone-code
 
 mint zone-file, like zone-file

@@ -34,6 +34,7 @@ export type LoopGuard = { checks: BoundCheck[] }
 export function boundedLoops(program: Program): WeakMap<Statement, LoopGuard> {
   const guards = new WeakMap<Statement, LoopGuard>()
   const closureWrites = namesWrittenInClosures(program)
+  const pure = scalarTasks(program)
   const seen = new Set<object>()
 
   const visit = (value: unknown): void => {
@@ -52,7 +53,7 @@ export function boundedLoops(program: Program): WeakMap<Statement, LoopGuard> {
     const node = value as Loose
 
     if (node.form === 'while') {
-      const guard = guardOf(node, closureWrites)
+      const guard = guardOf(node, closureWrites, pure)
 
       if (guard) {
         guards.set(node as unknown as Statement, guard)
@@ -71,7 +72,7 @@ export function boundedLoops(program: Program): WeakMap<Statement, LoopGuard> {
   return guards
 }
 
-function guardOf(loop: Loose, closureWrites: Set<string>): LoopGuard | undefined {
+function guardOf(loop: Loose, closureWrites: Set<string>, pure: Set<string>): LoopGuard | undefined {
   const cond = loop.cond as Loose | undefined
   const body = loop.body as Loose[]
 
@@ -109,7 +110,14 @@ function guardOf(loop: Loose, closureWrites: Set<string>): LoopGuard | undefined
 
     const node = value as Loose
 
-    if (node.form === 'call' || node.form === 'closure' || node.form === 'await') {
+    // a call to a task that cannot reach a list (`scalarTasks`), with only scalar arguments, changes no length
+    const reachesNoList =
+      node.form === 'call' &&
+      (((node.callee as Loose).form === 'variable' && pure.has((node.callee as Loose).name as string)) ||
+        nativeCall(node.callee as Loose)) &&
+      (node.args as Loose[]).every(a => scalar(a.type as { kind?: string; name?: string } | undefined))
+
+    if ((node.form === 'call' && !reachesNoList) || node.form === 'closure' || node.form === 'await') {
       opaque = true
 
       return
@@ -358,6 +366,128 @@ function guardOf(loop: Loose, closureWrites: Set<string>): LoopGuard | undefined
   }
 
   return { checks: [...extreme.values()] }
+}
+
+// a number, a float, a flag or a text: a value that holds no list
+function scalar(type: { kind?: string; name?: string } | undefined): boolean {
+  return (
+    type !== undefined &&
+    (type.kind === 'number' ||
+      type.kind === 'float' ||
+      type.kind === 'boolean' ||
+      type.kind === 'string' ||
+      (type.kind === 'named' && ['text', 'boolean', 'number', 'integer', 'decimal'].includes(type.name ?? '')))
+  )
+}
+
+// A call to a native module's function (`fmath.sqrt`, through a `dock load` the checker leaves deferred, which a local
+// or a task never is). It can hold none of the program's lists, so with scalar arguments it reaches none of them
+export function nativeCall(callee: { form?: string; target?: unknown }): boolean {
+  const module = callee.form === 'member' ? (callee.target as Loose) : undefined
+
+  return module?.form === 'variable' && (module.binding as { kind?: string } | undefined)?.kind === 'deferred'
+}
+
+// The tasks that cannot reach any list: every parameter a scalar, nothing in the body a closure, an await, a slot or
+// length of a list, or a variable from outside the task that holds anything but a scalar, and every call to another
+// such task (or a native binding) with scalar arguments. A fixpoint, since one such task may call another. A call to
+// one inside a counted loop cannot change a list's length, so it does not cost the loop its guard
+// (spectral-norm's `a-value`, called in the innermost loop)
+export function scalarTasks(program: Program): Set<string> {
+  type Fn = Extract<Statement, { form: 'function' }>
+  const fns = program.filter((n): n is Fn => n.form === 'function')
+  const tasks = new Set(fns.map(f => f.name))
+  const pure = new Set(fns.filter(f => f.body.length > 0 && !f.async && f.params.every(p => scalar(p.type as never))).map(f => f.name))
+  let changed = true
+
+  const clean = (fn: Fn): boolean => {
+    const locals = new Set(fn.params.map(p => p.name))
+    let ok = true
+    const visit = (value: unknown): void => {
+      if (!ok || typeof value !== 'object' || value === null) {
+        return
+      }
+
+      if (Array.isArray(value)) {
+        value.forEach(visit)
+
+        return
+      }
+
+      const node = value as Loose
+
+      switch (node.form) {
+        case 'closure':
+        case 'await':
+          ok = false
+
+          return
+        case 'let':
+          locals.add(node.name as string)
+          break
+        case 'variable':
+          if (!locals.has(node.name as string) && !tasks.has(node.name as string) && !scalar(node.type as never)) {
+            ok = false
+          }
+
+          return
+        case 'member':
+          if (((node.target as Loose).type as { kind?: string } | undefined)?.kind === 'array') {
+            ok = false
+
+            return
+          }
+
+          break
+        case 'call': {
+          const callee = node.callee as Loose
+
+          const known = callee.form === 'variable' && (!tasks.has(callee.name as string) || pure.has(callee.name as string))
+
+          if (!known && !nativeCall(callee)) {
+            ok = false
+
+            return
+          }
+
+          if (!(node.args as Loose[]).every(a => scalar(a.type as never))) {
+            ok = false
+
+            return
+          }
+
+          visit(node.args)
+
+          return
+        }
+        default:
+          break
+      }
+
+      for (const [key, child] of Object.entries(node)) {
+        if (key !== 'type' && key !== 'span') {
+          visit(child)
+        }
+      }
+    }
+
+    visit(fn.body)
+
+    return ok
+  }
+
+  while (changed) {
+    changed = false
+
+    for (const fn of fns) {
+      if (pure.has(fn.name) && !clean(fn)) {
+        pure.delete(fn.name)
+        changed = true
+      }
+    }
+  }
+
+  return pure
 }
 
 // every variable name an assignment inside some closure writes (as ir/facts/range.ts reads it)

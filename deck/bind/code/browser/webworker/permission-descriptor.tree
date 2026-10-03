@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/permission-descriptor
+load @term/bind/browser/dom/permission-descriptor
   find permission-descriptor
 
-load @term/bind/code/browser/webworker/permission-name
+load @term/bind/browser/webworker/permission-name
   find permission-name
 
 form permission-descriptor, name <PermissionDescriptor>

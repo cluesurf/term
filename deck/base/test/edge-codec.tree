@@ -1,18 +1,18 @@
 # Base64 and hex read the same on every backend, the browser's included, and the host random stays in range. Held by
 # `pnpm term:base-gate`, whose browser leg is what reaches native/browser/text/{base64,hex}.tree and random.tree.
 
-load @term/base/code/text/base64
+load @term/base/text/base64
   find encode-base64
   find decode-base64
 
-load @term/base/code/text/hex
+load @term/base/text/hex
   find encode-hex
   find decode-hex
 
-load @term/base/code/random
+load @term/base/random
   find number
 
-load @term/base/code/log
+load @term/base/log
   find info
 
 test <base64 encodes UTF-8 text>

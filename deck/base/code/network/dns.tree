@@ -2,7 +2,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/network/dns
+load @term/base/native/{platform}/network/dns
   find dns-resolve
   find dns-resolve-one
 
@@ -14,7 +14,6 @@ task resolve
   send back
     call dns-resolve
       read hostname
-      wait true
 
 task resolve-one
   note async
@@ -23,4 +22,3 @@ task resolve-one
   send back
     call dns-resolve-one
       read hostname
-      wait true

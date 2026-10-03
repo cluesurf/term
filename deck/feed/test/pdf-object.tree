@@ -1,12 +1,12 @@
 # read-pdf-value / write-pdf-value against literal expected text, the number-vs-reference disambiguation, and
 # write-pdf-xref-table / write-pdf-trailer / write-pdf-indirect-object. Run: term test, from deck/feed.
 
-load @term/base/code/list
+load @term/base/list
   find get
   find push
   find size
 
-load @term/base/code/text
+load @term/base/text
   find char-count
 
 load ../code/pdf/1.7/object/form

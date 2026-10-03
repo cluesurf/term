@@ -1,131 +1,131 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/animation-frame-provider
+load @term/bind/browser/dom/animation-frame-provider
   find animation-frame-provider
 
-load @term/bind/code/browser/dom/bar-prop
+load @term/bind/browser/dom/bar-prop
   find bar-prop
 
-load @term/bind/code/browser/dom/css-style-declaration
+load @term/bind/browser/dom/css-style-declaration
   find css-style-declaration
 
-load @term/bind/code/browser/dom/custom-element-registry
+load @term/bind/browser/dom/custom-element-registry
   find custom-element-registry
 
-load @term/bind/code/browser/dom/device-motion-event
+load @term/bind/browser/dom/device-motion-event
   find device-motion-event
 
-load @term/bind/code/browser/dom/device-orientation-event
+load @term/bind/browser/dom/device-orientation-event
   find device-orientation-event
 
-load @term/bind/code/browser/dom/document
+load @term/bind/browser/dom/document
   find document
 
-load @term/bind/code/browser/dom/element
+load @term/bind/browser/dom/element
   find element
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/event-target
+load @term/bind/browser/dom/event-target
   find event-target
 
-load @term/bind/code/browser/dom/external
+load @term/bind/browser/dom/external
   find external
 
-load @term/bind/code/browser/dom/global-event-handlers
+load @term/bind/browser/dom/global-event-handlers
   find global-event-handlers
 
-load @term/bind/code/browser/dom/history
+load @term/bind/browser/dom/history
   find history
 
-load @term/bind/code/browser/dom/idle-request-callback
+load @term/bind/browser/dom/idle-request-callback
   find idle-request-callback
 
-load @term/bind/code/browser/dom/idle-request-options
+load @term/bind/browser/dom/idle-request-options
   find idle-request-options
 
-load @term/bind/code/browser/dom/location
+load @term/bind/browser/dom/location
   find location
 
-load @term/bind/code/browser/dom/media-query-list
+load @term/bind/browser/dom/media-query-list
   find media-query-list
 
-load @term/bind/code/browser/dom/navigator
+load @term/bind/browser/dom/navigator
   find navigator
 
-load @term/bind/code/browser/dom/screen
+load @term/bind/browser/dom/screen
   find screen
 
-load @term/bind/code/browser/dom/scroll-to-options
+load @term/bind/browser/dom/scroll-to-options
   find scroll-to-options
 
-load @term/bind/code/browser/dom/selection
+load @term/bind/browser/dom/selection
   find selection
 
-load @term/bind/code/browser/dom/speech-synthesis
+load @term/bind/browser/dom/speech-synthesis
   find speech-synthesis
 
-load @term/bind/code/browser/dom/transferable
+load @term/bind/browser/dom/transferable
   find transferable
 
-load @term/bind/code/browser/dom/url
+load @term/bind/browser/dom/url
   find url
 
-load @term/bind/code/browser/dom/visual-viewport
+load @term/bind/browser/dom/visual-viewport
   find visual-viewport
 
-load @term/bind/code/browser/dom/window-event-handlers
+load @term/bind/browser/dom/window-event-handlers
   find window-event-handlers
 
-load @term/bind/code/browser/dom/window-event-map
+load @term/bind/browser/dom/window-event-map
   find window-event-map
 
-load @term/bind/code/browser/dom/window-local-storage
+load @term/bind/browser/dom/window-local-storage
   find window-local-storage
 
-load @term/bind/code/browser/dom/window-or-worker-global-scope
+load @term/bind/browser/dom/window-or-worker-global-scope
   find window-or-worker-global-scope
 
-load @term/bind/code/browser/dom/window-post-message-options
+load @term/bind/browser/dom/window-post-message-options
   find window-post-message-options
 
-load @term/bind/code/browser/dom/window-proxy
+load @term/bind/browser/dom/window-proxy
   find window-proxy
 
-load @term/bind/code/browser/dom/window-session-storage
+load @term/bind/browser/dom/window-session-storage
   find window-session-storage
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-undefined
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form window, name <Window>

@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/g-lenum
+load @term/bind/browser/dom/g-lenum
   find g-lenum
 
 form oes-texture-half-float, name <OES_texture_half_float>

@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/media-key-system-media-capability
+load @term/bind/browser/dom/media-key-system-media-capability
   find media-key-system-media-capability
 
-load @term/bind/code/browser/dom/media-keys-requirement
+load @term/bind/browser/dom/media-keys-requirement
   find media-keys-requirement
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form media-key-system-configuration, name <MediaKeySystemConfiguration>

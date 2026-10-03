@@ -1,15 +1,15 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find uint8-array
 
-load @term/bind/code/node/util
+load @term/bind/node/util
   find encode-into-result
 
 form text-encoder, name <TextEncoder>
-  link encoding, name <encoding>, like native-string
+  link encoding, name(<encoding>), like native-string
 
   task encode, name <encode>
     like uint8-array

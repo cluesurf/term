@@ -1,5 +1,5 @@
 
-load @term/base/code/void
+load @term/base/void
   find void
 
 form decidable

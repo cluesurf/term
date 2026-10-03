@@ -8,7 +8,7 @@
 dock load
   load <global:walk>, name walk-file
 
-load @term/base/code/file/directory
+load @term/base/file/directory
   find walk-entry
 
 task folder-list

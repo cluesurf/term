@@ -1,5 +1,5 @@
 
-load @term/base/code/book
+load @term/base/book
   find book-view
   find book-draw
 

@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/event-init
+load @term/bind/browser/dom/event-init
   find event-init
 
-load @term/bind/code/browser/dom/rtc-ice-candidate
+load @term/bind/browser/dom/rtc-ice-candidate
   find rtc-ice-candidate
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form rtc-peer-connection-ice-event-init, name <RTCPeerConnectionIceEventInit>

@@ -7,37 +7,37 @@
 
 note stable
 
-load @term/base/code/native/{platform}/cryptography/derive
+load @term/base/native/{platform}/cryptography/derive
   find pbkdf2-sha256
   find hkdf-sha256
 
-load @term/base/code/native/{platform}/cryptography/random
+load @term/base/native/{platform}/cryptography/random
   find random-bytes
 
-load @term/base/code/cryptography/hmac
+load @term/base/cryptography/hmac
   find is-equal-secret
 
-load @term/base/code/bytes
+load @term/base/bytes
   find from-text
   find to-base64
   find from-base64
   find count
 
-load @term/base/code/text
+load @term/base/text
   find split
 
-load @term/base/code/list
+load @term/base/list
   find list
   find size
   find get
 
-load @term/base/code/text/number
+load @term/base/text/number
   find read-number
 
-load @term/base/code/maybe
+load @term/base/maybe
   find unwrap-or
 
-load @term/base/code/float
+load @term/base/float
   find to-number
 
 
@@ -55,7 +55,6 @@ task pbkdf2
       read salt
       read iterations
       read length
-      wait true
 
 # `length` bytes of key from a secret that already has enough entropy (a shared secret, a master key), bound to
 # `info`, so one secret yields independent keys for independent uses
@@ -72,7 +71,6 @@ task hkdf
       read salt
       read info
       read length
-      wait true
 
 # a password stored for checking: a fresh 16-byte salt and, unless told otherwise, 600,000 rounds
 # (OWASP's figure for PBKDF2-HMAC-SHA256 as of 2023). `verify-password`
@@ -92,7 +90,6 @@ task hash-password
       read salt
       read rounds
       code 32
-      wait true
   save salt-text
     call to-base64
       read salt
@@ -157,7 +154,6 @@ task verify-password
       read iterations
       call count
         read expected
-      wait true
   send back
     call is-equal-secret
       read actual

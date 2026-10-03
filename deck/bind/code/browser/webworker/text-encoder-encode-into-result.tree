@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/text-encoder-encode-into-result
+load @term/bind/browser/dom/text-encoder-encode-into-result
   find text-encoder-encode-into-result
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form text-encoder-encode-into-result, name <TextEncoderEncodeIntoResult>

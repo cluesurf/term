@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/audio-buffer
+load @term/bind/browser/dom/audio-buffer
   find audio-buffer
 
-load @term/bind/code/browser/dom/audio-node
+load @term/bind/browser/dom/audio-node
   find audio-node
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
 form convolver-node, name <ConvolverNode>

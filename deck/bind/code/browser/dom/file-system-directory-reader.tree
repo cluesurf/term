@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/error-callback
+load @term/bind/browser/dom/error-callback
   find error-callback
 
-load @term/bind/code/browser/dom/file-system-entries-callback
+load @term/bind/browser/dom/file-system-entries-callback
   find file-system-entries-callback
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form file-system-directory-reader, name <FileSystemDirectoryReader>

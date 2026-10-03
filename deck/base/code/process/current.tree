@@ -1,6 +1,6 @@
 note stable
 
-load @term/base/code/native/{platform}/process/current
+load @term/base/native/{platform}/process/current
   find read-process
   find exit-process
   find listen-process

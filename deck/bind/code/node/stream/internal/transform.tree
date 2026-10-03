@@ -2,13 +2,13 @@
 load @term/bind
   find any
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-void
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer-encoding
 
-load @term/bind/code/node/stream/internal
+load @term/bind/node/stream/internal
   find transform-callback
   find transform-options
 

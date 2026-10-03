@@ -2,7 +2,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/cryptography/hmac
+load @term/base/native/{platform}/cryptography/hmac
   find hmac-sha256
   find hmac-sha512
   find equal-secret
@@ -25,13 +25,11 @@ task hmac
         call hmac-sha256
           read key
           read data
-          wait true
     case sha-512
       send back
         call hmac-sha512
           read key
           read data
-          wait true
 
 # named algorithm forms: the readable, primary surface
 task sha256
@@ -43,7 +41,6 @@ task sha256
     call hmac-sha256
       read key
       read data
-      wait true
 
 task sha512
   note async
@@ -54,7 +51,6 @@ task sha512
     call hmac-sha512
       read key
       read data
-      wait true
 
 # are two secrets (a tag, a token, a hash) the same bytes, compared without leaking where they differ: every byte is
 # read whatever the earlier ones held, on every backend. `is-equal` stops at the first difference, so its timing
@@ -81,7 +77,6 @@ task verify-hmac
       read key
       read data
       read algorithm
-      wait true
   send back
     call equal-secret
       read expected

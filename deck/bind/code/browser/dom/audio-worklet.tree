@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/worklet
+load @term/bind/browser/dom/worklet
   find worklet
 
 form audio-worklet, name <AudioWorklet>

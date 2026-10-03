@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find error
   find native-boolean
@@ -16,27 +16,27 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
   find buffer-encoding
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find uint8-array
 
-load @term/bind/code/node/net
+load @term/bind/node/net
   find address-info
   find socket-connect-opts
   find socket-constructor-opts
 
 form socket, name <Socket>
   base stream-duplex
-  link buffer-size, name <bufferSize>, like native-number
-  link bytes-read, name <bytesRead>, like native-number
-  link bytes-written, name <bytesWritten>, like native-number
-  link connecting, name <connecting>, like native-boolean
-  link destroyed, name <destroyed>, like native-boolean
-  link local-address, name <localAddress>, like native-string
-  link local-port, name <localPort>, like native-number
+  link buffer-size, name(<bufferSize>), like native-number
+  link bytes-read, name(<bytesRead>), like native-number
+  link bytes-written, name(<bytesWritten>), like native-number
+  link connecting, name(<connecting>), like native-boolean
+  link destroyed, name(<destroyed>), like native-boolean
+  link local-address, name(<localAddress>), like native-string
+  link local-port, name(<localPort>), like native-number
   link remote-address, name <remoteAddress>
     like or
       like native-string

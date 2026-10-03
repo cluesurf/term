@@ -4,23 +4,23 @@
 
 note stable
 
-load @term/base/code/uuid
+load @term/base/uuid
   find version4
 
-load @term/base/code/tone
+load @term/base/tone
   find tone-encode
 
-load @term/base/code/text
+load @term/base/text
   find replace-all
   find substring
 
-load @term/base/code/list
+load @term/base/list
   find join
 
-load @term/base/code/time
+load @term/base/time
   find now
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
 # the shared shape. `p` is the props record each declaring form builds with its `link` lines.

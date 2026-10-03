@@ -3,7 +3,7 @@
 # ../viewport. The handler is bridged through the gradual `any` for addEventListener's listener union (it is a real
 # function at runtime), the way the dom's `listen` does.
 
-load @term/bind/code/browser/dom/window
+load @term/bind/browser/dom/window
   find window
 
 host frame, name <window>

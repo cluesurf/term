@@ -3,10 +3,10 @@ load @term/bind
   find like
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
 form key-pair-sync-result, name <KeyPairSyncResult>

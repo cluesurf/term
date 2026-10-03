@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/request
+load @term/bind/browser/dom/request
   find request
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form request-info, name <RequestInfo>

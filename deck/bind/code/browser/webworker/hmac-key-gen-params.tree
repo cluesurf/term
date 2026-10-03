@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/hmac-key-gen-params
+load @term/bind/browser/dom/hmac-key-gen-params
   find hmac-key-gen-params
 
-load @term/bind/code/browser/webworker/algorithm
+load @term/bind/browser/webworker/algorithm
   find algorithm
 
-load @term/bind/code/browser/webworker/hash-algorithm-identifier
+load @term/bind/browser/webworker/hash-algorithm-identifier
   find hash-algorithm-identifier
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form hmac-key-gen-params, name <HmacKeyGenParams>

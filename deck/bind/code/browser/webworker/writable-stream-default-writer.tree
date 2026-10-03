@@ -1,23 +1,23 @@
 
-load @term/bind/code/browser/dom/writable-stream-default-writer
+load @term/bind/browser/dom/writable-stream-default-writer
   find writable-stream-default-writer
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-undefined
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form writable-stream-default-writer, name <WritableStreamDefaultWriter>

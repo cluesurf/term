@@ -1,99 +1,100 @@
-load @term/mill/code/code/tell/mine
+load @term/mill/code/tell/mine
   find tell-def
 
-load @term/mill/code/code/proof/mine
+load @term/mill/code/proof/mine
   find hold-claim
 
 
-load @term/mill/code/code/form/mine
+load @term/mill/code/form/mine
   find form
 
-load @term/mill/code/code/task/mine
+load @term/mill/code/task/mine
   find task
 
-load @term/mill/code/code/call/mine
+load @term/mill/code/call/mine
   find call
 
-load @term/mill/code/code/hook/mine
+load @term/mill/code/hook/mine
   find hook
 
-load @term/mill/code/code/seed/seed/mine
+load @term/mill/code/seed/seed/mine
   find host
 
-load @term/mill/code/code/load/mine
+load @term/mill/code/load/mine
   find load
 
-load @term/mill/code/code/dock/mine
+load @term/mill/code/dock/mine
   find dock
 
 load @term/mill/code/code/test/mine
   find test
 
-load @term/mill/code/code/hold/mine
+load @term/mill/code/hold/mine
   find hold
 
-load @term/mill/code/code/suit/mine
+load @term/mill/code/suit/mine
   find suit
 
-load @term/mill/code/code/mask/mine
+load @term/mill/code/mask/mine
   find mask
 
-load @term/mill/code/code/wear/mine
+load @term/mill/code/wear/mine
   find wear
 
-load @term/mill/code/code/bear/mine
+load @term/mill/code/bear/mine
   find bear
   find deck-def
 
-load @term/mill/code/code/book/mine
+load @term/mill/code/book/mine
   find book
 
-load @term/mill/code/code/tree/mine
+load @term/mill/code/tree/mine
   find tree
 
-load @term/mill/code/code/kink/mine
+load @term/mill/code/kink/mine
   find kink
 
-load @term/mill/code/code/fuse/mine
+load @term/mill/code/fuse/mine
   find fuse
 
-load @term/mill/code/code/tree/beam/mine
+load @term/mill/code/tree/beam/mine
   find beam
 
-load @term/mill/code/code/tree/slot/mine
+load @term/mill/code/tree/slot/mine
   find slot
 
 load @term/mill/code/code/note/mine
   find note
+  find mark-note
 
-load @term/mill/code/code/halt/mine
+load @term/mill/code/halt/mine
   find halt
 
-load @term/mill/code/code/save/mine
+load @term/mill/code/save/mine
   find save
 
-load @term/mill/code/code/seed/mine
+load @term/mill/code/seed/mine
   find seed
 
-load @term/mill/code/code/lace/mine
+load @term/mill/code/lace/mine
   find lace
 
-load @term/mill/code/code/cast/mine
+load @term/mill/code/cast/mine
   find cast
 
-load @term/mill/code/code/tune/mine
+load @term/mill/code/tune/mine
   find tune
 
-load @term/mill/code/code/twin/mine
+load @term/mill/code/twin/mine
   find twin
 
 load @term/mill/code/code/view/mine
   find view-def
 
-load @term/mill/code/code/bind/mine
+load @term/mill/code/bind/mine
   find bind-def
 
-load @term/mill/code/code/rule/def/mine
+load @term/mill/code/rule/def/mine
   find rule-def
   find roll-def
 
@@ -159,6 +160,9 @@ mine code
         site slot
       mine form, like tell-def
         site tell
+      # `mark stable` / `mark draft` at the top of a file: metadata, minted as the `note` it replaces
+      mine form, like mark-note
+        site note
       mine form, like note
         site note
       mine form, like halt

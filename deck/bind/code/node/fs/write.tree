@@ -4,14 +4,14 @@ load @term/bind
   find like
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-null
   find native-number
   find native-string
   find node-js-array-buffer-view
   find promise
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer-encoding
 
 task promisify, name <__promisify__>

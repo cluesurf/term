@@ -1,8 +1,8 @@
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
   find make-text
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 

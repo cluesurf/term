@@ -12,9 +12,9 @@
 # role=switch + reactive data-state (checked/unchecked, derived from disclosure-state mapped on) drive a11y + the CSS
 # thumb slide; aria-checked tracks the boolean; click toggles. Parts: switch (root button) + switch-thumb.
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 load ../../logic/disclosure
@@ -26,9 +26,15 @@ view switch
   take host, like view
   take class, like text
   take control, like signal boolean
+  take
+    label
+    like text
+    fall <>
   view button
     bind type, text <button>
     bind role, text <switch>
+    # its name, what a screen reader speaks before on or off (note/term/view/11-vocabulary.md, "Accessibility")
+    bind aria-label, read label
     bind data-slot, text <switch>
     bind data-state
       call disclosure-state

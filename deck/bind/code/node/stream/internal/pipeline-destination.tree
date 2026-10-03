@@ -6,11 +6,11 @@ load @term/bind
   find or
   find test
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find node-js-writable-stream
   find st
 
-load @term/bind/code/node/stream/internal
+load @term/bind/node/stream/internal
   find pipeline-destination-iterable-function
   find pipeline-destination-promise-function
   find pipeline-transform-source

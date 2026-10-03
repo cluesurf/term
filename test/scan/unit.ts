@@ -247,12 +247,21 @@ const upgrades = planUpgrades([
   result.findings[0] as Extract<(typeof result.findings)[number], { kind: 'dependency' }>,
 ])
 ok(upgrades.length === 1 && upgrades[0]!.to === '1.3.0', 'planUpgrades collapses to one upgrade per package')
-const manifest = `deck app\n  code <1.0.0>\n\n  link @term/left-pad, code <^1.1.0>\n  link @term/other, code <^2.0.0>\n`
+const manifest = `deck app\n  mark <1.0.0>\n\n  link @term/left-pad, mark <^1.1.0>\n  link @term/other, mark <^2.0.0>\n`
 const patched = applyUpgradesToManifest(manifest, [
   { name: '@term/left-pad', from: '1.1.0', to: '1.3.0', clears: ['GHSA-test'] },
 ])
-ok(patched.includes('link @term/left-pad, code <^1.3.0>'), 'fixer rewrites the vulnerable dependency line')
-ok(patched.includes('link @term/other, code <^2.0.0>'), 'fixer leaves other lines untouched')
+ok(patched.includes('link @term/left-pad, mark <^1.3.0>'), 'fixer rewrites the vulnerable dependency line')
+ok(patched.includes('link @term/other, mark <^2.0.0>'), 'fixer leaves other lines untouched')
+
+// a manifest still in the old spelling: the rewritten line comes out as `mark`, the rest stays as it was
+const oldSpelling = applyUpgradesToManifest('deck app\n  link @term/left-pad, code <^1.1.0>\n  link @term/other, code <^2.0.0>\n', [
+  { name: '@term/left-pad', from: '1.1.0', to: '1.3.0', clears: ['GHSA-test'] },
+])
+ok(
+  oldSpelling.includes('link @term/left-pad, mark <^1.3.0>') && oldSpelling.includes('link @term/other, code <^2.0.0>'),
+  'fixer reads the old `code <range>` spelling and writes `mark`',
+)
 
 console.log(`\nscan/unit: ${pass} pass, ${fail} fail`)
 

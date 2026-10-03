@@ -2,10 +2,10 @@
 load @term/bind
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
 
-load @term/bind/code/node/readline
+load @term/bind/node/readline
   find completer-result
 
 form completer, name <Completer>

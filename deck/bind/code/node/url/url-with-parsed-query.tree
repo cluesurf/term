@@ -1,8 +1,8 @@
 
-load @term/bind/code/node/querystring
+load @term/bind/node/querystring
   find parsed-url-query
 
-load @term/bind/code/node/url
+load @term/bind/node/url
   find url
 
 form url-with-parsed-query, name <UrlWithParsedQuery>

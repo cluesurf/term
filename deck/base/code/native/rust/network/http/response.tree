@@ -2,7 +2,7 @@
 # request completes (see runtime/http.rs), so `text` clones it out, `bytes` and `stream` hand back its bytes,
 # and `json` parses it through serde_json into the dynamic value.
 
-load @term/base/code/network/http
+load @term/base/network/http
   find response
 
 bind body-as-text

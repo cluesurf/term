@@ -10,21 +10,21 @@
 # Static assets are NOT routed here: the Worker's transport delegates `/base/**` to the ASSETS binding
 # before dispatch (a Worker has no filesystem), so this host registers only the page catch-all `/**`.
 
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find create-element
   find serialize
-load @term/site/code/dom/page
+load @term/site/dom/page
   find page-shell
   find proxy-target
-load @term/site/code/http/http
+load @term/site/http/http
   find request
   find response
   find route
   find route-server
-load @term/site/code/http/serve
+load @term/site/http/serve
   find serve
-load @term/base/code/list
+load @term/base/list
   find list
   find push
 

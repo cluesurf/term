@@ -2,7 +2,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/mutex
+load @term/base/native/{platform}/mutex
   find latch-make
   find latch-lock
   find latch-unlock
@@ -18,7 +18,6 @@ form mutex
     like void
     call latch-lock
       read self
-      wait true
 
   # release the lock
   task unlock
@@ -27,7 +26,6 @@ form mutex
     like void
     call latch-unlock
       read self
-      wait true
 
 # make a new unlocked mutex
 task make-mutex

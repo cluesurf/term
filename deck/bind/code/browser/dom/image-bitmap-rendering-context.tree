@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/dom/html-canvas-element
+load @term/bind/browser/dom/html-canvas-element
   find html-canvas-element
 
-load @term/bind/code/browser/dom/image-bitmap
+load @term/bind/browser/dom/image-bitmap
   find image-bitmap
 
-load @term/bind/code/browser/dom/offscreen-canvas
+load @term/bind/browser/dom/offscreen-canvas
   find offscreen-canvas
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form image-bitmap-rendering-context, name <ImageBitmapRenderingContext>

@@ -1,9 +1,9 @@
 
-load @term/base/code/native/shared/test/mock
+load @term/base/native/shared/test/mock
   find make-mock, name shared-make
   find read, name shared-read
   find reset, name shared-reset
-load @term/base/code/test/mock
+load @term/base/test/mock
   find mock
 
 task make

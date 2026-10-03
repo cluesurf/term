@@ -14,7 +14,7 @@ load @term/bind
   find form
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find message-port
   find native-boolean
   find native-null
@@ -24,10 +24,10 @@ load @term/bind/code/javascript
   find native-undefined
   find native-void
 
-load @term/bind/code/node/vm
+load @term/bind/node/vm
   find context
 
-load @term/bind/code/node/worker-threads
+load @term/bind/node/worker-threads
   find resource-limits
   find serializable
 

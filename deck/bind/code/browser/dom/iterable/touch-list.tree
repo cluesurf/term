@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/touch
+load @term/bind/browser/dom/touch
   find touch
 
-load @term/bind/code/browser/dom/touch-list
+load @term/bind/browser/dom/touch-list
   find touch-list
 
 load @term/bind/code/javascript/iterable-iterator

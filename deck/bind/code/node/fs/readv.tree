@@ -1,11 +1,11 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
   find node-js-array-buffer-view
   find promise
   find readonly-array
 
-load @term/bind/code/node/fs
+load @term/bind/node/fs
   find read-v-result
 
 task promisify, name <__promisify__>

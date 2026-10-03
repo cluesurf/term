@@ -2,7 +2,7 @@
 load @term/bind
   find or
 
-load @term/bind/code/node/net
+load @term/bind/node/net
   find ipc-socket-connect-opts
   find tcp-socket-connect-opts
 

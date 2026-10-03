@@ -1,0 +1,1447 @@
+
+# THE CELL GRID (terminal-target-0001): the view vocabulary's layout model, measured and placed in the cells of a
+# terminal, and painted. Written in Term so the same layout runs on every backend that draws a grid (TypeScript now,
+# Rust in terminal-target-0004). The model is note/term/view/11-vocabulary.md, "The layout model", and its defaults
+# are CSS's: a stack with no direction is a column, a column stretches its children across, a child keeps its own size
+# until it grows, growers share the free cells equally, and a child too big for its room is clipped, never shrunk.
+#
+# A LENGTH IS A POINT, and a cell is 8 points wide and 16 tall: a width, a gap in a row or a horizontal padding divides
+# by 8, a height, a gap in a column or a vertical padding by 16, each rounded to whole cells.
+#
+# THE GRID IS TEXT. Each row is a list of cells, a space where nothing is drawn. A wide character (East Asian wide or
+# full width) takes two cells, the second holding empty text, which rendering skips; a combining mark takes none and
+# joins the character before it. How many cells a code point takes is ./width, generated from string-width.
+#
+#   measure    the cells a node wants, given the width it may have
+#   place      a node and everything under it painted into a rectangle of the grid
+#   lay-out    a whole tree into a grid of a given size, rendered as its lines
+
+load @term/base/list
+  find list
+load @term/base/text/unicode
+  find to-runes
+  find rune-to-text
+load @term/base/math
+  find round
+  find round-down
+load @term/base/text/string
+  find concat
+load ./width
+  find width-runs
+  find width-run-count
+
+# one node of a view as the grid lays it out. `kind` is text, stack, spacer, divider or frame. Lengths are points;
+# 0 is "not set" for a frame's bounds, where a bound of 0 cells would mean nothing could be drawn
+form cell-node
+  link kind, like text
+  link text, like text
+  link direction, like text
+  link gap, like number
+  link align, like text
+  link justify, like text
+  link padding, like number
+  link grow, like number
+  link width, like number
+  link height, like number
+  link min-width, like number
+  link max-width, like number
+  link min-height, like number
+  link max-height, like number
+  link children
+    like list
+      like cell-node
+
+# the cells something takes
+form cell-size
+  link width, like number
+  link height, like number
+
+# points to cells, rounded: 8 points to a cell across, 16 down
+task cells-across
+  take points, like number
+  like number
+  send back
+    call round
+      call divide
+        read points
+        code 8
+
+task cells-down
+  take points, like number
+  like number
+  send back
+    call round
+      call divide
+        read points
+        code 16
+
+# the cells one character takes, standing alone: 0 for a mark, a format character or a control, 2 for an East Asian
+# wide or full-width one, else 1. Printable ASCII answers at once; anything else is a binary search over ./width, the
+# runs string-width gives, where a code point in no run is 1
+task cell-width
+  take rune, like number
+  like number
+  fork test
+    hook test
+      meet and
+        call is-minimum
+          read rune
+          code 32
+        call is-below
+          read rune
+          code 127
+    hook hold
+      send back, code 1
+  save low, code 0
+  save high
+    call subtract
+      read width-run-count
+      code 1
+  walk test
+    hook test
+      call is-maximum
+        read low
+        read high
+    hook step
+      save middle
+        call round-down
+          call divide
+            call add
+              read low
+              read high
+            code 2
+      save start-at
+        call multiply
+          read middle
+          code 3
+      save end-at
+        call add
+          read start-at
+          code 1
+      save width-at
+        call add
+          read start-at
+          code 2
+      fork test
+        hook test
+          call is-below
+            read rune
+            read width-runs/{start-at}
+        hook hold
+          save high
+            call subtract
+              read middle
+              code 1
+        hook test
+          call is-above
+            read rune
+            read width-runs/{end-at}
+        hook hold
+          save low
+            call add
+              read middle
+              code 1
+        hook miss
+          send back, read width-runs/{width-at}
+  send back, code 1
+
+# whether a number lies in a closed range
+task is-between
+  take value, like number
+  take low, like number
+  take high, like number
+  like boolean
+  send back
+    meet and
+      call is-minimum
+        read value
+        read low
+      call is-maximum
+        read value
+        read high
+
+# the cells a run of runes takes on one line
+task runes-width
+  take runes
+    like list
+      like number
+  like number
+  save total, code 0
+  walk list, read runes
+    hook next
+      take site, name rune
+      save total
+        call add
+          read total
+          call cell-width
+            read rune
+  send back, read total
+
+# the lines a text wraps to in `width` cells: words kept whole where they fit, a word wider than the line broken at the
+# line's edge. A width under 1 cell is one cell, so a text always has somewhere to go
+task wrap
+  take value, like text
+  take width, like number
+  like list
+    like list
+      like number
+  save room, read width
+  fork test
+    hook test
+      call is-below
+        read room
+        code 1
+    hook hold
+      save room, code 1
+  save lines
+    make list
+  save line
+    make list
+  save used, code 0
+  save word
+    make list
+  save word-width, code 0
+  save runes
+    call to-runes
+      read value
+  # a space ends a word; one more space, standing for the end of the text, flushes the last word
+  call runes/push
+    code 32
+  walk list, read runes
+    hook next
+      take site, name rune
+      fork test
+        hook test
+          call is-unequal
+            read rune
+            code 32
+        hook hold
+          # a word wider than the whole line is broken: what fits is flushed as its own line first
+          fork test
+            hook test
+              call is-above
+                call add
+                  read word-width
+                  call cell-width
+                    read rune
+                read room
+            hook hold
+              fork test
+                hook test
+                  call is-above
+                    read line/length
+                    code 0
+                hook hold
+                  call lines/push
+                    read line
+                  save line
+                    make list
+                  save used, code 0
+              call lines/push
+                read word
+              save word
+                make list
+              save word-width, code 0
+          call word/push
+            read rune
+          save word-width
+            call add
+              read word-width
+              call cell-width
+                read rune
+        hook miss
+          fork test
+            hook test
+              call is-above
+                read word/length
+                code 0
+            hook hold
+              # the space before the word, when the line already holds one
+              save needed
+                fork test
+                  hook test
+                    call is-above
+                      read line/length
+                      code 0
+                  hook hold
+                    call add
+                      read word-width
+                      code 1
+                  hook miss
+                    read word-width
+              fork test
+                hook test
+                  call is-above
+                    call add
+                      read used
+                      read needed
+                    read room
+                hook hold
+                  call lines/push
+                    read line
+                  save line
+                    make list
+                  save used, code 0
+                  save needed, read word-width
+              fork test
+                hook test
+                  call is-above
+                    read line/length
+                    code 0
+                hook hold
+                  call line/push
+                    code 32
+              walk list, read word
+                hook next
+                  take site, name part
+                  call line/push
+                    read part
+              save used
+                call add
+                  read used
+                  read needed
+              save word
+                make list
+              save word-width, code 0
+  fork test
+    hook test
+      meet or
+        call is-above
+          read line/length
+          code 0
+        call is-equal
+          read lines/length
+          code 0
+    hook hold
+      call lines/push
+        read line
+  send back, read lines
+
+# a node's padding in cells, across and down
+task pad-across
+  take node, like cell-node
+  like number
+  send back
+    call cells-across
+      read node/padding
+
+task pad-down
+  take node, like cell-node
+  like number
+  send back
+    call cells-down
+      read node/padding
+
+# the gap between a stack's children in cells, along its direction
+task gap-cells
+  take node, like cell-node
+  like number
+  fork test
+    hook test
+      call is-equal
+        read node/direction
+        text <row>
+    hook hold
+      send back
+        call cells-across
+          read node/gap
+  send back
+    call cells-down
+      read node/gap
+
+# a frame's bound, in cells, or a fallback when the bound is not set
+task bound-across
+  take points, like number
+  take fallback, like number
+  like number
+  fork test
+    hook test
+      call is-above
+        read points
+        code 0
+    hook hold
+      send back
+        call cells-across
+          read points
+  send back, read fallback
+
+task bound-down
+  take points, like number
+  take fallback, like number
+  like number
+  fork test
+    hook test
+      call is-above
+        read points
+        code 0
+    hook hold
+      send back
+        call cells-down
+          read points
+  send back, read fallback
+
+# the larger and smaller of two numbers
+task larger
+  take a, like number
+  take b, like number
+  like number
+  fork test
+    hook test
+      call is-above
+        read a
+        read b
+    hook hold
+      send back, read a
+  send back, read b
+
+task smaller
+  take a, like number
+  take b, like number
+  like number
+  fork test
+    hook test
+      call is-below
+        read a
+        read b
+    hook hold
+      send back, read a
+  send back, read b
+
+# the cells a node wants when it may be `room` cells wide
+task measure
+  take node, like cell-node
+  take room, like number
+  like cell-size
+  fork test
+    hook test
+      call is-equal
+        read node/kind
+        text <text>
+    hook hold
+      save lines
+        call wrap
+          read node/text
+          read room
+      save widest, code 0
+      walk list, read lines
+        hook next
+          take site, name line
+          save widest
+            call larger
+              read widest
+              call runes-width
+                read line
+      send back
+        make cell-size
+          bind width, read widest
+          bind height, read lines/length
+  fork test
+    hook test
+      call is-equal
+        read node/kind
+        text <divider>
+    hook hold
+      send back
+        make cell-size
+          bind width, code 1
+          bind height, code 1
+  fork test
+    hook test
+      call is-equal
+        read node/kind
+        text <spacer>
+    hook hold
+      send back
+        make cell-size
+          bind width, code 0
+          bind height, code 0
+  fork test
+    hook test
+      call is-equal
+        read node/kind
+        text <frame>
+    hook hold
+      send back
+        call measure-frame
+          read node
+          read room
+  send back
+    call measure-stack
+      read node
+      read room
+
+# a frame: its one child measured inside the frame's bounds, the fixed size winning, min and max holding the rest
+task measure-frame
+  take node, like cell-node
+  take room, like number
+  like cell-size
+  save limit
+    call smaller
+      read room
+      call bound-across
+        read node/max-width
+        read room
+  save inside
+    fork test
+      hook test
+        call is-above
+          read node/children/length
+          code 0
+      hook hold
+        call measure
+          read node/children/0
+          call bound-across
+            read node/width
+            read limit
+      hook miss
+        make cell-size
+          bind width, code 0
+          bind height, code 0
+  save across
+    call bound-across
+      read node/width
+      call smaller
+        call larger
+          read inside/width
+          call bound-across
+            read node/min-width
+            code 0
+        read limit
+  save down
+    call bound-down
+      read node/height
+      call smaller
+        call larger
+          read inside/height
+          call bound-down
+            read node/min-height
+            code 0
+        call bound-down
+          read node/max-height
+          read inside/height
+  send back
+    make cell-size
+      bind width, read across
+      bind height, read down
+
+# a stack: its children along its direction, the gaps between, the padding around
+task measure-stack
+  take node, like cell-node
+  take room, like number
+  like cell-size
+  save across-pad
+    call pad-across
+      read node
+  save down-pad
+    call pad-down
+      read node
+  save gap
+    call gap-cells
+      read node
+  save inner
+    call subtract
+      read room
+      call multiply
+        read across-pad
+        code 2
+  save along, code 0
+  save cross, code 0
+  save count, code 0
+  walk list, read node/children
+    hook next
+      take site, name child
+      fork test
+        hook test
+          call is-equal
+            read node/direction
+            text <row>
+        hook hold
+          save size
+            call measure
+              read child
+              call subtract
+                read inner
+                read along
+          save along
+            call add
+              read along
+              read size/width
+          save cross
+            call larger
+              read cross
+              read size/height
+        hook miss
+          save size
+            call measure
+              read child
+              read inner
+          save along
+            call add
+              read along
+              read size/height
+          save cross
+            call larger
+              read cross
+              read size/width
+      save count
+        call add
+          read count
+          code 1
+  save gaps
+    fork test
+      hook test
+        call is-above
+          read count
+          code 1
+      hook hold
+        call multiply
+          read gap
+          call subtract
+            read count
+            code 1
+      hook miss
+        code 0
+  save along
+    call add
+      read along
+      read gaps
+  fork test
+    hook test
+      call is-equal
+        read node/direction
+        text <row>
+    hook hold
+      send back
+        make cell-size
+          bind width
+            call add
+              read along
+              call multiply
+                read across-pad
+                code 2
+          bind height
+            call add
+              read cross
+              call multiply
+                read down-pad
+                code 2
+  send back
+    make cell-size
+      bind width
+        call add
+          read cross
+          call multiply
+            read across-pad
+            code 2
+      bind height
+        call add
+          read along
+          call multiply
+            read down-pad
+            code 2
+
+# a grid of `width` by `height` blank cells. A cell is the text drawn in it: one character with any marks joined to
+# it, a space where nothing is drawn, and the empty text in the second cell of a wide character
+task make-grid
+  take width, like number
+  take height, like number
+  like list
+    like list
+      like text
+  save grid
+    make list
+  walk size
+    bind base, code 0
+    bind head, read height
+    hook next
+      take site, name y
+      save row
+        make list
+      walk size
+        bind base, code 0
+        bind head, read width
+        hook next
+          take site, name x
+          call row/push
+            text < >
+      call grid/push
+        read row
+  send back, read grid
+
+# whether (x, y) is a cell of the grid
+task in-grid
+  take grid
+    like list
+      like list
+        like text
+  take x, like number
+  take y, like number
+  like boolean
+  fork test
+    hook test
+      meet and
+        call is-minimum
+          read y
+          code 0
+        call is-below
+          read y
+          read grid/length
+    hook hold
+      save row, read grid/{y}
+      send back
+        meet and
+          call is-minimum
+            read x
+            code 0
+          call is-below
+            read x
+            read row/length
+  send back, false
+
+# one cell's text, nothing outside the grid
+task put-cell
+  take grid
+    like list
+      like list
+        like text
+  take x, like number
+  take y, like number
+  take value, like text
+  fork test
+    hook test
+      call in-grid
+        read grid
+        read x
+        read y
+    hook hold
+      save row, read grid/{y}
+      save row/{x}, read value
+
+# a combining mark joined to the character in the cell before it
+task join-mark
+  take grid
+    like list
+      like list
+        like text
+  take x, like number
+  take y, like number
+  take mark, like text
+  fork test
+    hook test
+      call in-grid
+        read grid
+        read x
+        read y
+    hook hold
+      save row, read grid/{y}
+      save row/{x}
+        call concat
+          read row/{x}
+          read mark
+
+# a divider's line: down `length` cells from (x, y) in a row, across in a column
+task paint-line
+  take grid
+    like list
+      like list
+        like text
+  take x, like number
+  take y, like number
+  take length, like number
+  take down, like boolean
+  walk size
+    bind base, code 0
+    bind head, read length
+    hook next
+      take site, name step
+      fork test
+        hook test
+          read down
+        hook hold
+          call put-cell
+            read grid
+            read x
+            call add
+              read y
+              read step
+            text <│>
+        hook miss
+          call put-cell
+            read grid
+            call add
+              read x
+              read step
+            read y
+            text <─>
+
+# a text painted into its rectangle: wrapped to the width, clipped to the height, a wide character only where both of
+# its cells fit
+task paint-text
+  take node, like cell-node
+  take grid
+    like list
+      like list
+        like text
+  take x, like number
+  take y, like number
+  take width, like number
+  take height, like number
+  save lines
+    call wrap
+      read node/text
+      read width
+  save row, code 0
+  walk list, read lines
+    hook next
+      take site, name line
+      fork test
+        hook test
+          call is-below
+            read row
+            read height
+        hook hold
+          save column, code 0
+          walk list, read line
+            hook next
+              take site, name rune
+              save wide
+                call cell-width
+                  read rune
+              fork test
+                hook test
+                  meet and
+                    call is-equal
+                      read wide
+                      code 0
+                    call is-above
+                      read column
+                      code 0
+                hook hold
+                  call join-mark
+                    read grid
+                    call subtract
+                      call add
+                        read x
+                        read column
+                      code 1
+                    call add
+                      read y
+                      read row
+                    call rune-to-text
+                      read rune
+                hook miss
+                  fork test
+                    hook test
+                      meet and
+                        call is-above
+                          read wide
+                          code 0
+                        call is-maximum
+                          call add
+                            read column
+                            read wide
+                          read width
+                    hook hold
+                      call put-cell
+                        read grid
+                        call add
+                          read x
+                          read column
+                        call add
+                          read y
+                          read row
+                        call rune-to-text
+                          read rune
+                      fork test
+                        hook test
+                          call is-equal
+                            read wide
+                            code 2
+                        hook hold
+                          call put-cell
+                            read grid
+                            call add
+                              call add
+                                read x
+                                read column
+                              code 1
+                            call add
+                              read y
+                              read row
+                            text <>
+                      save column
+                        call add
+                          read column
+                          read wide
+      save row
+        call add
+          read row
+          code 1
+
+# a node painted into the rectangle at (x, y), `width` by `height` cells
+task place
+  take node, like cell-node
+  take grid
+    like list
+      like list
+        like text
+  take x, like number
+  take y, like number
+  take width, like number
+  take height, like number
+  fork test
+    hook test
+      call is-equal
+        read node/kind
+        text <text>
+    hook hold
+      call paint-text
+        read node
+        read grid
+        read x
+        read y
+        read width
+        read height
+  # a divider on its own, outside a stack, is a line across its rectangle
+  fork test
+    hook test
+      call is-equal
+        read node/kind
+        text <divider>
+    hook hold
+      call paint-line
+        read grid
+        read x
+        read y
+        read width
+        false
+  # a frame keeps its own bounds inside the rectangle it is given: a fixed size wins, a max holds
+  fork test
+    hook test
+      meet and
+        call is-equal
+          read node/kind
+          text <frame>
+        call is-above
+          read node/children/length
+          code 0
+    hook hold
+      save across
+        call bound-across
+          read node/width
+          call smaller
+            read width
+            call bound-across
+              read node/max-width
+              read width
+      save down
+        call bound-down
+          read node/height
+          call smaller
+            read height
+            call bound-down
+              read node/max-height
+              read height
+      call place
+        read node/children/0
+        read grid
+        read x
+        read y
+        call smaller
+          read across
+          read width
+        call smaller
+          read down
+          read height
+  fork test
+    hook test
+      call is-equal
+        read node/kind
+        text <stack>
+    hook hold
+      call place-stack
+        read node
+        read grid
+        read x
+        read y
+        read width
+        read height
+
+# whether a child keeps its own size across a stack rather than being stretched: a frame with a fixed or largest size
+# in that direction keeps it, as a CSS item with its own width does in a stretching column
+task keeps-cross
+  take child, like cell-node
+  take row, like boolean
+  like boolean
+  fork test
+    hook test
+      call is-unequal
+        read child/kind
+        text <frame>
+    hook hold
+      send back, false
+  fork test
+    hook test
+      read row
+    hook hold
+      send back
+        meet or
+          call is-above
+            read child/height
+            code 0
+          call is-above
+            read child/max-height
+            code 0
+  send back
+    meet or
+      call is-above
+        read child/width
+        code 0
+      call is-above
+        read child/max-width
+        code 0
+
+# a stack's children placed along its direction: their own sizes, the growers sharing the free cells, the rest placed by
+# justify; across, each stretched or set at start, center or end by align. A divider is the stack's own line, drawn
+# down a row or across a column for the whole cross
+task place-stack
+  take node, like cell-node
+  take grid
+    like list
+      like list
+        like text
+  take x, like number
+  take y, like number
+  take width, like number
+  take height, like number
+  save across-pad
+    call pad-across
+      read node
+  save down-pad
+    call pad-down
+      read node
+  save gap
+    call gap-cells
+      read node
+  save row, false
+  fork test
+    hook test
+      call is-equal
+        read node/direction
+        text <row>
+    hook hold
+      save row, true
+  save inner-width
+    call subtract
+      read width
+      call multiply
+        read across-pad
+        code 2
+  save inner-height
+    call subtract
+      read height
+      call multiply
+        read down-pad
+        code 2
+  save main
+    fork test
+      hook test
+        read row
+      hook hold
+        read inner-width
+      hook miss
+        read inner-height
+  # each child's own size along the direction, and the growers
+  save sizes
+    make list
+  save used, code 0
+  save growers, code 0
+  walk list, read node/children
+    hook next
+      take site, name child
+      save size
+        fork test
+          hook test
+            read row
+          hook hold
+            call measure
+              read child
+              call subtract
+                read inner-width
+                read used
+          hook miss
+            call measure
+              read child
+              read inner-width
+      call sizes/push
+        read size
+      save used
+        call add
+          read used
+          fork test
+            hook test
+              read row
+            hook hold
+              read size/width
+            hook miss
+              read size/height
+      fork test
+        hook test
+          call is-above
+            read child/grow
+            code 0
+        hook hold
+          save growers
+            call add
+              read growers
+              code 1
+  save count, read sizes/length
+  save gaps
+    fork test
+      hook test
+        call is-above
+          read count
+          code 1
+      hook hold
+        call multiply
+          read gap
+          call subtract
+            read count
+            code 1
+      hook miss
+        code 0
+  save free
+    call larger
+      call subtract
+        call subtract
+          read main
+          read used
+        read gaps
+      code 0
+  # what each grower gets, the first ones a cell more until the remainder is spent
+  save share, code 0
+  save spare, code 0
+  fork test
+    hook test
+      call is-above
+        read growers
+        code 0
+    hook hold
+      save share
+        call round-down
+          call divide
+            read free
+            read growers
+      save spare
+        call subtract
+          read free
+          call multiply
+            read share
+            read growers
+  # justify, when nothing grows: where the first child starts and what goes between
+  save offset, code 0
+  save between, read gap
+  fork test
+    hook test
+      call is-equal
+        read growers
+        code 0
+    hook hold
+      fork test
+        hook test
+          call is-equal
+            read node/justify
+            text <center>
+        hook hold
+          save offset
+            call round-down
+              call divide
+                read free
+                code 2
+      fork test
+        hook test
+          call is-equal
+            read node/justify
+            text <end>
+        hook hold
+          save offset, read free
+      fork test
+        hook test
+          meet and
+            call is-equal
+              read node/justify
+              text <between>
+            call is-above
+              read count
+              code 1
+        hook hold
+          save between
+            call add
+              read gap
+              call round-down
+                call divide
+                  read free
+                  call subtract
+                    read count
+                    code 1
+  save cross-room
+    fork test
+      hook test
+        read row
+      hook hold
+        read inner-height
+      hook miss
+        read inner-width
+  save at, read offset
+  save index, code 0
+  walk list, read node/children
+    hook next
+      take site, name child
+      save size, read sizes/{index}
+      save length
+        fork test
+          hook test
+            read row
+          hook hold
+            read size/width
+          hook miss
+            read size/height
+      fork test
+        hook test
+          call is-above
+            read child/grow
+            code 0
+        hook hold
+          save length
+            call add
+              read length
+              read share
+          fork test
+            hook test
+              call is-above
+                read spare
+                code 0
+            hook hold
+              save length
+                call add
+                  read length
+                  code 1
+              save spare
+                call subtract
+                  read spare
+                  code 1
+      # across: stretched to the whole cross, unless align says start, center or end, or the child keeps its own
+      save own-cross
+        fork test
+          hook test
+            read row
+          hook hold
+            read size/height
+          hook miss
+            read size/width
+      save cross-size, read cross-room
+      save cross-at, code 0
+      save placed
+        meet or
+          meet and
+            call is-unequal
+              read node/align
+              text <stretch>
+            call is-unequal
+              read node/align
+              text <>
+          call keeps-cross
+            read child
+            read row
+      fork test
+        hook test
+          meet and
+            read placed
+            call is-unequal
+              read child/kind
+              text <divider>
+        hook hold
+          save cross-size
+            call smaller
+              read own-cross
+              read cross-room
+          fork test
+            hook test
+              call is-equal
+                read node/align
+                text <center>
+            hook hold
+              save cross-at
+                call round-down
+                  call divide
+                    call subtract
+                      read cross-room
+                      read cross-size
+                    code 2
+          fork test
+            hook test
+              call is-equal
+                read node/align
+                text <end>
+            hook hold
+              save cross-at
+                call subtract
+                  read cross-room
+                  read cross-size
+      save left
+        call add
+          read x
+          read across-pad
+      save top
+        call add
+          read y
+          read down-pad
+      fork test
+        hook test
+          call is-equal
+            read child/kind
+            text <divider>
+        hook hold
+          fork test
+            hook test
+              read row
+            hook hold
+              call paint-line
+                read grid
+                call add
+                  read left
+                  read at
+                read top
+                read cross-room
+                true
+            hook miss
+              call paint-line
+                read grid
+                read left
+                call add
+                  read top
+                  read at
+                read cross-room
+                false
+        hook miss
+          fork test
+            hook test
+              read row
+            hook hold
+              call place
+                read child
+                read grid
+                call add
+                  read left
+                  read at
+                call add
+                  read top
+                  read cross-at
+                read length
+                read cross-size
+            hook miss
+              call place
+                read child
+                read grid
+                call add
+                  read left
+                  read cross-at
+                call add
+                  read top
+                  read at
+                read cross-size
+                read length
+      save at
+        call add
+          call add
+            read at
+            read length
+          read between
+      save index
+        call add
+          read index
+          code 1
+
+# a grid's lines: each row's cells as text, the blank cells at the end of a line trimmed, so a golden file reads as what
+# a person sees. A wide character's second cell is the empty text and adds nothing
+task render-grid
+  take grid
+    like list
+      like list
+        like text
+  like text
+  save lines, text <>
+  save first, true
+  walk list, read grid
+    hook next
+      take site, name row
+      save last, code -1
+      save index, code 0
+      walk list, read row
+        hook next
+          take site, name cell
+          fork test
+            hook test
+              call is-unequal
+                read cell
+                text < >
+            hook hold
+              save last, read index
+          save index
+            call add
+              read index
+              code 1
+      save line, text <>
+      save column, code 0
+      walk list, read row
+        hook next
+          take site, name cell
+          fork test
+            hook test
+              call is-maximum
+                read column
+                read last
+            hook hold
+              save line
+                call concat
+                  read line
+                  read cell
+          save column
+            call add
+              read column
+              code 1
+      fork test
+        hook test
+          read first
+        hook hold
+          save lines, read line
+          save first, false
+        hook miss
+          save lines
+            call concat
+              call concat
+                read lines
+                text <\n>
+              read line
+  send back, read lines
+
+# a whole tree laid out in a grid of `width` by `height` cells, and rendered
+task lay-out
+  take node, like cell-node
+  take width, like number
+  take height, like number
+  like text
+  save grid
+    call make-grid
+      read width
+      read height
+  call place
+    read node
+    read grid
+    code 0
+    code 0
+    read width
+    read height
+  send back
+    call render-grid
+      read grid

@@ -3,7 +3,7 @@
 
 note unstable
 
-load @term/base/code/native/{platform}/file/asynchronous/link
+load @term/base/native/{platform}/file/asynchronous/link
   find link-make
   find link-read
 
@@ -21,7 +21,6 @@ task make
     read from
     read to
     read hard
-    wait true
 
 # where a symbolic link points, or the empty text if the path is not one
 task read
@@ -31,4 +30,3 @@ task read
   send back
     call link-read
       read path
-      wait true

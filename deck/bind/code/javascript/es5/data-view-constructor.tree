@@ -1,11 +1,11 @@
 
-load @term/bind/code/javascript/es5/array-buffer-like
+load @term/bind/javascript/es5/array-buffer-like
   find array-buffer-like
 
-load @term/bind/code/javascript/es5/data-view
+load @term/bind/javascript/es5/data-view
   find data-view
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form data-view-constructor, name <DataViewConstructor>

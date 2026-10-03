@@ -3,10 +3,10 @@ load @term/bind
   find like
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-void
 
-load @term/bind/code/node/fs
+load @term/bind/node/fs
   find watch-event-type
 
 form watch-listener, name <WatchListener>

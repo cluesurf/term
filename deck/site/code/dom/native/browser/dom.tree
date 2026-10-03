@@ -8,22 +8,22 @@
 load ../global
   find page
 
-load @term/bind/code/browser/dom/element
+load @term/bind/browser/dom/element
   find element
 
-load @term/bind/code/browser/dom/element-css-inline-style
+load @term/bind/browser/dom/element-css-inline-style
   find element-css-inline-style
 
-load @term/bind/code/browser/dom/html-or-svg-element
+load @term/bind/browser/dom/html-or-svg-element
   find html-or-svg-element
 
-load @term/bind/code/browser/dom/node
+load @term/bind/browser/dom/node
   find node
 
-load @term/bind/code/browser/dom/child-node
+load @term/bind/browser/dom/child-node
   find child-node
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
 load ../../view
@@ -254,6 +254,17 @@ task watch-font
   call fontset/watch
     read family
     read handler
+
+# register a face: a FontFace added to document.fonts and asked to load. answers at once; `watch-font` says when the
+# face is drawable. `asset:<name>` is a URL relative to the page, as an app bundle's file is relative to the app.
+task register-font
+  take family, like text
+  take source, like text
+  like boolean
+  send back
+    call fontset/register
+      read family
+      read source
 
 # fallback deadline via the fontset runtime's shared per-family timer (document.fonts has no such notion; the timer +
 # subscriber bookkeeping lives in the runtime shim, matching check / watch)

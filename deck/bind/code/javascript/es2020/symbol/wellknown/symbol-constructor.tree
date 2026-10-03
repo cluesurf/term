@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/es2018/asynciterable/symbol-constructor
+load @term/bind/javascript/es2018/asynciterable/symbol-constructor
   find symbol-constructor
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-symbol
 
 form symbol-constructor, name <SymbolConstructor>

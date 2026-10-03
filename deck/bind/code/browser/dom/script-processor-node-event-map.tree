@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/audio-processing-event
+load @term/bind/browser/dom/audio-processing-event
   find audio-processing-event
 
 form script-processor-node-event-map, name <ScriptProcessorNodeEventMap>

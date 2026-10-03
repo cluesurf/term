@@ -1,7 +1,7 @@
 # The page the update app SHIPS with (native-dom-0024). It leaves with status 11, so the driver knows the shipped page
 # ran. page-next.tree is the same page leaving with 12, which the driver publishes as an update.
 
-load @term/cask/code/cask
+load @term/cask/cask
   find exit
 
 task boot

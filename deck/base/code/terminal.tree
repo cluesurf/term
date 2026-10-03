@@ -4,10 +4,10 @@
 
 note stable
 
-load @term/base/code/environment
+load @term/base/environment
   find has-variable
 
-load @term/base/code/text/unicode
+load @term/base/text/unicode
   find rune-to-text
 
 # whether standard output is a terminal

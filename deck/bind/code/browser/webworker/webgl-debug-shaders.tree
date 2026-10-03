@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/webgl-debug-shaders
+load @term/bind/browser/dom/webgl-debug-shaders
   find webgl-debug-shaders
 
-load @term/bind/code/browser/webworker/web-gl-shader
+load @term/bind/browser/webworker/web-gl-shader
   find web-gl-shader
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form webgl-debug-shaders, name <WEBGL_debug_shaders>

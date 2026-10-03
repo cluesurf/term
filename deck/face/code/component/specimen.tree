@@ -5,10 +5,10 @@
 #   sample -> the text to render in the script
 #   class  -> extra classes, used to apply the script's @font-face family (the font is a package artifact)
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
   find make-text
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 

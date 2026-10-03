@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/performance-entry
+load @term/bind/browser/dom/performance-entry
   find performance-entry
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
 form performance-entry-list, name <PerformanceEntryList>

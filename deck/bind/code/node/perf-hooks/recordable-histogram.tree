@@ -2,12 +2,12 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-bigint
   find native-number
   find native-void
 
-load @term/bind/code/node/perf-hooks
+load @term/bind/node/perf-hooks
   find histogram
 
 form recordable-histogram, name <RecordableHistogram>

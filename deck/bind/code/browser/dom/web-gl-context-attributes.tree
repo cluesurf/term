@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/web-gl-power-preference
+load @term/bind/browser/dom/web-gl-power-preference
   find web-gl-power-preference
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
 form web-gl-context-attributes, name <WebGLContextAttributes>

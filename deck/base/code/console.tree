@@ -3,7 +3,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/console
+load @term/base/native/{platform}/console
   find write-line
   find write-error
 

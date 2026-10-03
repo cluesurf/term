@@ -5,7 +5,7 @@
 // walk. Used by test/compile/blog-native.ts and test/compile/toolkit-words.ts.
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
@@ -38,6 +38,10 @@ export type ToolkitRun = {
   // the program for one platform, writing its PNG at `shot`. Android writes a bare file name into the app's own
   // external files directory, which this then pulls
   program: (leg: Leg, shot: string) => string
+  // files the Android app carries in its APK, by asset name, read as `asset:<name>` (a simulator and a Mac read host
+  // paths, an emulator cannot)
+  assets?: Record<string, string>
+
   // what the run must have shown, read from its output
   judge: (leg: Leg, toolkit: string, output: string, shot: string) => void
   ok: (name: string, cond: boolean, info?: string) => void
@@ -149,6 +153,11 @@ function runAndroid(run: ToolkitRun): void {
   const work = join(run.dir, 'android')
   const assets = join(work, 'assets')
   mkdirSync(assets, { recursive: true })
+
+  for (const [name, file] of Object.entries(run.assets ?? {})) {
+    copyFileSync(file, join(assets, name))
+  }
+
   const entry = join(run.dir, 'android.tree')
   writeFileSync(entry, run.program('android', 'native-dom.png'))
 

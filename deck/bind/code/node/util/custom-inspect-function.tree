@@ -2,11 +2,11 @@
 load @term/bind
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
   find native-string
 
-load @term/bind/code/node/util
+load @term/bind/node/util
   find inspect-options-stylized
 
 form custom-inspect-function, name <CustomInspectFunction>

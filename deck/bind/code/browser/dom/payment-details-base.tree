@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/payment-details-modifier
+load @term/bind/browser/dom/payment-details-modifier
   find payment-details-modifier
 
-load @term/bind/code/browser/dom/payment-item
+load @term/bind/browser/dom/payment-item
   find payment-item
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
 form payment-details-base, name <PaymentDetailsBase>

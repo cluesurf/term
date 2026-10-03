@@ -8,7 +8,7 @@
 # object keyed by name, and `backendInfo(name)`, which answered `undefined` for an unknown name, is gone, because
 # nothing but that test read it.
 
-load @term/base/code/list
+load @term/base/list
   find list
 
 form backend-info

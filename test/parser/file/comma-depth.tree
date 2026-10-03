@@ -6,6 +6,7 @@ add 1, 2
 take message, like text, need false
 h(x,1)
 call add(read x, 2)
+want hold, is-equal get(found, 1), 14
 
 ---
 
@@ -30,8 +31,8 @@ link
   @x
   code
     <1.x.x>
-  have
-    1
+    have
+      1
 a
   b
   c
@@ -53,3 +54,10 @@ call
     read
       x
       2
+want
+  hold
+  is-equal
+    get
+      found
+      1
+    14

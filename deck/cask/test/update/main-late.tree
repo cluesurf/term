@@ -3,7 +3,7 @@
 # window lives only because the cask holds every open window itself. Before it did, this page's load neither
 # finished nor failed. test/call/update-app.ts launches it beside ./main.tree and needs the same statuses from both.
 
-load @term/cask/code/cask
+load @term/cask/cask
   find window
   find open-window
   find load-bundle

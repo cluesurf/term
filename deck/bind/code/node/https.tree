@@ -9,7 +9,7 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find agent
   find http-client-request
   find http-incoming-message
@@ -18,7 +18,7 @@ load @term/bind/code/javascript
   find native-void
   find url
 
-load @term/bind/code/node/https
+load @term/bind/node/https
   find request-options
   find server
   find server-options

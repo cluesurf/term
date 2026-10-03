@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/audio-node-options
+load @term/bind/browser/dom/audio-node-options
   find audio-node-options
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form stereo-panner-options, name <StereoPannerOptions>

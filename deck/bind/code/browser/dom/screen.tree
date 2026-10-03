@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/screen-orientation
+load @term/bind/browser/dom/screen-orientation
   find screen-orientation
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form screen, name <Screen>

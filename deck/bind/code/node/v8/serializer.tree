@@ -2,14 +2,14 @@
 load @term/bind
   find any
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array-buffer
   find native-boolean
   find native-number
   find native-void
   find node-js-typed-array
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
 form serializer, name <Serializer>

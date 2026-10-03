@@ -5,20 +5,20 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find error
   find native-null
   find native-number
   find native-void
   find transform
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer-encoding
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find array
 
-load @term/bind/code/node/stream/internal
+load @term/bind/node/stream/internal
   find duplex-options
   find transform-callback
 

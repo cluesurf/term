@@ -2,7 +2,7 @@
 load @term/bind
   find form
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find decipher
   find native-number
   find native-this

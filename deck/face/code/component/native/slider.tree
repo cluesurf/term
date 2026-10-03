@@ -10,14 +10,14 @@
 # Two-way: the control shows the range's value, and a move the person makes is written into the range. Parts:
 # `slider` (the control, data-slot for a theme).
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
   find write-attribute
   find attach-event
-load @term/site/code/view/reactive
+load @term/site/view/reactive
   find signal
   find make-effect
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
   find get-value
@@ -35,6 +35,7 @@ task mount-slider
   take min, like decimal
   take max, like decimal
   take step, like decimal
+  take label, like text
   like view
   save input
     call make-element
@@ -43,6 +44,11 @@ task mount-slider
     read input
     text <type>
     text <range>
+  # its name, what a screen reader speaks before its value (note/term/view/11-vocabulary.md, "Accessibility")
+  call write-attribute
+    read input
+    text <aria-label>
+    read label
   call write-attribute
     read input
     text <data-slot>
@@ -91,6 +97,10 @@ view slider
   take min, like decimal
   take max, like decimal
   take step, like decimal
+  take
+    label
+    like text
+    fall <>
   save mounted
     call mount-slider
       read host
@@ -99,3 +109,4 @@ view slider
       read min
       read max
       read step
+      read label

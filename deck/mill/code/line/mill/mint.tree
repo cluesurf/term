@@ -1,5 +1,5 @@
 
-load @term/mill/code/code/bind/mint
+load @term/mill/code/bind/mint
   find bind
 
 mint dock-mill

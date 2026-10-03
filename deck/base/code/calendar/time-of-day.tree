@@ -4,7 +4,7 @@
 
 note stable
 
-load @term/base/code/calendar/time-text
+load @term/base/calendar/time-text
   find time-mismatch
   find refuse-time
   find time-rune-at
@@ -12,14 +12,14 @@ load @term/base/code/calendar/time-text
   find time-mark
   find time-range
 
-load @term/base/code/calendar/civil
+load @term/base/calendar/civil
   find pad-number
   find floor-divide
 
-load @term/base/code/text/unicode
+load @term/base/text/unicode
   find to-runes
 
-load @term/base/code/list
+load @term/base/list
   find size
 
 form time-of-day

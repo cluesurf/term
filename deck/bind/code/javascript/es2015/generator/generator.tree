@@ -5,10 +5,10 @@ load @term/bind/code/javascript/iterator
 load @term/bind/code/javascript/iterator-result
   find iterator-result
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-unknown
 
 form generator, name <Generator>

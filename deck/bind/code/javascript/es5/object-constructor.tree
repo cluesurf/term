@@ -1,44 +1,44 @@
 
-load @term/bind/code/javascript/es5/function
+load @term/bind/javascript/es5/function
   find function
 
-load @term/bind/code/javascript/es5/object
+load @term/bind/javascript/es5/object
   find object
 
-load @term/bind/code/javascript/es5/property-descriptor
+load @term/bind/javascript/es5/property-descriptor
   find property-descriptor
 
-load @term/bind/code/javascript/es5/property-descriptor-map
+load @term/bind/javascript/es5/property-descriptor-map
   find property-descriptor-map
 
-load @term/bind/code/javascript/es5/property-key
+load @term/bind/javascript/es5/property-key
   find property-key
 
-load @term/bind/code/javascript/es5/readonly
+load @term/bind/javascript/es5/readonly
   find readonly
 
-load @term/bind/code/javascript/es5/this-type
+load @term/bind/javascript/es5/this-type
   find this-type
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-object
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-undefined
 
 form object-constructor, name <ObjectConstructor>

@@ -1,13 +1,13 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-string
   find node-js-array-buffer-view
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/crypto
+load @term/bind/node/crypto
   find binary-like
 
 form certificate, name <Certificate>

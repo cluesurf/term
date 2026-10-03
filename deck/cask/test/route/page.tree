@@ -4,17 +4,17 @@
 # router echoed the expected line back through its `:word` parameter and 1 when it did not. The driver reads that
 # status.
 
-load @term/cask/code/cask
+load @term/cask/cask
   find bundle-path
   find exit
 
-load @term/site/code/http/local
+load @term/site/http/local
   find ask
 
-load @term/base/code/file
+load @term/base/file
   find read
 
-load @term/base/code/text
+load @term/base/text
   find trim
 
 # what the driver writes into <bundle>/smoke.txt

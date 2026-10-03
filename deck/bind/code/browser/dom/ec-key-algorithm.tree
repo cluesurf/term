@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/key-algorithm
+load @term/bind/browser/dom/key-algorithm
   find key-algorithm
 
-load @term/bind/code/browser/dom/named-curve
+load @term/bind/browser/dom/named-curve
   find named-curve
 
 form ec-key-algorithm, name <EcKeyAlgorithm>

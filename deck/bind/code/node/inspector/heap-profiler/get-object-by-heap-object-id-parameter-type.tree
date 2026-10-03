@@ -2,11 +2,11 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
   find native-undefined
 
-load @term/bind/code/node/inspector/heap-profiler
+load @term/bind/node/inspector/heap-profiler
   find heap-snapshot-object-id
 
 form get-object-by-heap-object-id-parameter-type, name <GetObjectByHeapObjectIdParameterType>

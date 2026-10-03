@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/webworker/readable-stream-default-read-done-result
+load @term/bind/browser/webworker/readable-stream-default-read-done-result
   find readable-stream-default-read-done-result
 
-load @term/bind/code/browser/webworker/readable-stream-default-read-value-result
+load @term/bind/browser/webworker/readable-stream-default-read-value-result
   find readable-stream-default-read-value-result
 
 form readable-stream-default-read-result, name <ReadableStreamDefaultReadResult>

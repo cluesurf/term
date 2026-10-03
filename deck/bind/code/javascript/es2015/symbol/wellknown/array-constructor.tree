@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript/es2015/iterable/array-constructor
+load @term/bind/javascript/es2015/iterable/array-constructor
   find array-constructor
 
 form array-constructor, name <ArrayConstructor>

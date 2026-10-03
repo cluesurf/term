@@ -1,7 +1,7 @@
-load @term/base/code/hash
+load @term/base/hash
   find hash
 
-load @term/base/code/list
+load @term/base/list
   find list
 
 form point

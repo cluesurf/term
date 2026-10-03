@@ -1,9 +1,9 @@
 note <range: length agrees with to-list, rounding a partial last step up>
 
-load @term/base/code/range
+load @term/base/range
   find range
 
-load @term/base/code/list
+load @term/base/list
   find size
 
 test <length rounds a partial last step up>

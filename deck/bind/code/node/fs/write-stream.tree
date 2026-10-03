@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find error
   find native-boolean
@@ -17,17 +17,17 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
 form write-stream, name <WriteStream>
   base stream-writable
-  link bytes-written, name <bytesWritten>, like native-number
+  link bytes-written, name(<bytesWritten>), like native-number
   link path, name <path>
     like or
       like native-string
       like buffer
-  link pending, name <pending>, like native-boolean
+  link pending, name(<pending>), like native-boolean
 
   task close, name <close>
     like native-void

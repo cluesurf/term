@@ -13,7 +13,7 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find interface
   find native-boolean
   find native-number
@@ -21,7 +21,7 @@ load @term/bind/code/javascript
   find node-js-readable-stream
   find node-js-writable-stream
 
-load @term/bind/code/node/readline
+load @term/bind/node/readline
   find async-completer
   find completer
   find direction

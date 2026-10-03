@@ -5,7 +5,7 @@ note draft
 # Nothing loads it. Term's test framework is the `test <phrase>` block with `want hold` / `want miss`, run by
 # `term test` (deck/call/code/test-preprocess.ts), held across backends by `pnpm term:base-gate`.
 
-load @term/base/code/test/suite
+load @term/base/test/suite
   find failure
 
 task make-failure

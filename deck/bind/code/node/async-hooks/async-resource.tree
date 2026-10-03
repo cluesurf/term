@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find async-resource
   find native-number
@@ -15,7 +15,7 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/async-hooks
+load @term/bind/node/async-hooks
   find async-resource-options
 
 form async-resource, name <AsyncResource>

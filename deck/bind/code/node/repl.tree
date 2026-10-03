@@ -12,13 +12,13 @@ load @term/bind
   find form
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find inspect-options
   find native-string
   find native-symbol
   find repl-server
 
-load @term/bind/code/node/repl
+load @term/bind/node/repl
   find repl-options
   find repl-writer
 

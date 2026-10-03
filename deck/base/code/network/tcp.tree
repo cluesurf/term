@@ -2,16 +2,16 @@
 
 note stable
 
-load @term/base/code/native/{platform}/network/tcp
+load @term/base/native/{platform}/network/tcp
   find tcp-connect
   find tcp-listen
 
-load @term/base/code/native/{platform}/network/tcp/connection
+load @term/base/native/{platform}/network/tcp/connection
   find wire-read
   find wire-write
   find tcp-close
 
-load @term/base/code/native/{platform}/network/tcp/listener
+load @term/base/native/{platform}/network/tcp/listener
   find tcp-accept
   find tcp-close-server
 
@@ -30,7 +30,6 @@ form connection
     send back
       call wire-read
         read self
-        wait true
 
   # write `data` to the peer, returning the number of bytes written
   task write
@@ -42,7 +41,6 @@ form connection
       call wire-write
         read self
         read data
-        wait true
 
   # close the connection
   task close
@@ -51,7 +49,6 @@ form connection
     like void
     call tcp-close
       read self
-      wait true
 
 # a TCP listener accepting incoming connections
 form listener
@@ -67,7 +64,6 @@ form listener
     send back
       call tcp-accept
         read self
-        wait true
 
   # stop listening and release the port
   task close
@@ -76,7 +72,6 @@ form listener
     like void
     call tcp-close-server
       read self
-      wait true
 
 # open a connection to `host:port` (TLS when `secure`)
 task connect
@@ -93,7 +88,6 @@ task connect
       read host
       read port
       read secure
-      wait true
 
 # bind a listener on `host:port` (TLS when `secure`, using `certificate` / `key`)
 task listen
@@ -123,4 +117,3 @@ task listen
       read secure
       read certificate
       read key
-      wait true

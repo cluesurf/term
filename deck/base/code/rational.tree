@@ -2,7 +2,7 @@
 
 note unstable
 
-load @term/base/code/math
+load @term/base/math
   find greatest-common-divisor
   find absolute
 

@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript/es2015/iterable/float64-array
+load @term/bind/javascript/es2015/iterable/float64-array
   find float64-array
 
 form float64-array, name <Float64Array>

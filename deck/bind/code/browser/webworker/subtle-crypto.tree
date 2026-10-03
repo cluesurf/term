@@ -1,140 +1,140 @@
 
-load @term/bind/code/browser/dom/iterable/subtle-crypto
+load @term/bind/browser/dom/iterable/subtle-crypto
   find subtle-crypto
 
-load @term/bind/code/browser/webworker/aes-cbc-params
+load @term/bind/browser/webworker/aes-cbc-params
   find aes-cbc-params
 
-load @term/bind/code/browser/webworker/aes-cfb-params
+load @term/bind/browser/webworker/aes-cfb-params
   find aes-cfb-params
 
-load @term/bind/code/browser/webworker/aes-cmac-params
+load @term/bind/browser/webworker/aes-cmac-params
   find aes-cmac-params
 
-load @term/bind/code/browser/webworker/aes-ctr-params
+load @term/bind/browser/webworker/aes-ctr-params
   find aes-ctr-params
 
-load @term/bind/code/browser/webworker/aes-derived-key-params
+load @term/bind/browser/webworker/aes-derived-key-params
   find aes-derived-key-params
 
-load @term/bind/code/browser/webworker/aes-gcm-params
+load @term/bind/browser/webworker/aes-gcm-params
   find aes-gcm-params
 
-load @term/bind/code/browser/webworker/aes-key-algorithm
+load @term/bind/browser/webworker/aes-key-algorithm
   find aes-key-algorithm
 
-load @term/bind/code/browser/webworker/aes-key-gen-params
+load @term/bind/browser/webworker/aes-key-gen-params
   find aes-key-gen-params
 
-load @term/bind/code/browser/webworker/algorithm-identifier
+load @term/bind/browser/webworker/algorithm-identifier
   find algorithm-identifier
 
-load @term/bind/code/browser/webworker/concat-params
+load @term/bind/browser/webworker/concat-params
   find concat-params
 
-load @term/bind/code/browser/webworker/crypto-key
+load @term/bind/browser/webworker/crypto-key
   find crypto-key
 
-load @term/bind/code/browser/webworker/crypto-key-pair
+load @term/bind/browser/webworker/crypto-key-pair
   find crypto-key-pair
 
-load @term/bind/code/browser/webworker/dh-import-key-params
+load @term/bind/browser/webworker/dh-import-key-params
   find dh-import-key-params
 
-load @term/bind/code/browser/webworker/dh-key-derive-params
+load @term/bind/browser/webworker/dh-key-derive-params
   find dh-key-derive-params
 
-load @term/bind/code/browser/webworker/dh-key-gen-params
+load @term/bind/browser/webworker/dh-key-gen-params
   find dh-key-gen-params
 
-load @term/bind/code/browser/webworker/ec-key-gen-params
+load @term/bind/browser/webworker/ec-key-gen-params
   find ec-key-gen-params
 
-load @term/bind/code/browser/webworker/ec-key-import-params
+load @term/bind/browser/webworker/ec-key-import-params
   find ec-key-import-params
 
-load @term/bind/code/browser/webworker/ecdh-key-derive-params
+load @term/bind/browser/webworker/ecdh-key-derive-params
   find ecdh-key-derive-params
 
-load @term/bind/code/browser/webworker/ecdsa-params
+load @term/bind/browser/webworker/ecdsa-params
   find ecdsa-params
 
-load @term/bind/code/browser/webworker/hkdf-params
+load @term/bind/browser/webworker/hkdf-params
   find hkdf-params
 
-load @term/bind/code/browser/webworker/hmac-import-params
+load @term/bind/browser/webworker/hmac-import-params
   find hmac-import-params
 
-load @term/bind/code/browser/webworker/hmac-key-gen-params
+load @term/bind/browser/webworker/hmac-key-gen-params
   find hmac-key-gen-params
 
-load @term/bind/code/browser/webworker/json-web-key
+load @term/bind/browser/webworker/json-web-key
   find json-web-key
 
-load @term/bind/code/browser/webworker/key-usage
+load @term/bind/browser/webworker/key-usage
   find key-usage
 
-load @term/bind/code/browser/webworker/pbkdf2-params
+load @term/bind/browser/webworker/pbkdf2-params
   find pbkdf2-params
 
-load @term/bind/code/browser/webworker/rsa-hashed-import-params
+load @term/bind/browser/webworker/rsa-hashed-import-params
   find rsa-hashed-import-params
 
-load @term/bind/code/browser/webworker/rsa-hashed-key-gen-params
+load @term/bind/browser/webworker/rsa-hashed-key-gen-params
   find rsa-hashed-key-gen-params
 
-load @term/bind/code/browser/webworker/rsa-oaep-params
+load @term/bind/browser/webworker/rsa-oaep-params
   find rsa-oaep-params
 
-load @term/bind/code/browser/webworker/rsa-pss-params
+load @term/bind/browser/webworker/rsa-pss-params
   find rsa-pss-params
 
-load @term/bind/code/javascript/es5/array-buffer
+load @term/bind/javascript/es5/array-buffer
   find array-buffer
 
-load @term/bind/code/javascript/es5/data-view
+load @term/bind/javascript/es5/data-view
   find data-view
 
-load @term/bind/code/javascript/es5/float32-array
+load @term/bind/javascript/es5/float32-array
   find float32-array
 
-load @term/bind/code/javascript/es5/float64-array
+load @term/bind/javascript/es5/float64-array
   find float64-array
 
-load @term/bind/code/javascript/es5/int16-array
+load @term/bind/javascript/es5/int16-array
   find int16-array
 
-load @term/bind/code/javascript/es5/int32-array
+load @term/bind/javascript/es5/int32-array
   find int32-array
 
-load @term/bind/code/javascript/es5/int8-array
+load @term/bind/javascript/es5/int8-array
   find int8-array
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/es5/uint16-array
+load @term/bind/javascript/es5/uint16-array
   find uint16-array
 
-load @term/bind/code/javascript/es5/uint32-array
+load @term/bind/javascript/es5/uint32-array
   find uint32-array
 
-load @term/bind/code/javascript/es5/uint8-array
+load @term/bind/javascript/es5/uint8-array
   find uint8-array
 
-load @term/bind/code/javascript/es5/uint8-clamped-array
+load @term/bind/javascript/es5/uint8-clamped-array
   find uint8-clamped-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form subtle-crypto, name <SubtleCrypto>

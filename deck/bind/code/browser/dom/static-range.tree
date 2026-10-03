@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/abstract-range
+load @term/bind/browser/dom/abstract-range
   find abstract-range
 
 form static-range, name <StaticRange>

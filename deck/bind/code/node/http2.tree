@@ -35,7 +35,7 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find http2-server-request
   find http2-server-response
   find native-string
@@ -45,13 +45,13 @@ load @term/bind/code/javascript
   find tls-tls-socket
   find url-url
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find uint8-array
 
-load @term/bind/code/node/http2
+load @term/bind/node/http2
   find client-http2-session
   find client-session-options
   find http2-secure-server

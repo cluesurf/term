@@ -2,7 +2,7 @@
 
 note unstable
 
-load @term/base/code/native/{platform}/text/string
+load @term/base/native/{platform}/text/string
   find string-upper
   find string-lower
   find string-trim

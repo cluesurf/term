@@ -1,23 +1,23 @@
 
-load @term/bind/code/browser/dom/data-transfer-item-list
+load @term/bind/browser/dom/data-transfer-item-list
   find data-transfer-item-list
 
-load @term/bind/code/browser/dom/element
+load @term/bind/browser/dom/element
   find element
 
-load @term/bind/code/browser/dom/file-list
+load @term/bind/browser/dom/file-list
   find file-list
 
-load @term/bind/code/javascript/es5/readonly-array
+load @term/bind/javascript/es5/readonly-array
   find readonly-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form data-transfer, name <DataTransfer>

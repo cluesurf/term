@@ -19,13 +19,13 @@ load ./reactive
   find make-signal
   find write-signal
 
-load @term/base/code/hash
+load @term/base/hash
   find hash
   find get
   find set
   find has
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
 # the signals handed out so far, by trait name. Read through the form's `get` (`call get / read traits`), which answers a

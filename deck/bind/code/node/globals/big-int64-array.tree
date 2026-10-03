@@ -1,5 +1,5 @@
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find relative-indexable
 
 form big-int64-array, name <BigInt64Array>

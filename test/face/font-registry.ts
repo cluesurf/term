@@ -275,6 +275,13 @@ function runKotlin(): void {
 const legs = (process.env.FONT_LEGS || 'typescript,swift,kotlin').split(',')
 
 if (legs.includes('typescript')) {
+  // face's table is belt's table as of now: the generator in report mode exits 1 on drift. Only for face's own copy,
+  // since a FONT_DIR elsewhere is a scratch copy the generator does not write
+  if (!process.env.FONT_DIR) {
+    const drift = spawnSync('npx', ['tsx', join(ROOT, '../../../../task/term/font-table.ts')], { encoding: 'utf8' })
+    ok('the table is belt\'s table (pnpm term:font-table reports it in step)', drift.status === 0, drift.stdout.trim().split('\n').pop() ?? '')
+  }
+
   runTypescript()
 }
 

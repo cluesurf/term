@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/text-track
+load @term/bind/browser/dom/text-track
   find text-track
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
 form track-event, name <TrackEvent>

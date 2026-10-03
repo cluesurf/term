@@ -1,6 +1,6 @@
-deck @term/term
+deck @term/code
   head <A TreeCode Programming Framework>
-  code <0.0.1>
+  mark <2.6.0>
   sort tool
   lock mit
   site <https://github.com/cluesurf/term>
@@ -12,7 +12,7 @@ deck @term/term
   term platform
   term white-label
   term compiler
-  # every package under ./deck, alphabetical. `@term/term` is this manifest itself and is not a member of itself.
+  # every package under ./deck, alphabetical. `@term/code` is this manifest itself and is not a member of itself.
   deck ./deck/base
   deck ./deck/bind
   deck ./deck/call

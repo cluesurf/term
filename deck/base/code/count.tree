@@ -4,10 +4,10 @@
 
 note unstable
 
-load @term/base/code/hash
+load @term/base/hash
   find hash
 
-load @term/base/code/list
+load @term/base/list
   find list
 
 # how many times each query occurs in `values`, in the order of the queries: one scan of `values` per query

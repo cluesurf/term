@@ -2,7 +2,7 @@
 # build that also holds top-level tasks of those names (`text`'s `slice` and `contains`, `bytes`' `slice`, `file`'s
 # `copy`), the top-level task shadows the method and the call is refused as the wrong overload.
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
   find get

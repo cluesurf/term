@@ -24,7 +24,7 @@
 # guards return, and what follows is the default. The original wrote `hook else`, which is one more reason this
 # module never ran.
 
-load @term/base/code/path
+load @term/base/path
   find join
 
 # `dock load`, not a `load` of @term/bind. The bind package declares the SHAPE of node's `os` (`task homedir,

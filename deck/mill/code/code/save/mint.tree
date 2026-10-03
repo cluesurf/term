@@ -1,7 +1,7 @@
-load @term/mill/code/code/like/mint
+load @term/mill/code/like/mint
   find like
 
-load @term/mill/code/code/seed/mint
+load @term/mill/code/seed/mint
   find seed
 
 mint save

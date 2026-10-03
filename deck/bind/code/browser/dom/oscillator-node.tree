@@ -1,38 +1,38 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/audio-param
+load @term/bind/browser/dom/audio-param
   find audio-param
 
-load @term/bind/code/browser/dom/audio-scheduled-source-node
+load @term/bind/browser/dom/audio-scheduled-source-node
   find audio-scheduled-source-node
 
-load @term/bind/code/browser/dom/audio-scheduled-source-node-event-map
+load @term/bind/browser/dom/audio-scheduled-source-node-event-map
   find audio-scheduled-source-node-event-map
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/oscillator-type
+load @term/bind/browser/dom/oscillator-type
   find oscillator-type
 
-load @term/bind/code/browser/dom/periodic-wave
+load @term/bind/browser/dom/periodic-wave
   find periodic-wave
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form oscillator-node, name <OscillatorNode>

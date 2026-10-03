@@ -8,13 +8,13 @@ dock type
 dock load
   load <global:http2>, name http2
 
-load @term/base/code/network/server/request
+load @term/base/network/server/request
   find request
 
-load @term/base/code/network/server/response
+load @term/base/network/server/response
   find response
 
-load @term/base/code/network/http2
+load @term/base/network/http2
   find http2-server
 
 # run an HTTP/2 server on (host, port), blocking for the life of the process. Without `secure` this is h2c.

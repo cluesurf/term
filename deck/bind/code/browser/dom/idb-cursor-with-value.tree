@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/idb-cursor
+load @term/bind/browser/dom/idb-cursor
   find idb-cursor
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
 form idb-cursor-with-value, name <IDBCursorWithValue>

@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
 
-load @term/bind/code/node/inspector/profiler
+load @term/bind/node/inspector/profiler
   find script-type-profile
 
 form take-type-profile-return-type, name <TakeTypeProfileReturnType>

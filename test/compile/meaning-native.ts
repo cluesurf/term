@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { nativeFlags } from './native-flags'
 import { parse } from '@term/make/code/parser/tree'
+import { stdlibResolver } from '@term/make/code/resolve'
 import { mill } from '@term/make/code/compile/mill'
 import { resolve as resolveNames } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
@@ -147,18 +148,24 @@ const BORROW = readFileSync(join(import.meta.dirname, 'meaning-native/borrow.tre
 const BORROW_WANT = 'small=4 big=25 labels=b.c widest=25 again=25 bumped=6 each=33'
 const LEND_WANT ='after=4 self-read=2 shared=9 sum=117 fresh=14 owned=100,2,10101,6'
 
+// two lists lent to one call, one written: the same list passed in both places refuses the lend everywhere
+const ALIAS = readFileSync(join(import.meta.dirname, 'meaning-native/alias.tree'), 'utf8')
+const ALIAS_WANT = 'same=1,3 apart=0,1'
+
+// a recursive form nothing clones, held in a `Box` on Rust: built, consumed by a reversal moving each child out, summed
+const BOXES = readFileSync(join(import.meta.dirname, 'meaning-native/boxes.tree'), 'utf8')
+const BOXES_WANT = 'sum=15 first=1'
+
+// records in a list written back in place on TypeScript and Kotlin (compile/place.ts): the pair loop that may, and an
+// old value read after the write, two indices that can be one, and a record kept in a local too, which may not
+const PLACE = readFileSync(join(import.meta.dirname, 'meaning-native/place.tree'), 'utf8')
+const PLACE_WANT = 'p0=107,10 p1=5,35 p2=3,73 old=6 pin=1'
+
 const baseTree = join(process.cwd(), 'deck', 'base')
 const STDLIB_PREFIX = /^@term\/base\//
 
-const stdlib = (path: string): Source | undefined => {
-  if (!STDLIB_PREFIX.test(path)) {
-    return undefined
-  }
-
-  const file = join(baseTree, `${path.replace(STDLIB_PREFIX, '')}.tree`)
-
-  return existsSync(file) ? { file, text: readFileSync(file, 'utf8') } : undefined
-}
+// the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+const stdlib = stdlibResolver()!
 
 const readRuntime = (path: string): string | undefined => {
   if (existsSync(path)) {
@@ -291,6 +298,9 @@ for (const backend of ['typescript', 'rust', 'swift', 'kotlin']) {
   run(backend, 'closures', CLOSURES, CLOSURES_WANT)
   run(backend, 'lend', LEND, LEND_WANT)
   run(backend, 'borrow', BORROW, BORROW_WANT)
+  run(backend, 'boxes', BOXES, BOXES_WANT)
+  run(backend, 'alias', ALIAS, ALIAS_WANT)
+  run(backend, 'place', PLACE, PLACE_WANT)
 }
 
 console.log(`\nmeaning-native: ${pass} pass, ${fail} fail, ${skip} skipped`)

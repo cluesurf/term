@@ -1,20 +1,20 @@
 
-load @term/bind/code/browser/dom/document
+load @term/bind/browser/dom/document
   find document
 
-load @term/bind/code/browser/dom/element
+load @term/bind/browser/dom/element
   find element
 
-load @term/bind/code/browser/dom/node
+load @term/bind/browser/dom/node
   find node
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form attr, name <Attr>

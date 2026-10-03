@@ -1,6 +1,6 @@
 # The list tools give the same answer on every backend: they are walks in Term. Held by `pnpm term:base-gate`.
 
-load @term/base/code/list
+load @term/base/list
   find list
   find size
   find join
@@ -18,19 +18,19 @@ load @term/base/code/list
   find max-by
   find binary-search
 
-load @term/base/code/hash
+load @term/base/hash
   find hash
   find keys
   find get-or-default
 
-load @term/base/code/pair
+load @term/base/pair
   find pair
 
-load @term/base/code/ordering
+load @term/base/ordering
   find ordering
   find from-numbers
 
-load @term/base/code/maybe
+load @term/base/maybe
   find unwrap-or
 
 task numbers
@@ -85,34 +85,54 @@ test <zip stops at the shorter list>
     call zip
       call numbers
       read letters
-  save second
-    call get
-      read zipped
-      code 1
+  # the size first, so the read is on the path that knows the pair is there
+  save right, text <>
+  fork test
+    hook test
+      call is-equal
+        read zipped/length
+        code 2
+    hook hold
+      save second
+        call get
+          read zipped
+          code 1
+      save right, read second/second
   want hold
     call and
       call is-equal
         call size, read zipped
         code 2
       call is-equal
-        read second/second
+        read right
         text <b>
 
 test <enumerate counts from zero>
   save numbered
     call enumerate
       call numbers
-  save last
-    call get
-      read numbered
-      code 4
+  # the size first, so the read is on the path that knows the fifth pair is there
+  save place, code 0
+  save value, code 0
+  fork test
+    hook test
+      call is-equal
+        read numbered/length
+        code 5
+    hook hold
+      save last
+        call get
+          read numbered
+          code 4
+      save place, read last/first
+      save value, read last/second
   want hold
     call and
       call is-equal
-        read last/first
+        read place
         code 4
       call is-equal
-        read last/second
+        read value
         code 5
 
 test <chunk leaves a short last run>
@@ -161,17 +181,21 @@ test <partition splits by the test>
   want hold
     call and
       call is-equal
-        call size
-          call get
-            read split
-            code 0
-        code 4
-      call is-equal
-        call size
-          call get
-            read split
-            code 1
-        code 1
+        read split/length
+        code 2
+      call and
+        call is-equal
+          call size
+            call get
+              read split
+              code 0
+          code 4
+        call is-equal
+          call size
+            call get
+              read split
+              code 1
+          code 1
 
 test <flat-map joins each item's list>
   want hold

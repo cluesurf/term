@@ -36,6 +36,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
+import { resolvePackagePath, sourceOf } from '@term/make/code/resolve'
 import { mill } from '@term/make/code/compile/mill'
 import { resolve as resolveNames } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
@@ -207,13 +208,8 @@ const resolver = (path: string, from: string): Source | undefined => {
     return undefined
   }
 
-  for (const candidate of [join(root, `${match[2]}.tree`), join(root, match[2]!, 'base.tree')]) {
-    if (existsSync(candidate)) {
-      return { file: candidate, text: readFileSync(candidate, 'utf8') }
-    }
-  }
-
-  return undefined
+  // inside the package by the package path rule every resolver calls (code root, then package root)
+  return sourceOf(resolvePackagePath({ dir: root, rest: match[2]! }))
 }
 
 function compilesClean(source: string, at: string): boolean {
@@ -484,7 +480,7 @@ const countedSource = compileFeedMine(counted, 'byte', '@term/feed/code/base')
 
 ok(
   'a count-directed list stops at its count',
-  countedSource.includes('call is-below(call size(read(list-1)), read(total))'),
+  countedSource.includes('call is-below(call(size(read(list-1))), read(total))'),
   countedSource.split('\n').filter(l => l.includes('hook test') || l.includes('is-below') || l.includes('at-end')).join(' | '),
 )
 

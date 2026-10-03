@@ -3,7 +3,7 @@ bear @term/bind/code/javascript/node/tty/read-stream
 bear @term/bind/code/javascript/node/tty/direction
 bear @term/bind/code/javascript/node/tty/write-stream
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-number
 

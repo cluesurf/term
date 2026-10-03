@@ -123,6 +123,47 @@ function build(env: 'node' | 'swift') {
   }
 }
 
+// native-text-0003: two closures in one task that each `save` the same name. Each is its own scope, so each declares
+// it: the bridge used to let the first closure's `save` leak into the task, which turned the second closure's `save`
+// into an assignment to a local it cannot see, and every read of it failed as "not defined"
+{
+  const SIBLINGS = `task in-closure
+  take body
+    like task
+  call body
+
+task run
+  like number
+  save total, code 0
+  call in-closure
+    task first
+      save seen, code 3
+      save total
+        call add
+          read total
+          read seen
+  call in-closure
+    task second
+      save seen, code 4
+      save total
+        call add
+          read total
+          read seen
+  send back, read total
+`
+  const entry = join(dir, 'siblings.tree')
+  writeFileSync(entry, SIBLINGS)
+  const result = compile({ file: entry, text: SIBLINGS }, { resolve: projectResolver(ROOT, 'node'), env: 'node' })
+  ok('two closures that each save the same name both compile', result.ok, result.ok ? '' : result.diagnostics.map(d => d.message).join(' | '))
+
+  if (result.ok) {
+    const file = join(dir, 'siblings.ts')
+    writeFileSync(file, `${nativePrelude(result.program, 'node', readRuntime, result.typescript)}\n${result.typescript}\nconsole.log(run())\n`)
+    const run = spawnSync('npx', ['tsx', file], { encoding: 'utf8' })
+    ok('each closure\'s name is its own, and both still write the outer total: 3 + 4', run.stdout.trim() === '7', run.stdout + run.stderr)
+  }
+}
+
 console.log(`\nclosure-locals: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

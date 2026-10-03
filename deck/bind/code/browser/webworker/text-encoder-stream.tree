@@ -1,23 +1,23 @@
 
-load @term/bind/code/browser/dom/text-encoder-stream
+load @term/bind/browser/dom/text-encoder-stream
   find text-encoder-stream
 
-load @term/bind/code/browser/webworker/generic-transform-stream
+load @term/bind/browser/webworker/generic-transform-stream
   find generic-transform-stream
 
-load @term/bind/code/browser/webworker/readable-stream
+load @term/bind/browser/webworker/readable-stream
   find readable-stream
 
-load @term/bind/code/browser/webworker/text-encoder-common
+load @term/bind/browser/webworker/text-encoder-common
   find text-encoder-common
 
-load @term/bind/code/browser/webworker/writable-stream
+load @term/bind/browser/webworker/writable-stream
   find writable-stream
 
-load @term/bind/code/javascript/es5/uint8-array
+load @term/bind/javascript/es5/uint8-array
   find uint8-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form text-encoder-stream, name <TextEncoderStream>

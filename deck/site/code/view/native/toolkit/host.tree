@@ -1,0 +1,84 @@
+
+# The app host on the toolkits (native-navigation-0007): macOS, iOS and Android reach this through the `toolkit` rung of
+# their env chains, where they used to fall to ../host.tree, a signature with no body that mounted nothing. The same
+# `route(host, path)` dispatcher the browser and the server drive, mounted on the window's root and drawn from the
+# navigation contract (../../navigation), with the platform's own back reaching `navigate-back`.
+#
+#   mount-app   the window, the first draw, one effect drawing each place after, and the back. Returns the root
+#   host        mount-app, then the process to the platform. `port` is the server's and means nothing here
+
+load @term/site/dom/dom
+  find view
+  find clear
+load @term/site/dom/native/toolkit/dom
+  find open-root
+  find after-launch
+  find show-window
+  find run-app
+  find on-back
+load @term/site/view/reactive
+  find make-effect
+  find untrack
+load @term/site/view/navigation
+  find start-navigation
+  find current-path
+  find navigate-back
+
+# the window's default size, in points: a phone's width, a reading height
+host app-width
+  like number
+  code 420
+host app-height
+  like number
+  code 760
+
+task mount-app
+  take route
+    like task
+      take host, like view
+      take path, like text
+  take title, like text
+  like view
+  save root
+    call open-root
+      read title
+      read app-width
+      read app-height
+  call start-navigation
+  # one draw per place: the effect reads the current path and nothing else, and draws the route untracked, so a signal
+  # the page reads keeps its own effects (the browser host does the same)
+  call make-effect
+    task render
+      save path
+        call current-path
+      save drawn
+        call untrack
+          task draw
+            like number
+            call clear
+              read root
+            call route
+              read root
+              read path
+            send back, code 0
+  call on-back
+    task went-back
+      like boolean
+      send back
+        call navigate-back
+  call after-launch
+    task shown
+      call show-window
+  send back, read root
+
+task host
+  take route
+    like task
+      take host, like view
+      take path, like text
+  take port, like number
+  save root
+    call mount-app
+      read route
+      text <>
+  call run-app

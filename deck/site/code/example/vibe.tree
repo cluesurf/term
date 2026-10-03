@@ -6,13 +6,13 @@
 # (<global:lattice>) so the .tree side stays clean. DOM chrome (the canvas) is rendered by zone; the render is WebGL via
 # @term/site/code/graphics. Copy of the structure for the vibe pages.
 
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
 
-load @term/site/code/view/reactive
+load @term/site/view/reactive
   find on-mount
 
-load @term/site/code/graphics/graphics
+load @term/site/graphics/graphics
   find surface
   find open
   find size

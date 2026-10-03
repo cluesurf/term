@@ -1,5 +1,5 @@
 // Where a document NAMES another file or a definition, read off the parse tree: the path of every `load` / `bear`
-// (at any depth, so a mill's `bind mine, load ./mine` counts), a manifest's `bear ./code` and `link @scope/name`,
+// (at any depth, so a mill's `bind mine, load ./mine` counts), a manifest's `code ./src` and `link @scope/name`,
 // every `find x` under a load, and every top-level declaration with the position of its name. Cmd+click and
 // document links are queries over these. One parser (note/term/one-parser.md): nothing here matches lines.
 //
@@ -16,7 +16,7 @@ export type PathMention = {
   path: string
   // the path's own span (what is underlined and clicked)
   span: Span
-  // the head that names it: `load`, `bear`, or a manifest's `link`
+  // the head that names it: `load`, `bear`, or a manifest's `link` or `code`
   head: string
   // the names its `find` lines ask for, each with the span of the name
   finds: { name: string; span: Span }[]
@@ -51,7 +51,9 @@ export function pathMentions(file: string, text: string): PathMention[] {
   const visit = (group: GroupNode, underDeck: boolean): void => {
     const head = headWord(group)
 
-    if (head === 'load' || head === 'bear' || (head === 'link' && underDeck)) {
+    // a manifest's `code ./src` names its code root, a folder (its `code <1.4.2>` is the old version spelling, a
+    // text literal and no path, so `firstName` finds nothing there)
+    if (head === 'load' || head === 'bear' || (underDeck && (head === 'link' || head === 'code'))) {
       const target = firstName(group.nodes[1])
       const start = target ? spanOfNode(target) : undefined
       // the WHOLE path as written: the name node's own span stops where an interpolation (`{platform}`) begins,

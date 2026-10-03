@@ -1,29 +1,29 @@
 
-load @term/bind/code/browser/dom/message-event
+load @term/bind/browser/dom/message-event
   find message-event
 
-load @term/bind/code/browser/dom/message-event-source
+load @term/bind/browser/dom/message-event-source
   find message-event-source
 
-load @term/bind/code/browser/dom/message-port
+load @term/bind/browser/dom/message-port
   find message-port
 
 load @term/bind/code/javascript/iterable
   find iterable
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form message-event, name <MessageEvent>

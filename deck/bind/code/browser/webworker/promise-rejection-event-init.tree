@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/promise-rejection-event-init
+load @term/bind/browser/dom/promise-rejection-event-init
   find promise-rejection-event-init
 
-load @term/bind/code/browser/webworker/event-init
+load @term/bind/browser/webworker/event-init
   find event-init
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
 form promise-rejection-event-init, name <PromiseRejectionEventInit>

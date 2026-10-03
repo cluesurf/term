@@ -2,10 +2,10 @@
 
 note unstable
 
-load @term/base/code/color/rgb
+load @term/base/color/rgb
   find rgb-color
 
-load @term/base/code/math
+load @term/base/math
   find minimum
   find maximum
 

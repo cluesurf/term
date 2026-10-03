@@ -3,7 +3,7 @@
 
 note unstable
 
-load @term/base/code/native/{platform}/file/asynchronous/temporary
+load @term/base/native/{platform}/file/asynchronous/temporary
   find temporary-make
 
 # `kind` is <file> or <directory>. The name is unique, so two calls never collide.
@@ -27,4 +27,3 @@ task make
       read kind
       read prefix
       read suffix
-      wait true

@@ -1,19 +1,19 @@
-load @term/mill/code/code/seed/mine
+load @term/mill/code/seed/mine
   find seed
 
-load @term/mill/code/code/bind/mine
+load @term/mill/code/bind/mine
   find bind
 
-load @term/mill/code/code/tool/hook
+load @term/mill/code/tool/hook
   find hook
 
-load @term/mill/code/code/take/mine
+load @term/mill/code/take/mine
   find take
 
-load @term/mill/code/code/tool/flow/mine
+load @term/mill/code/tool/flow/mine
   find flow
 
-load @term/mill/code/code/must/mine
+load @term/mill/code/must/mine
   find must
   find down
 

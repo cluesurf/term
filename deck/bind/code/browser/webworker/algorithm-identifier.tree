@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/webworker/algorithm
+load @term/bind/browser/webworker/algorithm
   find algorithm
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form algorithm-identifier, name <AlgorithmIdentifier>

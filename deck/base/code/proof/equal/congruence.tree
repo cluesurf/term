@@ -1,4 +1,4 @@
-load @term/base/code/proof/equal
+load @term/base/proof/equal
   find equal
 
 # a function sends equal values to equal values

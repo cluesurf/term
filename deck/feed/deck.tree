@@ -1,8 +1,7 @@
 
 deck @term/feed
   head <Text and binary format grammars: a checked mine/mint spec per dialect, read and written against one cursor>
-  code <0.0.0>
+  mark <0.0.0>
   lock mit
-  bear ./code
   test ./test
-  link @term/base, code <0.0.x>
+  link @term/base, mark <0.0.x>

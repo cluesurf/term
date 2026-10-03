@@ -10,28 +10,28 @@ load ../back/post
   find list-posts
   find get-post
 
-load @term/site/code/base/db
+load @term/site/base/db
   find run
 
-load @term/site/code/http/http
+load @term/site/http/http
   find request
   find response
   find route
   find server
   find route-server
 
-load @term/site/code/http/serve
+load @term/site/http/serve
   find serve
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
   find join
 
-load @term/base/code/maybe
+load @term/base/maybe
   find unwrap-or
 
-load @term/base/code/hash
+load @term/base/hash
   find get
 
 # one post as a JSON object

@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/network-information
+load @term/bind/browser/dom/network-information
   find network-information
 
 form navigator-network-information, name <NavigatorNetworkInformation>

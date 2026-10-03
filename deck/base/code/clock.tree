@@ -3,7 +3,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/clock
+load @term/base/native/{platform}/clock
   find current-time
   find delay
 
@@ -18,4 +18,3 @@ task sleep
   send back
     call delay
       read ms
-      wait true

@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/webworker/file
+load @term/bind/browser/webworker/file
   find file
 
-load @term/bind/code/browser/webworker/file-list
+load @term/bind/browser/webworker/file-list
   find file-list
 
 load @term/bind/code/javascript/iterable-iterator

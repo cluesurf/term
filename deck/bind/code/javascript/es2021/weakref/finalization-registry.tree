@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-object
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form finalization-registry, name <FinalizationRegistry>

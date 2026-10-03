@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/media-device-kind
+load @term/bind/browser/dom/media-device-kind
   find media-device-kind
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form media-device-info, name <MediaDeviceInfo>

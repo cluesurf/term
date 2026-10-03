@@ -1,11 +1,11 @@
 
-load @term/bind/code/javascript/es5/error-constructor
+load @term/bind/javascript/es5/error-constructor
   find error-constructor
 
-load @term/bind/code/javascript/es5/syntax-error
+load @term/bind/javascript/es5/syntax-error
   find syntax-error
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form syntax-error-constructor, name <SyntaxErrorConstructor>

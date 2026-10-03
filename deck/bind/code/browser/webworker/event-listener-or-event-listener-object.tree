@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/webworker/event-listener
+load @term/bind/browser/webworker/event-listener
   find event-listener
 
-load @term/bind/code/browser/webworker/event-listener-object
+load @term/bind/browser/webworker/event-listener-object
   find event-listener-object
 
 form event-listener-or-event-listener-object, name <EventListenerOrEventListenerObject>

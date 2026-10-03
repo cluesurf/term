@@ -2,12 +2,12 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find debugger-location
   find native-string
   find native-undefined
 
-load @term/bind/code/node/inspector/profiler
+load @term/bind/node/inspector/profiler
   find profile
 
 form console-profile-finished-event-data-type, name <ConsoleProfileFinishedEventDataType>

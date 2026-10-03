@@ -8,14 +8,14 @@ bear @term/bind/code/javascript/node/dgram/socket
 load @term/bind
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-void
   find socket
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/dgram
+load @term/bind/node/dgram
   find remote-info
   find socket-options
   find socket-type

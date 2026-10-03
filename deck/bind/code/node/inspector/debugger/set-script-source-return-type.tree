@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-boolean
   find native-undefined
@@ -10,7 +10,7 @@ load @term/bind/code/javascript
 load @term/bind
   find or
 
-load @term/bind/code/node/inspector/debugger
+load @term/bind/node/inspector/debugger
   find call-frame
 
 form set-script-source-return-type, name <SetScriptSourceReturnType>

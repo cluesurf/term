@@ -2,7 +2,7 @@
 load @term/bind/code/javascript/es5/date-time-format-options
   find date-time-format-options
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form date-time-format-options, name <DateTimeFormatOptions>

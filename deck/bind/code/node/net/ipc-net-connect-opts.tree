@@ -2,11 +2,11 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
   find native-undefined
 
-load @term/bind/code/node/net
+load @term/bind/node/net
   find ipc-socket-connect-opts
   find socket-constructor-opts
 

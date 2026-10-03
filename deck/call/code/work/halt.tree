@@ -1,4 +1,4 @@
-load @term/call/code/work/tint
+load @term/call/work/tint
   find log-good
   find log-fail
   find log-step
@@ -21,7 +21,7 @@ load @term/call/code/work/tint
 #
 # Ported from deck/call/code/halt.ts (cli-in-term-0004).
 
-load @term/base/code/text
+load @term/base/text
   find split
   find contains
   find trim

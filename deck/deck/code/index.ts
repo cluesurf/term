@@ -11,7 +11,11 @@ export {
   writeManifest,
   writeCodeHold,
   validateManifest,
+  manifestSpellings,
+  rewriteManifestSpellings,
+  isDefaultCodeRoot,
 } from './manifest'
+export type { ManifestSpelling } from './manifest'
 export {
   loadLockfile,
   parseLockfile,

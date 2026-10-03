@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find runtime-stack-trace-id
 
 form pause-on-async-call-parameter-type, name <PauseOnAsyncCallParameterType>

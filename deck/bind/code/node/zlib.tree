@@ -17,14 +17,14 @@ bear @term/bind/code/javascript/node/zlib/input-type
 bear @term/bind/code/javascript/node/zlib/compress-callback
 bear @term/bind/code/javascript/node/zlib/constants
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
   find native-void
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/zlib
+load @term/bind/node/zlib
   find brotli-compress
   find brotli-decompress
   find brotli-options

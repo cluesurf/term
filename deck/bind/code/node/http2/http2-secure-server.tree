@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find error
   find http2-server-request
@@ -17,7 +17,7 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/http2
+load @term/bind/node/http2
   find http2-server-common
   find incoming-http-headers
   find server-http2-session

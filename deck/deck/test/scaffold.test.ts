@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest'
 import { format } from '@term/make/code/format/format'
 import { BOOT_TREE, DECK_TREE } from '../../call/code/wake'
 import { manifestName } from '../../call/code/manifest-name'
-import { parseManifest, validateManifest, writeManifest } from '../code/manifest'
+import { manifestSpellings, parseManifest, validateManifest, writeManifest } from '../code/manifest'
 import { bumpCode, showCode } from '../code/code'
 
 describe('the `term wake` scaffold', () => {
@@ -21,8 +21,8 @@ describe('the `term wake` scaffold', () => {
 
     expect(format({ file: 'deck.tree', text: written })).toBe(written)
     // a member line has one leaf child and stays on one line
-    expect(format({ file: 'deck.tree', text: 'deck @a/b\n  code <1.0.0>\n  deck ./deck/load\n' })).toBe(
-      'deck @a/b\n  code <1.0.0>\n  deck ./deck/load\n',
+    expect(format({ file: 'deck.tree', text: 'deck @a/b\n  mark <1.0.0>\n  deck ./deck/load\n' })).toBe(
+      'deck @a/b\n  mark <1.0.0>\n  deck ./deck/load\n',
     )
   })
 
@@ -34,23 +34,32 @@ describe('the `term wake` scaffold', () => {
     expect(manifestName(DECK_TREE('hello'), 'deck.tree')).toBe('hello')
   })
 
-  it('starts at an even patch, so `term host` accepts its version', async () => {
+  it('starts at 0.0.1, which `term host` accepts, and bumps by one', async () => {
     const manifest = parseManifest({ text: DECK_TREE('hello') })
 
-    expect(showCode(manifest.code)).toBe('0.0.2')
+    expect(showCode(manifest.mark)).toBe('0.0.1')
     expect(await validateManifest({ manifest })).toEqual([])
-    expect(showCode(bumpCode({ code: manifest.code, level: 3 }))).toBe('0.0.4')
+    expect(showCode(bumpCode({ code: manifest.mark, level: 3 }))).toBe('0.0.2')
+  })
+
+  it('says `mark <0.0.1>` and leaves the default code root unwritten', () => {
+    const deck = DECK_TREE('hello')
+
+    expect(deck).toContain('  mark <0.0.1>\n')
+    expect(deck).not.toMatch(/^\s+(code|bear) /m)
+    expect(parseManifest({ text: deck }).code).toBeUndefined()
+    expect(manifestSpellings({ text: deck })).toEqual([])
   })
 })
 
 describe('manifestName', () => {
   it('reads a scoped and an unscoped `deck` statement', () => {
-    expect(manifestName('deck @term/call\n  code <0.0.16>\n', 'deck.tree')).toBe('@term/call')
-    expect(manifestName('deck hello\n  code <0.0.2>\n', 'deck.tree')).toBe('hello')
+    expect(manifestName('deck @term/call\n  mark <0.0.16>\n', 'deck.tree')).toBe('@term/call')
+    expect(manifestName('deck hello\n  mark <0.0.2>\n', 'deck.tree')).toBe('hello')
   })
 
   it('names the package, never a nested member', () => {
-    expect(manifestName('deck @a/b\n  deck ./deck/load\n  code <1.0.0>\n', 'deck.tree')).toBe('@a/b')
+    expect(manifestName('deck @a/b\n  deck ./deck/load\n  mark <1.0.0>\n', 'deck.tree')).toBe('@a/b')
   })
 
   it('is undefined for a code module that only shares the file name', () => {

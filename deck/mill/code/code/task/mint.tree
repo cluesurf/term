@@ -1,50 +1,50 @@
-load @term/mill/code/code/mark/mint
+load @term/mill/code/mark/mint
   find mark
 
-load @term/mill/code/code/form/mint
+load @term/mill/code/form/mint
   find form-nick
 
-load @term/mill/code/code/drop/mint
+load @term/mill/code/drop/mint
   find drop
 
-load @term/mill/code/code/form/link/mint
+load @term/mill/code/form/link/mint
   find link
 
-load @term/mill/code/code/head/mint
+load @term/mill/code/head/mint
   find head
 
-load @term/mill/code/code/hide/mint
+load @term/mill/code/hide/mint
   find hide
 
-load @term/mill/code/code/like/mint
+load @term/mill/code/like/mint
   find like
 
 load @term/mill/code/code/note/mint
   find note
   find note-guard
 
-load @term/mill/code/code/rule/hold/mint
+load @term/mill/code/rule/hold/mint
   find fold
 
-load @term/mill/code/code/tag/mint
+load @term/mill/code/tag/mint
   find tag
 
-load @term/mill/code/code/take/mint
+load @term/mill/code/take/mint
   find take
 
-load @term/mill/code/code/task/risk/mint
+load @term/mill/code/task/risk/mint
   find risk
 
-load @term/mill/code/code/tool/flow/mint
+load @term/mill/code/tool/flow/mint
   find flow
 
-load @term/mill/code/code/tree/slot/mint
+load @term/mill/code/tree/slot/mint
   find slot
 
-load @term/mill/code/code/wait/mint
+load @term/mill/code/wait/mint
   find wait
 
-load @term/mill/code/code/must/mint
+load @term/mill/code/must/mint
   find task-have
   find must
   find down
@@ -55,7 +55,7 @@ load @term/mill/code/code/must/mint
 # used to carry read a different set of sites and silently won the merge (mint-bridge-0001).
 
 
-load @term/base/code/lang
+load @term/base/lang
   find code-task
 
 mint task, like code-task

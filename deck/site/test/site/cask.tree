@@ -3,7 +3,7 @@
 # handed to the platform. `term make --target macos` calls `boot` with the page directory, or with the dev server's
 # URL and `remote` true for `term make --target macos --url`.
 
-load @term/cask/code/cask
+load @term/cask/cask
   find window
   find open-window
   find load-bundle

@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/es2015/collection/map
+load @term/bind/javascript/es2015/collection/map
   find map
 
-load @term/bind/code/javascript/es2015/iterable/iterable-iterator
+load @term/bind/javascript/es2015/iterable/iterable-iterator
   find iterable-iterator
 
 form map, name <Map>

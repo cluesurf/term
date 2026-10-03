@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/performance-measure
+load @term/bind/browser/dom/performance-measure
   find performance-measure
 
-load @term/bind/code/browser/webworker/performance-entry
+load @term/bind/browser/webworker/performance-entry
   find performance-entry
 
 form performance-measure, name <PerformanceMeasure>

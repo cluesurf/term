@@ -23,6 +23,7 @@
 // the effects it triggers run inside it, but a page's async `boot` resumes after an await wherever Swift chose, so every
 // `nativeView` entry point hops to the main thread first (`onMain`) when it is called from another (native-dom-0014).
 import Foundation
+import CoreText
 
 #if canImport(AppKit)
 import AppKit
@@ -34,6 +35,9 @@ import UIKit
 typealias TermPlatformView = UIView
 typealias TermStack = UIStackView
 #endif
+
+// the events a field reports from its own edits: listening for any of them watches the field (native-text-0003)
+private let FIELD_EVENTS: Set<String> = ["input", "compositionstart", "compositionupdate", "compositionend"]
 
 // the tags that lay their children out in a row, as inline elements do in a browser
 private let INLINE_TAGS: Set<String> = ["span", "a", "b", "i", "em", "strong", "small", "code", "label", "abbr", "kbd"]
@@ -63,6 +67,47 @@ final class TermSheetWatcher: NSObject, UIAdaptivePresentationControllerDelegate
 #endif
 
 #if canImport(AppKit)
+// THE FIELD EDITOR EVERY HOST WINDOW GIVES ITS FIELDS (native-text-0003): AppKit's own text view, plus a report of each
+// input method step. An input method writes marked text with `setMarkedText`, and AppKit tells the field's delegate
+// nothing about it: `controlTextDidChange` comes only at the commit. So a Korean syllable or a Japanese reading being
+// composed was invisible to the program until it was final. This reports every marked edit the way an edit is
+// reported, and the commit still arrives as `controlTextDidChange`, which ends the composition
+final class TermFieldEditor: NSTextView {
+    private func report() {
+        guard let field = delegate as? NSTextField, let node = (field.delegate as? TermFieldDelegate)?.node else { return }
+        node.value = string
+        nativeView.noteComposition(node, marked: hasMarkedText())
+        node.fire("input")
+    }
+
+    override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+        report()
+    }
+
+    // the input method gave up its marked text as it stands: committed, so the composition ends
+    override func unmarkText() {
+        let was = hasMarkedText()
+        super.unmarkText()
+        if was {
+            report()
+        }
+    }
+}
+
+// hands each text field of a window the host's field editor
+final class TermWindowDelegate: NSObject, NSWindowDelegate {
+    private lazy var editor: TermFieldEditor = {
+        let made = TermFieldEditor()
+        made.isFieldEditor = true
+        return made
+    }()
+
+    func windowWillReturnFieldEditor(_ sender: NSWindow, to client: Any?) -> Any? {
+        client is NSTextField ? editor : nil
+    }
+}
+
 // AppKit reports a field's edits through its delegate
 final class TermFieldDelegate: NSObject, NSTextFieldDelegate {
     weak var node: TermNode?
@@ -70,6 +115,7 @@ final class TermFieldDelegate: NSObject, NSTextFieldDelegate {
     func controlTextDidChange(_ note: Notification) {
         guard let node = node, let field = note.object as? NSTextField else { return }
         node.value = field.stringValue
+        nativeView.noteComposition(node, marked: (field.currentEditor() as? NSTextView)?.hasMarkedText() ?? false)
         node.fire("input")
     }
 }
@@ -102,6 +148,8 @@ final class TermNode {
     let view: TermPlatformView
     var text: String
     var value = ""
+    // whether the field holds text an input method has not committed yet (native-text-0003)
+    var composing = false
     var attributes: [(name: String, value: String)] = []
     var styles: [String: String] = [:]
     // the properties set by `set-style` or a `style` attribute, which win over any class's row, as inline CSS does
@@ -244,6 +292,16 @@ final class TermNode {
             let rule = UIView()
             rule.backgroundColor = .separator
             #endif
+            // a line is a picture of separation, not content: out of the accessibility tree, as the contract has it
+            // for the toolkits (note/term/view/11-vocabulary.md, "Accessibility")
+            #if canImport(AppKit)
+            rule.setAccessibilityElement(false)
+            rule.setAccessibilityHidden(true)
+            #endif
+            #if canImport(UIKit)
+            rule.isAccessibilityElement = false
+            rule.accessibilityElementsHidden = true
+            #endif
             rule.translatesAutoresizingMaskIntoConstraints = false
             let thickness = rule.heightAnchor.constraint(equalToConstant: 1)
             thickness.isActive = true
@@ -304,6 +362,34 @@ final class TermNode {
         }
 
         inner = content
+        #if canImport(UIKit)
+        // THE CONTRACT'S TRAITS, set by the host (native-accessibility-0007). UIKit gives a standard control its traits
+        // from accessibility bundles it loads only while VoiceOver or another assistive technology runs, so in any other
+        // process a UIButton reports none. Set here, a reader gets the same answer either way
+        switch kind {
+        case .text: view.accessibilityTraits = .staticText
+        case .button, .toggle, .choice: view.accessibilityTraits = .button
+        case .range: view.accessibilityTraits = .adjustable
+        case .image: view.accessibilityTraits = .image
+        default: break
+        }
+        #endif
+    }
+
+    // a text node takes its parent's meaning as traits: under `h1` to `h6` it is a header, under `a` a link, which is
+    // where UIKit puts both (native-accessibility-0007). AppKit and Android read the parent's role from the tree
+    func adoptTraits() {
+        #if canImport(UIKit)
+        guard kind == .text, let parent else { return }
+        var traits: UIAccessibilityTraits = .staticText
+        if parent.tag.count == 2, parent.tag.hasPrefix("h"), let level = Int(parent.tag.dropFirst()), (1...6).contains(level) {
+            traits.insert(.header)
+        }
+        if parent.tag == "a" {
+            traits.insert(.link)
+        }
+        view.accessibilityTraits = traits
+        #endif
     }
 
     // the text under this node, in order: what a button shows as its title
@@ -420,6 +506,8 @@ enum nativeView {
 
     #if canImport(AppKit)
     private static let delegate = TermAppDelegate()
+    // every host window's delegate: it gives the window's fields the host's field editor (native-text-0003)
+    private static let windowDelegate = TermWindowDelegate()
     static var window: NSWindow?
     #endif
     #if canImport(UIKit)
@@ -491,11 +579,24 @@ enum nativeView {
                 (node.view as? UITextField)?.placeholder = value
                 #endif
             case "aria-label":
+                // on a control's cell too: the cell is the element VoiceOver speaks (an NSPopUpButton's label set on the
+                // view alone was never read, native-accessibility-0007)
                 #if canImport(AppKit)
                 node.view.setAccessibilityLabel(value)
+                (node.view as? NSControl)?.cell?.setAccessibilityLabel(value)
                 #endif
                 #if canImport(UIKit)
                 node.view.accessibilityLabel = value
+                #endif
+            // out of the accessibility tree, with everything under it (native-accessibility-0007)
+            case "aria-hidden":
+                let hidden = value == "true"
+                #if canImport(AppKit)
+                node.view.setAccessibilityElement(!hidden)
+                node.view.setAccessibilityHidden(hidden)
+                #endif
+                #if canImport(UIKit)
+                node.view.accessibilityElementsHidden = hidden
                 #endif
             case "aria-checked" where node.kind == .toggle:
                 #if canImport(AppKit)
@@ -533,9 +634,11 @@ enum nativeView {
             case "src" where node.kind == .image:
                 load(picture: node, from: value)
             case "alt" where node.kind == .image:
-                // what the picture shows, for a reader that cannot see it: the platform's accessibility label
+                // what the picture shows, for a reader that cannot see it: the platform's accessibility label, on the
+                // cell too, which is the element VoiceOver speaks for a control
                 #if canImport(AppKit)
                 node.view.setAccessibilityLabel(value)
+                (node.view as? NSControl)?.cell?.setAccessibilityLabel(value)
                 #endif
                 #if canImport(UIKit)
                 node.view.isAccessibilityElement = true
@@ -849,6 +952,7 @@ enum nativeView {
     //   border-radius                  <n>px                     its layer's corners
     //   opacity                        <n>                       the view's alpha
     //   color, font-size, font-weight  #hex | <n>px | 100..900   INHERITED, as in CSS: drawn on every text under the node
+    //   font-family                    a family, or a CSS list   INHERITED; its first family, drawn when available
     //
     // Values arrive resolved: the build turned every token, rem and short hex into these forms (look-table.ts).
 
@@ -974,6 +1078,9 @@ enum nativeView {
         case "font-weight":
             guard Double(value) != nil else { return false }
             restyleText(node)
+        case "font-family":
+            guard !firstFamily(value).isEmpty else { return false }
+            restyleText(node)
         default:
             return false
         }
@@ -999,11 +1106,176 @@ enum nativeView {
             #else
             node.view.alpha = 1
             #endif
-        case "color", "font-size", "font-weight":
+        case "color", "font-size", "font-weight", "font-family":
             restyleText(node)
         default:
             break
         }
+    }
+
+    // ---- fonts (native-text-0002): a face registered from a file, a `data:` URI or a bundled asset, set by `font-family` ----
+    //
+    // A family is AVAILABLE when the platform can draw it: one registered here, or one the system already has. Text
+    // whose `font-family` names a family that is not available draws in the system face, which is what `check-font`
+    // answering false says ahead of time. Registration is for this process only (CoreText's `.process` scope).
+
+    // the families registered in this process, so registering one twice is not a failure
+    private static var registeredFamilies: Set<String> = []
+
+    // a file CoreText can register: a path as given, a bundled asset from the app's resources, or a `data:` URI
+    // written out to a temporary file first, since CoreText registers files
+    private static func fontFile(_ source: String) -> URL? {
+        if source.hasPrefix("asset:") {
+            let name = String(source.dropFirst("asset:".count))
+            return Bundle.main.url(forResource: (name as NSString).deletingPathExtension, withExtension: (name as NSString).pathExtension)
+        }
+        if source.hasPrefix("data:") {
+            guard let data = bytes(of: source) else { return nil }
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent("term-font-\(UUID().uuidString).font")
+            return (try? data.write(to: file)) == nil ? nil : file
+        }
+        let path = source.hasPrefix("file://") ? (URL(string: source)?.path ?? source) : source
+        return FileManager.default.fileExists(atPath: path) ? URL(fileURLWithPath: path) : nil
+    }
+
+    // whether the platform can draw this family: registered here or installed
+    private static func hasFamily(_ family: String) -> Bool {
+        #if canImport(AppKit)
+        return NSFontManager.shared.availableMembers(ofFontFamily: family) != nil
+        #else
+        return UIFont.familyNames.contains(family)
+        #endif
+    }
+
+    // register the face in `source` under `family`. True when the platform can now draw the family, which is also
+    // the answer for a family registered before. False for a file that does not read or holds another family
+    static func registerFont(_ family: String, _ source: String) -> Bool {
+        onMain {
+            if registeredFamilies.contains(family) {
+                return true
+            }
+            guard let file = fontFile(source) else {
+                return false
+            }
+            var failure: Unmanaged<CFError>?
+            _ = CTFontManagerRegisterFontsForURL(file as CFURL, .process, &failure)
+            // a file already registered by this process fails the call and is still drawn, so ask the platform
+            guard hasFamily(family) else {
+                return false
+            }
+            registeredFamilies.insert(family)
+            return true
+        }
+    }
+
+    static func hasFont(_ family: String) -> Bool {
+        onMain {
+            hasFamily(family)
+        }
+    }
+
+    // the characters of a text node the platform draws as a box (native-text-0004): laid out by CoreText in the label's
+    // own font with the system cascade, as the label draws it, and every character a run draws with glyph 0 or with
+    // the LastResort face, which is the box. Each character once, in the order first met; empty when all are drawn
+    static func missingGlyphs(_ handle: Any) -> String {
+        onMain {
+            let node = node(handle)
+            #if canImport(AppKit)
+            guard let label = node.view as? NSTextField else { return "" }
+            let text = label.stringValue
+            let font: CTFont = label.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            #else
+            guard let label = node.view as? UILabel else { return "" }
+            let text = label.text ?? ""
+            let font: CTFont = label.font ?? UIFont.systemFont(ofSize: 17)
+            #endif
+            let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [.font: font]))
+            let utf16 = Array(text.utf16)
+            var missing: [String] = []
+            for run in (CTLineGetGlyphRuns(line) as? [CTRun]) ?? [] {
+                let count = CTRunGetGlyphCount(run)
+                var glyphs = [CGGlyph](repeating: 0, count: count)
+                var indices = [CFIndex](repeating: 0, count: count)
+                CTRunGetGlyphs(run, CFRange(location: 0, length: 0), &glyphs)
+                CTRunGetStringIndices(run, CFRange(location: 0, length: 0), &indices)
+                let attributes = CTRunGetAttributes(run) as NSDictionary
+                let face = attributes[kCTFontAttributeName as String].map { CTFontCopyPostScriptName($0 as! CTFont) as String } ?? ""
+                for (glyph, index) in zip(glyphs, indices) where glyph == 0 || face.hasPrefix("LastResort") {
+                    // the whole character at this index: a surrogate pair is one character
+                    let at = Int(index)
+                    let width = at + 1 < utf16.count && UTF16.isLeadSurrogate(utf16[at]) ? 2 : 1
+                    let character = String(utf16CodeUnits: Array(utf16[at..<min(at + width, utf16.count)]), count: min(width, utf16.count - at))
+                    if !missing.contains(character) {
+                        missing.append(character)
+                    }
+                }
+            }
+            return missing.joined()
+        }
+    }
+
+    // what the platform's accessibility API reports for a node (native-accessibility-0007): `role|name`, the role in the
+    // contract's own spelling (note/term/view/11-vocabulary.md, "Accessibility"). AppKit: `accessibilityRole()` without its
+    // `AX` (`AXCheckBox` is `checkBox`). UIKit: the traits, by name, joined with `+`, empty for none. A node out of the
+    // tree is `hidden`. The name is the accessibility label, else a label's own text
+    static func accessibilityOf(_ handle: Any) -> String {
+        onMain {
+            let node = node(handle)
+            #if canImport(AppKit)
+            if node.view.isAccessibilityHidden() {
+                return "hidden|"
+            }
+            // A CONTROL'S ELEMENT IS ITS CELL. NSButton, NSTextField, NSSlider and NSImageView are not accessibility
+            // elements themselves (the view answers AXUnknown); their cell is, with the role VoiceOver announces. A view
+            // with no cell is asked itself, and one that is not an element at all (a stack) has no node of its own: none
+            let cell = (node.view as? NSControl)?.cell
+            let raw = cell?.accessibilityRole()?.rawValue
+                ?? (node.view.isAccessibilityElement() ? node.view.accessibilityRole()?.rawValue : nil)
+                ?? ""
+            let role = raw.hasPrefix("AX") ? raw.dropFirst(2).prefix(1).lowercased() + raw.dropFirst(3) : raw
+            // the label the element carries, else a field's placeholder (which VoiceOver speaks as its name), else a
+            // label's text
+            let field = node.view as? NSTextField
+            let placeholder = field?.isEditable == true ? field?.placeholderString : nil
+            let label = (cell?.accessibilityLabel() ?? node.view.accessibilityLabel()).flatMap { $0.isEmpty ? nil : $0 }
+            let name = label ?? placeholder ?? field?.stringValue ?? ""
+            #else
+            if node.view.accessibilityElementsHidden {
+                return "hidden|"
+            }
+            let traits = node.view.accessibilityTraits
+            let named: [(UIAccessibilityTraits, String)] = [
+                (.button, "button"), (.link, "link"), (.header, "header"), (.staticText, "staticText"),
+                (.image, "image"), (.adjustable, "adjustable"),
+            ]
+            let role = named.filter { traits.contains($0.0) }.map { $0.1 }.joined(separator: "+")
+            // the label, else what VoiceOver speaks in its place: a field's placeholder, a button's title, a label's text
+            let label = node.view.accessibilityLabel.flatMap { $0.isEmpty ? nil : $0 }
+            let name = label ?? (node.view as? UITextField)?.placeholder ?? (node.view as? UIButton)?.currentTitle
+                ?? (node.view as? UILabel)?.text ?? ""
+            #endif
+            return "\(role)|\(name)"
+        }
+    }
+
+    // the first family a CSS `font-family` list names, unquoted: `"Noto Sans", serif` is `Noto Sans`
+    private static func firstFamily(_ value: String) -> String {
+        let first = value.split(separator: ",").first.map(String.init) ?? value
+        return first.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+    }
+
+    // the face for a family at a size and weight, or the system face when the platform cannot draw the family
+    private static func typefaceFor(_ family: String?, _ size: CGFloat, _ heft: Weight) -> Typeface {
+        guard let family, hasFamily(family) else {
+            return Typeface.systemFont(ofSize: size, weight: heft)
+        }
+        #if canImport(AppKit)
+        let descriptor = NSFontDescriptor(fontAttributes: [.family: family, .traits: [NSFontDescriptor.TraitKey.weight: heft]])
+        return NSFont(descriptor: descriptor, size: size) ?? Typeface.systemFont(ofSize: size, weight: heft)
+        #else
+        let descriptor = UIFontDescriptor(fontAttributes: [.family: family, .traits: [UIFontDescriptor.TraitKey.weight: heft]])
+        return UIFont(descriptor: descriptor, size: size)
+        #endif
     }
 
     // a text property's value at a node: its own, else the nearest ancestor's, which is CSS inheritance
@@ -1030,14 +1302,15 @@ enum nativeView {
         let ink = inherited(node, "color").flatMap { paint($0) }
         let size = inherited(node, "font-size").flatMap { points($0) }
         let heft = inherited(node, "font-weight").flatMap { Double($0) }
+        let family = inherited(node, "font-family").map(firstFamily)
 
-        guard ink != nil || size != nil || heft != nil || node.textStyled else {
+        guard ink != nil || size != nil || heft != nil || family != nil || node.textStyled else {
             return
         }
 
-        node.textStyled = ink != nil || size != nil || heft != nil
+        node.textStyled = ink != nil || size != nil || heft != nil || family != nil
         #if canImport(AppKit)
-        let face = Typeface.systemFont(ofSize: size ?? NSFont.systemFontSize, weight: heft.map(weight) ?? .regular)
+        let face = typefaceFor(family, size ?? NSFont.systemFontSize, heft.map(weight) ?? .regular)
         if let field = node.view as? NSTextField {
             field.textColor = ink ?? .labelColor
             field.font = face
@@ -1046,7 +1319,7 @@ enum nativeView {
             button.font = face
         }
         #else
-        let face = Typeface.systemFont(ofSize: size ?? 17, weight: heft.map(weight) ?? .regular)
+        let face = typefaceFor(family, size ?? 17, heft.map(weight) ?? .regular)
         if let label = node.view as? UILabel {
             label.textColor = ink ?? .label
             label.font = face
@@ -1184,6 +1457,7 @@ enum nativeView {
             case "color": return hex(ink)
             case "font-size": return typeface.map { "\(plain($0.pointSize))px" } ?? ""
             case "font-weight": return cssWeight(typeface)
+            case "font-family": return typeface?.familyName ?? ""
             default: return ""
             }
         }
@@ -1262,7 +1536,7 @@ enum nativeView {
             let node = node(handle)
             node.listeners.append((event: event, run: handler))
             guard event == "click" else {
-                if event == "input", node.kind == .field {
+                if FIELD_EVENTS.contains(event), node.kind == .field {
                     installFieldEvents(node)
                 }
                 // the macOS picker reports a choice through its action, as `change` (iOS's menu items fire it themselves)
@@ -1336,6 +1610,89 @@ enum nativeView {
         }
     }
 
+    // ---- composed input (native-text-0003): an input method's uncommitted text, reported as the web reports it ----
+    //
+    // A keyboard for Korean, Japanese or Chinese holds a syllable or a reading as MARKED text until the person commits
+    // it. Every edit the field reports says whether marked text is present, and this turns that into the web's three
+    // events, in its order: `compositionstart` when marking begins, `compositionupdate` for each marked edit, and
+    // `compositionend` when the marked text is committed or dropped. `input` follows each edit, as in a browser, and the
+    // field's value includes the marked text while it is there, as an input element's does.
+    static func noteComposition(_ node: TermNode, marked: Bool) {
+        if marked {
+            if !node.composing {
+                node.composing = true
+                node.fire("compositionstart")
+            }
+            node.fire("compositionupdate")
+        } else if node.composing {
+            node.composing = false
+            node.fire("compositionend")
+        }
+    }
+
+    // the field's marked text, empty when it holds none: what a web handler reads as a composition event's `data`
+    static func composingText(_ handle: Any) -> String {
+        onMain {
+            let node = node(handle)
+            #if canImport(AppKit)
+            guard let field = node.view as? NSTextField, let editor = field.currentEditor() as? NSTextView, editor.hasMarkedText() else {
+                return ""
+            }
+            return (editor.string as NSString).substring(with: editor.markedRange())
+            #else
+            guard let field = node.view as? UITextField, let marked = field.markedTextRange else {
+                return ""
+            }
+            return field.text(in: marked) ?? ""
+            #endif
+        }
+    }
+
+    #if canImport(AppKit)
+    // the field's editor, made by making the field first responder: where AppKit's input methods write
+    private static func editor(_ field: NSTextField) -> NSTextView? {
+        if field.currentEditor() == nil {
+            field.window?.makeFirstResponder(field)
+        }
+        return field.currentEditor() as? NSTextView
+    }
+    #endif
+
+    // for tests: what an input method does while a person composes, through the platform's own entry point for it
+    // (NSTextInputClient's and UITextInput's setMarkedText), so the field reports the edit exactly as it would for a
+    // real keyboard. `text` replaces whatever is marked
+    static func compose(_ handle: Any, _ text: String) {
+        onMain {
+            let node = node(handle)
+            let end = NSRange(location: (text as NSString).length, length: 0)
+            #if canImport(AppKit)
+            guard let field = node.view as? NSTextField, let editor = editor(field) else { return }
+            editor.setMarkedText(text, selectedRange: end, replacementRange: NSRange(location: NSNotFound, length: 0))
+            #else
+            guard let field = node.view as? UITextField else { return }
+            if !field.isFirstResponder {
+                field.becomeFirstResponder()
+            }
+            field.setMarkedText(text, selectedRange: end)
+            #endif
+        }
+    }
+
+    // for tests: the input method commits, inserting `text` in place of the marked text in one step (NSTextInputClient's
+    // and UIKeyInput's insertText, as Android's commitText), so the commit is never reported as one more marked stage
+    static func commitComposition(_ handle: Any, _ text: String) {
+        onMain {
+            let node = node(handle)
+            #if canImport(AppKit)
+            guard let field = node.view as? NSTextField, let editor = editor(field) else { return }
+            editor.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
+            #else
+            guard let field = node.view as? UITextField else { return }
+            field.insertText(text)
+            #endif
+        }
+    }
+
     private static func installFieldEvents(_ node: TermNode) {
         if node.keep.contains(where: { !($0 is TermAction) }) || node.keep.contains(where: { $0 is TermAction && node.kind == .field }) {
             return
@@ -1350,6 +1707,7 @@ enum nativeView {
         let action = TermAction { [weak node] in
             guard let node = node, let field = node.view as? UITextField else { return }
             node.value = field.text ?? ""
+            noteComposition(node, marked: field.markedTextRange != nil)
             node.fire("input")
         }
         node.keep.append(action)
@@ -1365,6 +1723,8 @@ enum nativeView {
             detach(child)
             child.parent = parent
             parent.children.append(child)
+            // a heading's or a link's text is announced as one (native-accessibility-0007)
+            child.adoptTraits()
             // the color and font the new parent passes down, as CSS inherits them
             restyleText(child)
             if let drawing = parent.drawingAncestor {
@@ -1533,6 +1893,8 @@ enum nativeView {
         guard let window else { return }
         let panel = (node.keep.first { $0 is NSPanel } as? NSPanel) ?? {
             let made = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 360, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+            // a field in a sheet composes as one in the window does
+            made.delegate = windowDelegate
             let content = NSView()
             node.view.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(node.view)
@@ -1770,6 +2132,61 @@ enum nativeView {
         }
     }
 
+    // ---- back (native-navigation-0007): the platform's own way back reaches the app's navigation ----
+    //
+    // macOS: Go > Back, ⌘[, a menu item whose key equivalent AppKit dispatches. iOS: a swipe in from the left edge, a
+    // UIScreenEdgePanGestureRecognizer on the root. The handler answers whether the app's navigation took it.
+
+    private static var backAction: TermAction?
+    #if canImport(UIKit)
+    private static var backSwipe: UIScreenEdgePanGestureRecognizer?
+    #endif
+
+    static func onBack(_ handler: @escaping () -> Bool) {
+        onMain {
+            let action = TermAction { _ = handler() }
+            backAction = action
+            #if canImport(AppKit)
+            let app = NSApplication.shared
+            let menu = app.mainMenu ?? NSMenu()
+            let go = NSMenuItem(title: "Go", action: nil, keyEquivalent: "")
+            let items = NSMenu(title: "Go")
+            let back = NSMenuItem(title: "Back", action: #selector(TermAction.fire), keyEquivalent: "[")
+            back.keyEquivalentModifierMask = .command
+            back.target = action
+            items.addItem(back)
+            go.submenu = items
+            menu.addItem(go)
+            app.mainMenu = menu
+            #else
+            guard let view = root?.view else { return }
+            let swipe = UIScreenEdgePanGestureRecognizer(target: action, action: #selector(TermAction.fire))
+            swipe.edges = .left
+            view.addGestureRecognizer(swipe)
+            backSwipe = swipe
+            #endif
+        }
+    }
+
+    // for tests: the person goes back. macOS: a ⌘[ key event through the menu bar's key-equivalent dispatch, AppKit's
+    // own route. iOS: the edge swipe's own action, since a test cannot synthesize the touches of a swipe
+    static func pressBack() {
+        onMain {
+            #if canImport(AppKit)
+            guard let event = NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0,
+                windowNumber: window?.windowNumber ?? 0, context: nil, characters: "[",
+                charactersIgnoringModifiers: "[", isARepeat: false, keyCode: 33
+            ) else { return }
+            _ = NSApplication.shared.mainMenu?.performKeyEquivalent(with: event)
+            #else
+            if backSwipe != nil {
+                backAction?.fire()
+            }
+            #endif
+        }
+    }
+
     static func measureWidth(_ handle: Any) -> Int {
         onMain {
             Int(node(handle).view.frame.width)
@@ -1818,6 +2235,7 @@ enum nativeView {
             )
             window.title = title
             window.isReleasedWhenClosed = false
+            window.delegate = windowDelegate
             let content = NSView(frame: window.contentLayoutRect)
             root.view.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(root.view)

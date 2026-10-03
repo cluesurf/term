@@ -5,7 +5,7 @@ bear @term/bind/code/javascript/node/path/parsed-path
 bear @term/bind/code/javascript/node/path/format-input-path-object
 bear @term/bind/code/javascript/node/path/platform-path
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find path-platform-path
 
 host path, name <path>

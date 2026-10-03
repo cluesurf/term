@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/idb-version-change-event
+load @term/bind/browser/dom/idb-version-change-event
   find idb-version-change-event
 
 form idb-database-event-map, name <IDBDatabaseEventMap>

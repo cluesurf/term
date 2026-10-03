@@ -4,10 +4,10 @@
 #
 # Run with: term test
 
-load @term/base/code/boolean
+load @term/base/boolean
   find not
 
-load @term/base/code/hold/text/code/convert
+load @term/base/hold/text/code/convert
   find utf-16-code-points
   find utf-8-of-code-points
   find utf-8-code-points

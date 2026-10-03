@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find child-child-process
   find child-message-options
@@ -21,14 +21,14 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/cluster
+load @term/bind/node/cluster
   find address
 
 form worker, name <Worker>
   base event-emitter
-  link id, name <id>, like native-number
-  link process, name <process>, like child-child-process
-  link exited-after-disconnect, name <exitedAfterDisconnect>, like native-boolean
+  link id, name(<id>), like native-number
+  link process, name(<process>), like child-child-process
+  link exited-after-disconnect, name(<exitedAfterDisconnect>), like native-boolean
 
   task send, name <send>
     like native-boolean

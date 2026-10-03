@@ -2,7 +2,7 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
 
 form x509-check-options, name <X509CheckOptions>

@@ -5,11 +5,11 @@
 
 note unstable
 
-load @term/base/code/list
+load @term/base/list
   find list
   find join
 
-load @term/base/code/text/unicode
+load @term/base/text/unicode
   find rune-to-text
 
 # the frames above this call, innermost first

@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-string
   find native-undefined
@@ -10,7 +10,7 @@ load @term/bind
   find form
   find or
 
-load @term/bind/code/node/inspector/debugger
+load @term/bind/node/inspector/debugger
   find call-frame
 
 form paused-event-data-type, name <PausedEventDataType>

@@ -1,19 +1,19 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
   find native-string
   find native-void
   find node-js-array-buffer-view
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
   find buffer-encoding
 
-load @term/bind/code/node/crypto
+load @term/bind/node/crypto
   find binary-to-text-encoding
 
 form diffie-hellman, name <DiffieHellman>
-  link verify-error, name <verifyError>, like native-number
+  link verify-error, name(<verifyError>), like native-number
 
   task generate-keys, name <generateKeys>
     like buffer

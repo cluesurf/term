@@ -148,7 +148,7 @@ export const CATALOG = {
     message:
       'this hold is outside the decidable linear fragment and was not proven',
     severity: 'error',
-    fix: 'rewrite it as a linear comparison (<, <=, >, >=, ==), prove it in the dependent kernel with `calm` / `fold` / `cite`, or mark the claim `note open` to leave it open and counted',
+    fix: 'rewrite it as a linear comparison (<, <=, >, >=, ==), prove it in the dependent kernel with `calm` / `fold` / `cite`, or mark the claim `mark open` to leave it open and counted',
   },
   'duplicate-instance': {
     code: 0x10,
@@ -182,7 +182,7 @@ export const CATALOG = {
     code: 0x15,
     message: 'this claim has no proof',
     severity: 'error',
-    fix: 'write a `task` of the same name whose body proves it, or mark the rule `note open` to leave it open and counted',
+    fix: 'write a `task` of the same name whose body proves it, or mark the rule `mark open` to leave it open and counted',
   },
   // Using a claim that nobody has proven yet. The claim is a promise, and code that runs cannot be built on one.
   'open-claim-used': {
@@ -292,6 +292,24 @@ export const CATALOG = {
     message: '`note private` is the old spelling of `mark private`',
     severity: 'warning',
     fix: 'write `mark private`: privacy is a mark the compiler enforces, and a `note` is documentation',
+  },
+  // a call to an async task OUTSIDE every task (a top-level `host`, a component's body, a closure in either that is
+  // not async), where nothing can wait for it: it hands back a pending value. `tick` says that is meant. Behind
+  // the await switch (check/effects.ts, `setAwaitOutsideTasks`). note/term/plan/await-by-default-and-mark-metadata.md
+  'async-outside-task': {
+    code: 0x27,
+    message: 'a call to an async task outside any task, where nothing waits for it',
+    severity: 'error',
+    fix: 'move the call into a task, or write `tick` before it to start it without waiting',
+  },
+  // `note async`, `note unsafe`, `note draft` ...: metadata is `mark` since 2026-10-02, and `note <word>` is the
+  // old spelling. Still read the same (the mill mints both as one form), so code written before keeps building.
+  // note/term/plan/await-by-default-and-mark-metadata.md, section 4
+  'note-metadata': {
+    code: 0x26,
+    message: '`note` is the old spelling of metadata, which is `mark`',
+    severity: 'warning',
+    fix: 'write `mark` for the `note`: `term lint --fix` rewrites it, and `note` is left for documentation',
   },
 } satisfies Record<string, CatalogEntry>
 

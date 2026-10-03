@@ -1,26 +1,27 @@
-load @term/mill/code/code/proof/mine
+load @term/mill/code/proof/mine
   find rule-step
 
 # The stdlib theorem form (`rule absurd` / `head a` / `take proof, like void` / `like a`, and form.tree's
 # `rule x` / `mark a, like tone` / claims) and the hive kind declaration (`roll test` / `like test-entry`).
 
-load @term/mill/code/code/head/mine
+load @term/mill/code/head/mine
   find head
 
-load @term/mill/code/code/take/mine
+load @term/mill/code/take/mine
   find take
 
-load @term/mill/code/code/like/mine
+load @term/mill/code/like/mine
   find like
 
-load @term/mill/code/code/call/mine
+load @term/mill/code/call/mine
   find call
 
-load @term/mill/code/code/seed/mine
+load @term/mill/code/seed/mine
   find seed
 
 load @term/mill/code/code/note/mine
   find note
+  find mark-note
 
 # A `rule` is a named THEOREM or AXIOM, and it desugars to a function whose parameters are its universal
 # binders and whose body holds its goal. See note/term/law-and-proof.md.
@@ -47,6 +48,10 @@ mine rule-def
       mine any
         # `note open` on a SIGNATURE-shaped rule leaves the claim deliberately open: counted and reported
         # by check/claim.ts rather than refused. Without this site it fell to the seed fallback unseen.
+        # `mark open` WITHOUT a `like` is the same metadata. With one it is a binder, which `mark-note`
+        # refuses (it takes nothing under its word), so `rule-mark` below gets it
+        mine form, like mark-note
+          site note
         mine form, like note
           site note
         mine form, like head

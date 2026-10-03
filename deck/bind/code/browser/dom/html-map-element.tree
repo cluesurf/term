@@ -1,32 +1,32 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/html-collection
+load @term/bind/browser/dom/html-collection
   find html-collection
 
-load @term/bind/code/browser/dom/html-element
+load @term/bind/browser/dom/html-element
   find html-element
 
-load @term/bind/code/browser/dom/html-element-event-map
+load @term/bind/browser/dom/html-element-event-map
   find html-element-event-map
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form html-map-element, name <HTMLMapElement>

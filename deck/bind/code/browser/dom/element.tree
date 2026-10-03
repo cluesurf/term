@@ -1,116 +1,116 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/animatable
+load @term/bind/browser/dom/animatable
   find animatable
 
-load @term/bind/code/browser/dom/aria-mixin
+load @term/bind/browser/dom/aria-mixin
   find aria-mixin
 
-load @term/bind/code/browser/dom/attr
+load @term/bind/browser/dom/attr
   find attr
 
-load @term/bind/code/browser/dom/child-node
+load @term/bind/browser/dom/child-node
   find child-node
 
-load @term/bind/code/browser/dom/document
+load @term/bind/browser/dom/document
   find document
 
-load @term/bind/code/browser/dom/dom-rect
+load @term/bind/browser/dom/dom-rect
   find dom-rect
 
-load @term/bind/code/browser/dom/dom-rect-list
+load @term/bind/browser/dom/dom-rect-list
   find dom-rect-list
 
-load @term/bind/code/browser/dom/dom-token-list
+load @term/bind/browser/dom/dom-token-list
   find dom-token-list
 
-load @term/bind/code/browser/dom/element-event-map
+load @term/bind/browser/dom/element-event-map
   find element-event-map
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/fullscreen-options
+load @term/bind/browser/dom/fullscreen-options
   find fullscreen-options
 
-load @term/bind/code/browser/dom/html-collection-of
+load @term/bind/browser/dom/html-collection-of
   find html-collection-of
 
-load @term/bind/code/browser/dom/html-element
+load @term/bind/browser/dom/html-element
   find html-element
 
-load @term/bind/code/browser/dom/html-element-tag-name-map
+load @term/bind/browser/dom/html-element-tag-name-map
   find html-element-tag-name-map
 
-load @term/bind/code/browser/dom/inner-html
+load @term/bind/browser/dom/inner-html
   find inner-html
 
-load @term/bind/code/browser/dom/insert-position
+load @term/bind/browser/dom/insert-position
   find insert-position
 
-load @term/bind/code/browser/dom/named-node-map
+load @term/bind/browser/dom/named-node-map
   find named-node-map
 
-load @term/bind/code/browser/dom/node
+load @term/bind/browser/dom/node
   find node
 
-load @term/bind/code/browser/dom/non-document-type-child-node
+load @term/bind/browser/dom/non-document-type-child-node
   find non-document-type-child-node
 
-load @term/bind/code/browser/dom/parent-node
+load @term/bind/browser/dom/parent-node
   find parent-node
 
-load @term/bind/code/browser/dom/scroll-into-view-options
+load @term/bind/browser/dom/scroll-into-view-options
   find scroll-into-view-options
 
-load @term/bind/code/browser/dom/scroll-to-options
+load @term/bind/browser/dom/scroll-to-options
   find scroll-to-options
 
-load @term/bind/code/browser/dom/shadow-root
+load @term/bind/browser/dom/shadow-root
   find shadow-root
 
-load @term/bind/code/browser/dom/shadow-root-init
+load @term/bind/browser/dom/shadow-root-init
   find shadow-root-init
 
-load @term/bind/code/browser/dom/slottable
+load @term/bind/browser/dom/slottable
   find slottable
 
-load @term/bind/code/browser/dom/svg-element
+load @term/bind/browser/dom/svg-element
   find svg-element
 
-load @term/bind/code/browser/dom/svg-element-tag-name-map
+load @term/bind/browser/dom/svg-element-tag-name-map
   find svg-element-tag-name-map
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form element, name <Element>

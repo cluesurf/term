@@ -9,14 +9,14 @@
 # the dom contract has no document listener a component can hold yet, and the browser's own `<dialog>` needs a
 # property the browser host does not set. Parts: `dialog`, `dialog-title` (data-slots for a theme).
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
   find make-text
   find write-attribute
-load @term/site/code/view/reactive
+load @term/site/view/reactive
   find signal
   find make-effect
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
   find set-style
@@ -44,6 +44,11 @@ task mount-dialog
     read frame
     text <aria-modal>
     text <true>
+  # named by its title, which a screen reader speaks on entering it (note/term/view/11-vocabulary.md, "Accessibility")
+  call write-attribute
+    read frame
+    text <aria-label>
+    read title
   call write-attribute
     read frame
     text <data-slot>

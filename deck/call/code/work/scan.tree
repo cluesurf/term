@@ -1,7 +1,7 @@
-load @term/call/code/work/home
+load @term/call/work/home
   find root, name project-root
 
-load @term/call/code/work/tint
+load @term/call/work/tint
   find log-good
   find log-fail
   find log-step
@@ -23,7 +23,7 @@ load @term/call/code/work/tint
 #
 # Ported from deck/call/code/scan.ts (cli-in-term-0004).
 
-load @term/base/code/file
+load @term/base/file
   find read, name read-file
   find test, name file-test
 
@@ -77,7 +77,7 @@ task scan
         miss
           log-fail <File not found: {{file}}>
       node-process/exit code 1
-  save text, read-file full, wait true
+  save text, read-file full
 
   save result
     compile-module/compile

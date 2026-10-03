@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/rtc-rtp-stream-stats
+load @term/bind/browser/dom/rtc-rtp-stream-stats
   find rtc-rtp-stream-stats
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form rtc-received-rtp-stream-stats, name <RTCReceivedRtpStreamStats>

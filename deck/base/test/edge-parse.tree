@@ -1,6 +1,6 @@
 # Numbers read from text and written to it the same way on every backend. Held by `pnpm term:base-gate`.
 
-load @term/base/code/text/number
+load @term/base/text/number
   find parse-integer
   find parse-float
   find to-radix

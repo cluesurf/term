@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/html-slot-element
+load @term/bind/browser/dom/html-slot-element
   find html-slot-element
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
 form slottable, name <Slottable>

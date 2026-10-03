@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/es5/reg-exp-exec-array
+load @term/bind/javascript/es5/reg-exp-exec-array
   find reg-exp-exec-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form reg-exp-exec-array, name <RegExpExecArray>

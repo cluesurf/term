@@ -3,16 +3,16 @@
 # of repeating `host x, name <Y>` in every task. Each emits an alias to the real global (`const page = document`), and
 # the compiler drops it when unused. Add new globals here as the framework needs them.
 
-load @term/bind/code/browser/dom/document
+load @term/bind/browser/dom/document
   find document
 
-load @term/bind/code/browser/dom/window
+load @term/bind/browser/dom/window
   find window
 
-load @term/bind/code/browser/dom/location
+load @term/bind/browser/dom/location
   find location
 
-load @term/bind/code/browser/dom/history
+load @term/bind/browser/dom/history
   find history
 
 # the page's document

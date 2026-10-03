@@ -1,44 +1,44 @@
 
-load @term/bind/code/browser/dom/buffer-source
+load @term/bind/browser/dom/buffer-source
   find buffer-source
 
-load @term/bind/code/browser/dom/float32-list
+load @term/bind/browser/dom/float32-list
   find float32-list
 
-load @term/bind/code/browser/dom/g-lboolean
+load @term/bind/browser/dom/g-lboolean
   find g-lboolean
 
-load @term/bind/code/browser/dom/g-lenum
+load @term/bind/browser/dom/g-lenum
   find g-lenum
 
-load @term/bind/code/browser/dom/g-lint
+load @term/bind/browser/dom/g-lint
   find g-lint
 
-load @term/bind/code/browser/dom/g-lintptr
+load @term/bind/browser/dom/g-lintptr
   find g-lintptr
 
-load @term/bind/code/browser/dom/g-lsizei
+load @term/bind/browser/dom/g-lsizei
   find g-lsizei
 
-load @term/bind/code/browser/dom/g-lsizeiptr
+load @term/bind/browser/dom/g-lsizeiptr
   find g-lsizeiptr
 
-load @term/bind/code/browser/dom/int32-list
+load @term/bind/browser/dom/int32-list
   find int32-list
 
-load @term/bind/code/browser/dom/tex-image-source
+load @term/bind/browser/dom/tex-image-source
   find tex-image-source
 
-load @term/bind/code/browser/dom/web-gl-uniform-location
+load @term/bind/browser/dom/web-gl-uniform-location
   find web-gl-uniform-location
 
-load @term/bind/code/javascript/es5/array-buffer-view
+load @term/bind/javascript/es5/array-buffer-view
   find array-buffer-view
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form web-gl-rendering-context-overloads, name <WebGLRenderingContextOverloads>

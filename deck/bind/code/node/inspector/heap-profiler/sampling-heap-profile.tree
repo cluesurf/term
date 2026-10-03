@@ -1,5 +1,5 @@
 
-load @term/bind/code/node/inspector/heap-profiler
+load @term/bind/node/inspector/heap-profiler
   find sampling-heap-profile-node
 
 form sampling-heap-profile, name <SamplingHeapProfile>

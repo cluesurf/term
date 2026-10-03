@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/dom-point-init
+load @term/bind/browser/dom/dom-point-init
   find dom-point-init
 
 form dom-quad-init, name <DOMQuadInit>

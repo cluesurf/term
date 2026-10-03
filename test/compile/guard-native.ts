@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse } from '@term/make/code/parser/tree'
+import { stdlibResolver } from '@term/make/code/resolve'
 import { mill } from '@term/make/code/compile/mill'
 import { resolve as resolveNames } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
@@ -62,21 +63,8 @@ const TERM = resolvePath(HERE, '..', '..')
 const SEED = join(TERM, 'deck/base')
 
 // the stdlib, by its import path
-const resolver = (path: string): Source | undefined => {
-  const rest = path.replace(/^@term\/base\//, '')
-
-  if (rest === path) {
-    return undefined
-  }
-
-  for (const file of [join(SEED, `${rest}.tree`), join(SEED, rest, 'base.tree')]) {
-    if (existsSync(file)) {
-      return { file, text: readFileSync(file, 'utf8') }
-    }
-  }
-
-  return undefined
-}
+// the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+const resolver = stdlibResolver()!
 
 // the error lines of a toolchain's output (its warnings would bury them)
 function errorsOf(e: unknown): string {

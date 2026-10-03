@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/document-and-element-event-handlers-event-map
+load @term/bind/browser/dom/document-and-element-event-handlers-event-map
   find document-and-element-event-handlers-event-map
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/global-event-handlers-event-map
+load @term/bind/browser/dom/global-event-handlers-event-map
   find global-event-handlers-event-map
 
 form document-event-map, name <DocumentEventMap>

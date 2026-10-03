@@ -12,16 +12,16 @@
 # changes nothing the field already holds, which every host honors, so the cursor and an input method's half-composed
 # character survive the round trip. Parts: `input` (the field, data-slot for a theme).
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
   find write-attribute
   find attach-event
-load @term/site/code/view/reactive
+load @term/site/view/reactive
   find signal
   find make-effect
   find read-signal
   find write-signal
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
   find get-value

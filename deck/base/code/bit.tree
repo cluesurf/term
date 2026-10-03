@@ -2,7 +2,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/bit
+load @term/base/native/{platform}/bit
   find bit-and
   find bit-or
   find bit-exclusive-or

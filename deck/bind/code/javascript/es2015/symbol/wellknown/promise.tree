@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/es2015/iterable/promise
+load @term/bind/javascript/es2015/iterable/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form promise, name <Promise>

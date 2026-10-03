@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/blob
+load @term/bind/browser/dom/blob
   find blob
 
-load @term/bind/code/browser/dom/dom-high-res-time-stamp
+load @term/bind/browser/dom/dom-high-res-time-stamp
   find dom-high-res-time-stamp
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
 form blob-event, name <BlobEvent>

@@ -3,7 +3,7 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find agent
   find error
   find lookup-function
@@ -15,10 +15,10 @@ load @term/bind/code/javascript
   find native-void
   find socket
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find abort-signal
 
-load @term/bind/code/node/http
+load @term/bind/node/http
   find outgoing-http-headers
 
 form client-request-args, name <ClientRequestArgs>

@@ -1,0 +1,180 @@
+load @term/base/list
+  find list
+load @term/base/float
+  find square-root
+  find to-decimal
+  find to-number
+  find round-down
+
+# spectral-norm, the Benchmarks Game program, single-threaded: the largest eigenvalue of an infinite matrix A, where
+# A(i, j) = 1 / ((i + j)(i + j + 1) / 2 + i + 1), found by ten rounds of the power method on A transposed times A, over
+# n-long vectors of decimals. Written the obvious way: lists of decimals and counted walks. The answer is the norm
+# times 10^9 rounded down, an integer, so it reads the same on every backend (a float's printed form does not)
+task a-value
+  take i, like number
+  take j, like number
+  like decimal
+  host ij
+    call add
+      read i
+      read j
+  send back
+    call divide
+      code 1.0
+      call to-decimal
+        call add
+          call divide
+            call multiply
+              read ij
+              call add
+                read ij
+                code 1
+            code 2
+          call add
+            read i
+            code 1
+
+task decimals
+  take n, like number
+  take value, like decimal
+  like list, like decimal
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      call push
+        bind list, read out
+        bind item, read value
+  send back, read out
+
+# out = A v
+task times-a
+  take n, like number
+  take v, like list, like decimal
+  take out, like list, like decimal
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      save sum, code 0.0
+      walk size
+        bind base, code 0
+        bind head, read n
+        hook next
+          take site, name j
+          save sum
+            call add
+              read sum
+              call multiply
+                call a-value
+                  read i
+                  read j
+                read v/{j}
+      save out/{i}, read sum
+
+# out = A-transposed v
+task times-at
+  take n, like number
+  take v, like list, like decimal
+  take out, like list, like decimal
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      save sum, code 0.0
+      walk size
+        bind base, code 0
+        bind head, read n
+        hook next
+          take site, name j
+          save sum
+            call add
+              read sum
+              call multiply
+                call a-value
+                  read j
+                  read i
+                read v/{j}
+      save out/{i}, read sum
+
+# out = A-transposed A v, through `between`
+task times-ata
+  take n, like number
+  take v, like list, like decimal
+  take out, like list, like decimal
+  take between, like list, like decimal
+  call times-a
+    read n
+    read v
+    read between
+  call times-at
+    read n
+    read between
+    read out
+
+task spectral-norm
+  take n, like number
+  like text
+  save u
+    call decimals
+      read n
+      code 1.0
+  save v
+    call decimals
+      read n
+      code 0.0
+  save between
+    call decimals
+      read n
+      code 0.0
+  walk size
+    bind base, code 0
+    bind head, code 10
+    hook next
+      take site, name round
+      call times-ata
+        read n
+        read u
+        read v
+        read between
+      call times-ata
+        read n
+        read v
+        read u
+        read between
+  save vbv, code 0.0
+  save vv, code 0.0
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      save vbv
+        call add
+          read vbv
+          call multiply
+            read u/{i}
+            read v/{i}
+      save vv
+        call add
+          read vv
+          call multiply
+            read v/{i}
+            read v/{i}
+  host norm
+    call square-root
+      call divide
+        read vbv
+        read vv
+  host scaled
+    call to-number
+      call round-down
+        call multiply
+          read norm
+          code 1000000000.0
+  send back, text <{{scaled}}>

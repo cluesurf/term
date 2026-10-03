@@ -1,29 +1,29 @@
 
-load @term/bind/code/browser/webworker/client
+load @term/bind/browser/webworker/client
   find client
 
-load @term/bind/code/browser/webworker/client-query-options
+load @term/bind/browser/webworker/client-query-options
   find client-query-options
 
-load @term/bind/code/browser/webworker/window-client
+load @term/bind/browser/webworker/window-client
   find window-client
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/es5/readonly-array
+load @term/bind/javascript/es5/readonly-array
   find readonly-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-undefined
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form clients, name <Clients>

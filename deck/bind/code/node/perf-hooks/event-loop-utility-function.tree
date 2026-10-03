@@ -2,7 +2,7 @@
 load @term/bind
   find task
 
-load @term/bind/code/node/perf-hooks
+load @term/bind/node/perf-hooks
   find event-loop-utilization
 
 form event-loop-utility-function, name <EventLoopUtilityFunction>

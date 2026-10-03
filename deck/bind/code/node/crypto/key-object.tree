@@ -2,17 +2,17 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find key-object
   find native-number
   find native-string
   find native-undefined
   find webcrypto-crypto-key
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/crypto
+load @term/bind/node/crypto
   find asymmetric-key-details
   find json-web-key
   find jwk-key-export-options
@@ -37,7 +37,7 @@ form key-object, name <KeyObject>
     like or
       like native-number
       like native-undefined
-  link type, name <type>, like key-object-type
+  link type, name(<type>), like key-object-type
 
   task export, name <export>
     like or

@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/webworker/image-bitmap
+load @term/bind/browser/webworker/image-bitmap
   find image-bitmap
 
-load @term/bind/code/browser/webworker/message-port
+load @term/bind/browser/webworker/message-port
   find message-port
 
-load @term/bind/code/browser/webworker/offscreen-canvas
+load @term/bind/browser/webworker/offscreen-canvas
   find offscreen-canvas
 
-load @term/bind/code/javascript/es5/array-buffer
+load @term/bind/javascript/es5/array-buffer
   find array-buffer
 
 form transferable, name <Transferable>

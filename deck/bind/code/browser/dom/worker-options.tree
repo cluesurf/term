@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/request-credentials
+load @term/bind/browser/dom/request-credentials
   find request-credentials
 
-load @term/bind/code/browser/dom/worker-type
+load @term/bind/browser/dom/worker-type
   find worker-type
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form worker-options, name <WorkerOptions>

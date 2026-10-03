@@ -3,11 +3,11 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-number
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find uint8-array
 
 form on-read-opts, name <OnReadOpts>

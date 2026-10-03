@@ -1,26 +1,26 @@
 
-load @term/bind/code/browser/dom/blob
+load @term/bind/browser/dom/blob
   find blob
 
-load @term/bind/code/browser/dom/form-data-entry-value
+load @term/bind/browser/dom/form-data-entry-value
   find form-data-entry-value
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form form-data, name <FormData>

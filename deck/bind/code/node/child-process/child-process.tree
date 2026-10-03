@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find error
   find native-boolean
@@ -21,7 +21,7 @@ load @term/bind
   find task
   find tuple
 
-load @term/bind/code/node/child-process
+load @term/bind/node/child-process
   find message-options
   find send-handle
   find serializable
@@ -66,12 +66,12 @@ form child-process, name <ChildProcess>
         like writable
         like native-null
         like native-undefined
-  link killed, name <killed>, like native-boolean
+  link killed, name(<killed>), like native-boolean
   link pid, name <pid>
     like or
       like native-number
       like native-undefined
-  link connected, name <connected>, like native-boolean
+  link connected, name(<connected>), like native-boolean
   link exit-code, name <exitCode>
     like or
       like native-number
@@ -83,7 +83,7 @@ form child-process, name <ChildProcess>
   link spawnargs, name <spawnargs>
     like array
       like native-string
-  link spawnfile, name <spawnfile>, like native-string
+  link spawnfile, name(<spawnfile>), like native-string
 
   task kill, name <kill>
     like native-boolean

@@ -6,7 +6,7 @@
 #
 # It replaces ./separator.tree (the shadcn port: a `div` with an orientation prop), shelved with `note draft`.
 
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
 
 view divider

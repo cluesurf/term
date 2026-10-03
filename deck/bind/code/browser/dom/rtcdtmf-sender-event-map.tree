@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/rtcdtmf-tone-change-event
+load @term/bind/browser/dom/rtcdtmf-tone-change-event
   find rtcdtmf-tone-change-event
 
 form rtcdtmf-sender-event-map, name <RTCDTMFSenderEventMap>

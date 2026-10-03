@@ -3,7 +3,7 @@
 
 note unstable
 
-load @term/base/code/native/{platform}/file/metadata
+load @term/base/native/{platform}/file/metadata
   find metadata-size
   find metadata-is-directory
   find metadata-is-file

@@ -6,11 +6,11 @@
 
 note stable
 
-load @term/base/code/calendar/time-text
+load @term/base/calendar/time-text
   find parse-rfc-3339
   find time-mismatch
 
-load @term/base/code/calendar/civil
+load @term/base/calendar/civil
   find floor-divide
   find days-from-civil
   find civil-from-days

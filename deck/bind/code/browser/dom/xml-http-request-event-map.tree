@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/xml-http-request-event-target-event-map
+load @term/bind/browser/dom/xml-http-request-event-target-event-map
   find xml-http-request-event-target-event-map
 
 form xml-http-request-event-map, name <XMLHttpRequestEventMap>

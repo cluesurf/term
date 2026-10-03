@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/text-track-cue
+load @term/bind/browser/dom/text-track-cue
   find text-track-cue
 
-load @term/bind/code/browser/dom/text-track-cue-list
+load @term/bind/browser/dom/text-track-cue-list
   find text-track-cue-list
 
 load @term/bind/code/javascript/iterable-iterator

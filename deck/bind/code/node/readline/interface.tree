@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find async-iterable-iterator
   find native-boolean
@@ -18,13 +18,13 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/events/event-emitter
+load @term/bind/node/events/event-emitter
   find abortable
 
-load @term/bind/code/node/readline
+load @term/bind/node/readline
   find async-completer
   find completer
   find cursor-pos
@@ -33,9 +33,9 @@ load @term/bind/code/node/readline
 
 form interface, name <Interface>
   base event-emitter
-  link terminal, name <terminal>, like native-boolean
-  link line, name <line>, like native-string
-  link cursor, name <cursor>, like native-number
+  link terminal, name(<terminal>), like native-boolean
+  link line, name(<line>), like native-string
+  link cursor, name(<cursor>), like native-number
 
   task get-prompt, name <getPrompt>
     like native-string

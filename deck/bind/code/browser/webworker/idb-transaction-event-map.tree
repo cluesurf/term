@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/idb-transaction-event-map
+load @term/bind/browser/dom/idb-transaction-event-map
   find idb-transaction-event-map
 
-load @term/bind/code/browser/webworker/event
+load @term/bind/browser/webworker/event
   find event
 
 form idb-transaction-event-map, name <IDBTransactionEventMap>

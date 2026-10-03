@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/audio-node
+load @term/bind/browser/dom/audio-node
   find audio-node
 
-load @term/bind/code/browser/dom/media-stream
+load @term/bind/browser/dom/media-stream
   find media-stream
 
 form media-stream-audio-destination-node, name <MediaStreamAudioDestinationNode>

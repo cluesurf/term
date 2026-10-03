@@ -2,14 +2,14 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-null
   find native-number
   find native-string
   find native-undefined
 
-load @term/bind/code/node/querystring
+load @term/bind/node/querystring
   find parsed-url-query-input
 
 form url-object, name <UrlObject>

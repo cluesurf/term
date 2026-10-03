@@ -13,13 +13,13 @@
 
 note stable
 
-load @term/base/code/text/unicode
+load @term/base/text/unicode
   find to-runes
 
-load @term/base/code/list
+load @term/base/list
   find size
 
-load @term/base/code/exception
+load @term/base/exception
   find mismatch
 
 form json-mismatch

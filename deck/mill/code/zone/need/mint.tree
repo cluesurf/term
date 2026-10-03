@@ -1,5 +1,5 @@
 
-load @term/base/code/zone-file
+load @term/base/zone-file
   find zone-need
 
 # `must` is the whole difference between the two, and it is set here rather

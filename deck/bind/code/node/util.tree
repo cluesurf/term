@@ -15,7 +15,7 @@ bear @term/bind/code/javascript/node/util/encode-into-result
 bear @term/bind/code/javascript/node/util/text-encoder
 bear @term/bind/code/javascript/node/util/util-types
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find date
   find error
@@ -40,10 +40,10 @@ load @term/bind
   find tuple
   find unknown
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/util
+load @term/bind/node/util
   find custom-promisify
   find debug-logger
   find debug-logger-function

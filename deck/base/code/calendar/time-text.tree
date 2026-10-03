@@ -9,17 +9,17 @@
 
 note stable
 
-load @term/base/code/text/unicode
+load @term/base/text/unicode
   find to-runes
 
-load @term/base/code/list
+load @term/base/list
   find size
   find get
 
-load @term/base/code/exception
+load @term/base/exception
   find mismatch
 
-load @term/base/code/plain-date
+load @term/base/plain-date
   find plain-date
   find from-parts
   find days-in-month

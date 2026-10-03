@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/css-style-sheet
+load @term/bind/browser/dom/css-style-sheet
   find css-style-sheet
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
 form link-style, name <LinkStyle>

@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/dom-rect
+load @term/bind/browser/dom/dom-rect
   find dom-rect
 
 form svg-rect, name <SVGRect>

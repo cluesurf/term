@@ -1,71 +1,71 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/animation-event
+load @term/bind/browser/dom/animation-event
   find animation-event
 
-load @term/bind/code/browser/dom/drag-event
+load @term/bind/browser/dom/drag-event
   find drag-event
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/focus-event
+load @term/bind/browser/dom/focus-event
   find focus-event
 
-load @term/bind/code/browser/dom/form-data-event
+load @term/bind/browser/dom/form-data-event
   find form-data-event
 
-load @term/bind/code/browser/dom/global-event-handlers-event-map
+load @term/bind/browser/dom/global-event-handlers-event-map
   find global-event-handlers-event-map
 
-load @term/bind/code/browser/dom/keyboard-event
+load @term/bind/browser/dom/keyboard-event
   find keyboard-event
 
-load @term/bind/code/browser/dom/mouse-event
+load @term/bind/browser/dom/mouse-event
   find mouse-event
 
-load @term/bind/code/browser/dom/on-error-event-handler
+load @term/bind/browser/dom/on-error-event-handler
   find on-error-event-handler
 
-load @term/bind/code/browser/dom/pointer-event
+load @term/bind/browser/dom/pointer-event
   find pointer-event
 
-load @term/bind/code/browser/dom/progress-event
+load @term/bind/browser/dom/progress-event
   find progress-event
 
-load @term/bind/code/browser/dom/touch-event
+load @term/bind/browser/dom/touch-event
   find touch-event
 
-load @term/bind/code/browser/dom/transition-event
+load @term/bind/browser/dom/transition-event
   find transition-event
 
-load @term/bind/code/browser/dom/ui-event
+load @term/bind/browser/dom/ui-event
   find ui-event
 
-load @term/bind/code/browser/dom/wheel-event
+load @term/bind/browser/dom/wheel-event
   find wheel-event
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form global-event-handlers, name <GlobalEventHandlers>

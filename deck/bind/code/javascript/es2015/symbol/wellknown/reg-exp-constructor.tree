@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript/es2015/core/reg-exp-constructor
+load @term/bind/javascript/es2015/core/reg-exp-constructor
   find reg-exp-constructor
 
 form reg-exp-constructor, name <RegExpConstructor>

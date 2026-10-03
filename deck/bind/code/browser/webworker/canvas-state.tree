@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/canvas-state
+load @term/bind/browser/dom/canvas-state
   find canvas-state
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form canvas-state, name <CanvasState>

@@ -2,11 +2,11 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-null
   find native-string
 
-load @term/bind/code/node/url
+load @term/bind/node/url
   find url
 
 form url-with-string-query, name <UrlWithStringQuery>

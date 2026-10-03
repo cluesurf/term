@@ -1,10 +1,10 @@
-load @term/mill/code/code/form/link/mine
+load @term/mill/code/form/link/mine
   find link
 
-load @term/mill/code/code/seed/mine
+load @term/mill/code/seed/mine
   find seed
 
-load @term/mill/code/code/tool/flow/mine
+load @term/mill/code/tool/flow/mine
   find flow
 
 mine fork
@@ -163,6 +163,16 @@ mine fork-case
   mine list
     mine form, like fork-arm
       site arm
+
+# `sift <value>` is the match: exactly `fork case, <value>`, the same subject and the same `case` arms, minted into
+# the same `fork-case` form, so nothing downstream of the mill can tell the two spellings apart.
+mine sift
+  mine term, term sift
+    mine form, like seed
+      site seed
+    mine list
+      mine form, like fork-arm
+        site arm
 
 mine fork-arm
   mine term, term case

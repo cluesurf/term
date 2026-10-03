@@ -82,9 +82,9 @@ async function resolveLink(input: {
   const workspace = ctx.workspaces.get(link.name)
 
   if (workspace) {
-    const wsVersion = workspace.code
+    const wsVersion = workspace.mark
 
-    if (codeMatch(wsVersion, link.code)) {
+    if (codeMatch(wsVersion, link.mark)) {
       const key = `${link.name}@${showCode(wsVersion)}`
       ctx.resolved.set(key, {
         name: link.name,
@@ -102,7 +102,7 @@ async function resolveLink(input: {
   // check lockfile for existing resolution
   const locked = findLockedVersion({
     name: link.name,
-    hold: link.code,
+    hold: link.mark,
     lockfile: ctx.lockfile,
   })
 
@@ -122,7 +122,7 @@ async function resolveLink(input: {
       // resolve transitive deps from lockfile
       const transLinks: DeckLink[] = locked.link.map(l => ({
         name: l.name,
-        code: { form: 'exact' as const, code: parseCode(l.code) },
+        mark: { form: 'exact' as const, code: parseCode(l.code) },
       }))
 
       await resolveLinks({ links: transLinks, ctx })
@@ -147,7 +147,7 @@ async function resolveLink(input: {
   })
 
   const versions = getVersionList({ meta })
-  const best = pickBestCode({ versions, hold: link.code })
+  const best = pickBestCode({ versions, hold: link.mark })
 
   if (!best) {
     throw new Error(`No version of ${link.name} matches constraint`)
@@ -175,7 +175,7 @@ async function resolveLink(input: {
     depLinks.set(depName, depConstraint)
     transLinks.push({
       name: depName,
-      code: parseCodeHold(depConstraint),
+      mark: parseCodeHold(depConstraint),
     })
   }
 
@@ -214,7 +214,7 @@ async function resolveOciLink(input: {
     }
   }
 
-  const best = pickBestCode({ versions, hold: link.code })
+  const best = pickBestCode({ versions, hold: link.mark })
 
   if (!best) {
     throw new Error(
@@ -255,7 +255,7 @@ async function resolveOciLink(input: {
   await resolveLinks({
     links: version.config.link.map(l => ({
       name: l.deck,
-      code: parseCodeHold(l.code),
+      mark: parseCodeHold(l.code),
     })),
     ctx,
   })

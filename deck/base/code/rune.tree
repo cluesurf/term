@@ -2,7 +2,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/rune
+load @term/base/native/{platform}/rune
   find scalar-is-letter
   find scalar-is-number
   find scalar-is-whitespace

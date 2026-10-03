@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/crypto-key
+load @term/bind/browser/dom/crypto-key
   find crypto-key
 
 form crypto-key-pair, name <CryptoKeyPair>

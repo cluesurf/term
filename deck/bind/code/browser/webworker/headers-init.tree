@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/webworker/headers
+load @term/bind/browser/webworker/headers
   find headers
 
-load @term/bind/code/javascript/es5/record
+load @term/bind/javascript/es5/record
   find record
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form headers-init, name <HeadersInit>

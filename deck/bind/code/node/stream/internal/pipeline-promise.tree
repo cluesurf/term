@@ -4,12 +4,12 @@ load @term/bind
   find like
   find test
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-void
   find p
   find promise
 
-load @term/bind/code/node/stream/internal
+load @term/bind/node/stream/internal
   find pipeline-destination
   find pipeline-destination-promise-function
 

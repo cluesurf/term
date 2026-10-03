@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/gamepad-haptic-actuator-type
+load @term/bind/browser/dom/gamepad-haptic-actuator-type
   find gamepad-haptic-actuator-type
 
 form gamepad-haptic-actuator, name <GamepadHapticActuator>

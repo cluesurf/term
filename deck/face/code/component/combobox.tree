@@ -7,9 +7,9 @@
 # combobox-empty, combobox-item, combobox-group, combobox-label. Headless: every part carries data-slot + a class
 # prop; open/closed flows through data-state for CSS animation.
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 load ../logic/disclosure

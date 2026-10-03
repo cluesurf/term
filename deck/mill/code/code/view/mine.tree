@@ -1,4 +1,4 @@
-load @term/mill/code/code/bind/mine
+load @term/mill/code/bind/mine
   find bind
 
 
@@ -12,40 +12,41 @@ load @term/mill/code/code/bind/mine
 # Was spelled `zone` until 2026-08-30. `deck/zone/` is the environment and secret system and shares nothing with
 # this but the old name, which is why the name had to move.
 
-load @term/mill/code/code/take/mine
+load @term/mill/code/take/mine
   find take
 
-load @term/mill/code/code/hook/mine
+load @term/mill/code/hook/mine
   find hook
 
-load @term/mill/code/code/tune/mine
+load @term/mill/code/tune/mine
   find tune
 
 load @term/mill/code/code/note/mine
   find note
+  find mark-note
 
-load @term/mill/code/code/like/mine
+load @term/mill/code/like/mine
   find like
 
-load @term/mill/code/code/head/mine
+load @term/mill/code/head/mine
   find head
 
-load @term/mill/code/code/mark/mine
+load @term/mill/code/mark/mine
   find mark
 
-load @term/mill/code/code/seed/mine
+load @term/mill/code/seed/mine
   find seed
 
-load @term/mill/code/code/call/mine
+load @term/mill/code/call/mine
   find call
 
-load @term/mill/code/code/fork/mine
+load @term/mill/code/fork/mine
   find fork
 
-load @term/mill/code/code/walk/mine
+load @term/mill/code/walk/mine
   find walk
 
-load @term/mill/code/code/save/mine
+load @term/mill/code/save/mine
   find save
 
 mine view
@@ -75,6 +76,8 @@ mine view-def
           site like
         mine form, like head
           site head
+        mine form, like mark-note
+          site note
         mine form, like mark
           site mark
         mine form, like note
@@ -108,6 +111,15 @@ mine view-node
       site save
     mine form, like call
       site call
+    # LAST, after everything headed: a bare word is a dynamic text node reading that variable, so `view p, who`
+    # and `view p` over `who` both mean `view p` over `read who`
+    mine form, like view-word
+      site read
+
+# a bare word in markup: the variable of that name, as a dynamic text node
+mine view-word
+  mine word
+    site seed
 
 # `view <tag>` is an html element or a nested component, and `node <tag>` forces the element even when `<tag>`
 # is also a component name: the escape hatch for a real `<select>` inside a component called select.

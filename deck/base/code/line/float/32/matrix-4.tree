@@ -2,11 +2,11 @@
 
 note unstable
 
-load @term/base/code/list
+load @term/base/list
   find list
   find get
 
-load @term/base/code/line/float/32/vector-4
+load @term/base/line/float/32/vector-4
   find vector-4
   find make-vector-4
 

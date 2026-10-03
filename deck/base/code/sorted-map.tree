@@ -5,18 +5,18 @@
 
 note stable
 
-load @term/base/code/list
+load @term/base/list
   find list
   find size
   find get
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
-load @term/base/code/pair
+load @term/base/pair
   find pair
 
-load @term/base/code/ordering
+load @term/base/ordering
   find ordering
   find is-less
   find is-equal
@@ -41,16 +41,37 @@ form sorted-map
     take self
     take key, like k
     like number
+    must
+      call is-minimum
+        read back
+        code 0
     save low, code 0
     save high
       call size
         read self/keys
-    # no `down`: what moves the loop on is not something the prover can bound here; each turn still advances
+    # the span falls in both branches, each ending its own turn. `compare` may reach the keys, so their own length
+    # is tested on every turn as well as `high`
     walk test
-      hook test
-        call is-below
+      must
+        call is-minimum
+          read low
+          code 0
+      must
+        call is-maximum
           read low
           read high
+      down
+        call subtract
+          read high
+          read low
+      hook test
+        call and
+          call is-below
+            read low
+            read high
+          call is-maximum
+            read high
+            read self/keys/length
       hook step
         save middle
           call add
@@ -73,8 +94,10 @@ form sorted-map
               call add
                 read middle
                 code 1
+            turn next
           hook miss
             save high, read middle
+            turn next
     send back, read low
 
   # whether the key at `at` is `key`
@@ -85,10 +108,13 @@ form sorted-map
     like boolean
     fork test
       hook test
-        call is-below
-          read at
-          call size
-            read self/keys
+        call and
+          call is-minimum
+            read at
+            code 0
+          call is-below
+            read at
+            read self/keys/length
       hook hold
         send back
           call is-equal
@@ -115,9 +141,16 @@ form sorted-map
           read at
           read key
       hook hold
-        call self/values/set
-          read at
-          read value
+        # the keys and the values are two lists; one built by hand may be the shorter, and is never read past
+        fork test
+          hook test
+            call is-below
+              read at
+              read self/values/length
+          hook hold
+            call self/values/set
+              read at
+              read value
       hook miss
         call self/keys/splice
           read at
@@ -140,10 +173,14 @@ form sorted-map
         read key
     fork test
       hook test
-        call holds-at
-          read self
-          read at
-          read key
+        call and
+          call holds-at
+            read self
+            read at
+            read key
+          call is-below
+            read at
+            read self/values/length
       hook hold
         send back
           make some
@@ -210,13 +247,19 @@ form sorted-map
     walk list, read self/keys
       hook next
         take site, name key
-        call out/push
-          make pair
-            bind first, read key
-            bind second
-              call get
-                read self/values
-                read at
+        fork test
+          hook test
+            call is-below
+              read at
+              read self/values/length
+          hook hold
+            call out/push
+              make pair
+                bind first, read key
+                bind second
+                  call get
+                    read self/values
+                    read at
         save at
           call add
             read at

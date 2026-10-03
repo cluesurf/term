@@ -5,11 +5,11 @@
 # installed toolchain, any run prints the wrong output, or `--check` finds a regression. A target whose toolchain is
 # not installed is printed as skipped and is not a failure.
 
-load @term/base/code/console
+load @term/base/console
   find log
   find error, name log-error
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
   find get
@@ -21,7 +21,7 @@ load ./lists
   find words-copy
   find holds-text
 
-load @term/base/code/text
+load @term/base/text
   find trim
   find split
   find contains, name text-contains
@@ -29,13 +29,13 @@ load @term/base/code/text
   find substring
   find char-count
 
-load @term/base/code/float
+load @term/base/float
   find to-decimal
 
-load @term/base/code/time
+load @term/base/time
   find now
 
-load @term/base/code/calendar
+load @term/base/calendar
   find format
 
 load ./host

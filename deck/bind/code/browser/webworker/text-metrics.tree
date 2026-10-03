@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/text-metrics
+load @term/bind/browser/dom/text-metrics
   find text-metrics
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form text-metrics, name <TextMetrics>

@@ -2,10 +2,10 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-undefined
 
-load @term/bind/code/node/inspector/runtime
+load @term/bind/node/inspector/runtime
   find execution-context-id
 
 form global-lexical-scope-names-parameter-type, name <GlobalLexicalScopeNamesParameterType>

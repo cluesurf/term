@@ -1,32 +1,32 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/svg-animated-length
+load @term/bind/browser/dom/svg-animated-length
   find svg-animated-length
 
-load @term/bind/code/browser/dom/svg-element-event-map
+load @term/bind/browser/dom/svg-element-event-map
   find svg-element-event-map
 
-load @term/bind/code/browser/dom/svg-gradient-element
+load @term/bind/browser/dom/svg-gradient-element
   find svg-gradient-element
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form svg-linear-gradient-element, name <SVGLinearGradientElement>

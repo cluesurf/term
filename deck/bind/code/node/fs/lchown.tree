@@ -1,10 +1,10 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
   find native-void
   find promise
 
-load @term/bind/code/node/fs
+load @term/bind/node/fs
   find path-like
 
 task promisify, name <__promisify__>

@@ -1,7 +1,7 @@
-load @term/call/code/work/home
+load @term/call/work/home
   find root, name project-root
 
-load @term/call/code/work/tint
+load @term/call/work/tint
   find log-good
   find log-fail
   find log-step
@@ -29,10 +29,10 @@ load @term/call/code/work/tint
 # conversion: the source becomes `.tree` first, and each dock is then a named thing to replace, in one place, rather
 # than a TypeScript file nobody is looking at. See note/term/project/cli-in-term.md.
 
-load @term/base/code/path
+load @term/base/path
   find join
 
-load @term/base/code/file/directory
+load @term/base/file/directory
   find remove, name remove-directory
   find exists, name directory-exists
 

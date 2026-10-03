@@ -1,59 +1,59 @@
 
-load @term/bind/code/browser/dom/cache-storage
+load @term/bind/browser/dom/cache-storage
   find cache-storage
 
-load @term/bind/code/browser/dom/crypto
+load @term/bind/browser/dom/crypto
   find crypto
 
-load @term/bind/code/browser/dom/idb-factory
+load @term/bind/browser/dom/idb-factory
   find idb-factory
 
-load @term/bind/code/browser/dom/image-bitmap
+load @term/bind/browser/dom/image-bitmap
   find image-bitmap
 
-load @term/bind/code/browser/dom/image-bitmap-options
+load @term/bind/browser/dom/image-bitmap-options
   find image-bitmap-options
 
-load @term/bind/code/browser/dom/image-bitmap-source
+load @term/bind/browser/dom/image-bitmap-source
   find image-bitmap-source
 
-load @term/bind/code/browser/dom/performance
+load @term/bind/browser/dom/performance
   find performance
 
-load @term/bind/code/browser/dom/request-info
+load @term/bind/browser/dom/request-info
   find request-info
 
-load @term/bind/code/browser/dom/request-init
+load @term/bind/browser/dom/request-init
   find request-init
 
-load @term/bind/code/browser/dom/response
+load @term/bind/browser/dom/response
   find response
 
-load @term/bind/code/browser/dom/timer-handler
+load @term/bind/browser/dom/timer-handler
   find timer-handler
 
-load @term/bind/code/browser/dom/void-function
+load @term/bind/browser/dom/void-function
   find void-function
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form window-or-worker-global-scope, name <WindowOrWorkerGlobalScope>

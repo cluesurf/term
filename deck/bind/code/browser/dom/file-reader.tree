@@ -1,47 +1,47 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/blob
+load @term/bind/browser/dom/blob
   find blob
 
-load @term/bind/code/browser/dom/dom-exception
+load @term/bind/browser/dom/dom-exception
   find dom-exception
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/event-target
+load @term/bind/browser/dom/event-target
   find event-target
 
-load @term/bind/code/browser/dom/file-reader-event-map
+load @term/bind/browser/dom/file-reader-event-map
   find file-reader-event-map
 
-load @term/bind/code/browser/dom/progress-event
+load @term/bind/browser/dom/progress-event
   find progress-event
 
-load @term/bind/code/javascript/es5/array-buffer
+load @term/bind/javascript/es5/array-buffer
   find array-buffer
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form file-reader, name <FileReader>

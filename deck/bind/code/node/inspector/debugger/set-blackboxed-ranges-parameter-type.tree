@@ -1,9 +1,9 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find runtime-script-id
 
-load @term/bind/code/node/inspector/debugger
+load @term/bind/node/inspector/debugger
   find script-position
 
 form set-blackboxed-ranges-parameter-type, name <SetBlackboxedRangesParameterType>

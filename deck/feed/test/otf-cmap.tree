@@ -2,7 +2,7 @@
 # group. Run: term test, from deck/feed. Proves mine at (offset relative to the cmap table's own start) composed
 # with a format-discriminated union (04-otf-case-study.md).
 
-load @term/base/code/list
+load @term/base/list
   find push
   find get
 
@@ -210,7 +210,7 @@ test <the format-12 group's char codes and start-glyph-id all read correctly>
       read table/records
       code 0
   save group
-    call get(call format-12-groups(read record/subtable), code 0)
+    call get(call(format-12-groups(read record/subtable)), code 0)
   want hold
     call is-equal
       read group/start-char-code
@@ -227,7 +227,7 @@ test <write-otf-cmap-table then read-otf-cmap-table round trips the format-12 gr
       read reread/records
       code 0
   save group
-    call get(call format-12-groups(read record/subtable), code 0)
+    call get(call(format-12-groups(read record/subtable)), code 0)
   want hold
     call is-equal
       read group/end-char-code
@@ -299,7 +299,7 @@ test <a format-4 subtable's single segment round trips through write then read>
       read reread/records
       code 0
   save segment
-    call get(call format-4-segments(read record/subtable), code 0)
+    call get(call(format-4-segments(read record/subtable)), code 0)
   want hold
     call is-equal
       read segment/start-code

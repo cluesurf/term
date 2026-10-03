@@ -1,13 +1,13 @@
 # Paths read the same on every backend: normalize, resolve and relative are pure Term over `/`. Held by
 # `pnpm term:base-gate`.
 
-load @term/base/code/path
+load @term/base/path
   find normalize-path
   find resolve-path
   find relative-path
   find path-segments
 
-load @term/base/code/list
+load @term/base/list
   find size
 
 test <normalize drops dot segments and takes back dot-dot>

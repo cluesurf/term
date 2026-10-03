@@ -3,10 +3,10 @@
 #
 # Run with: term test
 
-load @term/base/code/bitset
+load @term/base/bitset
   find bitset
 
-load @term/base/code/boolean
+load @term/base/boolean
   find not
 
 test bitset-sets-and-has-a-bit

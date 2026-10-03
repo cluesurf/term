@@ -1,26 +1,26 @@
 
-load @term/bind/code/browser/dom/error-callback
+load @term/bind/browser/dom/error-callback
   find error-callback
 
-load @term/bind/code/browser/dom/file-system-directory-reader
+load @term/bind/browser/dom/file-system-directory-reader
   find file-system-directory-reader
 
-load @term/bind/code/browser/dom/file-system-entry
+load @term/bind/browser/dom/file-system-entry
   find file-system-entry
 
-load @term/bind/code/browser/dom/file-system-entry-callback
+load @term/bind/browser/dom/file-system-entry-callback
   find file-system-entry-callback
 
-load @term/bind/code/browser/dom/file-system-flags
+load @term/bind/browser/dom/file-system-flags
   find file-system-flags
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form file-system-directory-entry, name <FileSystemDirectoryEntry>

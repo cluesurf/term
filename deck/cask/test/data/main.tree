@@ -3,7 +3,7 @@
 # the GENERATED dispatcher in ./dispatch.tree, which carries the database commands to the SQLite native of this
 # platform and keeps the rows the page holds handles to. No window is shown: a test only talks over the bridge.
 
-load @term/cask/code/cask
+load @term/cask/cask
   find window
   find open-window
   find load-bundle

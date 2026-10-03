@@ -5,15 +5,15 @@
 
 note stable
 
-load @term/base/code/text
+load @term/base/text
   find char-at
   find char-code-at
   find contains
 
-load @term/base/code/text/string
+load @term/base/text/string
   find concat
 
-load @term/base/code/list
+load @term/base/list
   find list
 
 # parse comma-separated text into rows of fields

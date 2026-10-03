@@ -2,17 +2,17 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find blob
   find native-boolean
   find native-null
   find native-string
   find native-void
 
-load @term/bind/code/node/querystring
+load @term/bind/node/querystring
   find parsed-url-query
 
-load @term/bind/code/node/url
+load @term/bind/node/url
   find url
   find url-search-params
 
@@ -78,18 +78,18 @@ form url, name <Url>
     flex true
 
 form url, name <URL>
-  link hash, name <hash>, like native-string
-  link host, name <host>, like native-string
-  link hostname, name <hostname>, like native-string
-  link href, name <href>, like native-string
-  link origin, name <origin>, like native-string
-  link password, name <password>, like native-string
-  link pathname, name <pathname>, like native-string
-  link port, name <port>, like native-string
-  link protocol, name <protocol>, like native-string
-  link search, name <search>, like native-string
-  link search-params, name <searchParams>, like url-search-params
-  link username, name <username>, like native-string
+  link hash, name(<hash>), like native-string
+  link host, name(<host>), like native-string
+  link hostname, name(<hostname>), like native-string
+  link href, name(<href>), like native-string
+  link origin, name(<origin>), like native-string
+  link password, name(<password>), like native-string
+  link pathname, name(<pathname>), like native-string
+  link port, name(<port>), like native-string
+  link protocol, name(<protocol>), like native-string
+  link search, name(<search>), like native-string
+  link search-params, name(<searchParams>), like url-search-params
+  link username, name(<username>), like native-string
 
   task to-string, name <toString>
     like native-string

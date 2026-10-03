@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-boolean
   find native-number
@@ -11,7 +11,7 @@ load @term/bind/code/javascript
 load @term/bind
   find or
 
-load @term/bind/code/node/readline
+load @term/bind/node/readline
   find async-completer
   find completer
 

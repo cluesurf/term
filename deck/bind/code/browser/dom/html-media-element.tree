@@ -1,71 +1,71 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/can-play-type-result
+load @term/bind/browser/dom/can-play-type-result
   find can-play-type-result
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/html-element
+load @term/bind/browser/dom/html-element
   find html-element
 
-load @term/bind/code/browser/dom/html-media-element-event-map
+load @term/bind/browser/dom/html-media-element-event-map
   find html-media-element-event-map
 
-load @term/bind/code/browser/dom/media-encrypted-event
+load @term/bind/browser/dom/media-encrypted-event
   find media-encrypted-event
 
-load @term/bind/code/browser/dom/media-error
+load @term/bind/browser/dom/media-error
   find media-error
 
-load @term/bind/code/browser/dom/media-keys
+load @term/bind/browser/dom/media-keys
   find media-keys
 
-load @term/bind/code/browser/dom/media-provider
+load @term/bind/browser/dom/media-provider
   find media-provider
 
-load @term/bind/code/browser/dom/remote-playback
+load @term/bind/browser/dom/remote-playback
   find remote-playback
 
-load @term/bind/code/browser/dom/text-track
+load @term/bind/browser/dom/text-track
   find text-track
 
-load @term/bind/code/browser/dom/text-track-kind
+load @term/bind/browser/dom/text-track-kind
   find text-track-kind
 
-load @term/bind/code/browser/dom/text-track-list
+load @term/bind/browser/dom/text-track-list
   find text-track-list
 
-load @term/bind/code/browser/dom/time-ranges
+load @term/bind/browser/dom/time-ranges
   find time-ranges
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form html-media-element, name <HTMLMediaElement>

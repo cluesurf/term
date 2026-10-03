@@ -1,0 +1,32 @@
+
+# The records the font contract (./font.tree) and its generated table (./table.tree) share. In a file of their own so
+# the table can build them without loading the contract that reads it.
+
+# one face. `sample` is text in the face's own script, what a target probes to ask whether the face is ready.
+# `source` decides how a target gets the file:
+#   google   the record says the web fetches it from Google Fonts; a native target bundles or fetches it (native-text-0002)
+#   local    the site serves the file itself (the brand faces)
+# `scale` multiplies the size the text asks for (1 when the record names none), and the three heights are line heights
+# for a heading, for running text and for a single line.
+form font
+  link family, like text
+  link sample, like text
+  link scale, like decimal
+  link heading-height, like decimal
+  link body-height, like decimal
+  link base-height, like decimal
+  link source, like text
+
+# which family a script is set in, by default. `style` is the style the script defaults to (`modern`, `ancient`, ...),
+# and `family` the family that style names. `weight` is the CSS weight the script is set at when regular is not
+# legible, decided by eye per script; 0 means nobody has decided, which is a different answer from a decided 400.
+form script-font
+  link script, like text
+  link style, like text
+  link family, like text
+  link weight, like number
+
+# another name for a script (`han` for `chinese`, `myanmar` for `burmese`)
+form script-alias
+  link name, like text
+  link script, like text

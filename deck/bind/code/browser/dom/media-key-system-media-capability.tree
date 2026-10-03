@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form media-key-system-media-capability, name <MediaKeySystemMediaCapability>

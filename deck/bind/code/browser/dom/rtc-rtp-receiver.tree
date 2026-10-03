@@ -1,29 +1,29 @@
 
-load @term/bind/code/browser/dom/media-stream-track
+load @term/bind/browser/dom/media-stream-track
   find media-stream-track
 
-load @term/bind/code/browser/dom/rtc-dtls-transport
+load @term/bind/browser/dom/rtc-dtls-transport
   find rtc-dtls-transport
 
-load @term/bind/code/browser/dom/rtc-rtp-contributing-source
+load @term/bind/browser/dom/rtc-rtp-contributing-source
   find rtc-rtp-contributing-source
 
-load @term/bind/code/browser/dom/rtc-rtp-receive-parameters
+load @term/bind/browser/dom/rtc-rtp-receive-parameters
   find rtc-rtp-receive-parameters
 
-load @term/bind/code/browser/dom/rtc-rtp-synchronization-source
+load @term/bind/browser/dom/rtc-rtp-synchronization-source
   find rtc-rtp-synchronization-source
 
-load @term/bind/code/browser/dom/rtc-stats-report
+load @term/bind/browser/dom/rtc-stats-report
   find rtc-stats-report
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
 form rtc-rtp-receiver, name <RTCRtpReceiver>

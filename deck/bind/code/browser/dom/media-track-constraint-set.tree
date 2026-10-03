@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/constrain-boolean
+load @term/bind/browser/dom/constrain-boolean
   find constrain-boolean
 
-load @term/bind/code/browser/dom/constrain-dom-string
+load @term/bind/browser/dom/constrain-dom-string
   find constrain-dom-string
 
-load @term/bind/code/browser/dom/constrain-double
+load @term/bind/browser/dom/constrain-double
   find constrain-double
 
-load @term/bind/code/browser/dom/constrain-u-long
+load @term/bind/browser/dom/constrain-u-long
   find constrain-u-long
 
 form media-track-constraint-set, name <MediaTrackConstraintSet>

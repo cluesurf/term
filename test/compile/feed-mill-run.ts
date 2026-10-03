@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
+import { resolvePackagePath, sourceOf } from '@term/make/code/resolve'
 import { mill } from '@term/make/code/compile/mill'
 import { resolve as resolveNames } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
@@ -60,13 +61,8 @@ const resolver = (path: string, from: string): Source | undefined => {
     return undefined
   }
 
-  for (const file of [join(PACKS[found[1]!]!, `${found[2]}.tree`), join(PACKS[found[1]!]!, found[2]!, 'base.tree')]) {
-    if (existsSync(file)) {
-      return { file, text: readFileSync(file, 'utf8') }
-    }
-  }
-
-  return undefined
+  // inside the package by the package path rule every resolver calls (code root, then package root)
+  return sourceOf(resolvePackagePath({ dir: PACKS[found[1]!]!, rest: found[2]! }))
 }
 
 function frontEnd(text: string, roots: string[]): Program {

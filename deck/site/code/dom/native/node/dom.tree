@@ -3,13 +3,13 @@
 # page-element record (tag, text, attributes, styles, classes, children, listeners, parent), so the full DOM API works
 # without a browser: build a tree, mutate it, fire stored listeners, remove and replace nodes. Conforms to ../../dom.
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
   find filter
   find find
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
 load ../../view
@@ -287,6 +287,13 @@ task watch-deadline
   take threshold, like number
   take handler
     like task
+
+# the server draws no glyphs; the page's own @font-face, or the client's register, is what loads a face. accepted.
+task register-font
+  take family, like text
+  take source, like text
+  like boolean
+  send back, true
 
 task append
   take parent, like view

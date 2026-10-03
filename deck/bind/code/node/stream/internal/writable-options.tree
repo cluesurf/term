@@ -5,7 +5,7 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find error
   find native-boolean
   find native-null
@@ -13,13 +13,13 @@ load @term/bind/code/javascript
   find native-void
   find writable
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer-encoding
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find array
 
-load @term/bind/code/node/stream/internal
+load @term/bind/node/stream/internal
   find stream-options
 
 form writable-options, name <WritableOptions>

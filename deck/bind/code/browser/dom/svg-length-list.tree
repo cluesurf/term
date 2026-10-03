@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/svg-length
+load @term/bind/browser/dom/svg-length
   find svg-length
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form svg-length-list, name <SVGLengthList>

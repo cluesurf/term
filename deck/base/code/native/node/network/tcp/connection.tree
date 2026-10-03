@@ -3,7 +3,7 @@
 dock load
   load <global:tcp>, name tcp
 
-load @term/base/code/network/tcp
+load @term/base/network/tcp
   find connection
 
 task wire-read

@@ -83,8 +83,8 @@ function main(): void {
     for (const file of files) {
       const text = readFileSync(file, 'utf8')
 
-      // `note draft` shelves a file out of every build, this one included
-      if (/^note draft\s*$/m.test(text.slice(0, 2000))) {
+      // `mark draft` (or the old `note draft`) shelves a file out of every build, this one included
+      if (/^(mark|note) draft\s*$/m.test(text.slice(0, 2000))) {
         continue
       }
 

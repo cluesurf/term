@@ -7,6 +7,7 @@
 // Run: npx tsx test/check/purity-local.ts
 
 import { parse } from '@term/make/code/parser/tree'
+import { stdlibResolver } from '@term/make/code/resolve'
 import { mill } from '@term/make/code/compile/mill'
 import { resolve as resolveNames } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
@@ -31,11 +32,8 @@ function ok(name: string, holds: boolean): void {
 }
 
 const base = join(import.meta.dirname, '../../deck/base')
-const stdlib = (path: string): Source | undefined => {
-  const file = join(base, `${path.replace(/^@term\/base\//, '')}.tree`)
-
-  return /^@term\/base\//.test(path) && existsSync(file) ? { file, text: readFileSync(file, 'utf8') } : undefined
-}
+// the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+const stdlib = stdlibResolver()!
 
 function programOf(text: string): Program {
   const program: Program = []

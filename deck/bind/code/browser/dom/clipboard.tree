@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/dom/clipboard-items
+load @term/bind/browser/dom/clipboard-items
   find clipboard-items
 
-load @term/bind/code/browser/dom/event-target
+load @term/bind/browser/dom/event-target
   find event-target
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form clipboard, name <Clipboard>

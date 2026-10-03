@@ -2,13 +2,13 @@
 # "password" / "salt" (RFC 7914 section 11's inputs, the widely published outputs for 1, 2 and 4096 rounds) and HKDF's
 # RFC 5869 test case 1. A stored password verifies and a wrong one does not. Held by `pnpm term:base-gate`.
 
-load @term/base/code/cryptography/derive
+load @term/base/cryptography/derive
   find pbkdf2
   find hkdf
   find hash-password
   find verify-password
 
-load @term/base/code/bytes
+load @term/base/bytes
   find from-text
   find from-hex
   find to-hex

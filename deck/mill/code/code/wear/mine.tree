@@ -1,7 +1,7 @@
-load @term/mill/code/code/task/mine
+load @term/mill/code/task/mine
   find task
 
-load @term/mill/code/code/head/mine
+load @term/mill/code/head/mine
   find head
 
 mine wear

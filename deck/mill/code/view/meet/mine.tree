@@ -14,7 +14,7 @@
 # `meet not` takes exactly one child. Any other arity is a diagnostic, and it is the one mode that needs the
 # message because it is the one with an arity.
 
-load @term/mill/code/view/hold/mine
+load @term/mill/view/hold/mine
   find view-hold
 
 mine view-meet

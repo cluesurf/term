@@ -1,11 +1,11 @@
 
-load @term/bind/code/javascript/es2020/intl/relative-time-format-locale-matcher
+load @term/bind/javascript/es2020/intl/relative-time-format-locale-matcher
   find relative-time-format-locale-matcher
 
-load @term/bind/code/javascript/es2020/intl/relative-time-format-numeric
+load @term/bind/javascript/es2020/intl/relative-time-format-numeric
   find relative-time-format-numeric
 
-load @term/bind/code/javascript/es2020/intl/relative-time-format-style
+load @term/bind/javascript/es2020/intl/relative-time-format-style
   find relative-time-format-style
 
 form relative-time-format-options, name <RelativeTimeFormatOptions>

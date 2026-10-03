@@ -1,9 +1,9 @@
 
-load @term/base/code/math
+load @term/base/math
   find absolute
   find power
 
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-and
   find bitwise-or
   find bitwise-exclusive-or

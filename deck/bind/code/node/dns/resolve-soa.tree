@@ -1,9 +1,9 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
   find promise
 
-load @term/bind/code/node/dns
+load @term/bind/node/dns
   find soa-record
 
 task promisify, name <__promisify__>

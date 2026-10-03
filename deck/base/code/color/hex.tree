@@ -2,10 +2,10 @@
 
 note unstable
 
-load @term/base/code/color/rgb
+load @term/base/color/rgb
   find rgb-color
 
-load @term/base/code/native/{platform}/color/hex
+load @term/base/native/{platform}/color/hex
   find rgb-to-hex
 
 task from-rgb

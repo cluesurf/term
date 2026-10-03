@@ -8,7 +8,7 @@ note draft
 dock load
   load <Foundation>, name foundation
 
-load @term/base/code/native/shared/test/assert
+load @term/base/native/shared/test/assert
   find assert-shared
   find deny-shared
   find mark-skip

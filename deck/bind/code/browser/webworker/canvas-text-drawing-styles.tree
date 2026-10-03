@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/dom/canvas-text-drawing-styles
+load @term/bind/browser/dom/canvas-text-drawing-styles
   find canvas-text-drawing-styles
 
-load @term/bind/code/browser/webworker/canvas-direction
+load @term/bind/browser/webworker/canvas-direction
   find canvas-direction
 
-load @term/bind/code/browser/webworker/canvas-text-align
+load @term/bind/browser/webworker/canvas-text-align
   find canvas-text-align
 
-load @term/bind/code/browser/webworker/canvas-text-baseline
+load @term/bind/browser/webworker/canvas-text-baseline
   find canvas-text-baseline
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form canvas-text-drawing-styles, name <CanvasTextDrawingStyles>

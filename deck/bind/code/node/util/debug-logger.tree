@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
 
-load @term/bind/code/node/util
+load @term/bind/node/util
   find debug-logger-function
 
 form debug-logger, name <DebugLogger>

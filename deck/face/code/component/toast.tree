@@ -2,9 +2,9 @@
 # Toast — headless (the sonner equivalent). Parts: toaster (the fixed region holding toasts), toast (one notification),
 # toast-title, toast-description, toast-action, toast-close. The toast queue is a list signal (a toast controller, the
 # interaction layer); these are the themeable structure. role=status + aria-live for a11y.
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 

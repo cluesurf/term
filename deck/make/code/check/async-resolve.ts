@@ -1,5 +1,6 @@
 // Async resolution: infer which functions are async from the call graph and await async calls by default. See
-// note/seed/compiler/async-inference.md. Runs after type checking, before the effect check (so the inserted awaits
+// note/term/compiler/async-inference.md and note/term/plan/await-by-default-and-mark-metadata.md. A `tick f(x)` (the
+// call's `background` flag, also `wait false`) is neither awaited nor counted: it does not make its caller async. Runs after type checking, before the effect check (so the inserted awaits
 // satisfy the async/await discipline) and before IR + emit. Shared by the build and editor paths via compileProgram,
 // so the language server gets the same inference. Pure, browser-safe; it mutates the program (marks functions async and
 // wraps async calls in `await`).
@@ -13,6 +14,29 @@ import type {
 type Fn = Extract<Statement, { form: 'function' }>
 
 export function resolveAsync(program: Program): void {
+  const functions = functionsOf(program)
+  const asyncSet = asyncSetOf(functions)
+
+  // apply: mark each async function, and wrap every default (non-background, not-yet-awaited) call to an async function
+  // in an `await`
+  for (const [name, fn] of functions) {
+    if (asyncSet.has(name)) {
+      fn.async = true
+    }
+
+    const visible = inScope(asyncSet, fn)
+
+    fn.body = fn.body.map(s => stmt(s, visible))
+  }
+}
+
+// The tasks of a program that are async, marked or inferred, without changing the program: what `resolveAsync`
+// would mark. The lint rule that finds a redundant `wait true` (L054) and the effect check read it.
+export function asyncNames(program: Program): Set<string> {
+  return asyncSetOf(functionsOf(program))
+}
+
+function functionsOf(program: Program): Map<string, Fn> {
   const functions = new Map<string, Fn>()
 
   for (const statement of program) {
@@ -21,6 +45,10 @@ export function resolveAsync(program: Program): void {
     }
   }
 
+  return functions
+}
+
+function asyncSetOf(functions: Map<string, Fn>): Set<string> {
   // seed: a function is async if it is marked async (task-level) or already awaits something (a call-level `wait true`)
   const asyncSet = new Set<string>()
 
@@ -48,23 +76,13 @@ export function resolveAsync(program: Program): void {
     }
   }
 
-  // apply: mark each async function, and wrap every default (non-background, not-yet-awaited) call to an async function
-  // in an `await`
-  for (const [name, fn] of functions) {
-    if (asyncSet.has(name)) {
-      fn.async = true
-    }
-
-    const visible = inScope(asyncSet, fn)
-
-    fn.body = fn.body.map(s => stmt(s, visible))
-  }
+  return asyncSet
 }
 
 // the async names a function's body can reach. A parameter or a local of the same name SHADOWS the global task, so a
 // call to it is a call to the value, never the task: `find-index` takes a callback named `test`, and calling it was
 // awaited as though it were the async file `test` the stdlib also defines, which refused the whole program
-function inScope(asyncSet: Set<string>, fn: { params: { name: string }[]; body: Statement[] }): Set<string> {
+export function inScope(asyncSet: Set<string>, fn: { params: { name: string }[]; body: Statement[] }): Set<string> {
   const local = new Set<string>(fn.params.map(p => p.name))
 
   const collect = (node: unknown): void => {
@@ -176,8 +194,24 @@ function stmt(node: Statement, asyncSet: Set<string>): Statement {
   const e = (x: Expression): Expression => expr(x, asyncSet)
 
   switch (node.form) {
-    case 'let':
+    case 'let': {
+      // `save pending, tick fetch(x)`: the value is the PENDING one (a `Promise` on TypeScript), not the task's
+      // result, so the binding drops the result type the checker gave it and is left to the backend's inference.
+      // Term has no promise type to spell it with: the only things to do with one are hand it on and `gather` it
+      if (
+        node.init.form === 'call' &&
+        node.init.background &&
+        node.init.callee.form === 'variable' &&
+        asyncSet.has(node.init.callee.name) &&
+        node.type
+      ) {
+        const { type: _dropped, ...untyped } = node
+
+        return { ...untyped, init: e(node.init) }
+      }
+
       return { ...node, init: e(node.init) }
+    }
     case 'assign':
       return { ...node, target: e(node.target), value: e(node.value) }
     case 'expression':

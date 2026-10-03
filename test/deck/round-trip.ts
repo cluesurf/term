@@ -30,8 +30,10 @@ const TERM = join(HERE, '../..')
 // how many distinct field heads the tree's own manifests use, of the 27 the grammar knows. A new one is welcome;
 // it just has to survive the trip. 14 until 2026-10-02, when the record system left the tree for mesh/deck/save
 // and took the only `sort` with it, and then 13 until zone left for the repository's deck/zone the same day and
-// took `cite`, `line`, `make`, `mark` and `text`, which no manifest still in the tree uses.
-const CHECKED = 8
+// took `cite`, `line`, `make`, `mark` and `text`, which no manifest still in the tree uses. Then 7 the same day
+// again: the version became `mark` (where it had been `code`) and `bear ./code`, the old spelling of the default
+// code root, left every manifest (note/term/plan/manifest-mark-and-code-root.md, `pnpm term:manifest-mark`).
+const CHECKED = 7
 
 let pass = 0
 let fail = 0
@@ -161,9 +163,12 @@ ok(
 // gate that only sees what the tree already uses cannot catch the loss of what it does not, which is exactly how
 // this survived. So one manifest below uses EVERY field the grammar knows.
 
+// `mark` is the version and `code` the code root, written here as a folder that is NOT the default, so the writer
+// keeps it. `bear` is gone from the surface: it was the old spelling of `code <path>` and is read as one, and the
+// writer emits the new spelling (note/term/plan/manifest-mark-and-code-root.md)
 const WHOLE = `deck @scope/whole
-  mark <0.0.1>
-  code <1.2.3>
+  mark <0.0.2>
+  code ./src
   head <One line about the package>
   text <The long title of the package>
   hide true
@@ -175,18 +180,17 @@ const WHOLE = `deck @scope/whole
   make <security>
   make <parser>
   deck ./deck/load
-  link @term/base, code <0.x.x>
+  link @term/base, mark <0.x.x>
   host <https://registry.example.com>
-    link @other/thing, code <1.x.x>
+    link @other/thing, mark <1.x.x>
   case work
-    link @term/test, code <0.x.x>
+    link @term/test, mark <0.x.x>
   task ./task
   book ./book
   role ./base/role
   line ./code/line
   call ./call
   test ./test
-  bear ./code
   boot ./code/boot
   tool ./tool
   mind <A Person>, base <a@example.com>

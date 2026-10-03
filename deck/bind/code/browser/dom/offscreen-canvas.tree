@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/event-target
+load @term/bind/browser/dom/event-target
   find event-target
 
 form offscreen-canvas, name <OffscreenCanvas>

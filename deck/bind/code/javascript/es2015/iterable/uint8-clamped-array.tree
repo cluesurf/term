@@ -1,11 +1,11 @@
 
-load @term/bind/code/javascript/es2015/iterable/iterable-iterator
+load @term/bind/javascript/es2015/iterable/iterable-iterator
   find iterable-iterator
 
-load @term/bind/code/javascript/es5/uint8-clamped-array
+load @term/bind/javascript/es5/uint8-clamped-array
   find uint8-clamped-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form uint8-clamped-array, name <Uint8ClampedArray>

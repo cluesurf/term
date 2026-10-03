@@ -9,9 +9,9 @@
 # author who writes `select` gets NSPopUpButton, a UIButton menu or a Spinner on a phone or desktop and this listbox
 # only where it is asked for by name.
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 load ../logic/disclosure

@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/animation-playback-event
+load @term/bind/browser/dom/animation-playback-event
   find animation-playback-event
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
 form animation-event-map, name <AnimationEventMap>

@@ -11,13 +11,13 @@
 # crossfade in the React `use-text` is intentionally reduced here to hidden -> (snap | fade-in) -> real, plus the
 # timeout fallback, which covers those three goals for single-font sites like form.surf.
 
-load @term/site/code/view/reactive
+load @term/site/view/reactive
   find signal
   find make-signal
   find read-signal
   find write-signal
   find make-effect
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find check-font
   find watch-font
   find watch-deadline
@@ -25,7 +25,7 @@ load @term/site/code/dom/dom
   find remove-class
 load ./native/{platform}/text-format
   find now-ms
-load @term/base/code/list
+load @term/base/list
   find list
   find push
 
@@ -171,7 +171,7 @@ task gate-font
         bind name, text <fout-hidden>
       call make-effect
         bind run
-          task tick
+          task sync-font-class
             save status
               call read-signal
                 bind self, read watch/signal

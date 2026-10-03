@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/dom-exception
+load @term/bind/browser/dom/dom-exception
   find dom-exception
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
 form media-recorder-error-event, name <MediaRecorderErrorEvent>

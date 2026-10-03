@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/transformer-flush-callback
+load @term/bind/browser/dom/transformer-flush-callback
   find transformer-flush-callback
 
 form transformer-flush-callback, name <TransformerFlushCallback>

@@ -4,7 +4,7 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find context
   find error
   find native-null

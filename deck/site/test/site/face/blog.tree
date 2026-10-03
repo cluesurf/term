@@ -12,28 +12,28 @@
 load ../back/post
   find post
 
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find get-value
   find set-value
 
-load @term/face/code/component/stack
+load @term/face/component/stack
   find stack
 
-load @term/face/code/component/text
+load @term/face/component/text
   find text
 
-load @term/site/code/view/reactive
+load @term/site/view/reactive
   find signal
   find make-signal
   find read-signal
   find write-signal
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
 
-load @term/base/code/uuid
+load @term/base/uuid
   find version4
 
 # read the two inputs, make a post, keep it through `on-add`, append it to the list signal, then clear the inputs.

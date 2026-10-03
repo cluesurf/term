@@ -1,5 +1,5 @@
 
-load @term/bind/code/node/crypto/jwk-key-export-options
+load @term/bind/node/crypto/jwk-key-export-options
   find jwk-key-export-options
 
 form jwk-key-export-options, name <JwkKeyExportOptions>

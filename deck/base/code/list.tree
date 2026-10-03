@@ -1,19 +1,19 @@
 note stable
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
-load @term/base/code/side
+load @term/base/side
   find side
 
-load @term/base/code/pair
+load @term/base/pair
   find pair
 
-load @term/base/code/hash
+load @term/base/hash
   find hash
   find get-or-default
 
-load @term/base/code/ordering
+load @term/base/ordering
   find ordering
   find is-greater
   find is-less
@@ -536,6 +536,158 @@ task flatten
             read item
   send back, read out
 
+# one pass of `sort`: each run of `width` items, from the front, merged with the run after it
+task merge-pass
+  mark private
+  head t
+  take source
+    like list
+      like t
+  take width, like number
+  take compare
+    like task
+      take left, like t
+      take right, like t
+      like ordering
+  have
+    call is-minimum
+      read width
+      code 1
+  like list
+    like t
+  save n
+    read source/length
+  save merged
+    make list
+  save low, code 0
+  walk test
+    must
+      call is-minimum
+        read low
+        code 0
+    hook test
+      call is-below
+        read low
+        read n
+    hook step
+      save middle
+        call add
+          read low
+          read width
+      fork test
+        hook test
+          call is-above
+            read middle
+            read n
+        hook hold
+          save middle, read n
+      save high
+        call add
+          read middle
+          read width
+      fork test
+        hook test
+          call is-above
+            read high
+            read n
+        hook hold
+          save high, read n
+      save i, read low
+      save j, read middle
+      walk test
+        down
+          call subtract
+            call add
+              read middle
+              read high
+            call add
+              read i
+              read j
+        # `compare` may reach `source`, so the list's own length is tested on every turn, not only `middle` and `high`
+        hook test
+          call and
+            call and
+              call is-below
+                read i
+                read middle
+              call is-below
+                read j
+                read high
+            call and
+              call is-below
+                read i
+                read source/length
+              call is-below
+                read j
+                read source/length
+        hook step
+          save left
+            call get
+              read source
+              read i
+          save right
+            call get
+              read source
+              read j
+          fork test
+            hook test
+              call is-greater
+                call compare
+                  read left
+                  read right
+            hook hold
+              call merged/push
+                read right
+              save j
+                call add
+                  read j
+                  code 1
+            hook miss
+              call merged/push
+                read left
+              save i
+                call add
+                  read i
+                  code 1
+      walk test
+        hook test
+          call and
+            call is-below
+              read i
+              read middle
+            call is-below
+              read i
+              read source/length
+        hook step
+          call merged/push
+            call get
+              read source
+              read i
+          save i
+            call add
+              read i
+              code 1
+      walk test
+        hook test
+          call and
+            call is-below
+              read j
+              read high
+            call is-below
+              read j
+              read source/length
+        hook step
+          call merged/push
+            call get
+              read source
+              read j
+          save j
+            call add
+              read j
+              code 1
+      save low, read high
+  send back, read merged
+
 # a new list holding the items in the order `compare` gives, STABLE: items it calls equal keep the order they came in.
 # A bottom-up merge sort written in Term, so it is the same algorithm, the same comparisons in the same order and the
 # same answer on every backend, which a host sort does not promise (none of them says which equal item comes first,
@@ -560,120 +712,53 @@ task sort
       take site, name item
       call source/push
         read item
-  save n
+  save total
     read source/length
   save width, code 1
+  # each pass merges runs of `width` into runs of twice that, until one run is the whole list
   walk test
+    must
+      call is-minimum
+        read width
+        code 1
+    must
+      call is-maximum
+        read width
+        call add
+          read total
+          code 1
+    down
+      call subtract
+        call add
+          read total
+          code 1
+        read width
     hook test
       call is-below
         read width
-        read n
+        read total
     hook step
-      save merged
-        make list
-      save low, code 0
-      walk test
-        hook test
-          call is-below
-            read low
-            read n
-        hook step
-          save middle
-            call add
-              read low
-              read width
-          fork test
-            hook test
-              call is-above
-                read middle
-                read n
-            hook hold
-              save middle, read n
-          save high
-            call add
-              read middle
-              read width
-          fork test
-            hook test
-              call is-above
-                read high
-                read n
-            hook hold
-              save high, read n
-          save i, read low
-          save j, read middle
-          walk test
-            hook test
-              call and
-                call is-below
-                  read i
-                  read middle
-                call is-below
-                  read j
-                  read high
-            hook step
-              save left
-                call get
-                  read source
-                  read i
-              save right
-                call get
-                  read source
-                  read j
-              fork test
-                hook test
-                  call is-greater
-                    call compare
-                      read left
-                      read right
-                hook hold
-                  call merged/push
-                    read right
-                  save j
-                    call add
-                      read j
-                      code 1
-                hook miss
-                  call merged/push
-                    read left
-                  save i
-                    call add
-                      read i
-                      code 1
-          walk test
-            hook test
-              call is-below
-                read i
-                read middle
-            hook step
-              call merged/push
-                call get
-                  read source
-                  read i
-              save i
-                call add
-                  read i
-                  code 1
-          walk test
-            hook test
-              call is-below
-                read j
-                read high
-            hook step
-              call merged/push
-                call get
-                  read source
-                  read j
-              save j
-                call add
-                  read j
-                  code 1
-          save low, read high
-      save source, read merged
-      save width
+      save source
+        call merge-pass
+          read source
+          read width
+          read compare
+      # doubled, and capped at the whole list, which ends the walk the same way and keeps its measure natural
+      save doubled
         call multiply
           read width
           code 2
+      fork test
+        hook test
+          call is-above
+            read doubled
+            read total
+        hook hold
+          save width, read total
+          turn next
+        hook miss
+          save width, read doubled
+          turn next
   send back, read source
 
 # pairs of the items at the same position, as long as the shorter list
@@ -815,7 +900,18 @@ task window
   save out
     make list
   save start, code 0
+  # the length taken once for the measure: `run` comes from a call (an empty list typed like `items`), and a push to it
+  # leaves the prover unsure of every other list, so each read tests `items` again
+  save n, read items/length
   walk test
+    down
+      call subtract
+        call add
+          read n
+          code 1
+        call add
+          read start
+          read count
     hook test
       call and
         call is-above
@@ -825,7 +921,7 @@ task window
           call add
             read start
             read count
-          read items/length
+          read n
     hook step
       save run
         call take-first
@@ -834,9 +930,15 @@ task window
       save k, code 0
       walk test
         hook test
-          call is-below
-            read k
-            read count
+          call and
+            call is-below
+              read k
+              read count
+            call is-below
+              call add
+                read start
+                read k
+              read items/length
         hook step
           call run/push
             call get
@@ -1141,13 +1243,29 @@ task binary-search
   save low, code 0
   save high
     read items/length
-  # no `down`: the span falls in both branches of the fork below, and facts made inside a fork's branches do not
-  # survive its join, so the prover cannot see it fall
+  # the span falls in both branches of the fork below, each ending its own turn. `compare` may reach the list, so its
+  # own length is tested on every turn as well as `high`
   walk test
-    hook test
-      call is-below
+    must
+      call is-minimum
+        read low
+        code 0
+    must
+      call is-maximum
         read low
         read high
+    down
+      call subtract
+        read high
+        read low
+    hook test
+      call and
+        call is-below
+          read low
+          read high
+        call is-maximum
+          read high
+          read items/length
     hook step
       save middle
         call add
@@ -1170,8 +1288,10 @@ task binary-search
             call add
               read middle
               code 1
+          turn next
         hook miss
           save high, read middle
+          turn next
   fork test
     hook test
       call and

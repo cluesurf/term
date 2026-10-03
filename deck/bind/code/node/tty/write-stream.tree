@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-boolean
   find native-number
@@ -15,14 +15,14 @@ load @term/bind
   find task
   find tuple
 
-load @term/bind/code/node/tty
+load @term/bind/node/tty
   find direction
 
 form write-stream, name <WriteStream>
   base net-socket
-  link columns, name <columns>, like native-number
-  link rows, name <rows>, like native-number
-  link is-tty, name <isTTY>, like native-boolean
+  link columns, name(<columns>), like native-number
+  link rows, name(<rows>), like native-number
+  link is-tty, name(<isTTY>), like native-boolean
 
   task add-listener, name <addListener>
     like native-this

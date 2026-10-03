@@ -2,22 +2,22 @@
 # runtime or the program (each run here passes none), a variable set is read back, and one removed is gone. Held by
 # `pnpm term:base-gate`.
 
-load @term/base/code/environment
+load @term/base/environment
   find directory
   find variable
   find has-variable
   find set-variable
   find remove-variable
 
-load @term/base/code/process/current
+load @term/base/process/current
   find process-info
   find read
 
-load @term/base/code/list
+load @term/base/list
   find size
   find contains
 
-load @term/base/code/text
+load @term/base/text
   find char-count
 
 # a test runs inside whatever started it, so the arguments are that runner's: what holds everywhere is that they never

@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/track-event
+load @term/bind/browser/dom/track-event
   find track-event
 
 form text-track-list-event-map, name <TextTrackListEventMap>

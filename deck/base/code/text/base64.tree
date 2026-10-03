@@ -2,7 +2,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/text/base64
+load @term/base/native/{platform}/text/base64
   find to-base64
   find from-base64
 

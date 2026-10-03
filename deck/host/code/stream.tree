@@ -3,25 +3,25 @@
 # value fuses an anchor, and the compact line for the value. Text channels carry lines, so a reader over a channel
 # hands every received line to `feed`. See note/term/host/07-streaming.md.
 
-load @term/base/code/boolean
+load @term/base/boolean
   find not
 
-load @term/base/code/list
+load @term/base/list
   find push
   find size
   find get
   find set
   find contains
 
-load @term/base/code/text
+load @term/base/text
   find trim
   find starts-with
   find split
 
-load @term/base/code/text/string
+load @term/base/text/string
   find concat
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
 load ./base
@@ -139,7 +139,7 @@ task kind-of
       link list
       fork test
         hook test
-          call is-equal(call size(read list), code 0)
+          call is-equal(call(size(read list)), code 0)
         hook hold
           send back, text <>
       send back, text <hash>
@@ -297,7 +297,7 @@ task emit
     text <>
   fork test
     hook test
-      call is-above(call size(read needed), code 0)
+      call is-above(call(size(read needed)), code 0)
     hook hold
       save head
         call pack

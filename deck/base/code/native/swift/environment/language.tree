@@ -8,10 +8,10 @@
 dock load
   load <global:locale>, name tongue
 
-load @term/base/code/environment/language
+load @term/base/environment/language
   find locale
 
-load @term/base/code/text
+load @term/base/text
   find split
 
 task read-locale

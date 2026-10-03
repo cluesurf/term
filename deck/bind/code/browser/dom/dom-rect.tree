@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/dom-rect-read-only
+load @term/bind/browser/dom/dom-rect-read-only
   find dom-rect-read-only
 
 form dom-rect, name <DOMRect>

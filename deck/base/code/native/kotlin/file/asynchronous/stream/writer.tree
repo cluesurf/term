@@ -7,7 +7,7 @@ dock type
 dock load
   load <global:aio>, name aio
 
-load @term/base/code/file/stream/writer
+load @term/base/file/stream/writer
   find writer
 
 task writer-create

@@ -1,56 +1,56 @@
 
-load @term/bind/code/browser/dom/offscreen-canvas
+load @term/bind/browser/dom/offscreen-canvas
   find offscreen-canvas
 
-load @term/bind/code/browser/webworker/blob
+load @term/bind/browser/webworker/blob
   find blob
 
-load @term/bind/code/browser/webworker/canvas-rendering-context2-d-settings
+load @term/bind/browser/webworker/canvas-rendering-context2-d-settings
   find canvas-rendering-context2-d-settings
 
-load @term/bind/code/browser/webworker/event-target
+load @term/bind/browser/webworker/event-target
   find event-target
 
-load @term/bind/code/browser/webworker/image-bitmap
+load @term/bind/browser/webworker/image-bitmap
   find image-bitmap
 
-load @term/bind/code/browser/webworker/image-bitmap-rendering-context
+load @term/bind/browser/webworker/image-bitmap-rendering-context
   find image-bitmap-rendering-context
 
-load @term/bind/code/browser/webworker/image-bitmap-rendering-context-settings
+load @term/bind/browser/webworker/image-bitmap-rendering-context-settings
   find image-bitmap-rendering-context-settings
 
-load @term/bind/code/browser/webworker/image-encode-options
+load @term/bind/browser/webworker/image-encode-options
   find image-encode-options
 
-load @term/bind/code/browser/webworker/offscreen-canvas-rendering-context2-d
+load @term/bind/browser/webworker/offscreen-canvas-rendering-context2-d
   find offscreen-canvas-rendering-context2-d
 
-load @term/bind/code/browser/webworker/offscreen-rendering-context
+load @term/bind/browser/webworker/offscreen-rendering-context
   find offscreen-rendering-context
 
-load @term/bind/code/browser/webworker/offscreen-rendering-context-id
+load @term/bind/browser/webworker/offscreen-rendering-context-id
   find offscreen-rendering-context-id
 
-load @term/bind/code/browser/webworker/web-gl-context-attributes
+load @term/bind/browser/webworker/web-gl-context-attributes
   find web-gl-context-attributes
 
-load @term/bind/code/browser/webworker/web-gl-rendering-context
+load @term/bind/browser/webworker/web-gl-rendering-context
   find web-gl-rendering-context
 
-load @term/bind/code/browser/webworker/web-gl2-rendering-context
+load @term/bind/browser/webworker/web-gl2-rendering-context
   find web-gl2-rendering-context
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form offscreen-canvas, name <OffscreenCanvas>

@@ -1,59 +1,59 @@
-load @term/mill/code/code/walk/mint
+load @term/mill/code/walk/mint
   find walk
 
-load @term/mill/code/code/take/mint
+load @term/mill/code/take/mint
   find take
 
-load @term/mill/code/code/mark/mint
+load @term/mill/code/mark/mint
   find mark
 
-load @term/mill/code/code/drop/mint
+load @term/mill/code/drop/mint
   find drop
 
-load @term/mill/code/code/call/mint
+load @term/mill/code/call/mint
   find call
 
-load @term/mill/code/code/form/link/mint
+load @term/mill/code/form/link/mint
   find link
 
-load @term/mill/code/code/fuse/mint
+load @term/mill/code/fuse/mint
   find fuse
 
-load @term/mill/code/code/head/mint
+load @term/mill/code/head/mint
   find head
 
-load @term/mill/code/code/hide/mint
+load @term/mill/code/hide/mint
   find hide
 
-load @term/mill/code/code/hold/mint
+load @term/mill/code/hold/mint
   find hold
 
-load @term/mill/code/code/hook/mint
+load @term/mill/code/hook/mint
   find hook
 
-load @term/mill/code/code/like/mint
+load @term/mill/code/like/mint
   find like
 
 load @term/mill/code/code/note/mint
   find note
 
-load @term/mill/code/code/rule/hold/mint
+load @term/mill/code/rule/hold/mint
   find case
   find fold
 
-load @term/mill/code/code/save/mint
+load @term/mill/code/save/mint
   find save
 
-load @term/mill/code/code/seed/seed/mint
+load @term/mill/code/seed/seed/mint
   find host
 
-load @term/mill/code/code/tag/mint
+load @term/mill/code/tag/mint
   find tag
 
-load @term/mill/code/code/task/mint
+load @term/mill/code/task/mint
   find task
 
-load @term/mill/code/code/wear/mint
+load @term/mill/code/wear/mint
   find wear
 
 mint form

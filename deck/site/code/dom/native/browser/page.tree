@@ -7,7 +7,7 @@ load ../global
   find place
   find past
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
 dock load
@@ -53,6 +53,31 @@ task set-meta
   call title/set-meta
     read name
     read content
+
+# the navigation contract's stack, mirrored into the browser's History (native-navigation-0001): pushState for a new
+# entry, replaceState for the current one, history.back() for one step back
+# the url goes through the gradual `any`, as listen-pop's link does: the binding types it `maybe`, and a `make some` around
+# it reached pushState as the record and wrote "[object Object]" into the address bar
+task push-path
+  take path, like text
+  host url, like any
+    read path
+  call past/push-state
+    text <>
+    text <>
+    read url
+
+task replace-path
+  take path, like text
+  host url, like any
+    read path
+  call past/replace-state
+    text <>
+    text <>
+    read url
+
+task go-back
+  call past/back
 
 # run `handler` on navigation: back/forward (popstate) and intercepted same-origin link clicks (SPA navigation, so an
 # `<a href="/...">` pushes history and re-renders instead of a full reload). The handler + the click closure are bridged

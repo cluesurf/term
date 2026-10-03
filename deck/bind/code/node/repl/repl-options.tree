@@ -2,18 +2,18 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-string
   find native-undefined
   find node-js-readable-stream
   find node-js-writable-stream
 
-load @term/bind/code/node/readline
+load @term/bind/node/readline
   find async-completer
   find completer
 
-load @term/bind/code/node/repl
+load @term/bind/node/repl
   find repl-eval
   find repl-writer
 

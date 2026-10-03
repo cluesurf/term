@@ -12,8 +12,12 @@
 //   touched yet. The entry's comment sits directly above its `load` and the one-argument `call log` is on one line,
 //   because that is what the formatter prints. The manifest stays stacked because the formatter now keeps `deck`
 //   stacked (deck/make/code/format/format.ts, ALWAYS_STACK), which is how writeManifest writes it too.
-// - The version starts at 0.0.2. `term host` refuses an odd patch, and 0.0.1 made a fresh project unpublishable
-//   until its owner found the rule. `term move code` goes 0.0.2 -> 0.0.4.
+// - The version starts at 0.0.1, and `term move mark` goes 0.0.1 -> 0.0.2. Which numbers an author publishes is
+//   their own convention: the toolchain holds none.
+// - The version is `mark <0.0.1>`, and no `code` line is written: `code ./code` names the code root, which is the
+//   default, and the scaffold's sources are under ./code. The `bear ./code` it used to write was the old spelling
+//   of that same default (note/term/plan/manifest-mark-and-code-root.md). The entry loads `@term/base/console`,
+//   the short form a package path takes now that it resolves inside the package's code root first.
 // - The name is the user's, UNSCOPED (`deck hello`). The manifest grammar accepts it, `term make` reads it as the
 //   manifest (deck/call/code/manifest-name.ts), and `term host` asks for a scope only when it is about to publish.
 //   Inventing one here (`@hello/hello`) would put a registry decision in a file before anyone has made it.
@@ -30,19 +34,18 @@ import {
 
 // exported so deck/deck/test/scaffold.test.ts can hold the text itself against the formatter and the manifest rules
 export const DECK_TREE = (project: string): string => `deck ${project}
-  bear ./code
+  mark <0.0.1>
   test ./test
-  code <0.0.2>
   boot ./code/boot
 `
 
 export const BOOT_TREE = `# The application entry point. \`term boot\` compiles and runs
 # this module's \`boot\` task.
-load @term/base/code/console
+load @term/base/console
   find log
 
 task boot
-  note async
+  mark async
   log <hello from term>
 `
 

@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find event-emitter
   find native-boolean
@@ -19,7 +19,7 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/cluster
+load @term/bind/node/cluster
   find address
   find cluster-settings
 

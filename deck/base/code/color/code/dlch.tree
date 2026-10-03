@@ -1,9 +1,9 @@
 note unstable
 
-load @term/base/code/color/rgb
+load @term/base/color/rgb
   find rgb-color
 
-load @term/base/code/mixin/access
+load @term/base/mixin/access
   find access
 
 form dlch

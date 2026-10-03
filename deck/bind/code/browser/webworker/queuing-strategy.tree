@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/queuing-strategy
+load @term/bind/browser/dom/queuing-strategy
   find queuing-strategy
 
-load @term/bind/code/browser/webworker/queuing-strategy-size
+load @term/bind/browser/webworker/queuing-strategy-size
   find queuing-strategy-size
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form queuing-strategy, name <QueuingStrategy>

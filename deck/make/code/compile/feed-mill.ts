@@ -57,7 +57,7 @@ export type FeedMineRule =
   | { kind: 'let'; name: string; expr: GroupNode }
   // `bind value / mine text / <rules>`: a SPAN CAPTURE. The value is the text its children consumed, which is how
   // JSON's `number` says "whatever these rules matched, as written". It ACCUMULATES what each read returns rather
-  // than slicing the cursor: text-cursor-compact discards consumed text past 64 KiB and resets the position, so a
+  // than slicing the cursor: compact-text-cursor discards consumed text past 64 KiB and resets the position, so a
   // start offset is not a thing a streaming cursor can be asked to remember.
   | { kind: 'span'; children: FeedMineRule[]; send: string }
   // `start separator, share <,>`: a rule PARAMETER, with an optional default. A rule is not always readable from
@@ -236,6 +236,28 @@ function shareValue(node: Node | undefined): { text: string; reads: string[] } |
   // `code 1` INSIDE the `read`, so `bitwise-and` is called with one argument. The parens are a floor the comma
   // cannot cross. This is the trap CLAUDE.md names outright, and it cost eleven check errors before it was.
   return word ? { text: `read(${word})`, reads: [word] } : undefined
+}
+
+// A rendered expression as an argument a comma follows. A comma after a literal or after a call closed by its own
+// parenthesis stays at that part's level (parser/event.ts), so `call is-above(call bitwise-and(read(f), code 4),
+// code 0)` would put the `code 0` under the inner `call`. Closing the head over the rest, `call(bitwise-and(...))`,
+// builds the same tree and leaves the comma nothing to stay in. A single token is returned as it is.
+function closedArgument(text: string): string {
+  let depth = 0
+
+  for (let at = 0; at < text.length; at++) {
+    const c = text[at]!
+
+    if (c === '(' || c === '<') {
+      depth++
+    } else if (c === ')' || c === '>') {
+      depth--
+    } else if (c === ' ' && depth === 0) {
+      return `${text.slice(0, at)}(${text.slice(at + 1)})`
+    }
+  }
+
+  return text
 }
 
 // the arguments a `mine form` passes: `bind separator, share separator` children
@@ -966,7 +988,9 @@ export function printNode(node: Node, depth = 0): string {
         const calleeArgs = calleeNode.kind === 'group' ? calleeNode.nodes.slice(1) : []
         const allArgs = [...calleeArgs, ...node.nodes.slice(2)]
 
-        return allArgs.length === 0 ? `call ${calleeName}` : `call ${calleeName}(${allArgs.map(printNode).join(', ')})`
+        return allArgs.length === 0
+          ? `call ${calleeName}`
+          : `call ${calleeName}(${allArgs.map(arg => closedArgument(printNode(arg))).join(', ')})`
       }
 
       const headText = printNode(head)
@@ -976,11 +1000,12 @@ export function printNode(node: Node, depth = 0): string {
         return headText
       }
 
-      // ALWAYS parenthesized, never space-separated. A comma pops exactly one level, so a space-nested argument
-      // that is followed by a comma swallows what comes next: `call f(read x, code 0)` reads `code 0` as a child
-      // of `read`, and `f` gets one argument. `read(x)` closes its own group, so the comma after it lands where
-      // it should. See note/term/tree-syntax-vs-term-keywords.md.
-      return `${headText}(${rest.map(printNode).join(', ')})`
+      // ALWAYS parenthesized, never space-separated, and each argument closed too. A space-nested argument that
+      // a comma follows swallows what comes next: `call f(read x, code 0)` reads `code 0` as a child of `read`,
+      // and since 2026-10-02 `call f(code 1, code 0)` reads the second inside the first, because a comma after a
+      // literal stays at its level. `read(x)` and `code(1)` close their own groups, so the comma lands where it
+      // should. See note/term/tree-syntax-vs-term-keywords.md.
+      return `${headText}(${rest.map(arg => closedArgument(printNode(arg))).join(', ')})`
     }
     default:
       return ''
@@ -1026,18 +1051,18 @@ interface Ops {
 const OPS: Record<Substrate, Ops> = {
   text: {
     cursorType: 'text-cursor',
-    peek: 'text-cursor-peek',
-    peekCode: 'text-cursor-peek-code',
-    advance: 'text-cursor-read',
-    atEnd: 'text-cursor-at-end',
+    peek: 'peek-text-cursor',
+    peekCode: 'peek-text-cursor-code',
+    advance: 'read-text-cursor',
+    atEnd: 'is-text-cursor-at-end',
     remaining: '',
     imports: [
       'find text-cursor',
       'find make-text-cursor',
-      'find text-cursor-at-end',
-      'find text-cursor-peek',
-      'find text-cursor-peek-code',
-      'find text-cursor-read',
+      'find is-text-cursor-at-end',
+      'find peek-text-cursor',
+      'find peek-text-cursor-code',
+      'find read-text-cursor',
     ],
   },
   byte: {
@@ -1480,7 +1505,7 @@ function compileExpr(
       // fixed value): read it, halt if it isn't what the format requires.
       out.push(`${p}fork test`)
       out.push(`${p}  hook test`)
-      out.push(`${p}    call not, call is-equal(call ${ops.peekCode}(read(cursor)), code ${rule.literal})`)
+      out.push(`${p}    call not, call is-equal(call(${ops.peekCode}(read(cursor))), code ${rule.literal})`)
       out.push(`${p}  hook hold`)
       out.push(`${p}    halt <expected byte ${rule.literal}>`)
       out.push(`${p}save ${localName}`)
@@ -1497,7 +1522,7 @@ function compileExpr(
       bindCapture(scope, localName, rule, ops, grammar)
       out.push(`${p}fork test`)
       out.push(`${p}  hook test`)
-      out.push(`${p}    call not, call is-equal(call ${ops.peekCode}(read(cursor)), code ${rule.literal})`)
+      out.push(`${p}    call not, call is-equal(call(${ops.peekCode}(read(cursor))), code ${rule.literal})`)
       out.push(`${p}  hook hold`)
       out.push(inRepetition > 0 ? `${p}    halt` : `${p}    halt <expected character ${rule.literal}>`)
       out.push(`${p}save ${localName}`)
@@ -1518,7 +1543,7 @@ function compileExpr(
 
         out.push(`${p}fork test`)
         out.push(`${p}  hook test`)
-        out.push(`${p}    call not, call is-equal(call ${ops.peekCode}(read(cursor)), code ${code})`)
+        out.push(`${p}    call not, call is-equal(call(${ops.peekCode}(read(cursor))), code ${code})`)
         out.push(`${p}  hook hold`)
         out.push(inRepetition > 0 ? `${p}    halt` : `${p}    halt <expected ${rule.literal}>`)
         out.push(`${p}  hook miss`)
@@ -1545,8 +1570,8 @@ function compileExpr(
       out.push(`${p}  hook test`)
       out.push(`${p}    call not`)
       out.push(`${p}      call and`)
-      out.push(`${p}        call is-minimum(call ${ops.peekCode}(read(cursor)), code ${baseCode})`)
-      out.push(`${p}        call is-maximum(call ${ops.peekCode}(read(cursor)), code ${headCode})`)
+      out.push(`${p}        call is-minimum(call(${ops.peekCode}(read(cursor))), code ${baseCode})`)
+      out.push(`${p}        call is-maximum(call(${ops.peekCode}(read(cursor))), code ${headCode})`)
       out.push(`${p}  hook hold`)
       out.push(inRepetition > 0 ? `${p}    halt` : `${p}    halt <expected a character between ${baseCode} and ${headCode}>`)
       out.push(`${p}save ${localName}`)
@@ -1559,8 +1584,8 @@ function compileExpr(
     // nested `or`s rather than one call, because `or` takes two.
     case 'not': {
       const test = rule.codes
-        .map(code => `call is-equal(call ${ops.peekCode}(read(cursor)), code ${code})`)
-        .reduce((left, right) => `call or(${left}, ${right})`)
+        .map(code => `call is-equal(call(${ops.peekCode}(read(cursor))), code ${code})`)
+        .reduce((left, right) => `call or(${closedArgument(left)}, ${right})`)
 
       out.push(`${p}fork test`)
       out.push(`${p}  hook test`)
@@ -1627,7 +1652,7 @@ function compileExpr(
       if (bound) {
         out.push(`${p}    call and`)
         out.push(`${p}      call not, call ${ops.atEnd}(read(cursor))`)
-        out.push(`${p}      call is-below(call size(read(${localName})), ${bound.text})`)
+        out.push(`${p}      call is-below(call(size(read(${localName}))), ${bound.text})`)
       } else {
         out.push(`${p}    call not, call ${ops.atEnd}(read(cursor))`)
       }
@@ -1703,7 +1728,7 @@ function compileExpr(
 
       bindCapture(scope, localName, rule, ops, grammar)
       out.push(`${p}save ${localName}`)
-      out.push(`${p}  call read-int(read(cursor), code ${rule.width}, make(${rule.order}), make(${rule.sign}))`)
+      out.push(`${p}  call read-int(read(cursor), code(${rule.width}), make(${rule.order}), make(${rule.sign}))`)
 
       return
     }
@@ -1978,9 +2003,9 @@ function compileAnyHelper(name: string, branches: FeedMineRule[], ops: Ops, gram
       .map(span =>
         span.base === span.head
           ? `call is-equal(read(code), code ${span.base})`
-          : `call and(call is-minimum(read(code), code ${span.base}), call is-maximum(read(code), code ${span.head}))`,
+          : `call and(call(is-minimum(read(code), code ${span.base})), call is-maximum(read(code), code ${span.head}))`,
       )
-      .reduce((left, right) => `call or(${left}, ${right})`)
+      .reduce((left, right) => `call or(${closedArgument(left)}, ${right})`)
 
     lines.push('    hook test')
     lines.push(`      ${test}`)
@@ -2020,7 +2045,7 @@ function compileUntilHelper(name: string, terminator: number, ops: Ops): string[
   lines.push('    hook test')
   lines.push('      call and')
   lines.push(`        call not, call ${ops.atEnd}(read(cursor))`)
-  lines.push(`        call not, call is-equal(call ${ops.peekCode}(read(cursor)), code ${terminator})`)
+  lines.push(`        call not, call is-equal(call(${ops.peekCode}(read(cursor))), code ${terminator})`)
   lines.push('    hook hold')
   lines.push(`      call push(read(result), call ${ops.advance}(read(cursor)))`)
   lines.push('  fork test')
@@ -2095,10 +2120,10 @@ function firstTest(children: FeedMineRule[], ops: Ops, grammar: FeedMineGrammar)
   return spans
     .map(span =>
       span.base === span.head
-        ? `call is-equal(call ${ops.peekCode}(read(cursor)), code ${span.base})`
-        : `call and(call is-minimum(call ${ops.peekCode}(read(cursor)), code ${span.base}), call is-maximum(call ${ops.peekCode}(read(cursor)), code ${span.head}))`,
+        ? `call is-equal(call(${ops.peekCode}(read(cursor))), code ${span.base})`
+        : `call and(call(is-minimum(call(${ops.peekCode}(read(cursor))), code ${span.base})), call is-maximum(call(${ops.peekCode}(read(cursor))), code ${span.head}))`,
     )
-    .reduce((left, right) => `call or(${left}, ${right})`)
+    .reduce((left, right) => `call or(${closedArgument(left)}, ${right})`)
 }
 
 // A `check` as the `maybe` it is. The test is rendered here rather than synthesized as a tree: the two operands
@@ -2162,10 +2187,11 @@ function compileMaybeHelper(
           .map(name => {
             const kind = (scope.types.get(name) ?? []).join(' ')
 
+            // each closed by its own parentheses: a comma after one stays at its level (parser/event.ts)
             return kind.startsWith('like maybe')
-              ? `, call unwrap-or(read(${name}), text <>)`
+              ? `, call(unwrap-or(read(${name}), text <>))`
               : kind.startsWith('like list')
-                ? `, call join(read(${name}), text <>)`
+                ? `, call(join(read(${name}), text <>))`
                 : `, read(${name})`
           })
           .join('')}), text <>)`
@@ -2202,9 +2228,9 @@ function compileMaybeHelper(
     // maybe is decided by its own FIRST set, which is `does the next character start one of these`
     `      ${
       rule.test
-        ? `call is-above(${printNode(rule.test)}, code 0)`
+        ? `call is-above(${closedArgument(printNode(rule.test))}, code 0)`
         : rule.testText
-          ? `call is-above(${rule.testText}, code 0)`
+          ? `call is-above(${closedArgument(rule.testText)}, code 0)`
           : firstTest(rule.children, ops, grammar)
     }`,
     '    hook hold',

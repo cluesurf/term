@@ -166,6 +166,64 @@ ok(
 ${loop(`      save xs/{i}, code 1\n      host z\n        call helper\n          read xs\n${step}`).replace('task each', 'task each')}`).found.length === 0,
 )
 
+// 9. a call to a task that cannot reach a list (scalar parameters, no list inside) keeps the guard: spectral-norm's
+// `a-value`, called in the innermost loop
+ok(
+  'a loop calling a scalar-only task IS guarded',
+  guards(`task weight
+  take a, like number
+  take b, like number
+  like number
+  send back
+    call add
+      read a
+      read b
+${loop(`      save xs/{i}
+        call weight
+          read i
+          read j
+${step}`)}`).found.length === 1,
+)
+
+// 10. a native module's function with scalar arguments (`fmath.sqrt`, what `square-root` inlines to) holds no list:
+// n-body's `energy` and `advance`. And a task that calls one is still a scalar task
+const native = `dock load
+  load <global:fmath>, name fmath
+
+task root
+  take a, like number
+  like number
+  send back
+    call fmath/sqrt
+      read a
+`
+ok(
+  'a loop calling a native function with scalar arguments IS guarded',
+  guards(`${native}
+${loop(`      save xs/{i}
+        call fmath/sqrt
+          read j
+${step}`)}`).found.length === 1,
+)
+ok(
+  'a loop calling a task that only calls a native function IS guarded',
+  guards(`${native}
+${loop(`      save xs/{i}
+        call root
+          read j
+${step}`)}`).found.length === 1,
+)
+ok(
+  'a native call passed the list is NOT guarded',
+  guards(`dock load
+  load <global:fmath>, name fmath
+
+${loop(`      save xs/{i}
+        call fmath/sqrt
+          read xs
+${step}`)}`).found.length === 0,
+)
+
 console.log(`\nbounds: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

@@ -107,7 +107,7 @@ task slug
       hold
         read trimmed
       miss
-        substring trimmed, code 0, code 48
+        substring trimmed, code(0), code 48
   fork test
     is-equal cut, <>
     hold
@@ -125,7 +125,6 @@ task memory-directory
     kept-at
       join project-home(root), <memory>
       join legacy-project-home(root), <memory>
-      wait true
 
 # remember one fact, and keep the one-line index it is listed in
 task remember
@@ -137,7 +136,7 @@ task remember
 
   like text
 
-  save directory, memory-directory root, wait true
+  save directory, memory-directory root
   make-directory directory
 
   save chosen-kind
@@ -232,7 +231,7 @@ task mind
 
   like void
 
-  # the project root is READ, not taken: a hook has no `root` argument to pass
+  # the prt is READ, not taken:as no `root` argument to pass
   save root, call project-root
   fork test
     is-unequal fact, <>

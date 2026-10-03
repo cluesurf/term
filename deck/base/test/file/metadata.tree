@@ -1,5 +1,5 @@
 
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-and, name bit-and
 
 dock load
@@ -31,7 +31,6 @@ task run-tests
 
   save dir
     call make-temp-dir
-      wait true
       bind x, text <x>
 
   save fp

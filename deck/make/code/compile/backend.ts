@@ -1,8 +1,10 @@
 import type {
   Expression,
+  Program,
   Type,
   Statement,
 } from '@term/make/code/compile/node'
+import { nativeCall, scalarTasks } from '@term/make/code/ir/facts/bounds'
 
 // `keys` / `values` on a map type are stdlib operations that must materialize a list, not return a native iterator.
 // Each backend handles the iterator -> list conversion in its own idiom (Array.from, .cloned().collect(), Array(...),
@@ -686,11 +688,15 @@ function mentions(body: Statement[], name: string): boolean {
 // each element. The caller lends once for the whole call. A wrong answer here does not merely slow a program down: a
 // second name reaching the same list while it is lent panics on its `RefCell`. So it is refused unless nothing else
 // in the task CAN reach a list:
-//   - every mention of the parameter is a slot read or write (`xs/{i}`, `xs/0`), its length, or the list a walk walks.
-//     Never reassigned, passed, stored, returned or captured
-//   - every other parameter is a scalar (a number, a float, a flag, a text), so no second name can alias it
-//   - the task makes no call to another task, calls no function value, builds no closure, and reads no collection
-//     from outside itself; a native call takes scalar arguments only
+//   - every mention of each list parameter is a slot read or write (`xs/{i}`, `xs/0`), its length, the list a walk
+//     walks, or an argument at a position another task takes lent (the mode flows back: passed where it is written,
+//     it is written here). Never reassigned, stored, returned or captured
+//   - every other parameter is a scalar (a number, a float, a flag, a text), and all the list parameters are lent or
+//     none is, since a list left shared could be the same list as a lent one
+//   - every other call is to a task that cannot reach a list (`scalarTasks`) or a native call, with scalar arguments;
+//     no function value, no closure, no collection from outside the task
+// Several lists lent to one call could be one list: the CALL SITE answers that (`lendRefusals`), and a site that
+// cannot is refused, which refuses the task.
 // `gate` is the same filter `impl Fn` uses: a top-level synchronous task, defined once, never used as a value.
 export type Lend = 'read' | 'write'
 
@@ -707,35 +713,45 @@ export function scalarType(type: Type | undefined): boolean {
   )
 }
 
-export function lendableParams(fn: Extract<Statement, { form: 'function' }>, tasks: Set<string>): Map<number, Lend> {
+export function lendableParams(
+  fn: Extract<Statement, { form: 'function' }>,
+  tasks: Set<string>,
+  // the program's current answer for every OTHER task (`listFacts` solves them together): a list passed on to one of
+  // these, at a position it takes lent, stays lent here, in the same mode or a stronger one
+  lend: Map<string, Map<number, Lend>> = new Map(),
+  // the tasks that cannot reach a list at all (ir/facts/bounds.ts, `scalarTasks`): a call to one costs nothing
+  pure: Set<string> = new Set(),
+): Map<number, Lend> {
   const lent = new Map<number, Lend>()
   const candidates = fn.params.flatMap((p, i) => (p.type?.kind === 'array' ? [i] : []))
 
-  if (candidates.length !== 1 || !fn.params.every((p, i) => i === candidates[0] || scalarType(p.type))) {
+  // every other parameter a scalar: a record or a map could hold a list that aliases one lent here
+  if (!candidates.length || !fn.params.every((p, i) => candidates.includes(i) || scalarType(p.type))) {
     return lent
   }
 
-  const name = fn.params[candidates[0]!]!.name
+  const names = new Map(candidates.map(i => [fn.params[i]!.name, i]))
+  const bound = rebinds(fn.body)
 
   // by name, so a parameter the body binds again is refused rather than confused with its shadow
-  if (rebinds(fn.body).has(name)) {
+  if ([...names.keys()].some(name => bound.has(name))) {
     return lent
   }
 
   const locals = new Set(fn.params.map(p => p.name))
   letNames(fn.body, locals)
-  let refused = false
-  let written = false
+  let refusedAll = false
+  const refused = new Set<string>()
+  const written = new Set<string>()
   type Loose = Record<string, unknown> & { form?: string }
 
-  const slotOf = (node: Loose): boolean =>
-    node.form === 'member' &&
-    (node.index !== undefined || /^\d+$/.test(node.name as string)) &&
-    (node.target as Loose).form === 'variable' &&
-    (node.target as Loose).name === name
+  const ours = (node: Loose | undefined): string | undefined =>
+    node?.form === 'variable' && names.has(node.name as string) ? (node.name as string) : undefined
+  const slotOf = (node: Loose): string | undefined =>
+    node.form === 'member' && (node.index !== undefined || /^\d+$/.test(node.name as string)) ? ours(node.target as Loose) : undefined
 
   const visit = (value: unknown): void => {
-    if (refused || typeof value !== 'object' || value === null) {
+    if (refusedAll || typeof value !== 'object' || value === null) {
       return
     }
 
@@ -750,63 +766,101 @@ export function lendableParams(fn: Extract<Statement, { form: 'function' }>, tas
     switch (node.form) {
       case 'closure':
       case 'await':
-        refused = true
+        refusedAll = true
 
         return
       case 'variable': {
         const id = node.name as string
 
-        // the parameter itself, anywhere but the places handled below; or a collection from outside the task
-        if (id === name || (!locals.has(id) && !scalarType(node.type as Type | undefined) && !tasks.has(id))) {
-          refused = true
+        // one of the lent lists anywhere but the places handled below; or a collection from outside the task
+        if (names.has(id)) {
+          refused.add(id)
+        } else if (!locals.has(id) && !scalarType(node.type as Type | undefined) && !tasks.has(id)) {
+          refusedAll = true
         }
 
         return
       }
       case 'call': {
         const callee = node.callee as Loose
+        const name = callee.form === 'variable' ? (callee.name as string) : undefined
+        const args = node.args as Loose[]
+        const target = name !== undefined ? lend.get(name) : undefined
 
-        // another task, a function value, or a method-shaped operation on a collection: any could reach the list
-        if (callee.form !== 'variable' || tasks.has(callee.name as string) || locals.has(callee.name as string)) {
-          refused = true
+        // a task that takes lists lent: one of ours passed at a position it takes lent stays lent here, written if it
+        // writes it there. A local of the task's own is passed freely: it cannot alias a parameter
+        if (name !== undefined && target && !locals.has(name)) {
+          args.forEach((arg, i) => {
+            const mine = ours(arg)
+
+            if (!mine) {
+              visit(arg)
+            } else if (!target.has(i)) {
+              refused.add(mine)
+            } else if (target.get(i) === 'write') {
+              written.add(mine)
+            }
+          })
 
           return
         }
 
-        if (!(node.args as Loose[]).every(a => scalarType(a.type as Type | undefined))) {
-          refused = true
+        // a collection operation on one of the lent lists: a read of a slot (`self/at(i)`, `self/get(i)`, the stdlib's
+        // `get`) is a slot read; anything else on it (a push, a pop, a splice) could change its length, so refuses it
+        if (callee.form === 'member') {
+          const op = collectionCall(callee as Expression)
+          const mine = op && op.kind !== 'map' ? ours(op.target as Loose) : undefined
+
+          if (mine) {
+            if (op!.op === 'at' || op!.op === 'get') {
+              visit(args)
+            } else {
+              refused.add(mine)
+            }
+
+            return
+          }
+        }
+
+        // a task that cannot reach a list, or a native call, with scalar arguments
+        const harmless =
+          (nativeCall(callee) || (name !== undefined && !locals.has(name) && (pure.has(name) || !tasks.has(name)))) &&
+          args.every(a => scalarType(a.type as Type | undefined))
+
+        if (!harmless) {
+          refusedAll = true
 
           return
         }
 
-        visit(node.args)
+        visit(args)
 
         return
       }
-      case 'member':
+      case 'member': {
         if (slotOf(node)) {
           visit(node.index)
 
           return
         }
 
-        {
-          const read = collectionRead(node as Expression)
+        const read = collectionRead(node as Expression)
 
-          if (read && read.target.form === 'variable' && read.target.name === name) {
-            return
-          }
+        if (read && ours(read.target as Loose)) {
+          return
         }
 
         visit(node.target)
         visit(node.index)
 
         return
+      }
       case 'assign': {
         const target = node.target as Loose
+        const mine = slotOf(target)
 
-        if (slotOf(target)) {
-          written = true
+        if (mine) {
+          written.add(mine)
           visit(target.index)
           visit(node.value)
 
@@ -819,10 +873,8 @@ export function lendableParams(fn: Extract<Statement, { form: 'function' }>, tas
         return
       }
       case 'for-each': {
-        const iterable = node.iterable as Loose
-
-        if (!(iterable.form === 'variable' && iterable.name === name)) {
-          visit(iterable)
+        if (!ours(node.iterable as Loose)) {
+          visit(node.iterable)
         }
 
         visit(node.body)
@@ -840,11 +892,18 @@ export function lendableParams(fn: Extract<Statement, { form: 'function' }>, tas
 
   visit(fn.body)
 
-  if (!refused) {
-    lent.set(candidates[0]!, written ? 'write' : 'read')
+  if (refusedAll) {
+    return lent
   }
 
-  return lent
+  for (const [name, i] of names) {
+    if (!refused.has(name)) {
+      lent.set(i, written.has(name) ? 'write' : 'read')
+    }
+  }
+
+  // a list not lent is a second collection parameter that could alias a lent one: all or none
+  return lent.size === names.size ? lent : new Map()
 }
 
 // F1, the second slice: the list LOCALS a task owns outright, held as a plain `Vec<T>`. A local is owned when it is
@@ -1030,6 +1089,23 @@ export function ownedLocals(
           return
         }
 
+        // a slot read or a push through the collection operation the stdlib's `get` and `push` inline to, `xs.at(i)`
+        // and `xs.push(v)`
+        if (!inClosure && callee.form === 'member') {
+          const op = collectionCall(callee as Expression)
+          const name = op && op.kind !== 'map' && ['at', 'get', 'push'].includes(op.op) ? owned(op.target as Loose) : undefined
+
+          if (name) {
+            if (op!.op === 'push') {
+              written.add(name)
+            }
+
+            visit(args, inClosure)
+
+            return
+          }
+        }
+
         // an argument the callee takes lent
         const lent = callee.form === 'variable' ? lend.get(callee.name as string) : undefined
 
@@ -1122,6 +1198,15 @@ export function writesTo(body: Statement[], name: string, lend: Map<string, Map<
       const args = node.args as unknown[]
 
       if (callee.form === 'variable' && callee.name === 'list_push' && named(args[0])) {
+        found = true
+
+        return
+      }
+
+      // the collection operation `list_push` inlines to, or any other that changes the list (`pop`, `splice`)
+      const op = callee.form === 'member' ? collectionCall(callee as Expression) : undefined
+
+      if (op?.kind === 'array' && named(op.target) && !['at', 'get', 'length', 'includes', 'indexOf', 'join'].includes(op.op)) {
         found = true
 
         return
@@ -1296,12 +1381,38 @@ export function gatedTasks(program: Statement[], refuse: Set<string>): Extract<S
 
   walk(program)
 
+  // a method that implements a mask's method: its signature is the trait's, shared with every other instance, so it
+  // cannot change alone. A method of a form that no mask names (`list/get`) is an ordinary task with a dotted spelling
+  const maskMethods = new Map<string, Set<string>>()
+
+  for (const n of program) {
+    if (n.form === 'mask') {
+      maskMethods.set(n.name, new Set(n.methods))
+    }
+  }
+
+  const traitBound = new Set<string>()
+
+  for (const n of program) {
+    if (n.form === 'instance') {
+      for (const m of maskMethods.get(n.mask) ?? []) {
+        traitBound.add(`${n.target}:${m}`)
+      }
+    }
+  }
+
+  const method = (n: Extract<Statement, { form: 'function' }>): boolean => {
+    const of = (n as { method?: { form: string; name: string } }).method
+
+    return of !== undefined && traitBound.has(`${of.form}:${of.name}`)
+  }
+
   return program.filter(
     (n): n is Extract<Statement, { form: 'function' }> =>
       n.form === 'function' &&
       !n.async &&
       n.body.length > 0 &&
-      !(n as { method?: unknown }).method &&
+      !method(n) &&
       !refuse.has(n.name) &&
       defined.get(n.name) === 1 &&
       !asValue.has(n.name),
@@ -1601,6 +1712,221 @@ export function borrowedRecords(program: Statement[], gated: Extract<Statement, 
   return current
 }
 
+// F1, the fixed-length slice: the lists a backend may hold as a plain primitive ARRAY (Kotlin's `LongArray`), which
+// cannot grow. Measured first on Kotlin fannkuch-redux: the 64-bit hand version in term.tree's own shape over plain
+// `LongArray`s ran 21% faster than the emitted program with every check stripped and direct storage access, so the
+// list representation itself was the cost (tmp/kotlin-width-ab.ts, 2026-10-02).
+//   - a LOCAL is fixed when it is owned (`ownedLocals`), its element passes `element`, it is made by a call to a fresh
+//     task (so it starts full; `make list` starts empty and must grow), nothing in its task pushes onto it, and it is
+//     never handed back
+//   - a lent PARAMETER is fixed when its element passes `element` and EVERY call to its task passes, at that position, a
+//     fixed local or a fixed parameter of the caller, or a call to a fresh task (converted once at the call)
+//   - a local stays fixed only while every lend of it is to a fixed parameter
+// The last two depend on each other, so they are solved together, dropping candidates until none drops.
+export function fixedLists(
+  program: Statement[],
+  lend: Map<string, Map<number, Lend>>,
+  fresh: Set<string>,
+  element: (type: Type) => boolean,
+): { locals: Map<string, Set<string>>; params: Map<string, Set<number>> } {
+  type Fn = Extract<Statement, { form: 'function' }>
+  type Loose = Record<string, unknown> & { form?: string }
+  const fns = program.filter((n): n is Fn => n.form === 'function')
+  const byName = new Map(fns.map(f => [f.name, f]))
+  const locals = new Map<string, Set<string>>()
+  const params = new Map<string, Set<number>>()
+
+  // the candidate locals, per task
+  for (const fn of fns) {
+    if (fn.async) {
+      continue
+    }
+
+    const owned = ownedLocals(fn, fresh, lend)
+    const pushed = new Set<string>()
+    const returned = new Set<string>()
+    const lets = new Map<string, Loose>()
+    const scan = (value: unknown): void => {
+      if (typeof value !== 'object' || value === null) {
+        return
+      }
+
+      if (Array.isArray(value)) {
+        value.forEach(scan)
+
+        return
+      }
+
+      const node = value as Loose
+
+      if (node.form === 'let') {
+        lets.set(node.name as string, node)
+      }
+
+      if (node.form === 'call') {
+        const callee = node.callee as Loose
+        const first = (node.args as Loose[])[0]
+
+        if (callee.form === 'variable' && callee.name === 'list_push' && first?.form === 'variable') {
+          pushed.add(first.name as string)
+        }
+
+        // the collection operation `list_push` inlines to, `xs.push(v)`
+        const op = callee.form === 'member' ? collectionCall(callee as Expression) : undefined
+
+        if (op?.kind === 'array' && op.op === 'push' && (op.target as Loose).form === 'variable') {
+          pushed.add((op.target as Loose).name as string)
+        }
+      }
+
+      if (node.form === 'return' && (node.value as Loose | undefined)?.form === 'variable') {
+        returned.add((node.value as Loose).name as string)
+      }
+
+      for (const [key, child] of Object.entries(node)) {
+        if (key !== 'type' && key !== 'span') {
+          scan(child)
+        }
+      }
+    }
+
+    scan(fn.body)
+
+    const fixed = new Set(
+      [...owned.keys()].filter(name => {
+        const made = lets.get(name)
+        const type = made?.type as Type | undefined
+        const init = made?.init as Loose | undefined
+
+        return (
+          type?.kind === 'array' &&
+          element(type.element) &&
+          init?.form === 'call' &&
+          (init.callee as Loose).form === 'variable' &&
+          fresh.has((init.callee as Loose).name as string) &&
+          !pushed.has(name) &&
+          !returned.has(name)
+        )
+      }),
+    )
+
+    if (fixed.size) {
+      locals.set(fn.name, fixed)
+    }
+  }
+
+  // the candidate parameters
+  for (const [name, lent] of lend) {
+    const fn = byName.get(name)
+
+    if (!fn) {
+      continue
+    }
+
+    const at = new Set(
+      [...lent.keys()].filter(i => {
+        const type = fn.params[i]?.type
+
+        return type?.kind === 'array' && element(type.element)
+      }),
+    )
+
+    if (at.size) {
+      params.set(name, at)
+    }
+  }
+
+  // every lending call: who calls, what, at which position, with what
+  type Site = { caller: string; callee: string; at: number; arg: Loose }
+  const sites: Site[] = []
+
+  for (const fn of fns) {
+    const visit = (value: unknown, inClosure: boolean): void => {
+      if (typeof value !== 'object' || value === null) {
+        return
+      }
+
+      if (Array.isArray(value)) {
+        value.forEach(v => visit(v, inClosure))
+
+        return
+      }
+
+      const node = value as Loose
+      const inside = inClosure || node.form === 'closure'
+
+      if (node.form === 'call' && (node.callee as Loose).form === 'variable') {
+        const callee = (node.callee as Loose).name as string
+        const lent = lend.get(callee)
+
+        for (const [i, arg] of (node.args as Loose[]).entries()) {
+          if (lent?.has(i)) {
+            // an argument inside a closure is never a caller's fixed list: mark it as nothing the caller holds
+            sites.push({ caller: inside ? '' : fn.name, callee, at: i, arg })
+          }
+        }
+      }
+
+      for (const [key, child] of Object.entries(node)) {
+        if (key !== 'type' && key !== 'span') {
+          visit(child, inside)
+        }
+      }
+    }
+
+    visit(fn.body, false)
+  }
+
+  // drop until stable
+  const fixedArg = (site: Site): boolean => {
+    const arg = site.arg
+
+    if (arg.form === 'call' && (arg.callee as Loose).form === 'variable' && fresh.has((arg.callee as Loose).name as string)) {
+      return true
+    }
+
+    if (arg.form !== 'variable' || !site.caller) {
+      return false
+    }
+
+    const name = arg.name as string
+    const caller = byName.get(site.caller)
+    const index = caller?.params.findIndex(p => p.name === name) ?? -1
+
+    return locals.get(site.caller)?.has(name) === true || (index >= 0 && params.get(site.caller)?.has(index) === true)
+  }
+
+  let changed = true
+
+  while (changed) {
+    changed = false
+
+    for (const [name, at] of params) {
+      for (const i of [...at]) {
+        if (!sites.filter(s => s.callee === name && s.at === i).every(fixedArg)) {
+          at.delete(i)
+          changed = true
+        }
+      }
+
+      if (!at.size) {
+        params.delete(name)
+      }
+    }
+
+    for (const site of sites) {
+      const arg = site.arg
+
+      if (arg.form === 'variable' && site.caller && locals.get(site.caller)?.has(arg.name as string) && !params.get(site.callee)?.has(site.at)) {
+        locals.get(site.caller)!.delete(arg.name as string)
+        changed = true
+      }
+    }
+  }
+
+  return { locals, params }
+}
+
 // F1's program-wide facts, the same on every backend that reads them: which list parameter each gated task takes
 // lent, and which tasks answer a fresh list
 export function listFacts(
@@ -1608,15 +1934,117 @@ export function listFacts(
   gated: Extract<Statement, { form: 'function' }>[],
 ): { lend: Map<string, Map<number, Lend>>; fresh: Set<string> } {
   const tasks = new Set(program.flatMap(n => (n.form === 'function' ? [n.name] : [])))
-  const lend = new Map<string, Map<number, Lend>>()
+  const pure = scalarTasks(program as Program)
+  // optimistic start: every gated task's list parameters, read only. Each round recomputes every task against the
+  // others' current answer, so a task passing a list on stays lent while its callee does, and a mode only strengthens
+  let lend = new Map<string, Map<number, Lend>>(
+    gated.flatMap(fn => {
+      const at = fn.params.flatMap((p, i) => (p.type?.kind === 'array' ? [[i, 'read' as Lend] as const] : []))
 
-  for (const fn of gated) {
-    const lent = lendableParams(fn, tasks)
+      return at.length ? [[fn.name, new Map(at)] as const] : []
+    }),
+  )
+  const refused = new Set<string>()
 
-    if (lent.size) {
-      lend.set(fn.name, lent)
+  for (;;) {
+    let changed = true
+
+    while (changed) {
+      changed = false
+
+      for (const fn of gated) {
+        if (refused.has(fn.name)) {
+          continue
+        }
+
+        const now = lendableParams(fn, tasks, lend, pure)
+        const was = lend.get(fn.name)
+        const same = was !== undefined && was.size === now.size && [...now].every(([i, how]) => was.get(i) === how)
+
+        if (!same && (now.size || was)) {
+          if (now.size) {
+            lend.set(fn.name, now)
+          } else {
+            lend.delete(fn.name)
+          }
+
+          changed = true
+        }
+      }
     }
+
+    const fresh = freshTasks(gated, lend)
+    const bad = lendRefusals(program, lend, fresh)
+
+    if (!bad.size) {
+      return { lend, fresh }
+    }
+
+    for (const name of bad) {
+      refused.add(name)
+      lend.delete(name)
+    }
+
+    lend = new Map(lend)
+  }
+}
+
+// The tasks some call to which cannot lend its lists safely, so must take them shared. A call that lends with any
+// position WRITTEN must pass lists that cannot be one list: each argument at a lent position is an owned local of the
+// caller (a plain Vec, unique storage), a call to a fresh task, or a lent parameter of the caller (Rust's borrow rules
+// already keep two of those apart). At most one argument may be a shared cell, and no name may be passed twice. Lends
+// that only read may alias freely: two shared borrows of one list are fine
+function lendRefusals(program: Statement[], lend: Map<string, Map<number, Lend>>, fresh: Set<string>): Set<string> {
+  type Fn = Extract<Statement, { form: 'function' }>
+  type Loose = Record<string, unknown> & { form?: string }
+  const bad = new Set<string>()
+
+  for (const fn of program.filter((n): n is Fn => n.form === 'function')) {
+    const owned = fn.async ? new Map<string, boolean>() : ownedLocals(fn, fresh, lend)
+    const mine = lend.get(fn.name)
+    const lentHere = new Set(fn.params.flatMap((p, i) => (mine?.has(i) ? [p.name] : [])))
+
+    const visit = (value: unknown): void => {
+      if (typeof value !== 'object' || value === null) {
+        return
+      }
+
+      if (Array.isArray(value)) {
+        value.forEach(visit)
+
+        return
+      }
+
+      const node = value as Loose
+
+      if (node.form === 'call' && (node.callee as Loose).form === 'variable') {
+        const callee = (node.callee as Loose).name as string
+        const lent = lend.get(callee)
+        const args = node.args as Loose[]
+
+        if (lent && [...lent.values()].includes('write') && lent.size > 1) {
+          const at = [...lent.keys()].map(i => args[i]).filter((a): a is Loose => a !== undefined)
+          const named = at.flatMap(a => (a.form === 'variable' ? [a.name as string] : []))
+          const plain = (a: Loose): boolean =>
+            (a.form === 'variable' && (owned.has(a.name as string) || lentHere.has(a.name as string))) ||
+            (a.form === 'call' && (a.callee as Loose).form === 'variable' && fresh.has((a.callee as Loose).name as string))
+          const cells = at.filter(a => !plain(a)).length
+
+          if (new Set(named).size !== named.length || cells > 1) {
+            bad.add(callee)
+          }
+        }
+      }
+
+      for (const [key, child] of Object.entries(node)) {
+        if (key !== 'type' && key !== 'span') {
+          visit(child)
+        }
+      }
+    }
+
+    visit(fn.body)
   }
 
-  return { lend, fresh: freshTasks(gated, lend) }
+  return bad
 }

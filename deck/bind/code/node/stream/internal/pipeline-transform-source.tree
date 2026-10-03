@@ -4,7 +4,7 @@ load @term/bind
   find like
   find or
 
-load @term/bind/code/node/stream/internal
+load @term/bind/node/stream/internal
   find pipeline-source
   find pipeline-transform
 

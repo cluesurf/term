@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/presentation-style
+load @term/bind/browser/dom/presentation-style
   find presentation-style
 
 form clipboard-item-options, name <ClipboardItemOptions>

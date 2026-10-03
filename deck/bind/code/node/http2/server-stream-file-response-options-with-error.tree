@@ -1,9 +1,9 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-void
   find node-js-errno-exception
 
-load @term/bind/code/node/http2
+load @term/bind/node/http2
   find server-stream-file-response-options
 
 form server-stream-file-response-options-with-error

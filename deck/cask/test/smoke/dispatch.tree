@@ -13,7 +13,7 @@
 # is unknown to every other window's (refused as `absence`, as a forged one is), and when the window closes
 # every handle under its key is dropped. `dispatch` answers as one window, for an app that opens only one.
 
-load @term/cask/code/cask
+load @term/cask/cask
   find window
   find on-message
   find on-close
@@ -22,13 +22,13 @@ load @term/cask/code/cask
   find bundle-path
   find data-path
 
-load @term/base/code/text
+load @term/base/text
   find starts-with
 
-load @term/base/code/console
+load @term/base/console
   find log
 
-load @term/base/code/file
+load @term/base/file
   find read, name file-read
   find write, name file-write
   find append, name file-append
@@ -38,7 +38,7 @@ load @term/base/code/file
   find test, name file-test
   find stat, name file-stat
 
-load @term/base/code/json
+load @term/base/json
   find parse
   find stringify
   find field-text
@@ -59,33 +59,33 @@ load @term/base/code/json
   find get-item
   find array-size
 
-load @term/base/code/float
+load @term/base/float
   find to-number
   find to-decimal
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
 
-load @term/base/code/hash
+load @term/base/hash
   find hash
   find get
   find set
 
-load @term/base/code/uuid
+load @term/base/uuid
   find version4
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
   find unwrap
 
-load @term/base/code/file/stat
+load @term/base/file/stat
   find path-info
 
-load @term/host/code/base
+load @term/host/base
   find data
 
-load @term/host/code/text
+load @term/host/text
   find data-from-text
   find data-to-text
 

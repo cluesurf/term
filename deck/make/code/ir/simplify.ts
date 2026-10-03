@@ -113,6 +113,230 @@ let small = new Map<string, { params: { name: string }[]; value: Expression }>()
 // the names the function being simplified binds (its parameters, lets, loop variables, closure parameters)
 let callerBound = new Set<string>()
 
+// ---- interpolation, filled at compile time where it can be ----
+// THE RULE: an interpolation in a text (`<area {a}>`) whose value is a module constant that folds is filled HERE,
+// at compile time, and the text is emitted as a plain literal; any other interpolation is filled at run time by
+// the backend. A template parameter never reaches this pass, because a `tree` expanded it before the mill ran.
+//
+// It runs BEFORE constant propagation, so what it folds is exactly what the rule names. A local that propagation
+// later proves constant (`save x, 5`) stays a run-time fill, as the rule says a local does.
+//
+// Inside a `fork case` arm nothing is filled from a module constant: an arm binds its variant's fields as locals
+// by their own names, the IR does not list them, and one could shadow the constant. Run time is always right
+// there, compile time only where nothing shadows.
+
+// the text a literal prints as at run time, on EVERY backend, or undefined when the backends disagree. Rust, Swift
+// and Kotlin agree with TypeScript on an integer, a boolean and a text. They disagree on a float with no fraction
+// (`1` on TypeScript and Rust, `1.0` on Swift and Kotlin) and on exponent forms, so those stay run time.
+function printedAlike(node: Expression): string | undefined {
+  switch (node.form) {
+    case 'string':
+      return node.value
+    case 'boolean':
+      return String(node.value)
+    case 'integer':
+      return Number.isSafeInteger(Number(node.value)) ? String(Number(node.value)) : undefined
+    case 'float': {
+      const value = Number(node.value)
+
+      return Number.isFinite(value) && !Number.isInteger(value) && !/e/i.test(String(value))
+        ? String(value)
+        : undefined
+    }
+    default:
+      return undefined
+  }
+}
+
+// the top-level immutable `host` constants whose value folds, in declaration order so one may be built from an
+// earlier one. A constant assigned to anywhere is not one.
+function collectModuleConstants(program: Program): Map<string, Expression> {
+  const assigned = new Set<string>()
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') {
+      return
+    }
+
+    if (Array.isArray(node)) {
+      node.forEach(visit)
+
+      return
+    }
+
+    const record = node as Record<string, unknown>
+    const target = record.target as { form?: string; name?: string } | undefined
+
+    if (record.form === 'assign' && target?.form === 'variable' && typeof target.name === 'string') {
+      assigned.add(target.name)
+    }
+
+    for (const [key, value] of Object.entries(record)) {
+      if (key !== 'span' && key !== 'type') {
+        visit(value)
+      }
+    }
+  }
+
+  visit(program)
+
+  const found = new Map<string, Expression>()
+
+  for (const node of program) {
+    if (node.form !== 'let' || node.mutable || node.foreign !== undefined || assigned.has(node.name)) {
+      continue
+    }
+
+    const value = simplifyExpression(found.size > 0 ? substituteExpr(node.init, found) : node.init)
+
+    if (printedAlike(value) !== undefined) {
+      found.set(node.name, value)
+    }
+  }
+
+  return found
+}
+
+// One text template: when every interpolated part reads only module constants the enclosing code does not bind
+// itself (a name, a path, a call over them) and folds to a literal printed alike everywhere, the whole template
+// becomes one string. Otherwise it is returned untouched, for the backend to fill at run time.
+function fillTemplate(
+  node: Extract<Expression, { form: 'template' }>,
+  constants: Map<string, Expression>,
+  bound: Set<string>,
+): Expression {
+  const printed: string[] = []
+
+  for (const part of node.parts) {
+    if (typeof part === 'string') {
+      printed.push(part)
+      continue
+    }
+
+    const read = [...namesRead(part)]
+
+    if (read.some(name => bound.has(name) || !constants.has(name))) {
+      return node
+    }
+
+    const text = printedAlike(simplifyExpression(substituteExpr(structuredClone(part), constants)))
+
+    if (text === undefined) {
+      return node
+    }
+
+    printed.push(text)
+  }
+
+  return { form: 'string', value: printed.join(''), span: node.span }
+}
+
+// every name a function, a closure or a component binds anywhere inside itself: its parameters, its lets, its loop
+// variables and its closures' parameters. Over-collecting only sends a fill to run time, which is always right.
+function namesBoundIn(node: Record<string, unknown>): Set<string> {
+  const names = new Set<string>()
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== 'object') {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(visit)
+
+      return
+    }
+
+    const record = value as Record<string, unknown>
+
+    if (Array.isArray(record.params)) {
+      for (const param of record.params as { name?: unknown }[]) {
+        if (typeof param?.name === 'string') {
+          names.add(param.name)
+        }
+      }
+    }
+
+    if (record.form === 'let' && typeof record.name === 'string') {
+      names.add(record.name)
+    }
+
+    if (record.form === 'for-each') {
+      if (typeof record.item === 'string') {
+        names.add(record.item)
+      }
+
+      if (typeof record.index === 'string') {
+        names.add(record.index)
+      }
+    }
+
+    for (const [key, inner] of Object.entries(record)) {
+      if (key !== 'span' && key !== 'type') {
+        visit(inner)
+      }
+    }
+  }
+
+  visit(node)
+
+  return names
+}
+
+// Fill every template in the program that reads only module constants. A node is copied only on the path to a
+// template that changed, so every other node keeps its identity (facts are keyed by it).
+function fillTemplates(program: Program): Program {
+  const constants = collectModuleConstants(program)
+
+  if (constants.size === 0) {
+    return program
+  }
+
+  const walk = (value: unknown, bound: Set<string>, arm: boolean): unknown => {
+    if (!value || typeof value !== 'object') {
+      return value
+    }
+
+    if (Array.isArray(value)) {
+      let changed = false
+      const out = value.map(item => {
+        const next = walk(item, bound, arm)
+
+        changed ||= next !== item
+
+        return next
+      })
+
+      return changed ? out : value
+    }
+
+    const record = value as Record<string, unknown>
+
+    if (record.form === 'template') {
+      return arm ? value : fillTemplate(value as Extract<Expression, { form: 'template' }>, constants, bound)
+    }
+
+    // a function, a closure or a component starts the names it binds, on top of the ones around it
+    const scoped = Array.isArray(record.params)
+      ? new Set([...bound, ...namesBoundIn(record)])
+      : bound
+    let changed = false
+    const out: Record<string, unknown> = {}
+
+    for (const [key, inner] of Object.entries(record)) {
+      const next =
+        key === 'span' || key === 'type'
+          ? inner
+          : walk(inner, scoped, arm || (record.form === 'match' && key === 'cases'))
+
+      changed ||= next !== inner
+      out[key] = next
+    }
+
+    return changed ? out : value
+  }
+
+  return walk(program, new Set(), false) as Program
+}
+
 // every variable name an expression reads, nested closures included
 function namesRead(node: unknown, into = new Set<string>()): Set<string> {
   if (!node || typeof node !== 'object') {
@@ -385,14 +609,17 @@ function propagateStatement(
 
       return {
         ...node,
-        body: dropDeadBindings(
-          propagateConstants(
-            node.body,
-            new Map(),
+        body: keepWritten(
+          node,
+          dropDeadBindings(
+            propagateConstants(
+              node.body,
+              new Map(),
+              facts.safe,
+              facts.assigned,
+            ),
             facts.safe,
-            facts.assigned,
           ),
-          facts.safe,
         ),
       }
     }
@@ -678,7 +905,7 @@ function dropDeadBindings(
           otherwise: s.otherwise ? prune(s.otherwise) : undefined,
         })}
       else if (s.form === 'function')
-        {out.push({ ...s, body: prune(s.body) })}
+        {out.push({ ...s, body: keepWritten(s, prune(s.body)) })}
       else {out.push(s)}
     }
 
@@ -686,6 +913,14 @@ function dropDeadBindings(
   }
 
   return prune(body)
+}
+
+// A BODY THE SOURCE WROTE NEVER COMES OUT EMPTY. The native backends read an empty body as a signature-only declaration
+// and emit the not-implemented trap in it, so a task written as a no-op (`save skip, code 0`, the abstract page's
+// `push-path`) lost its one dead binding here and crashed a macOS app with "stub: push-path". A written body this pass
+// empties keeps a bare `return`: still nothing, and no longer mistaken for nothing written (native-navigation-0007)
+function keepWritten(written: Extract<Statement, { form: 'function' }>, body: Statement[]): Statement[] {
+  return body.length === 0 && written.body.length > 0 ? [{ form: 'return', span: written.span }] : body
 }
 
 // a function whose result type is a collection currency (list / map / set), which the backend boxes into a reference
@@ -2058,8 +2293,10 @@ export function simplify(
   program: Program,
   roots?: Set<string>,
 ): Program {
-  const inlined = dropUnusedHostGlobals(
-    inlineForwarders(program, roots),
+  // an interpolation that reads only module constants is filled here, at compile time, before propagation can
+  // make a local look constant too (see `fillTemplates`)
+  const inlined = fillTemplates(
+    dropUnusedHostGlobals(inlineForwarders(program, roots)),
   )
 
   // constant propagation: substitute scalar constants forward through each function body, then drop the now-dead

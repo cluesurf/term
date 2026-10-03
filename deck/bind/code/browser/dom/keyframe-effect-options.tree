@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/dom/composite-operation
+load @term/bind/browser/dom/composite-operation
   find composite-operation
 
-load @term/bind/code/browser/dom/effect-timing
+load @term/bind/browser/dom/effect-timing
   find effect-timing
 
-load @term/bind/code/browser/dom/iteration-composite-operation
+load @term/bind/browser/dom/iteration-composite-operation
   find iteration-composite-operation
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form keyframe-effect-options, name <KeyframeEffectOptions>

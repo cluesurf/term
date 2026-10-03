@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/idb-version-change-event
+load @term/bind/browser/dom/idb-version-change-event
   find idb-version-change-event
 
-load @term/bind/code/browser/webworker/event
+load @term/bind/browser/webworker/event
   find event
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form idb-version-change-event, name <IDBVersionChangeEvent>

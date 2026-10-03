@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/algorithm-identifier
+load @term/bind/browser/dom/algorithm-identifier
   find algorithm-identifier
 
 form hash-algorithm-identifier, name <HashAlgorithmIdentifier>

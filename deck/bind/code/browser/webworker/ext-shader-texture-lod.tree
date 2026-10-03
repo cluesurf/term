@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/ext-shader-texture-lod
+load @term/bind/browser/dom/ext-shader-texture-lod
   find ext-shader-texture-lod
 
 form ext-shader-texture-lod, name <EXT_shader_texture_lod>

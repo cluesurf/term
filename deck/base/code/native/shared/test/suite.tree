@@ -2,29 +2,29 @@
 dock load
   load <global:shape>, name shape
 
-load @term/base/code/test/suite
+load @term/base/test/suite
   find report
   find failure
 
-load @term/base/code/clock
+load @term/base/clock
   find now
 
-load @term/base/code/list
+load @term/base/list
   find join
 
-load @term/base/code/json
+load @term/base/json
   find is-null
 
-load @term/base/code/list
+load @term/base/list
   find get
   find pop
   find push
   find size
 
-load @term/base/code/text/string
+load @term/base/text/string
   find concat
 
-load @term/base/code/hive
+load @term/base/hive
   find hive-tell
   find hive-roll
   find hive-clear

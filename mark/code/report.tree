@@ -1,10 +1,10 @@
 # The printed report: one table of comparisons, then the summary per target. `--markdown` prints the same rows as a
 # markdown table for a note. Every count states its denominator.
 
-load @term/base/code/console
+load @term/base/console
   find log
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
   find get
@@ -13,17 +13,17 @@ load @term/base/code/list
   find sort
   find set
 
-load @term/base/code/ordering
+load @term/base/ordering
   find ordering
 
-load @term/base/code/text
+load @term/base/text
   find pad-right
   find char-count
 
-load @term/base/code/text/number
+load @term/base/text/number
   find to-fixed
 
-load @term/base/code/float
+load @term/base/float
   find to-decimal
 
 load ./case

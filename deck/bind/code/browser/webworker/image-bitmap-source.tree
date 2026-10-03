@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/webworker/blob
+load @term/bind/browser/webworker/blob
   find blob
 
-load @term/bind/code/browser/webworker/canvas-image-source
+load @term/bind/browser/webworker/canvas-image-source
   find canvas-image-source
 
-load @term/bind/code/browser/webworker/image-data
+load @term/bind/browser/webworker/image-data
   find image-data
 
 form image-bitmap-source, name <ImageBitmapSource>

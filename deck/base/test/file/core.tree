@@ -94,7 +94,6 @@ task run-tests
 
   save dir
     call make-temp-dir
-      wait true
       bind x, text <x>
 
   save p1
@@ -113,13 +112,11 @@ task run-tests
       bind b, text <test3.txt>
 
   call write-file
-    wait true
     bind p, read p1
     bind data, text <hello world>
 
   save content
     call read-file
-      wait true
       bind p, read p1
 
   fork test
@@ -134,18 +131,15 @@ task run-tests
         bind msg, text <fail: read-write-text>
 
   call write-file
-    wait true
     bind p, read p2
     bind data, text <aaa>
 
   call append-file
-    wait true
     bind p, read p2
     bind data, text <bbb>
 
   save appended
     call read-file
-      wait true
       bind p, read p2
 
   fork test
@@ -160,13 +154,11 @@ task run-tests
         bind msg, text <fail: append>
 
   call copy-file
-    wait true
     bind src, read p1
     bind dest, read p3
 
   save copied
     call read-file
-      wait true
       bind p, read p3
 
   fork test
@@ -186,13 +178,11 @@ task run-tests
       bind b, text <moved.txt>
 
   call move-file
-    wait true
     bind a, read p3
     bind b, read p4
 
   save moved
     call read-file
-      wait true
       bind p, read p4
 
   fork test
@@ -207,15 +197,12 @@ task run-tests
         bind msg, text <fail: move>
 
   call remove-file
-    wait true
     bind p, read p4
 
   call remove-file
-    wait true
     bind p, read p1
 
   call remove-file
-    wait true
     bind p, read p2
 
   save subdir
@@ -224,7 +211,6 @@ task run-tests
       bind b, text <sub>
 
   call make-dir
-    wait true
     bind p, read subdir
 
   call console/log

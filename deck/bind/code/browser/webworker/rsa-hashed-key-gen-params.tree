@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/rsa-hashed-key-gen-params
+load @term/bind/browser/dom/rsa-hashed-key-gen-params
   find rsa-hashed-key-gen-params
 
-load @term/bind/code/browser/webworker/hash-algorithm-identifier
+load @term/bind/browser/webworker/hash-algorithm-identifier
   find hash-algorithm-identifier
 
-load @term/bind/code/browser/webworker/rsa-key-gen-params
+load @term/bind/browser/webworker/rsa-key-gen-params
   find rsa-key-gen-params
 
 form rsa-hashed-key-gen-params, name <RsaHashedKeyGenParams>

@@ -1,19 +1,19 @@
-load @term/mill/code/code/head/mint
+load @term/mill/code/head/mint
   find head
 
-load @term/mill/code/code/form/case/mint
+load @term/mill/code/form/case/mint
   find case-hold
 
-load @term/mill/code/code/form/link/mint
+load @term/mill/code/form/link/mint
   find link
 
-load @term/mill/code/code/like/mint
+load @term/mill/code/like/mint
   find like
 
-load @term/mill/code/code/seed/mint
+load @term/mill/code/seed/mint
   find seed
 
-load @term/base/code/lang
+load @term/base/lang
   find code-hold
   find code-show
   find code-mark

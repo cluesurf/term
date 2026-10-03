@@ -3,7 +3,7 @@ load @term/bind
   find or
   find unknown
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find array-buffer
   find binary-like
@@ -12,12 +12,12 @@ load @term/bind/code/javascript
   find native-string
   find promise
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find blob-options
 
 form blob, name <Blob>
-  link size, name <size>, like native-number
-  link type, name <type>, like native-string
+  link size, name(<size>), like native-number
+  link type, name(<type>), like native-string
 
   task array-buffer, name <arrayBuffer>
     like promise

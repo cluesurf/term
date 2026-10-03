@@ -2,14 +2,14 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-null
   find native-number
   find native-undefined
   find stream
 
-load @term/bind/code/node/child-process
+load @term/bind/node/child-process
   find io-type
 
 form stdio-options, name <StdioOptions>

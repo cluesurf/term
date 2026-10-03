@@ -8,7 +8,7 @@ load @term/bind
   find test
   find unknown
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array-buffer
   find array-buffer-like
   find big-int
@@ -36,7 +36,7 @@ load @term/bind/code/javascript
   find weak-set
   find webcrypto-crypto-key
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find big-int64-array
   find big-uint64-array
   find float32-array
@@ -50,7 +50,7 @@ load @term/bind/code/node/globals
   find uint8-array
   find uint8-clamped-array
 
-load @term/bind/code/node/tls
+load @term/bind/node/tls
   find key-object
 
 task is-any-array-buffer, name <isAnyArrayBuffer>

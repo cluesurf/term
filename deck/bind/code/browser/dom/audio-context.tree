@@ -1,53 +1,53 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/audio-timestamp
+load @term/bind/browser/dom/audio-timestamp
   find audio-timestamp
 
-load @term/bind/code/browser/dom/base-audio-context
+load @term/bind/browser/dom/base-audio-context
   find base-audio-context
 
-load @term/bind/code/browser/dom/base-audio-context-event-map
+load @term/bind/browser/dom/base-audio-context-event-map
   find base-audio-context-event-map
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/html-media-element
+load @term/bind/browser/dom/html-media-element
   find html-media-element
 
-load @term/bind/code/browser/dom/media-element-audio-source-node
+load @term/bind/browser/dom/media-element-audio-source-node
   find media-element-audio-source-node
 
-load @term/bind/code/browser/dom/media-stream
+load @term/bind/browser/dom/media-stream
   find media-stream
 
-load @term/bind/code/browser/dom/media-stream-audio-destination-node
+load @term/bind/browser/dom/media-stream-audio-destination-node
   find media-stream-audio-destination-node
 
-load @term/bind/code/browser/dom/media-stream-audio-source-node
+load @term/bind/browser/dom/media-stream-audio-source-node
   find media-stream-audio-source-node
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form audio-context, name <AudioContext>

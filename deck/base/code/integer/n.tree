@@ -7,7 +7,7 @@
 
 note stable
 
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-and
   find bitwise-or
   find bitwise-exclusive-or
@@ -15,7 +15,7 @@ load @term/base/code/bit
   find shift-left
   find shift-right
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
   find some
   find none

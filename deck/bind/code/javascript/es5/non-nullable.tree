@@ -1,11 +1,11 @@
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-never
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-undefined
 
 form non-nullable, name <NonNullable>

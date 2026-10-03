@@ -4,11 +4,11 @@
 #
 # Run with: term test
 
-load @term/base/code/native/shared/cryptography/aes
+load @term/base/native/shared/cryptography/aes
   find aes-encrypt-block
   find aes-decrypt-block
 
-load @term/base/code/boolean
+load @term/base/boolean
   find not
 
 test aes-fips-197-encrypt

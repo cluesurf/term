@@ -116,7 +116,8 @@ ${props}
       call toggle-disclosure
         bind self, read control
 `
-  const CONTRACT_PROPS = '  take host, like view\n  take class, like text\n  take control, like signal boolean'
+  // face's switch contract: its host, class and control, and the `label` that names it (native-accessibility-0002)
+  const CONTRACT_PROPS = '  take host, like view\n  take class, like text\n  take control, like signal boolean\n  take\n    label\n    like text\n    fall <>'
   writeFileSync(join(shadowDir, 'switch.tree'), shadow(CONTRACT_PROPS))
 
   const entry = join(app, 'main.tree')

@@ -10,27 +10,27 @@
 
 note stable
 
-load @term/base/code/bytes
+load @term/base/bytes
   find to-byte-list
   find from-byte-list
 
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-and
   find bitwise-or
   find bitwise-exclusive-or
   find shift-left
   find shift-right
 
-load @term/base/code/list
+load @term/base/list
   find list
   find size
   find get
 
-load @term/base/code/hash
+load @term/base/hash
   find hash
   find get-or-default
 
-load @term/base/code/exception
+load @term/base/exception
   find mismatch
 
 form gzip-mismatch
@@ -66,6 +66,20 @@ form huffman-table
 form block-tables
   link literals, like huffman-table
   link distances, like huffman-table
+
+# where a reader stands: the next byte position, the bits read but not yet used, and how many there are. One object,
+# since every task it is handed moves it on
+form bit-reader
+  mark shared
+  link at, like number
+  link buffer, like number
+  link held, like number
+
+# the bits written but not yet a whole byte, and how many there are
+form bit-writer
+  mark shared
+  link buffer, like number
+  link held, like number
 
 task refuse-gzip
   mark private
@@ -110,8 +124,16 @@ task filled
   mark private
   take count, like number
   take value, like number
+  have
+    call is-minimum
+      read count
+      code 0
   like list
     like number
+  must
+    call is-equal
+      read back/length
+      read count
   save out
     make list
   save k, code 0
@@ -393,33 +415,24 @@ task distance-extra
 
 # ---------------------------------------------------------------- writing: bits out, least significant first
 
-# `state` is [the bits not yet a whole byte, how many there are]
 task put-bits
   mark private
   take out
     like list
       like number
-  take state
-    like list
-      like number
+  take state, like bit-writer
   take value, like number
   take count, like number
   like number
   save buffer
     call bitwise-or
-      call byte-at
-        read state
-        code 0
+      read state/buffer
       call shift-left
         read value
-        call byte-at
-          read state
-          code 1
+        read state/held
   save held
     call add
-      call byte-at
-        read state
-        code 1
+      read state/held
       read count
   walk test
     down, read held
@@ -440,11 +453,9 @@ task put-bits
         call subtract
           read held
           code 8
-  call state/set
-    code 0
+  save state/buffer
     read buffer
-  call state/set
-    code 1
+  save state/held
     read held
   send back, read held
 
@@ -491,9 +502,7 @@ task put-symbol
   take out
     like list
       like number
-  take state
-    like list
-      like number
+  take state, like bit-writer
   take symbol, like number
   like number
   save code, code 0
@@ -585,9 +594,7 @@ task put-match
   take out
     like list
       like number
-  take state
-    like list
-      like number
+  take state, like bit-writer
   take length, like number
   take distance, like number
   take tables, like match-tables
@@ -728,9 +735,9 @@ task deflate-fixed
   save out
     make list
   save state
-    make list
-  call state/push, code 0
-  call state/push, code 0
+    make bit-writer
+      bind buffer, code 0
+      bind held, code 0
   # final, fixed
   call put-bits
     read out
@@ -868,13 +875,22 @@ task deflate-fixed
             call add
               read i
               read k
+          # `previous` holds one place per byte; the writes above leave the prover unsure of its length, so it is tested
           fork test
             hook test
-              call is-below
-                call add
-                  read at
-                  code 2
-                read n
+              call and
+                call is-below
+                  call add
+                    read at
+                    code 2
+                  read n
+                call and
+                  call is-minimum
+                    read at
+                    code 0
+                  call is-below
+                    read at
+                    read previous/length
             hook hold
               save key
                 call triple-key
@@ -907,9 +923,7 @@ task deflate-fixed
   fork test
     hook test
       call is-above
-        call byte-at
-          read state
-          code 1
+        read state/held
         code 0
     hook hold
       call put-bits
@@ -918,9 +932,7 @@ task deflate-fixed
         code 0
         call subtract
           code 8
-          call byte-at
-            read state
-            code 1
+          read state/held
   send back, read out
 
 task put-word-32
@@ -1002,29 +1014,20 @@ task gzip
 
 # ---------------------------------------------------------------- reading: puff
 
-# `reader` is [the next byte position, the bits not yet used, how many there are]
 task read-bits
   mark private
   take data
     like list
       like number
-  take reader
-    like list
-      like number
+  take reader, like bit-reader
   take count, like number
   like number
   save at
-    call byte-at
-      read reader
-      code 0
+    read reader/at
   save buffer
-    call byte-at
-      read reader
-      code 1
+    read reader/buffer
   save held
-    call byte-at
-      read reader
-      code 2
+    read reader/held
   walk test
     down
       call subtract
@@ -1070,16 +1073,13 @@ task read-bits
           code 1
           read count
         code 1
-  call reader/set
-    code 0
+  save reader/at
     read at
-  call reader/set
-    code 1
+  save reader/buffer
     call shift-right
       read buffer
       read count
-  call reader/set
-    code 2
+  save reader/held
     call subtract
       read held
       read count
@@ -1096,16 +1096,27 @@ task huffman
     call filled
       code 16
       code 0
+  # a code length is 0 to 15 in any stream this was handed; one out of that range is never written past the counts
   walk list, read lengths
     hook next
       take site, name length
-      call counts/set
-        read length
-        call add
-          call byte-at
-            read counts
+      fork test
+        hook test
+          call and
+            call is-minimum
+              read length
+              code 0
+            call is-below
+              read length
+              read counts/length
+        hook hold
+          call counts/set
             read length
-          code 1
+            call add
+              call byte-at
+                read counts
+                read length
+              code 1
   save offsets
     call filled
       code 16
@@ -1147,17 +1158,32 @@ task huffman
       take site, name length
       fork test
         hook test
-          call is-above
-            read length
-            code 0
+          call and
+            call is-above
+              read length
+              code 0
+            call is-below
+              read length
+              read offsets/length
         hook hold
           save place
             call byte-at
               read offsets
               read length
-          call symbols/set
-            read place
-            read symbol
+          # inside the symbols for a code the counts describe; a place past them is never written
+          fork test
+            hook test
+              call and
+                call is-minimum
+                  read place
+                  code 0
+                call is-below
+                  read place
+                  read symbols/length
+            hook hold
+              call symbols/set
+                read place
+                read symbol
           call offsets/set
             read length
             call add
@@ -1177,9 +1203,7 @@ task decode
   take data
     like list
       like number
-  take reader
-    like list
-      like number
+  take reader, like bit-reader
   take table, like huffman-table
   like number
   save counts, read table/counts
@@ -1245,9 +1269,7 @@ task decode
           code 1
   send back
     call refuse-gzip
-      call byte-at
-        read reader
-        code 0
+      read reader/at
       text <a code is not in the table>
 
 # the symbols of a block, literals and matches, until the end of block
@@ -1256,9 +1278,7 @@ task inflate-codes
   take data
     like list
       like number
-  take reader
-    like list
-      like number
+  take reader, like bit-reader
   take out
     like list
       like number
@@ -1274,10 +1294,32 @@ task inflate-codes
   save distance-extras
     call distance-extra
   save going, true
+  # every symbol takes one bit of the data or more, so no block has more symbols than the data has bits; past that
+  # count `decode` would already have refused the stream. The count bounds the walk where the reader's progress,
+  # made inside the calls, cannot be followed
+  save turns, code 0
+  save limit
+    call add
+      call multiply
+        read data/length
+        code 8
+      code 8
   walk test
+    down
+      call subtract
+        read limit
+        read turns
     hook test
-      read going
+      call and
+        read going
+        call is-below
+          read turns
+          read limit
     hook step
+      save turns
+        call add
+          read turns
+          code 1
       save symbol
         call decode
           read data
@@ -1309,9 +1351,7 @@ task inflate-codes
                 code 29
             hook hold
               call refuse-gzip
-                call byte-at
-                  read reader
-                  code 0
+                read reader/at
                 text <a length code is out of range>
           save length
             call add
@@ -1336,9 +1376,7 @@ task inflate-codes
                 code 30
             hook hold
               call refuse-gzip
-                call byte-at
-                  read reader
-                  code 0
+                read reader/at
                 text <a distance code is out of range>
           save distance
             call add
@@ -1359,9 +1397,7 @@ task inflate-codes
                   read out
             hook hold
               call refuse-gzip
-                call byte-at
-                  read reader
-                  code 0
+                read reader/at
                 text <a distance reaches before the start>
           save from
             call subtract
@@ -1451,9 +1487,7 @@ task dynamic-tables
   take data
     like list
       like number
-  take reader
-    like list
-      like number
+  take reader, like bit-reader
   like block-tables
   save literal-count
     call add
@@ -1512,14 +1546,29 @@ task dynamic-tables
         read k
         read length-count
     hook step
-      call code-lengths/set
+      save slot
         call byte-at
           read order
           read k
+      save bits
         call read-bits
           read data
           read reader
           code 3
+      # every entry of `order` is a place in the nineteen lengths; tested, since the prover reads no values from it
+      fork test
+        hook test
+          call and
+            call is-minimum
+              read slot
+              code 0
+            call is-below
+              read slot
+              read code-lengths/length
+        hook hold
+          call code-lengths/set
+            read slot
+            read bits
       save k
         call add
           read k
@@ -1533,13 +1582,34 @@ task dynamic-tables
       read distance-count
   save lengths
     make list
+  # each symbol takes a bit of the data or more, so the count of turns is bounded by the data's bits, as in
+  # `inflate-codes`
+  save turns, code 0
+  save limit
+    call add
+      call multiply
+        read data/length
+        code 8
+      code 8
   walk test
+    down
+      call subtract
+        read limit
+        read turns
     hook test
-      call is-below
-        call size
-          read lengths
-        read total
+      call and
+        call is-below
+          call size
+            read lengths
+          read total
+        call is-below
+          read turns
+          read limit
     hook step
+      save turns
+        call add
+          read turns
+          code 1
       save symbol
         call decode
           read data
@@ -1570,9 +1640,7 @@ task dynamic-tables
                     code 0
                 hook hold
                   call refuse-gzip
-                    call byte-at
-                      read reader
-                      code 0
+                    read reader/at
                     text <a repeat has nothing before it>
               save value
                 call byte-at
@@ -1618,9 +1686,7 @@ task dynamic-tables
                 read total
             hook hold
               call refuse-gzip
-                call byte-at
-                  read reader
-                  code 0
+                read reader/at
                 text <a repeat runs past the lengths>
           save j, code 0
           walk test
@@ -1677,20 +1743,39 @@ task inflate
   take data
     like list
       like number
-  take reader
-    like list
-      like number
+  take reader, like bit-reader
   take out
     like list
       like number
   like number
   save last, false
+  # each block's header takes three bits of the data, so the count of turns is bounded by the data's bits, as in
+  # `inflate-codes`
+  save turns, code 0
+  save limit
+    call add
+      call multiply
+        read data/length
+        code 8
+      code 8
   walk test
+    down
+      call subtract
+        read limit
+        read turns
     hook test
-      call is-equal
-        read last
-        false
+      call and
+        call is-equal
+          read last
+          false
+        call is-below
+          read turns
+          read limit
     hook step
+      save turns
+        call add
+          read turns
+          code 1
       save last
         call is-equal
           call read-bits
@@ -1710,16 +1795,12 @@ task inflate
             code 0
         hook hold
           # stored: the rest of this byte is dropped, then a length and its complement
-          call reader/set
-            code 1
+          save reader/buffer
             code 0
-          call reader/set
-            code 2
+          save reader/held
             code 0
           save at
-            call byte-at
-              read reader
-              code 0
+            read reader/at
           save length
             call add
               call byte-at
@@ -1794,8 +1875,7 @@ task inflate
                 call add
                   read k
                   code 1
-          call reader/set
-            code 0
+          save reader/at
             call add
               call add
                 read at
@@ -1831,16 +1911,12 @@ task inflate
             read tables/distances
         hook miss
           call refuse-gzip
-            call byte-at
-              read reader
-              code 0
+            read reader/at
             text <a block type is reserved>
   # the rest of the last byte is padding
-  call reader/set
-    code 1
+  save reader/buffer
     code 0
-  call reader/set
-    code 2
+  save reader/held
     code 0
   send back
     call size
@@ -1891,14 +1967,22 @@ task past-zero
   take at, like number
   like number
   save k, read at
-  # no `down`: what moves the loop on is not something the prover can bound here; each turn still advances
+  # past the end `byte-at` answers -1, which ends the walk; the test says so where the prover sees it
   walk test
+    down
+      call subtract
+        read data/length
+        read k
     hook test
-      call is-above
-        call byte-at
-          read data
+      call and
+        call is-below
           read k
-        code 0
+          read data/length
+        call is-above
+          call byte-at
+            read data
+            read k
+          code 0
     hook step
       save k
         call add
@@ -1943,6 +2027,10 @@ task gunzip
         code 0
         text <there is no data>
   walk test
+    down
+      call subtract
+        read n
+        read at
     hook test
       call is-below
         read at
@@ -2065,11 +2153,10 @@ task gunzip
               read place
               code 2
       save reader
-        make list
-      call reader/push
-        read place
-      call reader/push, code 0
-      call reader/push, code 0
+        make bit-reader
+          bind at, read place
+          bind buffer, code 0
+          bind held, code 0
       save start
         call size
           read out
@@ -2078,9 +2165,7 @@ task gunzip
         read reader
         read out
       save end
-        call byte-at
-          read reader
-          code 0
+        read reader/at
       fork test
         hook test
           call is-above
@@ -2127,10 +2212,30 @@ task gunzip
               read end
               code 4
             text <the length does not match the data>
-      save at
+      # the next member starts past this one, which is 18 bytes at the least, and no further than the end; stated, so
+      # the walk is seen to rise where the reader's progress inside `inflate` cannot be followed
+      save next
         call add
           read end
           code 8
+      fork test
+        hook test
+          call is-maximum
+            read next
+            read at
+        hook hold
+          save next
+            call add
+              read at
+              code 1
+      fork test
+        hook test
+          call is-above
+            read next
+            read n
+        hook hold
+          save next, read n
+      save at, read next
   send back
     call from-byte-list
       read out

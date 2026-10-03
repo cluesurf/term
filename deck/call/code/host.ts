@@ -63,7 +63,7 @@ export async function callHost(input: {
     const name = manifest.host
       ? `@${manifest.host}/${manifest.name}`
       : manifest.name
-    const version = showCode(manifest.code)
+    const version = showCode(manifest.mark)
     const route = routeOf({ name, registry: input.registry, manifest })
 
     if (input.trust || input.untrust) {
@@ -106,9 +106,11 @@ export async function callHost(input: {
     }
 
     const local = localObjectStore()
+    // the signed config keeps the JSON key `code` for a link's constraint: the signature covers those bytes and every
+    // published version carries them, so the wire format is not the manifest's spelling and does not follow it
     const link = manifest.link.map(dep => ({
       deck: dep.name,
-      code: writeCodeHold({ hold: dep.code }),
+      code: writeCodeHold({ hold: dep.mark }),
     }))
     const annotations: Record<string, string> = {}
 

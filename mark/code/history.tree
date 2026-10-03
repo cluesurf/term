@@ -3,7 +3,7 @@
 # machine digest, the program and its digest, the implementation, the target, the size and its expected output's
 # digest all match (note/term/bench/database.md, "What makes a comparison the same comparison").
 
-load @term/base/code/json
+load @term/base/json
   find parse
   find get-field
   find get-item
@@ -12,17 +12,17 @@ load @term/base/code/json
   find array-size
   find is-null
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
   find sort
   find reverse
 
-load @term/base/code/ordering
+load @term/base/ordering
   find ordering
   find from-texts
 
-load @term/base/code/text
+load @term/base/text
   find ends-with
 
 load ./disk

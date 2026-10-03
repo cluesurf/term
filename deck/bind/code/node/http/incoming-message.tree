@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find error
   find native-boolean
@@ -15,19 +15,19 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/http
+load @term/bind/node/http
   find incoming-http-headers
 
 form incoming-message, name <IncomingMessage>
   base stream-readable
-  link aborted, name <aborted>, like native-boolean
-  link http-version, name <httpVersion>, like native-string
-  link http-version-major, name <httpVersionMajor>, like native-number
-  link http-version-minor, name <httpVersionMinor>, like native-number
-  link complete, name <complete>, like native-boolean
-  link connection, name <connection>, like socket
-  link socket, name <socket>, like socket
-  link headers, name <headers>, like incoming-http-headers
+  link aborted, name(<aborted>), like native-boolean
+  link http-version, name(<httpVersion>), like native-string
+  link http-version-major, name(<httpVersionMajor>), like native-number
+  link http-version-minor, name(<httpVersionMinor>), like native-number
+  link complete, name(<complete>), like native-boolean
+  link connection, name(<connection>), like socket
+  link socket, name(<socket>), like socket
+  link headers, name(<headers>), like incoming-http-headers
   link raw-headers, name <rawHeaders>
     like array
       like native-string

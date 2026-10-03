@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/html-element-event-map
+load @term/bind/browser/dom/html-element-event-map
   find html-element-event-map
 
-load @term/bind/code/browser/dom/window-event-handlers-event-map
+load @term/bind/browser/dom/window-event-handlers-event-map
   find window-event-handlers-event-map
 
 form html-frame-set-element-event-map, name <HTMLFrameSetElementEventMap>

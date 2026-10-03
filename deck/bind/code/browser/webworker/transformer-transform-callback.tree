@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/transformer-transform-callback
+load @term/bind/browser/dom/transformer-transform-callback
   find transformer-transform-callback
 
 form transformer-transform-callback, name <TransformerTransformCallback>

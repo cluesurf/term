@@ -16,14 +16,14 @@
 # Conforms to ../dom. The page tasks (title, meta, proxy, path, body, pop) are no-ops here, as on the server, and
 # `serialize` renders the tree to HTML in Term so two backends' output can be compared byte for byte.
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
   find filter
   find find
   find get
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
 load ../../view
@@ -337,6 +337,13 @@ task watch-deadline
   take threshold, like number
   take handler
     like task
+
+# the memory host draws no glyphs, so every family is as drawable as any other: accepted, and nothing to load
+task register-font
+  take family, like text
+  take source, like text
+  like boolean
+  send back, true
 
 # the tree as HTML: a text node is its text, an element is its tag, its attributes in the order they were set, and
 # its children. Nothing is escaped, so it is for comparing two renders, not for serving a page

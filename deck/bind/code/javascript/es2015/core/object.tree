@@ -1,15 +1,15 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
   find native-null
   find native-object
   find native-string
   find native-symbol
 
-load @term/bind/code/javascript/es5/object
+load @term/bind/javascript/es5/object
   find object
 
 form object

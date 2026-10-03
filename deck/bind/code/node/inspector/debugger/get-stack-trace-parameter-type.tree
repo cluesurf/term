@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find runtime-stack-trace-id
 
 form get-stack-trace-parameter-type, name <GetStackTraceParameterType>

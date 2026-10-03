@@ -1,25 +1,25 @@
 
-bear @term/bind/code/browser/webworker/web-assembly/global
-bear @term/bind/code/browser/webworker/web-assembly/instance
-bear @term/bind/code/browser/webworker/web-assembly/memory
-bear @term/bind/code/browser/webworker/web-assembly/module
-bear @term/bind/code/browser/webworker/web-assembly/table
-bear @term/bind/code/browser/webworker/web-assembly/global-descriptor
-bear @term/bind/code/browser/webworker/web-assembly/memory-descriptor
-bear @term/bind/code/browser/webworker/web-assembly/module-export-descriptor
-bear @term/bind/code/browser/webworker/web-assembly/module-import-descriptor
-bear @term/bind/code/browser/webworker/web-assembly/table-descriptor
-bear @term/bind/code/browser/webworker/web-assembly/web-assembly-instantiated-source
-bear @term/bind/code/browser/webworker/web-assembly/import-export-kind
-bear @term/bind/code/browser/webworker/web-assembly/table-kind
-bear @term/bind/code/browser/webworker/web-assembly/value-type
-bear @term/bind/code/browser/webworker/web-assembly/export-value
-bear @term/bind/code/browser/webworker/web-assembly/exports
-bear @term/bind/code/browser/webworker/web-assembly/import-value
-bear @term/bind/code/browser/webworker/web-assembly/module-imports
-bear @term/bind/code/browser/webworker/web-assembly/imports
+bear @term/bind/browser/webworker/web-assembly/global
+bear @term/bind/browser/webworker/web-assembly/instance
+bear @term/bind/browser/webworker/web-assembly/memory
+bear @term/bind/browser/webworker/web-assembly/module
+bear @term/bind/browser/webworker/web-assembly/table
+bear @term/bind/browser/webworker/web-assembly/global-descriptor
+bear @term/bind/browser/webworker/web-assembly/memory-descriptor
+bear @term/bind/browser/webworker/web-assembly/module-export-descriptor
+bear @term/bind/browser/webworker/web-assembly/module-import-descriptor
+bear @term/bind/browser/webworker/web-assembly/table-descriptor
+bear @term/bind/browser/webworker/web-assembly/web-assembly-instantiated-source
+bear @term/bind/browser/webworker/web-assembly/import-export-kind
+bear @term/bind/browser/webworker/web-assembly/table-kind
+bear @term/bind/browser/webworker/web-assembly/value-type
+bear @term/bind/browser/webworker/web-assembly/export-value
+bear @term/bind/browser/webworker/web-assembly/exports
+bear @term/bind/browser/webworker/web-assembly/import-value
+bear @term/bind/browser/webworker/web-assembly/module-imports
+bear @term/bind/browser/webworker/web-assembly/imports
 
-load @term/bind/code/browser/webworker/buffer-source
+load @term/bind/browser/webworker/buffer-source
   find buffer-source
 
 load @term/bind/code/browser/webworker/global
@@ -49,7 +49,7 @@ load @term/bind/code/browser/webworker/module-export-descriptor
 load @term/bind/code/browser/webworker/module-import-descriptor
   find module-import-descriptor
 
-load @term/bind/code/browser/webworker/response
+load @term/bind/browser/webworker/response
   find response
 
 load @term/bind/code/browser/webworker/table
@@ -61,25 +61,25 @@ load @term/bind/code/browser/webworker/table-descriptor
 load @term/bind/code/browser/webworker/web-assembly-instantiated-source
   find web-assembly-instantiated-source
 
-load @term/bind/code/javascript/es5/array-buffer
+load @term/bind/javascript/es5/array-buffer
   find array-buffer
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/es5/promise-like
+load @term/bind/javascript/es5/promise-like
   find promise-like
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 host global, name <Global>

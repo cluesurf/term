@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find context
   find error
@@ -18,11 +18,11 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/readline
+load @term/bind/node/readline
   find async-completer
   find completer
 
-load @term/bind/code/node/repl
+load @term/bind/node/repl
   find repl-command
   find repl-command-action
   find repl-eval
@@ -30,24 +30,24 @@ load @term/bind/code/node/repl
 
 form repl-server, name <REPLServer>
   base interface
-  link context, name <context>, like context
-  link input-stream, name <inputStream>, like node-js-readable-stream
-  link output-stream, name <outputStream>, like node-js-writable-stream
-  link input, name <input>, like node-js-readable-stream
-  link output, name <output>, like node-js-writable-stream
+  link context, name(<context>), like context
+  link input-stream, name(<inputStream>), like node-js-readable-stream
+  link output-stream, name(<outputStream>), like node-js-writable-stream
+  link input, name(<input>), like node-js-readable-stream
+  link output, name(<output>), like node-js-writable-stream
   link commands, name <commands>
     like node-js-read-only-dict
       like repl-command
-  link editor-mode, name <editorMode>, like native-boolean
-  link underscore-assigned, name <underscoreAssigned>, like native-boolean
-  link last, name <last>, like any
-  link underscore-err-assigned, name <underscoreErrAssigned>, like native-boolean
-  link last-error, name <lastError>, like any
-  link eval, name <eval>, like repl-eval
-  link use-colors, name <useColors>, like native-boolean
-  link use-global, name <useGlobal>, like native-boolean
-  link ignore-undefined, name <ignoreUndefined>, like native-boolean
-  link writer, name <writer>, like repl-writer
+  link editor-mode, name(<editorMode>), like native-boolean
+  link underscore-assigned, name(<underscoreAssigned>), like native-boolean
+  link last, name(<last>), like any
+  link underscore-err-assigned, name(<underscoreErrAssigned>), like native-boolean
+  link last-error, name(<lastError>), like any
+  link eval, name(<eval>), like repl-eval
+  link use-colors, name(<useColors>), like native-boolean
+  link use-global, name(<useGlobal>), like native-boolean
+  link ignore-undefined, name(<ignoreUndefined>), like native-boolean
+  link writer, name(<writer>), like repl-writer
   link completer, name <completer>
     like or
       like completer

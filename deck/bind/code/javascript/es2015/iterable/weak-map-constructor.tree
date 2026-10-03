@@ -1,14 +1,14 @@
 
-load @term/bind/code/javascript/es2015/collection/weak-map-constructor
+load @term/bind/javascript/es2015/collection/weak-map-constructor
   find weak-map-constructor
 
-load @term/bind/code/javascript/es2015/iterable/iterable
+load @term/bind/javascript/es2015/iterable/iterable
   find iterable
 
-load @term/bind/code/javascript/es2015/iterable/weak-map
+load @term/bind/javascript/es2015/iterable/weak-map
   find weak-map
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-object
 
 form weak-map-constructor, name <WeakMapConstructor>

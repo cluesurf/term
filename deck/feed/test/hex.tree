@@ -5,7 +5,7 @@
 # identical contents never compare equal. A round trip through text sidesteps it and is a legitimate test of a
 # codec on its own terms.
 
-load @term/base/code/list
+load @term/base/list
   find push
 
 load ../code/hex/code

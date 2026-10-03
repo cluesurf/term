@@ -2,7 +2,7 @@
 # computed by an independent reference over arbitrary-precision integers (deck/term/deck/term/tmp/xoshiro-vectors.ts),
 # not by the module under test. Held by `pnpm term:base-gate`.
 
-load @term/base/code/random/seeded
+load @term/base/random/seeded
   find random-source
   find seeded-random
   find next-word
@@ -11,12 +11,12 @@ load @term/base/code/random/seeded
   find shuffle
   find pick
 
-load @term/base/code/list
+load @term/base/list
   find size
   find join
   find sum
 
-load @term/base/code/maybe
+load @term/base/maybe
   find unwrap-or
 
 test <seed 42 gives the reference words>

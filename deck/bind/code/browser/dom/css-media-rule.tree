@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/css-condition-rule
+load @term/bind/browser/dom/css-condition-rule
   find css-condition-rule
 
-load @term/bind/code/browser/dom/media-list
+load @term/bind/browser/dom/media-list
   find media-list
 
 form css-media-rule, name <CSSMediaRule>

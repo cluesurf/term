@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/svg-point-list
+load @term/bind/browser/dom/svg-point-list
   find svg-point-list
 
 form svg-animated-points, name <SVGAnimatedPoints>

@@ -1,113 +1,113 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/dom-matrix
+load @term/bind/browser/dom/dom-matrix
   find dom-matrix
 
-load @term/bind/code/browser/dom/dom-matrix2-d-init
+load @term/bind/browser/dom/dom-matrix2-d-init
   find dom-matrix2-d-init
 
-load @term/bind/code/browser/dom/dom-point
+load @term/bind/browser/dom/dom-point
   find dom-point
 
-load @term/bind/code/browser/dom/dom-point-read-only
+load @term/bind/browser/dom/dom-point-read-only
   find dom-point-read-only
 
-load @term/bind/code/browser/dom/dom-rect
+load @term/bind/browser/dom/dom-rect
   find dom-rect
 
-load @term/bind/code/browser/dom/dom-rect-read-only
+load @term/bind/browser/dom/dom-rect-read-only
   find dom-rect-read-only
 
-load @term/bind/code/browser/dom/element
+load @term/bind/browser/dom/element
   find element
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/node-list-of
+load @term/bind/browser/dom/node-list-of
   find node-list-of
 
-load @term/bind/code/browser/dom/svg-angle
+load @term/bind/browser/dom/svg-angle
   find svg-angle
 
-load @term/bind/code/browser/dom/svg-animated-length
+load @term/bind/browser/dom/svg-animated-length
   find svg-animated-length
 
-load @term/bind/code/browser/dom/svg-circle-element
+load @term/bind/browser/dom/svg-circle-element
   find svg-circle-element
 
-load @term/bind/code/browser/dom/svg-element
+load @term/bind/browser/dom/svg-element
   find svg-element
 
-load @term/bind/code/browser/dom/svg-ellipse-element
+load @term/bind/browser/dom/svg-ellipse-element
   find svg-ellipse-element
 
-load @term/bind/code/browser/dom/svg-fit-to-view-box
+load @term/bind/browser/dom/svg-fit-to-view-box
   find svg-fit-to-view-box
 
-load @term/bind/code/browser/dom/svg-graphics-element
+load @term/bind/browser/dom/svg-graphics-element
   find svg-graphics-element
 
-load @term/bind/code/browser/dom/svg-image-element
+load @term/bind/browser/dom/svg-image-element
   find svg-image-element
 
-load @term/bind/code/browser/dom/svg-length
+load @term/bind/browser/dom/svg-length
   find svg-length
 
-load @term/bind/code/browser/dom/svg-line-element
+load @term/bind/browser/dom/svg-line-element
   find svg-line-element
 
-load @term/bind/code/browser/dom/svg-number
+load @term/bind/browser/dom/svg-number
   find svg-number
 
-load @term/bind/code/browser/dom/svg-path-element
+load @term/bind/browser/dom/svg-path-element
   find svg-path-element
 
-load @term/bind/code/browser/dom/svg-polygon-element
+load @term/bind/browser/dom/svg-polygon-element
   find svg-polygon-element
 
-load @term/bind/code/browser/dom/svg-polyline-element
+load @term/bind/browser/dom/svg-polyline-element
   find svg-polyline-element
 
-load @term/bind/code/browser/dom/svg-rect-element
+load @term/bind/browser/dom/svg-rect-element
   find svg-rect-element
 
-load @term/bind/code/browser/dom/svg-text-element
+load @term/bind/browser/dom/svg-text-element
   find svg-text-element
 
-load @term/bind/code/browser/dom/svg-transform
+load @term/bind/browser/dom/svg-transform
   find svg-transform
 
-load @term/bind/code/browser/dom/svg-use-element
+load @term/bind/browser/dom/svg-use-element
   find svg-use-element
 
-load @term/bind/code/browser/dom/svgsvg-element-event-map
+load @term/bind/browser/dom/svgsvg-element-event-map
   find svgsvg-element-event-map
 
-load @term/bind/code/browser/dom/window-event-handlers
+load @term/bind/browser/dom/window-event-handlers
   find window-event-handlers
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form svgsvg-element, name <SVGSVGElement>

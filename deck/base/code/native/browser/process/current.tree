@@ -5,7 +5,7 @@
 dock load
   load <global:process>, name process
 
-load @term/base/code/process/current
+load @term/base/process/current
   find process-info
 
 task read-process

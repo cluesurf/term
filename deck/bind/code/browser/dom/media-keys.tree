@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/dom/buffer-source
+load @term/bind/browser/dom/buffer-source
   find buffer-source
 
-load @term/bind/code/browser/dom/media-key-session
+load @term/bind/browser/dom/media-key-session
   find media-key-session
 
-load @term/bind/code/browser/dom/media-key-session-type
+load @term/bind/browser/dom/media-key-session-type
   find media-key-session-type
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
 form media-keys, name <MediaKeys>

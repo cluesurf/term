@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-number
   find native-undefined
@@ -7,7 +7,7 @@ load @term/bind/code/javascript
 load @term/bind
   find or
 
-load @term/bind/code/node/inspector/profiler
+load @term/bind/node/inspector/profiler
   find profile-node
 
 form profile, name <Profile>

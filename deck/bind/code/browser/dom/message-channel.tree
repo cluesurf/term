@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/message-port
+load @term/bind/browser/dom/message-port
   find message-port
 
 form message-channel, name <MessageChannel>

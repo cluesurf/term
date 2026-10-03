@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/es2015/core/math
+load @term/bind/javascript/es2015/core/math
   find math
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form math, name <Math>

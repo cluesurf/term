@@ -1,7 +1,7 @@
 # The runner's own end-to-end check, not a benchmark: the sum of 1 to size, as text. It exists so the runner can be
 # proven on every target with a program whose answer is known by arithmetic, size * (size + 1) / 2.
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
   find reduce

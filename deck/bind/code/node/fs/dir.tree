@@ -3,7 +3,7 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find async-iterable-iterator
   find dirent
   find native-null
@@ -12,11 +12,11 @@ load @term/bind/code/javascript
   find node-js-errno-exception
   find promise
 
-load @term/bind/code/node/fs
+load @term/bind/node/fs
   find no-param-callback
 
 form dir, name <Dir>
-  link path, name <path>, like native-string
+  link path, name(<path>), like native-string
 
   task {symbol/async-iterator}
     name <Symbol.asyncIterator>

@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find key-object
   find native-boolean
@@ -11,33 +11,33 @@ load @term/bind/code/javascript
 load @term/bind
   find or
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/crypto
+load @term/bind/node/crypto
   find binary-like
   find x509-check-options
 
 form x509-certificate, name <X509Certificate>
-  link ca, name <ca>, like native-boolean
-  link fingerprint, name <fingerprint>, like native-string
-  link fingerprint256, name <fingerprint256>, like native-string
-  link subject, name <subject>, like native-string
-  link subject-alt-name, name <subjectAltName>, like native-string
-  link info-access, name <infoAccess>, like native-string
+  link ca, name(<ca>), like native-boolean
+  link fingerprint, name(<fingerprint>), like native-string
+  link fingerprint256, name(<fingerprint256>), like native-string
+  link subject, name(<subject>), like native-string
+  link subject-alt-name, name(<subjectAltName>), like native-string
+  link info-access, name(<infoAccess>), like native-string
   link key-usage, name <keyUsage>
     like array
       like native-string
-  link issuer, name <issuer>, like native-string
+  link issuer, name(<issuer>), like native-string
   link issuer-certificate, name <issuerCertificate>
     like or
       like x509-certificate
       like native-undefined
-  link public-key, name <publicKey>, like key-object
-  link raw, name <raw>, like buffer
-  link serial-number, name <serialNumber>, like native-string
-  link valid-from, name <validFrom>, like native-string
-  link valid-to, name <validTo>, like native-string
+  link public-key, name(<publicKey>), like key-object
+  link raw, name(<raw>), like buffer
+  link serial-number, name(<serialNumber>), like native-string
+  link valid-from, name(<validFrom>), like native-string
+  link valid-to, name(<validTo>), like native-string
 
   task check-email, name <checkEmail>
     like or

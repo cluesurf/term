@@ -4,10 +4,10 @@ bear @term/bind/code/javascript/node/querystring/parse-options
 bear @term/bind/code/javascript/node/querystring/parsed-url-query
 bear @term/bind/code/javascript/node/querystring/parsed-url-query-input
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
 
-load @term/bind/code/node/querystring
+load @term/bind/node/querystring
   find parse-options
   find parsed-url-query
   find parsed-url-query-input

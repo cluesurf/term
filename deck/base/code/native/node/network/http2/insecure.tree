@@ -6,17 +6,17 @@
 #
 # Internal: reached only through the public network/http2 API.
 
-load @term/base/code/native/node/network/http2
+load @term/base/native/node/network/http2
   find http2-serve
   find http2-start
 
-load @term/base/code/network/server/request
+load @term/base/network/server/request
   find request
 
-load @term/base/code/network/server/response
+load @term/base/network/server/response
   find response
 
-load @term/base/code/network/http2
+load @term/base/network/http2
   find http2-server
 
 task http2-serve-clear
@@ -52,4 +52,3 @@ task http2-start-clear
       false
       text <>
       text <>
-      wait true

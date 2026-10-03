@@ -1,4 +1,4 @@
-load @term/base/code/lang
+load @term/base/lang
   find case-type
 
 mint case-type, like case-type

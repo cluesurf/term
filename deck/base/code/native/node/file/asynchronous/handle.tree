@@ -9,7 +9,7 @@ dock type
 dock load
   load <global:aio>, name aio
 
-load @term/base/code/file/handle
+load @term/base/file/handle
   find file
 
 # `read` / `write` / `create` / `append` / `clear` are the five independent bits every platform's open flags are

@@ -1,5 +1,5 @@
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find relative-indexable
 
 form int32-array, name <Int32Array>

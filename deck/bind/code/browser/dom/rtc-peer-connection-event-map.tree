@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/rtc-data-channel-event
+load @term/bind/browser/dom/rtc-data-channel-event
   find rtc-data-channel-event
 
-load @term/bind/code/browser/dom/rtc-peer-connection-ice-event
+load @term/bind/browser/dom/rtc-peer-connection-ice-event
   find rtc-peer-connection-ice-event
 
-load @term/bind/code/browser/dom/rtc-track-event
+load @term/bind/browser/dom/rtc-track-event
   find rtc-track-event
 
 form rtc-peer-connection-event-map, name <RTCPeerConnectionEventMap>

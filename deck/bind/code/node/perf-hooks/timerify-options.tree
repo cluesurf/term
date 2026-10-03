@@ -2,10 +2,10 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-undefined
 
-load @term/bind/code/node/perf-hooks
+load @term/bind/node/perf-hooks
   find recordable-histogram
 
 form timerify-options, name <TimerifyOptions>

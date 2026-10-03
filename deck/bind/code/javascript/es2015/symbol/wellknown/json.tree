@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/es5/json
+load @term/bind/javascript/es5/json
   find json
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form json, name <JSON>

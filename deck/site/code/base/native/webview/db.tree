@@ -10,7 +10,7 @@
 dock load
   load <global:bridge>, name bridge
 
-load @term/base/code/json
+load @term/base/json
   find make-object
   find set-field
   find from-text
@@ -25,11 +25,11 @@ load @term/base/code/json
   find get-item
   find array-size
 
-load @term/base/code/float
+load @term/base/float
   find to-decimal
   find to-number
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
 

@@ -7,10 +7,10 @@
 # signal, which the platform's own watcher writes (../../../view/device), so the scheme is detected in one place and a
 # device turned dark restyles every styled node from the dark table.
 
-load @term/site/code/view/device
+load @term/site/view/device
   find device-trait
 
-load @term/site/code/view/reactive
+load @term/site/view/reactive
   find make-effect
   find read-signal
 

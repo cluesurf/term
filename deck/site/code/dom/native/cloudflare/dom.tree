@@ -6,4 +6,4 @@
 # `<global:html>` serialize / document-shell shim is pure string building (its one filesystem read,
 # the prod asset manifest, degrades to dev asset names on a Worker, which the transport still serves).
 
-bear @term/site/code/dom/native/node/dom
+bear @term/site/dom/native/node/dom

@@ -1,47 +1,47 @@
 
-load @term/bind/code/browser/dom/abstract-worker
+load @term/bind/browser/dom/abstract-worker
   find abstract-worker
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/event-target
+load @term/bind/browser/dom/event-target
   find event-target
 
-load @term/bind/code/browser/dom/message-event
+load @term/bind/browser/dom/message-event
   find message-event
 
-load @term/bind/code/browser/dom/post-message-options
+load @term/bind/browser/dom/post-message-options
   find post-message-options
 
-load @term/bind/code/browser/dom/transferable
+load @term/bind/browser/dom/transferable
   find transferable
 
-load @term/bind/code/browser/dom/worker-event-map
+load @term/bind/browser/dom/worker-event-map
   find worker-event-map
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form worker, name <Worker>

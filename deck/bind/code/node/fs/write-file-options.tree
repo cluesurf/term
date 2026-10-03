@@ -4,18 +4,18 @@ load @term/bind
   find form
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-null
   find native-string
   find native-undefined
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer-encoding
 
-load @term/bind/code/node/events/event-emitter
+load @term/bind/node/events/event-emitter
   find abortable
 
-load @term/bind/code/node/fs
+load @term/bind/node/fs
   find mode
   find object-encoding-options
 

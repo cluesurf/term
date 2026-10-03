@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/svg-string-list
+load @term/bind/browser/dom/svg-string-list
   find svg-string-list
 
 form svg-tests, name <SVGTests>

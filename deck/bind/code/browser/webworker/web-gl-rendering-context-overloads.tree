@@ -1,47 +1,47 @@
 
-load @term/bind/code/browser/dom/iterable/web-gl-rendering-context-overloads
+load @term/bind/browser/dom/iterable/web-gl-rendering-context-overloads
   find web-gl-rendering-context-overloads
 
-load @term/bind/code/browser/webworker/buffer-source
+load @term/bind/browser/webworker/buffer-source
   find buffer-source
 
-load @term/bind/code/browser/webworker/float32-list
+load @term/bind/browser/webworker/float32-list
   find float32-list
 
-load @term/bind/code/browser/webworker/g-lboolean
+load @term/bind/browser/webworker/g-lboolean
   find g-lboolean
 
-load @term/bind/code/browser/webworker/g-lenum
+load @term/bind/browser/webworker/g-lenum
   find g-lenum
 
-load @term/bind/code/browser/webworker/g-lint
+load @term/bind/browser/webworker/g-lint
   find g-lint
 
-load @term/bind/code/browser/webworker/g-lintptr
+load @term/bind/browser/webworker/g-lintptr
   find g-lintptr
 
-load @term/bind/code/browser/webworker/g-lsizei
+load @term/bind/browser/webworker/g-lsizei
   find g-lsizei
 
-load @term/bind/code/browser/webworker/g-lsizeiptr
+load @term/bind/browser/webworker/g-lsizeiptr
   find g-lsizeiptr
 
-load @term/bind/code/browser/webworker/int32-list
+load @term/bind/browser/webworker/int32-list
   find int32-list
 
-load @term/bind/code/browser/webworker/tex-image-source
+load @term/bind/browser/webworker/tex-image-source
   find tex-image-source
 
-load @term/bind/code/browser/webworker/web-gl-uniform-location
+load @term/bind/browser/webworker/web-gl-uniform-location
   find web-gl-uniform-location
 
-load @term/bind/code/javascript/es5/array-buffer-view
+load @term/bind/javascript/es5/array-buffer-view
   find array-buffer-view
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form web-gl-rendering-context-overloads, name <WebGLRenderingContextOverloads>

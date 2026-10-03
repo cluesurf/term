@@ -1,7 +1,7 @@
 # kotlin regex primitive: the one search the public regex API is built on (regex.tree). Internal: reached only through
 # that API, which hands it a pattern already rewritten into the canonical dialect.
 
-load @term/base/code/text/unicode
+load @term/base/text/unicode
   find rune-to-text
 
 dock load

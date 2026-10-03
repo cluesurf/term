@@ -1,4 +1,4 @@
-load @term/base/code/list
+load @term/base/list
   find list
 
 # the three-statement swap of two list slots, which Swift, Rust and Kotlin write as one call (backend.ts, `swapAt`),

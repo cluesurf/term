@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/es5/boolean
+load @term/bind/javascript/es5/boolean
   find boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
 form boolean-constructor, name <BooleanConstructor>

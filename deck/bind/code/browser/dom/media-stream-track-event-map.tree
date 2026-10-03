@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
 form media-stream-track-event-map, name <MediaStreamTrackEventMap>

@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/post-message-options
+load @term/bind/browser/dom/post-message-options
   find post-message-options
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
 form post-message-options, name <PostMessageOptions>

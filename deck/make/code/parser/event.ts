@@ -79,6 +79,17 @@ export function setCommaRule(oneLevel: boolean): void {
   commaPopsOneLevel = oneLevel
 }
 
+// Whether a comma after a part that opened no level (a literal, or a call closed by its own parenthesis) stays at
+// that part's level. `true` is the grammar since 2026-10-02: `want hold, is-equal get(found, 1), 14` gives
+// `is-equal` two arguments. `false` reproduces the superseded reading, where such a comma popped the level ABOVE the
+// part, and `'call'` stays after a closed call only. Only a migration measuring the corpus both ways sets it
+// (task/term/comma-migrate.ts, which moved every file the change would have re-read, 114 of them).
+export let commaAfterLeafStays: boolean | 'call' = true
+
+export function setCommaAfterLeaf(stays: boolean | 'call'): void {
+  commaAfterLeafStays = stays
+}
+
 export function buildEvents(tokens: TokenList): EventResult {
   const events: Event[] = []
   const contexts: ContextFrame[] = [{ kind: Context.Root }]
@@ -90,6 +101,8 @@ export function buildEvents(tokens: TokenList): EventResult {
 
   let atLineStart = true
   let lastDepth = 0
+  // the last part written was a leaf: a literal, or a call its own `)` closed. Read only by `comma`.
+  let afterLeaf: '' | 'literal' | 'call' = ''
 
   const top = () => contexts[contexts.length - 1]
   const push = (frame: ContextFrame) => contexts.push(frame)
@@ -119,6 +132,9 @@ export function buildEvents(tokens: TokenList): EventResult {
 
   if (token) {
     do {
+      const leafBefore = afterLeaf
+      afterLeaf = ''
+
       switch (token.kind) {
         case TokenKind.OpenBrace:
           openInterpolation(token)
@@ -132,6 +148,7 @@ export function buildEvents(tokens: TokenList): EventResult {
           break
         case TokenKind.CloseAngle:
           closeText(token)
+          afterLeaf = 'literal'
           break
         case TokenKind.OpenParen:
           if (top()?.kind === Context.Name) {
@@ -142,10 +159,10 @@ export function buildEvents(tokens: TokenList): EventResult {
           push({ kind: Context.Paren, token })
           break
         case TokenKind.CloseParen:
-          closeParen()
+          afterLeaf = closeParen() ? 'call' : ''
           break
         case TokenKind.Comma:
-          comma()
+          comma(leafBefore)
           break
         case TokenKind.Comment:
           // a comment is trivia: keep it in the stream so the tree builder can attach it to the CST (for the
@@ -156,13 +173,16 @@ export function buildEvents(tokens: TokenList): EventResult {
         case TokenKind.Decimal:
           atLineStart = false
           decimal(token)
+          afterLeaf = 'literal'
           break
         case TokenKind.Radix:
           atLineStart = false
           radix(token)
+          afterLeaf = 'literal'
           break
         case TokenKind.Space:
           space(token)
+          afterLeaf = leafBefore
           break
         case TokenKind.Newline:
           closeLine()
@@ -179,6 +199,7 @@ export function buildEvents(tokens: TokenList): EventResult {
         case TokenKind.Integer:
           atLineStart = false
           integer(token)
+          afterLeaf = 'literal'
           break
         default:
           break
@@ -370,10 +391,20 @@ export function buildEvents(tokens: TokenList): EventResult {
   // token (`a b, c, d`, `add 1, 2`, `take x, like text`) and silently disagrees the moment it is not — which is
   // most of the interesting cases, and is why every fixture carried over from the original implementation still
   // passed. See test/parser/file/comma-depth.tree.
-  function comma() {
+  function comma(leafBefore: '' | 'literal' | 'call') {
     if (top()?.kind === Context.Name) {
       pop()
       events.push({ kind: EventKind.CloseName })
+    }
+
+    // A literal and a call closed by its own `)` open no level, so there is no level of theirs for the comma to
+    // pop. The part after the comma stays at THEIR level: `want hold, is-equal get(found, 1), 14` gives
+    // `is-equal` two arguments, and `code <1>, <2>` gives `code` two children.
+    if (
+      (leafBefore === 'call' && commaAfterLeafStays !== false) ||
+      (leafBefore === 'literal' && commaAfterLeafStays === true)
+    ) {
+      return
     }
 
     const closeOne = (): boolean => {
@@ -485,7 +516,7 @@ export function buildEvents(tokens: TokenList): EventResult {
 
   // Close a parenthesis: everything opened inside it, the paren frame, then the group that owns it. A `)` with no
   // open paren on the line closes what it can, as before, so a stray one degrades rather than crashes.
-  function closeParen() {
+  function closeParen(): boolean {
     const owned = contexts.some(frame => frame.kind === Context.Paren)
 
     walk: while (true) {
@@ -514,7 +545,11 @@ export function buildEvents(tokens: TokenList): EventResult {
     if (owned && top()?.kind === Context.Group) {
       events.push({ kind: EventKind.CloseGroup })
       pop()
+
+      return true
     }
+
+    return false
   }
 
   function closeInterpolation() {

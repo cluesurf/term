@@ -2,7 +2,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/atomic
+load @term/base/native/{platform}/atomic
   find atomics-make
   find atomics-load
   find atomics-store

@@ -2,7 +2,7 @@
 # The spike app of cask-0003: open one window, load the page bundle the driver built, hand the process to the
 # platform. No bridge traffic yet. `boot` is what the driver calls with the bundle directory.
 
-load @term/cask/code/cask
+load @term/cask/cask
   find window
   find open-window
   find load-bundle

@@ -6,7 +6,7 @@
 
 note unstable
 
-load @term/base/code/native/{platform}/file/asynchronous/stream/reader
+load @term/base/native/{platform}/file/asynchronous/stream/reader
   find reader-create
   find reader-read
   find reader-close
@@ -35,7 +35,6 @@ task create
       read path
       read start
       read size
-      wait true
 
 task read
   note async
@@ -44,7 +43,6 @@ task read
   send back
     call reader-read
       read stream
-      wait true
 
 task close
   note async
@@ -52,4 +50,3 @@ task close
   like void
   call reader-close
     read stream
-    wait true

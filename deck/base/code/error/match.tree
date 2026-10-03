@@ -2,7 +2,7 @@ note draft
 
 # SHELVED 2026-10-02 (base-v1-0038): bodiless, and its top-level `get` shadowed list `get` wherever it was built.
 
-load @term/base/code/kink
+load @term/base/kink
   find kink
 
 task test

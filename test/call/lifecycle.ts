@@ -79,11 +79,10 @@ const checkedForm = term(root, 'form', '--check')
 
 ok('`form --check` passes on a freshly scaffolded project', /already formatted/.test(checkedForm), checkedForm)
 
-// the scaffold starts at an EVEN patch, because `term host` refuses an odd one. Read through `show code`, which is
-// the package manager's own reading of the manifest
+// the scaffold starts at 0.0.1. Read through `show code`, which is the package manager's own reading of the manifest
 const shownCode = term(root, 'show', 'code').trim()
 
-ok('`wake` starts the version at an even patch', /^\d+\.\d+\.\d*[02468]$/.test(shownCode), shownCode)
+ok('`wake` starts the version at 0.0.1', shownCode === '0.0.1', shownCode)
 
 // `make`: compiles the .tree it scaffolded into host/
 const made = term(root, 'make')

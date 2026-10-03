@@ -1,12 +1,12 @@
 # A MAC is checked in constant time, the same on every backend: `verify-hmac` against RFC 4231's second test case,
 # and `is-equal-secret` on equal, unequal and different-length bytes. Held by `pnpm term:base-gate`.
 
-load @term/base/code/cryptography/hmac
+load @term/base/cryptography/hmac
   find hmac-algorithm
   find is-equal-secret
   find verify-hmac
 
-load @term/base/code/bytes
+load @term/base/bytes
   find from-text
   find from-hex
 

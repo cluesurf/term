@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/webworker/error-event
+load @term/bind/browser/webworker/error-event
   find error-event
 
-load @term/bind/code/browser/webworker/event
+load @term/bind/browser/webworker/event
   find event
 
-load @term/bind/code/browser/webworker/promise-rejection-event
+load @term/bind/browser/webworker/promise-rejection-event
   find promise-rejection-event
 
 form worker-global-scope-event-map, name <WorkerGlobalScopeEventMap>

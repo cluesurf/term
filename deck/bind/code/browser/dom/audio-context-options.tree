@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/audio-context-latency-category
+load @term/bind/browser/dom/audio-context-latency-category
   find audio-context-latency-category
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form audio-context-options, name <AudioContextOptions>

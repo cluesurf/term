@@ -69,7 +69,8 @@ ok('and prompts with `term>`, not `seed>`', /term> /.test(opened) && !/seed> /.t
 
 // ---- an expression evaluates ----
 
-const added = walk('call add(code 2, code 3)\n\nexit\n')
+// `code(2)` closed: a comma after the literal `2` would stay inside `code` (the comma rule since 2026-10-02)
+const added = walk('call add(code(2), code 3)\n\nexit\n')
 
 ok('a one-line expression evaluates and prints its value', /\b5\b/.test(added), added)
 
@@ -117,7 +118,7 @@ ok(
 // a word. Ending on the expression itself, with no `exit` and no trailing blank, is the ordinary shape of
 // `term walk < script.tree`.
 
-const unterminated = walk('call add(code 20, code 20)')
+const unterminated = walk('call add(code(20), code 20)')
 
 ok(
   'a script that ends mid-block is still evaluated rather than dropped',

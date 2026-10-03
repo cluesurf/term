@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/oes-standard-derivatives
+load @term/bind/browser/dom/oes-standard-derivatives
   find oes-standard-derivatives
 
-load @term/bind/code/browser/webworker/g-lenum
+load @term/bind/browser/webworker/g-lenum
   find g-lenum
 
 form oes-standard-derivatives, name <OES_standard_derivatives>

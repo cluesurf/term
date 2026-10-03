@@ -2,7 +2,7 @@
 load @term/bind
   find form
 
-load @term/bind/code/node/inspector/runtime
+load @term/bind/node/inspector/runtime
   find remote-object
 
 form inspect-requested-event-data-type, name <InspectRequestedEventDataType>

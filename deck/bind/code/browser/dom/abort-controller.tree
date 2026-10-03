@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/abort-signal
+load @term/bind/browser/dom/abort-signal
   find abort-signal
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form abort-controller, name <AbortController>

@@ -32,7 +32,7 @@
 # `hook form` handing its variadic `paths` to a `root: text`. A verb reads the root now (`work/home`'s
 # `root`, over `environment/directory`) instead of being handed it.
 
-load @term/call/code/work/app-verbs
+load @term/call/work/app-verbs
   find cast
   find fill
   find host
@@ -40,7 +40,7 @@ load @term/call/code/work/app-verbs
   find test
   find walk
 
-load @term/call/code/work/base-verbs
+load @term/call/work/base-verbs
   find base-check
   find base-checkout
   find base-commit
@@ -54,72 +54,72 @@ load @term/call/code/work/base-verbs
   find base-status
   find base-tag
 
-load @term/call/code/work/deck-verbs
+load @term/call/work/deck-verbs
   find load
   find save
   find toss
 
-load @term/call/code/work/feed
+load @term/call/work/feed
   find feed
 
-load @term/call/code/work/form
+load @term/call/work/form
   find form
 
-load @term/call/code/work/halt
+load @term/call/work/halt
   find halt
 
-load @term/call/code/work/hunt
+load @term/call/work/hunt
   find hunt
 
-load @term/call/code/work/inspect-verbs
+load @term/call/work/inspect-verbs
   find boot
   find mold
   find seek
   find view
 
-load @term/call/code/work/link
+load @term/call/work/link
   find link
 
-load @term/call/code/work/lint
+load @term/call/work/lint
   find lint
 
-load @term/call/code/work/look
+load @term/call/work/look
   find look
 
-load @term/call/code/work/machine
+load @term/call/work/machine
   find base-import
 
-load @term/call/code/work/make
+load @term/call/work/make
   find make
 
-load @term/call/code/work/mind
+load @term/call/work/mind
   find mind
 
-load @term/call/code/work/move
+load @term/call/work/move
   find bump-code
 
-load @term/call/code/work/note
+load @term/call/work/note
   find note
 
-load @term/call/code/work/roll
+load @term/call/work/roll
   find roll
 
-load @term/call/code/work/scan
+load @term/call/work/scan
   find scan
 
-load @term/call/code/work/serve-verbs
+load @term/call/work/serve-verbs
   find work
 
-load @term/call/code/work/tool-verbs
+load @term/call/work/tool-verbs
   find hold
   find time
   find zone
   find mark
 
-load @term/call/code/work/wake
+load @term/call/work/wake
   find wake
 
-load @term/call/code/work/wash
+load @term/call/work/wash
   find wash
 
 # The base record system

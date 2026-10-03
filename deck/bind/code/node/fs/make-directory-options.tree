@@ -2,11 +2,11 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-undefined
 
-load @term/bind/code/node/fs
+load @term/bind/node/fs
   find mode
 
 form make-directory-options, name <MakeDirectoryOptions>

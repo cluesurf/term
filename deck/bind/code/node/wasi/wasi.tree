@@ -2,12 +2,12 @@
 load @term/bind
   find any
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-object
   find native-void
   find node-js-dict
 
-load @term/bind/code/node/wasi
+load @term/bind/node/wasi
   find wasi-options
 
 form wasi, name <WASI>

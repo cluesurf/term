@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find error
   find native-boolean
@@ -20,10 +20,10 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/url
+load @term/bind/node/url
   find url
 
-load @term/bind/code/node/worker-threads
+load @term/bind/node/worker-threads
   find resource-limits
   find transfer-list-item
   find worker-options
@@ -35,14 +35,14 @@ form worker, name <Worker>
     like or
       like writable
       like native-null
-  link stdout, name <stdout>, like readable
-  link stderr, name <stderr>, like readable
-  link thread-id, name <threadId>, like native-number
+  link stdout, name(<stdout>), like readable
+  link stderr, name(<stderr>), like readable
+  link thread-id, name(<threadId>), like native-number
   link resource-limits, name <resourceLimits>
     like or
       like resource-limits
       like native-undefined
-  link performance, name <performance>, like worker-performance
+  link performance, name(<performance>), like worker-performance
 
   task post-message, name <postMessage>
     like native-void

@@ -46,8 +46,10 @@ export function planUpgrades(findings: DependencyFinding[]): Upgrade[] {
   return [...byName.values()]
 }
 
-// rewrite a manifest's `link <name>, code <range>` lines to the fixed versions (as a caret range). Returns the new
-// manifest text. Only lines whose dependency name matches an upgrade are touched; everything else is byte-identical.
+// rewrite a manifest's `link <name>, mark <range>` lines to the fixed versions (as a caret range). Returns the new
+// manifest text. Only lines whose dependency name matches an upgrade are touched; everything else is byte-identical,
+// except that a line it rewrites is written in the current spelling: `mark`, where the old one said `code`
+// (note/term/plan/manifest-mark-and-code-root.md).
 export function applyUpgradesToManifest(
   manifestText: string,
   upgrades: Upgrade[],
@@ -57,8 +59,8 @@ export function applyUpgradesToManifest(
   return manifestText
     .split('\n')
     .map(line => {
-      // match `  link @scope/name, code <range>` (the deck.tree dependency line)
-      const match = /^(\s*link\s+)(\S+?)(\s*,\s*code\s*)<[^>]*>(.*)$/.exec(
+      // match `  link @scope/name, mark <range>`, or the old `code <range>` (the deck.tree dependency line)
+      const match = /^(\s*link\s+)(\S+?)(\s*,\s*)(?:mark|code)(\s*)<[^>]*>(.*)$/.exec(
         line,
       )
 
@@ -73,7 +75,7 @@ export function applyUpgradesToManifest(
         return line
       }
 
-      return `${match[1]}${name}${match[3]}<^${upgrade.to}>${match[4] ?? ''}`
+      return `${match[1]}${name}${match[3]}mark${match[4]}<^${upgrade.to}>${match[5] ?? ''}`
     })
     .join('\n')
 }
@@ -92,7 +94,7 @@ export async function applyUpgrades(input: {
   // an upgrade counts as applied only if it actually changed a line
   const applied = input.upgrades.filter(u =>
     new RegExp(
-      `link\\s+${u.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*,\\s*code\\s*<\\^${u.to.replace(
+      `link\\s+${u.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*,\\s*mark\\s*<\\^${u.to.replace(
         /[.*+?^${}()|[\]\\]/g,
         '\\$&',
       )}>`,

@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/ext-blend-minmax
+load @term/bind/browser/dom/ext-blend-minmax
   find ext-blend-minmax
 
-load @term/bind/code/browser/webworker/g-lenum
+load @term/bind/browser/webworker/g-lenum
   find g-lenum
 
 form ext-blend-minmax, name <EXT_blend_minmax>

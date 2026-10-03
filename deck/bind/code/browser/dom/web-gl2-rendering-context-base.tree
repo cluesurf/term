@@ -1,95 +1,95 @@
 
-load @term/bind/code/browser/dom/float32-list
+load @term/bind/browser/dom/float32-list
   find float32-list
 
-load @term/bind/code/browser/dom/g-lbitfield
+load @term/bind/browser/dom/g-lbitfield
   find g-lbitfield
 
-load @term/bind/code/browser/dom/g-lboolean
+load @term/bind/browser/dom/g-lboolean
   find g-lboolean
 
-load @term/bind/code/browser/dom/g-lenum
+load @term/bind/browser/dom/g-lenum
   find g-lenum
 
-load @term/bind/code/browser/dom/g-lfloat
+load @term/bind/browser/dom/g-lfloat
   find g-lfloat
 
-load @term/bind/code/browser/dom/g-lint
+load @term/bind/browser/dom/g-lint
   find g-lint
 
-load @term/bind/code/browser/dom/g-lint64
+load @term/bind/browser/dom/g-lint64
   find g-lint64
 
-load @term/bind/code/browser/dom/g-lintptr
+load @term/bind/browser/dom/g-lintptr
   find g-lintptr
 
-load @term/bind/code/browser/dom/g-lsizei
+load @term/bind/browser/dom/g-lsizei
   find g-lsizei
 
-load @term/bind/code/browser/dom/g-lsizeiptr
+load @term/bind/browser/dom/g-lsizeiptr
   find g-lsizeiptr
 
-load @term/bind/code/browser/dom/g-luint
+load @term/bind/browser/dom/g-luint
   find g-luint
 
-load @term/bind/code/browser/dom/g-luint64
+load @term/bind/browser/dom/g-luint64
   find g-luint64
 
-load @term/bind/code/browser/dom/int32-list
+load @term/bind/browser/dom/int32-list
   find int32-list
 
-load @term/bind/code/browser/dom/tex-image-source
+load @term/bind/browser/dom/tex-image-source
   find tex-image-source
 
-load @term/bind/code/browser/dom/uint32-list
+load @term/bind/browser/dom/uint32-list
   find uint32-list
 
-load @term/bind/code/browser/dom/web-gl-active-info
+load @term/bind/browser/dom/web-gl-active-info
   find web-gl-active-info
 
-load @term/bind/code/browser/dom/web-gl-buffer
+load @term/bind/browser/dom/web-gl-buffer
   find web-gl-buffer
 
-load @term/bind/code/browser/dom/web-gl-program
+load @term/bind/browser/dom/web-gl-program
   find web-gl-program
 
-load @term/bind/code/browser/dom/web-gl-query
+load @term/bind/browser/dom/web-gl-query
   find web-gl-query
 
-load @term/bind/code/browser/dom/web-gl-sampler
+load @term/bind/browser/dom/web-gl-sampler
   find web-gl-sampler
 
-load @term/bind/code/browser/dom/web-gl-sync
+load @term/bind/browser/dom/web-gl-sync
   find web-gl-sync
 
-load @term/bind/code/browser/dom/web-gl-texture
+load @term/bind/browser/dom/web-gl-texture
   find web-gl-texture
 
-load @term/bind/code/browser/dom/web-gl-transform-feedback
+load @term/bind/browser/dom/web-gl-transform-feedback
   find web-gl-transform-feedback
 
-load @term/bind/code/browser/dom/web-gl-uniform-location
+load @term/bind/browser/dom/web-gl-uniform-location
   find web-gl-uniform-location
 
-load @term/bind/code/browser/dom/web-gl-vertex-array-object
+load @term/bind/browser/dom/web-gl-vertex-array-object
   find web-gl-vertex-array-object
 
-load @term/bind/code/javascript/es5/array-buffer-view
+load @term/bind/javascript/es5/array-buffer-view
   find array-buffer-view
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>

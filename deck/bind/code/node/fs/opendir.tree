@@ -1,9 +1,9 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find dir
   find promise
 
-load @term/bind/code/node/fs
+load @term/bind/node/fs
   find open-dir-options
   find path-like
 

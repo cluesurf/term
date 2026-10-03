@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/form-data
+load @term/bind/browser/dom/form-data
   find form-data
 
 form form-data-event, name <FormDataEvent>

@@ -157,8 +157,8 @@ const term = process.cwd()
   ok('roles: and no code-reading error with it', !found.some(d => /is not defined/.test(d.message)))
 
   const unloadable = readFileSync(mine, 'utf8').replace(
-    'load @term/mill/code/code/seed/mine',
-    'load @term/mill/code/code/no-such-dialect/mine',
+    'load @term/mill/code/seed/mine',
+    'load @term/mill/code/no-such-dialect/mine',
   )
   const outLoad = await open(server, mineUri, unloadable, 3)
   const loadFound = published(outLoad, mineUri) ?? []
@@ -243,7 +243,9 @@ const term = process.cwd()
 
 // ---- keywords ----
 {
-  const RETIRED = /\bwave\b|\bbust\b|send kink|mark async|\bauto\b|note private/
+  // metadata is `mark`: `note <metadata>` is the old spelling and is never offered
+  const RETIRED =
+    /\bwave\b|\bbust\b|send kink|\bauto\b|\bnote (private|async|native|unsafe|stable|unstable|deprecated|keep|draft|roam|open|feature|platform)\b/
 
   const labels = async (server: LanguageServer, uri: string, text: string) => {
     await open(server, uri, text)
@@ -259,7 +261,7 @@ const term = process.cwd()
     const retired = items.filter(i => RETIRED.test(`${i.label} ${i.insertText ?? ''}`))
     ok(`keywords: no retired word offered (${label})`, retired.length === 0, JSON.stringify(retired))
 
-    for (const word of ['note async', 'wait true', 'halt', 'seek', 'have', 'must', 'down', 'mark private', 'halt kink']) {
+    for (const word of ['mark async', 'mark unsafe', 'tick', 'halt', 'seek', 'have', 'must', 'down', 'mark private', 'halt kink']) {
       ok(`keywords: \`${word}\` offered (${label})`, items.some(i => i.label === word || i.insertText === word), word)
     }
   }
@@ -308,6 +310,25 @@ const term = process.cwd()
   const rewrite = noteActions.find(a => a.title.includes('mark private'))
   const rewritten = rewrite ? applyEdits(NOTE, rewrite.edit.changes['file:///virtual/note.tree']!) : ''
   ok('lint: the quick fix writes `mark private`', rewritten.includes('  mark private\n') && !rewritten.includes('note private'), rewritten)
+
+  // the old spelling of metadata: a `note-metadata` diagnostic, spanning `note async`, is rewritten to `mark async`.
+  // The diagnostic is given here rather than read off the compiler, so this holds the quick fix alone.
+  const META = 'task fetch\n  note async\n  like number\n  send back, code 1\n'
+  const metaUri = 'file:///virtual/meta.tree'
+  await open(server, metaUri, META)
+  const metaDiagnostic = {
+    range: { start: { line: 1, character: 2 }, end: { line: 1, character: 12 } },
+    message: '`note async` is the old spelling of `mark async`',
+    data: { name: 'note-metadata' },
+  }
+  const metaActions = (await request(server, 'textDocument/codeAction', {
+    textDocument: { uri: metaUri },
+    range: metaDiagnostic.range,
+    context: { diagnostics: [metaDiagnostic] },
+  })).result as { title: string; edit: { changes: Record<string, { range: Range; newText: string }[]> } }[]
+  const metaFix = metaActions.find(a => a.title.includes('mark'))
+  const metaFixed = metaFix ? applyEdits(META, metaFix.edit.changes[metaUri]!) : ''
+  ok('lint: the `note-metadata` quick fix writes `mark async`', metaFixed === META.replace('note async', 'mark async'), metaFixed)
 }
 
 // ---- pull ----
@@ -376,7 +397,7 @@ const term = process.cwd()
   const server = new LanguageServer()
   const uri = 'file:///virtual/utf.tree'
   // one emoji is two UTF-16 units: a column counted in code points lands one left of everything after it
-  const TEXT = 'task pair\n  take a, like text\n  take b, like text\n  like text\n  send back, read b\n\ntask use\n  take y, like text\n  like text\n  send back\n    call pair(text <ἀ😀>, read y)\n'
+  const TEXT = 'task pair\n  take a, like text\n  take b, like text\n  like text\n  send back, read b\n\ntask use\n  take y, like text\n  like text\n  send back\n    call pair(text(<ἀ😀>), read y)\n'
   await open(server, uri, TEXT)
 
   const line = 10

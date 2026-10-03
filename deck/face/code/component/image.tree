@@ -6,7 +6,7 @@
 # Drawn as an `img` on the DOM, and as NSImageView, UIImageView or ImageView by the platform toolkits, which decode the
 # picture themselves and read `text` out as its accessibility label (test/compile/toolkit-words.ts).
 
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
 
 # the fit as a style declaration: contain unless the caller asked for cover

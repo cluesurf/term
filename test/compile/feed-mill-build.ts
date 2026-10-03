@@ -114,7 +114,7 @@ if (existsSync(emitted)) {
   // only the presence of one would pass on a reader that emitted both.
   ok(
     'the emitted reader reads a text cursor, as inferred',
-    js.includes('textCursorRead(') && !js.includes('feedCursorRead('),
+    js.includes('readTextCursor(') && !js.includes('feedCursorRead('),
     'a byte substrate would have emitted feedCursorRead',
   )
 

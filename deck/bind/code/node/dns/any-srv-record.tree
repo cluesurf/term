@@ -1,5 +1,5 @@
 
-load @term/bind/code/node/dns
+load @term/bind/node/dns
   find srv-record
 
 form any-srv-record, name <AnySrvRecord>

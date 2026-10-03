@@ -33,7 +33,7 @@ const WIDTH = 84
 // `deck demo, bear(./code), test(./test), code <0.0.1>, boot ./code/boot`, so the first project anyone made failed
 // `term form --check` on a file it had never touched. A member line (`deck ./deck/load`) has one leaf child and still
 // prints on one line, because a stacked group keeps one leading atom on its head line.
-const ALWAYS_STACK = new Set(['load', 'task', 'form', 'view', 'walk', 'fork', 'hook', 'case', 'deck'])
+const ALWAYS_STACK = new Set(['load', 'task', 'form', 'view', 'walk', 'fork', 'sift', 'hook', 'case', 'deck'])
 
 // heads that DECLARE rather than call: their children name and type a thing. One of these does not collapse when a
 // non-last child would have to be parenthesized, because such a child is another declaration. See needsParens.
@@ -67,15 +67,15 @@ function flatten(node: Node, nested = false): string {
         return `${h}${optional}`
       }
 
-      const opensLevel = kids.some(k => k.kind === 'name' || k.kind === 'group')
-
-      if (nested && opensLevel) {
+      // a part with ANY parts of its own is parenthesized when a comma follows it: a name or a group opens a level
+      // the comma would pop into, and since 2026-10-02 a literal holds the comma at its own level too, so
+      // `code 1, x` puts `x` beside the `1`
+      if (nested) {
         return `${h}${optional}(${kids.map((k, i) => flatten(k, i < kids.length - 1)).join(', ')})`
       }
 
       // only a part that a COMMA FOLLOWS can be swallowed, so the last one never needs parentheses: `take n,
-      // like number` and `send back n` stay as they read. And only a NAME or a GROUP opens a level for a comma
-      // to pop into; a number or text literal is a leaf, so `code 1` is already safe.
+      // like number` and `send back n` stay as they read, and so does `want hold, is-equal get(found, 1), 14`.
       const args = kids
         .map((k, i) => flatten(k, i < kids.length - 1))
         .join(', ')
@@ -175,8 +175,8 @@ function isLeaf(node: Node): boolean {
 //   host h, host(start, code 0), host end, code 360        was three legible lines
 //   take precise, like(boolean), fall false                was four
 //
-// while `call add, code 1, code 2` still collapses, because `code 1`'s only child is a literal and a literal does
-// not open a level for a comma to pop into.
+// while `call add, code(1), code 2` still collapses, because `code 1`'s only child is a literal: it needs its
+// parentheses before a comma, but it is an argument, not a declaration.
 //
 // It applies to DECLARATION heads only. `call is-below, loan(n), code 2` is a call with arguments, and
 // parenthesizing an argument reads fine; `host h, host(start, code 0), ...` is a declaration whose children are
@@ -250,6 +250,22 @@ function hasComment(node: Node): boolean {
   return (node.comments?.length ?? 0) > 0 || node.nodes.some(hasComment)
 }
 
+// A `view` PLACEMENT inside a body (not the top-level definition) whose only content is one simple value: a text
+// (`view h1, <Home>`) or a bare variable (`view p, who`). It holds no body, so it goes on one line like any other
+// single-child value, where a definition or a placement with markup under it stays stacked.
+function isSimplePlacement(group: GroupNode, depth: number): boolean {
+  if (depth === 0 || headName(group) !== 'view' || group.nodes.length !== 3) {
+    return false
+  }
+
+  const [, tag, value] = group.nodes
+
+  const word = (node: Node | undefined) =>
+    node?.kind === 'group' && node.nodes.length === 1 && node.nodes[0]!.kind === 'name'
+
+  return word(tag) && (value?.kind === 'text' || word(value))
+}
+
 function formatGroup(group: GroupNode, depth: number, options: FormatOptions = {}): string[] {
   const indent = '  '.repeat(depth)
   const lines = comments(group, indent, options)
@@ -260,7 +276,7 @@ function formatGroup(group: GroupNode, depth: number, options: FormatOptions = {
   // (params, body, fields) on indented lines, never collapsed onto one line, matching the convention for top-level
   // declarations.
   if (
-    !ALWAYS_STACK.has(headName(group)) &&
+    (!ALWAYS_STACK.has(headName(group)) || isSimplePlacement(group, depth)) &&
     !options.stack?.has(headName(group)) &&
     !group.nodes.some(hasComment) &&
     // a NON-LAST child that would need parentheses is another declaration, not an argument: see needsParens. The
@@ -353,6 +369,12 @@ function formatGroup(group: GroupNode, depth: number, options: FormatOptions = {
   }
 
   return lines
+}
+
+// one group laid out as the formatter lays it out at `depth`, one string per line, comments included. For a lint
+// rule that asks whether the canonical layout of a group is shorter than the written one.
+export function formatGroupLines(group: GroupNode, depth: number, options: FormatOptions = {}): string[] {
+  return formatGroup(group, depth, options)
 }
 
 export function formatTree(tree: RootNode, options: FormatOptions = {}): string {

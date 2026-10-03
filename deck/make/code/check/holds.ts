@@ -4041,7 +4041,64 @@ function definingEqualities(
   return [...side, ...equalities]
 }
 
+// what a write into a field through a plain path states, after forgetWrites has dropped every fact through that
+// field: a number field equals its new value, and a list field holds the same list as the plain path it was given, so
+// their lengths are equal. Sound under later changes for the reasons `definingEqualities` gives for a record built in
+// place: a write to the field drops facts through it whatever their root, a push rewrites one length and forgets the
+// rest, and an impure call drops every state atom. Nothing is stated when the value reads the field being written
+// (`self/filled = self/filled + 1`), since that atom now names the new value and the equation would be about two
+// values under one name
+function fieldWriteEqualities(
+  target: Extract<Expression, { form: 'member' }>,
+  value: Expression,
+  walk: Walk,
+): Inequality[] {
+  const path = plainPath(target)
+  const root = rootName(target)
+
+  if (
+    path === undefined ||
+    root === undefined ||
+    target.name === 'length' ||
+    /^[0-9]+$/.test(target.name) ||
+    walk.volatile.has(root) ||
+    readsAny(value, walk.volatile)
+  ) {
+    return []
+  }
+
+  // any atom through a field of this name, whatever its root, may be the field just written
+  const throughField = (key: string): boolean => key.split('.').slice(1).includes(target.name)
+  const equal = (key: string, v: Linear): Inequality[] => {
+    const atom = linear({ [key]: 1 })
+
+    return [atMost(atom, v), atLeast(atom, v)]
+  }
+
+  const field = fieldAtom(target)
+
+  if (field !== undefined) {
+    const side: Inequality[] = []
+    const v = toLinear(value, side)
+
+    if (!v || [...v.terms.keys(), ...side.flatMap(q => [...q.linear.terms.keys()])].some(throughField)) {
+      return []
+    }
+
+    return [...side, ...equal(field, v)]
+  }
+
+  const from = value.form === 'variable' || value.form === 'member' ? plainPath(value) : undefined
+
+  if (value.type?.kind === 'array' && from !== undefined && !from.split('.').slice(1).includes(target.name)) {
+    return equal(`@length:${path}`, linear({ [`@length:${from}`]: 1 }))
+  }
+
+  return []
+}
+
 // walk a body in order, threading the path assumptions: branch conditions refine their branches, the else branch
+
 // assumes the negation, and a binding or assignment contributes its defining equality to what follows. Every write
 // first drops the facts about the name it writes, and every compound statement drops, afterwards, the facts about
 // every name its bodies may have written. A loop drops them BEFORE its body too, because a later turn sees values an
@@ -4224,6 +4281,12 @@ function walkHolds(
             ? forgetWrites(current, statement)
             : (shifted ?? forget(current, new Set([root])))
 
+        // a write INTO a field states it, the way a binding states a name: `save self/filled, read k` gives
+        // `self/filled == k`, and `save self/items, read next` gives the two lists one length
+        if (statement.target.form === 'member' && statement.op === '=') {
+          current = [...current, ...fieldWriteEqualities(statement.target, statement.value, walk)]
+        }
+
         // a plain `x = e` (not `x += e`, not a member write) is the same kind of fact a binding is
         if (
           shifted === undefined &&
@@ -4291,7 +4354,13 @@ function walkHolds(
 
         const written = writtenNames(statement)
 
-        if (ends.length === 1) {
+        if (ends.length === 0) {
+          // NO path reaches the join (every branch leaves: `turn next`, `halt`, a return): what follows is unreachable,
+          // so it carries a contradiction and every goal there holds (ex falso). It used to keep the facts from before
+          // the fork, since `every` over no paths is true, and so a walk whose every branch ends `turn next` was held
+          // at its implicit end to the state it began the turn in
+          current = unreachableFacts()
+        } else if (ends.length === 1) {
           // when only ONE path reaches the join (every branch but one leaves: `if i < 0, halt`), what follows knows
           // exactly what that path ends with, the negated conditions included
           current = ends[0]!
@@ -4303,8 +4372,11 @@ function walkHolds(
             !mentionsAtom(q) && ![...q.linear.terms.keys()].some(k => written.has(keyRoot(k)))
           const augmented = ends.map(end => [...end, ...signedRemainders(end)])
 
+          // what the facts from before say about the names no branch writes, with every written name projected out
+          // (Fourier-Motzkin), as a single write does: `at == i - 1` and `i - 1 < n` leave `at < n` once a branch
+          // writes `i`, which filtering the rows that mention `i` lost
           current = [
-            ...current.filter(stable),
+            ...forget(current, written).filter(q => !mentionsAtom(q)),
             ...current.filter(q => !stable(q) && augmented.every(path => proves(path, q))),
             ...joinFacts(ends, written),
           ]
@@ -4346,21 +4418,29 @@ function walkHolds(
         break
       }
 
-      case 'match':
+      case 'match': {
+        // whether any arm reaches the statement after the match. A `fork case` names every variant (a missing one
+        // fails the build), so when no arm reaches it, nothing does, and what follows is unreachable, as after an `if`
+        // every branch of which leaves
+        let reached = false
+
         for (const branch of statement.cases) {
-          walkHolds(
+          const end = walkHolds(
             branch.body,
             forget(current, new Set(branch.binds ?? [])),
             walk,
           )
+
+          reached ||= end !== null
         }
 
         if (statement.otherwise) {
-          walkHolds(statement.otherwise, current, walk)
+          reached ||= walkHolds(statement.otherwise, current, walk) !== null
         }
 
-        current = forgetWrites(current, statement)
+        current = reached ? forgetWrites(current, statement) : unreachableFacts()
         break
+      }
 
       case 'guard': {
         // the body may stop at any statement and land in the handler, so the handler knows only what was true
@@ -4502,12 +4582,27 @@ function walkHolds(
   // what is known at the end of the body, for a join to merge (the `if` case), or null when the body's last statement
   // leaves it, so that no path through it reaches what follows. A body that leaves only some of the time returns its
   // facts, which is weaker for the join and so still sound
+  // A body whose facts carry a plain contradiction (an `if` or `match` no path left alive, `unreachableFacts`) reaches
+  // nothing after it either, so it leaves as surely as one ending in a `turn next`
   const last = body[body.length - 1]
 
-  return last && LEAVES.has(last.form) ? null : current
+  return (last && LEAVES.has(last.form)) || current.some(contradiction) ? null : current
 }
 
 const LEAVES = new Set(['return', 'throw', 'break', 'continue', 'exit'])
+
+// what is known where no path arrives: a row that is false outright, `1 <= 0`, which every goal follows from
+function unreachableFacts(): Inequality[] {
+  return [atLeast(linear({}, 0), linear({}, 1))]
+}
+
+// a row with no atom that no value satisfies: `c <= 0` with c above zero, or `0 < 0`
+function contradiction(q: Inequality): boolean {
+  return (
+    [...q.linear.terms.values()].every(c => c === 0) &&
+    (q.linear.constant > 0 || (q.linear.constant === 0 && q.strict))
+  )
+}
 
 // what a statement's (or expression's) impure calls leave of the facts: a `set`, or a call to a task that only does
 // such things, changes no length and no field, so only what was known THROUGH a list position goes. Any other impure

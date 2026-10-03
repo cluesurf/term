@@ -5,7 +5,7 @@
 
 note unstable
 
-load @term/base/code/integer/big
+load @term/base/integer/big
   find big-integer
   find make-big-integer
 

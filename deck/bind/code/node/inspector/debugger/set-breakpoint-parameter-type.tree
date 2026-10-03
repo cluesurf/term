@@ -2,11 +2,11 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
   find native-undefined
 
-load @term/bind/code/node/inspector/debugger
+load @term/bind/node/inspector/debugger
   find location
 
 form set-breakpoint-parameter-type, name <SetBreakpointParameterType>

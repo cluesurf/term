@@ -1,9 +1,9 @@
 
-load @term/mill/code/zone/need/mine
+load @term/mill/zone/need/mine
   find zone-need
   find zone-want
 
-load @term/mill/code/zone/code/mine
+load @term/mill/zone/code/mine
   find zone-code
 
 # One zone, at any depth.

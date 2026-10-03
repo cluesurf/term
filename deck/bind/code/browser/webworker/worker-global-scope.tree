@@ -1,53 +1,53 @@
 
-load @term/bind/code/browser/webworker/add-event-listener-options
+load @term/bind/browser/webworker/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/webworker/error-event
+load @term/bind/browser/webworker/error-event
   find error-event
 
-load @term/bind/code/browser/webworker/event
+load @term/bind/browser/webworker/event
   find event
 
-load @term/bind/code/browser/webworker/event-listener-options
+load @term/bind/browser/webworker/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/webworker/event-listener-or-event-listener-object
+load @term/bind/browser/webworker/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/webworker/event-target
+load @term/bind/browser/webworker/event-target
   find event-target
 
-load @term/bind/code/browser/webworker/promise-rejection-event
+load @term/bind/browser/webworker/promise-rejection-event
   find promise-rejection-event
 
-load @term/bind/code/browser/webworker/window-or-worker-global-scope
+load @term/bind/browser/webworker/window-or-worker-global-scope
   find window-or-worker-global-scope
 
-load @term/bind/code/browser/webworker/worker-global-scope-event-map
+load @term/bind/browser/webworker/worker-global-scope-event-map
   find worker-global-scope-event-map
 
-load @term/bind/code/browser/webworker/worker-location
+load @term/bind/browser/webworker/worker-location
   find worker-location
 
-load @term/bind/code/browser/webworker/worker-navigator
+load @term/bind/browser/webworker/worker-navigator
   find worker-navigator
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form worker-global-scope, name <WorkerGlobalScope>

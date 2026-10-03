@@ -182,7 +182,7 @@ role code
   // file until 2026-08-29, because it was written with `bind` and `~/` while
   // this reader takes `take` and `@/`. Two spellings of one grammar, and the
   // disagreement was silent. This asserts the file the reader actually reads.
-  it('the @term/term role file resolves real paths', () => {
+  it('the @term/code role file resolves real paths', () => {
     const root = join(__dirname, '..', '..', '..')
     const config = parseRoleFile({
       text: readFileSync(join(root, 'base', 'role.tree'), 'utf8'),

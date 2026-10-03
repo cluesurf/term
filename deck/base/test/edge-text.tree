@@ -3,7 +3,7 @@
 # count happens to agree only because it is a single scalar. A test written in ASCII alone would pass on every
 # wrong implementation.
 
-load @term/base/code/text
+load @term/base/text
   find char-count
   find char-at
   find char-code-at
@@ -22,10 +22,10 @@ load @term/base/code/text
   find replace-all
   find contains
 
-load @term/base/code/list
+load @term/base/list
   find join
 
-load @term/base/code/ordering
+load @term/base/ordering
   find ordering
   find from-texts
   find is-less

@@ -9,9 +9,9 @@
 # the effect to width / print), runs get-layout-3-section, and returns that region's string. On resize / print the
 # signal writes, the effects re-run, and the three divs restyle -- the faithful runtime of the React hook + Layout.
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 load ../logic/viewport

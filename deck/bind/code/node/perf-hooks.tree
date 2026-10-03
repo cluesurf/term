@@ -19,7 +19,7 @@ bear @term/bind/code/javascript/node/perf-hooks/interval-histogram
 bear @term/bind/code/javascript/node/perf-hooks/recordable-histogram
 bear @term/bind/code/javascript/node/perf-hooks/create-histogram-options
 
-load @term/bind/code/node/perf-hooks
+load @term/bind/node/perf-hooks
   find create-histogram-options
   find event-loop-monitor-options
   find interval-histogram

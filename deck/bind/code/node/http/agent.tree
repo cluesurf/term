@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find incoming-message
   find native-number
@@ -7,13 +7,13 @@ load @term/bind/code/javascript
   find node-js-read-only-dict
   find socket
 
-load @term/bind/code/node/http
+load @term/bind/node/http
   find agent-options
 
 form agent, name <Agent>
-  link max-free-sockets, name <maxFreeSockets>, like native-number
-  link max-sockets, name <maxSockets>, like native-number
-  link max-total-sockets, name <maxTotalSockets>, like native-number
+  link max-free-sockets, name(<maxFreeSockets>), like native-number
+  link max-sockets, name(<maxSockets>), like native-number
+  link max-total-sockets, name(<maxTotalSockets>), like native-number
   link free-sockets, name <freeSockets>
     like node-js-read-only-dict
       like array

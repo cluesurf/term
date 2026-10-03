@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/payment-item
+load @term/bind/browser/dom/payment-item
   find payment-item
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form payment-details-modifier, name <PaymentDetailsModifier>

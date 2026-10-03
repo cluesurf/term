@@ -1,41 +1,41 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/document-and-element-event-handlers
+load @term/bind/browser/dom/document-and-element-event-handlers
   find document-and-element-event-handlers
 
-load @term/bind/code/browser/dom/element
+load @term/bind/browser/dom/element
   find element
 
-load @term/bind/code/browser/dom/element-css-inline-style
+load @term/bind/browser/dom/element-css-inline-style
   find element-css-inline-style
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/global-event-handlers
+load @term/bind/browser/dom/global-event-handlers
   find global-event-handlers
 
-load @term/bind/code/browser/dom/html-or-svg-element
+load @term/bind/browser/dom/html-or-svg-element
   find html-or-svg-element
 
-load @term/bind/code/browser/dom/math-ml-element-event-map
+load @term/bind/browser/dom/math-ml-element-event-map
   find math-ml-element-event-map
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form math-ml-element, name <MathMLElement>

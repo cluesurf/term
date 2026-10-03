@@ -1,17 +1,17 @@
 
-load @term/bind/code/javascript/es2017/sharedmemory/atomics
+load @term/bind/javascript/es2017/sharedmemory/atomics
   find atomics
 
-load @term/bind/code/javascript/es2020/bigint/big-int64-array
+load @term/bind/javascript/es2020/bigint/big-int64-array
   find big-int64-array
 
-load @term/bind/code/javascript/es2020/bigint/big-uint64-array
+load @term/bind/javascript/es2020/bigint/big-uint64-array
   find big-uint64-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-bigint
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form atomics, name <Atomics>

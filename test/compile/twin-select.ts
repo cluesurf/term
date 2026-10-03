@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { nativeFlags } from './native-flags'
 import { compile } from '@term/make/code/compile/compile'
+import { stdlibResolver } from '@term/make/code/resolve'
 import type { Source } from '@term/make/code/compile/load'
 import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
 import { emitRust } from '@term/make/code/compile/rust'
@@ -39,11 +40,8 @@ function have(tool: string): boolean {
 }
 
 const base = join(import.meta.dirname, '../../deck/base')
-const stdlib = (path: string): Source | undefined => {
-  const file = join(base, `${path.replace(/^@term\/base\//, '')}.tree`)
-
-  return /^@term\/base\//.test(path) && existsSync(file) ? { file, text: readFileSync(file, 'utf8') } : undefined
-}
+// the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+const stdlib = stdlibResolver()!
 const readRuntime = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, 'utf8') : undefined)
 
 // two calls: one from `compute`, one from a task of its own, so the redirect is seen in more than one place

@@ -3,15 +3,15 @@ load @term/bind
   find any
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-string
   find native-undefined
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/vm
+load @term/bind/node/vm
   find context
   find running-script-options
   find script-options

@@ -5,4 +5,4 @@
 # toolkit host. Takes `host`, `class`, `control` (the text, a signal) and `placeholder`.
 # See note/term/app/11-uniform-interface.md.
 
-bear @term/face/code/component/native/{platform}/input
+bear @term/face/component/native/{platform}/input

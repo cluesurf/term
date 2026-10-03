@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find array-buffer
   find native-boolean
@@ -15,7 +15,7 @@ load @term/bind
   find form
   find or
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
   find buffer-encoding
   find with-implicit-coercion

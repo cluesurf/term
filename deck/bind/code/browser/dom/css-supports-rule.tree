@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/css-condition-rule
+load @term/bind/browser/dom/css-condition-rule
   find css-condition-rule
 
 form css-supports-rule, name <CSSSupportsRule>

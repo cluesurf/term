@@ -6,16 +6,16 @@
 # `value` is text, and `move-range` reads it with the stdlib's `read-number` (native-dom-0040); a report that is not a
 # number leaves the range where it was. native-dom-0026.
 
-load @term/site/code/view/reactive
+load @term/site/view/reactive
   find signal
   find make-signal
   find read-signal
   find write-signal
 
-load @term/base/code/text/number
+load @term/base/text/number
   find read-number
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
 task make-range

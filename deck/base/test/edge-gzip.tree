@@ -1,19 +1,19 @@
 # gzip gives the same bytes everywhere and gunzip reads what other writers wrote. Held by `pnpm term:base-gate`. The
 # fixtures were written by Python's zlib: a dynamic Huffman block (level 9), a stored block (level 0), two members.
 
-load @term/base/code/gzip
+load @term/base/gzip
   find gzip
   find gunzip
   find gzip-mismatch
 
-load @term/base/code/bytes
+load @term/base/bytes
   find from-text
   find to-text
   find from-hex
   find to-hex
   find count
 
-load @term/base/code/text
+load @term/base/text
   find starts-with
   find ends-with
   find char-count

@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/canvas-filters
+load @term/bind/browser/dom/canvas-filters
   find canvas-filters
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form canvas-filters, name <CanvasFilters>

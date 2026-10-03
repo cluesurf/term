@@ -1,100 +1,100 @@
-load @term/mill/code/code/tell/mint
+load @term/mill/code/tell/mint
   find tell-def
 
-load @term/mill/code/code/proof/mint
+load @term/mill/code/proof/mint
   find hold-claim
 
-load @term/mill/code/code/bear/mint
+load @term/mill/code/bear/mint
   find bear
   find deck-def
 
-load @term/mill/code/code/bind/mint
+load @term/mill/code/bind/mint
   find bind-def
 
-load @term/mill/code/code/book/mint
+load @term/mill/code/book/mint
   find book
 
-load @term/mill/code/code/call/mint
+load @term/mill/code/call/mint
   find call
 
-load @term/mill/code/code/cast/mint
+load @term/mill/code/cast/mint
   find cast
 
-load @term/mill/code/code/dock/mint
+load @term/mill/code/dock/mint
   find dock
   find dock-bind
 
-load @term/mill/code/code/form/mint
+load @term/mill/code/form/mint
   find form
 
-load @term/mill/code/code/fuse/mint
+load @term/mill/code/fuse/mint
   find fuse
 
-load @term/mill/code/code/halt/mint
+load @term/mill/code/halt/mint
   find halt
 
-load @term/mill/code/code/hold/mint
+load @term/mill/code/hold/mint
   find hold
 
-load @term/mill/code/code/hook/mint
+load @term/mill/code/hook/mint
   find hook
 
-load @term/mill/code/code/kink/mint
+load @term/mill/code/kink/mint
   find kink
 
-load @term/mill/code/code/lace/mint
+load @term/mill/code/lace/mint
   find lace
 
-load @term/mill/code/code/load/mint
+load @term/mill/code/load/mint
   find load
 
-load @term/mill/code/code/mask/mint
+load @term/mill/code/mask/mint
   find mask
 
 load @term/mill/code/code/note/mint
   find note
 
-load @term/mill/code/code/rule/def/mint
+load @term/mill/code/rule/def/mint
   find roll-def
   find rule-def
 
-load @term/mill/code/code/save/mint
+load @term/mill/code/save/mint
   find save
 
-load @term/mill/code/code/seed/mint
+load @term/mill/code/seed/mint
   find seed
 
-load @term/mill/code/code/seed/seed/mint
+load @term/mill/code/seed/seed/mint
   find host
 
-load @term/mill/code/code/suit/mint
+load @term/mill/code/suit/mint
   find suit
 
-load @term/mill/code/code/task/mint
+load @term/mill/code/task/mint
   find task
 
 load @term/mill/code/code/test/mint
   find test
 
-load @term/mill/code/code/tree/beam/mint
+load @term/mill/code/tree/beam/mint
   find beam
 
-load @term/mill/code/code/tree/mint
+load @term/mill/code/tree/mint
   find tree
 
-load @term/mill/code/code/tree/slot/mint
+load @term/mill/code/tree/slot/mint
   find slot
 
-load @term/mill/code/code/tune/mint
+load @term/mill/code/tune/mint
   find tune
 
-load @term/mill/code/code/twin/mint
+load @term/mill/code/twin/mint
   find twin
 
 load @term/mill/code/code/view/mint
   find view-def
 
-load @term/mill/code/code/wear/mint
+load @term/mill/code/wear/mint
   find wear
 
 

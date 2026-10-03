@@ -7,6 +7,7 @@
 
 import { armLocals } from '@term/make/code/check/arm'
 import { raiseSets } from '@term/make/code/check/effects'
+import { provenIncrements } from '@term/make/code/ir/facts/range'
 import type {
   Expression,
   Program,
@@ -757,6 +758,8 @@ export function emitSwift(
   options?: { wake?: WakeGroup[] },
 ): string {
   const pad = (d: number) => '  '.repeat(d)
+  // the `+` nodes proven not to overflow (ir/facts/range.ts): written as the wrapping `&+`
+  const provenSteps = provenIncrements(program)
   // the prelude helpers this program uses (SWIFT_HELPERS), recorded where each is written. A list or a map value
   // carries a list or map type somewhere in the program even when no annotation is written for it (the result of a
   // `map`, a temporary), so the program's types decide the two wrappers, and `swiftType` records them as well
@@ -1561,6 +1564,12 @@ export function emitSwift(
           }
         }
 
+        // a counted step the range fact proved cannot overflow (ir/facts/range.ts) is the wrapping `&+`, which carries
+        // no trap: n-body's eight steps, 213 ms to 202 (`tmp/swift-step-ab.ts`, 2026-10-03)
+        if (node.op === '+' && provenSteps.has(node)) {
+          return `(${mark}${left} &+ ${right})`
+        }
+
         return `(${mark}${left} ${OP[node.op]} ${right})`
       }
 
@@ -1997,11 +2006,18 @@ export function emitSwift(
     }
 
     // arrays go through the SeedList wrapper (`.data` is its Array, `.appending` / `.popping` mutate). An op returning a
-    // list wraps a new SeedList; `String(describing:)` renders any element for `join` with no bound.
-    const data = `${target}.data`
+    // list wraps a new SeedList; `String(describing:)` renders any element for `join` with no bound. A lent list or an
+    // owned local is the plain array already, so a read goes to it directly (the lend analysis refuses every op that
+    // would change the length of one)
+    const data = view(op.target, bind)
 
     switch (op.op) {
       case 'push':
+        // an owned local is the array itself (ownedLocals): appended in place, answering the new count
+        if (op.target.form === 'variable' && ownedNames.has(op.target.name)) {
+          return `({ () -> Int in ${target}.append(${arg[0]}); return ${target}.count })()`
+        }
+
         return `${target}.appending(${arg[0]})`
       case 'pop':
         return `${target}.popping()`
@@ -2186,6 +2202,15 @@ export function emitSwift(
           ownedNames.has(node.expr.args[0].name)
         ) {
           return `${expr(node.expr.args[0], bind)}.append(${expr(node.expr.args[1]!, bind)})`
+        }
+
+        // the same through the collection operation `list_push` inlines to, `out.push(v)`
+        if (node.expr.form === 'call' && node.expr.callee.form === 'member') {
+          const op = collectionCall(node.expr.callee)
+
+          if (op?.kind === 'array' && op.op === 'push' && op.target.form === 'variable' && ownedNames.has(op.target.name)) {
+            return `${expr(op.target, bind)}.append(${expr(node.expr.args[0]!, bind)})`
+          }
         }
 
         const rendered = expr(node.expr, bind)

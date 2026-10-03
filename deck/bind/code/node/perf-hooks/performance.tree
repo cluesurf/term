@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-number
   find native-string
@@ -11,7 +11,7 @@ load @term/bind
   find like
   find task
 
-load @term/bind/code/node/perf-hooks
+load @term/bind/node/perf-hooks
   find event-loop-utility-function
   find mark-options
   find measure-options

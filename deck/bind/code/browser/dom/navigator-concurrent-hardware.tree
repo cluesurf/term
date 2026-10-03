@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form navigator-concurrent-hardware, name <NavigatorConcurrentHardware>

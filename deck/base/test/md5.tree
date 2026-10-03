@@ -3,7 +3,7 @@
 #
 # Run with: term test
 
-load @term/base/code/native/shared/cryptography/md5
+load @term/base/native/shared/cryptography/md5
   find calculate-md5
 
 test md5-empty

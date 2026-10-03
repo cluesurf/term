@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/dom/text-decoder
+load @term/bind/browser/dom/text-decoder
   find text-decoder
 
-load @term/bind/code/browser/webworker/buffer-source
+load @term/bind/browser/webworker/buffer-source
   find buffer-source
 
-load @term/bind/code/browser/webworker/text-decode-options
+load @term/bind/browser/webworker/text-decode-options
   find text-decode-options
 
-load @term/bind/code/browser/webworker/text-decoder-common
+load @term/bind/browser/webworker/text-decoder-common
   find text-decoder-common
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form text-decoder, name <TextDecoder>

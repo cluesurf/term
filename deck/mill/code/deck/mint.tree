@@ -2,24 +2,24 @@
 load @term/base/code/deck
   find deck
 
-load @term/mill/code/deck/link/mint
+load @term/mill/deck/link/mint
   find deck-link
   find deck-term
   find deck-deck
 
-load @term/mill/code/deck/mind/mint
+load @term/mill/deck/mind/mint
   find deck-mind
 
-load @term/mill/code/deck/host/mint
+load @term/mill/deck/host/mint
   find deck-host
 
-load @term/mill/code/deck/case/mint
+load @term/mill/deck/case/mint
   find deck-case
 
-load @term/mill/code/deck/role/mint
+load @term/mill/deck/role/mint
   find role
 
-load @term/mill/code/deck/load/mint
+load @term/mill/deck/load/mint
   find load
 
 mint deck
@@ -35,6 +35,8 @@ mint deck-def, like deck
     site name
   case mark
     site mark
+  case code
+    site code
   case head
     site head
   case lock
@@ -71,6 +73,7 @@ mint deck-def, like deck
     make deck
       bind name, read name
       bind mark, read mark
+      bind code, read code
       bind head, read head
       bind lock, read lock
       bind sort, read sort

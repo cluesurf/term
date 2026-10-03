@@ -3,7 +3,7 @@ load @term/bind
   find form
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array-buffer
   find native-boolean
   find native-null
@@ -12,9 +12,9 @@ load @term/bind/code/javascript
   find node-js-array-buffer-view
 
 form text-decoder, name <TextDecoder>
-  link encoding, name <encoding>, like native-string
-  link fatal, name <fatal>, like native-boolean
-  link ignore-bom, name <ignoreBOM>, like native-boolean
+  link encoding, name(<encoding>), like native-string
+  link fatal, name(<fatal>), like native-boolean
+  link ignore-bom, name(<ignoreBOM>), like native-boolean
 
   task decode, name <decode>
     like native-string

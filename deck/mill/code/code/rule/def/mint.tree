@@ -1,22 +1,22 @@
-load @term/mill/code/code/proof/mint
+load @term/mill/code/proof/mint
   find rule-step
 
-load @term/mill/code/code/call/mint
+load @term/mill/code/call/mint
   find call
 
-load @term/mill/code/code/head/mint
+load @term/mill/code/head/mint
   find head
 
-load @term/mill/code/code/like/mint
+load @term/mill/code/like/mint
   find like
 
-load @term/mill/code/code/rule/hold/mint
+load @term/mill/code/rule/hold/mint
   find rule-mark
 
-load @term/mill/code/code/seed/mint
+load @term/mill/code/seed/mint
   find seed
 
-load @term/mill/code/code/take/mint
+load @term/mill/code/take/mint
   find take
 
 load @term/mill/code/code/note/mint

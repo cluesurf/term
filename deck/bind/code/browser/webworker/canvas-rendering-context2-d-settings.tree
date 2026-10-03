@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/canvas-rendering-context2-d-settings
+load @term/bind/browser/dom/canvas-rendering-context2-d-settings
   find canvas-rendering-context2-d-settings
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
 form canvas-rendering-context2-d-settings, name <CanvasRenderingContext2DSettings>

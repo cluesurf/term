@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/css-style-declaration
+load @term/bind/browser/dom/css-style-declaration
   find css-style-declaration
 
 form element-css-inline-style, name <ElementCSSInlineStyle>

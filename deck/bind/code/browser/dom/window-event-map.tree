@@ -1,20 +1,20 @@
 
-load @term/bind/code/browser/dom/device-motion-event
+load @term/bind/browser/dom/device-motion-event
   find device-motion-event
 
-load @term/bind/code/browser/dom/device-orientation-event
+load @term/bind/browser/dom/device-orientation-event
   find device-orientation-event
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/gamepad-event
+load @term/bind/browser/dom/gamepad-event
   find gamepad-event
 
-load @term/bind/code/browser/dom/global-event-handlers-event-map
+load @term/bind/browser/dom/global-event-handlers-event-map
   find global-event-handlers-event-map
 
-load @term/bind/code/browser/dom/window-event-handlers-event-map
+load @term/bind/browser/dom/window-event-handlers-event-map
   find window-event-handlers-event-map
 
 form window-event-map, name <WindowEventMap>

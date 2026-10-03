@@ -1,4 +1,4 @@
-load @term/base/code/list
+load @term/base/list
   find list
 
 # the list operations the Kotlin emitter writes without a second copy (codegen-performance-0015), and integer division

@@ -1,4 +1,4 @@
-load @term/base/code/list
+load @term/base/list
   find list
 
 # fannkuch-redux, the Benchmarks Game program, single-threaded: every permutation of 0..n-1 in the order the reference

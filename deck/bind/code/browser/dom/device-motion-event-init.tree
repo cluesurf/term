@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/device-motion-event-acceleration-init
+load @term/bind/browser/dom/device-motion-event-acceleration-init
   find device-motion-event-acceleration-init
 
-load @term/bind/code/browser/dom/device-motion-event-rotation-rate-init
+load @term/bind/browser/dom/device-motion-event-rotation-rate-init
   find device-motion-event-rotation-rate-init
 
-load @term/bind/code/browser/dom/event-init
+load @term/bind/browser/dom/event-init
   find event-init
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form device-motion-event-init, name <DeviceMotionEventInit>

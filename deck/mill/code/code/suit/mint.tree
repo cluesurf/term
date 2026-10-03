@@ -1,15 +1,15 @@
-load @term/mill/code/code/head/mint
+load @term/mill/code/head/mint
   find head
 
-load @term/mill/code/code/like/mint
+load @term/mill/code/like/mint
   find and
   find like
   find or
 
-load @term/mill/code/code/task/mint
+load @term/mill/code/task/mint
   find task
 
-load @term/mill/code/code/wear/mint
+load @term/mill/code/wear/mint
   find wear
 
 mint suit

@@ -1,9 +1,9 @@
-load @term/mill/code/code/rule/hold/mint
+load @term/mill/code/rule/hold/mint
   find find
 
 
 # `like load` references the import form
-load @term/base/code/lang
+load @term/base/lang
   find code-import
   find import-reference
 
@@ -14,6 +14,8 @@ mint load, like code-import
     site name
   case host, mint load-host
     site host
+  case base, mint load-base
+    site base
   case find
     site find
   case load
@@ -27,6 +29,7 @@ mint load, like code-import
       bind drop, read drop
       bind name, read name
       bind host, read host
+      bind base, read base
       bind find, read find
       bind load, read load
 
@@ -45,6 +48,14 @@ mint load-host
     site value
   hook make
     make load-host
+      bind value, read value
+
+# `base <dir>` under a load: where the path resolves, read by the loader. It imports nothing
+mint load-base
+  case value
+    site value
+  hook make
+    make load-base
       bind value, read value
 
 # a template import written with `take`, matched so the file reads and built into nothing

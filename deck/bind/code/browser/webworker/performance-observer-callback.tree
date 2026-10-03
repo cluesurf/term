@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/performance-observer-callback
+load @term/bind/browser/dom/performance-observer-callback
   find performance-observer-callback
 
 form performance-observer-callback, name <PerformanceObserverCallback>

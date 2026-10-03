@@ -183,12 +183,12 @@ async function main(): Promise<void> {
     true,
   )
 
-  // a brace in a plain text literal used to compile to an empty string: a template parameter outside a template, or
-  // the runtime interpolation that is not built yet
+  // a brace in a plain text literal used to compile to an empty string, and then was refused. Since the second lean
+  // pass there is one brace syntax: `{x}` naming a parameter is filled at run time, exactly as `{{x}}` is
   const templateBrace = compile({ file: 't.tree', text: 'task f\n  take x, like text\n  like text\n  send back, text <a/{x}/b>\n' })
   expect(
-    '`{x}` in a plain text literal is refused and names {{x}}',
-    !templateBrace.ok && templateBrace.diagnostics.some(d => d.message.includes('"{x}" in a text literal is a template parameter') && d.message.includes('{{x}}')),
+    '`{x}` in a plain text literal interpolates a parameter at run time',
+    templateBrace.ok && templateBrace.typescript.includes('return `a/${x}/b`'),
     true,
   )
 

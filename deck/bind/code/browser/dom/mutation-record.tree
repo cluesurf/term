@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/dom/mutation-record-type
+load @term/bind/browser/dom/mutation-record-type
   find mutation-record-type
 
-load @term/bind/code/browser/dom/node
+load @term/bind/browser/dom/node
   find node
 
-load @term/bind/code/browser/dom/node-list
+load @term/bind/browser/dom/node-list
   find node-list
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form mutation-record, name <MutationRecord>

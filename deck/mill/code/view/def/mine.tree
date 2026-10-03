@@ -17,10 +17,10 @@
 # A description is a `#` comment, which is what a comment is in Term. `view-def` carries a name, its parameters
 # and its body, with no field for prose.
 
-load @term/mill/code/view/node/mine
+load @term/mill/view/node/mine
   find view-node
 
-load @term/mill/code/view/seed/mine
+load @term/mill/view/seed/mine
   find view-like
 
 mine view-def

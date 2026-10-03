@@ -1,7 +1,7 @@
 # swift child-process surface: each operation is one native expression over the child's dock, cast to the
 # Foundation Process it holds. Internal: reached only through the public process API.
 
-load @term/base/code/process
+load @term/base/process
   find child
 
 bind child-wait

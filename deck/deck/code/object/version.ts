@@ -19,6 +19,7 @@ import { MemoryChunkStore } from '@cluesurf/save/store/chunk-store'
 import { chunkBuffer } from './chunk'
 import { classify } from './classify'
 import { parseTree } from '@cluesurf/save/tree/parse'
+import { canonicalBytes } from '@cluesurf/save/canon/canonicalize'
 import type { ChunkParams } from './chunk'
 import { hashObject } from './hash'
 import type { ObjectStore } from './store'
@@ -124,8 +125,7 @@ export async function readVersionFiles(input: {
       // `.tree` is PARSED, not chunked. Its record goes into the dataset, so editing
       // one field costs one record rather than a whole file, and the prolly tree's
       // field-level diff and merge apply to a package's own format.
-      // An EMPTY `.tree` is kept as bytes: the record parser refuses empty input, and bind holds four, placeholders
-      // for platforms not bound yet. A non-empty one that does not parse still fails the publish, loudly.
+      // A `.tree` the record grammar cannot hold is kept as bytes. See `recordOf`.
       if (classify({ path: at, bytes: data }) === 'tree') {
         const record = recordOf(data)
 
@@ -159,10 +159,25 @@ export async function readVersionFiles(input: {
   return files
 }
 
+// The `.tree` as a record, or nothing when the record grammar cannot hold it, and then the file ships as bytes.
+//
+// Storing a `.tree` as a record is an OPTIMIZATION (a one-field edit costs one record), never a requirement: the
+// bytes carry the same file. And the record grammar is not Term's grammar, so a valid Term file can fail it. Three
+// shapes did, each failing `term host` for a whole package: a blank file and a comments-only one (`empty .tree
+// input`), and a lean `role.tree`, whose `mark lean` the record parser accepts as a record identity and the encoder
+// then refuses, needing 32 characters. So the record is ENCODED here as well as parsed, because a parse that
+// succeeds says nothing about whether `writeDataset` can write it.
+// Whether a `.tree` is valid TERM is `term make`'s question, asked before a publish, not this one.
 function recordOf(data: Buffer): ReturnType<typeof parseTree> | undefined {
-  const text = data.toString('utf8')
+  try {
+    const record = parseTree(data.toString('utf8'))
 
-  return text.trim() === '' ? undefined : parseTree(text)
+    canonicalBytes(record)
+
+    return record
+  } catch {
+    return undefined
+  }
 }
 
 // Build a version: walk, chunk, and write the prolly tree. The tree's own chunks are

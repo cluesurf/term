@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find console-message-added-event-data-type
   find debugger-breakpoint-resolved-event-data-type
@@ -110,7 +110,7 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/inspector
+load @term/bind/node/inspector
   find inspector-notification
 
 form session, name <Session>

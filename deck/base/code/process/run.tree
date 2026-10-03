@@ -2,7 +2,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/process/run
+load @term/base/native/{platform}/process/run
   find spawn-process
   find spawn-on-terminal
   find spawn-with-input
@@ -25,7 +25,6 @@ task run
     call spawn-process
       read command
       read argument-list
-      wait true
 
 # run `command` on this terminal: it reads the keyboard and writes as it goes, so a password prompt or a progress bar
 # reaches the person at the terminal, and nothing is captured. The answer is the exit code, -1 when the command could
@@ -41,7 +40,6 @@ task run-attached
     call spawn-on-terminal
       read command
       read argument-list
-      wait true
 
 # run `command` with `input` written to its standard input, then closed: the answers to a program's prompts (the `y` an
 # installer asks for), handed over without a shell or a pipe. Output is captured as `run` captures it
@@ -58,4 +56,3 @@ task run-with-input
       read command
       read argument-list
       read input
-      wait true

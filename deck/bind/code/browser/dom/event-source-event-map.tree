@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/message-event
+load @term/bind/browser/dom/message-event
   find message-event
 
 form event-source-event-map, name <EventSourceEventMap>

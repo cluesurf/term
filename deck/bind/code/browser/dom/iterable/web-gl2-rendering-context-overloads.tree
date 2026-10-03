@@ -1,29 +1,29 @@
 
-load @term/bind/code/browser/dom/g-lboolean
+load @term/bind/browser/dom/g-lboolean
   find g-lboolean
 
-load @term/bind/code/browser/dom/g-lfloat
+load @term/bind/browser/dom/g-lfloat
   find g-lfloat
 
-load @term/bind/code/browser/dom/g-lint
+load @term/bind/browser/dom/g-lint
   find g-lint
 
-load @term/bind/code/browser/dom/g-luint
+load @term/bind/browser/dom/g-luint
   find g-luint
 
-load @term/bind/code/browser/dom/web-gl-uniform-location
+load @term/bind/browser/dom/web-gl-uniform-location
   find web-gl-uniform-location
 
-load @term/bind/code/browser/dom/web-gl2-rendering-context-overloads
+load @term/bind/browser/dom/web-gl2-rendering-context-overloads
   find web-gl2-rendering-context-overloads
 
 load @term/bind/code/javascript/iterable
   find iterable
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form web-gl2-rendering-context-overloads, name <WebGL2RenderingContextOverloads>

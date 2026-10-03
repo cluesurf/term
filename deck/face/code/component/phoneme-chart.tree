@@ -4,10 +4,10 @@
 #   sounds -> list of { symbol, label }; `symbol` is the IPA / script glyph, `label` the description (e.g. "voiced
 #             bilabial nasal"). Group and lay out via CSS on [data-slot=phoneme-chart].
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
   find make-text
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 

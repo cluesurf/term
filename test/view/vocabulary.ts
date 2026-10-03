@@ -121,7 +121,7 @@ if (result.ok) {
   ok('text with level 1 is an h1', /<h1 data-slot="text">Title<\/h1>/.test(tree), tree)
   ok('text with a link is an a with its href', /<a data-slot="text" href="\/home">Home<\/a>/.test(tree), tree)
   ok('text with neither is a span', /<span data-slot="text">plain<\/span>/.test(tree), tree)
-  ok('spacer is a div that grows', /<div data-slot="spacer" style="flex-grow: 1"><\/div>/.test(tree), tree)
+  ok('spacer is a div that grows, out of the accessibility tree', /<div data-slot="spacer" style="flex-grow: 1" aria-hidden="true"><\/div>/.test(tree), tree)
   ok('divider is an hr', /<hr data-slot="divider"><\/hr>/.test(tree), tree)
   ok(
     'image is an img with its source, its words and its fit',

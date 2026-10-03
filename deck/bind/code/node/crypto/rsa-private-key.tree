@@ -2,13 +2,13 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
   find native-string
   find native-undefined
   find node-js-typed-array
 
-load @term/bind/code/node/crypto
+load @term/bind/node/crypto
   find key-like
 
 form rsa-private-key, name <RsaPrivateKey>

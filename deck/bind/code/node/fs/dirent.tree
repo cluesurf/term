@@ -1,10 +1,10 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-string
 
 form dirent, name <Dirent>
-  link name, name <name>, like native-string
+  link name, name(<name>), like native-string
 
   task is-file, name <isFile>
     like native-boolean

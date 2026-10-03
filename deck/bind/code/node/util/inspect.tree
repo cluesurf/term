@@ -2,13 +2,13 @@
 load @term/bind
   find tuple
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
   find native-string
   find native-symbol
   find node-js-dict
 
-load @term/bind/code/node/util
+load @term/bind/node/util
   find inspect-options
   find style
 

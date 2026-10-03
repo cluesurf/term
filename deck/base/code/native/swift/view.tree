@@ -7,7 +7,7 @@ note draft
 dock type
   load <SwiftUI.AnyView>, name native-view
 
-load @term/base/code/color/rgb
+load @term/base/color/rgb
   find rgb-color
 
 

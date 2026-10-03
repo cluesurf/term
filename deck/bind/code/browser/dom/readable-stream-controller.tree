@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/readable-stream-default-controller
+load @term/bind/browser/dom/readable-stream-default-controller
   find readable-stream-default-controller
 
 form readable-stream-controller, name <ReadableStreamController>

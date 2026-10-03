@@ -64,16 +64,22 @@ export type RoleConfig = {
   rules: RoleRule[]
 }
 
+// `link @scope/name, mark <0.0.x>`: a dependency and the versions it accepts. The constraint is `mark`, the word the
+// manifest's own version uses (note/term/plan/manifest-mark-and-code-root.md). `code` names a folder now.
 export type DeckLink = {
   name: string
-  code: CodeHold
+  mark: CodeHold
   have?: number
 }
 
 export type DeckManifest = {
   host: string
   name: string
-  code: Code
+  // `mark <1.4.2>`: the version. `code <1.4.2>` is its old spelling, still read
+  mark: Code
+  // `code ./src`: the code root, the folder a package path resolves in first. Absent means `./code`, and the
+  // writer leaves it out then. `bear ./code` is its old spelling, still read
+  code?: string
   head?: string
   mind?: DeckMind[]
   lock?: string
@@ -98,21 +104,17 @@ export type DeckManifest = {
   // emits the model and nothing else. Every dependency verb round-trips (`term save`, `term toss`, `term link`,
   // `term move`), so `term toss` on a dependency that was never there used to break the project: it dropped
   // `bear ./code` and `boot ./code/boot`, and the build then failed on an unresolvable entry. Nine of the
-  // packages in this tree lost `bear` that way, and `text`, `mark`, `make`, `cite` and `tool` went with it.
+  // packages in this tree lost `bear` that way, and `text`, `make`, `cite` and `tool` went with it.
   //
   // These are the rest of the fields the manifest GRAMMAR knows (deck/deck/code/grammar.ts). They are spelled out
   // rather than swept into one catch-all bag, and deck/deck/test/round-trip.ts holds every real manifest in the
   // tree through a load and a write so the next field added to the grammar cannot go missing quietly.
-  // `bear ./code`: what the package exports
-  bear?: string
   // `boot ./code/boot`: the app entry, what `term wake` scaffolds and `term boot` runs
   boot?: string
   // `tool ./tool`: the tools directory
   tool?: string
   // `text <The Term Secret Access Library>`: the long title
   text?: string
-  // `mark <0.0.1>`, the version's older spelling, or `mark private`
-  mark?: string
   // `make <security>`: a keyword, repeatable
   make?: string[]
   // `cite <Name>, base <email>`: attribution, the same shape as `mind`

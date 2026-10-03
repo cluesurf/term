@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/svg-preserve-aspect-ratio
+load @term/bind/browser/dom/svg-preserve-aspect-ratio
   find svg-preserve-aspect-ratio
 
 form svg-animated-preserve-aspect-ratio, name <SVGAnimatedPreserveAspectRatio>

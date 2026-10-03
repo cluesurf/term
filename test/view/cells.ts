@@ -1,0 +1,345 @@
+// The cell grid (terminal-target-0001, deck/site/code/view/cells/grid.tree): the vocabulary's layout model measured and
+// placed in a terminal's cells. Each case's EXPECTED grid is worked out by hand from the rules in
+// note/term/view/11-vocabulary.md ("The layout model": CSS's defaults, a cell 8 points wide and 16 tall, growers
+// sharing the free cells, clipping never shrinking) and written here, never read from the engine's own output, which
+// would only prove the engine agrees with itself. Rows end where the last drawn cell does.
+//
+// The width of a character is held separately: `cell-width` is asked for EVERY code point, U+0000 to U+10FFFF, and
+// each answer is compared with string-width's for that code point alone. That catches a run the generator merged
+// wrong, a search that misses an edge, and a table that has drifted from string-width since it was written
+// (`pnpm term:cell-width-table` is the drift check on the file itself).
+// Run: npx tsx test/view/cells.ts
+
+import { spawnSync } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { compile } from '@term/make/code/compile/compile'
+import { nativePrelude } from '@term/make/code/compile/native'
+import { projectResolver } from '@term/call/code/make'
+
+// the width every Node terminal library uses, from mesh, where it is installed; the grid's table is generated from it
+const STRING_WIDTH = join(import.meta.dirname, '../../../../../../mesh/node_modules/string-width/index.js')
+
+let pass = 0
+let fail = 0
+
+function ok(name: string, cond: boolean, info = ''): void {
+  if (cond) {
+    pass++
+    console.log(`ok    ${name}`)
+  } else {
+    fail++
+    console.log(`FAIL  ${name}  ${info}`)
+  }
+}
+
+// each case: what it holds, the Term expression building its tree, the grid's size, and the grid by hand
+type Case = { name: string; tree: string; width: number; height: number; want: string }
+
+const CASES: Case[] = [
+  {
+    name: 'a stack with no direction is a column: one child under the other',
+    tree: 'stack(<column>, 0, <stretch>, <start>, 0, two(text-node(<one>), text-node(<two>)))',
+    width: 10,
+    height: 3,
+    want: 'one\ntwo\n',
+  },
+  {
+    name: 'a row with a 16 point gap: 2 blank cells between',
+    tree: 'stack(<row>, 16, <stretch>, <start>, 0, two(text-node(<ab>), text-node(<cd>)))',
+    width: 10,
+    height: 1,
+    want: 'ab  cd',
+  },
+  {
+    name: 'a grower between two texts takes the 8 free cells of a 10 cell row',
+    tree: 'stack(<row>, 0, <stretch>, <start>, 0, three(text-node(<L>), spacer-node(), text-node(<R>)))',
+    width: 10,
+    height: 1,
+    want: 'L        R',
+  },
+  {
+    name: 'justify between spreads 6 free cells as 3 between each pair',
+    tree: 'stack(<row>, 0, <stretch>, <between>, 0, three(text-node(<a>), text-node(<b>), text-node(<c>)))',
+    width: 9,
+    height: 1,
+    want: 'a   b   c',
+  },
+  {
+    name: 'align center in a 10 cell column puts a 2 cell text at column 4',
+    tree: 'stack(<column>, 0, <center>, <start>, 0, one(text-node(<hi>)))',
+    width: 10,
+    height: 1,
+    want: '    hi',
+  },
+  {
+    name: 'a divider in a column is a line across it',
+    tree: 'stack(<column>, 0, <stretch>, <start>, 0, three(text-node(<ab>), divider-node(), text-node(<cd>)))',
+    width: 4,
+    height: 3,
+    want: 'ab\n────\ncd',
+  },
+  {
+    name: 'a divider in a row is a line down it',
+    tree: 'stack(<row>, 0, <stretch>, <start>, 0, three(text-node(<ab>), divider-node(), text-node(<cd>)))',
+    width: 5,
+    height: 1,
+    want: 'ab│cd',
+  },
+  {
+    name: 'text wraps at the width, words kept whole',
+    tree: 'stack(<column>, 0, <stretch>, <start>, 0, one(text-node(<the quick brown fox>)))',
+    width: 10,
+    height: 3,
+    want: 'the quick\nbrown fox\n',
+  },
+  {
+    name: 'a frame 48 points wide keeps its 6 cells in a stretching column, its text wraps there and clips at the height',
+    tree: 'stack(<column>, 0, <stretch>, <start>, 0, one(frame-node(48, text-node(<aaa bbb ccc>))))',
+    width: 20,
+    height: 2,
+    want: 'aaa\nbbb',
+  },
+  {
+    name: 'a wide character takes two cells, a combining mark none',
+    tree: 'stack(<column>, 0, <stretch>, <start>, 0, two(text-node(<日本語>), text-node(<éx>)))',
+    width: 10,
+    height: 2,
+    want: '日本語\néx',
+  },
+  {
+    name: '16 points of padding is 2 cells across and 1 down',
+    tree: 'stack(<row>, 0, <stretch>, <start>, 16, one(text-node(<x>)))',
+    width: 6,
+    height: 3,
+    want: '\n  x\n',
+  },
+  {
+    name: 'a row inside a column is stretched across, so its grower reaches the far edge',
+    tree: 'stack(<column>, 0, <stretch>, <start>, 0, one(stack(<row>, 0, <stretch>, <start>, 0, three(text-node(<a>), spacer-node(), text-node(<b>)))))',
+    width: 6,
+    height: 1,
+    want: 'a    b',
+  },
+]
+
+// the tree builders the cases call, and one line per case into the output
+const PROGRAM = `load @term/site/code/view/cells/grid
+  find cell-node
+  find lay-out
+
+load @term/base/code/list
+  find list
+
+task blank
+  like cell-node
+  send back
+    make cell-node
+      bind kind, text <text>
+      bind text, text <>
+      bind direction, text <column>
+      bind gap, code 0
+      bind align, text <stretch>
+      bind justify, text <start>
+      bind padding, code 0
+      bind grow, code 0
+      bind width, code 0
+      bind height, code 0
+      bind min-width, code 0
+      bind max-width, code 0
+      bind min-height, code 0
+      bind max-height, code 0
+      bind children
+        make list
+
+task text-node
+  take value, like text
+  like cell-node
+  save made
+    call blank
+  save made/text, read value
+  send back, read made
+
+task spacer-node
+  like cell-node
+  save made
+    call blank
+  save made/kind, text <spacer>
+  save made/grow, code 1
+  send back, read made
+
+task divider-node
+  like cell-node
+  save made
+    call blank
+  save made/kind, text <divider>
+  send back, read made
+
+task frame-node
+  take width, like number
+  take child, like cell-node
+  like cell-node
+  save made
+    call blank
+  save made/kind, text <frame>
+  save made/width, read width
+  call made/children/push
+    read child
+  send back, read made
+
+task stack
+  take direction, like text
+  take gap, like number
+  take align, like text
+  take justify, like text
+  take padding, like number
+  take children
+    like list
+      like cell-node
+  like cell-node
+  save made
+    call blank
+  save made/kind, text <stack>
+  save made/direction, read direction
+  save made/gap, read gap
+  save made/align, read align
+  save made/justify, read justify
+  save made/padding, read padding
+  save made/children, read children
+  send back, read made
+
+task one
+  take a, like cell-node
+  like list
+    like cell-node
+  save made
+    make list
+  call made/push
+    read a
+  send back, read made
+
+task two
+  take a, like cell-node
+  take b, like cell-node
+  like list
+    like cell-node
+  save made
+    make list
+  call made/push
+    read a
+  call made/push
+    read b
+  send back, read made
+
+task three
+  take a, like cell-node
+  take b, like cell-node
+  take c, like cell-node
+  like list
+    like cell-node
+  save made
+    make list
+  call made/push
+    read a
+  call made/push
+    read b
+  call made/push
+    read c
+  send back, read made
+`
+
+// a case's tree is written as a call; this spells it as the Term the program above holds, one call per line
+function termOf(expression: string, depth: number): string {
+  const pad = '  '.repeat(depth)
+  const text = expression.trim()
+
+  if (text.startsWith('<')) {
+    return `${pad}text ${text}`
+  }
+
+  if (/^-?\d+$/.test(text)) {
+    return `${pad}code ${text}`
+  }
+
+  const open = text.indexOf('(')
+  const name = text.slice(0, open)
+  const inside = text.slice(open + 1, -1)
+  const args: string[] = []
+  let level = 0
+  let quoted = false
+  let start = 0
+
+  for (let i = 0; i < inside.length; i++) {
+    const c = inside[i]
+
+    if (c === '<') {
+      quoted = true
+    } else if (c === '>') {
+      quoted = false
+    } else if (!quoted && c === '(') {
+      level++
+    } else if (!quoted && c === ')') {
+      level--
+    } else if (!quoted && level === 0 && c === ',') {
+      args.push(inside.slice(start, i))
+      start = i + 1
+    }
+  }
+
+  if (inside.trim()) {
+    args.push(inside.slice(start))
+  }
+
+  return [`${pad}call ${name}`, ...args.map(arg => termOf(arg, depth + 1))].join('\n')
+}
+
+const program = PROGRAM + '\n' + CASES.map((one, i) =>
+  [`task case-${i}`, '  like text', '  send back', '    call lay-out', termOf(one.tree, 3), `      code ${one.width}`, `      code ${one.height}`].join('\n'),
+).join('\n\n') + '\n'
+
+const dir = mkdtempSync(join(tmpdir(), 'term-cells-'))
+const entry = join(dir, 'cells.tree')
+writeFileSync(entry, program)
+const result = compile({ file: entry, text: program }, { resolve: projectResolver(process.cwd(), 'node'), env: 'node' })
+ok('the cell grid and the cases compile', result.ok, result.ok ? '' : [...new Set(result.diagnostics.map(d => d.message))].slice(0, 6).join(' | '))
+
+if (result.ok) {
+  const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
+  const file = join(dir, 'cells.ts')
+  const calls = CASES.map((_, i) => `case${i}()`).join(', ')
+  // every code point through the grid's cell-width beside string-width's, the disagreements counted and the first eight kept
+  const witness = [
+    `import stringWidth from ${JSON.stringify(STRING_WIDTH)}`,
+    'const disagree = []',
+    'let count = 0',
+    'for (let rune = 0; rune <= 0x10ffff; rune++) {',
+    '  const theirs = rune >= 0xd800 && rune <= 0xdfff ? 0 : stringWidth(String.fromCodePoint(rune))',
+    '  const ours = cellWidth(rune)',
+    '  if (ours !== theirs) { count++; if (disagree.length < 8) disagree.push([rune, ours, theirs]) }',
+    '}',
+  ].join('\n')
+  writeFileSync(file, `${nativePrelude(result.program, 'node', readRuntime, result.typescript)}\n${result.typescript}\n${witness}\nconsole.log(JSON.stringify({ grids: [${calls}], count, disagree }))\n`)
+  const ran = spawnSync('npx', ['tsx', file], { encoding: 'utf8' })
+  ok('it runs', ran.status === 0, ran.stderr.slice(0, 600))
+
+  if (ran.status === 0) {
+    const { grids, count, disagree } = JSON.parse(ran.stdout.trim().split('\n').pop()!) as {
+      grids: string[]
+      count: number
+      disagree: [number, number, number][]
+    }
+    const shown = disagree.map(([rune, ours, theirs]) => `U+${rune.toString(16).toUpperCase()} ${ours} not ${theirs}`)
+    ok('cell-width agrees with string-width on all 1,114,112 code points', count === 0, `${count} disagree: ${shown.join(', ')}`)
+
+    for (const [i, one] of CASES.entries()) {
+      ok(one.name, grids[i] === one.want, `got ${JSON.stringify(grids[i])}, want ${JSON.stringify(one.want)}`)
+    }
+  }
+}
+
+console.log(`\ncells: ${pass} pass, ${fail} fail`)
+
+if (fail > 0) {
+  process.exit(1)
+}

@@ -6,17 +6,17 @@
 # output on that target (note/term/codegen/measurement.md, Build profiles). No debug build is ever timed. A missing
 # toolchain is a skip with its reason, never a silent pass.
 
-load @term/base/code/process/run
+load @term/base/process/run
   find run, name run-process
   find run-result
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
   find join
   find get
 
-load @term/base/code/text
+load @term/base/text
   find trim
   find split
   find index-of

@@ -2,10 +2,10 @@
 # returning to the line's head. The tokens are a word, a `<text>` with the tree escapes, a number, `(`, `)` and `,`.
 # A `#` starts a comment to the end of the line. See note/term/host/01-grammar.md and 02-compact.md.
 
-load @term/base/code/boolean
+load @term/base/boolean
   find not
 
-load @term/base/code/text
+load @term/base/text
   find char-at
   find char-code-at
   find substring
@@ -14,16 +14,16 @@ load @term/base/code/text
   find trim-end
   find starts-with
 
-load @term/base/code/text/string
+load @term/base/text/string
   find concat
 
-load @term/base/code/list
+load @term/base/list
   find push
   find size
   find get
   find pop
 
-load @term/base/code/json
+load @term/base/json
   find parse
   find as-number
 
@@ -112,7 +112,7 @@ task scan
       # attach the line's groups under the nearest shallower line
       walk test
         hook test
-          call is-above(call size(read stack), code 0)
+          call is-above(call(size(read stack)), code 0)
         hook hold
           save top
             call get

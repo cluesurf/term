@@ -2,12 +2,12 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-number
   find native-undefined
 
-load @term/bind/code/node/http/agent-options
+load @term/bind/node/http/agent-options
   find agent-options
 
 form agent-options, name <AgentOptions>

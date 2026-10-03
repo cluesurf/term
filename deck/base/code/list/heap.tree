@@ -3,14 +3,14 @@
 
 note stable
 
-load @term/base/code/list
+load @term/base/list
   find list
   find get
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
-load @term/base/code/ordering
+load @term/base/ordering
   find ordering
   find is-greater
   find is-less
@@ -48,20 +48,30 @@ form heap
     take self
     take value, like t
     like heap
+    save items, read self/items
     call push
-      read self/items
+      read items
       read value
     save i
       call subtract
-        read self/items/length
+        read items/length
         code 1
-    # i walks up the parents, each inside the list (not stated as a `must`: a write to the items leaves the prover
-    # unsure of their length)
+    # i walks up the parents and falls every turn. `compare` is a closure the heap holds, and may reach the list, so
+    # nothing known about the list's length survives a call to it: the bound is tested again after each one
     walk test
-      hook test
-        call is-above
+      must
+        call is-minimum
           read i
           code 0
+      down, read i
+      hook test
+        call and
+          call is-above
+            read i
+            code 0
+          call is-below
+            read i
+            read items/length
       hook step
         save parent
           call divide
@@ -69,29 +79,33 @@ form heap
               read i
               code 1
             code 2
+        save above
+          call get
+            read items
+            read parent
+        save below
+          call get
+            read items
+            read i
+        save order
+          call self/compare
+            read above
+            read below
         fork test
           hook test
-            call is-greater
-              call self/compare
-                call get
-                  read self/items
-                  read parent
-                call get
-                  read self/items
-                  read i
-          hook hold
-            save tmp
-              call get
-                read self/items
+            call and
+              call is-greater
+                read order
+              call is-below
                 read i
-            call self/items/set
+                read items/length
+          hook hold
+            call items/set
               read i
-              call get
-                read self/items
-                read parent
-            call self/items/set
+              read above
+            call items/set
               read parent
-              read tmp
+              read below
             save i, read parent
           hook miss
             halt
@@ -121,10 +135,11 @@ form heap
     take self
     like maybe
       head t
+    save items, read self/items
     fork test
       hook test
         call is-equal
-          read self/items/length
+          read items/length
           code 0
       hook hold
         send back
@@ -132,25 +147,46 @@ form heap
       hook miss
         save top
           call get
-            read self/items
+            read items
             code 0
         save last
           call pop
-            read self/items
+            read items
         fork test
           hook test
             call is-above
-              read self/items/length
+              read items/length
               code 0
           hook hold
-            call self/items/set
+            call items/set
               code 0
               read last
             save i, code 0
-            # i walks down the children, each inside the list (no `must` or `down`, for the reason given in `push`)
+            # the length before any call to `compare`, which may reach the list (see `push`): the measure is taken
+            # against it, and every read tests the list's own length again
+            save n, read items/length
+            # i walks down the children and rises every turn until it stops
             walk test
+              must
+                call is-minimum
+                  read i
+                  code 0
+              must
+                call is-maximum
+                  read i
+                  read n
+              down
+                call subtract
+                  read n
+                  read i
               hook test
-                true
+                call and
+                  call is-below
+                    read i
+                    read n
+                  call is-below
+                    read i
+                    read items/length
               hook step
                 save left
                   call add
@@ -165,58 +201,73 @@ form heap
                       code 2
                     code 2
                 save small, read i
+                save least
+                  call get
+                    read items
+                    read i
                 fork test
                   hook test
-                    call and
-                      call is-below
+                    call is-below
+                      read left
+                      read items/length
+                  hook hold
+                    save candidate
+                      call get
+                        read items
                         read left
-                        read self/items/length
-                      call is-less
-                        call self/compare
-                          call get
-                            read self/items
-                            read left
-                          call get
-                            read self/items
-                            read small
+                    fork test
+                      hook test
+                        call is-less
+                          call self/compare
+                            read candidate
+                            read least
+                      hook hold
+                        save small, read left
+                        save least, read candidate
+                fork test
+                  hook test
+                    call is-below
+                      read right
+                      read items/length
                   hook hold
-                    save small, read left
+                    save candidate
+                      call get
+                        read items
+                        read right
+                    fork test
+                      hook test
+                        call is-less
+                          call self/compare
+                            read candidate
+                            read least
+                      hook hold
+                        save small, read right
+                        save least, read candidate
+                # small is i or a child of it, so it moves on only when it is above i
                 fork test
                   hook test
                     call and
-                      call is-below
-                        read right
-                        read self/items/length
-                      call is-less
-                        call self/compare
-                          call get
-                            read self/items
-                            read right
-                          call get
-                            read self/items
-                            read small
-                  hook hold
-                    save small, read right
-                fork test
-                  hook test
-                    call is-equal
-                      read small
-                      read i
-                  hook hold
-                    halt
-                  hook miss
-                    save tmp
-                      call get
-                        read self/items
-                        read i
-                    call self/items/set
-                      read i
-                      call get
-                        read self/items
+                      call is-above
                         read small
-                    call self/items/set
+                        read i
+                      call and
+                        call is-below
+                          read small
+                          read n
+                        call is-below
+                          read small
+                          read items/length
+                  hook miss
+                    halt
+                  hook hold
+                    call items/set
                       read small
-                      read tmp
+                      call get
+                        read items
+                        read i
+                    call items/set
+                      read i
+                      read least
                     save i, read small
         send back
           make some

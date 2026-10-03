@@ -8,14 +8,14 @@
 # range, reports the person's move as `input`, and answers `get-value` with the position as the control holds it,
 # snapped to the step as a web range input is.
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
   find write-attribute
   find attach-event
-load @term/site/code/view/reactive
+load @term/site/view/reactive
   find signal
   find make-effect
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
   find get-value
@@ -33,6 +33,7 @@ task mount-slider
   take min, like decimal
   take max, like decimal
   take step, like decimal
+  take label, like text
   like view
   save control-view
     call make-element
@@ -41,6 +42,11 @@ task mount-slider
     read control-view
     text <data-slot>
     text <slider>
+  # its name, which the host gives the platform control as its accessibility label (native-accessibility-0003)
+  call write-attribute
+    read control-view
+    text <aria-label>
+    read label
   call write-attribute
     read control-view
     text <class>
@@ -83,6 +89,10 @@ view slider
   take min, like decimal
   take max, like decimal
   take step, like decimal
+  take
+    label
+    like text
+    fall <>
   save mounted
     call mount-slider
       read host
@@ -91,3 +101,4 @@ view slider
       read min
       read max
       read step
+      read label

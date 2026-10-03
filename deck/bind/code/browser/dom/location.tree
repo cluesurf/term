@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/dom-string-list
+load @term/bind/browser/dom/dom-string-list
   find dom-string-list
 
-load @term/bind/code/browser/dom/url
+load @term/bind/browser/dom/url
   find url
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form location, name <Location>

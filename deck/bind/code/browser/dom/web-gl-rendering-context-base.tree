@@ -1,170 +1,170 @@
 
-load @term/bind/code/browser/dom/angle-instanced-arrays
+load @term/bind/browser/dom/angle-instanced-arrays
   find angle-instanced-arrays
 
-load @term/bind/code/browser/dom/ext-blend-minmax
+load @term/bind/browser/dom/ext-blend-minmax
   find ext-blend-minmax
 
-load @term/bind/code/browser/dom/ext-color-buffer-float
+load @term/bind/browser/dom/ext-color-buffer-float
   find ext-color-buffer-float
 
-load @term/bind/code/browser/dom/ext-color-buffer-half-float
+load @term/bind/browser/dom/ext-color-buffer-half-float
   find ext-color-buffer-half-float
 
-load @term/bind/code/browser/dom/ext-float-blend
+load @term/bind/browser/dom/ext-float-blend
   find ext-float-blend
 
-load @term/bind/code/browser/dom/ext-frag-depth
+load @term/bind/browser/dom/ext-frag-depth
   find ext-frag-depth
 
-load @term/bind/code/browser/dom/ext-s-rgb
+load @term/bind/browser/dom/ext-s-rgb
   find ext-s-rgb
 
-load @term/bind/code/browser/dom/ext-shader-texture-lod
+load @term/bind/browser/dom/ext-shader-texture-lod
   find ext-shader-texture-lod
 
-load @term/bind/code/browser/dom/ext-texture-filter-anisotropic
+load @term/bind/browser/dom/ext-texture-filter-anisotropic
   find ext-texture-filter-anisotropic
 
-load @term/bind/code/browser/dom/float32-list
+load @term/bind/browser/dom/float32-list
   find float32-list
 
-load @term/bind/code/browser/dom/g-lbitfield
+load @term/bind/browser/dom/g-lbitfield
   find g-lbitfield
 
-load @term/bind/code/browser/dom/g-lboolean
+load @term/bind/browser/dom/g-lboolean
   find g-lboolean
 
-load @term/bind/code/browser/dom/g-lclampf
+load @term/bind/browser/dom/g-lclampf
   find g-lclampf
 
-load @term/bind/code/browser/dom/g-lenum
+load @term/bind/browser/dom/g-lenum
   find g-lenum
 
-load @term/bind/code/browser/dom/g-lfloat
+load @term/bind/browser/dom/g-lfloat
   find g-lfloat
 
-load @term/bind/code/browser/dom/g-lint
+load @term/bind/browser/dom/g-lint
   find g-lint
 
-load @term/bind/code/browser/dom/g-lintptr
+load @term/bind/browser/dom/g-lintptr
   find g-lintptr
 
-load @term/bind/code/browser/dom/g-lsizei
+load @term/bind/browser/dom/g-lsizei
   find g-lsizei
 
-load @term/bind/code/browser/dom/g-luint
+load @term/bind/browser/dom/g-luint
   find g-luint
 
-load @term/bind/code/browser/dom/khr-parallel-shader-compile
+load @term/bind/browser/dom/khr-parallel-shader-compile
   find khr-parallel-shader-compile
 
-load @term/bind/code/browser/dom/oes-element-index-uint
+load @term/bind/browser/dom/oes-element-index-uint
   find oes-element-index-uint
 
-load @term/bind/code/browser/dom/oes-standard-derivatives
+load @term/bind/browser/dom/oes-standard-derivatives
   find oes-standard-derivatives
 
-load @term/bind/code/browser/dom/oes-texture-float
+load @term/bind/browser/dom/oes-texture-float
   find oes-texture-float
 
-load @term/bind/code/browser/dom/oes-texture-float-linear
+load @term/bind/browser/dom/oes-texture-float-linear
   find oes-texture-float-linear
 
-load @term/bind/code/browser/dom/oes-texture-half-float
+load @term/bind/browser/dom/oes-texture-half-float
   find oes-texture-half-float
 
-load @term/bind/code/browser/dom/oes-texture-half-float-linear
+load @term/bind/browser/dom/oes-texture-half-float-linear
   find oes-texture-half-float-linear
 
-load @term/bind/code/browser/dom/oes-vertex-array-object
+load @term/bind/browser/dom/oes-vertex-array-object
   find oes-vertex-array-object
 
-load @term/bind/code/browser/dom/ovr-multiview2
+load @term/bind/browser/dom/ovr-multiview2
   find ovr-multiview2
 
-load @term/bind/code/browser/dom/web-gl-active-info
+load @term/bind/browser/dom/web-gl-active-info
   find web-gl-active-info
 
-load @term/bind/code/browser/dom/web-gl-buffer
+load @term/bind/browser/dom/web-gl-buffer
   find web-gl-buffer
 
-load @term/bind/code/browser/dom/web-gl-context-attributes
+load @term/bind/browser/dom/web-gl-context-attributes
   find web-gl-context-attributes
 
-load @term/bind/code/browser/dom/web-gl-framebuffer
+load @term/bind/browser/dom/web-gl-framebuffer
   find web-gl-framebuffer
 
-load @term/bind/code/browser/dom/web-gl-program
+load @term/bind/browser/dom/web-gl-program
   find web-gl-program
 
-load @term/bind/code/browser/dom/web-gl-renderbuffer
+load @term/bind/browser/dom/web-gl-renderbuffer
   find web-gl-renderbuffer
 
-load @term/bind/code/browser/dom/web-gl-shader
+load @term/bind/browser/dom/web-gl-shader
   find web-gl-shader
 
-load @term/bind/code/browser/dom/web-gl-shader-precision-format
+load @term/bind/browser/dom/web-gl-shader-precision-format
   find web-gl-shader-precision-format
 
-load @term/bind/code/browser/dom/web-gl-texture
+load @term/bind/browser/dom/web-gl-texture
   find web-gl-texture
 
-load @term/bind/code/browser/dom/web-gl-uniform-location
+load @term/bind/browser/dom/web-gl-uniform-location
   find web-gl-uniform-location
 
-load @term/bind/code/browser/dom/webgl-color-buffer-float
+load @term/bind/browser/dom/webgl-color-buffer-float
   find webgl-color-buffer-float
 
-load @term/bind/code/browser/dom/webgl-compressed-texture-astc
+load @term/bind/browser/dom/webgl-compressed-texture-astc
   find webgl-compressed-texture-astc
 
-load @term/bind/code/browser/dom/webgl-compressed-texture-etc
+load @term/bind/browser/dom/webgl-compressed-texture-etc
   find webgl-compressed-texture-etc
 
-load @term/bind/code/browser/dom/webgl-compressed-texture-etc1
+load @term/bind/browser/dom/webgl-compressed-texture-etc1
   find webgl-compressed-texture-etc1
 
-load @term/bind/code/browser/dom/webgl-compressed-texture-pvrtc
+load @term/bind/browser/dom/webgl-compressed-texture-pvrtc
   find webgl-compressed-texture-pvrtc
 
-load @term/bind/code/browser/dom/webgl-compressed-texture-s3tc
+load @term/bind/browser/dom/webgl-compressed-texture-s3tc
   find webgl-compressed-texture-s3tc
 
-load @term/bind/code/browser/dom/webgl-compressed-texture-s3tc-srgb
+load @term/bind/browser/dom/webgl-compressed-texture-s3tc-srgb
   find webgl-compressed-texture-s3tc-srgb
 
-load @term/bind/code/browser/dom/webgl-debug-renderer-info
+load @term/bind/browser/dom/webgl-debug-renderer-info
   find webgl-debug-renderer-info
 
-load @term/bind/code/browser/dom/webgl-debug-shaders
+load @term/bind/browser/dom/webgl-debug-shaders
   find webgl-debug-shaders
 
-load @term/bind/code/browser/dom/webgl-depth-texture
+load @term/bind/browser/dom/webgl-depth-texture
   find webgl-depth-texture
 
-load @term/bind/code/browser/dom/webgl-draw-buffers
+load @term/bind/browser/dom/webgl-draw-buffers
   find webgl-draw-buffers
 
-load @term/bind/code/browser/dom/webgl-lose-context
+load @term/bind/browser/dom/webgl-lose-context
   find webgl-lose-context
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form web-gl-rendering-context-base, name <WebGLRenderingContextBase>

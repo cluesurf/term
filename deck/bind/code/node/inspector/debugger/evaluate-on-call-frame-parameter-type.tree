@@ -2,12 +2,12 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-string
   find native-undefined
 
-load @term/bind/code/node/inspector/debugger
+load @term/bind/node/inspector/debugger
   find call-frame-id
 
 form evaluate-on-call-frame-parameter-type, name <EvaluateOnCallFrameParameterType>

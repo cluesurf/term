@@ -1,14 +1,14 @@
 
-load @term/bind/code/javascript/es2015/iterable/iterable
+load @term/bind/javascript/es2015/iterable/iterable
   find iterable
 
-load @term/bind/code/javascript/es2015/iterable/promise
+load @term/bind/javascript/es2015/iterable/promise
   find promise
 
-load @term/bind/code/javascript/es5/promise-like
+load @term/bind/javascript/es5/promise-like
   find promise-like
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
 load @term/bind/code/javascript/u

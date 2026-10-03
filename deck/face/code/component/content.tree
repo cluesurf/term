@@ -12,10 +12,10 @@
 # Surface-level note: theme-<role>-1 utilities resolve to the concrete zinc utilities defined in look.tree (see the
 # lookClasses for this port). Dark-mode variants are emitted by those utility classes themselves.
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
   find make-text
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 

@@ -1,48 +1,50 @@
-load @term/mill/code/code/proof/mint
+load @term/mill/code/proof/mint
   find hold-claim
 
-load @term/mill/code/code/call/mint
+load @term/mill/code/call/mint
   find call
+  find tick
 
-load @term/mill/code/code/fork/mint
+load @term/mill/code/fork/mint
   find fork
+  find sift
 
-load @term/mill/code/code/form/case/mint
+load @term/mill/code/form/case/mint
   find free
 
-load @term/mill/code/code/fuse/mint
+load @term/mill/code/fuse/mint
   find fuse
 
-load @term/mill/code/code/halt/mint
+load @term/mill/code/halt/mint
   find halt
 
-load @term/mill/code/code/make/mint
+load @term/mill/code/make/mint
   find make
 
 load @term/mill/code/code/note/mint
   find note
 
-load @term/mill/code/code/read/mint
+load @term/mill/code/read/mint
   find read
 
-load @term/mill/code/code/rule/hold/mint
+load @term/mill/code/rule/hold/mint
   find rest
 
-load @term/mill/code/code/save/mint
+load @term/mill/code/save/mint
   find save
 
-load @term/mill/code/code/seed/mint
+load @term/mill/code/seed/mint
   find seed
 
-load @term/mill/code/code/seed/seed/mint
+load @term/mill/code/seed/seed/mint
   find host
 
-load @term/mill/code/code/send/mint
+load @term/mill/code/send/mint
   find send
   find back
   find send-kind
 
-load @term/mill/code/code/walk/mint
+load @term/mill/code/walk/mint
   find walk
 
 
@@ -66,6 +68,8 @@ mint flow
     site send-kind
   case fork
     site fork
+  case sift
+    site sift
   case halt
     site halt
   case bust

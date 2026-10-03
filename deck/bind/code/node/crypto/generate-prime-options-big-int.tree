@@ -1,5 +1,5 @@
 
-load @term/bind/code/node/crypto
+load @term/bind/node/crypto
   find generate-prime-options
 
 form generate-prime-options-big-int, name <GeneratePrimeOptionsBigInt>

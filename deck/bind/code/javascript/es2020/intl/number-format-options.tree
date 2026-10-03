@@ -2,7 +2,7 @@
 load @term/bind/code/javascript/es5/number-format-options
   find number-format-options
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form number-format-options, name <NumberFormatOptions>

@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/message-port-event-map
+load @term/bind/browser/dom/message-port-event-map
   find message-port-event-map
 
-load @term/bind/code/browser/webworker/message-event
+load @term/bind/browser/webworker/message-event
   find message-event
 
 form message-port-event-map, name <MessagePortEventMap>

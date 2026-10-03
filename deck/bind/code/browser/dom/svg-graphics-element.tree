@@ -1,47 +1,47 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/dom-matrix
+load @term/bind/browser/dom/dom-matrix
   find dom-matrix
 
-load @term/bind/code/browser/dom/dom-rect
+load @term/bind/browser/dom/dom-rect
   find dom-rect
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/svg-animated-transform-list
+load @term/bind/browser/dom/svg-animated-transform-list
   find svg-animated-transform-list
 
-load @term/bind/code/browser/dom/svg-bounding-box-options
+load @term/bind/browser/dom/svg-bounding-box-options
   find svg-bounding-box-options
 
-load @term/bind/code/browser/dom/svg-element
+load @term/bind/browser/dom/svg-element
   find svg-element
 
-load @term/bind/code/browser/dom/svg-element-event-map
+load @term/bind/browser/dom/svg-element-event-map
   find svg-element-event-map
 
-load @term/bind/code/browser/dom/svg-tests
+load @term/bind/browser/dom/svg-tests
   find svg-tests
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form svg-graphics-element, name <SVGGraphicsElement>

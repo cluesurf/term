@@ -5,13 +5,13 @@
 # would need its own form holding the array, which is `list/deque.tree`'s territory.
 note draft
 
-load @term/base/code/hold/text/code/utf-8
+load @term/base/hold/text/code/utf-8
   find text-utf-8
 
-load @term/base/code/math
+load @term/base/math
   find maximum
 
-load @term/base/code/void
+load @term/base/void
   find void
 
 task make

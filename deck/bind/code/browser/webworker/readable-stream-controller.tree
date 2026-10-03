@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/webworker/readable-stream-default-controller
+load @term/bind/browser/webworker/readable-stream-default-controller
   find readable-stream-default-controller
 
 form readable-stream-controller, name <ReadableStreamController>

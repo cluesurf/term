@@ -295,22 +295,15 @@ describe('bumpCode', () => {
     expect(bumped).toEqual({ major: 1, minor: 3, patch: 0 })
   })
 
-  it('bumps patch to next even number', () => {
+  it('bumps an even patch by one', () => {
     const code = { major: 1, minor: 0, patch: 2 }
     const bumped = bumpCode({ code, level: 3 })
-    expect(bumped.patch % 2).toBe(0)
-    expect(bumped.patch).toBeGreaterThan(2)
+    expect(bumped).toEqual({ major: 1, minor: 0, patch: 3 })
   })
 
-  it('bumps odd patch to next even', () => {
+  it('bumps an odd patch by one', () => {
     const code = { major: 1, minor: 0, patch: 3 }
     const bumped = bumpCode({ code, level: 3 })
     expect(bumped).toEqual({ major: 1, minor: 0, patch: 4 })
-  })
-
-  it('bumps even patch to next even', () => {
-    const code = { major: 1, minor: 0, patch: 4 }
-    const bumped = bumpCode({ code, level: 3 })
-    expect(bumped).toEqual({ major: 1, minor: 0, patch: 6 })
   })
 })

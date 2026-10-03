@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/performance-observer
+load @term/bind/browser/dom/performance-observer
   find performance-observer
 
-load @term/bind/code/browser/webworker/performance-entry-list
+load @term/bind/browser/webworker/performance-entry-list
   find performance-entry-list
 
-load @term/bind/code/browser/webworker/performance-observer-init
+load @term/bind/browser/webworker/performance-observer-init
   find performance-observer-init
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form performance-observer, name <PerformanceObserver>

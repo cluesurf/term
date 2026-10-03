@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/abstract-worker-event-map
+load @term/bind/browser/dom/abstract-worker-event-map
   find abstract-worker-event-map
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
 form service-worker-event-map, name <ServiceWorkerEventMap>

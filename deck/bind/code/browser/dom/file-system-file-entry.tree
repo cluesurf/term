@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/error-callback
+load @term/bind/browser/dom/error-callback
   find error-callback
 
-load @term/bind/code/browser/dom/file-callback
+load @term/bind/browser/dom/file-callback
   find file-callback
 
-load @term/bind/code/browser/dom/file-system-entry
+load @term/bind/browser/dom/file-system-entry
   find file-system-entry
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form file-system-file-entry, name <FileSystemFileEntry>

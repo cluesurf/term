@@ -2,10 +2,10 @@
 
 note stable
 
-load @term/base/code/native/{platform}/network/websocket
+load @term/base/native/{platform}/network/websocket
   find websocket-connect
 
-load @term/base/code/native/{platform}/network/websocket/socket
+load @term/base/native/{platform}/network/websocket/socket
   find websocket-socket-send
   find websocket-socket-receive
   find websocket-socket-close
@@ -29,7 +29,6 @@ form socket
     call websocket-socket-send
       read self
       read data
-      wait true
 
   # wait for and return the next message from the peer
   task receive
@@ -39,7 +38,6 @@ form socket
     send back
       call websocket-socket-receive
         read self
-        wait true
 
   # close the connection
   task close
@@ -48,7 +46,6 @@ form socket
     like void
     call websocket-socket-close
       read self
-      wait true
 
 # open a WebSocket connection to `url` (ws:// or wss://)
 task connect
@@ -58,4 +55,3 @@ task connect
   send back
     call websocket-connect
       read url
-      wait true

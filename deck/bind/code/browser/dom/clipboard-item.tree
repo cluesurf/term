@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/blob
+load @term/bind/browser/dom/blob
   find blob
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/es5/readonly-array
+load @term/bind/javascript/es5/readonly-array
   find readonly-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form clipboard-item, name <ClipboardItem>

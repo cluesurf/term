@@ -5,10 +5,10 @@
 #   src   -> the audio URL (an uploaded artifact)
 #   label -> the caption (e.g. the word being pronounced)
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
   find make-text
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 

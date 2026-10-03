@@ -1,41 +1,41 @@
 
-load @term/bind/code/browser/dom/request-init
+load @term/bind/browser/dom/request-init
   find request-init
 
-load @term/bind/code/browser/webworker/abort-signal
+load @term/bind/browser/webworker/abort-signal
   find abort-signal
 
-load @term/bind/code/browser/webworker/body-init
+load @term/bind/browser/webworker/body-init
   find body-init
 
-load @term/bind/code/browser/webworker/headers-init
+load @term/bind/browser/webworker/headers-init
   find headers-init
 
-load @term/bind/code/browser/webworker/referrer-policy
+load @term/bind/browser/webworker/referrer-policy
   find referrer-policy
 
-load @term/bind/code/browser/webworker/request-cache
+load @term/bind/browser/webworker/request-cache
   find request-cache
 
-load @term/bind/code/browser/webworker/request-credentials
+load @term/bind/browser/webworker/request-credentials
   find request-credentials
 
-load @term/bind/code/browser/webworker/request-mode
+load @term/bind/browser/webworker/request-mode
   find request-mode
 
-load @term/bind/code/browser/webworker/request-redirect
+load @term/bind/browser/webworker/request-redirect
   find request-redirect
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form request-init, name <RequestInit>

@@ -1,23 +1,23 @@
 
-load @term/bind/code/browser/dom/css-style-sheet
+load @term/bind/browser/dom/css-style-sheet
   find css-style-sheet
 
-load @term/bind/code/browser/dom/element
+load @term/bind/browser/dom/element
   find element
 
-load @term/bind/code/browser/dom/media-list
+load @term/bind/browser/dom/media-list
   find media-list
 
-load @term/bind/code/browser/dom/processing-instruction
+load @term/bind/browser/dom/processing-instruction
   find processing-instruction
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form style-sheet, name <StyleSheet>

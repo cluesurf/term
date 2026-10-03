@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/blob-event
+load @term/bind/browser/dom/blob-event
   find blob-event
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
 form media-recorder-event-map, name <MediaRecorderEventMap>

@@ -1,7 +1,7 @@
-load @term/mill/code/code/head/mint
+load @term/mill/code/head/mint
   find head
 
-load @term/mill/code/code/seed/seed/mint
+load @term/mill/code/seed/seed/mint
   find host
 
 mint tune

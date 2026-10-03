@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/file-system-directory-entry
+load @term/bind/browser/dom/file-system-directory-entry
   find file-system-directory-entry
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form file-system, name <FileSystem>

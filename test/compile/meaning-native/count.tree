@@ -1,14 +1,14 @@
-load @term/base/code/count
+load @term/base/count
   find count-each
   find tally
   find is-every-within
   find make-filled
   find read-or
 
-load @term/base/code/list
+load @term/base/list
   find list
 
-load @term/base/code/hash
+load @term/base/hash
   find hash
 
 task numbers

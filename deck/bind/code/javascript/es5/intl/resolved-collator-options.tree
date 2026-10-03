@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form resolved-collator-options, name <ResolvedCollatorOptions>

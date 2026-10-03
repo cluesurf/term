@@ -129,9 +129,17 @@ export function parseManifestMill(input: {
     name = name.slice(slash + 1)
   }
 
-  const code = parseCode(
-    siteWord(first(fields.get('code')), 'text') ?? '0.0.0',
-  )
+  // `mark <1.4.2>` is the version. `code <1.4.2>` is its old spelling, read the same (a text literal is a version
+  // and a path is a folder, so the two `code`s cannot be confused). `code ./src` is the code root, and `bear ./src`
+  // its old spelling
+  const codeCaptures = fields.get('code') ?? []
+  const versionText =
+    siteWord(first(fields.get('mark')), 'text') ??
+    codeCaptures.map(c => siteWord(c, 'text')).find(v => v !== undefined)
+  const mark = parseCode(versionText ?? '0.0.0')
+  const codeRoot =
+    codeCaptures.map(c => siteWord(c, 'path')).find(v => v !== undefined) ??
+    siteWord(first(fields.get('bear')), 'path')
   const head = siteWord(first(fields.get('head')), 'text')
 
   const mind = matches(fields.get('mind')).map(
@@ -174,14 +182,15 @@ export function parseManifestMill(input: {
       return undefined
     }
 
-    const hold = word(first(m.get('code')))
+    // `mark <0.0.x>`, or the old `code <0.0.x>`
+    const hold = word(first(m.get('mark'))) ?? word(first(m.get('code')))
     const have = word(first(m.get('have')))
     const parsedHave =
       have === undefined ? undefined : Number.parseInt(have, 10)
 
     return {
       name: linkName,
-      code: hold ? parseCodeHold(hold) : { form: 'wild', major: 0 },
+      mark: hold ? parseCodeHold(hold) : { form: 'wild', major: 0 },
       have:
         parsedHave !== undefined && Number.isFinite(parsedHave)
           ? parsedHave
@@ -252,7 +261,6 @@ export function parseManifestMill(input: {
     return entry
   })
 
-  const markCapture = first(fields.get('mark'))
   const hideCapture = first(fields.get('hide'))
   const siteCapture = first(fields.get('site'))
   const viewCapture = first(fields.get('view'))
@@ -260,7 +268,8 @@ export function parseManifestMill(input: {
   return {
     host,
     name,
-    code,
+    mark,
+    code: codeRoot,
     head,
     mind: mind.length > 0 ? mind : undefined,
     lock,
@@ -285,11 +294,9 @@ export function parseManifestMill(input: {
     base: base.length > 0 ? base : undefined,
     // the fields this reader used to walk past. Anything read here has to be written back in writeManifest, or
     // the round trip DELETES it from the file. See the note on DeckManifest, and deck/deck/test/round-trip.ts.
-    bear: dir('bear'),
     boot: dir('boot'),
     tool: dir('tool'),
     text: siteWord(first(fields.get('text')), 'text'),
-    mark: siteWord(markCapture, 'text') ?? siteWord(markCapture, 'term'),
     make: make.length > 0 ? make : undefined,
     cite: cite.length > 0 ? cite : undefined,
   }

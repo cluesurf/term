@@ -4,14 +4,14 @@ load @term/bind
   find form
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-null
   find native-string
   find native-undefined
   find native-void
   find promise
 
-load @term/bind/code/node/fs
+load @term/bind/node/fs
   find make-directory-options
   find mode
   find path-like

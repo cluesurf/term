@@ -1,14 +1,14 @@
 
-load @term/base/code/view-file
+load @term/base/view-file
   find view-find
 
-load @term/mill/code/view/meet/mint
+load @term/mill/view/meet/mint
   find view-meet
 
-load @term/mill/code/view/hold/mint
+load @term/mill/view/hold/mint
   find view-hold
 
-load @term/mill/code/view/sort/mint
+load @term/mill/view/sort/mint
   find view-sort
 
 mint view-find, like view-find

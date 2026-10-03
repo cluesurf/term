@@ -5,10 +5,10 @@
 dock load
   load <global:process>, name process
 
-load @term/base/code/process
+load @term/base/process
   find child
 
-load @term/base/code/process/run
+load @term/base/process/run
   find run-result
 
 task run

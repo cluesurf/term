@@ -1,7 +1,7 @@
-load @term/call/code/work/home
+load @term/call/work/home
   find root, name project-root
 
-load @term/call/code/work/tint
+load @term/call/work/tint
   find log-good
   find log-fail
   find log-step
@@ -12,17 +12,17 @@ load @term/call/code/work/tint
   find mark
   find format-error
 
-# `term move code [1|2|3]` -- bump the package version.
+# `term move mark [1|2|3]` -- bump the package version (`code` is the target's old spelling).
 #
 # The level names which part moves: 3 the patch, 2 the minor, 1 the major, and 3 when none is given. It is the
 # ONE target the verb takes, so anything else is a mistake worth naming rather than ignoring.
 #
 # Ported from deck/call/code/move.ts (cli-in-term-0004).
 
-load @term/base/code/path
+load @term/base/path
   find join
 
-load @term/base/code/file
+load @term/base/file
   find write, name write-file
 
 dock load
@@ -39,7 +39,7 @@ form bump-ask
 form write-ask
   link manifest, like unknown
 
-# The level a `term move code <n>` names. Anything but `1` or `2` is the patch, which is what an omitted level
+# The level a `term move mark <n>` names. Anything but `1` or `2` is the patch, which is what an omitted level
 # means too, so a typo bumps the smallest part rather than failing.
 task parse-level
   take level, like text
@@ -65,11 +65,15 @@ task bump-code
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
+  # `mark` is the manifest's version field; `code` its old spelling, still taken
   fork test
     is-unequal target, <code>
     hold
-      log-fail <Unknown move target: {{target}}. Use: term move code [1|2|3]>
-      node-process/exit code 1
+      fork test
+        is-unequal target, <mark>
+        hold
+          log-fail <Unknown move target: {{target}}. Use: term move mark [1|2|3]>
+          node-process/exit code 1
   save chosen, parse-level level
   log-step <Bumping version...>
 
@@ -78,15 +82,14 @@ task bump-code
       call deck-tree/loadManifest
         make manifest-ask, bind dir, read root
         wait true
-    save old-code, call deck-tree/showCode, read manifest/code
+    save old-code, call deck-tree/showCode, read manifest/mark
     save new-code
       call deck-tree/bumpCode
-        make bump-ask, bind(code, read manifest/code), bind level, read chosen
+        make bump-ask, bind(code, read manifest/mark), bind level, read chosen
     save shown, call deck-tree/showCode, read new-code
     call write-file
       call join, read(root), text <deck.tree>
       call deck-tree/writeManifest, make write-ask, bind manifest, read manifest
-      wait true
     call log-good, text <Version bumped: {{old-code}} -\> {{shown}}>
   halt take
     take error

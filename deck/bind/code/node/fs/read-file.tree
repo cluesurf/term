@@ -4,17 +4,17 @@ load @term/bind
   find form
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-null
   find native-string
   find native-undefined
   find promise
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
   find buffer-encoding
 
-load @term/bind/code/node/fs
+load @term/bind/node/fs
   find object-encoding-options
   find path-or-file-descriptor
 

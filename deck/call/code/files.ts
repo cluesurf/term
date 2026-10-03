@@ -6,8 +6,9 @@ import path from 'path'
 // `deck/zone/link/@term/base/...` entries in `term form deck --check` were @term/base's own files reported twice.
 const SKIP = new Set(['node_modules', 'host', 'tail', 'link', '.git'])
 
-// does this file declare itself unfinished? `note draft` on its own line near the top. Read cheaply, only the head
-// of the file, exactly as the build walk reads it (deck/call/code/make.ts).
+// does this file declare itself unfinished? `mark draft` on its own line near the top (`note draft`, the old
+// spelling, still counts). Read cheaply, only the head of the file, exactly as the build walk reads it
+// (deck/call/code/make.ts).
 async function isDraft(file: string): Promise<boolean> {
   try {
     const handle = await fs.open(file)
@@ -15,7 +16,7 @@ async function isDraft(file: string): Promise<boolean> {
     try {
       const { buffer, bytesRead } = await handle.read(Buffer.alloc(2000), 0, 2000, 0)
 
-      return /^note draft\s*$/m.test(buffer.subarray(0, bytesRead).toString('utf8'))
+      return /^(mark|note) draft\s*$/m.test(buffer.subarray(0, bytesRead).toString('utf8'))
     } finally {
       await handle.close()
     }
@@ -27,7 +28,7 @@ async function isDraft(file: string): Promise<boolean> {
 // Collect `.tree` files from the given paths. A path may be a file (taken as-is) or a directory (walked
 // recursively, skipping build and dependency folders).  With no paths, walk the root.
 //
-// A SHELVED FILE IS SKIPPED WHEN WALKING, the same two ways the build shelves one: `note draft` on its own line
+// A SHELVED FILE IS SKIPPED WHEN WALKING, the same two ways the build shelves one: `mark draft` on its own line
 // near the top of a file, and a `draft.tree` in a directory, which shelves that directory and everything under
 // it. Without this, `term form deck --check` could never reach zero — it reported 33 files it could not parse,
 // and 32 of them were deliberately shelved drafts, several of them not written in Term at all. A check that

@@ -23,6 +23,7 @@ import * as net from 'node:net'
 import * as http from 'node:http'
 import { nativeFlags } from './native-flags'
 import { parse } from '@term/make/code/parser/tree'
+import { stdlibResolver } from '@term/make/code/resolve'
 import { mill } from '@term/make/code/compile/mill'
 import { expandTemplates } from '@term/make/code/compile/template'
 import { resolve as resolveNames } from '@term/make/code/check/resolve'
@@ -49,20 +50,8 @@ const baseTree = join(process.cwd(), 'deck', 'base')
 // `@term/base/...`. Both spell the same package, so the resolver accepts either prefix.
 const STDLIB_PREFIX = /^@term\/base\//
 
-const stdlib = (path: string): Source | undefined => {
-  if (!STDLIB_PREFIX.test(path)) {
-    return undefined
-  }
-
-  const file = join(
-    baseTree,
-    `${path.replace(STDLIB_PREFIX, '')}.tree`,
-  )
-
-  return existsSync(file)
-    ? { file, text: readFileSync(file, 'utf8') }
-    : undefined
-}
+// the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+const stdlib = stdlibResolver()!
 
 const readRuntime = (path: string): string | undefined => {
   if (existsSync(path)) {

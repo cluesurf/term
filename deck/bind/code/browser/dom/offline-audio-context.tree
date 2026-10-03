@@ -1,44 +1,44 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/audio-buffer
+load @term/bind/browser/dom/audio-buffer
   find audio-buffer
 
-load @term/bind/code/browser/dom/base-audio-context
+load @term/bind/browser/dom/base-audio-context
   find base-audio-context
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/offline-audio-completion-event
+load @term/bind/browser/dom/offline-audio-completion-event
   find offline-audio-completion-event
 
-load @term/bind/code/browser/dom/offline-audio-context-event-map
+load @term/bind/browser/dom/offline-audio-context-event-map
   find offline-audio-context-event-map
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form offline-audio-context, name <OfflineAudioContext>

@@ -1,47 +1,47 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/html-collection-of
+load @term/bind/browser/dom/html-collection-of
   find html-collection-of
 
-load @term/bind/code/browser/dom/html-element
+load @term/bind/browser/dom/html-element
   find html-element
 
-load @term/bind/code/browser/dom/html-element-event-map
+load @term/bind/browser/dom/html-element-event-map
   find html-element-event-map
 
-load @term/bind/code/browser/dom/html-table-caption-element
+load @term/bind/browser/dom/html-table-caption-element
   find html-table-caption-element
 
-load @term/bind/code/browser/dom/html-table-row-element
+load @term/bind/browser/dom/html-table-row-element
   find html-table-row-element
 
-load @term/bind/code/browser/dom/html-table-section-element
+load @term/bind/browser/dom/html-table-section-element
   find html-table-section-element
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form html-table-element, name <HTMLTableElement>

@@ -7,7 +7,7 @@
 
 note unstable
 
-load @term/base/code/native/{platform}/file/asynchronous/handle
+load @term/base/native/{platform}/file/asynchronous/handle
   find handle-open
   find handle-close
   find handle-read
@@ -55,7 +55,6 @@ task open
       read create
       read append
       read clear
-      wait true
 
 task close
   note async
@@ -63,7 +62,6 @@ task close
   like void
   call handle-close
     read file
-    wait true
 
 # the next `size` bytes from the cursor, as text. The cursor moves by what was read.
 task read
@@ -75,7 +73,6 @@ task read
     call handle-read
       read file
       read size
-      wait true
 
 # write at the cursor, and answer how many bytes went in
 task write
@@ -87,7 +84,6 @@ task write
     call handle-write
       read file
       read data
-      wait true
 
 # move the cursor. `frame` is <start> (absolute), <relative> (from where the cursor is) or <end> (back from the
 # end), the same three SEEK_SET / SEEK_CUR / SEEK_END mean.
@@ -104,7 +100,6 @@ task seek
     read file
     read offset
     read frame
-    wait true
 
 task flush
   note async
@@ -112,7 +107,6 @@ task flush
   like void
   call handle-flush
     read file
-    wait true
 
 # cut the file to `size` bytes, 0 for empty
 task clear
@@ -126,4 +120,3 @@ task clear
   call handle-clear
     read file
     read size
-    wait true

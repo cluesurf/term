@@ -7,14 +7,14 @@ bear @term/bind/code/javascript/node/buffer/with-implicit-coercion
 bear @term/bind/code/javascript/node/buffer/buffer-constructor
 bear @term/bind/code/javascript/node/buffer/buffer
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find blob
   find native-number
   find native-string
   find native-undefined
   find uint8-array
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
   find buffer-constructor
   find transcode-encoding

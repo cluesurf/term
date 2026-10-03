@@ -1,4 +1,4 @@
-load @term/mill/code/code/seed/mint
+load @term/mill/code/seed/mint
   find seed
 
 mint fall

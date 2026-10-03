@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { nativeFlags } from './native-flags'
 import { admit, cache, REPLAY_TASK } from '@term/test/code/twin-diff'
 import { compile } from '@term/make/code/compile/compile'
+import { stdlibResolver } from '@term/make/code/resolve'
 import type { Source } from '@term/make/code/compile/load'
 import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
 import { emitRust } from '@term/make/code/compile/rust'
@@ -32,11 +33,8 @@ function ok(name: string, holds: boolean, detail = ''): void {
 
 const have = (tool: string): boolean => spawnSync('which', [tool]).status === 0
 const base = join(import.meta.dirname, '../../deck/base')
-const stdlib = (path: string): Source | undefined => {
-  const file = join(base, `${path.replace(/^@term\/base\//, '')}.tree`)
-
-  return /^@term\/base\//.test(path) && existsSync(file) ? { file, text: readFileSync(file, 'utf8') } : undefined
-}
+// the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+const stdlib = stdlibResolver()!
 const readRuntime = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, 'utf8') : undefined)
 const dir = mkdtempSync(join(tmpdir(), 'twin-diff-'))
 const COUNT = readFileSync(join(base, 'code/count.tree'), 'utf8')

@@ -41,6 +41,19 @@ task listen-pop
   take handler
     like task
 
+# the server renders one request at one path and keeps no history: the navigation contract's mirror tasks are no-ops
+# (native-navigation-0001)
+task push-path
+  take path, like text
+  save skip, code 0
+
+task replace-path
+  take path, like text
+  save skip, code 0
+
+task go-back
+  save skip, code 0
+
 # wrap body HTML in the document shell (the SSR response), via the runtime shim. The shim fn is named `document-shell`
 # so it does not collide with this task's name when the shim is prepended into the bundle.
 task page-shell

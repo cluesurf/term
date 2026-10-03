@@ -1,8 +1,8 @@
 
-load @term/base/code/view-file
+load @term/base/view-file
   find view-sort
 
-load @term/mill/code/view/seed/mint
+load @term/mill/view/seed/mint
   find view-seed-read
 
 mint view-sort, like view-sort

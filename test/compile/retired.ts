@@ -3,17 +3,11 @@
 // WHY THIS EXISTS. Retired syntax was documented in CLAUDE.md and enforced in the mill, and nothing held the two
 // together, so neither side could be trusted. This is the join.
 //
-// `mark <annotation>` IS NOT RETIRED, whatever the docs say, and finding that out is why this file exists.
-// CLAUDE.md calls `mark async` dead syntax and says all metadata is `note`. The mill accepts `mark` alongside
-// `note`, and about thirty files rely on it — most of them `link <field>, mark private` on a record field, plus
-// `mark async` in the stdlib's async tasks and several fixtures here. Refusing it was tried on 2026-08-31 and
-// reverted the same day: the measurement behind it was a whole-line grep that matched none of the real uses,
-// which are trailing modifiers, and the change was inconsistent besides — a field's `mark private` goes through
-// another path and kept working, so it would have been legal on a field and refused on a task.
-//
-// The doc is aspirational, not descriptive. Making it true is a migration across those files, and one spelling
-// that works everywhere beats two that disagree by position. Both spellings are asserted below so that whichever
-// way that decision goes, it is a deliberate edit here rather than a drift.
+// `mark <annotation>` IS NOT RETIRED, and finding that out is why this file exists. Refusing it was tried on
+// 2026-08-31 and reverted the same day. The decision went the other way on 2026-10-02: metadata IS `mark`
+// (`mark async`, `mark unsafe`, ...), and `note <word>` is the old spelling, still read and warned as
+// `note-metadata` (note/term/plan/await-by-default-and-mark-metadata.md, test/compile/await-mark.ts). Both
+// spellings are asserted below so a change to either is a deliberate edit here rather than a drift.
 //
 // A RETIREMENT NAMES ITS REPLACEMENT. "the name `wave` is not defined" is what a retired literal says, which
 // tells a reader nothing about what to write instead. That is recorded rather than papered over.

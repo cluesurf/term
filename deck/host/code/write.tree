@@ -1,23 +1,23 @@
 # Data to text: the canonical long form (`write`) and the compact one-line-per-entry form (`pack`). Both are what
 # the compiler's writer produces for the same value, byte for byte. See note/term/host/02-compact.md.
 
-load @term/base/code/boolean
+load @term/base/boolean
   find not
 
-load @term/base/code/list
+load @term/base/list
   find push
   find size
   find get
   find join
 
-load @term/base/code/text
+load @term/base/text
   find char-at
   find replace-all
 
-load @term/base/code/text/string
+load @term/base/text/string
   find concat
 
-load @term/base/code/json
+load @term/base/json
   find stringify
   find from-number
 
@@ -46,7 +46,7 @@ task write
       take site, name anchor
       call push
         read lines
-        call concat(text <tree >, read anchor/name)
+        call concat(text(<tree >), read anchor/name)
       fork test
         hook test
           call is-equal
@@ -150,7 +150,7 @@ task key-text
     hook hold
       send back, read name
   send back
-    call concat(text <\<>, call concat(call escape(read name), text <\>>))
+    call concat(text(<\<>), call(concat(call(escape(read name)), text <\>>)))
 
 task is-key
   take name, like text
@@ -242,7 +242,7 @@ task is-key
   send back
     call not(read last-dash)
 
-load @term/base/code/text
+load @term/base/text
   find char-code-at
 
 task write-entries
@@ -364,7 +364,7 @@ task entry-line
         text <host >
         call concat
           read key
-          call concat(text <, >, call scalar(read value))
+          call concat(text(<, >), call(scalar(read value)))
 
 # a run of scalars goes on one line, comma separated, wrapped at the width
 task write-items
@@ -381,7 +381,7 @@ task write-items
   fork test
     hook test
       call and
-        call is-above(call size(read list), code 0)
+        call is-above(call(size(read list)), code 0)
         call all-scalar(read list)
     hook hold
       save line, read prefix
@@ -552,7 +552,7 @@ task scalar
     case text
       link value
       send back
-        call concat(text <\<>, call concat(call escape(read value), text <\>>))
+        call concat(text(<\<>), call(concat(call(escape(read value)), text <\>>)))
     case number
       link value
       send back

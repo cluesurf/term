@@ -1,0 +1,186 @@
+load @term/base/list
+  find list
+  find push
+  find get
+
+# records in a list written back in place (compile/place.ts): on TypeScript and Kotlin the changed fields of the
+# object already in the slot are assigned, where the value semantics say a new record goes in. Each task below either
+# takes that path or must not, and the answers are the value semantics' on every backend
+
+form point
+  link a, like number
+  link b, like number
+
+# a record also kept in a local after it enters a list: two places hold one object, so the form is not slot-private
+# and every write of it stays a `make`
+form pin
+  link a, like number
+
+task points
+  take n, like number
+  like list, like point
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      call push
+        read out
+        make point
+          bind a
+            call add
+              read i
+              code 1
+          bind b
+            call multiply
+              call add
+                read i
+                code 1
+              code 10
+  send back, read out
+
+# the pair loop: `j` starts at `i + 1` and only counts up, so `q` never holds the record `p` holds, and both writes
+# are made in place. The second reads `p/b`, a field the first did not change
+task pairs
+  take ps, like list, like point
+  take n, like number
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      walk size
+        bind base
+          call add
+            read i
+            code 1
+        bind head, read n
+        hook next
+          take site, name j
+          save p
+            call get
+              read ps
+              read i
+          save q
+            call get
+              read ps
+              read j
+          save ps/{i}
+            make point
+              bind a
+                call add
+                  read p/a
+                  read q/a
+              bind b, read p/b
+          save ps/{j}
+            make point
+              bind a, read q/a
+              bind b
+                call add
+                  read q/b
+                  read p/b
+
+# the old value of a changed field read after the write: the write stays a `make`, and `p/a` is the value before it
+task keep-old
+  take ps, like list, like point
+  like number
+  save p
+    call get
+      read ps
+      code 0
+  save ps/0
+    make point
+      bind a
+        call add
+          read p/a
+          code 100
+      bind b, read p/b
+  send back, read p/a
+
+# two indices nothing proves apart: called with i = j, `q` holds the record the first write changes, and must still
+# read the value from before it
+task twice
+  take ps, like list, like point
+  take i, like number
+  take j, like number
+  save p
+    call get
+      read ps
+      read i
+  save q
+    call get
+      read ps
+      read j
+  save ps/{i}
+    make point
+      bind a
+        call add
+          read p/a
+          code 1
+      bind b, read p/b
+  save ps/{j}
+    make point
+      bind a, read q/a
+      bind b
+        call add
+          read q/b
+          read q/a
+
+task pins
+  like number
+  save xs
+    make list
+  save one
+    make pin
+      bind a, code 1
+  call push
+    read xs
+    read one
+  save first
+    call get
+      read xs
+      code 0
+  save xs/0
+    make pin
+      bind a
+        call add
+          read first/a
+          code 10
+  send back, read one/a
+
+task compute
+  like text
+  save ps
+    call points
+      code 3
+  call pairs
+    read ps
+    code 3
+  save old
+    call keep-old
+      read ps
+  call twice
+    read ps
+    code 1
+    code 1
+  call twice
+    read ps
+    code 0
+    code 2
+  save p0
+    call get
+      read ps
+      code 0
+  save p1
+    call get
+      read ps
+      code 1
+  save p2
+    call get
+      read ps
+      code 2
+  save pin
+    call pins
+  send back, text <p0={p0/a},{p0/b} p1={p1/a},{p1/b} p2={p2/a},{p2/b} old={old} pin={pin}>

@@ -568,7 +568,8 @@ expect(
   codeActions.some(
     a =>
       a.title.includes('to-upper-case') &&
-      a.title.includes('@term/base/code/text'),
+      // the short form: a package path resolves in the code root first, so the action writes no `code/`
+      a.title.includes('@term/base/text'),
   ),
   true,
 )

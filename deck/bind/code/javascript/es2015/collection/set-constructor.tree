@@ -1,14 +1,14 @@
 
-load @term/bind/code/javascript/es2015/collection/set
+load @term/bind/javascript/es2015/collection/set
   find set
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
 form set-constructor, name <SetConstructor>

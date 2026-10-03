@@ -106,4 +106,31 @@ describe('buildVersion', () => {
       markOfPath('code/native/node/f.tree'),
     ])
   })
+
+  // Each of these failed `term host` for the whole package before it fell back to bytes: a blank `.tree`, a
+  // comments-only one (the parser's `empty .tree input`), and a lean `role.tree`, whose `mark lean` parses as a
+  // record identity and is then refused by the encoder for not being 32 characters.
+  it('ships a .tree the record grammar cannot hold as bytes, and keeps the bytes', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'version-bytes-'))
+    const shapes: Record<string, string> = {
+      'blank.tree': '',
+      'comments.tree': '# a placeholder, bound later\n# and nothing else\n',
+      'role.tree': 'role code\n  mark lean\n  take @/code/**\n',
+    }
+
+    for (const [name, text] of Object.entries(shapes)) {
+      writeFileSync(path.join(dir, name), text)
+    }
+
+    const built = await buildVersion({ dir, store })
+
+    for (const [name, text] of Object.entries(shapes)) {
+      const file = built.files.find(one => one.path === name)
+
+      expect(file?.record).toBeUndefined()
+      expect(file?.size).toBe(Buffer.byteLength(text))
+    }
+
+    expect(filesOfDataset(readDataset(built.root, built.treeChunks))).toEqual(built.files)
+  })
 })

@@ -30,13 +30,13 @@ test <text-start is BT>
 test <text-position interpolates the identity matrix around x and y>
   want hold
     call is-equal
-      call text-position(code 100, code 700)
+      call text-position(code(100), code 700)
       text <1 0 0 1 100 700 Tm>
 
 test <set-font interpolates the font id and size>
   want hold
     call is-equal
-      call set-font(text <F1>, code 12)
+      call set-font(text(<F1>), code 12)
       text </F1 12 Tf>
 
 test <render-text wraps the value in brackets before TJ>
@@ -48,25 +48,25 @@ test <render-text wraps the value in brackets before TJ>
 test <move-to is postfix, x y then m>
   want hold
     call is-equal
-      call move-to(code 10, code 20)
+      call move-to(code(10), code 20)
       text <10 20 m>
 
 test <line-to is postfix, x y then l>
   want hold
     call is-equal
-      call line-to(code 30, code 40)
+      call line-to(code(30), code 40)
       text <30 40 l>
 
 test <cubic-bezier-curve-to orders both control points before the endpoint>
   want hold
     call is-equal
-      call cubic-bezier-curve-to(code 1, code 2, code 3, code 4, code 5, code 6)
+      call cubic-bezier-curve-to(code(1), code(2), code(3), code(4), code(5), code 6)
       text <1 2 3 4 5 6 c>
 
 test <rectangle is x y width height re>
   want hold
     call is-equal
-      call rectangle(code 0, code 0, code 100, code 50)
+      call rectangle(code(0), code(0), code(100), code 50)
       text <0 0 100 50 re>
 
 test <fill is the single letter f>
@@ -90,25 +90,25 @@ test <set-line-width interpolates before w>
 test <set-dash brackets length and space, then phase then d>
   want hold
     call is-equal
-      call set-dash(code 4, code 2, code 0)
+      call set-dash(code(4), code(2), code 0)
       text <[4 2] 0 d>
 
 test <set-matrix orders all six components before cm>
   want hold
     call is-equal
-      call set-matrix(code 1, code 0, code 0, code 1, code 10, code 20)
+      call set-matrix(code(1), code(0), code(0), code(1), code(10), code 20)
       text <1 0 0 1 10 20 cm>
 
 test <set-color-fill-rgb is three components then scn>
   want hold
     call is-equal
-      call set-color-fill-rgb(code 1, code 0, code 0)
+      call set-color-fill-rgb(code(1), code(0), code 0)
       text <1 0 0 scn>
 
 test <set-color-fill-cmyk is four components then scn>
   want hold
     call is-equal
-      call set-color-fill-cmyk(code 0, code 1, code 1, code 0)
+      call set-color-fill-cmyk(code(0), code(1), code(1), code 0)
       text <0 1 1 0 scn>
 
 test <set-global-state slashes the id before gs>

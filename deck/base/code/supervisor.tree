@@ -18,16 +18,16 @@
 
 note unstable
 
-load @term/base/code/task
+load @term/base/task
   find spawn
 
-load @term/base/code/clock
+load @term/base/clock
   find now
 
-load @term/base/code/exception
+load @term/base/exception
   find overload
 
-load @term/base/code/native/{platform}/job
+load @term/base/native/{platform}/job
   find job-settle-any
   find job-state
   find job-cancel
@@ -108,7 +108,6 @@ task child-work
           send back
             call supervise
               read tree
-              wait true
 
 # whether a child that stopped in `state` (`done` or `failed`) is started again
 task restarts
@@ -169,7 +168,6 @@ task supervise
             read started/dock
       call job-settle-any
         read docks
-        wait true
       # one child per turn, by index: the condition bounds every list the turn reads, each the same length by
       # construction (one entry pushed per child), and is asked again each turn
       save at, code 0

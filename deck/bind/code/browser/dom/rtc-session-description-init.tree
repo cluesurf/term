@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/rtc-sdp-type
+load @term/bind/browser/dom/rtc-sdp-type
   find rtc-sdp-type
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form rtc-session-description-init, name <RTCSessionDescriptionInit>

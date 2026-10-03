@@ -2,13 +2,13 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/fs
+load @term/bind/node/fs
   find buffer-encoding-option
   find encoding-option
   find path-like

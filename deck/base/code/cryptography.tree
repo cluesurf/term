@@ -6,10 +6,10 @@ note draft
 
 # https://github.com/briansmith/ring
 
-load @term/base/code/result
+load @term/base/result
   find result
 
-load @term/base/code/kink
+load @term/base/kink
   find kink
 
 # A streaming hasher: feed it bytes, ask for the digest.

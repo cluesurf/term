@@ -1,22 +1,22 @@
-load @term/mill/code/code/bind/mint
+load @term/mill/code/bind/mint
   find bind
 
-load @term/mill/code/code/call/mint
+load @term/mill/code/call/mint
   find call
 
-load @term/mill/code/code/form/case/mint
+load @term/mill/code/form/case/mint
   find base
 
-load @term/mill/code/code/form/mint
+load @term/mill/code/form/mint
   find form
 
-load @term/mill/code/code/hook/mint
+load @term/mill/code/hook/mint
   find hook
 
-load @term/mill/code/code/task/mint
+load @term/mill/code/task/mint
   find task
 
-load @term/mill/code/code/text/mint
+load @term/mill/code/text/mint
   find text
 
 mint lace

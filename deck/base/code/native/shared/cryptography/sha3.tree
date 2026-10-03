@@ -5,7 +5,7 @@
 # `hi`) since the portable bit vocabulary is 32-bit. Rate 136 bytes, domain padding 0x06...0x80, output the
 # first four lanes little-endian. The rotation offsets and round constants are the spec tables. Held to the
 # FIPS vectors in deck/base/test/sha3.tree (the empty message and "abc").
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-and
   find bitwise-or
   find bitwise-not
@@ -13,13 +13,13 @@ load @term/base/code/bit
   find shift-left
   find unsigned-shift-right
 
-load @term/base/code/native/shared/cryptography/md5
+load @term/base/native/shared/cryptography/md5
   find md5-hex-byte
 
-load @term/base/code/text/string
+load @term/base/text/string
   find concat
 
-load @term/base/code/boolean
+load @term/base/boolean
   find not
 
 # the rho rotation offset of lane x + 5y

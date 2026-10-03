@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/clipboard-item
+load @term/bind/browser/dom/clipboard-item
   find clipboard-item
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
 form clipboard-items, name <ClipboardItems>

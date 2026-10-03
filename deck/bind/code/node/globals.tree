@@ -27,14 +27,14 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find console
   find native-string
   find native-undefined
   find native-void
   find node-js-process
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find abort-controller
   find abort-signal
   find node-module

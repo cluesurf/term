@@ -3,7 +3,7 @@
 # only (`term mark` boots it there), so these bind node modules directly. Each one is a stdlib gap, listed in
 # note/term/guides/commands/mark.md.
 
-load @term/base/code/json
+load @term/base/json
   find array-size
   find get-item
   find field-text

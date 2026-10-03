@@ -1,56 +1,56 @@
 
-load @term/bind/code/browser/dom/idb-request
+load @term/bind/browser/dom/idb-request
   find idb-request
 
-load @term/bind/code/browser/webworker/add-event-listener-options
+load @term/bind/browser/webworker/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/webworker/dom-exception
+load @term/bind/browser/webworker/dom-exception
   find dom-exception
 
-load @term/bind/code/browser/webworker/event
+load @term/bind/browser/webworker/event
   find event
 
-load @term/bind/code/browser/webworker/event-listener-options
+load @term/bind/browser/webworker/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/webworker/event-listener-or-event-listener-object
+load @term/bind/browser/webworker/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/webworker/event-target
+load @term/bind/browser/webworker/event-target
   find event-target
 
-load @term/bind/code/browser/webworker/idb-cursor
+load @term/bind/browser/webworker/idb-cursor
   find idb-cursor
 
-load @term/bind/code/browser/webworker/idb-index
+load @term/bind/browser/webworker/idb-index
   find idb-index
 
-load @term/bind/code/browser/webworker/idb-object-store
+load @term/bind/browser/webworker/idb-object-store
   find idb-object-store
 
-load @term/bind/code/browser/webworker/idb-request-event-map
+load @term/bind/browser/webworker/idb-request-event-map
   find idb-request-event-map
 
-load @term/bind/code/browser/webworker/idb-request-ready-state
+load @term/bind/browser/webworker/idb-request-ready-state
   find idb-request-ready-state
 
-load @term/bind/code/browser/webworker/idb-transaction
+load @term/bind/browser/webworker/idb-transaction
   find idb-transaction
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form idb-request, name <IDBRequest>

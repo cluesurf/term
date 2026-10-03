@@ -11,7 +11,7 @@
 # A name that lands on a TypeScript reserved word gets a trailing underscore, because `class` is a fine Term task
 # name and an impossible TypeScript one.
 
-load @term/base/code/text
+load @term/base/text
   find split
   find substring
   find char-count
@@ -113,8 +113,8 @@ task upper-head
     is-equal read(size), code 0
     hold
       back <>
-  save head, to-upper-case substring part, code 0, code 1
-  save rest, substring part, code 1, read size
+  save head, to-upper-case substring(part, code(0), code 1)
+  save rest, substring(part, code(1), read size)
   back <{{head}}{{rest}}>
 
 task to-camel

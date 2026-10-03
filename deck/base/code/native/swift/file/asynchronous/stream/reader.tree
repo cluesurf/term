@@ -7,7 +7,7 @@ dock type
 dock load
   load <global:aio>, name aio
 
-load @term/base/code/file/stream/reader
+load @term/base/file/stream/reader
   find reader
 
 # `start` is where to begin, `size` how many bytes to read from there. `size` 0 reads to the end.

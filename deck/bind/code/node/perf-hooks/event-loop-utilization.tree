@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
 
 form event-loop-utilization, name <EventLoopUtilization>

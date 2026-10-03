@@ -62,7 +62,7 @@ import type {
   SymbolIndex,
   SymbolKind,
 } from '@term/flow/code/symbols'
-import type { Resolver, Source } from '@term/make/code/compile/load'
+import type { LoadHow, Resolver, Source } from '@term/make/code/compile/load'
 import { declarationsOf, mentionAt, pathMentions, wordAt } from '@term/flow/code/paths'
 
 // a path on disk, as opposed to an in-memory name a test resolver hands back
@@ -128,8 +128,10 @@ const DEF_SYMBOL_KIND: Record<string, number> = {
 
 // the keywords offered in completion: the four-letter Term vocabulary as written today. The retired words are not
 // here and must never come back: `wave` (booleans are bare), `bust` and `send kink` (`halt` raises and passes on),
-// `mark async` (`note async`), `auto` (`seek`), `note private` (`mark private`). A bare `back` is a return only in a
-// lean file, so it is offered there and `send back` is offered everywhere else.
+// `auto` (`seek`). Metadata is `mark` (`mark async`, `mark unsafe`, `mark private`), and `note <metadata>` is the old
+// spelling, still read and warned about (`note-metadata`), so it is never offered. `note` stays a word for a field
+// named note. `tick f(x)` starts an async task without waiting. A bare `back` is a return only in a lean file, so it
+// is offered there and `send back` is offered everywhere else.
 const KEYWORDS = [
   'task',
   'take',
@@ -147,6 +149,7 @@ const KEYWORDS = [
   'slot',
   'need',
   'fork',
+  'sift',
   'hook',
   'walk',
   'turn',
@@ -177,16 +180,17 @@ const KEYWORDS = [
 
 // statement-starting keywords scaffold their construct when accepted (LSP snippet syntax, insertTextFormat 2). Each
 // is the shape the stdlib writes today: `walk list` binds its item under `hook next` as `take site, name <item>`, a
-// guard's handler is a `halt take` beside `note unsafe`, and a contract word takes one expression beneath it.
+// guard's handler is a `halt take` beside `mark unsafe`, and a contract word takes one expression beneath it.
 const SNIPPETS: Record<string, string> = {
   task: 'task ${1:name}\n  take ${2:arg}, like ${3:type}\n  like ${4:type}\n  send back\n    $0',
   form: 'form ${1:name}\n  link ${2:field}, like ${3:type}',
   mask: 'mask ${1:name}\n  task ${2:method}\n    take self\n    like ${3:type}',
   fork: 'fork test\n  hook test\n    $1\n  hook hold\n    $2\n  hook miss\n    $0',
   walk: 'walk list, read ${1:items}\n  hook next\n    take site, name ${2:item}\n    $0',
-  note: 'note ${1|async,unsafe,deprecated,stable,unstable,keep,draft,roam,open|}',
+  // `sift <value>` is the match, `fork case, <value>` written short
+  sift: 'sift read ${1:value}\n  case ${2:variant}\n    $0',
   wait: 'wait true',
-  mark: 'mark private',
+  mark: 'mark ${1|async,unsafe,deprecated,stable,unstable,keep,draft,roam,open,private|}',
   have: 'have\n  $0',
   must: 'must\n  $0',
   down: 'down\n  $0',
@@ -198,24 +202,27 @@ const LEAN_SNIPPETS: Record<string, string> = {
   task: 'task ${1:name}\n  take ${2:arg}, like ${3:type}\n\n  like ${4:type}\n\n  back $0',
   fork: 'fork test\n  $1\n  hold\n    $2\n  miss\n    $0',
   walk: 'walk ${1:items}\n  take site, name ${2:item}\n  $0',
+  sift: 'sift ${1:value}\n  case ${2:variant}\n    $0',
 }
 
 // phrases offered beside the single words, each a whole construct
 const PHRASES: { label: string; insert: string; lean?: boolean; detail: string }[] = [
   { label: 'send back', insert: 'send back, $0', lean: false, detail: 'return a value' },
   { label: 'back', insert: 'back $0', lean: true, detail: 'return a value (lean)' },
-  { label: 'note async', insert: 'note async', detail: 'this task is asynchronous' },
-  { label: 'wait true', insert: 'wait true', detail: 'await this call' },
+  { label: 'mark async', insert: 'mark async', detail: 'this task is asynchronous' },
+  { label: 'tick', insert: 'tick ${1:task}(${2})', detail: 'starts an async task and does not wait for it' },
   { label: 'halt kink', insert: 'halt kink', detail: "pass the callee's exception on" },
   {
-    label: 'note unsafe',
-    insert: 'note unsafe\n  $1\nhalt take\n  take ${2:error}\n  $0',
+    label: 'mark unsafe',
+    insert: 'mark unsafe\n  $1\nhalt take\n  take ${2:error}\n  $0',
     detail: 'a guarded body and its handler',
   },
   { label: 'mark private', insert: 'mark private', detail: 'visible only in this file' },
 ]
 
-const RETIRED = /\bwave\b|\bbust\b|send kink|mark async|\bauto\b|note private/
+// the old metadata spelling: `note <word>` still reads, but `mark <word>` is what gets offered
+const RETIRED =
+  /\bwave\b|\bbust\b|send kink|\bauto\b|\bnote (private|async|native|unsafe|stable|unstable|deprecated|keep|draft|roam|open|feature|platform)\b/
 
 type Item = Record<string, unknown>
 
@@ -898,8 +905,8 @@ export class LanguageServer {
     doc.closure = new Set()
     doc.direct = new Map()
 
-    return (importPath: string, from: string): Source | undefined => {
-      const found = resolve(importPath, from)
+    return (importPath: string, from: string, how?: LoadHow): Source | undefined => {
+      const found = resolve(importPath, from, how)
 
       if (!found) {
         return undefined
@@ -2045,11 +2052,11 @@ export class LanguageServer {
   }
 
   // THE ONE PLACE A PATH BECOMES A FILE, for every editor feature: definition, document links, `find` targets,
-  // a manifest's `bear` and `link`. It asks the resolver the compiler is given for this document (the package's
+  // a manifest's `code` and `link`. It asks the resolver the compiler is given for this document (the package's
   // `projectResolver`, `{platform}` filled for node, with open buffers in place of their files), so a path the
-  // editor opens is the module the build reads. Nothing resolves anywhere else in the server: when the rules for a
-  // package path change (note/term/plan/manifest-mark-and-code-root.md), they change in the resolver and here.
-  // Undefined when the path names nothing, never a guess.
+  // editor opens is the module the build reads. Nothing resolves anywhere else in the server: the package path rule
+  // (code root first, then package root, and a bare `@scope/name` to its entry) is `resolvePackagePath` in
+  // make/code/resolve.ts, which that resolver calls. Undefined when the path names nothing, never a guess.
   private resolveModule(doc: Doc, path: string): Source | undefined {
     const resolve = this.resolverFor({ ...doc, closure: new Set(), direct: new Map() }, this.readersFor(doc.file).root)
 
@@ -2057,18 +2064,11 @@ export class LanguageServer {
       return undefined
     }
 
-    const ask = (target: string): Source | undefined => {
-      try {
-        return resolve(target, doc.file)
-      } catch {
-        return undefined
-      }
+    try {
+      return resolve(path, doc.file)
+    } catch {
+      return undefined
     }
-
-    // a bare package path (a manifest's `link @term/base`) names no module the resolver reads, which takes
-    // `@scope/name/<sub>` only. Its entry is its code root, the folder a manifest's `bear ./code` names. This is
-    // the rule note/term/plan/manifest-mark-and-code-root.md is about to settle, and it lives here and nowhere else.
-    return ask(path) ?? (/^@[^/]+\/[^/]+$/.test(path) ? ask(`${path}/code`) : undefined)
   }
 
   // the module a document loads that defines a name at top level, with the name's position in it
@@ -2566,6 +2566,29 @@ export class LanguageServer {
           kind: 'quickfix',
           isPreferred: true,
           edit: { changes: { [doc.uri]: [{ range: diag.range, newText: 'mark private' }] } },
+        })
+        continue
+      }
+
+      // the old spelling of metadata, `note <word>`: the diagnostic's span starts at the `note` word, so the fix
+      // replaces those four characters with `mark` and leaves the word after it as written
+      if (diag.data?.name === 'note-metadata') {
+        const start = diag.range.start
+
+        actions.push({
+          title: 'Write `mark` (metadata is `mark`, `note` is the old spelling)',
+          kind: 'quickfix',
+          isPreferred: true,
+          edit: {
+            changes: {
+              [doc.uri]: [
+                {
+                  range: { start, end: { line: start.line, character: start.character + 4 } },
+                  newText: 'mark',
+                },
+              ],
+            },
+          },
         })
         continue
       }

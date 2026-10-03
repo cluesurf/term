@@ -1,7 +1,6 @@
 
 deck @term/base
   head <The Term standard library>
-  bear ./code
   test ./test
-  code <0.0.16>
+  mark <0.0.16>
   lock mit

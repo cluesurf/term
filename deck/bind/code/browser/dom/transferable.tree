@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/image-bitmap
+load @term/bind/browser/dom/image-bitmap
   find image-bitmap
 
-load @term/bind/code/browser/dom/message-port
+load @term/bind/browser/dom/message-port
   find message-port
 
-load @term/bind/code/javascript/es5/array-buffer
+load @term/bind/javascript/es5/array-buffer
   find array-buffer
 
 form transferable, name <Transferable>

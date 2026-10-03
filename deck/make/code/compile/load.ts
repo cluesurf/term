@@ -8,7 +8,9 @@ import { spanOfWhole } from '@term/make/code/compile/mill-run'
 import { parse, renderHead } from '@term/make/code/parser/tree'
 import type { GroupNode, ParseResult, RootNode } from '@term/make/code/parser/tree'
 
-export type Source = { file: string; text: string }
+// `shadowed` is set by a resolver when a package path named a file in the package's code root AND one in its
+// package root: `file` is the code root's, and the other is what `term lint` names in `ambiguous-load`
+export type Source = { file: string; text: string; shadowed?: string }
 
 // Dependency discovery needs two facts per module: its `load` / `bear` import paths, and whether it has a top-level
 // `view` (a component, whose emitter synthesizes render-runtime calls). Both are read from the real parse tree.
@@ -27,9 +29,19 @@ export type Source = { file: string; text: string }
 type ImportScan = {
   paths: string[]
   hasZone: boolean
+  // a top-level web route (`hook /path`), whose lowering calls the route runtime (ROUTE_RUNTIME_MODULE)
+  hasRoute: boolean
   // per import path, whether it is a `bear` (a re-export) and the names its `find` lines ask for, with where each
   // `find` line is, and the name each is bound under here when the line aliases it (`find x, name y` -> `y`)
-  finds: { path: string; bear: boolean; names: string[]; spans: Span[]; aliases: (string | undefined)[] }[]
+  finds: {
+    path: string
+    bear: boolean
+    names: string[]
+    spans: Span[]
+    aliases: (string | undefined)[]
+    // `base <dir>` under the load: resolve from the package root (it imports nothing)
+    base?: string
+  }[]
 }
 
 // What each module imports BY NAME, resolved to files: a `find`ed name -> every file a `load` / `bear` that finds it
@@ -124,6 +136,7 @@ function scanImports(tree: RootNode): ImportScan {
   const finds: ImportScan['finds'] = []
 
   let hasZone = false
+  let hasRoute = false
 
   for (const group of tree.nodes) {
     const keyword = headName(group)
@@ -133,6 +146,18 @@ function scanImports(tree: RootNode): ImportScan {
     // uses. See note/term/view/06-mill.md.
     if (keyword === 'view') {
       hasZone = true
+      continue
+    }
+
+    // a web route: `hook` whose name is a path. A CLI command (`hook make`) is not one
+    if (keyword === 'hook') {
+      const first = group.nodes[1]
+      const named = first?.kind === 'group' ? headName(first) : undefined
+
+      if (named?.startsWith('/')) {
+        hasRoute = true
+      }
+
       continue
     }
 
@@ -157,8 +182,16 @@ function scanImports(tree: RootNode): ImportScan {
       const names: string[] = []
       const spans: Span[] = []
       const aliases: (string | undefined)[] = []
+      let base: string | undefined
 
       for (const child of group.nodes.slice(2)) {
+        // `base <dir>` beside the `find` lines. Not a find: it names where the path resolves, and imports nothing
+        if (child.kind === 'group' && headName(child) === 'base' && keyword === 'load') {
+          const value = child.nodes[1]
+          base = value?.kind === 'group' ? headName(value) : undefined
+          continue
+        }
+
         if (child.kind !== 'group' || headName(child) !== 'find') {
           continue
         }
@@ -179,17 +212,23 @@ function scanImports(tree: RootNode): ImportScan {
         }
       }
 
-      finds.push({ path, bear: keyword === 'bear', names, spans, aliases })
+      finds.push({ path, bear: keyword === 'bear', names, spans, aliases, ...(base !== undefined ? { base } : {}) })
     }
   }
 
-  return { paths, hasZone, finds }
+  return { paths, hasZone, hasRoute, finds }
 }
 
-// resolve an import path (e.g. `@term/base/code/maybe`) from the importing file to its source, or undefined
+// how one `load` asks for its path: `base <dir>` written under it forces the PACKAGE root, where a package path
+// otherwise tries the package's code root first (note/term/plan/manifest-mark-and-code-root.md, and
+// `resolvePackagePath` in make/code/resolve.ts, which is the rule)
+export type LoadHow = { base?: string }
+
+// resolve an import path (e.g. `@term/base/maybe`) from the importing file to its source, or undefined
 export type Resolver = (
   importPath: string,
   fromFile: string,
+  how?: LoadHow,
 ) => Source | undefined
 
 // the render runtime backing a `zone` (and a view-role document, whose `view` lowers to one): such a module calls
@@ -198,6 +237,10 @@ export type Resolver = (
 // `load @path` / `bear @path` (re-exports) both pull the target into the merged program; because the program is one
 // flat namespace, a `bear`ed definition is visible to anything importing this module. `scanImports` (above) reads both.
 const VIEW_RUNTIME_MODULE = '@cluesurf/site/code/view/render'
+
+// what a lowered route table calls (compile/route-lower.ts): the env's `host`, the page's `set-title` / `set-meta` /
+// `set-proxy`, and the navigation contract's `route-matches` / `route-param`. Injected like the render runtime
+const ROUTE_RUNTIME_MODULE = '@cluesurf/site/code/view/route-runtime'
 
 // the entry plus every module it transitively loads, dependencies first (so forms are defined before use)
 export function collectModules(
@@ -225,7 +268,7 @@ export function collectModules(
     const tree = parsed(source)
     const scan: ImportScan = tree.ok
       ? scanImports(tree.tree)
-      : { paths: [], hasZone: false, finds: [] }
+      : { paths: [], hasZone: false, hasRoute: false, finds: [] }
     const paths = scan.paths
     const own = {
       finds: new Map<string, string[]>(),
@@ -246,8 +289,16 @@ export function collectModules(
       paths.push(VIEW_RUNTIME_MODULE)
     }
 
+    // a module with a web route implicitly depends on the route runtime: the route lowering (compile/route-lower.ts)
+    // synthesizes calls to the env's `host`, the page's title and meta, and the navigation contract's matching, which
+    // the author never imports (native-navigation-0002)
+    if (scan.hasRoute && !paths.some(p => p.endsWith('view/route-runtime')) && !source.file.endsWith('view/route-runtime.tree')) {
+      paths.push(ROUTE_RUNTIME_MODULE)
+    }
+
     for (const path of paths) {
-      const dependency = resolve(path, source.file)
+      const base = scan.finds.find(f => f.path === path && f.base !== undefined)?.base
+      const dependency = resolve(path, source.file, base !== undefined ? { base } : undefined)
 
       if (dependency) {
         for (const entry of scan.finds.filter(f => f.path === path)) {

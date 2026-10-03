@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find async-iterable
   find iterable
@@ -13,7 +13,7 @@ load @term/bind
   find task
   find test
 
-load @term/bind/code/node/stream/internal
+load @term/bind/node/stream/internal
   find pipeline-transform-source
 
 form pipeline-transform, name <PipelineTransform>

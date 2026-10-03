@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-boolean
   find native-number
@@ -17,7 +17,7 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/http2
+load @term/bind/node/http2
   find alternative-service-options
   find http2-secure-server
   find http2-server

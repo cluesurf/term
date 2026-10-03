@@ -41,7 +41,7 @@ const GRAMMAR = join(TERM, 'deck/feed/code/json/mine.tree')
 // rest of format-mill-0003.
 // EMPTY, and it should stay that way. `number` was the last entry: it is a SPAN CAPTURE (`take value, like text`
 // with a `bind value` wrapping a bare `mine text`), and it reads since the span rule landed on 2026-08-30. The
-// span ACCUMULATES what each read returns rather than slicing the cursor, because text-cursor-compact discards
+// span ACCUMULATES what each read returns rather than slicing the cursor, because compact-text-cursor discards
 // consumed text past 64 KiB and resets the position, so a start offset is not a thing a streaming cursor can be
 // asked to remember.
 const KNOWN_DROPPED: Record<string, string> = {}

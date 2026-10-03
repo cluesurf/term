@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find error
   find native-boolean
@@ -16,16 +16,16 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/net
+load @term/bind/node/net
   find address-info
   find listen-options
   find server-opts
 
 form server, name <Server>
   base event-emitter
-  link max-connections, name <maxConnections>, like native-number
-  link connections, name <connections>, like native-number
-  link listening, name <listening>, like native-boolean
+  link max-connections, name(<maxConnections>), like native-number
+  link connections, name(<connections>), like native-number
+  link listening, name(<listening>), like native-boolean
 
   task listen, name <listen>
     like native-this

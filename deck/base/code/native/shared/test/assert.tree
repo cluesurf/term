@@ -5,7 +5,7 @@ dock load
 dock load
   load <global:compare>, name compare-runtime
 
-load @term/base/code/float
+load @term/base/float
   find absolute
 
 load ./context
@@ -19,7 +19,7 @@ load ./compare
   find contains-text
   find contains-list
 
-load @term/base/code/native/shared/test
+load @term/base/native/shared/test
   find make-failure
 
 task assert-shared

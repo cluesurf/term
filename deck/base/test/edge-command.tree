@@ -1,6 +1,6 @@
 # Command-line words parse the same on every backend: command.tree is pure Term. Held by `pnpm term:base-gate`.
 
-load @term/base/code/command
+load @term/base/command
   find schema
   find command-flag
   find command-argument
@@ -11,13 +11,13 @@ load @term/base/code/command
   find parse
   find help
 
-load @term/base/code/list
+load @term/base/list
   find list
   find size
   find get
   find join
 
-load @term/base/code/hash
+load @term/base/hash
   find get-or-default
 
 task tool
@@ -103,7 +103,7 @@ task words
     read word
   send back, read out
 
-load @term/base/code/text
+load @term/base/text
   find char-count
   find char-at
   find contains, name contains-text
@@ -164,11 +164,15 @@ test <a separate value, bundled shorts and the end of flags>
             read p
             text <count>
           text <3>
-        call is-equal
-          call get
-            read p/arguments
+        call and
+          call is-above
+            read p/arguments/length
             code 0
-          text <-x>
+          call is-equal
+            call get
+              read p/arguments
+              code 0
+            text <-x>
 
 test <a negated boolean is false>
   save p

@@ -3,7 +3,7 @@
 # flatten removes one level. The stops (a read past the end, a pop of an empty list) end the program and so are not
 # asserted here: a stop on one backend would take the whole report with it.
 
-load @term/base/code/list
+load @term/base/list
   find list
   find size
   find slice
@@ -25,13 +25,13 @@ load @term/base/code/list
   find first
   find last
 
-load @term/base/code/maybe
+load @term/base/maybe
   find unwrap-or
 
-load @term/base/code/side
+load @term/base/side
   find side
 
-load @term/base/code/list
+load @term/base/list
   find take
   find drop
 

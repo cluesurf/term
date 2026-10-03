@@ -1,5 +1,5 @@
 
-load @term/bind/code/node/perf-hooks
+load @term/bind/node/perf-hooks
   find event-loop-utility-function
 
 form worker-performance, name <WorkerPerformance>

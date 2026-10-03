@@ -2,10 +2,10 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-undefined
 
-load @term/bind/code/node/http2
+load @term/bind/node/http2
   find session-options
 
 form server-session-options, name <ServerSessionOptions>

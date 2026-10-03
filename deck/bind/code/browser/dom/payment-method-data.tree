@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form payment-method-data, name <PaymentMethodData>

@@ -1,10 +1,10 @@
-load @term/mill/code/code/bind/mint
+load @term/mill/code/bind/mint
   find bind
 
-load @term/mill/code/code/wait/mint
+load @term/mill/code/wait/mint
   find wait
 
-load @term/base/code/lang
+load @term/base/lang
   find code-hold
   find hold-hook
 

@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/crypto-key-pair
+load @term/bind/browser/dom/crypto-key-pair
   find crypto-key-pair
 
-load @term/bind/code/browser/webworker/crypto-key
+load @term/bind/browser/webworker/crypto-key
   find crypto-key
 
 form crypto-key-pair, name <CryptoKeyPair>

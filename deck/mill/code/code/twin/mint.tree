@@ -1,19 +1,19 @@
-load @term/mill/code/code/take/mint
+load @term/mill/code/take/mint
   find take
 
-load @term/mill/code/code/like/mint
+load @term/mill/code/like/mint
   find like
 
 load @term/mill/code/code/note/mint
   find note
 
-load @term/mill/code/code/must/mint
+load @term/mill/code/must/mint
   find task-have
 
-load @term/mill/code/code/seed/mint
+load @term/mill/code/seed/mint
   find seed
 
-load @term/mill/code/code/tool/flow/mint
+load @term/mill/code/tool/flow/mint
   find flow
 
 # The binds for a twin's sites. A site with a `mine` half and no `mint` bind parses and then vanishes with no error,

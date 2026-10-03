@@ -8,14 +8,14 @@
 # to, presents it while `open` is true, and reports the person's own dismissal (Esc on a sheet, a swipe down, back or a
 # tap outside) as `close`, which closes the disclosure.
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
   find write-attribute
   find attach-event
-load @term/site/code/view/reactive
+load @term/site/view/reactive
   find signal
   find make-effect
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 load ../../../logic/disclosure

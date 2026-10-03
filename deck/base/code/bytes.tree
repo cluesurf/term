@@ -2,7 +2,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/bytes
+load @term/base/native/{platform}/bytes
   find octets-from-text
   find octets-to-text
   find octets-to-hex

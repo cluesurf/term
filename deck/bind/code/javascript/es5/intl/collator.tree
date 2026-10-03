@@ -2,10 +2,10 @@
 load @term/bind/code/javascript/es5/resolved-collator-options
   find resolved-collator-options
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form collator, name <Collator>

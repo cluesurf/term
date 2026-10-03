@@ -13,7 +13,7 @@ load @term/bind
   find task
   find unknown
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find error
   find function
   find native-boolean
@@ -25,7 +25,7 @@ load @term/bind/code/javascript
   find promise
   find reg-exp
 
-load @term/bind/code/node/assert
+load @term/bind/node/assert
   find assert-predicate
 
 host strict, name <strict>

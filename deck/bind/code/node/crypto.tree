@@ -80,7 +80,7 @@ bear @term/bind/code/javascript/node/crypto/generate-prime-options-array-buffer
 bear @term/bind/code/javascript/node/crypto/check-prime-options
 bear @term/bind/code/javascript/node/crypto/webcrypto
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find array-buffer
   find cipher
@@ -111,11 +111,11 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
   find buffer-encoding
 
-load @term/bind/code/node/crypto
+load @term/bind/node/crypto
   find binary-like
   find binary-to-text-encoding
   find certificate

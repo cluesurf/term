@@ -14,14 +14,14 @@ load @term/bind
   find any
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find function
   find native-boolean
   find native-string
   find promise
   find readonly-array
 
-load @term/bind/code/node/vm
+load @term/bind/node/vm
   find compile-function-options
   find context
   find create-context-options

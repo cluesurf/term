@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/dom-high-res-time-stamp
+load @term/bind/browser/dom/dom-high-res-time-stamp
   find dom-high-res-time-stamp
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form video-playback-quality, name <VideoPlaybackQuality>

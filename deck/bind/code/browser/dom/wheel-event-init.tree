@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/mouse-event-init
+load @term/bind/browser/dom/mouse-event-init
   find mouse-event-init
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form wheel-event-init, name <WheelEventInit>

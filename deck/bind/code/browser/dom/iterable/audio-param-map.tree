@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/audio-param-map
+load @term/bind/browser/dom/audio-param-map
   find audio-param-map
 
 load @term/bind/code/javascript/readonly-map

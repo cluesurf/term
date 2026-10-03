@@ -2,10 +2,10 @@
 load @term/bind/code/javascript/a
   find a
 
-load @term/bind/code/javascript/es5/this-parameter-type
+load @term/bind/javascript/es5/this-parameter-type
   find this-parameter-type
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-unknown
 
 load @term/bind/code/javascript/r

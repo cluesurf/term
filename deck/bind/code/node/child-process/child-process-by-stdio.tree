@@ -4,7 +4,7 @@ load @term/bind
   find or
   find tuple
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find child-process
   find native-null
   find native-undefined

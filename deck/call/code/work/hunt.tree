@@ -1,7 +1,7 @@
-load @term/call/code/work/home
+load @term/call/work/home
   find root, name project-root
 
-load @term/call/code/work/tint
+load @term/call/work/tint
   find log-good
   find log-fail
   find log-step
@@ -30,7 +30,9 @@ dock load
   load <@term/test/code/seed-hunt>, name hunt-module
   load <node:process>, name node-process
   load <global:console>, name console
-  load <global:JSON>, name json
+  # `json-global`, as roll and scan name it: a plain `json` is the stdlib's json module, whose runtime shim is
+  # prepended as `const json`, and the console bundle then declares the name twice
+  load <global:JSON>, name json-global
 
 form hunt-ask
   link root, like text
@@ -65,7 +67,7 @@ task hunt
     json-out
     hold
       console/log
-        json/stringify result, make(void), code 2
+        json-global/stringify result, make(void), code 2
     miss
       console/log call hunt-module/renderHunt, result
       # `ok`, never `findings` alone: a check that did not run (no files read, a fuzz child that wrote no report)

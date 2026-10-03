@@ -3,7 +3,7 @@
 # Swift and Kotlin print `2.0` for two and Rust prints `1000000000000000000000` for 1e21, so each is held here.
 # Held by `pnpm term:base-gate`.
 
-load @term/base/code/list
+load @term/base/list
   find join
 
 task show

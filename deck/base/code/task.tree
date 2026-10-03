@@ -13,14 +13,14 @@
 
 note stable
 
-load @term/base/code/boolean
+load @term/base/boolean
   find not
 
-load @term/base/code/exception
+load @term/base/exception
   find outage
   find timeout
 
-load @term/base/code/native/{platform}/job
+load @term/base/native/{platform}/job
   find job-spawn
   find job-settle
   find job-settle-within
@@ -44,7 +44,6 @@ form handle
     like r
     call job-settle
       read self/dock
-      wait true
     send back
       call outcome
         read self
@@ -60,7 +59,6 @@ form handle
       call job-settle-within
         read self/dock
         read milliseconds
-        wait true
     fork test
       hook test
         call not
@@ -167,7 +165,6 @@ task gather
         read started/dock
   call job-settle-group
     read docks
-    wait true
   # the first job, in source order, that failed or was cancelled. A job still running is not it: the group settled
   # because a LATER job failed. Every other job is cancelled, then that one's outcome raises
   walk list, read jobs

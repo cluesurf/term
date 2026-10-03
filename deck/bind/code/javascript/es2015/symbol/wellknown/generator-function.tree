@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/es2015/generator/generator-function
+load @term/bind/javascript/es2015/generator/generator-function
   find generator-function
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form generator-function, name <GeneratorFunction>

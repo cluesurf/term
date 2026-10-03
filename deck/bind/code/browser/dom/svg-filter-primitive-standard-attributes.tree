@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/svg-animated-length
+load @term/bind/browser/dom/svg-animated-length
   find svg-animated-length
 
-load @term/bind/code/browser/dom/svg-animated-string
+load @term/bind/browser/dom/svg-animated-string
   find svg-animated-string
 
 form svg-filter-primitive-standard-attributes, name <SVGFilterPrimitiveStandardAttributes>

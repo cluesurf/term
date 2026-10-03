@@ -5,7 +5,7 @@ load @term/bind
   find any
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find async-iterable-iterator
   find function
@@ -17,7 +17,7 @@ load @term/bind/code/javascript
   find node-js-event-emitter
   find promise
 
-load @term/bind/code/node/events
+load @term/bind/node/events
   find dom-event-target
   find event-emitter-options
   find node-event-target
@@ -35,8 +35,8 @@ form event-emitter-constructor
   link capture-rejection-symbol, name <captureRejectionSymbol>
     like native-symbol
       cool true
-  link capture-rejections, name <captureRejections>, like native-boolean
-  link default-max-listeners, name <defaultMaxListeners>, like native-number
+  link capture-rejections, name(<captureRejections>), like native-boolean
+  link default-max-listeners, name(<defaultMaxListeners>), like native-number
 
   hook make
     take options, like event-emitter-options

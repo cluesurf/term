@@ -13,15 +13,15 @@ load ./contract
 load ./host
   find here
 
-load @term/base/code/console
+load @term/base/console
   find log
 
-load @term/base/code/list
+load @term/base/list
   find list
   find size
   find join
 
-load @term/base/code/text
+load @term/base/text
   find contains
 
 # Time Term's emitted code against hand-written code, per target. `term time` is different: it times time-* tasks in one project

@@ -7,12 +7,12 @@
 # and a row still readable after its release leaves with 3. Last, a RECORD crosses (native-dom-0019): `stat` answers
 # a path's size and kind as one path-info, and a wrong one leaves with 4. The driver reads that status.
 
-load @term/cask/code/cask
+load @term/cask/cask
   find bundle-path
   find data-path
   find exit
 
-load @term/site/code/base/db
+load @term/site/base/db
   find connect
   find query
   find run
@@ -20,14 +20,14 @@ load @term/site/code/base/db
   find row
   find release
 
-load @term/base/code/file
+load @term/base/file
   find read
   find stat
 
-load @term/base/code/text
+load @term/base/text
   find trim
 
-load @term/base/code/list
+load @term/base/list
   find list
   find count
   find get

@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/message-channel
+load @term/bind/browser/dom/message-channel
   find message-channel
 
-load @term/bind/code/browser/webworker/message-port
+load @term/bind/browser/webworker/message-port
   find message-port
 
 form message-channel, name <MessageChannel>

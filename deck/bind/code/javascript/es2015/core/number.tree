@@ -1,10 +1,10 @@
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
   find native-number
   find native-string
 
-load @term/bind/code/javascript/es5/number
+load @term/bind/javascript/es5/number
   find number
 
 form number

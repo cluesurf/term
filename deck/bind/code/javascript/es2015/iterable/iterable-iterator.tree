@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript/es2015/iterable/iterator
+load @term/bind/javascript/es2015/iterable/iterator
   find iterator
 
 form iterable-iterator, name <IterableIterator>

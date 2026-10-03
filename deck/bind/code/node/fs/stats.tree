@@ -1,5 +1,5 @@
 
-load @term/bind/code/node/fs
+load @term/bind/node/fs
   find stats-base
 
 form stats, name <Stats>

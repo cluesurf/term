@@ -2,7 +2,7 @@
 # glyph's header (bounding box only — deliberately unsupported past that, see form.tree). Run: term test, from
 # deck/feed.
 
-load @term/base/code/list
+load @term/base/list
   find push
   find get
   find size
@@ -98,7 +98,7 @@ test <write-otf-glyph then read-otf-glyph round trips a simple triangle's point 
   save bytes
     call write-otf-glyph(call sample-triangle-glyph)
   save reread
-    call read-otf-glyph(call make-cursor(read bytes), call size(read bytes))
+    call read-otf-glyph(call(make-cursor(read bytes)), call(size(read bytes)))
   want hold
     call is-equal
       call first-contour-point-count(read reread)
@@ -108,7 +108,7 @@ test <the triangle's third point round trips its exact coordinates>
   save bytes
     call write-otf-glyph(call sample-triangle-glyph)
   save reread
-    call read-otf-glyph(call make-cursor(read bytes), call size(read bytes))
+    call read-otf-glyph(call(make-cursor(read bytes)), call(size(read bytes)))
   save point
     call triangle-point
       read reread
@@ -217,7 +217,7 @@ task is-empty-glyph
 test <a zero-byte span reads as the true empty glyph, no header read at all>
   want hold
     call is-empty-glyph
-      call read-otf-glyph(call make-cursor(make list), code 0)
+      call read-otf-glyph(call(make-cursor(make list)), code 0)
 
 task composite-header-bytes
   like list
@@ -270,7 +270,7 @@ task composite-x-max
 
 test <a composite glyph's header reads its bounding box without failing>
   save glyph
-    call read-otf-glyph(call make-cursor(call composite-header-bytes), code 10)
+    call read-otf-glyph(call(make-cursor(call composite-header-bytes)), code 10)
   want hold
     call is-equal
       call composite-x-max(read glyph)

@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find error
   find incoming-message
@@ -18,22 +18,22 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/http
+load @term/bind/node/http
   find client-request-args
   find information-event
 
 form client-request, name <ClientRequest>
   base outgoing-message
-  link aborted, name <aborted>, like native-boolean
-  link host, name <host>, like native-string
-  link protocol, name <protocol>, like native-string
-  link reused-socket, name <reusedSocket>, like native-boolean
-  link max-headers-count, name <maxHeadersCount>, like native-number
-  link method, name <method>, like native-string
-  link path, name <path>, like native-string
+  link aborted, name(<aborted>), like native-boolean
+  link host, name(<host>), like native-string
+  link protocol, name(<protocol>), like native-string
+  link reused-socket, name(<reusedSocket>), like native-boolean
+  link max-headers-count, name(<maxHeadersCount>), like native-number
+  link method, name(<method>), like native-string
+  link path, name(<path>), like native-string
 
   task abort, name <abort>
     like native-void

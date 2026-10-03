@@ -1,23 +1,23 @@
 
-load @term/bind/code/browser/dom/rtc-bundle-policy
+load @term/bind/browser/dom/rtc-bundle-policy
   find rtc-bundle-policy
 
-load @term/bind/code/browser/dom/rtc-certificate
+load @term/bind/browser/dom/rtc-certificate
   find rtc-certificate
 
-load @term/bind/code/browser/dom/rtc-ice-server
+load @term/bind/browser/dom/rtc-ice-server
   find rtc-ice-server
 
-load @term/bind/code/browser/dom/rtc-ice-transport-policy
+load @term/bind/browser/dom/rtc-ice-transport-policy
   find rtc-ice-transport-policy
 
-load @term/bind/code/browser/dom/rtc-rtcp-mux-policy
+load @term/bind/browser/dom/rtc-rtcp-mux-policy
   find rtc-rtcp-mux-policy
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form rtc-configuration, name <RTCConfiguration>

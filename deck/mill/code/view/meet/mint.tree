@@ -1,8 +1,8 @@
 
-load @term/base/code/view-file
+load @term/base/view-file
   find view-meet
 
-load @term/mill/code/view/hold/mint
+load @term/mill/view/hold/mint
   find view-hold
 
 mint view-meet, like view-meet

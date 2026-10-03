@@ -1,12 +1,12 @@
 
-load @term/mill/code/zone/hold/mine
+load @term/mill/zone/hold/mine
   find zone-hold
 
-load @term/mill/code/zone/need/mine
+load @term/mill/zone/need/mine
   find zone-need
   find zone-want
 
-load @term/mill/code/zone/code/mine
+load @term/mill/zone/code/mine
   find zone-code
 
 # The `zone` role: the grammar of a `zone.tree` and a `zone.code.tree`.

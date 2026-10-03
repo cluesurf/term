@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/svg-angle
+load @term/bind/browser/dom/svg-angle
   find svg-angle
 
 form svg-animated-angle, name <SVGAnimatedAngle>

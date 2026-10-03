@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/dom/push-permission-state
+load @term/bind/browser/dom/push-permission-state
   find push-permission-state
 
-load @term/bind/code/browser/dom/push-subscription
+load @term/bind/browser/dom/push-subscription
   find push-subscription
 
-load @term/bind/code/browser/dom/push-subscription-options-init
+load @term/bind/browser/dom/push-subscription-options-init
   find push-subscription-options-init
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
 form push-manager, name <PushManager>

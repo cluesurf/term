@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find error
   find http2-server-request
@@ -21,16 +21,16 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer-encoding
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find uint8-array
 
-load @term/bind/code/node/http
+load @term/bind/node/http
   find outgoing-http-headers
 
-load @term/bind/code/node/http2
+load @term/bind/node/http2
   find server-http2-stream
 
 form http2-server-response, name <Http2ServerResponse>
@@ -39,17 +39,17 @@ form http2-server-response, name <Http2ServerResponse>
     like or
       like net-socket
       like tls-tls-socket
-  link finished, name <finished>, like native-boolean
-  link headers-sent, name <headersSent>, like native-boolean
-  link req, name <req>, like http2-server-request
+  link finished, name(<finished>), like native-boolean
+  link headers-sent, name(<headersSent>), like native-boolean
+  link req, name(<req>), like http2-server-request
   link socket, name <socket>
     like or
       like net-socket
       like tls-tls-socket
-  link stream, name <stream>, like server-http2-stream
-  link send-date, name <sendDate>, like native-boolean
-  link status-code, name <statusCode>, like native-number
-  link status-message, name <statusMessage>, text <>
+  link stream, name(<stream>), like server-http2-stream
+  link send-date, name(<sendDate>), like native-boolean
+  link status-code, name(<statusCode>), like native-number
+  link status-message, name(<statusMessage>), text <>
 
   task add-trailers, name <addTrailers>
     like native-void

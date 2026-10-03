@@ -2,7 +2,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/uuid
+load @term/base/native/{platform}/uuid
   find generate-v4
 
 task version4

@@ -5,4 +5,4 @@
 # re-exports the abstract module, which has the whole implementation in Term: the build resolves it on every env,
 # and in a cask's page it is the generated bridge shim instead.
 
-bear @term/site/code/http/native/{platform}/local
+bear @term/site/http/native/{platform}/local

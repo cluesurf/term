@@ -1,12 +1,12 @@
 # Color reads the same on every backend: the escape codes are built in Term, and output that is not a terminal (the gate
 # captures every backend's output through a pipe) takes none. Held by `pnpm term:base-gate`.
 
-load @term/base/code/terminal
+load @term/base/terminal
   find is-terminal
   find paint
   find paint-always
 
-load @term/base/code/text
+load @term/base/text
   find char-count
 
 test <output captured through a pipe is not a terminal>

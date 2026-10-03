@@ -1,5 +1,5 @@
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find relative-indexable
 
 form uint16-array, name <Uint16Array>

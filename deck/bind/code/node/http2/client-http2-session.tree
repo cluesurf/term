@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-boolean
   find native-number
@@ -17,10 +17,10 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/http
+load @term/bind/node/http
   find outgoing-http-headers
 
-load @term/bind/code/node/http2
+load @term/bind/node/http2
   find client-http2-stream
   find client-session-request-options
   find http2-session

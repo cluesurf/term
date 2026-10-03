@@ -28,9 +28,9 @@
 # Other parts (unchanged, all pure CSS keyed off data-attrs): balanced (text-wrap: balance), truncated (line-clamp to
 # data-lines), fitted (scale text to fill its box; the measurement loop is a noted dom-primitive follow-up).
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 load ../logic/text-visibility

@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
 
-load @term/bind/code/node/net
+load @term/bind/node/net
   find connect-opts
 
 form ipc-socket-connect-opts, name <IpcSocketConnectOpts>

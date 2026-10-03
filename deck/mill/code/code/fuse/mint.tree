@@ -1,7 +1,7 @@
-load @term/mill/code/code/seed/mint
+load @term/mill/code/seed/mint
   find seed
 
-load @term/base/code/lang
+load @term/base/lang
   find code-fuse
   find code-fuse-bind
 

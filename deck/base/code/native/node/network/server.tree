@@ -9,13 +9,13 @@ dock type
 dock load
   load <global:server>, name runtime
 
-load @term/base/code/network/server
+load @term/base/network/server
   find server
 
-load @term/base/code/network/server/request
+load @term/base/network/server/request
   find request
 
-load @term/base/code/network/server/response
+load @term/base/network/server/response
   find response
 
 # run the server on (host, port). On node `serve` is fire-and-forget: the listening http.Server holds the event loop open

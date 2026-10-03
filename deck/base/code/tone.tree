@@ -6,12 +6,12 @@
 
 note unstable
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
   find join
 
-load @term/base/code/text
+load @term/base/text
   find char-at
   find index-of
   find split
@@ -78,13 +78,13 @@ task tone-encode
 # because the encoder emits exactly ceil(n * 8 / 5) characters and leaves the trailing bits zero. So the output holds
 # nothing outside the alphabet and the dash.
 
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-and
   find bitwise-or
   find shift-left
   find unsigned-shift-right
 
-load @term/base/code/bytes
+load @term/base/bytes
   find bytes
   find to-hex
   find from-hex

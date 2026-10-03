@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/dom/g-lfloat
+load @term/bind/browser/dom/g-lfloat
   find g-lfloat
 
-load @term/bind/code/browser/dom/g-luint
+load @term/bind/browser/dom/g-luint
   find g-luint
 
-load @term/bind/code/browser/dom/web-gl-rendering-context-base
+load @term/bind/browser/dom/web-gl-rendering-context-base
   find web-gl-rendering-context-base
 
 load @term/bind/code/javascript/iterable
   find iterable
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form web-gl-rendering-context-base, name <WebGLRenderingContextBase>

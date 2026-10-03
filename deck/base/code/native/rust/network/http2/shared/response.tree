@@ -9,7 +9,7 @@
 #
 # Internal: reached only through the public network/http2 API.
 
-load @term/base/code/network/server/response
+load @term/base/network/server/response
   find response
   find header
 

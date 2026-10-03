@@ -2,12 +2,12 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-number
   find native-undefined
 
-load @term/bind/code/node/vm
+load @term/bind/node/vm
   find base-options
 
 form running-script-options, name <RunningScriptOptions>

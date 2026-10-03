@@ -15,7 +15,7 @@ load ../dom/native/{platform}/dom
   find replace
   find remove
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
   find get
@@ -69,7 +69,7 @@ task bind-attribute
       like text
   call make-effect
     bind run
-      task tick
+      task sync-attribute
         call set-attribute
           bind node, read node
           bind name, read name
@@ -87,7 +87,7 @@ task make-dynamic-text
       bind value, text <>
   call make-effect
     bind run
-      task tick
+      task sync-text
         call set-text
           bind node, read host
           bind value

@@ -4,5 +4,5 @@
 # in-memory server tree) through the native-env mechanism. Frontend code is thus platform-agnostic. The page half
 # (title, meta, route path, navigation, the SSR shell) is ./page.
 
-bear @term/site/code/dom/view
-bear @term/site/code/dom/native/{platform}/dom
+bear @term/site/dom/view
+bear @term/site/dom/native/{platform}/dom

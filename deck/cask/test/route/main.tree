@@ -3,29 +3,29 @@
 # for in-process asking, a window, the route page, and the GENERATED dispatcher in ./dispatch.tree answering what
 # the page posts. No window is shown: a test only talks over the bridge.
 
-load @term/cask/code/cask
+load @term/cask/cask
   find window
   find open-window
   find load-bundle
   find on-message
   find run
 
-load @term/site/code/http/http
+load @term/site/http/http
   find request
   find response
   find route
   find route-server
 
-load @term/site/code/http/local
+load @term/site/http/local
   find register
 
-load @term/base/code/hash
+load @term/base/hash
   find get
 
-load @term/base/code/maybe
+load @term/base/maybe
   find unwrap-or
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
 

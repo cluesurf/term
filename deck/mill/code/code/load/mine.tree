@@ -10,6 +10,12 @@ mine load
     mine maybe
       mine form, like load-host
         site host
+    # `base make` beside the `find` lines: resolve the path from the PACKAGE root rather than its code root first.
+    # Not a `find`: it imports nothing. Its value must be the path's first segment, which the reader checks
+    # (note/term/plan/manifest-mark-and-code-root.md)
+    mine maybe
+      mine form, like load-base
+        site base
     # `load ../n / take tree size-test`: a TEMPLATE import, written with `take` rather than `find`. The loader
     # resolves it and the reader keeps nothing from it, so it is matched and dropped.
     mine list
@@ -24,6 +30,11 @@ mine load
 
 mine load-host
   mine term, term host
+    mine term
+      site value
+
+mine load-base
+  mine term, term base
     mine term
       site value
 

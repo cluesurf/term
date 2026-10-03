@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-boolean
   find native-string
@@ -8,7 +8,7 @@ load @term/bind/code/javascript
 load @term/bind
   find or
 
-load @term/bind/code/node/http2
+load @term/bind/node/http2
   find secure-server-session-options
 
 form secure-server-options, name <SecureServerOptions>

@@ -72,7 +72,9 @@ ok('`wake` scaffolds a project to work on', existsSync(join(root, 'deck.tree')))
 // this is the same function the package manager uses, so it cannot disagree with it about what the file says.
 const before = parseManifest({ text: readFileSync(join(root, 'deck.tree'), 'utf8') })
 
-ok('the scaffold declares an entry and an export root', Boolean(before.boot && before.bear))
+// the scaffold writes no `code` line: `./code` is the default code root, and `bear ./code`, which it used to write,
+// was the old spelling of that same default (note/term/plan/manifest-mark-and-code-root.md)
+ok('the scaffold declares an entry and a version, and no code root', Boolean(before.boot) && before.mark.patch === 2 && before.code === undefined)
 
 // ---- toss: the destructive round trip ----
 //
@@ -84,9 +86,9 @@ const afterToss = parseManifest({ text: readFileSync(join(root, 'deck.tree'), 'u
 ok('`toss` answers', /Removed/.test(tossed), tossed)
 
 ok(
-  '`toss` on an absent dependency keeps `bear` and `boot`',
-  afterToss.bear === before.bear && afterToss.boot === before.boot,
-  `bear ${afterToss.bear} boot ${afterToss.boot}`,
+  '`toss` on an absent dependency keeps `code` and `boot`',
+  afterToss.code === before.code && afterToss.boot === before.boot,
+  `code ${afterToss.code} boot ${afterToss.boot}`,
 )
 
 // THE ASSERTION THAT MATTERS. A manifest that still parses is not the same as a project that still builds, and
@@ -112,9 +114,9 @@ const afterSave = parseManifest({ text: readFileSync(join(root, 'deck.tree'), 'u
 ok('`save` records the dependency', afterSave.link.some(l => l.name === '@term/base'), saved)
 
 ok(
-  '`save` keeps `bear` and `boot`',
-  afterSave.bear === before.bear && afterSave.boot === before.boot,
-  `bear ${afterSave.bear} boot ${afterSave.boot}`,
+  '`save` keeps `code` and `boot`',
+  afterSave.code === before.code && afterSave.boot === before.boot,
+  `code ${afterSave.code} boot ${afterSave.boot}`,
 )
 
 // and `toss` takes back what `save` put in
@@ -129,23 +131,31 @@ ok(
 
 // ---- move: the version bump ----
 
-const moved = term(root, 'move', 'code', '3')
+const moved = term(root, 'move', 'mark', '3')
 const bumped = parseManifest({ text: readFileSync(join(root, 'deck.tree'), 'utf8') })
 
 ok(
-  `\`move code 3\` moves ${before.code.major}.${before.code.minor}.${before.code.patch} to ${bumped.code.major}.${bumped.code.minor}.${bumped.code.patch}`,
+  `\`move mark 3\` moves ${before.mark.major}.${before.mark.minor}.${before.mark.patch} to ${bumped.mark.major}.${bumped.mark.minor}.${bumped.mark.patch}`,
   // a published patch is EVEN, so the bump lands on the next even one: the scaffold starts at 0.0.2 and moves to 0.0.4
-  bumped.code.patch > before.code.patch &&
-    bumped.code.patch % 2 === 0 &&
-    bumped.code.major === before.code.major &&
-    bumped.code.minor === before.code.minor,
+  bumped.mark.patch > before.mark.patch &&
+    bumped.mark.patch % 2 === 0 &&
+    bumped.mark.major === before.mark.major &&
+    bumped.mark.minor === before.mark.minor,
   moved,
 )
 
 ok(
-  '`move` keeps `bear` and `boot`',
-  bumped.bear === before.bear && bumped.boot === before.boot,
-  `bear ${bumped.bear} boot ${bumped.boot}`,
+  '`move` keeps `code` and `boot`',
+  bumped.code === before.code && bumped.boot === before.boot,
+  `code ${bumped.code} boot ${bumped.boot}`,
+)
+
+// `move` writes the version as `mark`, never in the old `code <...>` spelling
+ok(
+  '`move` writes `mark <version>`',
+  /^\s+mark <0\.0\.4>$/m.test(readFileSync(join(root, 'deck.tree'), 'utf8')) &&
+    !/^\s+code </m.test(readFileSync(join(root, 'deck.tree'), 'utf8')),
+  readFileSync(join(root, 'deck.tree'), 'utf8'),
 )
 
 // ---- link: the user-level registry ----

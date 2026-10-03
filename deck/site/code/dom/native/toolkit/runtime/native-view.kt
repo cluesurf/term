@@ -99,7 +99,11 @@ class TermNode(val key: Long, val tag: String, var text: String, context: Activi
             it.adjustViewBounds = true
         }
         // a hairline across its stack, sized when it is appended (`applyAlignment`)
-        Kind.DIVIDER -> android.view.View(context).also { it.setBackgroundColor(0x1F000000) }
+        // a line is a picture of separation, not content: out of the accessibility tree, as the contract has it
+        Kind.DIVIDER -> android.view.View(context).also {
+            it.setBackgroundColor(0x1F000000)
+            it.importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
         // a frame whose content may be taller than it: the platform's ScrollView around a vertical LinearLayout the
         // children go into, as wide as the frame, so only the height scrolls
         Kind.SCROLL -> android.widget.ScrollView(context).also {
@@ -129,6 +133,12 @@ class TermNode(val key: Long, val tag: String, var text: String, context: Activi
     var fromClass = setOf<String>()
     // whether a color or font was ever drawn on this node's text, so one taken away can be drawn back as the default
     var textStyled = false
+    // the family the host drew this node's text in, empty for the system face: a Typeface cannot say its own name
+    var family = ""
+    // whether the field holds text an input method has not committed yet (native-text-0003)
+    var composing = false
+    // the connection a keyboard writes through, made once when a test composes into the field
+    var input: android.view.inputmethod.InputConnection? = null
     // the fill, edge and corners a style row drew, made the first time one does: a View has one background
     var surface: android.graphics.drawable.GradientDrawable? = null
     // the edge as drawn, width in CSS pixels and color: a GradientDrawable keeps its stroke but has no getter for it
@@ -189,6 +199,16 @@ abstract class TermViewActivity : Activity() {
         super.onConfigurationChanged(config)
         for (body in nativeView.configurationChanged.toList()) body()
     }
+
+    // the system back (the back gesture, the back key): the app's navigation takes it first, and only a back it refuses,
+    // at the first place, leaves the app, as Android's own does (native-navigation-0007)
+    @Deprecated("the platform's back, kept for every API level the app runs on")
+    override fun onBackPressed() {
+        if (nativeView.backHandler?.invoke() != true) {
+            @Suppress("DEPRECATION")
+            super.onBackPressed()
+        }
+    }
 }
 
 // a coroutine context whose every resumption runs on the main looper, the only thread a view may be touched from: an
@@ -215,7 +235,20 @@ object nativeView {
     internal val afterLaunch = mutableListOf<() -> Unit>()
     // called on every configuration change the Activity handles (view/native/toolkit/runtime/native-device.kt)
     val configurationChanged = mutableListOf<() -> Unit>()
+    // the app's answer to the system back: true when its navigation took it (native-navigation-0007)
+    var backHandler: (() -> Boolean)? = null
     private var nextKey = 0L
+
+    // the app's navigation takes the platform's back: the Activity's onBackPressed asks this first
+    fun onBack(handler: () -> Boolean) {
+        backHandler = handler
+    }
+
+    // for tests: the system back, through the Activity's own entry, as the back gesture and the back key reach it
+    fun pressBack() {
+        @Suppress("DEPRECATION")
+        context().onBackPressed()
+    }
 
     private fun context(): Activity = activity ?: error("nativeView: no Activity yet. A program runs inside TermActivity.program()")
 
@@ -252,6 +285,10 @@ object nativeView {
             // what the picture shows, for a reader that cannot see it: the description TalkBack reads
             "alt" -> if (node.kind == TermNode.Kind.IMAGE) node.view.contentDescription = value
             "aria-label" -> node.view.contentDescription = value
+            // out of the accessibility tree, with everything under it (native-accessibility-0007)
+            "aria-hidden" -> node.view.importantForAccessibility =
+                if (value == "true") android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                else android.view.View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
             "disabled" -> node.view.isEnabled = value == "false"
             "aria-checked" -> (node.view as? android.widget.Switch)?.isChecked = value == "true"
             "min", "max", "step" -> if (node.kind == TermNode.Kind.RANGE) {
@@ -661,6 +698,7 @@ object nativeView {
             "color" -> { paint(value) ?: return false; restyleText(node) }
             "font-size" -> { dp(value) ?: return false; restyleText(node) }
             "font-weight" -> { value.toIntOrNull() ?: return false; restyleText(node) }
+            "font-family" -> { if (firstFamily(value).isEmpty()) return false; restyleText(node) }
             else -> return false
         }
         return true
@@ -673,9 +711,87 @@ object nativeView {
             "border", "border-width" -> { node.stroke = null; node.surface?.setStroke(0, Color.TRANSPARENT) }
             "border-radius" -> node.surface?.cornerRadius = 0f
             "opacity" -> node.view.alpha = 1f
-            "color", "font-size", "font-weight" -> restyleText(node)
+            "color", "font-size", "font-weight", "font-family" -> restyleText(node)
         }
     }
+
+    // ---- fonts (native-text-0002): a face registered from a file, a `data:` URI or an APK asset, set by `font-family`.
+    // Android installs no named families, only the generic aliases below, so a family is AVAILABLE when it was
+    // registered here or is one of those. Text whose family is not available draws in the system face, which is what
+    // `check-font` answering false says ahead of time
+
+    private val fonts = mutableMapOf<String, android.graphics.Typeface>()
+    private val GENERIC_FAMILIES = setOf("sans-serif", "serif", "monospace", "cursive", "casual", "sans-serif-condensed", "sans-serif-medium", "sans-serif-light")
+
+    // register the face in `source` under `family`: `asset:<name>` from the APK, a `data:` URI (written to the cache
+    // first, since a Typeface is made from a file), or a path. True when the family can now be drawn
+    fun registerFont(family: String, source: String): Boolean {
+        if (fonts.containsKey(family)) return true
+        val face = try {
+            when {
+                source.startsWith("asset:") -> android.graphics.Typeface.createFromAsset(context().assets, source.removePrefix("asset:"))
+                source.startsWith("data:") -> {
+                    val comma = source.indexOf(',')
+                    if (comma < 0 || !source.substring(0, comma).endsWith(";base64")) return false
+                    val file = java.io.File(context().cacheDir, "term-font-${java.util.UUID.randomUUID()}")
+                    file.writeBytes(android.util.Base64.decode(source.substring(comma + 1), android.util.Base64.DEFAULT))
+                    android.graphics.Typeface.createFromFile(file)
+                }
+                java.io.File(source).isFile -> android.graphics.Typeface.createFromFile(source)
+                else -> return false
+            }
+        } catch (_: RuntimeException) {
+            return false
+        }
+        fonts[family] = face
+        return true
+    }
+
+    fun hasFont(family: String): Boolean = fonts.containsKey(family) || family in GENERIC_FAMILIES
+
+    // what the platform's accessibility API reports for a node (native-accessibility-0007): `role|name`, the role the
+    // accessibility class name the view gives its node, short (`android.widget.Button` is `Button`), as the
+    // contract writes it. A node out of the tree is `hidden`. The name is the content description, else the text
+    fun accessibilityOf(handle: Any): String {
+        val view = node(handle).view
+        val hidden = view.importantForAccessibility == android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO ||
+            view.importantForAccessibility == android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        if (hidden) return "hidden|"
+        // THE FACTS THE NODE IS BUILT FROM, read from the view: with no accessibility service running, a node made by
+        // `createAccessibilityNodeInfo` comes back with no class name and no description at all, while the view carries
+        // both. A layout container that is neither focusable nor described is not a node TalkBack lands on, and its
+        // children speak, so it has no role of its own: none
+        val container = view is android.view.ViewGroup && view !is android.widget.ScrollView &&
+            view !is android.widget.AdapterView<*> && !view.isFocusable && view.contentDescription.isNullOrEmpty()
+        val heading = android.os.Build.VERSION.SDK_INT >= 28 && view.isAccessibilityHeading
+        val role = if (container) "" else (view.accessibilityClassName?.toString()?.substringAfterLast('.') ?: "") + if (heading) "+isHeading" else ""
+        // the description, else a field's hint (which TalkBack speaks as its name), else its text
+        val name = view.contentDescription?.toString()?.takeIf { it.isNotEmpty() }
+            ?: (view as? EditText)?.hint?.toString()?.takeIf { it.isNotEmpty() }
+            ?: (view as? TextView)?.text?.toString() ?: ""
+        return "$role|$name"
+    }
+
+    // the characters of a text node the platform draws as a box (native-text-0004): each asked of the TextView's own
+    // paint, whose `hasGlyph` follows the system's fallback chain as drawing does. Each character once, in the order
+    // first met; empty when all are drawn
+    fun missingGlyphs(handle: Any): String {
+        val text = node(handle).view as? TextView ?: return ""
+        val paint = text.paint
+        val missing = linkedSetOf<String>()
+        val content = text.text.toString()
+        var at = 0
+        while (at < content.length) {
+            val character = String(Character.toChars(content.codePointAt(at)))
+            if (!paint.hasGlyph(character)) missing.add(character)
+            at += character.length
+        }
+        return missing.joinToString("")
+    }
+
+    // the first family a CSS `font-family` list names, unquoted: `"Noto Sans", serif` is `Noto Sans`
+    private fun firstFamily(value: String): String =
+        value.split(',').first().trim().trim('"', '\'')
 
     // a text property's value at a node: its own, else the nearest ancestor's, which is CSS inheritance
     private fun inherited(node: TermNode, property: String): String? {
@@ -698,16 +814,26 @@ object nativeView {
         val ink = inherited(node, "color")?.let { paint(it) }
         val size = inherited(node, "font-size")?.trim()?.removeSuffix("px")?.toFloatOrNull()
         val heft = inherited(node, "font-weight")?.trim()?.toIntOrNull()
-        if (ink == null && size == null && heft == null && !node.textStyled) return
-        node.textStyled = ink != null || size != null || heft != null
+        val wanted = inherited(node, "font-family")?.let { firstFamily(it) }
+        if (ink == null && size == null && heft == null && wanted == null && !node.textStyled) return
+        node.textStyled = ink != null || size != null || heft != null || wanted != null
         text.setTextColor(ink ?: Color.BLACK)
         if (size != null) text.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, size)
         else text.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 17f)
+        // the family when it can be drawn, else the system face
+        val family = wanted?.takeIf { hasFont(it) }
+        val base = family?.let { fonts[it] ?: android.graphics.Typeface.create(it, android.graphics.Typeface.NORMAL) }
+            ?: android.graphics.Typeface.DEFAULT
+        node.family = family ?: ""
+        // a registered face's line is its ascent and descent, as CSS and Apple size it. Font padding would size it to
+        // the face's whole bounding box instead, and one outlying glyph makes that enormous: CrowMark's runs from
+        // -6550 to 7342 on an 800 unit em, which drew a 24px line 418 tall. The system face keeps Android's default
+        text.includeFontPadding = family == null || !fonts.containsKey(family)
         text.typeface = when {
-            heft == null -> android.graphics.Typeface.DEFAULT
-            android.os.Build.VERSION.SDK_INT >= 28 -> android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, heft, false)
-            heft >= 600 -> android.graphics.Typeface.DEFAULT_BOLD
-            else -> android.graphics.Typeface.DEFAULT
+            heft == null -> base
+            android.os.Build.VERSION.SDK_INT >= 28 -> android.graphics.Typeface.create(base, heft, false)
+            heft >= 600 -> android.graphics.Typeface.create(base, android.graphics.Typeface.BOLD)
+            else -> base
         }
     }
 
@@ -799,6 +925,7 @@ object nativeView {
             "font-weight" -> text?.typeface?.let {
                 if (android.os.Build.VERSION.SDK_INT >= 28) it.weight.toString() else if (it.isBold) "700" else "400"
             } ?: ""
+            "font-family" -> node.family
             else -> ""
         }
     }
@@ -876,17 +1003,64 @@ object nativeView {
                 override fun onStopTrackingTouch(bar: android.widget.SeekBar?) {}
             })
         }
-        if (event == "input" && node.kind == TermNode.Kind.FIELD && !node.watchInstalled) {
+        if (event in FIELD_EVENTS && node.kind == TermNode.Kind.FIELD && !node.watchInstalled) {
             node.watchInstalled = true
             (node.view as EditText).addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
                 override fun afterTextChanged(s: Editable?) {
                     node.value = s?.toString() ?: ""
+                    noteComposition(node, s != null && android.view.inputmethod.BaseInputConnection.getComposingSpanStart(s) >= 0)
                     node.fire("input")
                 }
             })
         }
+    }
+
+    // ---- composed input (native-text-0003): an input method's uncommitted text, reported as the web reports it.
+    // A keyboard for Korean, Japanese or Chinese marks the text it is still composing with a composing span. Every edit
+    // says whether the span is present, and this turns that into the web's three events in its order:
+    // `compositionstart` when composing begins, `compositionupdate` for each composing edit, `compositionend` when the
+    // text is committed or dropped. `input` follows each edit, and the value includes the composing text, as on the web
+
+    private val FIELD_EVENTS = setOf("input", "compositionstart", "compositionupdate", "compositionend")
+
+    private fun noteComposition(node: TermNode, marked: Boolean) {
+        if (marked) {
+            if (!node.composing) {
+                node.composing = true
+                node.fire("compositionstart")
+            }
+            node.fire("compositionupdate")
+        } else if (node.composing) {
+            node.composing = false
+            node.fire("compositionend")
+        }
+    }
+
+    // the field's composing text, empty when it holds none: what a web handler reads as a composition event's `data`
+    fun composingText(handle: Any): String {
+        val text = (node(handle).view as? EditText)?.text ?: return ""
+        val start = android.view.inputmethod.BaseInputConnection.getComposingSpanStart(text)
+        val end = android.view.inputmethod.BaseInputConnection.getComposingSpanEnd(text)
+        return if (start in 0..end) text.subSequence(start, end).toString() else ""
+    }
+
+    // the connection a keyboard writes through: the EditText's own, as an input method service is handed it
+    private fun inputOf(node: TermNode): android.view.inputmethod.InputConnection? {
+        val field = node.view as? EditText ?: return null
+        return node.input ?: field.onCreateInputConnection(android.view.inputmethod.EditorInfo()).also { node.input = it }
+    }
+
+    // for tests: what an input method does while a person composes, through InputConnection.setComposingText, so the
+    // field reports the edit exactly as it would for a real keyboard. `text` replaces whatever is composing
+    fun compose(handle: Any, text: String) {
+        inputOf(node(handle))?.setComposingText(text, 1)
+    }
+
+    // for tests: the input method commits, replacing the composing text with `text` (InputConnection.commitText)
+    fun commitComposition(handle: Any, text: String) {
+        inputOf(node(handle))?.commitText(text, 1)
     }
 
     // DOM semantics: a node has one parent, so appending one that already has a parent moves it
@@ -896,6 +1070,10 @@ object nativeView {
         detach(child)
         child.parent = parent
         parent.children.add(child)
+        // a heading's text is announced as a heading (native-accessibility-0007): TalkBack's heading flag
+        if (child.view is TextView && Regex("h[1-6]").matches(parent.tag) && android.os.Build.VERSION.SDK_INT >= 28) {
+            child.view.isAccessibilityHeading = true
+        }
         // the color and font the new parent passes down, as CSS inherits them
         restyleText(child)
         val drawing = parent.drawingAncestor

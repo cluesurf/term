@@ -2,16 +2,16 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
   find native-undefined
   find native-void
   find readable
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer-encoding
 
-load @term/bind/code/node/stream/internal
+load @term/bind/node/stream/internal
   find stream-options
 
 form readable-options, name <ReadableOptions>

@@ -3,7 +3,7 @@ load @term/bind
   find form
   find tuple
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
 
 form memory-measurement, name <MemoryMeasurement>

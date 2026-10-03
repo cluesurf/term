@@ -1,35 +1,35 @@
 
-load @term/bind/code/javascript/es2015/core/function
+load @term/bind/javascript/es2015/core/function
   find function
 
-load @term/bind/code/javascript/es5/array-like
+load @term/bind/javascript/es5/array-like
   find array-like
 
-load @term/bind/code/javascript/es5/property-descriptor
+load @term/bind/javascript/es5/property-descriptor
   find property-descriptor
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-object
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-symbol
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-undefined
 
 form proxy-handler, name <ProxyHandler>

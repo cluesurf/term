@@ -12,6 +12,7 @@ import type {
   Program,
   Statement,
 } from '@term/make/code/compile/node'
+import type { RootNode } from '@term/make/code/parser/tree'
 
 // a source replacement: the editor swaps the text in `span` for `text`. The unit of every autofix and of the
 // formatter's output, so the language server applies both the same way.
@@ -62,6 +63,8 @@ export type LintContext = {
   program: Program
   // whole-program analyses, computed at most once per lint call. See LintMemo above.
   memo: LintMemo
+  // the file's role rule carries `mark lean`, so the lean spellings are the house ones
+  lean: boolean
   slice(span: Span): string
   report(
     finding: Omit<Finding, 'rule' | 'code' | 'severity'> & {
@@ -82,4 +85,7 @@ export type Rule = {
   fixable: boolean
   // called for every AST node; reports findings on the ones it cares about
   check(target: LintNode, context: LintContext): void
+  // called ONCE per file with the concrete syntax tree, for a rule about how a line is WRITTEN rather than what the
+  // program means: two spellings of one program mill to the same AST, so `check` cannot tell them apart
+  checkSource?(tree: RootNode, context: LintContext): void
 }

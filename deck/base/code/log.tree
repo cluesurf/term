@@ -2,7 +2,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/log
+load @term/base/native/{platform}/log
   find write-info
   find write-warn
   find write-error

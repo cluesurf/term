@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript/es2015/iterable/int8-array
+load @term/bind/javascript/es2015/iterable/int8-array
   find int8-array
 
 form int8-array, name <Int8Array>

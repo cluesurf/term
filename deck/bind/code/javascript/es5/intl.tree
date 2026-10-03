@@ -1,13 +1,13 @@
 
-bear @term/bind/code/javascript/es5/intl/collator-options
-bear @term/bind/code/javascript/es5/intl/resolved-collator-options
-bear @term/bind/code/javascript/es5/intl/collator
-bear @term/bind/code/javascript/es5/intl/number-format-options
-bear @term/bind/code/javascript/es5/intl/resolved-number-format-options
-bear @term/bind/code/javascript/es5/intl/number-format
-bear @term/bind/code/javascript/es5/intl/date-time-format-options
-bear @term/bind/code/javascript/es5/intl/resolved-date-time-format-options
-bear @term/bind/code/javascript/es5/intl/date-time-format
+bear @term/bind/javascript/es5/intl/collator-options
+bear @term/bind/javascript/es5/intl/resolved-collator-options
+bear @term/bind/javascript/es5/intl/collator
+bear @term/bind/javascript/es5/intl/number-format-options
+bear @term/bind/javascript/es5/intl/resolved-number-format-options
+bear @term/bind/javascript/es5/intl/number-format
+bear @term/bind/javascript/es5/intl/date-time-format-options
+bear @term/bind/javascript/es5/intl/resolved-date-time-format-options
+bear @term/bind/javascript/es5/intl/date-time-format
 
 load @term/bind/code/javascript/es5/collator
   find collator
@@ -27,10 +27,10 @@ load @term/bind/code/javascript/es5/number-format
 load @term/bind/code/javascript/es5/number-format-options
   find number-format-options
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 host collator, name <Collator>

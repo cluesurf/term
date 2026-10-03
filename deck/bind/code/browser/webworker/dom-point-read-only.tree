@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/dom/dom-point-read-only
+load @term/bind/browser/dom/dom-point-read-only
   find dom-point-read-only
 
-load @term/bind/code/browser/webworker/dom-matrix-init
+load @term/bind/browser/webworker/dom-matrix-init
   find dom-matrix-init
 
-load @term/bind/code/browser/webworker/dom-point
+load @term/bind/browser/webworker/dom-point
   find dom-point
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form dom-point-read-only, name <DOMPointReadOnly>

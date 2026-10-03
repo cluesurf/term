@@ -2,15 +2,15 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-undefined
   find net-server
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/tls
+load @term/bind/node/tls
   find common-connection-options
   find secure-context-options
 

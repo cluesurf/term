@@ -1,13 +1,13 @@
-load @term/mill/code/code/head/mine
+load @term/mill/code/head/mine
   find head
 
-load @term/mill/code/code/like/mine
+load @term/mill/code/like/mine
   find like
 
-load @term/mill/code/code/seed/mine
+load @term/mill/code/seed/mine
   find seed
 
-load @term/mill/code/code/form/link/mine
+load @term/mill/code/form/link/mine
   find link
 
 

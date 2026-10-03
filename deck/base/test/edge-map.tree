@@ -2,7 +2,7 @@
 # existing key keeps its place, removing a key and setting it again moves it to the end, and a record key is found
 # by an equal record. Held by `pnpm term:base-gate`.
 
-load @term/base/code/hash
+load @term/base/hash
   find hash
   find keys
   find values
@@ -10,17 +10,17 @@ load @term/base/code/hash
   find has
   find get-or-default
 
-load @term/base/code/list
+load @term/base/list
   find join
   find size
   find get
 
-load @term/base/code/hash
+load @term/base/hash
   find entries
   find change
   find map-values
 
-load @term/base/code/pair
+load @term/base/pair
   find pair
 
 form point
@@ -192,10 +192,19 @@ test <entries come back in key order>
   save all
     call entries
       read m
-  save last
-    call get
-      read all
-      code 1
+  # the size first, so the read is on the path that knows the second entry is there
+  save key, text <>
+  fork test
+    hook test
+      call is-equal
+        read all/length
+        code 2
+    hook hold
+      save last
+        call get
+          read all
+          code 1
+      save key, read last/first
   want hold
     call and
       call is-equal
@@ -203,7 +212,7 @@ test <entries come back in key order>
           read all
         code 2
       call is-equal
-        read last/first
+        read key
         text <a>
 
 test <change counts into a missing key and an existing one>

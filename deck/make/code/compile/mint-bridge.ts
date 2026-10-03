@@ -71,6 +71,7 @@ import {
   UNKNOWN,
   UNIT,
 } from '@term/make/code/compile/node'
+import { baseRefusal } from '@term/make/code/deck/resolve'
 
 export type MillResult =
   // `twins` sit beside the program and never in it (node.ts, `Twin`), so a reader that ignores them is correct
@@ -303,6 +304,7 @@ const FLOW_HEADS = new Set([
   'send',
   'back',
   'fork',
+  'sift',
   'halt',
   'bust',
   'walk',
@@ -317,10 +319,10 @@ const FLOW_HEADS = new Set([
   'host',
 ])
 
-// A statement head read as a lean call. The comma rule pops exactly ONE level, so `back substring one, 0, 1`
-// leaves `1` beside `substring` rather than inside it, and `fork test, is-equal size(x), 1` leaves `1` beside
-// the condition. Either way the statement head ends up with two children where its rule allows one, and the
-// old message named the head as an undefined task. Name the real cause and the two ways out of it instead.
+// A statement head read as a lean call: the head ends up with two children where its rule allows one, as in
+// `back add(1, a), 2`, and the old message named the head as an undefined task. Name the real cause and the two
+// ways out of it instead. Before 2026-10-02 a comma after a literal or a closed call popped out of the call it
+// sat in, so `back substring one, 0, 1` and `fork test, is-equal size(x), 1` fell in here; they no longer do.
 function commaTrap(
   bridge: Bridge,
   value: Minted,
@@ -332,7 +334,7 @@ function commaTrap(
       file: bridge.file,
       span,
       message: `\`${head}\` is a statement, and this line gives it more than it takes, so it was read as a call to a task named \`${head}\``,
-      hint: 'a comma pops exactly one level, so an inline call after one is left open and swallows what follows. Parenthesize the inner call (`back substring(one, 0, 1)`), or put the arguments on their own indented lines',
+      hint: 'a comma after a closed call or a literal stays at its level, and one after a word pops only that word. Keep every argument inside its call (`back substring(one, 0, 1)`), or put the arguments on their own indented lines',
     }),
   )
 
@@ -361,13 +363,15 @@ function plainName(name: string): string {
     .join('/')
 }
 
-// A text literal, which is a STRING unless it carries `{{...}}`, and then it is a TEMPLATE: the chunks and the
-// expressions between them, so `text <n= {{count}}>` interpolates at run time (a template literal on
-// TypeScript, `format!` on Rust, `\(x)` on Swift, `$x` on Kotlin) instead of shipping the braces as characters.
+// A text literal, which is a STRING unless it carries an interpolation, and then it is a TEMPLATE: the chunks
+// and the expressions between them, so `<n= {count}>` reads `count`.
 //
-// A single-brace `{x}` is a TEMPLATE PARAMETER, filled when a `tree` expands, and one that survived expansion
-// was never in a template. The reader diagnoses that; the grammar path leaves the diagnosis to it and builds
-// the string, because both readers run over the same input and only one of them needs to say it.
+// ONE BRACE SYNTAX, AND THE COMPILER DECIDES WHEN IT IS FILLED. `{x}` naming a template parameter was
+// substituted when the `tree` expanded, before this ran. `{x}` naming a module constant that folds is filled at
+// COMPILE time, by the simplifier (ir/simplify.ts, `fillTemplates`), so the output is a plain literal. Anything
+// else is filled at RUN time: a template literal on TypeScript, `format!` on Rust, `\(x)` on Swift, `$x` on
+// Kotlin. `{{x}}` is the older spelling of the same thing and is read the same way. A name that names nothing is
+// the checker's unknown name, as anywhere else.
 function textExpression(
   bridge: Bridge,
   value: Minted,
@@ -379,25 +383,7 @@ function textExpression(
     return { form: 'string', value: textOf(value) ?? '', span }
   }
 
-  const single = node.parts.find(
-    part => part.kind === 'interpolation' && part.depth < 2,
-  )
-
-  // A `{x}` is a TEMPLATE PARAMETER, filled when a `tree` expands, so one that survived expansion was never in
-  // a template. It used to compile to an empty string in silence, which is why it is refused by name.
-  if (single && single.kind === 'interpolation') {
-    const inner = single.group ? (headWord(single.group) ?? 'x') : 'x'
-
-    refuse(
-      bridge,
-      value,
-      `"{${inner}}" in a text literal is a template parameter, and this text is not in a template: interpolate at run time with {{${inner}}}, or write \\{${inner}\\} for the literal braces`,
-    )
-  }
-
-  const braced = node.parts.find(
-    part => part.kind === 'interpolation' && part.depth >= 2,
-  )
+  const braced = node.parts.find(part => part.kind === 'interpolation')
 
   if (!braced) {
     return { form: 'string', value: textOf(value) ?? '', span }
@@ -1186,11 +1172,18 @@ function closureOf(bridge: Bridge, value: Form): Expression | undefined {
     }
   })
   const result = typeOf(bridge, firstAt(value, 'like'))
-  // the parameters are in scope in the body, for `inScope` only: the body's `save`s still declare, as they did
+  // the parameters are in scope in the body, for `inScope` only: the body's `save`s still declare, as they did.
+  // AND THE BODY IS ITS OWN SCOPE, as the legacy mill gives it (`new Set(scope)`): a name the enclosing body declared
+  // is still assigned, since a closure captures it, but a name the closure declares stays the closure's. Without the
+  // copy two handlers in one task that each `save value` leaked into each other: the second `save` became an
+  // assignment to the first handler's local, and every read of it failed as "not defined" (native-text-0003)
   const outer = bridge.bound
+  const enclosing = bridge.declared
   bridge.bound = new Set([...outer, ...params.map(p => p.name)])
+  bridge.declared = new Set(enclosing)
   const body = flowOf(bridge, bodySteps(value))
   bridge.bound = outer
+  bridge.declared = enclosing
 
   return {
     form: 'closure',
@@ -1766,11 +1759,27 @@ function callOf(bridge: Bridge, value: Form): Expression | undefined {
   const propagate = formsAt(value, 'halt').some(
     halt => wordAt(halt, 'mode') === 'kink',
   )
-  // `wait false` on a call is FIRE AND FORGET: the call is started and not awaited, which is a different
-  // thing from `wait true` and from no marker at all.
-  const background = formsAt(value, 'wait').some(
-    wait => wordAt(wait, 'seed') === 'false',
-  )
+  // `tick f(x)` is the call STARTED AND NOT WAITED FOR: minted as a call (call/mine.tree, `mine tick`) and told
+  // apart here by its head word. `wait false` under a `call` is the older spelling of the same thing. Either is a
+  // different thing from `wait true` and from no marker at all, which await a call to an async task.
+  const ticked = value.node?.kind === 'group' && headWord(value.node) === 'tick'
+
+  if (ticked) {
+    for (const wait of formsAt(value, 'wait')) {
+      bridge.diagnostics.push(
+        diagnose('unexpected-node', {
+          file: bridge.file,
+          span: spanOf(wait),
+          message: '`tick` starts the call and does not wait for it, so a `wait` under it says the opposite',
+          hint: 'write the call without `tick` to wait for it, or drop the `wait` to start it and go on',
+        }),
+      )
+    }
+  }
+
+  const background =
+    ticked ||
+    formsAt(value, 'wait').some(wait => wordAt(wait, 'seed') === 'false')
   // `call fill / <data> / like <form>` fills a form from data, with the compiler walking the form's fields,
   // and `call melt` is the reverse. The `like` names the FORM and is not an argument, so the call carries it as
   // `into` and its callee becomes `fill-form` / `melt-form`, which is what the emitter and the checker look for.
@@ -3126,6 +3135,18 @@ function topLevelOf(bridge: Bridge, value: Minted): Statement[] {
         }
       }
 
+      // `base <dir>` forces the package root, and must name the path's first segment. The loader resolves with it
+      // (and finds nothing when it disagrees); this is where the disagreement is SAID, at the load, naming both
+      {
+        const base = wordAt(firstAt(value, 'base'), 'value')
+        const path = wordAt(value, 'path')
+        const refused = base !== undefined && path !== undefined ? baseRefusal(path, base) : undefined
+
+        if (refused) {
+          refuse(bridge, firstAt(value, 'base') ?? value, refused)
+        }
+      }
+
       // `find get as list-get` BINDS NOTHING: the words after the imported name nest under it, so the alias is
       // not an alias and the failure used to surface much later, in another file, as an undefined name. The
       // grammar captures the whole phrase so the reader can say what to write instead.
@@ -4133,7 +4154,25 @@ function routeOf(
     // The KEY is what tells a route from a command downstream, so a route writes it whether or not it has a
     // component to put in it: `hook /users / task get` is a route with no view, not a CLI command.
     ...(isRoute ? { component } : {}),
-    directives: [],
+    // a route's `seed <name>, <value>` lines are its directives: `title`, `layout`, `proxy`, a meta tag. They arrive
+    // in the flow, and were dropped here until 2026-10-03, so `seed title` set no title in any build on this path while
+    // the legacy mill read it (native-navigation-0002)
+    // The line is an open call whose head is `seed`: its first argument names the directive (a bare word, built as a
+    // variable) and its second is the value, the shape the legacy mill reads as rest[0] and rest[1]
+    directives: isRoute
+      ? at(value, 'flow')
+          .filter(isForm)
+          .filter(step => step.form === 'seed-call-open' && wordAt(step, 'name') === 'seed')
+          .flatMap(step => {
+            const [named, given] = at(step, 'seed').map(seed => expressionOf(bridge, seed))
+
+            if (named?.form !== 'variable') {
+              return []
+            }
+
+            return given ? [{ name: named.name, value: given }] : [{ name: named.name }]
+          })
+      : [],
     sends: [],
     hooks: [],
     children: formsAt(value, 'hook').map(child => routeOf(bridge, child)),

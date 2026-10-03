@@ -1,5 +1,5 @@
 
-load @term/base/code/view
+load @term/base/view
   find view-node
   find view-element
   find view-text
@@ -12,7 +12,7 @@ load @term/base/code/view
   find view-fork-hold
   find view-fork-miss
 
-load @term/mill/code/view/seed/mint
+load @term/mill/view/seed/mint
   find view-seed
   find view-bind
 

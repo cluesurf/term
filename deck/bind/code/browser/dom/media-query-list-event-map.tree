@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/media-query-list-event
+load @term/bind/browser/dom/media-query-list-event
   find media-query-list-event
 
 form media-query-list-event-map, name <MediaQueryListEventMap>

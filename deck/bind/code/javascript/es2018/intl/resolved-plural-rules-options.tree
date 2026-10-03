@@ -1,17 +1,17 @@
 
-load @term/bind/code/javascript/es2018/intl/ldml-plural-rule
+load @term/bind/javascript/es2018/intl/ldml-plural-rule
   find ldml-plural-rule
 
-load @term/bind/code/javascript/es2018/intl/plural-rule-type
+load @term/bind/javascript/es2018/intl/plural-rule-type
   find plural-rule-type
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form resolved-plural-rules-options, name <ResolvedPluralRulesOptions>

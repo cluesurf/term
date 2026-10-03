@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
 form visual-viewport-event-map, name <VisualViewportEventMap>

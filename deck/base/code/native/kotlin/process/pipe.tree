@@ -3,7 +3,7 @@
 dock load
   load <global:pipe>, name pipe-runtime
 
-load @term/base/code/process
+load @term/base/process
   find child
 
 task connect

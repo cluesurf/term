@@ -4,11 +4,11 @@
 #
 # Run with: term test
 
-load @term/base/code/native/shared/bloom-filter
+load @term/base/native/shared/bloom-filter
   find bloom-filter
   find make-bloom-filter
 
-load @term/base/code/boolean
+load @term/base/boolean
   find not
 
 test bloom-filter-has-an-added-value

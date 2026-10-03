@@ -1,7 +1,7 @@
 # An HTTP request that cannot be answered fails the same way on every backend. Held by `pnpm term:base-gate`. The
 # timeout case needs a listener that never answers, so it is in test/tree/tcp.tree.
 
-load @term/base/code/network/http
+load @term/base/network/http
   find fetch
 
 task outcome

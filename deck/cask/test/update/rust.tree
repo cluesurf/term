@@ -3,7 +3,7 @@
 # called by test/call/update-rust.ts through the program's own Rust driver, one per launch of the binary. The client's
 # whole lifecycle runs on any machine cargo builds for, because only the hop back to the UI thread is per platform.
 
-load @term/cask/code/cask
+load @term/cask/cask
   find update-launch-path
   find update-check
   find update-ready

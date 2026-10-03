@@ -1,6 +1,6 @@
 # read-otf-loca-table / write-otf-loca-table round trip, both formats. Run: term test, from deck/feed.
 
-load @term/base/code/list
+load @term/base/list
   find get
   find push
 

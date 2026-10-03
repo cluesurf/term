@@ -7,7 +7,7 @@
 # `aes-decrypt-block` are the single-block cipher and inverse cipher over a 16-byte key: one block, no mode,
 # no padding (a mode composes on top). Held to the FIPS-197 appendix C.1 vector in deck/base/test/aes.tree
 # (00112233445566778899aabbccddeeff under 000102...0f -> 69c4e0d86a7b0430d8cdb78070b4c55a).
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-and
   find bitwise-exclusive-or
   find shift-left

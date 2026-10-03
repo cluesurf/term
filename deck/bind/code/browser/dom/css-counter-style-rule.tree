@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/css-rule
+load @term/bind/browser/dom/css-rule
   find css-rule
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form css-counter-style-rule, name <CSSCounterStyleRule>

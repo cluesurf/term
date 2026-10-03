@@ -141,9 +141,9 @@ export async function addDependency(input: {
   const existing = manifest.link.findIndex(l => l.name === input.name)
 
   if (existing >= 0) {
-    manifest.link[existing] = { name: input.name, code: hold }
+    manifest.link[existing] = { name: input.name, mark: hold }
   } else {
-    manifest.link.push({ name: input.name, code: hold })
+    manifest.link.push({ name: input.name, mark: hold })
   }
 
   // write updated manifest

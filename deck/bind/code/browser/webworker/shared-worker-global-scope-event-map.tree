@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/webworker/message-event
+load @term/bind/browser/webworker/message-event
   find message-event
 
-load @term/bind/code/browser/webworker/worker-global-scope-event-map
+load @term/bind/browser/webworker/worker-global-scope-event-map
   find worker-global-scope-event-map
 
 form shared-worker-global-scope-event-map, name <SharedWorkerGlobalScopeEventMap>

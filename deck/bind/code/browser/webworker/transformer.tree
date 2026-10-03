@@ -1,20 +1,20 @@
 
-load @term/bind/code/browser/dom/transformer
+load @term/bind/browser/dom/transformer
   find transformer
 
-load @term/bind/code/browser/webworker/transformer-flush-callback
+load @term/bind/browser/webworker/transformer-flush-callback
   find transformer-flush-callback
 
-load @term/bind/code/browser/webworker/transformer-start-callback
+load @term/bind/browser/webworker/transformer-start-callback
   find transformer-start-callback
 
-load @term/bind/code/browser/webworker/transformer-transform-callback
+load @term/bind/browser/webworker/transformer-transform-callback
   find transformer-transform-callback
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-undefined
 
 form transformer, name <Transformer>

@@ -23,10 +23,10 @@ load ./plan
   find android-build-tools
   find android-device
 
-load @term/base/code/list
+load @term/base/list
   find list
 
-load @term/base/code/text/unicode
+load @term/base/text/unicode
   find rune-to-text
 
 # `a` and `b` joined with the machine's path separator

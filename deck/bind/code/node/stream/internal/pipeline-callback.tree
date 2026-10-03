@@ -6,13 +6,13 @@ load @term/bind
   find task
   find test
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-null
   find native-void
   find node-js-errno-exception
   find p
 
-load @term/bind/code/node/stream/internal
+load @term/bind/node/stream/internal
   find pipeline-destination
   find pipeline-destination-promise-function
 

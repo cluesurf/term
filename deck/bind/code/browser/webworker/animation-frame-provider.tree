@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/animation-frame-provider
+load @term/bind/browser/dom/animation-frame-provider
   find animation-frame-provider
 
-load @term/bind/code/browser/webworker/frame-request-callback
+load @term/bind/browser/webworker/frame-request-callback
   find frame-request-callback
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form animation-frame-provider, name <AnimationFrameProvider>

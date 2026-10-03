@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find key-object
 
-load @term/bind/code/node/crypto
+load @term/bind/node/crypto
   find signing-options
 
 form sign-key-object-input, name <SignKeyObjectInput>

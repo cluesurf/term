@@ -3,16 +3,16 @@
 
 note stable
 
-load @term/base/code/text
+load @term/base/text
   find split
   find starts-with
 
-load @term/base/code/list
+load @term/base/list
   find list
   find size
   find get
 
-load @term/base/code/native/{platform}/path
+load @term/base/native/{platform}/path
   find path-join
   find path-directory
   find path-file-name
@@ -200,20 +200,20 @@ task relative-path
     call path-segments
       read target
   save shared, code 0
-  save more, true
+  # the segments both paths begin with; the first that differs ends the walk
   walk test
+    down
+      call subtract
+        read a/length
+        read shared
     hook test
       call and
-        read more
-        call and
-          call is-below
-            read shared
-            call size
-              read a
-          call is-below
-            read shared
-            call size
-              read b
+        call is-below
+          read shared
+          read a/length
+        call is-below
+          read shared
+          read b/length
     hook step
       fork test
         hook test
@@ -230,7 +230,7 @@ task relative-path
               read shared
               code 1
         hook miss
-          save more, false
+          halt
   save out
     make list
   save k, read shared

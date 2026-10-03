@@ -5,10 +5,10 @@
 
 note unstable
 
-load @term/base/code/time
+load @term/base/time
   find now
 
-load @term/base/code/calendar
+load @term/base/calendar
   find to-parts
   find format
   find year

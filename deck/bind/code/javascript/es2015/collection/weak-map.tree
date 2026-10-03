@@ -1,14 +1,14 @@
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-object
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-this
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-undefined
 
 form weak-map, name <WeakMap>

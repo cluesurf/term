@@ -1,14 +1,14 @@
 
-load @term/base/code/hold/text/code/utf-16
+load @term/base/hold/text/code/utf-16
   find text-utf-16
 
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-and
   find bitwise-or
   find shift-left
   find shift-right
 
-load @term/base/code/list
+load @term/base/list
   find list
 
 load @term/base/code/mark/8

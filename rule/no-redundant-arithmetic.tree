@@ -4,10 +4,10 @@
 # also offers the fix. This one is the proof that a rule is ordinary Term, loaded from this directory with no edit to
 # the engine: see note/library/term/lint-plugins.md and test/lint/seed-rule.ts.
 
-load @term/base/code/rule
+load @term/base/rule
   find rule
 
-load @term/base/code/text/string
+load @term/base/text/string
   find concat
 
 # a literal operand equal to n

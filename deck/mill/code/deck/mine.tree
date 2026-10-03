@@ -5,10 +5,10 @@
 # deck/deck/code/manifest.ts on every manifest in the tree, and deck/deck/code/manifest.ts itself reads through
 # this grammar (mill-self-hosting-0005).
 
-load @term/mill/code/deck/role/mine
+load @term/mill/deck/role/mine
   find role
 
-load @term/mill/code/deck/load/mine
+load @term/mill/deck/load/mine
   find load
 
 mine deck
@@ -92,20 +92,22 @@ mine deck-head
     mine text
       site text
 
-# `code <0.0.16>`: the version
-mine deck-code
-  mine term, term code
+# `mark <1.4.2>`: the version
+mine deck-mark
+  mine term, term mark
     mine text
       site text
 
-# `mark <0.0.1>`: the version in its older spelling, or `mark private`
-mine deck-mark
-  mine term, term mark
+# `code ./code`: the code root, the folder a package path resolves in first (absent means `./code`). `code <1.4.2>`
+# is the version's OLD spelling, told apart by FORM and never by guessing: a text literal is a version, a path is a
+# folder. The reader takes the old spelling as the version and `term lint` warns (`manifest-code-version`)
+mine deck-code
+  mine term, term code
     mine any
+      mine path
+        site path
       mine text
         site text
-      mine term
-        site term
 
 # `lock mit` or `lock <Apache 2.0>`
 mine deck-lock
@@ -116,17 +118,18 @@ mine deck-lock
       mine term
         site term
 
-# `link @term/base, code <0.0.x>` (or the older `mark <0.0.x>`), with an optional `have <n>`
+# `link @term/base, mark <0.0.x>`, with an optional `have <n>`. The constraint is a version, so it is `mark` beside
+# the manifest's own; `code <0.0.x>` is the old spelling, captured apart so the reader can say so
 mine deck-link
   mine term, term link
     mine path
       site name
     mine maybe
       mine any
-        mine term, term code
-          mine text
-            site code
         mine term, term mark
+          mine text
+            site mark
+        mine term, term code
           mine text
             site code
     mine maybe
@@ -193,7 +196,9 @@ mine deck-hook
       mine path
         site path
 
-# `bear ./code`: what the package exports
+# `bear ./code`: the OLD spelling of `code ./code`. It named the folder the package's paths live in and nothing
+# read it but the round trip and the editor, so it is the same field as `code <path>`, read as the code root
+# when no `code <path>` is written, and `term lint` warns (`manifest-bear`)
 mine deck-bear
   mine term, term bear
     mine path

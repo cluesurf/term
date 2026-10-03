@@ -11,6 +11,9 @@ import {
 import { parseCode, parseCodeHold, showCode } from './code'
 import { scopeName } from './name'
 import { parseManifestMill } from './mill'
+import { parse, renderHead } from '@term/make/code/parser/tree'
+import type { GroupNode, Node } from '@term/make/code/parser/tree'
+import { spanOfNode } from '@term/make/code/compile/mill-run'
 import {
   readTree,
   formOf,
@@ -89,7 +92,9 @@ export function parseManifestByHand(input: { text: string }): DeckManifest {
     name = name.slice(slash + 1)
   }
 
-  const code = parseCode(valueOf(root, 'code') ?? '0.0.0')
+  // `mark <1.4.2>` is the version, `code <1.4.2>` its old spelling; `code ./src` is the code root, `bear ./src` its
+  // old spelling. A text value is a version and a path value is a folder
+  const mark = parseCode(valueOf(root, 'mark') ?? valueOf(root, 'code') ?? '0.0.0')
   const head = valueOf(root, 'head')
 
   const mind = formsWith(root, 'mind').map(toMind)
@@ -157,7 +162,8 @@ export function parseManifestByHand(input: { text: string }): DeckManifest {
   return {
     host,
     name,
-    code,
+    mark,
+    code: dir('code') ?? dir('bear'),
     head,
     mind: mind.length > 0 ? mind : undefined,
     lock,
@@ -182,11 +188,9 @@ export function parseManifestByHand(input: { text: string }): DeckManifest {
     base: base.length > 0 ? base : undefined,
     // the fields the grammar knows that this reader used to walk past. Anything read here has to be written back
     // in writeManifest, or the round trip deletes it. See the note on DeckManifest.
-    bear: dir('bear'),
     boot: dir('boot'),
     tool: dir('tool'),
     text: valueOf(root, 'text'),
-    mark: valueOf(root, 'mark') ?? termOf(root, 'mark'),
     make: make.length > 0 ? make : undefined,
     cite: cite.length > 0 ? cite : undefined,
   }
@@ -213,7 +217,7 @@ function toMind(form: Form): DeckMind {
   return entry
 }
 
-// `link @scope/name, code <hold>, have <n>`
+// `link @scope/name, mark <hold>, have <n>`, or the old `code <hold>`
 function toLink(form: Form): DeckLink | undefined {
   const linkName = form.terms[0]
 
@@ -221,13 +225,13 @@ function toLink(form: Form): DeckLink | undefined {
     return undefined
   }
 
-  const hold = valueOf(form, 'code')
+  const hold = valueOf(form, 'mark') ?? valueOf(form, 'code')
   const have = deepValueOf(form, 'have')
   const parsed = have === undefined ? undefined : Number.parseInt(have, 10)
 
   return {
     name: linkName,
-    code: hold ? parseCodeHold(hold) : { form: 'wild', major: 0 },
+    mark: hold ? parseCodeHold(hold) : { form: 'wild', major: 0 },
     have: parsed !== undefined && Number.isFinite(parsed) ? parsed : undefined,
   }
 }
@@ -254,10 +258,11 @@ export function writeManifest(input: {
 
   const fullName = m.host ? `@${m.host}/${m.name}` : m.name
   lines.push(`deck ${fullName}`)
-  lines.push(`  code <${showCode(m.code)}>`)
+  lines.push(`  mark <${showCode(m.mark)}>`)
 
-  if (m.mark) {
-    lines.push(`  mark <${m.mark}>`)
+  // the code root, only when it is not the default: almost no manifest writes it
+  if (m.code && !isDefaultCodeRoot(m.code)) {
+    lines.push(`  code ${m.code}`)
   }
 
   if (m.head) {
@@ -311,12 +316,14 @@ export function writeManifest(input: {
   }
 
   for (const dep of m.link) {
-    const codeStr = writeCodeHold({ hold: dep.code })
+    const codeStr = writeCodeHold({ hold: dep.mark })
 
-    let line = `  link ${dep.name}, code <${codeStr}>`
+    let line = `  link ${dep.name}, mark <${codeStr}>`
 
+    // A literal opens no level, so under the comma rule `mark <1.x.x>, have 1` would put `have` under `mark`.
+    // Parenthesized, `mark` closes first and `have` stays a sibling of it under `link`.
     if (dep.have !== undefined) {
-      line += `, have ${dep.have}`
+      line = `  link ${dep.name}, mark(<${codeStr}>), have ${dep.have}`
     }
 
     lines.push(line)
@@ -327,8 +334,8 @@ export function writeManifest(input: {
       lines.push(`  host <${group.registry}>`)
 
       for (const dep of group.link) {
-        const codeStr = writeCodeHold({ hold: dep.code })
-        lines.push(`    link ${dep.name}, code <${codeStr}>`)
+        const codeStr = writeCodeHold({ hold: dep.mark })
+        lines.push(`    link ${dep.name}, mark <${codeStr}>`)
       }
     }
   }
@@ -337,8 +344,8 @@ export function writeManifest(input: {
     lines.push(`  case work`)
 
     for (const dep of m.devLink) {
-      const codeStr = writeCodeHold({ hold: dep.code })
-      lines.push(`    link ${dep.name}, code <${codeStr}>`)
+      const codeStr = writeCodeHold({ hold: dep.mark })
+      lines.push(`    link ${dep.name}, mark <${codeStr}>`)
     }
   }
 
@@ -364,10 +371,6 @@ export function writeManifest(input: {
 
   if (m.test) {
     lines.push(`  test ${m.test}`)
-  }
-
-  if (m.bear) {
-    lines.push(`  bear ${m.bear}`)
   }
 
   if (m.boot) {
@@ -444,7 +447,8 @@ export function writeCodeHold(input: { hold: CodeHold }): string {
   }
 }
 
-// Publish rules: a name, a version that is not 0.0.0, and an EVEN patch number.
+// Publish rules: a name, and a version that is not 0.0.0. Which patch numbers an author publishes is their own
+// convention, so the toolchain does not hold one.
 export async function validateManifest(input: {
   manifest: DeckManifest
 }): Promise<string[]> {
@@ -455,16 +459,186 @@ export async function validateManifest(input: {
   }
 
   if (
-    input.manifest.code.major === 0 &&
-    input.manifest.code.minor === 0 &&
-    input.manifest.code.patch === 0
+    input.manifest.mark.major === 0 &&
+    input.manifest.mark.minor === 0 &&
+    input.manifest.mark.patch === 0
   ) {
     errors.push('Version must be set (not 0.0.0)')
   }
 
-  if (input.manifest.code.patch % 2 !== 0) {
-    errors.push('Published versions must use even patch numbers')
+  return errors
+}
+
+// `code ./code` is the default, written or not
+export function isDefaultCodeRoot(code: string): boolean {
+  return code.replace(/^\.\//, '').replace(/\/+$/, '') === 'code'
+}
+
+// ---- the old spellings (note/term/plan/manifest-mark-and-code-root.md) ----
+//
+// The manifest's version was `code <1.4.2>` and is `mark <1.4.2>`, because `code` names the code root folder now.
+// A dependency's constraint follows it (`link @x/y, mark <0.0.x>`), and `bear ./code`, which named the same folder
+// as `code ./code` and was read by nothing that resolves a path, is that field's old spelling.
+//
+// The old spellings are told apart by FORM, never by guessing: `code <1.4.2>` carries a text literal and
+// `code ./code` a path. A manifest still carrying them reads correctly; `term lint` reports each one and
+// `term lint --fix` rewrites it with the edits below, which touch only the one word or the one line, so a comment,
+// a blank line or a field order is never disturbed.
+
+export type ManifestSpelling = {
+  rule: 'manifest-code-version' | 'manifest-bear'
+  message: string
+  // zero-based, as the parser's spans are
+  line: number
+  column: number
+  end: number
+  // the replacement for [column, end) on `line`. A `bear ./code` (the default, so nothing replaces it) removes its
+  // whole line, which `wholeLine` says
+  text: string
+  wholeLine?: boolean
+}
+
+export function manifestSpellings(input: { text: string; file?: string }): ManifestSpelling[] {
+  const parsed = parse({ file: input.file ?? 'deck.tree', text: input.text })
+
+  if (!parsed.ok) {
+    return []
   }
 
-  return errors
+  const out: ManifestSpelling[] = []
+  const headOf = (node: Node | undefined): string | undefined => {
+    const first = node?.kind === 'group' ? node.nodes[0] : undefined
+
+    return first?.kind === 'name' ? renderHead(first) : undefined
+  }
+
+  // the word itself: the head of `group`, its span in the source
+  const wordAt = (group: GroupNode): { line: number; column: number; end: number } | undefined => {
+    const span = spanOfNode(group.nodes[0]!)
+
+    return span ? { line: span.start.line, column: span.start.column, end: span.end.column } : undefined
+  }
+
+  // `code <...>` with a TEXT argument: the old version spelling, under `deck` or under a `link`
+  const oldCode = (group: GroupNode, where: 'version' | 'constraint'): void => {
+    if (headOf(group) !== 'code' || group.nodes[1]?.kind !== 'text') {
+      return
+    }
+
+    const at = wordAt(group)
+
+    if (at) {
+      out.push({
+        rule: 'manifest-code-version',
+        message:
+          where === 'version'
+            ? '`code <version>` is the old spelling of the version: write `mark <version>`. `code` names the code root folder now'
+            : '`link ..., code <range>` is the old spelling of a dependency\'s versions: write `mark <range>`',
+        ...at,
+        text: 'mark',
+      })
+    }
+  }
+
+  // every group a `link` carries its constraint in: the comma makes `code <...>` a child of the path, and a
+  // stacked one is a child of the `link` itself
+  const visitLink = (group: GroupNode): void => {
+    for (const child of group.nodes.slice(1)) {
+      if (child.kind !== 'group') {
+        continue
+      }
+
+      oldCode(child, 'constraint')
+      visitLink(child)
+    }
+  }
+
+  const visitFields = (group: GroupNode): void => {
+    for (const child of group.nodes.slice(1)) {
+      if (child.kind !== 'group') {
+        continue
+      }
+
+      const head = headOf(child)
+
+      if (head === 'code') {
+        oldCode(child, 'version')
+      } else if (head === 'link') {
+        visitLink(child)
+      } else if (head === 'host' || head === 'case') {
+        visitFields(child)
+      } else if (head === 'bear') {
+        const value = headOf(child.nodes[1])
+        const at = wordAt(child)
+
+        if (value !== undefined && at) {
+          out.push(
+            isDefaultCodeRoot(value)
+              ? {
+                  rule: 'manifest-bear',
+                  message: '`bear ./code` is the old spelling of `code ./code`, which is the default: the line can go',
+                  ...at,
+                  text: '',
+                  wholeLine: true,
+                }
+              : {
+                  rule: 'manifest-bear',
+                  message: `\`bear ${value}\` is the old spelling of the code root: write \`code ${value}\``,
+                  ...at,
+                  text: 'code',
+                },
+          )
+        }
+      }
+    }
+  }
+
+  // a LOCKFILE is not a manifest: its `deck` entries carry `code <version>` as their own format, which is the
+  // package manager's to change and not this rule's
+  if (parsed.tree.nodes.some(statement => headOf(statement) === 'lock' && statement.nodes[1]?.kind === 'text')) {
+    return []
+  }
+
+  for (const statement of parsed.tree.nodes) {
+    const head = headOf(statement)
+
+    if (head === 'deck') {
+      visitFields(statement)
+    } else if (head === 'load') {
+      // an app manifest's top-level `load @term/site` with its constraint under it (deck/site/test/site/deck.tree)
+      visitLink(statement)
+    }
+  }
+
+  return out
+}
+
+// the manifest text with every old spelling rewritten. Pure: the caller decides whether to write it.
+export function rewriteManifestSpellings(input: { text: string; file?: string }): {
+  text: string
+  changes: ManifestSpelling[]
+} {
+  const changes = manifestSpellings(input)
+
+  if (changes.length === 0) {
+    return { text: input.text, changes }
+  }
+
+  const lines = input.text.split('\n')
+  const drop = new Set<number>()
+
+  // right to left within a line, so an earlier column stays valid
+  const ordered = [...changes].sort((a, b) => b.line - a.line || b.column - a.column)
+
+  for (const change of ordered) {
+    if (change.wholeLine) {
+      drop.add(change.line)
+      continue
+    }
+
+    const row = lines[change.line] ?? ''
+    lines[change.line] = row.slice(0, change.column) + change.text + row.slice(change.end)
+  }
+
+  return { text: lines.filter((_, i) => !drop.has(i)).join('\n'), changes }
 }

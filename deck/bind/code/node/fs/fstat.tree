@@ -4,12 +4,12 @@ load @term/bind
   find form
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
   find native-undefined
   find promise
 
-load @term/bind/code/node/fs
+load @term/bind/node/fs
   find big-int-stats
   find stat-options
   find stats

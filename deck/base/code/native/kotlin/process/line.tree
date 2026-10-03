@@ -7,7 +7,7 @@ dock type
 dock load
   load <global:prompt>, name prompt
 
-load @term/base/code/process/line
+load @term/base/process/line
   find tool
 
 task line-open

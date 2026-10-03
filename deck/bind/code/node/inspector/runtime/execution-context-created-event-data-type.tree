@@ -1,5 +1,5 @@
 
-load @term/bind/code/node/inspector/runtime
+load @term/bind/node/inspector/runtime
   find execution-context-description
 
 form execution-context-created-event-data-type, name <ExecutionContextCreatedEventDataType>

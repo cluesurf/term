@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript/es2018/asynciterable/async-iterator
+load @term/bind/javascript/es2018/asynciterable/async-iterator
   find async-iterator
 
 form async-iterable, name <AsyncIterable>

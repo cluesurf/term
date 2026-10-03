@@ -1,27 +1,27 @@
 
-bear @term/bind/code/javascript/es2020/intl/unicode-bcp47-locale-identifier
-bear @term/bind/code/javascript/es2020/intl/relative-time-format-unit
-bear @term/bind/code/javascript/es2020/intl/relative-time-format-locale-matcher
-bear @term/bind/code/javascript/es2020/intl/relative-time-format-numeric
-bear @term/bind/code/javascript/es2020/intl/relative-time-format-style
-bear @term/bind/code/javascript/es2020/intl/relative-time-format-options
-bear @term/bind/code/javascript/es2020/intl/resolved-relative-time-format-options
-bear @term/bind/code/javascript/es2020/intl/relative-time-format-part
-bear @term/bind/code/javascript/es2020/intl/relative-time-format
-bear @term/bind/code/javascript/es2020/intl/number-format-options
-bear @term/bind/code/javascript/es2020/intl/resolved-number-format-options
-bear @term/bind/code/javascript/es2020/intl/date-time-format-options
+bear @term/bind/javascript/es2020/intl/unicode-bcp47-locale-identifier
+bear @term/bind/javascript/es2020/intl/relative-time-format-unit
+bear @term/bind/javascript/es2020/intl/relative-time-format-locale-matcher
+bear @term/bind/javascript/es2020/intl/relative-time-format-numeric
+bear @term/bind/javascript/es2020/intl/relative-time-format-style
+bear @term/bind/javascript/es2020/intl/relative-time-format-options
+bear @term/bind/javascript/es2020/intl/resolved-relative-time-format-options
+bear @term/bind/javascript/es2020/intl/relative-time-format-part
+bear @term/bind/javascript/es2020/intl/relative-time-format
+bear @term/bind/javascript/es2020/intl/number-format-options
+bear @term/bind/javascript/es2020/intl/resolved-number-format-options
+bear @term/bind/javascript/es2020/intl/date-time-format-options
 
-load @term/bind/code/javascript/es2020/intl/relative-time-format
+load @term/bind/javascript/es2020/intl/relative-time-format
   find relative-time-format
 
-load @term/bind/code/javascript/es2020/intl/relative-time-format-options
+load @term/bind/javascript/es2020/intl/relative-time-format-options
   find relative-time-format-options
 
-load @term/bind/code/javascript/es2020/intl/unicode-bcp47-locale-identifier
+load @term/bind/javascript/es2020/intl/unicode-bcp47-locale-identifier
   find unicode-bcp47-locale-identifier
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
 host relative-time-format, name <RelativeTimeFormat>

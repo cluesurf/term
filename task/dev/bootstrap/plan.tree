@@ -11,7 +11,7 @@
 # which reads its command line again: there, an argument holding any character cmd treats specially is refused, never
 # escaped (see `cmd-safe` in base.tree).
 
-load @term/base/code/list
+load @term/base/list
   find list
 
 # the toolchain versions every platform installs alike

@@ -29,4 +29,4 @@
 #   update-ready         data                    this launch's page rendered, so its update is good
 #                                                (Swift, Kotlin and Rust; node stubs them)
 
-bear @term/cask/code/native/{platform}/cask
+bear @term/cask/native/{platform}/cask

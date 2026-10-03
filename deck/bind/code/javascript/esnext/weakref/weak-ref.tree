@@ -1,11 +1,11 @@
 
-load @term/bind/code/javascript/es2021/weakref/weak-ref
+load @term/bind/javascript/es2021/weakref/weak-ref
   find weak-ref
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-object
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-undefined
 
 form weak-ref, name <WeakRef>

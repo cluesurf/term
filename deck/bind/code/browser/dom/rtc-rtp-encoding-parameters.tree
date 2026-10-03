@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/rtc-priority-type
+load @term/bind/browser/dom/rtc-priority-type
   find rtc-priority-type
 
-load @term/bind/code/browser/dom/rtc-rtp-coding-parameters
+load @term/bind/browser/dom/rtc-rtp-coding-parameters
   find rtc-rtp-coding-parameters
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form rtc-rtp-encoding-parameters, name <RTCRtpEncodingParameters>

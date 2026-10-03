@@ -1,62 +1,62 @@
 
-load @term/bind/code/browser/dom/service-worker-container
+load @term/bind/browser/dom/service-worker-container
   find service-worker-container
 
-load @term/bind/code/browser/webworker/add-event-listener-options
+load @term/bind/browser/webworker/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/webworker/event
+load @term/bind/browser/webworker/event
   find event
 
-load @term/bind/code/browser/webworker/event-listener-options
+load @term/bind/browser/webworker/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/webworker/event-listener-or-event-listener-object
+load @term/bind/browser/webworker/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/webworker/event-target
+load @term/bind/browser/webworker/event-target
   find event-target
 
-load @term/bind/code/browser/webworker/message-event
+load @term/bind/browser/webworker/message-event
   find message-event
 
-load @term/bind/code/browser/webworker/registration-options
+load @term/bind/browser/webworker/registration-options
   find registration-options
 
-load @term/bind/code/browser/webworker/service-worker
+load @term/bind/browser/webworker/service-worker
   find service-worker
 
-load @term/bind/code/browser/webworker/service-worker-container-event-map
+load @term/bind/browser/webworker/service-worker-container-event-map
   find service-worker-container-event-map
 
-load @term/bind/code/browser/webworker/service-worker-registration
+load @term/bind/browser/webworker/service-worker-registration
   find service-worker-registration
 
-load @term/bind/code/browser/webworker/url
+load @term/bind/browser/webworker/url
   find url
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/es5/readonly-array
+load @term/bind/javascript/es5/readonly-array
   find readonly-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-undefined
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form service-worker-container, name <ServiceWorkerContainer>

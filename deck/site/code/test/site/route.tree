@@ -1,6 +1,24 @@
 
-# Client route tree in the route DSL. Maps paths to zone components.
-# Route matching is ours; navigation delegates to the browser History API.
+# Client route tree in the route DSL. Maps paths to components.
+# Route matching is ours; navigation is the contract's (view/navigation), which the browser mirrors into History.
+#
+# The two pages below were named here and defined nowhere until 2026-10-03: route components were looked up only
+# after checking, inside the TypeScript emitter, so a table naming a page that does not exist compiled clean. Routes
+# lower before checking now (native-navigation-0002), which is what found it.
+
+load ./counter
+  find counter
+
+view home-page
+  take host, like view
+  view span
+    text <home>
+
+view user-detail
+  take host, like view
+  take id, like text
+  view span
+    read id
 
 hook /
   view home-page

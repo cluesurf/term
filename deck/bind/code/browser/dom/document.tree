@@ -1,341 +1,341 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/animation-event
+load @term/bind/browser/dom/animation-event
   find animation-event
 
-load @term/bind/code/browser/dom/animation-playback-event
+load @term/bind/browser/dom/animation-playback-event
   find animation-playback-event
 
-load @term/bind/code/browser/dom/attr
+load @term/bind/browser/dom/attr
   find attr
 
-load @term/bind/code/browser/dom/audio-processing-event
+load @term/bind/browser/dom/audio-processing-event
   find audio-processing-event
 
-load @term/bind/code/browser/dom/before-unload-event
+load @term/bind/browser/dom/before-unload-event
   find before-unload-event
 
-load @term/bind/code/browser/dom/blob-event
+load @term/bind/browser/dom/blob-event
   find blob-event
 
-load @term/bind/code/browser/dom/cdata-section
+load @term/bind/browser/dom/cdata-section
   find cdata-section
 
-load @term/bind/code/browser/dom/clipboard-event
+load @term/bind/browser/dom/clipboard-event
   find clipboard-event
 
-load @term/bind/code/browser/dom/close-event
+load @term/bind/browser/dom/close-event
   find close-event
 
-load @term/bind/code/browser/dom/comment
+load @term/bind/browser/dom/comment
   find comment
 
-load @term/bind/code/browser/dom/composition-event
+load @term/bind/browser/dom/composition-event
   find composition-event
 
-load @term/bind/code/browser/dom/custom-event
+load @term/bind/browser/dom/custom-event
   find custom-event
 
-load @term/bind/code/browser/dom/device-motion-event
+load @term/bind/browser/dom/device-motion-event
   find device-motion-event
 
-load @term/bind/code/browser/dom/device-orientation-event
+load @term/bind/browser/dom/device-orientation-event
   find device-orientation-event
 
-load @term/bind/code/browser/dom/document-and-element-event-handlers
+load @term/bind/browser/dom/document-and-element-event-handlers
   find document-and-element-event-handlers
 
-load @term/bind/code/browser/dom/document-event-map
+load @term/bind/browser/dom/document-event-map
   find document-event-map
 
-load @term/bind/code/browser/dom/document-fragment
+load @term/bind/browser/dom/document-fragment
   find document-fragment
 
-load @term/bind/code/browser/dom/document-or-shadow-root
+load @term/bind/browser/dom/document-or-shadow-root
   find document-or-shadow-root
 
-load @term/bind/code/browser/dom/document-ready-state
+load @term/bind/browser/dom/document-ready-state
   find document-ready-state
 
-load @term/bind/code/browser/dom/document-timeline
+load @term/bind/browser/dom/document-timeline
   find document-timeline
 
-load @term/bind/code/browser/dom/document-type
+load @term/bind/browser/dom/document-type
   find document-type
 
-load @term/bind/code/browser/dom/dom-implementation
+load @term/bind/browser/dom/dom-implementation
   find dom-implementation
 
-load @term/bind/code/browser/dom/drag-event
+load @term/bind/browser/dom/drag-event
   find drag-event
 
-load @term/bind/code/browser/dom/element
+load @term/bind/browser/dom/element
   find element
 
-load @term/bind/code/browser/dom/element-creation-options
+load @term/bind/browser/dom/element-creation-options
   find element-creation-options
 
-load @term/bind/code/browser/dom/error-event
+load @term/bind/browser/dom/error-event
   find error-event
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/focus-event
+load @term/bind/browser/dom/focus-event
   find focus-event
 
-load @term/bind/code/browser/dom/font-face-set-load-event
+load @term/bind/browser/dom/font-face-set-load-event
   find font-face-set-load-event
 
-load @term/bind/code/browser/dom/font-face-source
+load @term/bind/browser/dom/font-face-source
   find font-face-source
 
-load @term/bind/code/browser/dom/form-data-event
+load @term/bind/browser/dom/form-data-event
   find form-data-event
 
-load @term/bind/code/browser/dom/gamepad-event
+load @term/bind/browser/dom/gamepad-event
   find gamepad-event
 
-load @term/bind/code/browser/dom/global-event-handlers
+load @term/bind/browser/dom/global-event-handlers
   find global-event-handlers
 
-load @term/bind/code/browser/dom/hash-change-event
+load @term/bind/browser/dom/hash-change-event
   find hash-change-event
 
-load @term/bind/code/browser/dom/html-all-collection
+load @term/bind/browser/dom/html-all-collection
   find html-all-collection
 
-load @term/bind/code/browser/dom/html-anchor-element
+load @term/bind/browser/dom/html-anchor-element
   find html-anchor-element
 
-load @term/bind/code/browser/dom/html-area-element
+load @term/bind/browser/dom/html-area-element
   find html-area-element
 
-load @term/bind/code/browser/dom/html-collection
+load @term/bind/browser/dom/html-collection
   find html-collection
 
-load @term/bind/code/browser/dom/html-collection-of
+load @term/bind/browser/dom/html-collection-of
   find html-collection-of
 
-load @term/bind/code/browser/dom/html-element
+load @term/bind/browser/dom/html-element
   find html-element
 
-load @term/bind/code/browser/dom/html-element-deprecated-tag-name-map
+load @term/bind/browser/dom/html-element-deprecated-tag-name-map
   find html-element-deprecated-tag-name-map
 
-load @term/bind/code/browser/dom/html-element-tag-name-map
+load @term/bind/browser/dom/html-element-tag-name-map
   find html-element-tag-name-map
 
-load @term/bind/code/browser/dom/html-embed-element
+load @term/bind/browser/dom/html-embed-element
   find html-embed-element
 
-load @term/bind/code/browser/dom/html-form-element
+load @term/bind/browser/dom/html-form-element
   find html-form-element
 
-load @term/bind/code/browser/dom/html-head-element
+load @term/bind/browser/dom/html-head-element
   find html-head-element
 
-load @term/bind/code/browser/dom/html-image-element
+load @term/bind/browser/dom/html-image-element
   find html-image-element
 
-load @term/bind/code/browser/dom/html-or-svg-script-element
+load @term/bind/browser/dom/html-or-svg-script-element
   find html-or-svg-script-element
 
-load @term/bind/code/browser/dom/html-script-element
+load @term/bind/browser/dom/html-script-element
   find html-script-element
 
-load @term/bind/code/browser/dom/idb-version-change-event
+load @term/bind/browser/dom/idb-version-change-event
   find idb-version-change-event
 
-load @term/bind/code/browser/dom/input-event
+load @term/bind/browser/dom/input-event
   find input-event
 
-load @term/bind/code/browser/dom/keyboard-event
+load @term/bind/browser/dom/keyboard-event
   find keyboard-event
 
-load @term/bind/code/browser/dom/location
+load @term/bind/browser/dom/location
   find location
 
-load @term/bind/code/browser/dom/media-encrypted-event
+load @term/bind/browser/dom/media-encrypted-event
   find media-encrypted-event
 
-load @term/bind/code/browser/dom/media-key-message-event
+load @term/bind/browser/dom/media-key-message-event
   find media-key-message-event
 
-load @term/bind/code/browser/dom/media-query-list-event
+load @term/bind/browser/dom/media-query-list-event
   find media-query-list-event
 
-load @term/bind/code/browser/dom/media-recorder-error-event
+load @term/bind/browser/dom/media-recorder-error-event
   find media-recorder-error-event
 
-load @term/bind/code/browser/dom/media-stream-track-event
+load @term/bind/browser/dom/media-stream-track-event
   find media-stream-track-event
 
-load @term/bind/code/browser/dom/message-event
+load @term/bind/browser/dom/message-event
   find message-event
 
-load @term/bind/code/browser/dom/mouse-event
+load @term/bind/browser/dom/mouse-event
   find mouse-event
 
-load @term/bind/code/browser/dom/mutation-event
+load @term/bind/browser/dom/mutation-event
   find mutation-event
 
-load @term/bind/code/browser/dom/node
+load @term/bind/browser/dom/node
   find node
 
-load @term/bind/code/browser/dom/node-filter
+load @term/bind/browser/dom/node-filter
   find node-filter
 
-load @term/bind/code/browser/dom/node-iterator
+load @term/bind/browser/dom/node-iterator
   find node-iterator
 
-load @term/bind/code/browser/dom/node-list-of
+load @term/bind/browser/dom/node-list-of
   find node-list-of
 
-load @term/bind/code/browser/dom/non-element-parent-node
+load @term/bind/browser/dom/non-element-parent-node
   find non-element-parent-node
 
-load @term/bind/code/browser/dom/offline-audio-completion-event
+load @term/bind/browser/dom/offline-audio-completion-event
   find offline-audio-completion-event
 
-load @term/bind/code/browser/dom/page-transition-event
+load @term/bind/browser/dom/page-transition-event
   find page-transition-event
 
-load @term/bind/code/browser/dom/parent-node
+load @term/bind/browser/dom/parent-node
   find parent-node
 
-load @term/bind/code/browser/dom/payment-method-change-event
+load @term/bind/browser/dom/payment-method-change-event
   find payment-method-change-event
 
-load @term/bind/code/browser/dom/payment-request-update-event
+load @term/bind/browser/dom/payment-request-update-event
   find payment-request-update-event
 
-load @term/bind/code/browser/dom/pointer-event
+load @term/bind/browser/dom/pointer-event
   find pointer-event
 
-load @term/bind/code/browser/dom/pop-state-event
+load @term/bind/browser/dom/pop-state-event
   find pop-state-event
 
-load @term/bind/code/browser/dom/processing-instruction
+load @term/bind/browser/dom/processing-instruction
   find processing-instruction
 
-load @term/bind/code/browser/dom/progress-event
+load @term/bind/browser/dom/progress-event
   find progress-event
 
-load @term/bind/code/browser/dom/promise-rejection-event
+load @term/bind/browser/dom/promise-rejection-event
   find promise-rejection-event
 
-load @term/bind/code/browser/dom/range
+load @term/bind/browser/dom/range
   find range
 
-load @term/bind/code/browser/dom/rtc-data-channel-event
+load @term/bind/browser/dom/rtc-data-channel-event
   find rtc-data-channel-event
 
-load @term/bind/code/browser/dom/rtc-peer-connection-ice-error-event
+load @term/bind/browser/dom/rtc-peer-connection-ice-error-event
   find rtc-peer-connection-ice-error-event
 
-load @term/bind/code/browser/dom/rtc-peer-connection-ice-event
+load @term/bind/browser/dom/rtc-peer-connection-ice-event
   find rtc-peer-connection-ice-event
 
-load @term/bind/code/browser/dom/rtc-track-event
+load @term/bind/browser/dom/rtc-track-event
   find rtc-track-event
 
-load @term/bind/code/browser/dom/rtcdtmf-tone-change-event
+load @term/bind/browser/dom/rtcdtmf-tone-change-event
   find rtcdtmf-tone-change-event
 
-load @term/bind/code/browser/dom/security-policy-violation-event
+load @term/bind/browser/dom/security-policy-violation-event
   find security-policy-violation-event
 
-load @term/bind/code/browser/dom/selection
+load @term/bind/browser/dom/selection
   find selection
 
-load @term/bind/code/browser/dom/speech-recognition-error-event
+load @term/bind/browser/dom/speech-recognition-error-event
   find speech-recognition-error-event
 
-load @term/bind/code/browser/dom/speech-synthesis-error-event
+load @term/bind/browser/dom/speech-synthesis-error-event
   find speech-synthesis-error-event
 
-load @term/bind/code/browser/dom/speech-synthesis-event
+load @term/bind/browser/dom/speech-synthesis-event
   find speech-synthesis-event
 
-load @term/bind/code/browser/dom/storage-event
+load @term/bind/browser/dom/storage-event
   find storage-event
 
-load @term/bind/code/browser/dom/submit-event
+load @term/bind/browser/dom/submit-event
   find submit-event
 
-load @term/bind/code/browser/dom/svg-element
+load @term/bind/browser/dom/svg-element
   find svg-element
 
-load @term/bind/code/browser/dom/svg-element-tag-name-map
+load @term/bind/browser/dom/svg-element-tag-name-map
   find svg-element-tag-name-map
 
-load @term/bind/code/browser/dom/text
+load @term/bind/browser/dom/text
   find text
 
-load @term/bind/code/browser/dom/touch-event
+load @term/bind/browser/dom/touch-event
   find touch-event
 
-load @term/bind/code/browser/dom/track-event
+load @term/bind/browser/dom/track-event
   find track-event
 
-load @term/bind/code/browser/dom/transition-event
+load @term/bind/browser/dom/transition-event
   find transition-event
 
-load @term/bind/code/browser/dom/tree-walker
+load @term/bind/browser/dom/tree-walker
   find tree-walker
 
-load @term/bind/code/browser/dom/ui-event
+load @term/bind/browser/dom/ui-event
   find ui-event
 
-load @term/bind/code/browser/dom/url
+load @term/bind/browser/dom/url
   find url
 
-load @term/bind/code/browser/dom/visibility-state
+load @term/bind/browser/dom/visibility-state
   find visibility-state
 
-load @term/bind/code/browser/dom/web-gl-context-event
+load @term/bind/browser/dom/web-gl-context-event
   find web-gl-context-event
 
-load @term/bind/code/browser/dom/wheel-event
+load @term/bind/browser/dom/wheel-event
   find wheel-event
 
-load @term/bind/code/browser/dom/window-proxy
+load @term/bind/browser/dom/window-proxy
   find window-proxy
 
-load @term/bind/code/browser/dom/x-path-evaluator-base
+load @term/bind/browser/dom/x-path-evaluator-base
   find x-path-evaluator-base
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form document, name <Document>

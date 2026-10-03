@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find iterable-iterator
   find native-bigint
@@ -14,7 +14,7 @@ load @term/bind
   find or
   find tuple
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer-encoding
 
 form buffer, name <Buffer>

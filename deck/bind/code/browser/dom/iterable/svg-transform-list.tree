@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/svg-transform
+load @term/bind/browser/dom/svg-transform
   find svg-transform
 
-load @term/bind/code/browser/dom/svg-transform-list
+load @term/bind/browser/dom/svg-transform-list
   find svg-transform-list
 
 load @term/bind/code/javascript/iterable-iterator

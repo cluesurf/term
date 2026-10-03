@@ -1,4 +1,4 @@
-load @term/mill/code/code/like/mine
+load @term/mill/code/like/mine
   find like
 
 mine slot

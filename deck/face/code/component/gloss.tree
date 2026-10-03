@@ -4,10 +4,10 @@
 #   words -> list of { form, gloss }; `form` is the source-language word, `gloss` its interlinear label
 #            (e.g. "walk-PST"). Lay the words in a row and stack form over gloss via CSS on [data-slot=gloss].
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
   find make-text
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 

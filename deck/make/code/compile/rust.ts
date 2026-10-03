@@ -356,9 +356,105 @@ export type WakeGroup = {
   entries: Record<string, unknown>[]
 }
 
-export function emitRust(
+// what one emission pass cloned (item 0029): the forms named in any cloned type, and whether any clone was of a type
+// not known or generic, which could be any form
+type CloneRecord = { forms: Set<string>; generic: boolean }
+
+// The program twice when that buys something: a first pass records every clone it writes, and a recursive form whose
+// values no pass ever clones has its children held in a `Box` instead of an `Rc` in a second pass (item 0029; a `Box`
+// tree runs about 10% faster on binary-trees, measured). A `Box` cannot be the default: under D1 a record is a value,
+// a clone of a `Box` tree copies all of it, and a program that shares structure (a persistent list's common tail)
+// would go quadratic. So a form is boxed only when nothing clones it, nor any form that holds it, and nothing
+// generic is cloned at all (generic code could be holding it). Anything unproven keeps `Rc`
+export function emitRust(program: Program, options?: { wake?: WakeGroup[] }): string {
+  const record: CloneRecord = { forms: new Set(), generic: false }
+  const first = emitRustPass(program, options, new Set(), record)
+
+  if (record.generic) {
+    return first
+  }
+
+  const boxed = boxableForms(program, record.forms)
+
+  return boxed.size ? emitRustPass(program, options, boxed, { forms: new Set(), generic: false }) : first
+}
+
+// what the first pass recorded and which forms it boxes, for a test to assert (test/compile/rust-box.ts)
+export function rustBoxing(program: Program): { cloned: string[]; generic: boolean; boxed: string[] } {
+  const record: CloneRecord = { forms: new Set(), generic: false }
+  emitRustPass(program, undefined, new Set(), record)
+
+  return {
+    cloned: [...record.forms].sort(),
+    generic: record.generic,
+    boxed: record.generic ? [] : [...boxableForms(program, record.forms)].sort(),
+  }
+}
+
+// the recursive forms (a variant field whose type is the form itself) that nothing cloned, directly or through a form
+// holding one: a cloned form is closed over the forms its fields hold, at any depth
+function boxableForms(program: Program, cloned: Set<string>): Set<string> {
+  const records = new Map(program.flatMap(n => (n.form === 'record-type' ? [[n.name, n] as const] : [])))
+  const held = new Set(cloned)
+  const work = [...cloned]
+  const namesIn = (t: Type | undefined, into: string[]): void => {
+    if (!t) {
+      return
+    }
+
+    if (t.kind === 'named') {
+      into.push(t.name)
+      t.args?.forEach(a => namesIn(a, into))
+    } else if (t.kind === 'array') {
+      namesIn(t.element, into)
+    } else if (t.kind === 'map') {
+      namesIn(t.key, into)
+      namesIn(t.value, into)
+    } else if (t.kind === 'function') {
+      t.params.forEach(p => namesIn(p, into))
+      namesIn(t.result, into)
+    }
+  }
+
+  while (work.length) {
+    const record = records.get(work.pop()!)
+
+    if (!record) {
+      continue
+    }
+
+    const inner: string[] = []
+    record.fields.forEach(f => namesIn(f.type, inner))
+    record.variants.forEach(v => v.fields.forEach(f => namesIn(f.type, inner)))
+
+    for (const name of inner) {
+      if (!held.has(name)) {
+        held.add(name)
+        work.push(name)
+      }
+    }
+  }
+
+  return new Set(
+    [...records.values()]
+      .filter(
+        r =>
+          !r.shared &&
+          (r.params?.length ?? 0) === 0 &&
+          r.variants.some(v => v.fields.some(f => f.type.kind === 'named' && f.type.name === r.name)) &&
+          !held.has(r.name),
+      )
+      .map(r => r.name),
+  )
+}
+
+function emitRustPass(
   program: Program,
-  options?: { wake?: WakeGroup[] },
+  options: { wake?: WakeGroup[] } | undefined,
+  // the recursive forms whose children this pass holds in a `Box` (boxableForms)
+  boxedForms: Set<string>,
+  // what this pass clones, filled as it emits
+  cloneRecord: CloneRecord,
 ): string {
   const pad = (d: number) => '    '.repeat(d)
   // the TermException carrier is emitted when a raise, a guard or a raising signature is written, recorded there
@@ -712,17 +808,69 @@ export function emitRust(
   // that clippy flags. A rendering that already ends in a clone (a list element read) is not cloned twice: both
   // emitted `perm.borrow()[i].clone().clone()` and `n.clone()` until 2026-10-02
   const copyType = (type: Type | undefined): boolean => type?.kind === 'number' || type?.kind === 'float' || type?.kind === 'boolean'
+  // item 0029: every clone this pass writes, by the Term type it clones, so `emitRust` can tell which recursive forms
+  // are never cloned and may hold their children in a `Box`. A clone whose type is not known, or is generic, sets
+  // `generic`, since it could be cloning any form
+  const noteClone = (type: Type | undefined): void => {
+    if (!type || type.kind === 'unknown' || type.kind === 'dynamic' || type.kind === 'variable') {
+      cloneRecord.generic = true
+
+      return
+    }
+
+    const visit = (t: Type | undefined): void => {
+      if (!t) {
+        return
+      }
+
+      switch (t.kind) {
+        case 'named':
+          // a generic letter (`like t`) is a type variable spelled by name
+          if (/^[a-z]$/.test(t.name) && !recordFields.has(t.name)) {
+            cloneRecord.generic = true
+          }
+
+          cloneRecord.forms.add(t.name)
+          t.args?.forEach(visit)
+          break
+        // a list or map is an `Rc` handle here: cloning one copies a pointer, never the elements, so it clones no form.
+        // A site that copies a list's CONTENTS reports the element type itself
+        case 'array':
+        case 'map':
+        case 'function':
+          break
+        case 'variable':
+        case 'unknown':
+        case 'dynamic':
+          cloneRecord.generic = true
+          break
+        default:
+          break
+      }
+    }
+
+    visit(type)
+  }
+  // the element type of a list type, for a site that copies the list's contents
+  const elementOf = (type: Type | undefined): Type | undefined => (type?.kind === 'array' ? type.element : undefined)
   const owned = (value: Expression): string => {
     const rendered = expr(value)
-
-    return (value.form === 'variable' || value.form === 'member') &&
+    // MOVE ON LAST USE, as a call argument does: a variable read exactly once in the function, and not in a loop or a
+    // closure (`moveArgs`), moves into the structure. Building `node(head, into)` cloned `into` at its only read
+    const clones =
+      (value.form === 'variable' || value.form === 'member') &&
       value.type &&
       value.type.kind !== 'function' &&
       !copyType(value.type) &&
       !rendered.endsWith('.clone()') &&
-      !(value.form === 'variable' && cellVars.has(value.name))
-      ? `${rendered}.clone()`
-      : rendered
+      !(value.form === 'variable' && cellVars.has(value.name)) &&
+      !(value.form === 'variable' && moveArgs.has(value.name) && closureDepth === 0)
+
+    if (clones) {
+      noteClone(value.type)
+    }
+
+    return clones ? `${rendered}.clone()` : rendered
   }
 
   // a value flowing into an `unknown` slot boxes (`std::rc::Rc::new`; the unsized coercion supplies `dyn Any` from
@@ -1047,13 +1195,19 @@ export function emitRust(
       )
       .map(n => n.name),
   )
-  // the read of a module binding, by its kind
-  const moduleRead = (name: string): string =>
-    scalarConsts.has(name)
-      ? moduleConstName(name)
-      : moduleSlots.has(name)
-        ? `${moduleConstName(name)}.with(|v| v.borrow().clone().unwrap())`
-        : `${moduleConstName(name)}.with(|v| v.clone())`
+  // the read of a module binding, by its kind. A non-scalar one is cloned out of its thread-local, at a type this site
+  // does not hold, so it counts as a generic clone (item 0029)
+  const moduleRead = (name: string): string => {
+    if (scalarConsts.has(name)) {
+      return moduleConstName(name)
+    }
+
+    cloneRecord.generic = true
+
+    return moduleSlots.has(name)
+      ? `${moduleConstName(name)}.with(|v| v.borrow().clone().unwrap())`
+      : `${moduleConstName(name)}.with(|v| v.clone())`
+  }
 
   const moduleLet = (node: Extract<Statement, { form: 'let' }>): string =>
     scalarConsts.has(node.name)
@@ -1436,9 +1590,13 @@ export function emitRust(
         }
 
         // a mutated capture lives in an Rc<RefCell> handle: a read borrows and clones the value out
-        return cellVars.has(node.name)
-          ? `${vname(node.name)}.borrow().clone()`
-          : vname(node.name)
+        if (cellVars.has(node.name)) {
+          noteClone(node.type)
+
+          return `${vname(node.name)}.borrow().clone()`
+        }
+
+        return vname(node.name)
       case 'unary':
         // a release build's `-i64::MIN` wraps to itself, a different integer: checked_neg stops instead. A literal
         // operand cannot be the minimum, so `-5` stays as written
@@ -1593,6 +1751,29 @@ export function emitRust(
           // parameter (native-dom-0020: the renderer's `mount` and `dynamic` callbacks)
           const slot = params?.[i]
           closureHint = a.form === 'closure' && slot?.kind === 'function' ? slot.result : undefined
+
+          // a record the callee only reads is borrowed (borrowedRecords): a name that is already a reference passes as
+          // it is (`&Rc<R>` derefs to `&R`), anything else is lent as `&`, never cloned first. Decided BEFORE the
+          // owned rendering below, which would record a clone this argument never makes (item 0029)
+          if (node.callee.form === 'variable' && !localNames.has(node.callee.name) && borrowParams.get(node.callee.name)?.has(i)) {
+            return a.form === 'variable' && borrowedNames.has(a.name) ? vname(a.name) : `&${expr(a)}`
+          }
+
+          // a list the callee takes lent (lendParams), likewise before any clone is recorded
+          if (lending?.get(i)) {
+            // a fresh task's `Vec` is lent straight from the call, with no cell around it to borrow through
+            if (a.form === 'call' && a.callee.form === 'variable' && freshLists.has(a.callee.name)) {
+              rawLent.add(i)
+              rawFresh = true
+              const made = expr(a)
+              rawFresh = false
+
+              return made
+            }
+
+            return expr(a)
+          }
+
           const rendered = (() => {
             if (
               a.form === 'variable' &&
@@ -1614,41 +1795,24 @@ export function emitRust(
             // a `Copy` value (a number, a float, a boolean) is passed as it is, and a read that already clones (a list
             // element) is not cloned twice: clippy's clone_on_copy flagged every `n.clone()`
             const rendered = expr(a)
-
-            return (a.form === 'variable' || a.form === 'member') &&
+            const clones =
+              (a.form === 'variable' || a.form === 'member') &&
               (!a.type || a.type.kind !== 'function') &&
               !copyType(a.type) &&
               !rendered.endsWith('.clone()')
+
+            if (clones) {
+              noteClone(a.type)
+            }
+
+            return clones
               ? `${rendered}.clone()`
               : rendered
           })()
 
-          // a record the callee only reads is borrowed (borrowedRecords): a name that is already a reference passes as
-          // it is (`&Rc<R>` derefs to `&R`), anything else is lent as `&`, never cloned first
-          if (node.callee.form === 'variable' && !localNames.has(node.callee.name) && borrowParams.get(node.callee.name)?.has(i)) {
-            return a.form === 'variable' && borrowedNames.has(a.name) ? vname(a.name) : `&${expr(a)}`
-          }
-
           // a parameter the callee only calls is `impl Fn` (implFnParams)
           if (node.callee.form === 'variable' && !localNames.has(node.callee.name) && implFnParams.get(node.callee.name)?.has(i)) {
             return implFnArg(a, rendered)
-          }
-
-          // a list the callee takes lent (lendParams): one borrow of the cell for the whole call
-          const lentAs = lending?.get(i)
-
-          if (lentAs) {
-            // a fresh task's `Vec` is lent straight from the call, with no cell around it to borrow through
-            if (a.form === 'call' && a.callee.form === 'variable' && freshLists.has(a.callee.name)) {
-              rawLent.add(i)
-              rawFresh = true
-              const made = expr(a)
-              rawFresh = false
-
-              return made
-            }
-
-            return expr(a)
           }
 
           // a binary's grouping parens are redundant at argument position (the comma delimits):
@@ -1676,10 +1840,16 @@ export function emitRust(
         const hoisted: string[] = []
 
         // an owned Vec, or a fresh task's taken raw, is lent as itself, with no cell to borrow through
+        // a list already held as a reference: a lent parameter of the task being emitted (`&[T]` or `&mut [T]`)
+        const lentRef = (i: number): boolean => {
+          const a = node.args[i]
+
+          return a?.form === 'variable' && lentNames.has(a.name) && !ownedNames.has(a.name)
+        }
         const plainAt = (i: number): boolean => {
           const a = node.args[i]
 
-          return (a?.form === 'variable' && ownedNames.has(a.name)) || rawLent.has(i)
+          return (a?.form === 'variable' && ownedNames.has(a.name)) || rawLent.has(i) || lentRef(i)
         }
         // the hoisting guards a borrow an argument could collide with: a cell's, or a plain Vec another argument reads
         // (`bump(&mut zs, zs[1])` is E0502: two-phase borrows do not cover an explicit `&mut` argument). A call that
@@ -1716,7 +1886,10 @@ export function emitRust(
             if (lentAs) {
               const plain = plainAt(i)
 
-              argList[i] = plain
+              // a lent parameter passes on as it is: Rust reborrows a `&mut [T]` argument, and coerces it to `&[T]`
+              argList[i] = lentRef(i)
+                ? argList[i]!
+                : plain
                 ? `${lentAs === 'write' ? '&mut ' : '&'}${argList[i]}`
                 : lentAs === 'write'
                   ? `&mut ${argList[i]}.borrow_mut()`
@@ -1816,14 +1989,14 @@ export function emitRust(
             : variantOwner.get(node.name)
 
         if (owner) {
-          const fields = node.fields.map(
-            f =>
-              `${snake(f.name)}: ${
-                recursiveFields.has(`${node.name}/${f.name}`)
-                  ? `std::rc::Rc::new(${owned(f.value)})`
-                  : owned(f.value)
-              }`,
-          )
+          const fields = node.fields.map(f => {
+            const value = recursiveFields.has(`${node.name}/${f.name}`)
+              ? `${boxedForms.has(owner) ? 'Box' : 'std::rc::Rc'}::new(${owned(f.value)})`
+              : owned(f.value)
+
+            // `head` for `head: head`, as Rust writes it (clippy: redundant_field_names)
+            return value === snake(f.name) ? value : `${snake(f.name)}: ${value}`
+          })
 
           // a type argument nothing constrains (the error type of `make okay` handed straight to a generic task) is
           // left for rustc to infer, and it cannot: it is any type, so it is named the unit type, the others `_`
@@ -1851,10 +2024,11 @@ export function emitRust(
           .map(f => `${snake(f.name)}: ${emptyOf(f.type)}`)
 
         const parts = [
-          ...node.fields.map(
-            f =>
-              `${snake(f.name)}: ${boxUnknown(declared.get(f.name), f.value, owned(f.value))}`,
-          ),
+          ...node.fields.map(f => {
+            const value = boxUnknown(declared.get(f.name), f.value, owned(f.value))
+
+            return value === snake(f.name) ? value : `${snake(f.name)}: ${value}`
+          }),
           ...missing,
           ...(phantomForms.has(node.name)
             ? ['_marker: std::marker::PhantomData']
@@ -1871,6 +2045,10 @@ export function emitRust(
         // a DYNAMIC segment (`read table/{key}`) indexes the collection through its handle; cloned out, since
         // indexing a Vec of non-Copy values (String, Rc) cannot move
         if (node.index) {
+          if (!copyType(node.type)) {
+            noteClone(node.type)
+          }
+
           return `${view(node.target, false)}[${asUsize(expr(node.index))}]${copyType(node.type) ? '' : '.clone()'}`
         }
 
@@ -1896,14 +2074,24 @@ export function emitRust(
           node.target.type?.kind === 'array'
         ) {
           // cloned, as a dynamic index read is: a bare `v.borrow()[1]` moves a String out of the Vec and is refused
+          if (!copyType(node.type)) {
+            noteClone(node.type)
+          }
+
           return `${view(node.target, false)}[${node.name}]${copyType(node.type) ? '' : '.clone()'}`
         }
 
         // a field of a `mark shared` value, READ: cloned out of the borrow, since `x.borrow().field` moves a String or
         // a generic `T` out of a `Ref` and is refused (native-dom-0020: the memory host's `element.borrow().text`, the
         // signal's `slf.borrow().value`). A write goes through `memberPath` straight, under `borrow_mut()`
+        // The read is a block, so its `Ref` ends with it: a temporary in a call's argument lives to the end of the whole
+        // statement, and `put_bits(state.clone(), 8 - state.borrow().held)` still held the borrow when the callee took
+        // `state.borrow_mut()`, which panicked (gzip's bit writer, 2026-10-02)
         if (isSharedType(node.target.type)) {
-          return `${memberPath(node)}.clone()`
+          noteClone(node.type)
+
+          // in parentheses, since a block that begins a statement (`{ ... } == 0`) is read as a statement of its own
+          return `({ let __shared_read = ${memberPath(node)}.clone(); __shared_read })`
         }
 
         return memberPath(node)
@@ -2023,6 +2211,12 @@ export function emitRust(
         // a mutated capture's cell, under the same rule: a field written through a module-level host
         // (`save watch/installed`) marks `watch` mutated, but the body writes it as `MODULE_WATCH`
         const cells = [...cellVars].filter(name => used.has(name) && named(name))
+
+        // a captured local is cloned at a type this site does not hold (item 0029); a cell is an `Rc` handle
+        if (captured.length) {
+          cloneRecord.generic = true
+        }
+
         const handleClones = [...cells, ...captured]
           .map(name => `let ${vname(name)} = ${vname(name)}.clone();`)
           .join(' ')
@@ -2092,6 +2286,26 @@ export function emitRust(
     // `started.dock` was a use after move
     const arg = args.map(owned)
 
+    // the operations that copy a collection's CONTENTS clone its element (or key and value) type (item 0029): a read
+    // out, a copy into a new list, the closure operations, and a map insert, whose TermMap clones the key it indexes
+    const contents =
+      op.kind === 'map'
+        ? ['get', 'set', 'keys', 'values'].includes(op.op)
+        : ['at', 'get', 'concat', 'slice', 'toReversed', 'map', 'filter', 'some', 'every', 'reduce', 'findIndex', 'flat'].includes(op.op)
+
+    if (contents) {
+      const held = op.target.type
+
+      if (held?.kind === 'array') {
+        noteClone(held.element)
+      } else if (held?.kind === 'map') {
+        noteClone(held.key)
+        noteClone(held.value)
+      } else {
+        cloneRecord.generic = true
+      }
+    }
+
     if (op.kind === 'map') {
       switch (op.op) {
         case 'has':
@@ -2119,11 +2333,19 @@ export function emitRust(
 
     // arrays go through the Rc<RefCell<Vec>> handle. The closure ops take a `Box<dyn Fn>` and clone each element into
     // it; an op returning a list materializes a new handle (`wrapList`); the in-place ops use `borrow_mut`.
-    const data = `${target}.borrow()`
+    // a lent list (`&[T]`, `&mut [T]`) or an owned Vec is read as itself, a shared one through its cell
+    const data = view(op.target, false)
 
     switch (op.op) {
       case 'push':
-        // the item first, for the reason `set` gives: `out/push(get(out, k))` reads the list it pushes onto
+        // the item first, for the reason `set` gives: `out/push(get(out, k))` reads the list it pushes onto. An owned
+        // local is the `Vec` itself (ownedLocals), pushed without a cell
+        if (op.target.form === 'variable' && ownedNames.has(op.target.name)) {
+          const list = vname(op.target.name)
+
+          return `{ let __push_item = ${arg[0]}; ${list}.push(__push_item); ${list}.len() as i64 }`
+        }
+
         return `{ let __push_item = ${arg[0]}; ${target}.borrow_mut().push(__push_item); ${data}.len() as i64 }`
       case 'pop':
         return `${target}.borrow_mut().pop().unwrap()`
@@ -2352,20 +2574,24 @@ export function emitRust(
 
         for (; next < body.length; next++) {
           const s = body[next]!
-          const pushed =
-            s.form === 'expression' &&
-            s.expr.form === 'call' &&
-            s.expr.callee.form === 'variable' &&
-            s.expr.callee.name === 'list_push' &&
-            s.expr.args[0]?.form === 'variable' &&
-            s.expr.args[0].name === start.name &&
-            !namesIn(s.expr.args[1]).has(start.name)
+          // `list_push(out, v)`, or the collection operation it inlines to, `out.push(v)`
+          const call = s.form === 'expression' && s.expr.form === 'call' ? s.expr : undefined
+          const op = call?.callee.form === 'member' ? collectionCall(call.callee) : undefined
+          const item =
+            call?.callee.form === 'variable' &&
+            call.callee.name === 'list_push' &&
+            call.args[0]?.form === 'variable' &&
+            call.args[0].name === start.name
+              ? call.args[1]
+              : op?.kind === 'array' && op.op === 'push' && op.target.form === 'variable' && op.target.name === start.name
+                ? call!.args[0]
+                : undefined
 
-          if (!pushed) {
+          if (!item || namesIn(item).has(start.name)) {
             break
           }
 
-          items.push((s as { expr: { args: Expression[] } }).expr.args[1]!)
+          items.push(item)
         }
 
         if (items.length) {
@@ -2418,6 +2644,8 @@ export function emitRust(
           (node.init.type?.kind === 'unknown' ||
             node.init.type?.kind === 'dynamic')
         ) {
+          noteClone(node.type)
+
           return `let ${mutOf(node.name)}${vname(node.name)} = ${expr(node.init)}.downcast_ref::<${rustType(node.type)}>().unwrap().clone();`
         }
 
@@ -2500,24 +2728,34 @@ export function emitRust(
         // a write to a list slot or a map entry by a COMPUTED key (`save slots/{value}, ...`): the read of the target
         // emits `slots.borrow()[i].clone()`, a value, which is no place to assign to (E0070). The write goes through
         // `borrow_mut`, with the value and the key computed first so no `borrow()` guard is alive at the write
-        if (node.target.form === 'member' && node.target.index) {
+        // A literal slot, `save xs/0, ...`, is a member named `0`: the same write at that index
+        const literalSlot =
+          node.target.form === 'member' &&
+          !node.target.index &&
+          /^\d+$/.test(node.target.name) &&
+          node.target.target.type?.kind === 'array'
+            ? ({ form: 'integer', value: Number(node.target.name), span: node.target.span, type: { kind: 'number' } } as Expression)
+            : undefined
+
+        if (node.target.form === 'member' && (node.target.index || literalSlot)) {
           const holder = node.target.target
           const kind = holder.type?.kind
           const named = holder.type?.kind === 'named' ? holder.type.name : undefined
+          const slot = node.target.index ?? literalSlot!
 
           if (kind === 'array' || named === 'list') {
             // a `Copy` variable or literal written at a variable or literal index borrows nothing, so it is written
             // in place. Anything else computes first, so no `borrow()` guard is alive at the `borrow_mut`
             const simple = (e: Expression): boolean => e.form === 'variable' || e.form === 'integer' || e.form === 'float' || e.form === 'boolean'
 
-            if (simple(node.value) && copyType(node.value.type) && simple(node.target.index) && !(node.value.form === 'variable' && cellVars.has(node.value.name))) {
-              return `${view(holder, true)}[${asUsize(expr(node.target.index))}] ${node.op} ${expr(node.value)};`
+            if (simple(node.value) && copyType(node.value.type) && simple(slot) && !(node.value.form === 'variable' && cellVars.has(node.value.name))) {
+              return `${view(holder, true)}[${asUsize(expr(slot))}] ${node.op} ${expr(node.value)};`
             }
 
-            return `{ let __index_value = ${bare(owned(node.value))}; let __index = (${expr(node.target.index)}) as usize; ${view(holder, true)}[__index] ${node.op} __index_value; }`
+            return `{ let __index_value = ${bare(owned(node.value))}; let __index = ${asUsize(expr(slot))}; ${view(holder, true)}[__index] ${node.op} __index_value; }`
           }
 
-          if ((kind === 'map' || named === 'hash') && node.op === '=') {
+          if ((kind === 'map' || named === 'hash') && node.op === '=' && node.target.index) {
             return `{ let __index_value = ${bare(owned(node.value))}; let __index = ${bare(owned(node.target.index))}; ${expr(holder)}.borrow_mut().insert(__index, __index_value); }`
           }
         }
@@ -2580,6 +2818,15 @@ export function emitRust(
           return `${vname(node.expr.args[0].name)}.push(${bare(owned(node.expr.args[1]!))});`
         }
 
+        // the same through the collection operation `list_push` inlines to, `out.push(v)`
+        if (node.expr.form === 'call' && node.expr.callee.form === 'member') {
+          const op = collectionCall(node.expr.callee)
+
+          if (op?.kind === 'array' && op.op === 'push' && op.target.form === 'variable' && ownedNames.has(op.target.name)) {
+            return `${vname(op.target.name)}.push(${bare(owned(node.expr.args[0]!))});`
+          }
+        }
+
         return `${expr(node.expr)};`
       case 'return': {
 
@@ -2628,6 +2875,11 @@ export function emitRust(
               ? `${value}.downcast_ref::<${rustType(currentResult!)}>().unwrap().clone()`
               : value
 
+        // a downcast out of the box clones the value at the task's result type (item 0029)
+        if (casted !== value) {
+          noteClone(currentResult)
+        }
+
         // a bare `send back` in a task whose synthesized result is the boxed dynamic answers the boxed unit
         const boxedUnit =
           !node.value && currentResult?.kind === 'unknown'
@@ -2657,6 +2909,8 @@ export function emitRust(
         // the stdlib hive, a NEW carrier tells it before unwinding (a pass-on re-raise does not re-tell), the same
         // hook the TypeScript constructor carries.
         carries = true
+        // the raised record's fields are cloned into the carrier (item 0029)
+        noteClone(node.value.type)
         const tell = (built: string): string =>
           hasHiveTell
             ? `{ let told = ${built}; hive_tell(HiveEntry { host: told.host.clone(), kind: "exception".to_string(), name: told.form.clone(), site: String::new(), base: std::rc::Rc::new(told.clone()) }); told }`
@@ -2743,6 +2997,11 @@ export function emitRust(
           const index = node.index ? `let ${vname(node.index)} = __at as i64; ` : ''
           // a `Copy` element is read out by value, anything else is cloned out of the borrow
           const element = node.iterable.type.kind === 'array' && copyType(node.iterable.type.element) ? '*value' : 'value.clone()'
+
+          if (element !== '*value') {
+            noteClone(elementOf(node.iterable.type))
+          }
+
           const walkedName = node.iterable.form === 'variable' ? node.iterable.name : undefined
           const lentAs = walkedName !== undefined ? lentNames.get(walkedName) : undefined
 
@@ -2796,6 +3055,11 @@ export function emitRust(
                   ? `${pad(d + 2)}let ${snake(local)} = ${carrier}.base.downcast_ref::<${pascal(b.label)}>().unwrap().link.${snake(field)}.clone();`
                   : `${pad(d + 2)}let ${snake(local)} = ${carrier}.${snake(field)}.clone();`,
               )
+
+            // its fields are cloned out of the carrier: the exception's form is cloned (item 0029)
+            if (locals.length) {
+              noteClone({ kind: 'named', name: b.label })
+            }
 
             return `${pad(d + 1)}${JSON.stringify(b.label)} => {\n${[...locals, bodyText].join('\n')}\n${pad(d + 1)}}`
           })
@@ -2871,6 +3135,11 @@ export function emitRust(
         const borrowedSubject = subjectVar !== undefined && borrowedNames.has(subjectVar)
         const subject = moved || borrowedSubject ? expr(node.subject) : `${expr(node.subject)}.clone()`
 
+        // a subject matched by clone copies the whole value (item 0029)
+        if (!moved && !borrowedSubject) {
+          noteClone(node.subject.type)
+        }
+
         const arms = node.cases.map(b => {
           const subjectType = node.subject.type
           const owner =
@@ -2930,6 +3199,10 @@ export function emitRust(
           if (handedBack) {
             const out = copyType(fieldTypes?.get(handedBack.field)) ? `*${snake(handedBack.local)}` : `${snake(handedBack.local)}.clone()`
 
+            if (!copyType(fieldTypes?.get(handedBack.field))) {
+              noteClone(fieldTypes?.get(handedBack.field))
+            }
+
             if (subjectVar) {
               if (previous === undefined) {
                 narrowing.delete(subjectVar)
@@ -2953,9 +3226,15 @@ export function emitRust(
           const derefs = borrowedSubject
             ? locals
                 .filter(({ field, local }) => !recordField(field) && read.has(local))
-                .map(({ field, local }) =>
-                  copyType(fieldTypes?.get(field)) ? `${pad(d + 2)}let ${snake(local)} = *${snake(local)};` : `${pad(d + 2)}let ${snake(local)} = ${snake(local)}.clone();`,
-                )
+                .map(({ field, local }) => {
+                  if (copyType(fieldTypes?.get(field))) {
+                    return `${pad(d + 2)}let ${snake(local)} = *${snake(local)};`
+                  }
+
+                  noteClone(fieldTypes?.get(field))
+
+                  return `${pad(d + 2)}let ${snake(local)} = ${snake(local)}.clone();`
+                })
             : []
           const outerBorrowed = borrowedNames
 
@@ -2980,9 +3259,11 @@ export function emitRust(
           // clone per node per walk (binary-trees)
           const unwraps = locals
             .filter(({ field }) => !borrowedSubject && recursiveFields.has(`${b.label}/${field}`))
-            .map(
-              ({ local }) =>
-                `${pad(d + 2)}let ${snake(local)} = std::rc::Rc::unwrap_or_clone(${snake(local)});`,
+            .map(({ local }) =>
+              // a `Box` child (item 0029) moves out; an `Rc` one moves when unique and clones when shared
+              boxedForms.has(owner)
+                ? `${pad(d + 2)}let ${snake(local)} = *${snake(local)};`
+                : `${pad(d + 2)}let ${snake(local)} = std::rc::Rc::unwrap_or_clone(${snake(local)});`,
             )
 
           return `${pad(d + 1)}${pascal(owner)}::${pascal(
@@ -3468,7 +3749,9 @@ export function emitRust(
               f =>
                 `${snake(f.name)}: ${
                   recursiveFields.has(`${v.name}/${f.name}`)
-                    ? `std::rc::Rc<${rustType(f.type)}>`
+                    ? boxedForms.has(node.name)
+                      ? `Box<${rustType(f.type)}>`
+                      : `std::rc::Rc<${rustType(f.type)}>`
                     : rustType(f.type)
                 }`,
             )
@@ -3828,6 +4111,11 @@ async fn __term_budget() {
     : []
 
   lastBudgetStats = { checked: budgetUses, elided: budgetElided }
+
+  // `melt` clones every field of each form it melts (item 0029)
+  for (const form of meltSpecs.keys()) {
+    noteClone({ kind: 'named', name: form })
+  }
 
   return [...uses, ...termMap, ...carrier, ...budget, ...body, ...rustFormWalk(fillSpecs, meltSpecs), ...wake].join('\n\n') + '\n'
 }
@@ -4261,6 +4549,36 @@ function moveOnLastUse(body: Statement[]): Set<string> {
     }
   }
 
+  // only one arm of a branch runs, so a name's reads across the arms count as the MOST any one arm makes, never their
+  // sum: `stop` handing back `into` and `node` building with it each read `into` once, and either may move it. Rust
+  // accepts a move of one variable in two arms. A read before the branch (its subject, its conditions) still adds
+  const arms = (bodies: Statement[][], restrict: boolean): void => {
+    const before = { reads: new Map(reads), restricted: new Map(restricted) }
+    const most = { reads: new Map<string, number>(), restricted: new Map<string, number>() }
+
+    for (const arm of bodies) {
+      reads.clear()
+      restricted.clear()
+      walkBody(arm, restrict)
+
+      for (const [name, n] of reads) {
+        most.reads.set(name, Math.max(most.reads.get(name) ?? 0, n))
+      }
+
+      for (const [name, n] of restricted) {
+        most.restricted.set(name, Math.max(most.restricted.get(name) ?? 0, n))
+      }
+    }
+
+    reads.clear()
+    restricted.clear()
+
+    for (const [name, n] of before.reads) reads.set(name, n)
+    for (const [name, n] of before.restricted) restricted.set(name, n)
+    for (const [name, n] of most.reads) reads.set(name, (reads.get(name) ?? 0) + n)
+    for (const [name, n] of most.restricted) restricted.set(name, (restricted.get(name) ?? 0) + n)
+  }
+
   const walkBody = (stmts: Statement[], restrict: boolean): void => {
     for (const s of stmts) {
       switch (s.form) {
@@ -4284,14 +4602,9 @@ function moveOnLastUse(body: Statement[]): Set<string> {
           walkExpr(s.value, restrict)
           break
         case 'if':
-          s.branches.forEach(b => {
-            walkExpr(b.cond, restrict)
-            walkBody(b.body, restrict)
-          })
-
-          if (s.otherwise) {
-            walkBody(s.otherwise, restrict)
-          }
+          // every condition may be tested, so each adds; the bodies are arms, of which one runs
+          s.branches.forEach(b => walkExpr(b.cond, restrict))
+          arms([...s.branches.map(b => b.body), ...(s.otherwise ? [s.otherwise] : [])], restrict)
 
           break
         case 'guard':
@@ -4312,11 +4625,7 @@ function moveOnLastUse(body: Statement[]): Set<string> {
           break
         case 'match':
           walkExpr(s.subject, restrict)
-          s.cases.forEach(c => walkBody(c.body, restrict))
-
-          if (s.otherwise) {
-            walkBody(s.otherwise, restrict)
-          }
+          arms([...s.cases.map(c => c.body), ...(s.otherwise ? [s.otherwise] : [])], restrict)
 
           break
         default:

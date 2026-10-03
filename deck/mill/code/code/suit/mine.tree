@@ -1,15 +1,15 @@
-load @term/mill/code/code/like/mine
+load @term/mill/code/like/mine
   find like
   find and
   find or
 
-load @term/mill/code/code/wear/mine
+load @term/mill/code/wear/mine
   find wear
 
-load @term/mill/code/code/head/mine
+load @term/mill/code/head/mine
   find head
 
-load @term/mill/code/code/task/mine
+load @term/mill/code/task/mine
   find task
 
 mine suit

@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
 
 form cipher-name-and-protocol, name <CipherNameAndProtocol>

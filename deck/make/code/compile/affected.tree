@@ -19,10 +19,10 @@
 # Every write into a list held in a hash is written back with `set`, so the port means the same thing under
 # value semantics (D1) as it does on TypeScript.
 
-load @term/base/code/list
+load @term/base/list
   find list
 
-load @term/base/code/hash
+load @term/base/hash
   find hash
 
 # Invert a dependency graph: each node to the nodes that depend ON it (its dependents), in the order they are met

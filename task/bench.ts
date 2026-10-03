@@ -18,6 +18,7 @@ import { cpus, hostname, platform } from 'node:os'
 import { join } from 'node:path'
 import { buildSync } from 'esbuild'
 import { compile } from '@term/make/code/compile/compile'
+import { stdlibResolver } from '@term/make/code/resolve'
 import type { Source } from '@term/make/code/compile/load'
 import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
 import { emitRust } from '@term/make/code/compile/rust'
@@ -26,7 +27,8 @@ import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
 import { readDataText, toJsonValue } from '@term/make/code/compile/host'
 
 type Target = 'typescript' | 'rust' | 'swift' | 'kotlin'
-type Spec = { program: string; entry: string; check: number; expect: string; size: number; runs: number }
+// `dir` is the program's directory, `hand` the stem of its hand-written versions (`idiom` here, `same` in mark/kernels)
+type Spec = { dir: string; program: string; entry: string; check: number; expect: string; size: number; runs: number; hand: string }
 type Built = { run: (n: number) => string[] }
 
 const TERM = join(import.meta.dirname, '..')
@@ -47,11 +49,8 @@ const RUST_FLAGS = ['-A', 'warnings', '-C', 'opt-level=3', '-C', 'codegen-units=
 const SWIFT_FLAGS = ['-O', '-wmo', '-enforce-exclusivity=unchecked']
 
 const base = join(TERM, 'deck/base')
-const stdlib = (path: string): Source | undefined => {
-  const file = join(base, `${path.replace(/^@term\/base\//, '')}.tree`)
-
-  return /^@term\/base\//.test(path) && existsSync(file) ? { file, text: readFileSync(file, 'utf8') } : undefined
-}
+// the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+const stdlib = stdlibResolver()!
 const readRuntime = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, 'utf8') : undefined)
 const camel = (name: string): string => name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())
 const snake = (name: string): string => name.replace(/-/g, '_')
@@ -67,19 +66,38 @@ function spec(dir: string): Spec {
 
   const value = toJsonValue(read.data.root) as Record<string, unknown>
 
+  // a kernel of the suite (mark/kernels, note/term/bench/rules.md): its entry is `run`, its sizes and expected output
+  // are the contract's own, and its hand versions are `same.*`
+  if (value.input) {
+    const sizes = (value.input as { sizes: { check: number; timed: number } }).sizes
+
+    return {
+      dir,
+      program: dir.split('/').at(-1)!,
+      entry: 'run',
+      check: Number(sizes.check),
+      expect: normal(readFileSync(join(dir, 'expect/check.txt'), 'utf8')),
+      size: Number(flag('size') ?? sizes.timed),
+      runs: Number(flag('runs') ?? 5),
+      hand: 'same',
+    }
+  }
+
   return {
+    dir,
     program: String(value.program),
     entry: String(value.entry),
     check: Number(value.check),
     expect: normal(String(value.expect)),
     size: Number(flag('size') ?? value.size),
     runs: Number(flag('runs') ?? value.runs ?? 5),
+    hand: 'idiom',
   }
 }
 
 // the Term program for one target, built into an executable
 function buildTerm(s: Spec, target: Target, out: string): Built {
-  const file = join(BENCH, s.program, 'term.tree')
+  const file = join(s.dir, 'term.tree')
   const env = target === 'typescript' ? 'node' : target
   const built = compile({ file, text: readFileSync(file, 'utf8') }, { resolve: withNativeEnv(env, stdlib), env })
 
@@ -119,7 +137,7 @@ function buildTerm(s: Spec, target: Target, out: string): Built {
 // the hand-written version for one target
 function buildIdiom(s: Spec, target: Target, out: string): Built | undefined {
   const ext = { typescript: 'ts', rust: 'rs', swift: 'swift', kotlin: 'kt' }[target]
-  const file = join(BENCH, s.program, `idiom.${ext}`)
+  const file = join(s.dir, `${s.hand}.${ext}`)
 
   if (!existsSync(file)) {
     return undefined
@@ -190,13 +208,16 @@ function interval(term: number[], idiom: number[]): [number, number] {
   return [ratios[Math.floor(ratios.length * 0.025)]!, ratios[Math.floor(ratios.length * 0.975)]!]
 }
 
-const programs = readdirSync(BENCH).filter(name => existsSync(join(BENCH, name, 'bench.tree')) && (!flag('only') || name === flag('only')))
+// `--kernels` reads the suite's kernels (mark/kernels) instead of bench/, the two overlapping in three programs
+const KERNELS = join(TERM, 'mark', 'kernels')
+const root = argv.includes('--kernels') ? KERNELS : BENCH
+const programs = readdirSync(root).filter(name => existsSync(join(root, name, 'bench.tree')) && (!flag('only') || name === flag('only')))
 const targets = TARGETS.filter(t => !flag('target') || t === flag('target'))
 const machine = `${platform()}-${(cpus()[0]?.model ?? 'cpu').replace(/[^A-Za-z0-9]+/g, '-').toLowerCase()}`
 let failed = 0
 
 for (const program of programs) {
-  const s = spec(join(BENCH, program))
+  const s = spec(join(root, program))
   const results: Record<string, unknown> = {}
   console.log(`\n${program}, n = ${s.size}, ${s.runs} rounds, ${machine}`)
 

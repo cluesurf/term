@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/x-path-evaluator-base
+load @term/bind/browser/dom/x-path-evaluator-base
   find x-path-evaluator-base
 
 form x-path-evaluator, name <XPathEvaluator>

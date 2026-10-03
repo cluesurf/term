@@ -6,7 +6,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/cryptography/cipher
+load @term/base/native/{platform}/cryptography/cipher
   find encrypt-aes-gcm
   find decrypt-aes-gcm
 
@@ -23,7 +23,6 @@ task encrypt
       read nonce
       read plain
       read extra
-      wait true
 
 # open ciphertext || tag under the same key, nonce and extra, returning the plaintext (fails if the tag does not verify, which includes the case where `extra` differs from the one it was sealed with)
 task decrypt
@@ -39,4 +38,3 @@ task decrypt
       read nonce
       read sealed
       read extra
-      wait true

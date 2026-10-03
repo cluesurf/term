@@ -1,0 +1,16 @@
+
+# THE ROUTE RUNTIME (native-navigation-0002): what a lowered route table calls, injected into any module with a web
+# route (`hook /path`) the way the render runtime is injected for a component (compile/load.ts). The author writes
+# the table and imports none of this. compile/route-lower.ts turns the table into `route(host, path)` and
+# `boot(url, port)`, which call:
+#
+#   host                the env's own: the browser mounts and follows its address, the server renders each request,
+#                       a toolkit opens a window (view/native/{platform}/host)
+#   set-title, set-meta, set-proxy      the page (dom/page)
+#   route-matches, route-param          the navigation contract, for a path with `:name` segments
+#
+# Re-exported with `bear`, so the lowering's names resolve in the module that holds the routes.
+
+bear @term/site/view/native/{platform}/host
+bear @term/site/dom/page
+bear @term/site/view/navigation

@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/message-event
+load @term/bind/browser/dom/message-event
   find message-event
 
 form broadcast-channel-event-map, name <BroadcastChannelEventMap>

@@ -2,7 +2,7 @@
 load @term/bind
   find like
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
 
 form user-info, name <UserInfo>

@@ -143,7 +143,7 @@ export function preprocessTests(source: string): Preprocessed {
 
     // emit the task: setup statements pass through, assertions become guards, then `send back, true`
     emit(`task ${slug}`, at)
-    emit('  note async', at)
+    emit('  mark async', at)
     emit('  like boolean', at)
 
     for (const group of statements(lines, body, 2)) {

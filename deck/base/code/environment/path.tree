@@ -16,7 +16,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/environment/path
+load @term/base/native/{platform}/environment/path
   find read-path
 
 # RENAMED 2026-10-02 from `get` (base-v1-0038): a top-level `get` shadows list `get` in every build that loads this.

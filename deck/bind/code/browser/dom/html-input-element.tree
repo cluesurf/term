@@ -1,62 +1,62 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/file-list
+load @term/bind/browser/dom/file-list
   find file-list
 
-load @term/bind/code/browser/dom/file-system-entry
+load @term/bind/browser/dom/file-system-entry
   find file-system-entry
 
-load @term/bind/code/browser/dom/html-element
+load @term/bind/browser/dom/html-element
   find html-element
 
-load @term/bind/code/browser/dom/html-element-event-map
+load @term/bind/browser/dom/html-element-event-map
   find html-element-event-map
 
-load @term/bind/code/browser/dom/html-form-element
+load @term/bind/browser/dom/html-form-element
   find html-form-element
 
-load @term/bind/code/browser/dom/html-label-element
+load @term/bind/browser/dom/html-label-element
   find html-label-element
 
-load @term/bind/code/browser/dom/node-list-of
+load @term/bind/browser/dom/node-list-of
   find node-list-of
 
-load @term/bind/code/browser/dom/selection-mode
+load @term/bind/browser/dom/selection-mode
   find selection-mode
 
-load @term/bind/code/browser/dom/validity-state
+load @term/bind/browser/dom/validity-state
   find validity-state
 
-load @term/bind/code/javascript/es5/date
+load @term/bind/javascript/es5/date
   find date
 
-load @term/bind/code/javascript/es5/readonly-array
+load @term/bind/javascript/es5/readonly-array
   find readonly-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form html-input-element, name <HTMLInputElement>

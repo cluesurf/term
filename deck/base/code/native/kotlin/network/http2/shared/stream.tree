@@ -11,10 +11,10 @@
 #
 # Internal: reached only through the public network/http2 API.
 
-load @term/base/code/network/server/request
+load @term/base/network/server/request
   find request
 
-load @term/base/code/native/kotlin/network/http2/shared/request
+load @term/base/native/kotlin/network/http2/shared/request
   find http2-stream
 
 # the stream a request arrived on, as text. 0 when the backend does not report one.

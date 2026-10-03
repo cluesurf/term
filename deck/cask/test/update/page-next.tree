@@ -1,7 +1,7 @@
 # The page the driver publishes as an over-the-air update to the update app (native-dom-0024). The same natives as
 # page.tree, so the same dispatcher and the same runtime version, and status 12, so the driver knows the update ran.
 
-load @term/cask/code/cask
+load @term/cask/cask
   find exit
 
 task boot

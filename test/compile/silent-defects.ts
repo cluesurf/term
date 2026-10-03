@@ -410,7 +410,7 @@ view stacked
 view inline
   view button
     seed click
-      submit-email(text <x>, text <y>)
+      submit-email(text(<x>), text <y>)
     text <Subscribe>
 
 view called

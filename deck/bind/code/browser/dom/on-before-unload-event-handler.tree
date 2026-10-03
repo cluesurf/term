@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/on-before-unload-event-handler-non-null
+load @term/bind/browser/dom/on-before-unload-event-handler-non-null
   find on-before-unload-event-handler-non-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
 form on-before-unload-event-handler, name <OnBeforeUnloadEventHandler>

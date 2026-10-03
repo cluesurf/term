@@ -23,7 +23,7 @@ export async function callNote(input: {
       '  ' +
         chalk.bold(name(fullName)) +
         ' ' +
-        markColor(showCode(manifest.code)),
+        markColor(showCode(manifest.mark)),
     )
 
     if (manifest.head) {

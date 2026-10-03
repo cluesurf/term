@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/file-reader-event-map
+load @term/bind/browser/dom/file-reader-event-map
   find file-reader-event-map
 
-load @term/bind/code/browser/webworker/file-reader
+load @term/bind/browser/webworker/file-reader
   find file-reader
 
-load @term/bind/code/browser/webworker/progress-event
+load @term/bind/browser/webworker/progress-event
   find progress-event
 
 form file-reader-event-map, name <FileReaderEventMap>

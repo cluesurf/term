@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/css-rule
+load @term/bind/browser/dom/css-rule
   find css-rule
 
-load @term/bind/code/browser/dom/css-rule-list
+load @term/bind/browser/dom/css-rule-list
   find css-rule-list
 
 load @term/bind/code/javascript/iterable-iterator

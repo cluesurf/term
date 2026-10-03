@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
 
 host e2-big, name <E2BIG>

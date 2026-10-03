@@ -8,16 +8,16 @@
 #
 # Ported from deck/call/code/deck-of.ts (cli-in-term-0004).
 
-load @term/call/code/work/manifest
+load @term/call/work/manifest
   find manifest-value-of
 
-load @term/base/code/path
+load @term/base/path
   find join
 
-load @term/base/code/file
+load @term/base/file
   find test, name file-test
 
-load @term/base/code/text
+load @term/base/text
   find starts-with
 
 dock load
@@ -43,7 +43,7 @@ task deck-root-of
         there
         hold
           save name
-            manifest-value-of manifest, <deck>, wait true
+            manifest-value-of manifest, <deck>
           fork test
             starts-with read(name), <@>
             hold
@@ -64,7 +64,7 @@ task deck-name-of
 
   like text
 
-  save at, deck-root-of file, root, wait true
+  save at, deck-root-of file, root
 
   back
-    manifest-value-of join(at, <deck.tree>), <deck>, wait true
+    manifest-value-of join(at, <deck.tree>), <deck>

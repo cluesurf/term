@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find incoming-message
   find native-number
@@ -12,14 +12,14 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/http
+load @term/bind/node/http
   find outgoing-http-header
   find outgoing-http-headers
 
 form server-response, name <ServerResponse>
   base outgoing-message
-  link status-code, name <statusCode>, like native-number
-  link status-message, name <statusMessage>, like native-string
+  link status-code, name(<statusCode>), like native-number
+  link status-message, name(<statusMessage>), like native-string
 
   task assign-socket, name <assignSocket>
     like native-void

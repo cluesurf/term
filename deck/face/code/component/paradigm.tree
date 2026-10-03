@@ -6,10 +6,10 @@
 #   rows    -> list of { label, cells } down the side; each cell is { text } (the inflected form)
 # The top-left corner cell is intentionally blank. Compose it inside a document zone with `zone paradigm / bind ...`.
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
   find make-text
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 

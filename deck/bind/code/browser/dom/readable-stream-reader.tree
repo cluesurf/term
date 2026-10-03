@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/readable-stream-default-reader
+load @term/bind/browser/dom/readable-stream-default-reader
   find readable-stream-default-reader
 
 form readable-stream-reader, name <ReadableStreamReader>

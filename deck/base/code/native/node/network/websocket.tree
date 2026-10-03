@@ -6,7 +6,7 @@ dock type
 dock load
   load <global:websocket>, name websocket
 
-load @term/base/code/network/websocket
+load @term/base/network/websocket
   find socket
 
 task websocket-connect

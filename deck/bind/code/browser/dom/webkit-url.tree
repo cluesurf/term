@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/url
+load @term/bind/browser/dom/url
   find url
 
 form webkit-url, name <webkitURL>

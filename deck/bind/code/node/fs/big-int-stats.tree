@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-bigint
 
-load @term/bind/code/node/fs
+load @term/bind/node/fs
   find stats-base
 
 form big-int-stats, name <BigIntStats>

@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/dom-time-stamp
+load @term/bind/browser/dom/dom-time-stamp
   find dom-time-stamp
 
 form rtc-certificate-expiration, name <RTCCertificateExpiration>

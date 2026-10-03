@@ -4,7 +4,7 @@ load @term/bind
   find form
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find http-request-options
   find native-boolean
   find native-string

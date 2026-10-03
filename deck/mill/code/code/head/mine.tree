@@ -1,25 +1,25 @@
-load @term/mill/code/code/form/link/mine
+load @term/mill/code/form/link/mine
   find link
 
-load @term/mill/code/code/take/mine
+load @term/mill/code/take/mine
   find take
 
-load @term/mill/code/code/seed/mine
+load @term/mill/code/seed/mine
   find seed-text
 
-load @term/mill/code/code/drop/mine
+load @term/mill/code/drop/mine
   find drop
 
-load @term/mill/code/code/seed/mine
+load @term/mill/code/seed/mine
   find seed
 
-load @term/mill/code/code/need/mine
+load @term/mill/code/need/mine
   find need
 
-load @term/mill/code/code/like/mine
+load @term/mill/code/like/mine
   find like
 
-load @term/mill/code/code/fall/mine
+load @term/mill/code/fall/mine
   find fall
 
 # `head <name>` is a type parameter, `head <name>, like <type>` a value INDEX, and a bare `head` with a value

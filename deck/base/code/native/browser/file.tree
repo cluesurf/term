@@ -3,7 +3,7 @@
 dock load
   load <global:io>, name io
 
-load @term/base/code/file/stat
+load @term/base/file/stat
   find path-info
 
 task read-file

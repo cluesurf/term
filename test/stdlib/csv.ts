@@ -3,6 +3,7 @@
 // stringify -> parse roundtrip). Run: npx tsx test/stdlib/csv.ts
 
 import { compile } from '@term/make/code/compile/compile'
+import { stdlibResolver } from '@term/make/code/resolve'
 import { readFileSync, existsSync, writeFileSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -12,18 +13,8 @@ import type { Source } from '@term/make/code/compile/load'
 
 const baseTree = join(process.cwd(), 'deck', 'base')
 
-const stdlib = (p: string): Source | undefined => {
-  const pre = '@term/base/'
-  p = p.replace(/^@term\/base\//, pre)
-
-  if (!p.startsWith(pre)) {
-    return undefined
-  }
-
-  const f = join(baseTree, `${p.slice(pre.length)}.tree`)
-
-  return existsSync(f) ? { file: f, text: readFileSync(f, 'utf8') } : undefined
-}
+// the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+const stdlib = stdlibResolver()!
 
 let pass = 0
 let fail = 0

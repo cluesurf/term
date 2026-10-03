@@ -3,18 +3,18 @@
 # each go over the bridge to the cask and come back. Asks the cask where the bundle is, reads the file the driver
 # put there, and leaves with 0 when it holds the expected line and 1 when it does not. The driver reads that status.
 
-load @term/cask/code/cask
+load @term/cask/cask
   find bundle-path
   find listen
   find exit
 
-load @term/base/code/file
+load @term/base/file
   find read
 
-load @term/base/code/text
+load @term/base/text
   find trim
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
   find count

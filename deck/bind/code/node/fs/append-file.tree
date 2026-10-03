@@ -2,13 +2,13 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
   find native-void
   find promise
   find uint8-array
 
-load @term/bind/code/node/fs
+load @term/bind/node/fs
   find path-or-file-descriptor
   find write-file-options
 

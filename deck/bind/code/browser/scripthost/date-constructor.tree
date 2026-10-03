@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/scripthost/date
+load @term/bind/browser/scripthost/date
   find date
 
-load @term/bind/code/javascript/es5/date-constructor
+load @term/bind/javascript/es5/date-constructor
   find date-constructor
 
 load @term/bind/code/javascript/var-date

@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/iterable/file-list
+load @term/bind/browser/dom/iterable/file-list
   find file-list
 
-load @term/bind/code/browser/webworker/file
+load @term/bind/browser/webworker/file
   find file
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form file-list, name <FileList>

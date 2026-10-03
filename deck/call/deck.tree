@@ -1,6 +1,5 @@
 
 deck @term/call
   head <The Term command line>
-  bear ./code
-  code <0.0.16>
+  mark <0.0.16>
   lock mit

@@ -1,26 +1,26 @@
 
-load @term/bind/code/browser/dom/message-event-init
+load @term/bind/browser/dom/message-event-init
   find message-event-init
 
-load @term/bind/code/browser/webworker/event-init
+load @term/bind/browser/webworker/event-init
   find event-init
 
-load @term/bind/code/browser/webworker/message-event-source
+load @term/bind/browser/webworker/message-event-source
   find message-event-source
 
-load @term/bind/code/browser/webworker/message-port
+load @term/bind/browser/webworker/message-port
   find message-port
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form message-event-init, name <MessageEventInit>

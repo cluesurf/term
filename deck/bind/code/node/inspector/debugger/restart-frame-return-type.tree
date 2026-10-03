@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-undefined
   find runtime-stack-trace
@@ -8,7 +8,7 @@ load @term/bind/code/javascript
 load @term/bind
   find or
 
-load @term/bind/code/node/inspector/debugger
+load @term/bind/node/inspector/debugger
   find call-frame
 
 form restart-frame-return-type, name <RestartFrameReturnType>

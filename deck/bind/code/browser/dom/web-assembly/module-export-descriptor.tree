@@ -2,7 +2,7 @@
 load @term/bind/code/browser/dom/import-export-kind
   find import-export-kind
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form module-export-descriptor, name <ModuleExportDescriptor>

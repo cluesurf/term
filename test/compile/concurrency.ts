@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { compile } from '@term/make/code/compile/compile'
+import { stdlibResolver } from '@term/make/code/resolve'
 import {
   withNativeEnv,
   nativePrelude,
@@ -20,20 +21,8 @@ const baseTree = join(process.cwd(), 'deck', 'base')
 // `@term/base/...`. Both spell the same package, so the resolver accepts either prefix.
 const STDLIB_PREFIX = /^@term\/base\//
 
-const stdlib = (path: string): Source | undefined => {
-  if (!STDLIB_PREFIX.test(path)) {
-    return undefined
-  }
-
-  const file = join(
-    baseTree,
-    `${path.replace(STDLIB_PREFIX, '')}.tree`,
-  )
-
-  return existsSync(file)
-    ? { file, text: readFileSync(file, 'utf8') }
-    : undefined
-}
+// the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+const stdlib = stdlibResolver()!
 
 const readRuntime = (path: string): string | undefined => {
   if (existsSync(path)) {

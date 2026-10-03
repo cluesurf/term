@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find error
   find native-boolean
@@ -19,41 +19,41 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/http2
+load @term/bind/node/http2
   find incoming-http-headers
   find server-http2-stream
 
 form http2-server-request, name <Http2ServerRequest>
   base stream-readable
-  link aborted, name <aborted>, like native-boolean
-  link authority, name <authority>, like native-string
+  link aborted, name(<aborted>), like native-boolean
+  link authority, name(<authority>), like native-string
   link connection, name <connection>
     like or
       like net-socket
       like tls-tls-socket
-  link complete, name <complete>, like native-boolean
-  link headers, name <headers>, like incoming-http-headers
-  link http-version, name <httpVersion>, like native-string
-  link http-version-minor, name <httpVersionMinor>, like native-number
-  link http-version-major, name <httpVersionMajor>, like native-number
-  link method, name <method>, like native-string
+  link complete, name(<complete>), like native-boolean
+  link headers, name(<headers>), like incoming-http-headers
+  link http-version, name(<httpVersion>), like native-string
+  link http-version-minor, name(<httpVersionMinor>), like native-number
+  link http-version-major, name(<httpVersionMajor>), like native-number
+  link method, name(<method>), like native-string
   link raw-headers, name <rawHeaders>
     like array
       like native-string
   link raw-trailers, name <rawTrailers>
     like array
       like native-string
-  link scheme, name <scheme>, like native-string
+  link scheme, name(<scheme>), like native-string
   link socket, name <socket>
     like or
       like net-socket
       like tls-tls-socket
-  link stream, name <stream>, like server-http2-stream
-  link trailers, name <trailers>, like incoming-http-headers
-  link url, name <url>, like native-string
+  link stream, name(<stream>), like server-http2-stream
+  link trailers, name(<trailers>), like incoming-http-headers
+  link url, name(<url>), like native-string
 
   task set-timeout, name <setTimeout>
     like native-void

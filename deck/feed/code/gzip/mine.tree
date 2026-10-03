@@ -67,7 +67,7 @@ mine gzip
     send header-crc16
 
   mine let, name remaining-before-trailer
-    call subtract(call remaining(read cursor), code 8)
+    call subtract(call(remaining(read cursor)), code 8)
 
   mine bytes
     bind width, read remaining-before-trailer

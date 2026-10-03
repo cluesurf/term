@@ -1,17 +1,17 @@
-load @term/mill/code/code/call/mine
+load @term/mill/code/call/mine
   find call-link
 
 
-load @term/mill/code/code/bind/mine
+load @term/mill/code/bind/mine
   find bind
 
-load @term/mill/code/code/save/mine
+load @term/mill/code/save/mine
   find save
 
-load @term/mill/code/code/turn/mine
+load @term/mill/code/turn/mine
   find turn
 
-load @term/mill/code/code/seed/mine
+load @term/mill/code/seed/mine
   find seed
 
 # `make <form>` with `bind` children. The name is OPTIONAL because the reader's value case for a `make` head

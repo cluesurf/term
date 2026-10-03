@@ -1,29 +1,29 @@
 
-load @term/bind/code/browser/dom/iterable/readable-stream
+load @term/bind/browser/dom/iterable/readable-stream
   find readable-stream
 
-load @term/bind/code/browser/webworker/readable-stream-default-reader
+load @term/bind/browser/webworker/readable-stream-default-reader
   find readable-stream-default-reader
 
-load @term/bind/code/browser/webworker/readable-writable-pair
+load @term/bind/browser/webworker/readable-writable-pair
   find readable-writable-pair
 
-load @term/bind/code/browser/webworker/stream-pipe-options
+load @term/bind/browser/webworker/stream-pipe-options
   find stream-pipe-options
 
-load @term/bind/code/browser/webworker/writable-stream
+load @term/bind/browser/webworker/writable-stream
   find writable-stream
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form readable-stream, name <ReadableStream>

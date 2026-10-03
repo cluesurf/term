@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/dom-quad-init
+load @term/bind/browser/dom/dom-quad-init
   find dom-quad-init
 
-load @term/bind/code/browser/webworker/dom-point-init
+load @term/bind/browser/webworker/dom-point-init
   find dom-point-init
 
 form dom-quad-init, name <DOMQuadInit>

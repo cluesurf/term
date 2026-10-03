@@ -4,7 +4,7 @@
 # by reading deck/make/code/compile/mill.ts's unescapeText), so it's built once through @term/base/code/rune's
 # rune-to-text, added for exactly this.
 
-load @term/base/code/rune
+load @term/base/rune
   find rune-to-text
 
 task escape

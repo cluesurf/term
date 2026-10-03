@@ -3,7 +3,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/process
+load @term/base/native/{platform}/process
   find get-platform
   find exit-with
 

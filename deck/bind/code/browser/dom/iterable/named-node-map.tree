@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/attr
+load @term/bind/browser/dom/attr
   find attr
 
-load @term/bind/code/browser/dom/named-node-map
+load @term/bind/browser/dom/named-node-map
   find named-node-map
 
 load @term/bind/code/javascript/iterable-iterator

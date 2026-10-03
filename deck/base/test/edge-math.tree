@@ -2,7 +2,7 @@
 # trig, truncation, the float predicates and the least common multiple. Each float answer is compared as text, which
 # note/term/stdlib/semantics.md makes identical everywhere. Held by `pnpm term:base-gate`.
 
-load @term/base/code/float
+load @term/base/float
   find pi
   find tau
   find euler-number
@@ -16,7 +16,7 @@ load @term/base/code/float
   find is-infinite
   find is-finite
 
-load @term/base/code/math
+load @term/base/math
   find least-common-multiple
 
 task show

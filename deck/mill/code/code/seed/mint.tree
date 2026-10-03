@@ -1,34 +1,34 @@
-load @term/mill/code/code/call/mint
+load @term/mill/code/call/mint
   find call-link
 
-load @term/mill/code/code/call/mint
+load @term/mill/code/call/mint
   find call
 
-load @term/mill/code/code/fork/mint
+load @term/mill/code/fork/mint
   find fork
 
-load @term/mill/code/code/make/mint
+load @term/mill/code/make/mint
   find make
 
-load @term/mill/code/code/task/mint
+load @term/mill/code/task/mint
   find task
 
-load @term/mill/code/code/tool/flow/mint
+load @term/mill/code/tool/flow/mint
   find move
 
-load @term/mill/code/code/wait/mint
+load @term/mill/code/wait/mint
   find wait
 
-load @term/mill/code/code/bind/mint
+load @term/mill/code/bind/mint
   find bind
 
-load @term/mill/code/code/halt/mint
+load @term/mill/code/halt/mint
   find halt
 
-load @term/mill/code/code/like/mint
+load @term/mill/code/like/mint
   find like
 
-load @term/base/code/lang
+load @term/base/lang
   find seed-def
 
 mint seed

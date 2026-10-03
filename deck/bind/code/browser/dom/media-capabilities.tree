@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/dom/media-capabilities-decoding-info
+load @term/bind/browser/dom/media-capabilities-decoding-info
   find media-capabilities-decoding-info
 
-load @term/bind/code/browser/dom/media-capabilities-encoding-info
+load @term/bind/browser/dom/media-capabilities-encoding-info
   find media-capabilities-encoding-info
 
-load @term/bind/code/browser/dom/media-decoding-configuration
+load @term/bind/browser/dom/media-decoding-configuration
   find media-decoding-configuration
 
-load @term/bind/code/browser/dom/media-encoding-configuration
+load @term/bind/browser/dom/media-encoding-configuration
   find media-encoding-configuration
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
 form media-capabilities, name <MediaCapabilities>

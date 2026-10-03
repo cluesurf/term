@@ -1,38 +1,38 @@
 
-load @term/bind/code/browser/dom/abort-signal
+load @term/bind/browser/dom/abort-signal
   find abort-signal
 
-load @term/bind/code/browser/webworker/abort-signal-event-map
+load @term/bind/browser/webworker/abort-signal-event-map
   find abort-signal-event-map
 
-load @term/bind/code/browser/webworker/add-event-listener-options
+load @term/bind/browser/webworker/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/webworker/event
+load @term/bind/browser/webworker/event
   find event
 
-load @term/bind/code/browser/webworker/event-listener-options
+load @term/bind/browser/webworker/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/webworker/event-listener-or-event-listener-object
+load @term/bind/browser/webworker/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/webworker/event-target
+load @term/bind/browser/webworker/event-target
   find event-target
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form abort-signal, name <AbortSignal>

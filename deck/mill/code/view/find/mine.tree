@@ -17,13 +17,13 @@
 # Both a `meet` and bare `hold` lines are allowed. Bare predicates are an implicit `and`, which is the common
 # single-predicate case, and giving them their own site means the mint builds each shape without a conditional.
 
-load @term/mill/code/view/meet/mine
+load @term/mill/view/meet/mine
   find view-meet
 
-load @term/mill/code/view/hold/mine
+load @term/mill/view/hold/mine
   find view-hold
 
-load @term/mill/code/view/sort/mine
+load @term/mill/view/sort/mine
   find view-sort
 
 mine view-find

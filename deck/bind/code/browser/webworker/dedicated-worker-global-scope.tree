@@ -1,47 +1,47 @@
 
-load @term/bind/code/browser/webworker/add-event-listener-options
+load @term/bind/browser/webworker/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/webworker/animation-frame-provider
+load @term/bind/browser/webworker/animation-frame-provider
   find animation-frame-provider
 
-load @term/bind/code/browser/webworker/dedicated-worker-global-scope-event-map
+load @term/bind/browser/webworker/dedicated-worker-global-scope-event-map
   find dedicated-worker-global-scope-event-map
 
-load @term/bind/code/browser/webworker/event-listener-options
+load @term/bind/browser/webworker/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/webworker/event-listener-or-event-listener-object
+load @term/bind/browser/webworker/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/webworker/message-event
+load @term/bind/browser/webworker/message-event
   find message-event
 
-load @term/bind/code/browser/webworker/post-message-options
+load @term/bind/browser/webworker/post-message-options
   find post-message-options
 
-load @term/bind/code/browser/webworker/transferable
+load @term/bind/browser/webworker/transferable
   find transferable
 
-load @term/bind/code/browser/webworker/worker-global-scope
+load @term/bind/browser/webworker/worker-global-scope
   find worker-global-scope
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form dedicated-worker-global-scope, name <DedicatedWorkerGlobalScope>

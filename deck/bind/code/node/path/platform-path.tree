@@ -1,10 +1,10 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-boolean
   find native-string
 
-load @term/bind/code/node/path
+load @term/bind/node/path
   find format-input-path-object
   find parsed-path
 

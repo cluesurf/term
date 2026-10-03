@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/url-search-params
+load @term/bind/browser/dom/url-search-params
   find url-search-params
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form url, name <URL>

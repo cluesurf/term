@@ -1,7 +1,7 @@
-load @term/call/code/work/home
+load @term/call/work/home
   find root, name project-root
 
-load @term/call/code/work/tint
+load @term/call/work/tint
   find log-good
   find log-fail
   find log-step
@@ -23,17 +23,17 @@ load @term/call/code/work/tint
 #
 # Ported from deck/call/code/wake.ts (cli-in-term-0004).
 
-load @term/base/code/path
+load @term/base/path
   find join
 
-load @term/base/code/file
+load @term/base/file
   find write, name write-file
 
-load @term/base/code/file/directory
+load @term/base/file/directory
   find make, name make-directory
   find exists, name directory-exists
 
-load @term/base/code/text
+load @term/base/text
   find trim
 
 dock load
@@ -48,9 +48,8 @@ task deck-text
   like text
 
   back <deck {{project}}
-  bear ./code
+  mark <0.0.2>
   test ./test
-  code <0.0.2>
   boot ./code/boot
 >
 
@@ -60,7 +59,7 @@ task boot-text
 
   back <# The application entry point. `term boot` compiles and runs
 # this module's `boot` task.
-load @term/base/code/console
+load @term/base/console
   find log
 
 task boot

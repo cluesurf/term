@@ -2,7 +2,7 @@
 
 note unstable
 
-load @term/base/code/float
+load @term/base/float
   find square-root
 
 form vector-2

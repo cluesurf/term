@@ -1,17 +1,17 @@
 
-load @term/bind/code/javascript/es2015/iterable/int8-array
+load @term/bind/javascript/es2015/iterable/int8-array
   find int8-array
 
-load @term/bind/code/javascript/es2015/iterable/iterable
+load @term/bind/javascript/es2015/iterable/iterable
   find iterable
 
-load @term/bind/code/javascript/es5/int8-array-constructor
+load @term/bind/javascript/es5/int8-array-constructor
   find int8-array-constructor
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form int8-array-constructor, name <Int8ArrayConstructor>

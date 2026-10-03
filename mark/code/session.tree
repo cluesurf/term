@@ -3,11 +3,11 @@
 # Samples only, never summaries: every metric of every timed round is a whole number in its unit, and a median, a
 # ratio or an interval is computed from them when asked for, here or by `pnpm mark:save`'s readers.
 
-load @term/base/code/process/run
+load @term/base/process/run
   find run, name run-process
   find run-result
 
-load @term/base/code/json
+load @term/base/json
   find make-object
   find set-field
   find make-array
@@ -19,26 +19,26 @@ load @term/base/code/json
   find is-null
   find stringify
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
   find get
   find size
   find join
 
-load @term/base/code/text
+load @term/base/text
   find trim
   find split
   find contains, name text-contains
   find replace-all
 
-load @term/base/code/float
+load @term/base/float
   find to-decimal
 
-load @term/base/code/time
+load @term/base/time
   find now
 
-load @term/base/code/calendar
+load @term/base/calendar
   find format
 
 load ./host
@@ -261,12 +261,12 @@ task read-machine
       wait true
   save stable
     call make-object
-  call set-field(read(stable), text <chip>, call(from-text, read(chip)))
-  call set-field(read(stable), text <core_count>, call(from-number, call(to-decimal, read(cores))))
-  call set-field(read(stable), text <label>, call(from-text, read(chosen)))
-  call set-field(read(stable), text <memory>, call(from-number, call(to-decimal, read(memory))))
-  call set-field(read(stable), text <model>, call(from-text, read(model)))
-  call set-field(read(stable), text <power>, call(from-text, read(power)))
+  call set-field(read(stable), text(<chip>), call(from-text, read chip))
+  call set-field(read(stable), text(<core_count>), call(from-number, call(to-decimal, read cores)))
+  call set-field(read(stable), text(<label>), call(from-text, read chosen))
+  call set-field(read(stable), text(<memory>), call(from-number, call(to-decimal, read memory)))
+  call set-field(read(stable), text(<model>), call(from-text, read model))
+  call set-field(read(stable), text(<power>), call(from-text, read power))
   send back
     make machine
       bind digest
@@ -528,10 +528,10 @@ task measurement-of
         call make-null
   save out
     call make-object
-  call set-field(read(out), text <metric>, call(from-text, read(metric)))
-  call set-field(read(out), text <unit>, call(from-text, read(unit)))
-  call set-field(read(out), text <collector>, call(from-text, read(collector)))
-  call set-field(read(out), text <values>, read(values))
+  call set-field(read(out), text(<metric>), call(from-text, read metric))
+  call set-field(read(out), text(<unit>), call(from-text, read unit))
+  call set-field(read(out), text(<collector>), call(from-text, read collector))
+  call set-field(read(out), text(<values>), read values)
   send back, read out
 
 # a case as the export writes it
@@ -542,8 +542,8 @@ task case-object
     call make-object
   save size
     call make-object
-  call set-field(read(size), text <name>, call(from-text, read(one/size-name)))
-  call set-field(read(size), text <value>, call(whole, read(one/size-value)))
+  call set-field(read(size), text(<name>), call(from-text, read one/size-name))
+  call set-field(read(size), text(<value>), call(whole, read one/size-value))
   save correctness
     call get
       read one/correctness
@@ -552,22 +552,22 @@ task case-object
     call get
       read one/note
       code 0
-  call set-field(read(out), text <program>, call(from-text, read(one/program)))
-  call set-field(read(out), text <program_digest>, call(from-text, read(one/program-digest)))
-  call set-field(read(out), text <implementation>, call(from-text, read(one/implementation)))
-  call set-field(read(out), text <language>, call(from-text, read(one/language)))
-  call set-field(read(out), text <track>, call(from-text, read(one/track)))
-  call set-field(read(out), text <target>, call(from-text, read(one/target)))
-  call set-field(read(out), text <boundary>, call(from-text, read(one/boundary)))
-  call set-field(read(out), text <size>, read(size))
-  call set-field(read(out), text <expect_digest>, call(from-text, read(one/expect-digest)))
-  call set-field(read(out), text <correctness>, call(from-text, read(correctness)))
-  call set-field(read(out), text <correctness_note>, call(text-or-null, read(note)))
-  call set-field(read(out), text <toolchain>, call(text-or-null, read(one/toolchain)))
-  call set-field(read(out), text <build>, call(text-or-null, read(one/line)))
-  call set-field(read(out), text <source>, call(from-text, read(one/source)))
-  call set-field(read(out), text <source_commit>, call(text-or-null, read(one/commit)))
-  call set-field(read(out), text <license>, call(from-text, read(one/license)))
+  call set-field(read(out), text(<program>), call(from-text, read one/program))
+  call set-field(read(out), text(<program_digest>), call(from-text, read one/program-digest))
+  call set-field(read(out), text(<implementation>), call(from-text, read one/implementation))
+  call set-field(read(out), text(<language>), call(from-text, read one/language))
+  call set-field(read(out), text(<track>), call(from-text, read one/track))
+  call set-field(read(out), text(<target>), call(from-text, read one/target))
+  call set-field(read(out), text(<boundary>), call(from-text, read one/boundary))
+  call set-field(read(out), text(<size>), read size)
+  call set-field(read(out), text(<expect_digest>), call(from-text, read one/expect-digest))
+  call set-field(read(out), text(<correctness>), call(from-text, read correctness))
+  call set-field(read(out), text(<correctness_note>), call(text-or-null, read note))
+  call set-field(read(out), text(<toolchain>), call(text-or-null, read one/toolchain))
+  call set-field(read(out), text(<build>), call(text-or-null, read one/line))
+  call set-field(read(out), text(<source>), call(from-text, read one/source))
+  call set-field(read(out), text(<source_commit>), call(text-or-null, read one/commit))
+  call set-field(read(out), text(<license>), call(from-text, read one/license))
   save measurements
     call make-array
   walk list
@@ -616,14 +616,14 @@ task case-object
           read one/artifact
       save built
         call make-object
-      call set-field(read(built), text <metric>, call(from-text, text <size>))
-      call set-field(read(built), text <unit>, call(from-text, text <byte>))
-      call set-field(read(built), text <collector>, call(from-text, text <build>))
-      call set-field(read(built), text <values>, read(sizes))
+      call set-field(read(built), text(<metric>), call(from-text, text <size>))
+      call set-field(read(built), text(<unit>), call(from-text, text <byte>))
+      call set-field(read(built), text(<collector>), call(from-text, text <build>))
+      call set-field(read(built), text(<values>), read sizes)
       call push-item
         read measurements
         read built
-  call set-field(read(out), text <measurements>, read(measurements))
+  call set-field(read(out), text(<measurements>), read measurements)
   send back, read out
 
 # the whole export, as JSON text
@@ -636,41 +636,41 @@ task export-text
   like text
   save repository
     call make-object
-  call set-field(read(repository), text <commit>, call(from-text, read(session/commit)))
-  call set-field(read(repository), text <dirty>, call(from-boolean, read(session/dirty)))
+  call set-field(read(repository), text(<commit>), call(from-text, read session/commit))
+  call set-field(read(repository), text(<dirty>), call(from-boolean, read session/dirty))
   save compiler
     call make-object
-  call set-field(read(compiler), text <version>, call(from-text, read(session/compiler-version)))
-  call set-field(read(compiler), text <digest>, call(from-text, read(session/compiler-digest)))
+  call set-field(read(compiler), text(<version>), call(from-text, read session/compiler-version))
+  call set-field(read(compiler), text(<digest>), call(from-text, read session/compiler-digest))
   save runner
     call make-object
-  call set-field(read(runner), text <version>, call(from-text, read(session/runner-version)))
+  call set-field(read(runner), text(<version>), call(from-text, read session/runner-version))
   save gear, read session/machine
   save machine
     call make-object
-  call set-field(read(machine), text <digest>, call(from-text, read(gear/digest)))
-  call set-field(read(machine), text <label>, call(from-text, read(gear/label)))
-  call set-field(read(machine), text <model>, call(from-text, read(gear/model)))
-  call set-field(read(machine), text <chip>, call(from-text, read(gear/chip)))
-  call set-field(read(machine), text <core_count>, call(whole, read(gear/core-count)))
-  call set-field(read(machine), text <memory>, call(whole, read(gear/memory)))
-  call set-field(read(machine), text <power>, call(from-text, read(gear/power)))
+  call set-field(read(machine), text(<digest>), call(from-text, read gear/digest))
+  call set-field(read(machine), text(<label>), call(from-text, read gear/label))
+  call set-field(read(machine), text(<model>), call(from-text, read gear/model))
+  call set-field(read(machine), text(<chip>), call(from-text, read gear/chip))
+  call set-field(read(machine), text(<core_count>), call(whole, read gear/core-count))
+  call set-field(read(machine), text(<memory>), call(whole, read gear/memory))
+  call set-field(read(machine), text(<power>), call(from-text, read gear/power))
   save system
     call make-object
-  call set-field(read(system), text <name>, call(from-text, read(gear/system)))
-  call set-field(read(system), text <version>, call(from-text, read(gear/version)))
+  call set-field(read(system), text(<name>), call(from-text, read gear/system))
+  call set-field(read(system), text(<version>), call(from-text, read gear/version))
   save block
     call make-object
-  call set-field(read(block), text <repository>, read(repository))
-  call set-field(read(block), text <compiler>, read(compiler))
-  call set-field(read(block), text <runner>, read(runner))
-  call set-field(read(block), text <purpose>, call(from-text, read(session/purpose)))
-  call set-field(read(block), text <machine>, read(machine))
-  call set-field(read(block), text <operating_system>, read(system))
-  call set-field(read(block), text <warmup_count>, call(whole, read(session/warmup-count)))
-  call set-field(read(block), text <round_count>, call(whole, read(session/round-count)))
-  call set-field(read(block), text <start>, call(from-text, read(session/start)))
-  call set-field(read(block), text <finish>, call(from-text, read(finish)))
+  call set-field(read(block), text(<repository>), read repository)
+  call set-field(read(block), text(<compiler>), read compiler)
+  call set-field(read(block), text(<runner>), read runner)
+  call set-field(read(block), text(<purpose>), call(from-text, read session/purpose))
+  call set-field(read(block), text(<machine>), read machine)
+  call set-field(read(block), text(<operating_system>), read system)
+  call set-field(read(block), text(<warmup_count>), call(whole, read session/warmup-count))
+  call set-field(read(block), text(<round_count>), call(whole, read session/round-count))
+  call set-field(read(block), text(<start>), call(from-text, read session/start))
+  call set-field(read(block), text(<finish>), call(from-text, read finish))
   save all
     call make-array
   walk list, read cases
@@ -682,9 +682,9 @@ task export-text
           read one
   save out
     call make-object
-  call set-field(read(out), text <version>, call(whole, code 1))
-  call set-field(read(out), text <session>, read(block))
-  call set-field(read(out), text <cases>, read(all))
+  call set-field(read(out), text(<version>), call(whole, code 1))
+  call set-field(read(out), text(<session>), read block)
+  call set-field(read(out), text(<cases>), read all)
   send back
     call stringify
       read out

@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/clipboard-event
+load @term/bind/browser/dom/clipboard-event
   find clipboard-event
 
 form document-and-element-event-handlers-event-map

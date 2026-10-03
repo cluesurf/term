@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find iterable
   find iterable-iterator
@@ -17,7 +17,7 @@ load @term/bind
   find task
   find tuple
 
-load @term/bind/code/node/url
+load @term/bind/node/url
   find url-search-params
 
 form url-search-params, name <URLSearchParams>

@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/dom/rtc-stats
+load @term/bind/browser/dom/rtc-stats
   find rtc-stats
 
-load @term/bind/code/browser/dom/rtc-stats-ice-candidate-pair-state
+load @term/bind/browser/dom/rtc-stats-ice-candidate-pair-state
   find rtc-stats-ice-candidate-pair-state
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form rtc-ice-candidate-pair-stats, name <RTCIceCandidatePairStats>

@@ -1,26 +1,26 @@
 
-load @term/bind/code/browser/dom/media-key-system-access
+load @term/bind/browser/dom/media-key-system-access
   find media-key-system-access
 
-load @term/bind/code/browser/dom/media-key-system-configuration
+load @term/bind/browser/dom/media-key-system-configuration
   find media-key-system-configuration
 
-load @term/bind/code/browser/dom/navigator
+load @term/bind/browser/dom/navigator
   find navigator
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
 load @term/bind/code/javascript/iterable
   find iterable
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form navigator, name <Navigator>

@@ -8,21 +8,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { compile } from '@term/make/code/compile/compile'
+import { stdlibResolver } from '@term/make/code/resolve'
 import { nativePrelude, withNativeEnv } from '@term/make/code/compile/native'
 import type { Source } from '@term/make/code/compile/load'
 
 const baseTree = join(process.cwd(), 'deck', 'base')
 const PREFIX = /^@term\/base\//
 
-const stdlib = (path: string): Source | undefined => {
-  if (!PREFIX.test(path)) {
-    return undefined
-  }
-
-  const file = join(baseTree, `${path.replace(PREFIX, '')}.tree`)
-
-  return existsSync(file) ? { file, text: readFileSync(file, 'utf8') } : undefined
-}
+// the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+const stdlib = stdlibResolver()!
 
 const readRuntime = (path: string): string | undefined => {
   if (existsSync(path)) {

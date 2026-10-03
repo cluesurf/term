@@ -3,24 +3,24 @@
 
 note stable
 
-load @term/base/code/native/{platform}/environment
+load @term/base/native/{platform}/environment
   find current-directory
   find get-variable
 
-load @term/base/code/native/{platform}/environment/variable
+load @term/base/native/{platform}/environment/variable
   find holds-variable
   find store-variable
   find drop-variable
   find gather-variables
 
-load @term/base/code/native/{platform}/environment/directory
+load @term/base/native/{platform}/environment/directory
   find enter-directory
 
-load @term/base/code/native/{platform}/environment/language
+load @term/base/native/{platform}/environment/language
   find read-locale
   find known-locales
 
-load @term/base/code/environment/language
+load @term/base/environment/language
   find locale
 
 task directory

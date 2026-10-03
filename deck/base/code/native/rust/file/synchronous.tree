@@ -7,7 +7,7 @@ dock type
 dock load
   load <global:grip>, name grip
 
-load @term/base/code/file/synchronous
+load @term/base/file/synchronous
   find synchronous-file
 
 task grip-open

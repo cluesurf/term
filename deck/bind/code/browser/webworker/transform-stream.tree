@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/transform-stream
+load @term/bind/browser/dom/transform-stream
   find transform-stream
 
-load @term/bind/code/browser/webworker/readable-stream
+load @term/bind/browser/webworker/readable-stream
   find readable-stream
 
-load @term/bind/code/browser/webworker/writable-stream
+load @term/bind/browser/webworker/writable-stream
   find writable-stream
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
 form transform-stream, name <TransformStream>

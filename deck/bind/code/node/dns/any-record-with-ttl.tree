@@ -2,7 +2,7 @@
 load @term/bind
   find or
 
-load @term/bind/code/node/dns
+load @term/bind/node/dns
   find any-a-record
   find any-aaaa-record
 

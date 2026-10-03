@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/u-long-range
+load @term/bind/browser/dom/u-long-range
   find u-long-range
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form constrain-u-long-range, name <ConstrainULongRange>

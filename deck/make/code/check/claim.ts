@@ -1,7 +1,7 @@
 // The claim check: a `rule` states a claim, a `task` of the same name proves it, and between the two the name is
 // DECLARED and not DEFINED. This is the wall the law-and-proof gate stands on, and it is two rules:
 //
-//   1. a claim with no fill is refused (`open-claim`), unless the rule carries `note open`, which leaves it
+//   1. a claim with no fill is refused (`open-claim`), unless the rule carries `mark open`, which leaves it
 //      deliberately open: counted and reported, never silently passed;
 //   2. code that RUNS may not call a claim nobody has filled (`open-claim-used`). An open claim is a promise, and
 //      a program cannot be built on one. This is the half that makes the first half mean something: without it a
@@ -455,7 +455,7 @@ export function checkClaims(
               file,
               span: statement.span,
               message: `the proof of \`${name}\` rests on \`${below.name}\` (${below.path.join(' -> ')}), and ${below.reason}, so it proves nothing`,
-              hint: `make the kernel check \`${below.name}\` as one term, or leave the claim unfilled with \`note open\``,
+              hint: `make the kernel check \`${below.name}\` as one term, or leave the claim unfilled with \`mark open\``,
             }),
           )
         }
@@ -479,7 +479,7 @@ export function checkClaims(
           file,
           span: claim.span,
           message: `\`${name}\` is stated but never proven`,
-          hint: `write \`task ${name}\` whose body proves it, or add \`note open\` to leave it open`,
+          hint: `write \`task ${name}\` whose body proves it, or add \`mark open\` to leave it open`,
         }),
       )
     }

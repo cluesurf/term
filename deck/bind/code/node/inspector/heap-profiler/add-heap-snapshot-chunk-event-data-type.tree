@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
 
 form add-heap-snapshot-chunk-event-data-type, name <AddHeapSnapshotChunkEventDataType>

@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find error
   find native-string
@@ -11,10 +11,10 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/events
+load @term/bind/node/events
   find event-emitter
 
 form fs-watcher, name <FSWatcher>

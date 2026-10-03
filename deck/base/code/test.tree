@@ -2,7 +2,7 @@
 
 note unstable
 
-load @term/base/code/console
+load @term/base/console
   find log
 
 # equality descends structurally through the compare runtime, so `want` needs no equality mask on

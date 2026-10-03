@@ -1,13 +1,13 @@
 
-bear @term/bind/code/javascript/esnext/weakref/weak-ref
-bear @term/bind/code/javascript/esnext/weakref/weak-ref-constructor
-bear @term/bind/code/javascript/esnext/weakref/finalization-registry
-bear @term/bind/code/javascript/esnext/weakref/finalization-registry-constructor
+bear @term/bind/javascript/esnext/weakref/weak-ref
+bear @term/bind/javascript/esnext/weakref/weak-ref-constructor
+bear @term/bind/javascript/esnext/weakref/finalization-registry
+bear @term/bind/javascript/esnext/weakref/finalization-registry-constructor
 
-load @term/bind/code/javascript/esnext/weakref/finalization-registry-constructor
+load @term/bind/javascript/esnext/weakref/finalization-registry-constructor
   find finalization-registry-constructor
 
-load @term/bind/code/javascript/esnext/weakref/weak-ref-constructor
+load @term/bind/javascript/esnext/weakref/weak-ref-constructor
   find weak-ref-constructor
 
 host weak-ref, name <WeakRef>

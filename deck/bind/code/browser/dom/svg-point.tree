@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/dom-point
+load @term/bind/browser/dom/dom-point
   find dom-point
 
 form svg-point, name <SVGPoint>

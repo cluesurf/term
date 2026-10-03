@@ -1,34 +1,34 @@
-load @term/mill/code/code/wait/mint
+load @term/mill/code/wait/mint
   find wait
 
-load @term/mill/code/code/head/mint
+load @term/mill/code/head/mint
   find head
 
-load @term/mill/code/code/drop/mint
+load @term/mill/code/drop/mint
   find drop
 
-load @term/mill/code/code/bind/mint
+load @term/mill/code/bind/mint
   find bind
 
-load @term/mill/code/code/call/mint
+load @term/mill/code/call/mint
   find call
 
-load @term/mill/code/code/fall/mint
+load @term/mill/code/fall/mint
   find fall
 
-load @term/mill/code/code/like/mint
+load @term/mill/code/like/mint
   find like
 
 load @term/mill/code/code/note/mint
   find note
 
-load @term/mill/code/code/seed/mint
+load @term/mill/code/seed/mint
   find seed
 
-load @term/mill/code/code/take/name/mint
+load @term/mill/code/take/name/mint
   find name
 
-load @term/base/code/lang
+load @term/base/lang
   find take-value
 
 mint take

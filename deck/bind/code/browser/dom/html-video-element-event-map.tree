@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/html-media-element-event-map
+load @term/bind/browser/dom/html-media-element-event-map
   find html-media-element-event-map
 
 form html-video-element-event-map, name <HTMLVideoElementEventMap>

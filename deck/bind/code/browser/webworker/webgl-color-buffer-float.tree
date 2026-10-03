@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/webgl-color-buffer-float
+load @term/bind/browser/dom/webgl-color-buffer-float
   find webgl-color-buffer-float
 
-load @term/bind/code/browser/webworker/g-lenum
+load @term/bind/browser/webworker/g-lenum
   find g-lenum
 
 form webgl-color-buffer-float, name <WEBGL_color_buffer_float>

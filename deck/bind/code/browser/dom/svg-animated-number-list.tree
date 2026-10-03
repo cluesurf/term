@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/svg-number-list
+load @term/bind/browser/dom/svg-number-list
   find svg-number-list
 
 form svg-animated-number-list, name <SVGAnimatedNumberList>

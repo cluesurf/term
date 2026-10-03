@@ -5,12 +5,12 @@
 
 note stable
 
-load @term/base/code/list
+load @term/base/list
   find list
   find size
   find get
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
 form queue
@@ -34,21 +34,26 @@ form queue
     take self
     like maybe
       head t
+    # `front` read once: a queue built by hand may hold any number there, and one outside the items is empty
+    save at, read self/front
     fork test
       hook test
-        call is-maximum
-          call size
-            read self/items
-          read self/front
+        call or
+          call is-below
+            read at
+            code 0
+          call is-maximum
+            read self/items/length
+            read at
       hook hold
         send back, make none
     save item
       call get
         read self/items
-        read self/front
+        read at
     save self/front
       call add
-        read self/front
+        read at
         code 1
     # drop the spent prefix once it is half the list
     fork test
@@ -62,13 +67,20 @@ form queue
       hook hold
         save rest
           make list
-        save k, read self/front
+        save k
+          call add
+            read at
+            code 1
+        save n, read self/items/length
         walk test
           hook test
-            call is-below
-              read k
-              call size
-                read self/items
+            call and
+              call is-below
+                read k
+                read n
+              call is-below
+                read k
+                read self/items/length
           hook step
             call rest/push
               call get
@@ -88,12 +100,16 @@ form queue
     take self
     like maybe
       head t
+    save at, read self/front
     fork test
       hook test
-        call is-maximum
-          call size
-            read self/items
-          read self/front
+        call or
+          call is-below
+            read at
+            code 0
+          call is-maximum
+            read self/items/length
+            read at
       hook hold
         send back, make none
     send back
@@ -101,7 +117,7 @@ form queue
         bind value
           call get
             read self/items
-            read self/front
+            read at
 
   task size
     take self

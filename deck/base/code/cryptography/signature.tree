@@ -2,12 +2,12 @@
 
 note stable
 
-load @term/base/code/native/{platform}/cryptography/signature
+load @term/base/native/{platform}/cryptography/signature
   find make-key-pair-bytes
   find sign-message
   find verify-message
 
-load @term/base/code/bytes
+load @term/base/bytes
   find slice
 
 form key-pair
@@ -20,7 +20,6 @@ task make-key-pair
   like key-pair
   save raw
     call make-key-pair-bytes
-      wait true
   send back
     make key-pair
       bind private-key
@@ -43,7 +42,6 @@ task sign
     call sign-message
       read private-key
       read message
-      wait true
 
 task verify
   note async
@@ -56,4 +54,3 @@ task verify
       read public-key
       read message
       read signature
-      wait true

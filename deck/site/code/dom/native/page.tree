@@ -41,6 +41,20 @@ task proxy-target
   like text
   send back, text <>
 
+# mirror the navigation contract's stack into an address bar (native-navigation-0001, ../../view/navigation): a new
+# entry, the current entry replaced, one step back. A host with no address (a native app, the server) keeps no history
+# of its own, and the contract's stack is the whole of it, so each is a no-op here
+task push-path
+  take path, like text
+  save skip, code 0
+
+task replace-path
+  take path, like text
+  save skip, code 0
+
+task go-back
+  save skip, code 0
+
 # run `handler` on navigation: back/forward and intercepted same-origin link clicks (SPA navigation)
 task listen-pop
   take handler

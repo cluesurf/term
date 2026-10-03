@@ -1,0 +1,9 @@
+host program, <spectral-norm>
+host entry, <spectral-norm>
+host source, <the Computer Language Benchmarks Game program, single-threaded, the same algorithm>
+host check, 100
+host expect, <1274219991>
+host size, 1000
+host runs, 5
+host semantics, <decimals (IEEE doubles), the same operations in the same order on every backend; the answer is the norm times 10^9 rounded down, so no float is ever printed>
+host idiom, <ours, 2026-10-02: each language's natural structures (Vec of f64, DoubleArray, [Double], Float64Array or number[])>

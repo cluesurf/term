@@ -42,6 +42,7 @@ import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
+import { resolvePackagePath, sourceOf } from '@term/make/code/resolve'
 import { mill } from '@term/make/code/compile/mill'
 import { resolve as resolveNames } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
@@ -97,16 +98,8 @@ const resolver = (path: string, from: string): Source | undefined => {
     return undefined
   }
 
-  for (const candidate of [
-    join(root, `${rest}.tree`),
-    join(root, rest, 'base.tree'),
-  ]) {
-    if (existsSync(candidate)) {
-      return { file: candidate, text: readFileSync(candidate, 'utf8') }
-    }
-  }
-
-  return undefined
+  // inside the package by the package path rule every resolver calls (code root, then package root)
+  return sourceOf(resolvePackagePath({ dir: root, rest }))
 }
 
 const readRuntime = (p: string): string | undefined =>

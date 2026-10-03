@@ -1,7 +1,7 @@
 # browser HTTP client primitive. Internal: reached only through the public http API (network/http.tree), which builds
 # the response, orders its headers and raises `timeout` or `outage`, so every backend answers alike.
 
-load @term/base/code/hash
+load @term/base/hash
   find hash
 
 dock load

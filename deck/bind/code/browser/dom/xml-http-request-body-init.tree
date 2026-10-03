@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/dom/blob
+load @term/bind/browser/dom/blob
   find blob
 
-load @term/bind/code/browser/dom/buffer-source
+load @term/bind/browser/dom/buffer-source
   find buffer-source
 
-load @term/bind/code/browser/dom/form-data
+load @term/bind/browser/dom/form-data
   find form-data
 
-load @term/bind/code/browser/dom/url-search-params
+load @term/bind/browser/dom/url-search-params
   find url-search-params
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form xml-http-request-body-init, name <XMLHttpRequestBodyInit>

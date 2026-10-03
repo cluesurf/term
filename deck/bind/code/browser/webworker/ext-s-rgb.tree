@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/ext-s-rgb
+load @term/bind/browser/dom/ext-s-rgb
   find ext-s-rgb
 
-load @term/bind/code/browser/webworker/g-lenum
+load @term/bind/browser/webworker/g-lenum
   find g-lenum
 
 form ext-s-rgb, name <EXT_sRGB>

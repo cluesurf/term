@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/navigator-storage
+load @term/bind/browser/dom/navigator-storage
   find navigator-storage
 
-load @term/bind/code/browser/webworker/storage-manager
+load @term/bind/browser/webworker/storage-manager
   find storage-manager
 
 form navigator-storage, name <NavigatorStorage>

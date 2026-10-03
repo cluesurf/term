@@ -3,7 +3,7 @@
 # bit, resolved by the caller — loca stays single-responsibility, like every other table here, rather than
 # depending on `head`'s form directly.
 
-load @term/base/code/list
+load @term/base/list
   find push
 
 load ../../../../base
@@ -45,7 +45,7 @@ task read-otf-loca-table
         hook hold
           call push
             read offsets
-            call multiply(call read-u16(read cursor), code 2)
+            call multiply(call(read-u16(read cursor)), code 2)
         hook miss
           call push
             read offsets

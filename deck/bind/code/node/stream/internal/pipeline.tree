@@ -4,7 +4,7 @@ load @term/bind
   find like
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-void
   find node-js-read-write-stream
   find node-js-readable-stream
@@ -12,10 +12,10 @@ load @term/bind/code/javascript
   find promise
   find readonly-array
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find array
 
-load @term/bind/code/node/stream/internal
+load @term/bind/node/stream/internal
   find pipeline-destination
   find pipeline-options
   find pipeline-promise

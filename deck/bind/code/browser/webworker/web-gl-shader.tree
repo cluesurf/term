@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/web-gl-shader
+load @term/bind/browser/dom/web-gl-shader
   find web-gl-shader
 
 form web-gl-shader, name <WebGLShader>

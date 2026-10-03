@@ -95,7 +95,7 @@ task go
 task go
   like text
   save r
-    dimension key <tense>, max-count 1
+    dimension key(<tense>), max-count 1
       states <present>, <imperfect>
   send back, read r
 `,
@@ -119,7 +119,7 @@ task go
 task go
   like text
   save r
-    dimension key <tense>, strict
+    dimension key(<tense>), strict
       states <present>
   send back, read r
 `,
@@ -164,7 +164,7 @@ task go
     lean: `
 task shape
   like point
-  save p, make point, a 10, b 20
+  save p, make point, a(10), b 20
   send back, read p
 `,
     long: `
@@ -203,7 +203,7 @@ task shape
     lean: `
 task shape
   like point
-  save p, make point, a 10, b 20
+  save p, make point, a(10), b 20
   save q
     point
       a, read p/b
@@ -244,7 +244,7 @@ task shape
   send back
     construct key <noun>
       pattern
-        feature feature <part_of_speech>, value <noun>
+        feature feature(<part_of_speech>), value <noun>
 `,
     long: `
 form pattern
@@ -971,7 +971,7 @@ task go
 task go
   like text
   send back
-    dimension key <tense>, kee <x>
+    dimension key(<tense>), kee <x>
       states <present>
 `,
     expect: 'has no parameter "kee"',
@@ -989,12 +989,15 @@ task go
     expect: 'takes one value, and this gives 2',
   },
   {
-    name: 'a multi-valued property written inline after another property is split by the comma',
+    // Before 2026-10-02 the comma after `<present>` popped out of `states` on its own, and this was how a list
+    // property got split. Now a comma after a literal stays in the list, so the split is written with the
+    // parentheses: a value after a closed property is a positional of the call, and the call already has one.
+    name: 'a value after a property closed by its parentheses is a positional, and given twice',
     text: `
 task go
   like text
   send back
-    dimension key <tense>, states <present>, <imperfect>, max-count 1
+    dimension key(<tense>), states(<present>), <imperfect>, max-count 1
 `,
     expect: 'given twice',
   },
@@ -1004,7 +1007,7 @@ task go
 task go
   like text
   send back
-    dimension key <tense>, loose
+    dimension key(<tense>), loose
       states <present>
 `,
     expect: 'is not defined',
@@ -1014,37 +1017,34 @@ task go
     text: `
 task shape
   like point
-  save p, make point, a 10, b 20
+  save p, make point, a(10), b 20
   send back
     point a, read p/b
 `,
     expect: 'needs a field name as its head',
   },
-  // THE COMMA TRAP, both shapes it was met in during the Sanskrit port. The comma pops one level, so the
-  // inline call after it stays open and the statement head is left holding an extra argument. It used to be
-  // reported as `the name "back" is not defined`, pointing at a whole line with nothing wrong on it, and it
-  // cost an hour each time.
+  // THE COMMA TRAP, met twice in the Sanskrit port: a comma after a literal or a closed call popped out of the
+  // inline call, and the statement head was left holding an extra argument. Since 2026-10-02 such a comma stays
+  // where it is (test/compile/lean-second.ts holds `back is-equal add(n, 1), 14`), so the trap is closed, and
+  // what is left of this shape is an ordinary over-full parameter, said as one
   {
-    name: 'a statement head left holding an extra argument by a comma (send back)',
+    name: 'values after a label stay with the label, and a scalar label refuses the extra',
     text: `
 task shape
   like number
   back dimension key <tense>, 0, 1
 `,
-    expect: '`back` is a statement',
+    expect: 'takes one value, and this gives 3',
   },
+  // and the head still refuses a trailing extra written beside it
   {
-    name: 'a statement head left holding an extra argument by a comma (fork)',
+    name: 'a statement head left holding an extra argument (send back)',
     text: `
 task shape
-  take n, like number
   like number
-  fork test, is-above add(n, n), 1
-    hook hold
-      send back, read n
-  send back, read n
+  back dimension(key <tense>), 1
 `,
-    expect: '`fork` is a statement',
+    expect: '`back` is a statement',
   },
   // a `hook` under a call. It used to build `letters.flatMap()` with no argument and no message: the whole
   // callback vanished on a clean build.
@@ -1081,18 +1081,30 @@ task go
 `,
     expect: 'given twice',
   },
-  // a field the form does not declare. The comma pops ONE level, so an inline construction is still open when
-  // the next property arrives and swallows it: `position some value 3, description <x>` shipped
-  // `{ form: "some", value: 3, description: ["x"] }` on a clean build, with the enclosing field left empty.
+  // a field the form does not declare. An inline construction is still open when the next property arrives and
+  // swallows it: `position some value 3, description <x>` shipped `{ form: "some", value: 3, description: ["x"] }`
+  // on a clean build, with the enclosing field left empty. Written with each property closed, the stray one is
+  // named
   {
-    name: 'a property that landed inside an inline construction the comma left open',
+    name: 'a property that names no field of the form',
+    text: `
+task shape
+  like point
+  send back
+    point a(10), b(20), c 30
+`,
+    expect: 'has no field "c"',
+  },
+  // and since 2026-10-02 the values after a literal stay with it, so the run is one over-full property
+  {
+    name: 'values after a literal stay in the property they follow',
     text: `
 task shape
   like point
   send back
     point a 10, b 20, c 30
 `,
-    expect: 'has no field "c"',
+    expect: 'takes one value, and this gives 2',
   },
   // a scalar field given twice. It used to emit `{ a: 10, b: 20, a: 30 }`: the second silently replaced the
   // first, which built two wrong tables in the Sanskrit port and was caught only by a parity test.

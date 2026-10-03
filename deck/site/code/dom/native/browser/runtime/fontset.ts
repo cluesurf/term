@@ -13,6 +13,7 @@
 //   watch(family, cb)  -> void.    Resolves the family's load status and calls `cb(status)` exactly once with a
 //                                  terminal status ('ready' | 'error' | 'timeout'). A hard timeout guarantees `cb`
 //                                  always fires so text is never stuck hidden.
+//   register(family, source) -> boolean. Adds a FontFace for the family and starts it loading (native-text-0002).
 
 const TIMEOUT_MS = 2000
 
@@ -84,6 +85,25 @@ export const fontset = {
         done('error')
       },
     )
+  },
+
+  // Register a face under `family` (native-text-0002): a FontFace from the source, added to document.fonts and asked
+  // to load. Answers at once, true when the browser took the face; `watch` then says when it is drawable. A source is
+  // a `data:` URI, a URL, or `asset:<name>`, which is a URL relative to the page. No FontFaceSet (the server): true,
+  // as `check` is, since nothing is drawn there.
+  register(family: string, source: string): boolean {
+    if (typeof document === 'undefined' || !document.fonts || typeof FontFace === 'undefined') {
+      return true
+    }
+    try {
+      const url = source.startsWith('asset:') ? source.slice('asset:'.length) : source
+      const face = new FontFace(family, `url("${url}")`)
+      document.fonts.add(face)
+      face.load().catch(() => undefined)
+      return true
+    } catch {
+      return false
+    }
   },
 
   // Fallback deadline: call `cb` once when `firstAsk + thresholdMs` elapses for this family, regardless of load

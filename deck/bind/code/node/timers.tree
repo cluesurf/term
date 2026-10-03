@@ -1,7 +1,7 @@
 
 bear @term/bind/code/javascript/node/timers/timer-options
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-number
   find native-void

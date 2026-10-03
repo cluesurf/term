@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/scroll-logical-position
+load @term/bind/browser/dom/scroll-logical-position
   find scroll-logical-position
 
-load @term/bind/code/browser/dom/scroll-options
+load @term/bind/browser/dom/scroll-options
   find scroll-options
 
 form scroll-into-view-options, name <ScrollIntoViewOptions>

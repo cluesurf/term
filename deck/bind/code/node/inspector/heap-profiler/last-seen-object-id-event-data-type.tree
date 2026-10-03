@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
 
 form last-seen-object-id-event-data-type, name <LastSeenObjectIdEventDataType>

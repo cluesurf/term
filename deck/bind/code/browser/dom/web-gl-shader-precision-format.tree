@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/g-lint
+load @term/bind/browser/dom/g-lint
   find g-lint
 
 form web-gl-shader-precision-format, name <WebGLShaderPrecisionFormat>

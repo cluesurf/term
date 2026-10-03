@@ -7,7 +7,7 @@
 # The first checker module in Term (self-hosting, phase 2, 2026-10-02). It replaced check/arm.ts, which was deleted
 # in the same change: the checker and all four emitters import `armLocals` from the module this emits.
 
-load @term/base/code/list
+load @term/base/list
   find list
 
 form arm-local

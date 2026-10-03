@@ -18,7 +18,7 @@ bear @term/bind/code/javascript/node/tls/secure-version
 bear @term/bind/code/javascript/node/tls/secure-context-options
 bear @term/bind/code/javascript/node/tls/secure-context
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find error
   find native-boolean
@@ -33,10 +33,10 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/https
+load @term/bind/node/https
   find server
 
-load @term/bind/code/node/tls
+load @term/bind/node/tls
   find connection-options
   find peer-certificate
   find secure-context

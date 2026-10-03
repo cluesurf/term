@@ -1,7 +1,7 @@
 dock load
   load <global:child>, name child-runtime
 
-load @term/base/code/process
+load @term/base/process
   find child
 
 task wait

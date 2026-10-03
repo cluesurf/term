@@ -2,10 +2,10 @@
 
 note stable
 
-load @term/base/code/native/{platform}/network/udp
+load @term/base/native/{platform}/network/udp
   find udp-open
 
-load @term/base/code/native/{platform}/network/udp/socket
+load @term/base/native/{platform}/network/udp/socket
   find udp-socket-send
   find udp-socket-receive
   find udp-socket-close
@@ -36,7 +36,6 @@ form socket
         read data
         read host
         read port
-        wait true
 
   # wait for and return the next incoming datagram
   task receive
@@ -46,7 +45,6 @@ form socket
     send back
       call udp-socket-receive
         read self
-        wait true
 
   # close the socket and release the port
   task close
@@ -55,7 +53,6 @@ form socket
     like void
     call udp-socket-close
       read self
-      wait true
 
 # open a UDP socket bound to `host:port`
 task open
@@ -70,4 +67,3 @@ task open
     call udp-open
       read port
       read host
-      wait true

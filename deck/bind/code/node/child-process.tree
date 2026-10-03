@@ -49,7 +49,7 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find child-process
   find native-null
   find native-string
@@ -60,11 +60,11 @@ load @term/bind/code/javascript
   find readonly-array
   find writable
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
   find buffer-encoding
 
-load @term/bind/code/node/child-process
+load @term/bind/node/child-process
   find child-process-by-stdio
   find child-process-without-null-streams
   find exec-exception

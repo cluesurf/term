@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/rtc-stats-report
+load @term/bind/browser/dom/rtc-stats-report
   find rtc-stats-report
 
 load @term/bind/code/javascript/readonly-map

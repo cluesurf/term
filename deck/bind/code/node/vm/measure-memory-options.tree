@@ -2,10 +2,10 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-undefined
 
-load @term/bind/code/node/vm
+load @term/bind/node/vm
   find context
   find measure-memory-mode
 

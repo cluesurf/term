@@ -1,26 +1,26 @@
 
-load @term/bind/code/browser/dom/rtc-ice-candidate-init
+load @term/bind/browser/dom/rtc-ice-candidate-init
   find rtc-ice-candidate-init
 
-load @term/bind/code/browser/dom/rtc-ice-candidate-type
+load @term/bind/browser/dom/rtc-ice-candidate-type
   find rtc-ice-candidate-type
 
-load @term/bind/code/browser/dom/rtc-ice-component
+load @term/bind/browser/dom/rtc-ice-component
   find rtc-ice-component
 
-load @term/bind/code/browser/dom/rtc-ice-protocol
+load @term/bind/browser/dom/rtc-ice-protocol
   find rtc-ice-protocol
 
-load @term/bind/code/browser/dom/rtc-ice-tcp-candidate-type
+load @term/bind/browser/dom/rtc-ice-tcp-candidate-type
   find rtc-ice-tcp-candidate-type
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form rtc-ice-candidate, name <RTCIceCandidate>

@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/readable-stream-default-read-value-result
+load @term/bind/browser/dom/readable-stream-default-read-value-result
   find readable-stream-default-read-value-result
 
 form readable-stream-default-read-value-result, name <ReadableStreamDefaultReadValueResult>

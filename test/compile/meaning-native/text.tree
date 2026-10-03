@@ -1,4 +1,4 @@
-load @term/base/code/text
+load @term/base/text
   find char-count
   find char-at
   find char-code-at
@@ -9,7 +9,7 @@ load @term/base/code/text
   find trim
   find pad-left
 
-load @term/base/code/list
+load @term/base/list
   find list
 
 # text is counted in code points on every backend (note/term/stdlib/semantics.md). Each value here crosses a surrogate

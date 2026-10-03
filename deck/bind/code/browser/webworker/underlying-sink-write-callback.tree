@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/underlying-sink-write-callback
+load @term/bind/browser/dom/underlying-sink-write-callback
   find underlying-sink-write-callback
 
 form underlying-sink-write-callback, name <UnderlyingSinkWriteCallback>

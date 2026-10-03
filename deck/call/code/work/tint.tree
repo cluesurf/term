@@ -16,7 +16,7 @@
 # way to ask whether it is. That is a real difference, written here rather than discovered in a log file full of
 # escape codes, and it is the next thing this module needs.
 
-load @term/base/code/console
+load @term/base/console
   find log
   find error, name log-error
 

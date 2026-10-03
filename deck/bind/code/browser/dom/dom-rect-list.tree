@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/dom-rect
+load @term/bind/browser/dom/dom-rect
   find dom-rect
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form dom-rect-list, name <DOMRectList>

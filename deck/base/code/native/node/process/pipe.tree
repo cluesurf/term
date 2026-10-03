@@ -1,5 +1,5 @@
 
-load @term/base/code/process
+load @term/base/process
   find child
 
 task connect

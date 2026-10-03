@@ -1,15 +1,15 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
   find u
 
-load @term/bind/code/javascript/es5
+load @term/bind/javascript/es5
   find promise-like
 
-load @term/bind/code/javascript/es2015/iterable/promise
+load @term/bind/javascript/es2015/iterable/promise
   find promise
 
 form promise

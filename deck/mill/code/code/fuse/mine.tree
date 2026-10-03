@@ -1,5 +1,5 @@
 
-load @term/mill/code/code/seed/mine
+load @term/mill/code/seed/mine
   find seed
 
 mine fuse

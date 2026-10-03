@@ -5,15 +5,15 @@
 
 note stable
 
-load @term/base/code/native/{platform}/network/server
+load @term/base/native/{platform}/network/server
   find server-start
   find server-stop
   find server-serve
 
-load @term/base/code/network/server/request
+load @term/base/network/server/request
   find request
 
-load @term/base/code/network/server/response
+load @term/base/network/server/response
   find response
 
 # a running server: the platform server object lives in the opaque `dock` handle, plus the bound host and port
@@ -58,7 +58,6 @@ task start
       read secure
       read certificate
       read key
-      wait true
 
 # stop a running server, releasing its port
 task stop
@@ -67,7 +66,6 @@ task stop
   like void
   call server-stop
     read server
-    wait true
 
 # run a server on `port` that answers every request with `handler`, blocking for the life of the process: the entry
 # point of a server binary. On node the server runs on the event loop (the process stays alive); on the compiled

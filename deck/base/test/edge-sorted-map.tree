@@ -1,20 +1,20 @@
 # A sorted map walks in key order on every backend. Held by `pnpm term:base-gate`.
 
-load @term/base/code/sorted-map
+load @term/base/sorted-map
   find sorted-map
   find make-sorted-map
 
-load @term/base/code/ordering
+load @term/base/ordering
   find ordering
   find from-numbers
   find from-texts
 
-load @term/base/code/list
+load @term/base/list
   find list
   find join
   find size
 
-load @term/base/code/maybe
+load @term/base/maybe
   find unwrap-or
 
 test <keys come back in order whatever order they went in>

@@ -73,26 +73,26 @@ task found-text
       send back
         call write(read value)
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
 test <get-at follows a path>
   want hold
     call is-equal
-      call found-text(call get-at(call read(text <host x\n  list member\n    mesh\n      host name, \<foo\>\n    mesh\n      host name, \<bar\>\n>), text <x/member/1/name>))
+      call found-text call get-at(call(read(text <host x\n  list member\n    mesh\n      host name, \<foo\>\n    mesh\n      host name, \<bar\>\n>)), text <x/member/1/name>)
       text <\<bar\>\n>
 
 test <get-at gives none for a missing key>
   want hold
     call is-equal
-      call found-text(call get-at(call read(text <host x, 1\n>), text <y>))
+      call found-text call get-at(call(read(text <host x, 1\n>)), text <y>)
       text <none>
 
 test <fill takes a value that fits>
   save filled
-    call fill(call read(text <host a, 1\nhost b, \<x\>\n>), call read(text <host a, \<number\>\nhost b, \<text\>\nhost c, \<text?\>\n>))
+    call fill(call(read(text <host a, 1\nhost b, \<x\>\n>)), call(read(text <host a, \<number\>\nhost b, \<text\>\nhost c, \<text?\>\n>)))
   want hold
-    call is-equal(call write(call melt(read filled)), text <host a, 1\nhost b, \<x\>\n>)
+    call is-equal(call(write(call(melt(read filled)))), text <host a, 1\nhost b, \<x\>\n>)
 
 load ../code/base
   find melt
@@ -100,7 +100,7 @@ load ../code/base
 test <fill refuses a value that does not fit, naming the path>
   save refused, text <>
   note unsafe
-    call fill(call read(text <host a\n  list b\n    1, \<x\>\n>), call read(text <host a\n  list b\n    \<number\>\n>))
+    call fill(call(read(text <host a\n  list b\n    1, \<x\>\n>)), call(read(text <host a\n  list b\n    \<number\>\n>)))
   halt take
     take problem
     save refused, read problem/link/path

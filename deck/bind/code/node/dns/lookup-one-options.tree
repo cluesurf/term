@@ -2,10 +2,10 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-undefined
 
-load @term/bind/code/node/dns
+load @term/bind/node/dns
   find lookup-options
 
 form lookup-one-options, name <LookupOneOptions>

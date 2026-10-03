@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/audio-node-options
+load @term/bind/browser/dom/audio-node-options
   find audio-node-options
 
-load @term/bind/code/browser/dom/distance-model-type
+load @term/bind/browser/dom/distance-model-type
   find distance-model-type
 
-load @term/bind/code/browser/dom/panning-model-type
+load @term/bind/browser/dom/panning-model-type
   find panning-model-type
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form panner-options, name <PannerOptions>

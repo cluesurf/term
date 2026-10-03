@@ -5,20 +5,20 @@
 # nested map for a nested map, a list holding one item shape for a list. Keys stay as written. See
 # note/term/host/04-model-and-json.md.
 
-load @term/base/code/boolean
+load @term/base/boolean
   find not
 
-load @term/base/code/list
+load @term/base/list
   find push
   find size
   find get
   find contains
 
-load @term/base/code/text
+load @term/base/text
   find ends-with
   find substring
 
-load @term/base/code/text/string
+load @term/base/text/string
   find concat
 
 load ./base
@@ -91,7 +91,7 @@ task check-shape
                           read want/name
               fork test
                 hook test
-                  call and(call not(read found), call not(call is-optional(read want/base)))
+                  call and(call(not(read found)), call(not(call(is-optional(read want/base)))))
                 hook hold
                   call refuse
                     call join-path
@@ -158,7 +158,7 @@ task check-shape
           link present
           fork test
             hook test
-              call is-above(call size(read items), code 0)
+              call is-above(call(size(read items)), code 0)
             hook hold
               save index, code 0
               walk list

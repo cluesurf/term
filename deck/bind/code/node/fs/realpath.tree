@@ -3,17 +3,17 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-null
   find native-string
   find native-void
   find node-js-errno-exception
   find promise
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/fs
+load @term/bind/node/fs
   find buffer-encoding-option
   find encoding-option
   find path-like

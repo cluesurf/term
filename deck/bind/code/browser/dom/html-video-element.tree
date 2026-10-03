@@ -1,47 +1,47 @@
 
-load @term/bind/code/browser/dom/add-event-listener-options
+load @term/bind/browser/dom/add-event-listener-options
   find add-event-listener-options
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/event-listener-options
+load @term/bind/browser/dom/event-listener-options
   find event-listener-options
 
-load @term/bind/code/browser/dom/event-listener-or-event-listener-object
+load @term/bind/browser/dom/event-listener-or-event-listener-object
   find event-listener-or-event-listener-object
 
-load @term/bind/code/browser/dom/html-media-element
+load @term/bind/browser/dom/html-media-element
   find html-media-element
 
-load @term/bind/code/browser/dom/html-video-element-event-map
+load @term/bind/browser/dom/html-video-element-event-map
   find html-video-element-event-map
 
-load @term/bind/code/browser/dom/picture-in-picture-window
+load @term/bind/browser/dom/picture-in-picture-window
   find picture-in-picture-window
 
-load @term/bind/code/browser/dom/video-playback-quality
+load @term/bind/browser/dom/video-playback-quality
   find video-playback-quality
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form html-video-element, name <HTMLVideoElement>

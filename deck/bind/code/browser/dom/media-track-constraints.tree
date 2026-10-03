@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/media-track-constraint-set
+load @term/bind/browser/dom/media-track-constraint-set
   find media-track-constraint-set
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
 form media-track-constraints, name <MediaTrackConstraints>

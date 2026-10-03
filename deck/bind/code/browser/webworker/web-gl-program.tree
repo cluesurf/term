@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/web-gl-program
+load @term/bind/browser/dom/web-gl-program
   find web-gl-program
 
 form web-gl-program, name <WebGLProgram>

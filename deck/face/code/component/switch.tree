@@ -4,4 +4,4 @@
 # android.widget.Switch) through their `toolkit` rung, and every other target, the web among them, falls to the
 # generic ./native/switch.tree. Both take `host`, `class` and `control`. See note/term/app/11-uniform-interface.md.
 
-bear @term/face/code/component/native/{platform}/switch
+bear @term/face/component/native/{platform}/switch

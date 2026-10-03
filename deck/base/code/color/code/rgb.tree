@@ -1,12 +1,12 @@
 note unstable
 
-load @term/base/code/mixin/each
+load @term/base/mixin/each
   find define-each
 
-load @term/base/code/mixin/access
+load @term/base/mixin/access
   find access
 
-load @term/base/code/color
+load @term/base/color
   find space
 
 form rgb

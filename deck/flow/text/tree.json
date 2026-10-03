@@ -3,6 +3,12 @@
   "name": "Term",
   "patterns": [
     {
+      "include": "#controls"
+    },
+    {
+      "include": "#metadata"
+    },
+    {
       "include": "#nestedtermsexternal"
     },
     {
@@ -31,6 +37,41 @@
     }
   ],
   "repository": {
+    "controls": {
+      "patterns": [
+        {
+          "match": "^\\s*(sift|fork|case|walk|turn|halt|send|back|wait|tick|miss|next)(?=[ ,(]|$)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.tree"
+            }
+          }
+        },
+        {
+          "match": "(?<=, )(tick)(?= )",
+          "captures": {
+            "1": {
+              "name": "keyword.control.tree"
+            }
+          }
+        }
+      ]
+    },
+    "metadata": {
+      "patterns": [
+        {
+          "match": "^\\s*(mark|note) (async|native|unsafe|stable|unstable|deprecated|feature|platform|keep|draft|open|private|roam|lean|shared|tag)(?=[ ,]|$)",
+          "captures": {
+            "1": {
+              "name": "storage.modifier.tree"
+            },
+            "2": {
+              "name": "storage.modifier.tree"
+            }
+          }
+        }
+      ]
+    },
     "comments": {
       "patterns": [
         {

@@ -6,15 +6,15 @@
 
 note stable
 
-load @term/base/code/list
+load @term/base/list
   find list
   find get
   find size
 
-load @term/base/code/stop
+load @term/base/stop
   find abandon
 
-load @term/base/code/text/unicode
+load @term/base/text/unicode
   find to-runes
   find rune-to-text
 
@@ -661,8 +661,12 @@ task format-pattern
       read r
   save out, text <>
   save i, code 0
-  # no `down`: each token moves `i` on by its own width, at least one, which the prover cannot read off the branches
+  # each token moves `i` on by its own width, at least one (stated at the end of the turn)
   walk test
+    down
+      call subtract
+        read n
+        read i
     hook test
       call is-below
         read i
@@ -978,6 +982,14 @@ task format-pattern
             call rune-to-text
               read c
       save out, text <{{out}}{{piece}}>
+      # every token uses one place or more; stated, since the branches above each set it their own way
+      fork test
+        hook test
+          call is-below
+            read used
+            code 1
+        hook hold
+          save used, code 1
       save i
         call add
           read i

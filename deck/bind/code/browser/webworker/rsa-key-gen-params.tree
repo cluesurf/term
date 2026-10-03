@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/rsa-key-gen-params
+load @term/bind/browser/dom/rsa-key-gen-params
   find rsa-key-gen-params
 
-load @term/bind/code/browser/webworker/algorithm
+load @term/bind/browser/webworker/algorithm
   find algorithm
 
-load @term/bind/code/browser/webworker/big-integer
+load @term/bind/browser/webworker/big-integer
   find big-integer
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form rsa-key-gen-params, name <RsaKeyGenParams>

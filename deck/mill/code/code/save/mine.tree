@@ -1,8 +1,8 @@
-load @term/mill/code/code/like/mine
+load @term/mill/code/like/mine
   find like
 
 
-load @term/mill/code/code/seed/mine
+load @term/mill/code/seed/mine
   find seed
 
 # `save x, <value>` binds a name. `save x, like <type>` annotates the binding, with the value on the lines

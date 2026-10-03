@@ -9,4 +9,4 @@
 #   save asking, call make-disclosure / bind start, false
 #   call dialog / read root / text <> / read asking / text <Delete the file?> / read confirm-buttons
 
-bear @term/face/code/component/native/{platform}/dialog
+bear @term/face/component/native/{platform}/dialog

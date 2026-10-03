@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-this
 
-load @term/bind/code/node/events
+load @term/bind/node/events
   find event-emitter
 
 form stat-watcher, name <StatWatcher>

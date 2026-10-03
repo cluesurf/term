@@ -1,23 +1,23 @@
 
-load @term/bind/code/browser/dom/document
+load @term/bind/browser/dom/document
   find document
 
-load @term/bind/code/browser/dom/document-type
+load @term/bind/browser/dom/document-type
   find document-type
 
-load @term/bind/code/browser/dom/xml-document
+load @term/bind/browser/dom/xml-document
   find xml-document
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form dom-implementation, name <DOMImplementation>

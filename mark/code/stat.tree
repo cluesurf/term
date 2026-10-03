@@ -3,7 +3,7 @@
 # interval. A suite is summarized by the geometric mean of its ratios, because an arithmetic mean of ratios scores 2x
 # slower and 2x faster as a net loss.
 
-load @term/base/code/list
+load @term/base/list
   find list
   find push
   find get
@@ -14,10 +14,10 @@ load @term/base/code/list
 load ./lists
   find part-of
 
-load @term/base/code/ordering
+load @term/base/ordering
   find ordering
 
-load @term/base/code/float
+load @term/base/float
   find to-decimal
   find natural-logarithm
   find exponent

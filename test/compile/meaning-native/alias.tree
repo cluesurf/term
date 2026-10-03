@@ -1,0 +1,64 @@
+load @term/base/list
+  find list
+
+# two lists lent to one call, one of them written: a call that passes the SAME list in both places cannot lend them
+# (Rust's `&xs` and `&mut xs` together, or one RefCell borrowed twice), so the task takes its lists shared everywhere
+# (backend.ts, `lendRefusals`). The answers are the same either way on every backend
+task counting
+  take n, like number
+  like list, like number
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      call push
+        bind list, read out
+        bind item, read i
+  send back, read out
+
+# dst[i] = src[i + 1] for every i below n - 1
+task shift-into
+  take src, like list, like number
+  take dst, like list, like number
+  take n, like number
+  walk size
+    bind base, code 0
+    bind head
+      call subtract
+        read n
+        code 1
+    hook next
+      take site, name i
+      host after
+        call add
+          read i
+          code 1
+      save dst/{i}, read src/{after}
+
+task compute
+  like text
+  host xs
+    call counting
+      code 4
+  call shift-into
+    read xs
+    read xs
+    code 4
+  host ys
+    call counting
+      code 4
+  host zs
+    call counting
+      code 4
+  call shift-into
+    read ys
+    read zs
+    code 4
+  host x0, read xs/0
+  host x3, read xs/3
+  host y0, read ys/0
+  host z0, read zs/0
+  send back, text <same={{x0}},{{x3}} apart={{y0}},{{z0}}>

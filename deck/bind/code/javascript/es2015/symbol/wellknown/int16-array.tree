@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript/es2015/iterable/int16-array
+load @term/bind/javascript/es2015/iterable/int16-array
   find int16-array
 
 form int16-array, name <Int16Array>

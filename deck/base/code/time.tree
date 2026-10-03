@@ -3,7 +3,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/time
+load @term/base/native/{platform}/time
   find epoch-millis
 
 task now

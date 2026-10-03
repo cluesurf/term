@@ -1,4 +1,4 @@
-load @term/mill/code/code/seed/mine
+load @term/mill/code/seed/mine
   find seed
 
 # `send back <value>` RETURNS from a task.

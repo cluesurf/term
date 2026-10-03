@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/es5/array-buffer
+load @term/bind/javascript/es5/array-buffer
   find array-buffer
 
-load @term/bind/code/javascript/es5/array-buffer-view
+load @term/bind/javascript/es5/array-buffer-view
   find array-buffer-view
 
 form binary-data, name <BinaryData>

@@ -24,7 +24,7 @@ load ./share
   find pnpm-tool
   find join-path
 
-load @term/base/code/list
+load @term/base/list
   find list
 
 task windows-android-home

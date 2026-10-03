@@ -1,6 +1,6 @@
 # Big integers give the same digits on every backend, Swift included (base-v1-0015). Held by `pnpm term:base-gate`.
 
-load @term/base/code/integer/big
+load @term/base/integer/big
   find big-integer
   find make-big-integer
   find big-from-number

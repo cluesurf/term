@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/automation-rate
+load @term/bind/browser/dom/automation-rate
   find automation-rate
 
-load @term/bind/code/javascript/es5/float32-array
+load @term/bind/javascript/es5/float32-array
   find float32-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form audio-param, name <AudioParam>

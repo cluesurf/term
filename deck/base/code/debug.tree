@@ -8,7 +8,7 @@
 
 note unstable
 
-load @term/base/code/stop
+load @term/base/stop
   find abandon
 
 # true when the condition holds; otherwise the run stops, saying what was assumed

@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/form-data
+load @term/bind/browser/dom/form-data
   find form-data
 
-load @term/bind/code/browser/dom/form-data-entry-value
+load @term/bind/browser/dom/form-data-entry-value
   find form-data-entry-value
 
 load @term/bind/code/javascript/iterable-iterator
   find iterable-iterator
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form form-data, name <FormData>

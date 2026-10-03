@@ -8,9 +8,9 @@ note draft
 # Separator — headless, ported from shadcn (separator.tsx). A divider line. `orientation` is a data attribute
 # (horizontal / vertical) for theming. role=separator for a11y. No children.
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 

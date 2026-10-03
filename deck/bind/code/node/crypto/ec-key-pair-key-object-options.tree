@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
 
 form ec-key-pair-key-object-options, name <ECKeyPairKeyObjectOptions>

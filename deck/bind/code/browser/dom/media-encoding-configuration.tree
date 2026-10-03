@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/media-configuration
+load @term/bind/browser/dom/media-configuration
   find media-configuration
 
-load @term/bind/code/browser/dom/media-encoding-type
+load @term/bind/browser/dom/media-encoding-type
   find media-encoding-type
 
 form media-encoding-configuration, name <MediaEncodingConfiguration>

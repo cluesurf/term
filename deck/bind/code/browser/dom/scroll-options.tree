@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/scroll-behavior
+load @term/bind/browser/dom/scroll-behavior
   find scroll-behavior
 
 form scroll-options, name <ScrollOptions>

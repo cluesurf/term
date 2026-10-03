@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/rtc-stats
+load @term/bind/browser/dom/rtc-stats
   find rtc-stats
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form rtc-rtp-stream-stats, name <RTCRtpStreamStats>

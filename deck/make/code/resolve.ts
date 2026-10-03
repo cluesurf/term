@@ -12,9 +12,187 @@ import {
 } from 'node:fs'
 import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Resolver, Source } from '@term/make/code/compile/load'
+import type { LoadHow, Resolver, Source } from '@term/make/code/compile/load'
 import { parse, renderHead } from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
 import { spanOfNode } from '@term/make/code/compile/mill-run'
+import { baseRefusal, fileCandidates, packageRest } from '@term/make/code/deck/resolve'
+
+// ---- THE PACKAGE PATH RULE (note/term/plan/manifest-mark-and-code-root.md) ----
+//
+// A load of `@scope/name/<path>` names a file in ONE package, with package root P (the directory holding its
+// deck.tree) and code root C (what the manifest's `code ./dir` names, `./code` when absent):
+//
+//   1. try C/<path>, by the usual file resolution (`.tree`, `/base.tree`, `/note.tree`)
+//   2. otherwise try P/<path>
+//
+// `base <dir>` under the load forces the package root, and its value must be the path's first segment. A bare
+// package path (`@scope/name`, a manifest's `link`) names the package's entry: C/note.tree, C/base.tree, then the
+// same two under P.
+//
+// EVERY RESOLVER CALLS THIS. The stdlib, a sibling package in this tree, a `link/` dependency, a package loading
+// itself by name, the mill's own grammar loads, the language server, `term look`, `term scan` and the manifest
+// grammar bundler all reach a package path through `resolvePackagePath`. When the rule changes, it changes here.
+
+// the file candidates for one path with no extension, in order. The same order `fileCandidates` in
+// deck/resolve.ts states for the browser-safe classifier.
+function candidatesOf(base: string, rest: string): string[] {
+  if (rest === '') {
+    return [join(base, 'note.tree'), join(base, 'base.tree')]
+  }
+
+  return fileCandidates(join(base, rest))
+}
+
+// the code root a package directory's manifest names, relative to it: the argument of `code <path>` under the
+// `deck` statement. A `code <0.0.1>` is the version's OLD spelling and is told apart by FORM: a text literal is not
+// a path. `bear <path>` is the older spelling of the same field. Absent means `code`.
+//
+// Read with the real parser (note/term/one-parser.md), cached per directory against the manifest's mtime, so a
+// long-lived language server sees an edited manifest and a build does not re-parse one per import.
+const codeRootCache = new Map<string, { mtime: number; code: string }>()
+
+export const DEFAULT_CODE_ROOT = 'code'
+
+export function codeRootOfText(text: string, file = 'deck.tree'): string {
+  const parsed = parse({ file, text })
+
+  if (!parsed.ok) {
+    return DEFAULT_CODE_ROOT
+  }
+
+  const headOf = (node: Node | undefined): string | undefined => {
+    const first = node?.kind === 'group' ? node.nodes[0] : undefined
+
+    return first?.kind === 'name' ? renderHead(first) : undefined
+  }
+
+  for (const statement of parsed.tree.nodes) {
+    if (headOf(statement) !== 'deck') {
+      continue
+    }
+
+    let older: string | undefined
+
+    for (const child of statement.nodes.slice(1)) {
+      const head = headOf(child)
+
+      if (child.kind !== 'group' || (head !== 'code' && head !== 'bear')) {
+        continue
+      }
+
+      // a path argument parses as a group; `code <1.4.2>` is a text node and is the version, not a folder
+      const value = headOf(child.nodes[1])
+
+      if (value === undefined) {
+        continue
+      }
+
+      const dir = value.replace(/^\.\//, '').replace(/\/+$/, '')
+
+      if (head === 'code') {
+        return dir === '' || dir === '.' ? '.' : dir
+      }
+
+      older ??= dir === '' || dir === '.' ? '.' : dir
+    }
+
+    if (older !== undefined) {
+      return older
+    }
+  }
+
+  return DEFAULT_CODE_ROOT
+}
+
+export function codeRootOf(dir: string): string {
+  const file = join(dir, 'deck.tree')
+
+  let mtime: number
+
+  try {
+    mtime = statSync(file).mtimeMs
+  } catch {
+    return DEFAULT_CODE_ROOT
+  }
+
+  const hit = codeRootCache.get(dir)
+
+  if (hit && hit.mtime === mtime) {
+    return hit.code
+  }
+
+  let code = DEFAULT_CODE_ROOT
+
+  try {
+    code = codeRootOfText(readFileSync(file, 'utf8'), file)
+  } catch {
+    code = DEFAULT_CODE_ROOT
+  }
+
+  codeRootCache.set(dir, { mtime, code })
+
+  return code
+}
+
+export type PackageHit = {
+  // the file the path names, undefined when it names none
+  file?: string
+  // a SECOND file the path also names, in the package root, which the code root's `file` shadows. `term lint`
+  // reports it (`ambiguous-load`), so a folder hidden by another is never silent
+  shadowed?: string
+  // why a `base` was refused, naming both the base and the path's first segment
+  refused?: string
+}
+
+// the source a hit names, carrying the file it shadows (so `term lint` can say so) and read from disk
+export function sourceOf(hit: PackageHit, real: (file: string) => string = file => file): Source | undefined {
+  if (!hit.file) {
+    return undefined
+  }
+
+  return {
+    file: real(hit.file),
+    text: readFileSync(hit.file, 'utf8'),
+    ...(hit.shadowed ? { shadowed: hit.shadowed } : {}),
+  }
+}
+
+export function resolvePackagePath(input: {
+  // the package directory, P
+  dir: string
+  // the path after `@scope/name/`, '' for the package itself
+  rest: string
+  base?: string
+  exists?: (file: string) => boolean
+}): PackageHit {
+  const exists = input.exists ?? existsSync
+  const firstOf = (base: string): string | undefined =>
+    candidatesOf(base, input.rest).find(candidate => exists(candidate))
+
+  if (input.base !== undefined) {
+    const first = input.rest.split('/')[0] ?? ''
+    const refused = first === input.base ? undefined : baseRefusal(`@/${input.rest}`, input.base)
+
+    return refused ? { refused } : { file: firstOf(input.dir) }
+  }
+
+  const code = codeRootOf(input.dir)
+  const codeDir = code === '.' ? input.dir : join(input.dir, code)
+  const inPackage = firstOf(input.dir)
+
+  if (codeDir === input.dir) {
+    return { file: inPackage }
+  }
+
+  const inCode = firstOf(codeDir)
+
+  if (inCode) {
+    return inPackage && inPackage !== inCode ? { file: inCode, shadowed: inPackage } : { file: inCode }
+  }
+
+  return { file: inPackage }
+}
 
 // resolve `@term/base/...` imports to the stdlib that ships with this package, if it can be found on disk. The
 // stdlib is `deck/base` under the term package root. We walk up from this module's directory looking for it, rather
@@ -78,18 +256,14 @@ export function stdlibResolver(): Resolver | undefined {
 
   const prefixes = STDLIB_PREFIXES
 
-  return (path: string): Source | undefined => {
-    const prefix = prefixes.find(p => path.startsWith(p))
+  return (path: string, _from: string, how?: LoadHow): Source | undefined => {
+    const prefix = prefixes.find(p => path.startsWith(p) || path === p.slice(0, -1))
 
     if (!prefix) {
       return undefined
     }
 
-    const file = join(base, `${path.slice(prefix.length)}.tree`)
-
-    return existsSync(file)
-      ? { file, text: readFileSync(file, 'utf8') }
-      : undefined
+    return sourceOf(resolvePackagePath({ dir: base, rest: path.slice(prefix.length), base: how?.base }))
   }
 }
 
@@ -114,8 +288,8 @@ export function siblingResolver(): Resolver | undefined {
   // the directory holding every in-tree package: the stdlib's own parent (`.../deck/base` -> `.../deck`)
   const deckRoot = dirname(stdlib)
 
-  return (importPath: string): Source | undefined => {
-    const match = /^@(?:term|cluesurf)\/([^/]+)\/(.+)$/.exec(importPath)
+  return (importPath: string, _from: string, how?: LoadHow): Source | undefined => {
+    const match = /^@(?:term|cluesurf)\/([^/]+)(?:\/(.*))?$/.exec(importPath)
 
     if (!match) {
       return undefined
@@ -130,17 +304,7 @@ export function siblingResolver(): Resolver | undefined {
       return undefined
     }
 
-    for (const candidate of [
-      join(root, `${rest}.tree`),
-      join(root, rest!, 'base.tree'),
-      join(root, rest!, 'note.tree'),
-    ]) {
-      if (existsSync(candidate)) {
-        return { file: candidate, text: readFileSync(candidate, 'utf8') }
-      }
-    }
-
-    return undefined
+    return sourceOf(resolvePackagePath({ dir: root, rest: rest ?? '', base: how?.base }))
   }
 }
 
@@ -150,32 +314,22 @@ export function siblingResolver(): Resolver | undefined {
 export function linkResolver(root: string): Resolver {
   const linkDir = join(root, 'link')
 
-  return (importPath: string): Source | undefined => {
-    const match = /^(@[^/]+\/[^/]+)\/(.+)$/.exec(importPath)
+  return (importPath: string, _from: string, how?: LoadHow): Source | undefined => {
+    const found = packageRest(importPath)
 
-    if (!match) {
+    if (!found) {
       return undefined
     }
 
-    const [, pkg, rest] = match
-    const base = join(linkDir, pkg!)
+    const base = join(linkDir, found.pkg)
 
-    for (const candidate of [
-      join(base, `${rest}.tree`),
-      join(base, rest!, 'base.tree'),
-      join(base, rest!, 'note.tree'),
-    ]) {
-      // canonicalize through the `link/` symlink so a file reached via a linked package and via its real path dedup
-      // to one module (lets a package reference itself by name, e.g. `bear @cluesurf/site/code/dom/view`)
-      if (existsSync(candidate)) {
-        return {
-          file: realpathSync(candidate),
-          text: readFileSync(candidate, 'utf8'),
-        }
-      }
+    if (!existsSync(base)) {
+      return undefined
     }
 
-    return undefined
+    // canonicalize through the `link/` symlink so a file reached via a linked package and via its real path dedup
+    // to one module (lets a package reference itself by name, e.g. `bear @cluesurf/site/dom/view`)
+    return sourceOf(resolvePackagePath({ dir: base, rest: found.rest, base: how?.base }), realpathSync)
   }
 }
 
@@ -208,8 +362,8 @@ export function editorResolver(filePath: string): Resolver {
   const linked = root ? linkResolver(root) : undefined
   const stdlib = stdlibResolver()
 
-  return (importPath: string, fromFile: string): Source | undefined =>
-    linked?.(importPath, fromFile) ?? stdlib?.(importPath, fromFile)
+  return (importPath: string, fromFile: string, how?: LoadHow): Source | undefined =>
+    linked?.(importPath, fromFile, how) ?? stdlib?.(importPath, fromFile, how)
 }
 
 // the modules available under a partial `load` path, for import-path completion. Given `@scope/pkg/sub/partial`, list
@@ -231,39 +385,62 @@ export function moduleCompletions(
   // complete either: a project that has not linked it still sees its modules
   const linkedPkg = join(root, 'link', pkg!)
   const stdlib = STDLIB_PACKAGES.includes(pkg!) && !existsSync(linkedPkg) ? stdlibBase() : undefined
-  const dir = join(stdlib ?? linkedPkg, subDir)
-
-  let entries: string[]
-
-  try {
-    entries = readdirSync(dir)
-  } catch {
-    return []
-  }
-
+  const pkgDir = stdlib ?? linkedPkg
+  const code = codeRootOf(pkgDir)
+  // what a path under the package can name: the code root first, then the package root, the order a load
+  // resolves in (resolvePackagePath), each name once
+  const dirs = [...new Set([join(pkgDir, code, subDir), join(pkgDir, subDir)])]
   const out: { name: string; isDir: boolean }[] = []
+  const seen = new Set<string>()
 
-  for (const entry of entries) {
-    if (entry.startsWith('.')) {
+  for (const dir of dirs) {
+    let entries: string[]
+
+    try {
+      entries = readdirSync(dir)
+    } catch {
       continue
     }
 
-    let isDir = false
+    for (const entry of entries) {
+      if (entry.startsWith('.')) {
+        continue
+      }
 
-    try {
-      isDir = statSync(join(dir, entry)).isDirectory()
-    } catch {
-      // a dangling entry: skip it
-    }
+      let isDir = false
 
-    if (isDir) {
-      out.push({ name: entry, isDir: true })
-    } else if (entry.endsWith('.tree')) {
-      out.push({ name: entry.slice(0, -'.tree'.length), isDir: false })
+      try {
+        isDir = statSync(join(dir, entry)).isDirectory()
+      } catch {
+        // a dangling entry: skip it
+      }
+
+      const name = isDir ? entry : entry.endsWith('.tree') ? entry.slice(0, -'.tree'.length) : undefined
+
+      if (name === undefined || seen.has(`${name}:${isDir}`)) {
+        continue
+      }
+
+      seen.add(`${name}:${isDir}`)
+      out.push({ name, isDir })
     }
   }
 
   return out
+}
+
+// the shortest load path for a file inside a package: `<code root>/<rest>` written as `<rest>` when the short path
+// resolves to the SAME file, which it does unless the package root holds a file the code root would shadow
+function shortRest(pkgDir: string, rel: string, file: string): string {
+  const code = codeRootOf(pkgDir)
+
+  if (code === '.' || !rel.startsWith(`${code}/`)) {
+    return rel
+  }
+
+  const short = rel.slice(code.length + 1)
+
+  return resolvePackagePath({ dir: pkgDir, rest: short }).file === file ? short : rel
 }
 
 // a module's top-level definitions, with where each is declared. Powers both `find` (export) completion and cross-file
@@ -397,7 +574,7 @@ export function findModuleExporting(
       if (def) {
         const rel = file.rel.replace(/\.tree$/, '').split(sep).join('/')
 
-        return { importPath: `@term/base/${rel}`, kind: def.kind }
+        return { importPath: `@term/base/${shortRest(stdlib, rel, file.path)}`, kind: def.kind }
       }
     }
   }
@@ -444,7 +621,7 @@ export function findModuleExporting(
             .join('/')
 
           return {
-            importPath: `${scope}/${pkg}/${rel}`,
+            importPath: `${scope}/${pkg}/${shortRest(pkgBase, rel, file.path)}`,
             kind: def.kind,
           }
         }

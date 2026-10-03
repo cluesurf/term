@@ -1,10 +1,10 @@
 
 note <the test DSL: one key head, `test`. `test <phrase>` names a test with a human phrase, then a flow of ordinary statements ending in an assertion (`want`). It lowers to the `test` meta object (a name and a work), which `run` executes. The body is plain Seed, so every kind of test (unit, functional, integration, e2e) is the same head with a different body.>
 
-load @term/mill/code/code/tool/flow/mine
+load @term/mill/code/tool/flow/mine
   find flow
 
-load @term/mill/code/code/take/mine
+load @term/mill/code/take/mine
   find take
 
 mine test

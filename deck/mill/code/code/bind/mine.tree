@@ -1,20 +1,21 @@
-load @term/mill/code/code/head/mine
+load @term/mill/code/head/mine
   find head
 
 load @term/mill/code/code/note/mine
   find note
+  find mark-note
 
-load @term/mill/code/code/dock/mine
+load @term/mill/code/dock/mine
   find dock-bind-line
 
-load @term/mill/code/code/take/mine
+load @term/mill/code/take/mine
   find take
 
-load @term/mill/code/code/like/mine
+load @term/mill/code/like/mine
   find like
 
 
-load @term/mill/code/code/seed/mine
+load @term/mill/code/seed/mine
   find seed
 
 # `bind <name>, <value>` is a named argument. `bind <value>` with no name is the DEFAULT of the parameter it
@@ -43,16 +44,23 @@ mine bind-def
     mine list
       mine form, like head
         site head
-    # `note async` sits with the signature, and it may be written before the takes or after them
+    # `mark async` sits with the signature, and it may be written before the takes or after them. `note async`
+    # is the old spelling, read the same
     mine list
-      mine form, like note
-        site note
+      mine any
+        mine form, like mark-note
+          site note
+        mine form, like note
+          site note
     mine list
       mine form, like take
         site take
     mine list
-      mine form, like note
-        site note
+      mine any
+        mine form, like mark-note
+          site note
+        mine form, like note
+          site note
     mine maybe
       mine form, like like
         site like

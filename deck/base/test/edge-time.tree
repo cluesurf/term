@@ -2,16 +2,16 @@
 # milliseconds and a bad one the same refusal everywhere. The expected values are the Unix epoch arithmetic, checked
 # against `new Date(...).getTime()` once by hand. Held by `pnpm term:base-gate`.
 
-load @term/base/code/calendar
+load @term/base/calendar
   find parse
 
-load @term/base/code/calendar/time-text
+load @term/base/calendar/time-text
   find time-mismatch
 
-load @term/base/code/clock
+load @term/base/clock
   find now
 
-load @term/base/code/timezone
+load @term/base/timezone
   find offset-minutes
   find zone-absence
 

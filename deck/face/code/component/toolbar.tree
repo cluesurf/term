@@ -3,9 +3,9 @@
 # key through the registry, so the same action declaration powers the toolbar, the palette, and a shortcut. Parts:
 # toolbar (role=toolbar), toolbar-button, toolbar-separator. Theme via data-slot.
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 load ../logic/registry

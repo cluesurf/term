@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/file
+load @term/bind/browser/dom/file
   find file
 
-load @term/bind/code/browser/dom/file-list
+load @term/bind/browser/dom/file-list
   find file-list
 
 load @term/bind/code/javascript/iterable-iterator

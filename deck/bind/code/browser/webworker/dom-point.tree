@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/dom-point
+load @term/bind/browser/dom/dom-point
   find dom-point
 
-load @term/bind/code/browser/webworker/dom-point-read-only
+load @term/bind/browser/webworker/dom-point-read-only
   find dom-point-read-only
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form dom-point, name <DOMPoint>

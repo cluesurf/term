@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find incoming-message
   find native-boolean
@@ -17,18 +17,18 @@ load @term/bind
   find task
   find tuple
 
-load @term/bind/code/node/http
+load @term/bind/node/http
   find outgoing-http-headers
 
 form outgoing-message, name <OutgoingMessage>
   base stream-writable
-  link req, name <req>, like incoming-message
-  link chunked-encoding, name <chunkedEncoding>, like native-boolean
-  link should-keep-alive, name <shouldKeepAlive>, like native-boolean
-  link use-chunked-encoding-by-default, name <useChunkedEncodingByDefault>, like native-boolean
-  link send-date, name <sendDate>, like native-boolean
-  link finished, name <finished>, like native-boolean
-  link headers-sent, name <headersSent>, like native-boolean
+  link req, name(<req>), like incoming-message
+  link chunked-encoding, name(<chunkedEncoding>), like native-boolean
+  link should-keep-alive, name(<shouldKeepAlive>), like native-boolean
+  link use-chunked-encoding-by-default, name(<useChunkedEncodingByDefault>), like native-boolean
+  link send-date, name(<sendDate>), like native-boolean
+  link finished, name(<finished>), like native-boolean
+  link headers-sent, name(<headersSent>), like native-boolean
   link connection, name <connection>
     like or
       like socket

@@ -3,10 +3,10 @@ load @term/bind
   find any
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-undefined
 
-load @term/bind/code/node/inspector/runtime
+load @term/bind/node/inspector/runtime
   find remote-object-id
   find unserializable-value
 

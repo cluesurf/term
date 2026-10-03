@@ -118,6 +118,15 @@ task watch-font
     like task
       take status, like text
 
+# register the face in `source` under `family`, so text set in the family draws in it (native-text-0002). `source` is
+# a `data:` URI, a file path, or `asset:<name>` for a file bundled with the app. true when the host can now draw the
+# family; false when the source does not read. the browser adds a FontFace and answers at once, with `watch-font`
+# saying when it has loaded; the toolkits register with CoreText or as a Typeface and answer when it is drawable.
+task register-font
+  take family, like text
+  take source, like text
+  like boolean
+
 # fallback deadline: call `handler` once when `firstAsk + threshold` ms elapses for this family, regardless of load
 # status, so the text-visibility machine reveals the fallback face if the real font stalls. one shared timer per
 # family (measured from the family's first ask). browser-only; SSR never fires (the client re-render drives the gate).

@@ -6,6 +6,13 @@ import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import type { Finding, TextEdit } from '@term/make/code/lint/rule'
 import { collectTreeFiles } from '@term/call/code/files'
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
+import { manifestName } from '@term/call/code/manifest-name'
+import { projectResolver } from '@term/call/code/make'
+import { manifestSpellings } from '@cluesurf/deck.tree'
+import { parse, renderHead } from '@term/make/code/parser/tree'
+import type { GroupNode, Node } from '@term/make/code/parser/tree'
+import { spanOfNode } from '@term/make/code/compile/mill-run'
+import type { Resolver } from '@term/make/code/compile/load'
 import {
   logGood,
   logFail,
@@ -68,6 +75,114 @@ function applyEdits(text: string, edits: TextEdit[]): string {
   return result
 }
 
+// ---- findings that need the FILESYSTEM, so they live here rather than among the pure AST rules ----
+//
+// note/term/plan/manifest-mark-and-code-root.md. Three, each a warning:
+//
+//   L050 manifest-code-version  a manifest's `code <version>` (or a link's `code <range>`): the old spelling of
+//                               `mark`. `--fix` rewrites the word
+//   L051 manifest-bear          a manifest's `bear ./dir`: the old spelling of the code root, `code ./dir`.
+//                               `--fix` removes `bear ./code` (the default) and rewrites any other to `code`
+//   L052 ambiguous-load         a package path that names a file in the package's code root AND one in its package
+//                               root. The code root wins; this names both, so a shadowed folder is never silent.
+//                               `base <dir>` under the load picks the package root and silences it
+
+const MANIFEST_CODES = { 'manifest-code-version': 'L050', 'manifest-bear': 'L051' } as const
+
+export function manifestFindings(text: string, file: string): Finding[] {
+  if (manifestName(text, file) === undefined) {
+    return []
+  }
+
+  return manifestSpellings({ text, file }).map(found => ({
+    rule: found.rule,
+    code: MANIFEST_CODES[found.rule],
+    message: found.message,
+    severity: 'warning',
+    span: { start: { line: found.line, column: found.column }, end: { line: found.line, column: found.end } },
+    fix: found.wholeLine
+      ? { span: { start: { line: found.line, column: 0 }, end: { line: found.line + 1, column: 0 } }, text: '' }
+      : {
+          span: { start: { line: found.line, column: found.column }, end: { line: found.line, column: found.end } },
+          text: found.text,
+        },
+  }))
+}
+
+// every top-level `load` path with its span and its `base`, read with the one parser
+function loadPaths(text: string, file: string): { path: string; base?: string; span: Finding['span'] }[] {
+  const parsed = parse({ file, text })
+
+  if (!parsed.ok) {
+    return []
+  }
+
+  const headOf = (node: Node | undefined): string | undefined => {
+    const first = node?.kind === 'group' ? node.nodes[0] : undefined
+
+    return first?.kind === 'name' ? renderHead(first) : undefined
+  }
+
+  const out: { path: string; base?: string; span: Finding['span'] }[] = []
+
+  for (const group of parsed.tree.nodes) {
+    if (headOf(group) !== 'load') {
+      continue
+    }
+
+    const target = group.nodes[1]
+    const path = headOf(target)
+    const name = target?.kind === 'group' ? target.nodes[0] : undefined
+    const start = name ? spanOfNode(name) : undefined
+
+    if (!path || !start) {
+      continue
+    }
+
+    const baseGroup = group.nodes
+      .slice(2)
+      .find((n): n is GroupNode => n.kind === 'group' && headOf(n) === 'base')
+
+    out.push({
+      path,
+      base: baseGroup ? headOf(baseGroup.nodes[1]) : undefined,
+      span: { start: start.start, end: { line: start.start.line, column: start.start.column + path.length } },
+    })
+  }
+
+  return out
+}
+
+export function ambiguousLoads(text: string, file: string, resolve: Resolver): Finding[] {
+  const out: Finding[] = []
+
+  for (const load of loadPaths(text, file)) {
+    if (load.base !== undefined || load.path.startsWith('.')) {
+      continue
+    }
+
+    let found
+
+    try {
+      found = resolve(load.path, file)
+    } catch {
+      continue
+    }
+
+    if (found?.shadowed) {
+      out.push({
+        rule: 'ambiguous-load',
+        code: 'L052',
+        severity: 'warning',
+        span: load.span,
+        message: `\`${load.path}\` names two files: ${found.file} in the code root, which it resolves to, and ${found.shadowed} in the package root, which it shadows. Write \`base ${load.path.replace(/^@[^/]+\/[^/]+\/|^@\//, '').split('/')[0]}\` under the load to mean the second`,
+      })
+    }
+  }
+
+  return out
+}
+
 // `term lint` -- lint `.tree` files. `--fix` applies autofixes in place; otherwise findings are reported. Exits
 // non-zero when any error-severity finding remains (so it gates CI).
 export async function callLint(input: {
@@ -97,11 +212,19 @@ export async function callLint(input: {
   let totalErrors = 0
   let totalFixed = 0
 
+  // the build's own resolver, so an ambiguity is reported exactly where the build would resolve one
+  const resolve = projectResolver(input.root)
+  const fileFindings = (text: string, file: string): Finding[] => [
+    ...manifestFindings(text, file),
+    ...ambiguousLoads(text, file, resolve),
+  ]
+
   for (const file of files) {
     const text = await fs.readFile(file, 'utf-8')
     const relative = path.relative(input.root, file)
     const readers = readersOf(path.resolve(input.root, file))
-    const findings = analyze({ file: relative, text }, readers).lint()
+    const absolute = path.resolve(input.root, file)
+    const findings = [...analyze({ file: relative, text }, readers).lint(), ...fileFindings(text, absolute)]
 
     if (findings.length === 0) {
       continue
@@ -121,13 +244,16 @@ export async function callLint(input: {
       }
 
       // re-lint to report what the fixes did not resolve
-      const remaining = analyze(
-        {
-          file: relative,
-          text: fixedText,
-        },
-        readers,
-      ).lint()
+      const remaining = [
+        ...analyze(
+          {
+            file: relative,
+            text: fixedText,
+          },
+          readers,
+        ).lint(),
+        ...fileFindings(fixedText, absolute),
+      ]
 
       const lines = fixedText.split('\n')
 

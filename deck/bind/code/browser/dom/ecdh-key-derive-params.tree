@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/algorithm
+load @term/bind/browser/dom/algorithm
   find algorithm
 
-load @term/bind/code/browser/dom/crypto-key
+load @term/bind/browser/dom/crypto-key
   find crypto-key
 
 form ecdh-key-derive-params, name <EcdhKeyDeriveParams>

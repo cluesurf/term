@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/dom-matrix2-d-init
+load @term/bind/browser/dom/dom-matrix2-d-init
   find dom-matrix2-d-init
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form canvas-pattern, name <CanvasPattern>

@@ -1,7 +1,7 @@
 # swift response body reader: the dock holds the raw Data; `text` decodes it as UTF-8 in one native
 # expression, `bytes` and `stream` hand the Data back, `json` parses through JSONSerialization.
 
-load @term/base/code/network/http
+load @term/base/network/http
   find response
 
 bind body-as-text

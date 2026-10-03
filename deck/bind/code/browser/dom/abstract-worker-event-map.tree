@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/error-event
+load @term/bind/browser/dom/error-event
   find error-event
 
 form abstract-worker-event-map, name <AbstractWorkerEventMap>

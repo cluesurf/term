@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/dom-point-init
+load @term/bind/browser/dom/dom-point-init
   find dom-point-init
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form dom-point-init, name <DOMPointInit>

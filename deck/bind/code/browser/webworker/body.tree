@@ -1,35 +1,35 @@
 
-load @term/bind/code/browser/dom/body
+load @term/bind/browser/dom/body
   find body
 
-load @term/bind/code/browser/webworker/blob
+load @term/bind/browser/webworker/blob
   find blob
 
-load @term/bind/code/browser/webworker/form-data
+load @term/bind/browser/webworker/form-data
   find form-data
 
-load @term/bind/code/browser/webworker/readable-stream
+load @term/bind/browser/webworker/readable-stream
   find readable-stream
 
-load @term/bind/code/javascript/es5/array-buffer
+load @term/bind/javascript/es5/array-buffer
   find array-buffer
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/es5/uint8-array
+load @term/bind/javascript/es5/uint8-array
   find uint8-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form body, name <Body>

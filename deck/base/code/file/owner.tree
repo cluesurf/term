@@ -3,7 +3,7 @@
 
 note unstable
 
-load @term/base/code/native/{platform}/file/asynchronous/owner
+load @term/base/native/{platform}/file/asynchronous/owner
   find owner-read
   find owner-write
 
@@ -18,7 +18,6 @@ task read
   send back
     call owner-read
       read path
-      wait true
 
 task write
   note async
@@ -30,4 +29,3 @@ task write
     read path
     read user
     read group
-    wait true

@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/dom/audio-node
+load @term/bind/browser/dom/audio-node
   find audio-node
 
-load @term/bind/code/browser/dom/audio-param
+load @term/bind/browser/dom/audio-param
   find audio-param
 
-load @term/bind/code/browser/dom/biquad-filter-type
+load @term/bind/browser/dom/biquad-filter-type
   find biquad-filter-type
 
-load @term/bind/code/javascript/es5/float32-array
+load @term/bind/javascript/es5/float32-array
   find float32-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form biquad-filter-node, name <BiquadFilterNode>

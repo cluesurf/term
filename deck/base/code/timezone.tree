@@ -6,15 +6,15 @@
 
 note stable
 
-load @term/base/code/calendar
+load @term/base/calendar
   find to-parts
   find date-parts
   find make-utc
 
-load @term/base/code/calendar/civil
+load @term/base/calendar/civil
   find format-pattern
 
-load @term/base/code/exception
+load @term/base/exception
   find absence
 
 form zone-absence

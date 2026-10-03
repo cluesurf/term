@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find tls-socket
 
 form secure-pair, name <SecurePair>

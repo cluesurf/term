@@ -3,7 +3,7 @@ note draft
 # SHELVED 2026-10-02 (base-v1-0019): signatures only; the sorted map is its own item (base-v1-0023). It declared tasks that bound nothing, so a call built clean and
 # threw `stub` at run time; out of the build until it has bodies.
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
 form red-black-tree

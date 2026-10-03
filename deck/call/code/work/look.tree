@@ -1,7 +1,7 @@
-load @term/call/code/work/home
+load @term/call/work/home
   find root, name project-root
 
-load @term/call/code/work/tint
+load @term/call/work/tint
   find log-good
   find log-fail
   find log-step
@@ -23,11 +23,11 @@ load @term/call/code/work/tint
 #
 # Ported from deck/call/code/look.ts (cli-in-term-0004).
 
-load @term/base/code/file
+load @term/base/file
   find read, name read-file
   find test, name file-test
 
-load @term/base/code/text
+load @term/base/text
   find starts-with
 
 dock load
@@ -65,7 +65,7 @@ task entry-of
       log-fail <File not found: {{target}}>
       node-process/exit code 1
   back
-    make source-ask, bind(file, file), bind text, read-file file, wait true
+    make source-ask, bind(file, file), bind text, read-file file
 
 task look
   note async
@@ -83,7 +83,7 @@ task look
     hold
       log-fail <Usage: term look MODULE, with --json or --csv, and --kind form or task>
       node-process/exit code 1
-  save entry, entry-of root, target, wait true
+  save entry, entry-of root, target
 
   save quiet
     fork test

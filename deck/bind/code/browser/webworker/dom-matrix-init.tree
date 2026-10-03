@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/dom-matrix-init
+load @term/bind/browser/dom/dom-matrix-init
   find dom-matrix-init
 
-load @term/bind/code/browser/webworker/dom-matrix2-d-init
+load @term/bind/browser/webworker/dom-matrix2-d-init
   find dom-matrix2-d-init
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form dom-matrix-init, name <DOMMatrixInit>

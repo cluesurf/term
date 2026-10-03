@@ -11,7 +11,7 @@
 # Drawn as a flex `div` on the DOM, and by the platform toolkits' own stacks (NSStackView, UIStackView, LinearLayout),
 # which read the same style words. Overlap is left out: that is what `dialog` is for.
 
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
 
 # one style declaration, or nothing when the prop was left out

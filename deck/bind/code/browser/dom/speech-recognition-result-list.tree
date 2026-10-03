@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/speech-recognition-result
+load @term/bind/browser/dom/speech-recognition-result
   find speech-recognition-result
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form speech-recognition-result-list, name <SpeechRecognitionResultList>

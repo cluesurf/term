@@ -14,18 +14,18 @@
 # This is the Term port of deck/call/code/home.ts (cli-in-term-0003). It is the first CLI module in Term, and it
 # was chosen first because everything else in the CLI depends on it and it needs nothing from the compiler.
 
-load @term/base/code/path
+load @term/base/path
   find join
 
 # aliased: `test` is a keyword head in this dialect, and a task named for one cannot be called
-load @term/base/code/file
+load @term/base/file
   find test, name file-test
 
-load @term/base/code/environment
+load @term/base/environment
   find variable
   find directory, name working-directory
 
-load @term/base/code/environment/path
+load @term/base/environment/path
   find known-directory
 
 # the directory under `.base`, scoped the way the packages are
@@ -57,14 +57,14 @@ task user-home
   like text
 
   back
-    join join(known-directory <home>, <.base>), home
+    join join(known-directory(<home>), <.base>), home
 
 # the same, before the rename
 task legacy-user-home
   like text
 
   back
-    join join(known-directory <home>, <.base>), legacy-home
+    join join(known-directory(<home>), <.base>), legacy-home
 
 # The path to use for something that CANNOT BE REBUILT: a remembered fact, an auth token, a signing key, the link
 # registry. If the new location does not exist yet and the old one does, the old one is used, whole. Nothing is

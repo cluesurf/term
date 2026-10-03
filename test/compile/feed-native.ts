@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
+import { resolvePackagePath, sourceOf } from '@term/make/code/resolve'
 import { mill } from '@term/make/code/compile/mill'
 import { resolve as resolveNames } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
@@ -79,13 +80,8 @@ const resolver = (path: string, from: string): Source | undefined => {
     return undefined
   }
 
-  for (const file of [join(PACKS[found[1]!]!, `${found[2]}.tree`), join(PACKS[found[1]!]!, found[2]!, 'base.tree')]) {
-    if (existsSync(file)) {
-      return { file, text: readFileSync(file, 'utf8') }
-    }
-  }
-
-  return undefined
+  // inside the package by the package path rule every resolver calls (code root, then package root)
+  return sourceOf(resolvePackagePath({ dir: PACKS[found[1]!]!, rest: found[2]! }))
 }
 
 const readRuntime = (p: string): string | undefined => (existsSync(p) ? readFileSync(p, 'utf8') : undefined)
@@ -517,7 +513,7 @@ task round-otf-loca
   save byte-count
     call size(read bytes)
   save reread
-    call read-otf-loca-table(call make-cursor(read bytes), code 3, true)
+    call read-otf-loca-table(call(make-cursor(read bytes)), code(3), true)
   save last-offset
     call get(read(reread/offsets), code(3))
   send back
@@ -606,7 +602,7 @@ task round-otf-glyf
   save byte-count
     call size(read bytes)
   save reread
-    call read-otf-glyph(call make-cursor(read bytes), read byte-count)
+    call read-otf-glyph(call(make-cursor(read bytes)), read byte-count)
   save third-x
     call triangle-third-point-x(read reread)
   send back

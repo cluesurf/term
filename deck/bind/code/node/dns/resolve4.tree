@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-string
   find promise
@@ -7,7 +7,7 @@ load @term/bind/code/javascript
 load @term/bind
   find or
 
-load @term/bind/code/node/dns
+load @term/bind/node/dns
   find record-with-ttl
   find resolve-options
   find resolve-with-ttl-options

@@ -1,6 +1,5 @@
 
 deck @term/test
   head <Testing and verification tooling for Term>
-  bear ./code
-  code <0.0.16>
+  mark <0.0.16>
   lock mit

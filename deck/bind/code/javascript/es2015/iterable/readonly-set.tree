@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/es2015/collection/readonly-set
+load @term/bind/javascript/es2015/collection/readonly-set
   find readonly-set
 
-load @term/bind/code/javascript/es2015/iterable/iterable-iterator
+load @term/bind/javascript/es2015/iterable/iterable-iterator
   find iterable-iterator
 
 form readonly-set, name <ReadonlySet>

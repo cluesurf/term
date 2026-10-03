@@ -77,7 +77,9 @@ function main(): void {
   // `call add, read(a), read(b)`, or put the arguments on their own indented lines.
   check('comma after a nested part', `call add, read a, read b`, `call\n  add\n  read\n    a\n    read\n      b`)
   check('comma then an indented child', `foo x, bar\n  foo y bar`, `foo\n  x\n  bar\n  foo\n    y\n      bar`)
-  check('comma after a deep part', `link @x, code <1.x.x>, have 1`, `link\n  @x\n  code\n    <1.x.x>\n  have\n    1`)
+  // a comma after a literal stays at the literal's level (2026-10-02), so `have` is the literal's sibling
+  check('comma after a literal', `link @x, code <1.x.x>, have 1`, `link\n  @x\n  code\n    <1.x.x>\n    have\n      1`)
+  check('comma after a closed literal part', `link @x, code(<1.x.x>), have 1`, `link\n  @x\n  code\n    <1.x.x>\n  have\n    1`)
 
   // a path stays one node
   check('path', `deck @termsurf/wolf`, `deck\n  @termsurf/wolf`)

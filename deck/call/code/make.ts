@@ -33,10 +33,16 @@ import {
 } from '@term/make/code/compile/feed-mill'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import type { NativeEnv } from '@term/make/code/compile/native'
-import type { Resolver, Source } from '@term/make/code/compile/load'
+import type { LoadHow, Resolver, Source } from '@term/make/code/compile/load'
 // from the compiler, where they live, not through call/code/walk.ts's re-export: walk.ts imports esbuild (for the
 // REPL), and the language server imports `projectResolver` from here into a bundle that ships no node_modules
-import { stdlibResolver, linkResolver, siblingResolver } from '@term/make/code/resolve'
+import {
+  stdlibResolver,
+  linkResolver,
+  siblingResolver,
+  resolvePackagePath,
+} from '@term/make/code/resolve'
+import { packageRest } from '@term/make/code/deck/resolve'
 import { renderDiagnostic } from '@term/call/code/report'
 import { FACE_NATIVE_PATH, contractFindings } from '@term/call/code/face-contract'
 import type { ContractFinding } from '@term/call/code/face-contract'
@@ -64,11 +70,12 @@ const NATIVE_PLATFORMS = [
   'kotlin',
 ]
 
-// does this file declare itself unfinished? `note draft` on its own line, anywhere in the leading block before the
-// first definition. Read cheaply: only the head of the file is inspected.
+// does this file declare itself unfinished? `mark draft` on its own line, anywhere in the leading block before the
+// first definition. `note draft` is the old spelling and still shelves. Read cheaply: only the head of the file is
+// inspected.
 function isDraftTree(file: string): boolean {
   try {
-    return /^note draft\s*$/m.test(readFileSync(file, 'utf8').slice(0, 2000))
+    return /^(mark|note) draft\s*$/m.test(readFileSync(file, 'utf8').slice(0, 2000))
   } catch {
     return false
   }
@@ -206,7 +213,7 @@ export function findTreeFiles(
         continue
       }
 
-      // a file that declares `note draft` is unfinished and is not built. This keeps a half-written module in the
+      // a file that declares `mark draft` is unfinished and is not built. This keeps a half-written module in the
       // tree, readable and version-controlled, without its errors drowning the ones that matter. Remove the line to
       // bring it back into the build.
       if (isDraftTree(full)) {
@@ -307,10 +314,10 @@ export function projectResolver(
   const tryFile = (b: string) => {
     const candidate = resolveTreeFile(b)
 
-    if (!candidate) {
-      return undefined
-    }
+    return candidate ? readFile(candidate) : undefined
+  }
 
+  const readFile = (candidate: string): Source | undefined => {
     const cached = readCache.get(candidate)
 
     if (cached !== undefined || readCache.has(candidate)) {
@@ -343,18 +350,38 @@ export function projectResolver(
   // compile of untrusted source (path-traversal / info-disclosure).
   const rootReal = safeReal(root)
 
+  // asked once per import (the memo key of a package path carries it), so remembered per directory
+  const packageRootCache = new Map<string, string>()
+
   const packageRootOf = (file: string): string => {
-    let dir = path.dirname(file)
+    const start = path.dirname(file)
+    const known = packageRootCache.get(start)
+
+    if (known !== undefined) {
+      return known
+    }
+
+    let dir = start
+    let found = rootReal
 
     for (;;) {
-      if (existsSync(path.join(dir, 'deck.tree'))) {return safeReal(dir)}
+      if (existsSync(path.join(dir, 'deck.tree'))) {
+        found = safeReal(dir)
+        break
+      }
 
       const up = path.dirname(dir)
 
-      if (up === dir) {return rootReal}
+      if (up === dir) {
+        break
+      }
 
       dir = up
     }
+
+    packageRootCache.set(start, found)
+
+    return found
   }
 
   // the package NAME of a file, read from the `deck @scope/name` line of its nearest `deck.tree`. This makes `@/sub/path`
@@ -387,7 +414,7 @@ export function projectResolver(
   // each (the existsSync candidate-probing was the cost once reads were cached).
   const resolveMemo = new Map<string, Source | undefined>()
 
-  const base: Resolver = (rawImportPath, fromFile) => {
+  const base: Resolver = (rawImportPath, fromFile, how) => {
     // `@/sub/path` is the local-package alias: expand to `<this-package>/sub/path` from the importer's manifest name,
     // before memoization, so the memo key and downstream resolution use the concrete `@scope/name/...` path. Each
     // sub-package in a monorepo resolves `@/x` against its own nearest deck.tree.
@@ -406,9 +433,12 @@ export function projectResolver(
     const relative =
       importPath.startsWith('./') || importPath.startsWith('../')
 
-    const memoKey = relative
-      ? `${path.dirname(fromFile)}\0${importPath}`
-      : importPath
+    // a `base` is part of the question: the same path asked from the package root is a different file. A package
+    // path resolves the same from every importer EXCEPT through the own-package and project fallbacks, which read
+    // the importer's package, so those are keyed by it too
+    const memoKey =
+      (relative ? `${path.dirname(fromFile)}\0${importPath}` : `${packageRootOf(fromFile)}\0${importPath}`) +
+      (how?.base !== undefined ? `\0base:${how.base}` : '')
 
     const memoHit = resolveMemo.get(memoKey)
 
@@ -416,19 +446,34 @@ export function projectResolver(
       return memoHit
     }
 
-    const result = resolveUncached(importPath, fromFile, relative)
+    const result = resolveUncached(importPath, fromFile, relative, how)
     resolveMemo.set(memoKey, result)
 
     return result
+  }
+
+  // a package path inside one package directory, by THE rule (code root, then package root, or `base`)
+  const inPackage = (dir: string, rest: string, how?: LoadHow): Source | undefined => {
+    const { file, shadowed } = resolvePackagePath({ dir, rest, base: how?.base })
+    const source = file ? readFile(file) : undefined
+
+    // the read is cached and shared, so the shadow is reported on a copy of it
+    return source && shadowed ? { ...source, shadowed } : source
   }
 
   const resolveUncached = (
     importPath: string,
     fromFile: string,
     relative: boolean,
+    how?: LoadHow,
   ): Source | undefined => {
-    // a relative import resolves against the importing file (the framework's modules import each other this way)
+    // a relative import resolves against the importing file (the framework's modules import each other this way).
+    // `base` names a folder of a PACKAGE and means nothing here, so a relative load carrying one names nothing
     if (relative) {
+      if (how?.base !== undefined) {
+        return undefined
+      }
+
       const resolved = path.resolve(path.dirname(fromFile), importPath)
       // confine: the resolved file must stay within the importer's package
       // (or the project root). Anything escaping both is treated as
@@ -449,14 +494,14 @@ export function projectResolver(
     // linked packages first (@cluesurf/base, /bind, /term, /site via `term link`): the project's own links, then the
     // CLI install's links, then the bundled stdlib fallback
     const fromLink =
-      linked(importPath, fromFile) ??
-      fallbackLinked?.(importPath, fromFile)
+      linked(importPath, fromFile, how) ??
+      fallbackLinked?.(importPath, fromFile, how)
 
     if (fromLink) {
       return fromLink
     }
 
-    const fromStdlib = stdlib?.(importPath, fromFile)
+    const fromStdlib = stdlib?.(importPath, fromFile, how)
 
     if (fromStdlib) {
       return fromStdlib
@@ -464,61 +509,34 @@ export function projectResolver(
 
     // any other package in the same tree as the stdlib, by name and without a `link/` entry. After the link dir, so
     // a project that genuinely links its own copy of a package still wins. See siblingResolver.
-    const fromSibling = sibling?.(importPath, fromFile)
+    const fromSibling = sibling?.(importPath, fromFile, how)
 
     if (fromSibling) {
       return fromSibling
     }
 
-    // `@scope/pkg/code/sub` -> `<that package's root>/code/sub.tree` when it names the importer's OWN package.
-    // A package that imports itself by its declared name has no `link/` entry pointing at itself and should not
-    // need one: @term/bind does this 11,503 times and @term/site 5, and every one of them silently resolved to
-    // nothing, so the imported names existed but could not be used. The remainder of the path already begins
-    // with `code/`, which is why it is joined to the package root directly — the fallback below joins it under
-    // `<root>/code` and so builds `<root>/code/code/...`, a path that never exists.
+    const named = packageRest(importPath)
+
+    if (!named) {
+      return undefined
+    }
+
+    // the importer's OWN package, by its declared name. A package that imports itself has no `link/` entry
+    // pointing at itself and should not need one: @term/bind does this 11,503 times and @term/site 5, and every one
+    // of them once silently resolved to nothing, so the imported names existed but could not be used.
     const ownPackage = packageNameOf(fromFile)
 
-    if (ownPackage && importPath.startsWith(`${ownPackage}/`)) {
-      const withinSelf = tryFile(
-        path.join(packageRootOf(fromFile) ?? root, importPath.slice(ownPackage.length + 1)),
-      )
+    if (ownPackage && named.pkg === ownPackage) {
+      const withinSelf = inPackage(packageRootOf(fromFile) ?? root, named.rest, how)
 
       if (withinSelf) {
         return withinSelf
       }
     }
 
-    // `@scope/pkg/sub/path` -> `<root>/code/sub/path.tree` when it refers to this project
-    const segments = importPath
-      .replace(/^@[^/]+\/[^/]+\//, '')
-      .split('/')
-
-    const candidate = path.join(
-      root,
-      'code',
-      `${segments.join('/')}.tree`,
-    )
-
-    const cached = readCache.get(candidate)
-
-    if (cached !== undefined || readCache.has(candidate)) {
-      return cached
-    }
-
-    let result: Source | undefined
-
-    try {
-      result = {
-        file: candidate,
-        text: readFileSync(candidate, 'utf8'),
-      }
-    } catch {
-      result = undefined
-    }
-
-    readCache.set(candidate, result)
-
-    return result
+    // `@scope/pkg/sub/path` against the project being built, when nothing else claims the name: the project's code
+    // root, then its root, by the same rule
+    return inPackage(rootReal, named.rest, how)
   }
 
   // AN APP SHADOWS A FACE IMPLEMENTATION (native-dom-0025): an import of `@term/face/code/component/native/...` first
@@ -526,19 +544,26 @@ export function projectResolver(
   // per rung of the env chain: an app's `code/component/native/toolkit/switch.tree` wins over face's toolkit switch on
   // macOS, iOS and Android, and face's generic still serves the web. No flag, prop or platform check in the component.
   // Building face itself, the project's file IS face's, so nothing changes. note/term/app/11-uniform-interface.md
-  const FACE_NATIVE = '@term/face/code/component/native/'
+  // Either spelling of the path reaches it: `@term/face/component/native/...` (the code root, the short form) and
+  // the older `@term/face/code/component/native/...`, and the app's file is found by the package path rule.
+  const FACE_NATIVE = ['@term/face/component/native/', '@term/face/code/component/native/']
   const rootFace = path.join(rootReal, 'deck.tree')
 
-  const shadowed: Resolver = (importPath, fromFile) => {
-    if (importPath.startsWith(FACE_NATIVE) && existsSync(rootFace) && manifestNameOf(rootFace) !== '@term/face') {
-      const own = tryFile(path.join(rootReal, importPath.slice('@term/face/'.length)))
+  const shadowed: Resolver = (importPath, fromFile, how) => {
+    if (
+      how?.base === undefined &&
+      FACE_NATIVE.some(prefix => importPath.startsWith(prefix)) &&
+      existsSync(rootFace) &&
+      manifestNameOf(rootFace) !== '@term/face'
+    ) {
+      const own = inPackage(rootReal, importPath.slice('@term/face/'.length))
 
       if (own) {
         return own
       }
     }
 
-    return base(importPath, fromFile)
+    return base(importPath, fromFile, how)
   }
 
   return withNativeEnv(env, shadowed)
@@ -559,7 +584,7 @@ export function compileProject(
   written: number
   failed: number
   errors: string[]
-  // the claims this project states that nobody has proven: every `rule` carrying `note open`. Reported on the
+  // the claims this project states that nobody has proven: every `rule` carrying `mark open`. Reported on the
   // build line so an open claim is visible rather than silent. See note/term/project/law-proof-gate.md.
   open: string[]
   // tier 0 over the project's own tasks: obligations written and proven. `term hold` holds the rest to hold.json.
@@ -620,7 +645,7 @@ export function compileProject(
         errors.push(
           `${path.relative(root, file)}: cannot tell whether this grammar reads bytes or text. ` +
             `Every rule in it is a combinator over rules with no body, so there is no leaf to infer from. ` +
-            `Write one of its leaf rules, or shelve the grammar with \`note draft\` until it has one.`,
+            `Write one of its leaf rules, or shelve the grammar with \`mark draft\` until it has one.`,
         )
         continue
       }
@@ -1163,7 +1188,7 @@ export async function callMake(input: {
           } to host/`,
         )
 
-        // AN OPEN CLAIM IS NOT A PROVEN ONE. A `rule` carrying `note open` compiles, because a book under
+        // AN OPEN CLAIM IS NOT A PROVEN ONE. A `rule` carrying `mark open` compiles, because a book under
         // construction has to, but the count says so on every build rather than letting it pass in silence.
         // `term hold` is the gate that refuses while this is non-zero. note/term/project/law-proof-gate.md.
         if (openClaims && openClaims.length > 0) {

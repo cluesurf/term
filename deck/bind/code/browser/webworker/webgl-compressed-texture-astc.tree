@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/webgl-compressed-texture-astc
+load @term/bind/browser/dom/webgl-compressed-texture-astc
   find webgl-compressed-texture-astc
 
-load @term/bind/code/browser/webworker/g-lenum
+load @term/bind/browser/webworker/g-lenum
   find g-lenum
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form webgl-compressed-texture-astc, name <WEBGL_compressed_texture_astc>

@@ -3,7 +3,7 @@
 
 note unstable
 
-load @term/base/code/native/{platform}/file/asynchronous/stream/writer
+load @term/base/native/{platform}/file/asynchronous/stream/writer
   find writer-create
   find writer-write
   find writer-close
@@ -27,7 +27,6 @@ task create
     call writer-create
       read path
       read append
-      wait true
 
 task write
   note async
@@ -37,7 +36,6 @@ task write
   call writer-write
     read stream
     read data
-    wait true
 
 task close
   note async
@@ -45,4 +43,3 @@ task close
   like void
   call writer-close
     read stream
-    wait true

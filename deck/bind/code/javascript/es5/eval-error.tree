@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript/es5/error
+load @term/bind/javascript/es5/error
   find error
 
 form eval-error, name <EvalError>

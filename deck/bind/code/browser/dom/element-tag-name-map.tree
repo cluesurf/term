@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/html-element-tag-name-map
+load @term/bind/browser/dom/html-element-tag-name-map
   find html-element-tag-name-map
 
-load @term/bind/code/browser/dom/svg-element-tag-name-map
+load @term/bind/browser/dom/svg-element-tag-name-map
   find svg-element-tag-name-map
 
-load @term/bind/code/javascript/es5/exclude
+load @term/bind/javascript/es5/exclude
   find exclude
 
-load @term/bind/code/javascript/es5/pick
+load @term/bind/javascript/es5/pick
   find pick
 
 form element-tag-name-map, name <ElementTagNameMap>

@@ -10,17 +10,17 @@
 # Two-way: the control shows the signal's choice, and a choice the person makes is written into the signal. Parts:
 # `select` (the control, data-slot for a theme).
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
   find make-text
   find write-attribute
   find attach-event
-load @term/site/code/view/reactive
+load @term/site/view/reactive
   find signal
   find make-effect
   find read-signal
   find write-signal
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
   find get-value
@@ -34,6 +34,7 @@ task mount-select
   take options
     like list
       like text
+  take label, like text
   like view
   save picker
     call make-element
@@ -42,6 +43,11 @@ task mount-select
     read picker
     text <data-slot>
     text <select>
+  # its name, what a screen reader speaks before the chosen option (note/term/view/11-vocabulary.md, "Accessibility")
+  call write-attribute
+    read picker
+    text <aria-label>
+    read label
   call write-attribute
     read picker
     text <class>
@@ -92,9 +98,14 @@ view select
   take options
     like list
       like text
+  take
+    label
+    like text
+    fall <>
   save mounted
     call mount-select
       read host
       read class
       read control
       read options
+      read label

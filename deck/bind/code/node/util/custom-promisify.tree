@@ -3,10 +3,10 @@ load @term/bind
   find like
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find function
 
-load @term/bind/code/node/util
+load @term/bind/node/util
   find custom-promisify-legacy
   find custom-promisify-symbol
 

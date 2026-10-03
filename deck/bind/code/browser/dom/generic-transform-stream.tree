@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/readable-stream
+load @term/bind/browser/dom/readable-stream
   find readable-stream
 
-load @term/bind/code/browser/dom/writable-stream
+load @term/bind/browser/dom/writable-stream
   find writable-stream
 
 form generic-transform-stream, name <GenericTransformStream>

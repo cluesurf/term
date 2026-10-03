@@ -3,7 +3,7 @@
 
 note unstable
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
 form linked-list

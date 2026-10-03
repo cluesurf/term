@@ -3,16 +3,16 @@
 # Android, drawn and animated by the platform, with its accessibility and its feel (native-dom-0013). Reached through
 # `component/switch.tree` by the `toolkit` rung of the macos, ios and android env chains.
 #
-# THE SAME CONTRACT as the generic ../switch.tree: `host`, `class`, and `control`, the disclosure controller (on =
-# open). The author writes `view switch / bind control, read wifi` once and every platform honors it.
+# THE SAME CONTRACT as the generic ../switch.tree: `host`, `class`, `control`, the disclosure controller (on =
+# open), and `label`, its accessible name. The author writes `view switch / bind control, read wifi` once and every platform honors it.
 #
 # `node switch` forces the element: inside a component named `switch`, `view switch` would be the component again.
 # The toolkit host makes the platform's control for that tag, takes `aria-checked` as its state, and reports the
 # platform's own change as `click`, which toggles the controller, whose effect writes the state back.
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 load ../../../logic/disclosure
@@ -31,8 +31,14 @@ view switch
   take host, like view
   take class, like text
   take control, like signal boolean
+  take
+    label
+    like text
+    fall <>
   node switch
     bind data-slot, text <switch>
+    # its name, which the host gives the platform control as its accessibility label (native-accessibility-0003)
+    bind aria-label, read label
     bind aria-checked
       call checked-text
         read control

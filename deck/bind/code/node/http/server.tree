@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find error
   find incoming-message
@@ -18,10 +18,10 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/http
+load @term/bind/node/http
   find request-listener
   find server-options
 
@@ -35,10 +35,10 @@ form server, name <Server>
     like or
       like native-number
       like native-null
-  link timeout, name <timeout>, like native-number
-  link headers-timeout, name <headersTimeout>, like native-number
-  link keep-alive-timeout, name <keepAliveTimeout>, like native-number
-  link request-timeout, name <requestTimeout>, like native-number
+  link timeout, name(<timeout>), like native-number
+  link headers-timeout, name(<headersTimeout>), like native-number
+  link keep-alive-timeout, name(<keepAliveTimeout>), like native-number
+  link request-timeout, name(<requestTimeout>), like native-number
 
   task set-timeout, name <setTimeout>
     like native-this

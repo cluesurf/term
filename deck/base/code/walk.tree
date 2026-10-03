@@ -2,10 +2,10 @@
 
 note stable
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
-load @term/base/code/list
+load @term/base/list
   find list
   find get
   find set

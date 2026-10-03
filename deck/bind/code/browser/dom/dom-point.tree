@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/dom-point-read-only
+load @term/bind/browser/dom/dom-point-read-only
   find dom-point-read-only
 
 form dom-point, name <DOMPoint>

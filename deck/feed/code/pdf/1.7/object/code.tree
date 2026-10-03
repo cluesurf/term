@@ -11,29 +11,29 @@
 # struct copy, so it doesn't touch `feedback_term_rust_swift_struct_field_mutation_bug` at all) if that
 # continuation doesn't pan out.
 
-load @term/base/code/boolean
+load @term/base/boolean
   find and
   find or
   find not
 
-load @term/base/code/list
+load @term/base/list
   find push
   find get
   find set
   find size
   find join
 
-load @term/base/code/text
+load @term/base/text
   find char-at
   find char-code-at
 
-load @term/base/code/text/string
+load @term/base/text/string
   find pad-left
 
-load @term/base/code/rune
+load @term/base/rune
   find rune-to-text
 
-load @term/base/code/float
+load @term/base/float
   find to-decimal
   find to-number
 
@@ -42,15 +42,15 @@ load ../../../hex/code
 
 load ../../../base
   find text-cursor
-  find cursor-text
+  find get-cursor-text
   find make-text-cursor
   find make-streaming-text-cursor
-  find text-cursor-position
+  find get-text-cursor-position
   find set-text-cursor-position
-  find text-cursor-at-end
-  find text-cursor-peek
-  find text-cursor-peek-code
-  find text-cursor-read
+  find is-text-cursor-at-end
+  find peek-text-cursor
+  find peek-text-cursor-code
+  find read-text-cursor
 
 load ./form
   find pdf-value
@@ -131,10 +131,10 @@ task skip-pdf-whitespace
   walk test
     hook test
       call and
-        call not, call text-cursor-at-end(read cursor)
-        call is-pdf-whitespace(call text-cursor-peek-code(read cursor))
+        call not, call is-text-cursor-at-end read cursor
+        call is-pdf-whitespace call peek-text-cursor-code read cursor
     hook hold
-      call text-cursor-read(read cursor)
+      call read-text-cursor read cursor
 
 task is-pdf-digit
   take code, like number
@@ -182,42 +182,42 @@ task parse-pdf-number
   save negative, false
   fork test
     hook test
-      call is-equal(call text-cursor-peek(read cursor), text <->)
+      call is-equal(call(peek-text-cursor(read cursor)), text <->)
     hook hold
-      call text-cursor-read(read cursor)
+      call read-text-cursor read cursor
       save negative, true
     hook test
-      call is-equal(call text-cursor-peek(read cursor), text <+>)
+      call is-equal(call(peek-text-cursor(read cursor)), text <+>)
     hook hold
-      call text-cursor-read(read cursor)
+      call read-text-cursor read cursor
   save magnitude, code 0.0
   walk test
     hook test
       call and
-        call not, call text-cursor-at-end(read cursor)
-        call is-pdf-digit(call text-cursor-peek-code(read cursor))
+        call not, call is-text-cursor-at-end read cursor
+        call is-pdf-digit call peek-text-cursor-code read cursor
     hook hold
       save magnitude
         call add
           call multiply
             read magnitude
             code 10.0
-          call pdf-digit-value(call text-cursor-peek-code(read cursor))
-      call text-cursor-read(read cursor)
+          call pdf-digit-value call peek-text-cursor-code read cursor
+      call read-text-cursor read cursor
   save fraction, code 0.0
   fork test
     hook test
       call and
-        call not, call text-cursor-at-end(read cursor)
-        call is-equal(call text-cursor-peek(read cursor), text <.>)
+        call not, call is-text-cursor-at-end read cursor
+        call is-equal(call(peek-text-cursor(read cursor)), text <.>)
     hook hold
-      call text-cursor-read(read cursor)
+      call read-text-cursor read cursor
       save divisor, code 1.0
       walk test
         hook test
           call and
-            call not, call text-cursor-at-end(read cursor)
-            call is-pdf-digit(call text-cursor-peek-code(read cursor))
+            call not, call is-text-cursor-at-end read cursor
+            call is-pdf-digit call peek-text-cursor-code read cursor
         hook hold
           save divisor
             call multiply
@@ -227,9 +227,9 @@ task parse-pdf-number
             call add
               read fraction
               call divide
-                call pdf-digit-value(call text-cursor-peek-code(read cursor))
+                call pdf-digit-value call peek-text-cursor-code read cursor
                 read divisor
-          call text-cursor-read(read cursor)
+          call read-text-cursor read cursor
   save value
     call add
       read magnitude
@@ -263,7 +263,7 @@ task parse-pdf-literal
             read index
           text <>
     hook hold
-      call text-cursor-read(read cursor)
+      call read-text-cursor read cursor
       save index
         call add
           read index
@@ -325,7 +325,7 @@ task pdf-literal-string-depth-delta
 task parse-pdf-literal-string
   take cursor, like text-cursor
   like text
-  call text-cursor-read(read cursor)
+  call read-text-cursor read cursor
   save chars
     make list
   save depth, code 1
@@ -336,7 +336,7 @@ task parse-pdf-literal-string
         code 0
     hook hold
       save next
-        call text-cursor-read(read cursor)
+        call read-text-cursor read cursor
       save is-backslash
         call is-equal
           read next
@@ -352,7 +352,7 @@ task parse-pdf-literal-string
           read is-backslash
         hook hold
           save escaped
-            call text-cursor-read(read cursor)
+            call read-text-cursor read cursor
           call push
             read chars
             call pdf-string-escape read escaped
@@ -412,10 +412,10 @@ task pdf-hex-string-digits
     make list
   walk test
     hook test
-      call not, call is-equal(call text-cursor-peek(read cursor), text <\>>)
+      call not, call is-equal(call(peek-text-cursor(read cursor)), text <\>>)
     hook hold
       save next
-        call text-cursor-read(read cursor)
+        call read-text-cursor read cursor
       fork test
         hook test
           call is-pdf-hex-digit(read next)
@@ -428,10 +428,10 @@ task pdf-hex-string-digits
 task parse-pdf-hex-string
   take cursor, like text-cursor
   like text
-  call text-cursor-read(read cursor)
+  call read-text-cursor read cursor
   save digits
     call pdf-hex-string-digits(read cursor)
-  call text-cursor-read(read cursor)
+  call read-text-cursor read cursor
   save count
     call size(read digits)
   save chars
@@ -485,21 +485,21 @@ task parse-pdf-hex-string
 task parse-pdf-name
   take cursor, like text-cursor
   like text
-  call text-cursor-read(read cursor)
+  call read-text-cursor read cursor
   save chars
     make list
   walk test
     hook test
       call and
-        call not, call text-cursor-at-end(read cursor)
+        call not, call is-text-cursor-at-end read cursor
         call not
           call or
-            call is-pdf-whitespace(call text-cursor-peek-code(read cursor))
-            call is-pdf-delimiter(call text-cursor-peek-code(read cursor))
+            call is-pdf-whitespace call peek-text-cursor-code read cursor
+            call is-pdf-delimiter call peek-text-cursor-code read cursor
     hook hold
       call push
         read chars
-        call text-cursor-read read cursor
+        call read-text-cursor read cursor
   send back
     call join
       read chars
@@ -509,21 +509,21 @@ task parse-pdf-array
   take cursor, like text-cursor
   like list
     like pdf-value
-  call text-cursor-read(read cursor)
+  call read-text-cursor read cursor
   save items
     make list
   call skip-pdf-whitespace(read cursor)
   walk test
     hook test
       call and
-        call not, call text-cursor-at-end(read cursor)
-        call not, call is-equal(call text-cursor-peek(read cursor), text <]>)
+        call not, call is-text-cursor-at-end read cursor
+        call not, call is-equal(call(peek-text-cursor(read cursor)), text <]>)
     hook hold
       call push
         read items
         call parse-pdf-value read cursor
       call skip-pdf-whitespace(read cursor)
-  call text-cursor-read(read cursor)
+  call read-text-cursor read cursor
   send back, read items
 
 task parse-pdf-dictionary-entry
@@ -543,8 +543,8 @@ task parse-pdf-dictionary
   take cursor, like text-cursor
   like list
     like pdf-entry
-  call text-cursor-read(read cursor)
-  call text-cursor-read(read cursor)
+  call read-text-cursor read cursor
+  call read-text-cursor read cursor
   save entries
     make list
   call skip-pdf-whitespace(read cursor)
@@ -552,15 +552,15 @@ task parse-pdf-dictionary
     hook test
       call not
         call or
-          call text-cursor-at-end(read cursor)
-          call is-equal(call text-cursor-peek(read cursor), text <\>>)
+          call is-text-cursor-at-end read cursor
+          call is-equal(call(peek-text-cursor(read cursor)), text <\>>)
     hook hold
       call push
         read entries
         call parse-pdf-dictionary-entry read cursor
       call skip-pdf-whitespace(read cursor)
-  call text-cursor-read(read cursor)
-  call text-cursor-read(read cursor)
+  call read-text-cursor read cursor
+  call read-text-cursor read cursor
   send back, read entries
 
 # reads a number, then tries the "generation R" continuation for an indirect reference; rewinds the cursor's
@@ -571,13 +571,13 @@ task parse-pdf-number-or-reference
   save first
     call parse-pdf-number(read cursor)
   save after-number
-    call text-cursor-position(read cursor)
+    call get-text-cursor-position read cursor
   call skip-pdf-whitespace(read cursor)
   fork test
     hook test
       call and
-        call not, call text-cursor-at-end(read cursor)
-        call is-pdf-digit(call text-cursor-peek-code(read cursor))
+        call not, call is-text-cursor-at-end read cursor
+        call is-pdf-digit call peek-text-cursor-code read cursor
     hook hold
       save generation
         call parse-pdf-number(read cursor)
@@ -585,10 +585,10 @@ task parse-pdf-number-or-reference
       fork test
         hook test
           call and
-            call not, call text-cursor-at-end(read cursor)
-            call is-equal(call text-cursor-peek(read cursor), text <R>)
+            call not, call is-text-cursor-at-end read cursor
+            call is-equal(call(peek-text-cursor(read cursor)), text <R>)
         hook hold
-          call text-cursor-read(read cursor)
+          call read-text-cursor read cursor
           send back
             make pdf-reference
               bind object-number, call to-number(read first)
@@ -605,7 +605,7 @@ task parse-pdf-value
   like pdf-value
   call skip-pdf-whitespace(read cursor)
   save marker
-    call text-cursor-peek(read cursor)
+    call peek-text-cursor read cursor
   fork test
     hook test
       call is-equal
@@ -670,9 +670,9 @@ task parse-pdf-value
           text <\<>
         call is-equal
           call char-at
-            call cursor-text(read cursor)
+            call get-cursor-text read cursor
             call add
-              call text-cursor-position(read cursor)
+              call get-text-cursor-position read cursor
               code 1
           text <\<>
     hook hold
@@ -819,9 +819,9 @@ task write-pdf-xref-entry
   take entry, like pdf-xref-entry
   like text
   save offset-text
-    call pad-left(text <{{entry/offset}}>, code 10, text <0>)
+    call pad-left(text(<{{entry/offset}}>), code(10), text <0>)
   save generation-text
-    call pad-left(text <{{entry/generation}}>, code 5, text <0>)
+    call pad-left(text(<{{entry/generation}}>), code(5), text <0>)
   fork test
     hook test
       read entry/in-use

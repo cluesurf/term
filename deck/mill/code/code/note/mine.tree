@@ -1,4 +1,4 @@
-load @term/mill/code/code/tool/flow/mine
+load @term/mill/code/tool/flow/mine
   find flow
 
 
@@ -11,6 +11,55 @@ mine note
         site text
       mine text
         site text
+    mine list
+      mine form, like flow
+        site flow
+
+# `mark <word>` is METADATA, and the word is one of the metadata words below: `mark async`, `mark native`,
+# `mark unsafe` (over statements, the guarded block), `mark draft`, `mark stable`, `mark unstable`,
+# `mark deprecated`, `mark keep`, `mark open`, `mark roam`. It is minted as the `note` it replaces, so every
+# reader after the mill sees one form whichever word was written. `note <word>` is the old spelling: still read,
+# warned as `note-metadata`, and rewritten by `term lint --fix` (note/term/plan/await-by-default-and-mark-
+# metadata.md, section 4).
+#
+# TOLD APART FROM THE OTHER `mark`s BY FORM. The word list is closed, so `mark private` (privacy, read by
+# `mine mark`), `mark tag, name kind`, `mark <uuid>` (a text literal, a record's identity) and a rule's binder
+# `mark a, like tone` never reach it. A `mark` WITH a `like` is a binder: the rule that lists both tries this
+# one first, and this rule takes nothing under the word, so a `like` child fails it and the binder rule gets
+# the line.
+# `mark feature, name x` and `mark platform, name x` keep their `name` and are read by `mine mark`.
+mine mark-note
+  mine term, term mark
+    mine any
+      mine term, term async
+        site text
+      mine term, term native
+        site text
+      mine term, term unsafe
+        site text
+      mine term, term draft
+        site text
+      mine term, term stable
+        site text
+      mine term, term unstable
+        site text
+      mine term, term deprecated
+        site text
+      mine term, term keep
+        site text
+      mine term, term open
+        site text
+      mine term, term roam
+        site text
+
+# `mark unsafe` OVER STATEMENTS: the guarded block, the same as `note-guard` below. A rule of its own because
+# `mine mark-note` takes nothing under the word, which is what keeps a binder's `like` out of it
+mine mark-guard
+  mine term, term mark
+    mine term, term unsafe
+      site text
+    mine form, like flow
+      site flow
     mine list
       mine form, like flow
         site flow

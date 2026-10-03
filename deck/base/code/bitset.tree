@@ -2,7 +2,7 @@
 
 note stable
 
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-and
   find bitwise-or
   find bitwise-not
@@ -10,7 +10,7 @@ load @term/base/code/bit
   find shift-left
   find shift-right
 
-load @term/base/code/list
+load @term/base/list
   find list
   find get
   find set

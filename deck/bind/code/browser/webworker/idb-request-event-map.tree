@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/idb-request-event-map
+load @term/bind/browser/dom/idb-request-event-map
   find idb-request-event-map
 
-load @term/bind/code/browser/webworker/event
+load @term/bind/browser/webworker/event
   find event
 
 form idb-request-event-map, name <IDBRequestEventMap>

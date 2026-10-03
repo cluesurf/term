@@ -9,10 +9,10 @@
 #
 # Internal: reached only through the public network/http2 API.
 
-load @term/base/code/network/server/request
+load @term/base/network/server/request
   find request
 
-load @term/base/code/native/node/network/http2/shared
+load @term/base/native/node/network/http2/shared
   find head-scheme
   find head-authority
   find head-stream

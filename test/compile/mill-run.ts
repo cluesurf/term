@@ -6,6 +6,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse, renderHead } from '@term/make/code/parser/tree'
+import { resolveMillImport } from '@term/make/code/compile/mill-load'
 import {
   readMineGrammar,
   readMintGrammar,
@@ -403,21 +404,12 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
       parts.push(text)
     }
 
+    // the mill's own load rule (`resolveMillImport`, the package path rule), never a prefix table of its own
     for (const path of imports) {
-      const inMill = /^@term\/mill\/code\/(.+)$/.exec(path)
+      const found = path.startsWith('@') ? resolveMillImport(MILL, file, path) : undefined
 
-      if (!inMill) {
-        continue
-      }
-
-      for (const c of [join(MILL, `${inMill[1]}.tree`), join(MILL, inMill[1]!, 'base.tree')]) {
-        try {
-          readFileSync(c)
-          collect(c)
-          break
-        } catch {
-          // not this candidate
-        }
+      if (found) {
+        collect(found)
       }
     }
   }
@@ -471,14 +463,14 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
       const fields = deckCap.match
       const name = words(fields.get('name'))[0] ?? ''
       const wantName = reference.host ? `@${reference.host}/${reference.name}` : reference.name
-      // the version the READER defines: `code <x>` alone, defaulting 0.0.0. The grammar also captures the older
-      // `mark <x>` spelling (zone's manifest carries `mark <0.0.1>`), which the hand-rolled reader silently
-      // drops — a drift the executor surfaced; the reader is this differential's spec, so `code` it is
-      const codeCap = fields.get('code')?.[0]
-      const versionMatch = (cap: typeof codeCap): string =>
+      // the version: `mark <x>`, else the OLD spelling `code <x>` (a text literal, where `code ./dir` is the code
+      // root and captures a path instead), defaulting 0.0.0 (note/term/plan/manifest-mark-and-code-root.md)
+      const markCap = fields.get('mark')?.[0]
+      const versionMatch = (cap: typeof markCap): string =>
         cap?.kind === 'match' ? (words(cap.match.get('text'))[0] ?? '') : ''
-      const version = versionMatch(codeCap) || '0.0.0'
-      const wantVersion = `${reference.code.major}.${reference.code.minor}.${reference.code.patch}`
+      const version =
+        versionMatch(markCap) || (fields.get('code') ?? []).map(versionMatch).find(Boolean) || '0.0.0'
+      const wantVersion = `${reference.mark.major}.${reference.mark.minor}.${reference.mark.patch}`
       const links = (fields.get('link') ?? []).flatMap(c =>
         c.kind === 'match' ? words(c.match.get('name')) : [],
       )

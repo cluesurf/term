@@ -6,12 +6,12 @@
 
 note stable
 
-load @term/base/code/list
+load @term/base/list
   find list
   find size
   find get
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
 form deque
@@ -24,49 +24,92 @@ form deque
   link start, like number
   link filled, like number
 
-  # the item at the ring position `at` counted from the front
+  # the position of the item `at` places from the front, always inside the list. A `start` written from outside may
+  # be anything, so a negative remainder is moved up by the size rather than assumed away
   task slot
     take self
     take at, like number
+    have
+      call is-above
+        read self/items/length
+        code 0
     like number
-    send back
+    must
+      call is-minimum
+        read back
+        code 0
+    must
+      call is-below
+        read back
+        read self/items/length
+    save size, read self/items/length
+    save place
       call modulo
         call add
           read self/start
           read at
-        call size
-          read self/items
-
-  # room for one more: when the ring is full, its items are laid out front to back in a list twice the size, the
-  # spare places holding `filler` until a push writes over them
-  task grow
-    take self
-    take filler, like t
-    save capacity
-      call size
-        read self/items
+        read size
     fork test
       hook test
         call is-below
-          read self/filled
-          read capacity
+          read place
+          code 0
+      hook hold
+        save place
+          call add
+            read place
+            read size
+    send back, read place
+
+  # room for one more: when the ring is full, its items are laid out front to back in a list twice the size, the
+  # spare places holding `filler` until a push writes over them. `filled` is then the count actually copied, which is
+  # what it already was in any deque its own methods built
+  task grow
+    take self
+    take filler, like t
+    like deque
+    must
+      call is-minimum
+        read self/filled
+        code 0
+    must
+      call is-below
+        read self/filled
+        read self/items/length
+    save capacity, read self/items/length
+    fork test
+      hook test
+        call and
+          call is-minimum
+            read self/filled
+            code 0
+          call is-below
+            read self/filled
+            read self/items/length
       hook hold
         send back, read self
+    save count, read self/filled
     save next
       make list
     save k, code 0
     walk test
       hook test
-        call is-below
-          read k
-          read self/filled
+        call and
+          call is-below
+            read k
+            read count
+          call is-above
+            read self/items/length
+            code 0
       hook step
+        save place
+          call slot
+            read self
+            read k
         call next/push
           call get
             read self/items
-            call slot
-              read self
-              read k
+            read place
         save k
           call add
             read k
@@ -77,17 +120,37 @@ form deque
           read capacity
           code 2
         code 1
+    fork test
+      hook test
+        call is-maximum
+          read room
+          read k
+      hook hold
+        save room
+          call add
+            read k
+            code 1
     walk test
       hook test
         call is-below
-          call size
-            read next
+          read next/length
           read room
       hook step
         call next/push
           read filler
     save self/items, read next
     save self/start, code 0
+    # the room loop above already left more places than `k`; this states it where the prover can see it, since a
+    # list's length is not carried through the write into the field. It runs no turns
+    walk test
+      hook test
+        call is-maximum
+          read self/items/length
+          read k
+      hook step
+        call self/items/push
+          read filler
+    save self/filled, read k
     send back, read self
 
   task push-back
@@ -97,10 +160,12 @@ form deque
     call grow
       read self
       read item
-    call self/items/set
+    save place
       call slot
         read self
         read self/filled
+    call self/items/set
+      read place
       read item
     save self/filled
       call add
@@ -115,19 +180,17 @@ form deque
     call grow
       read self
       read item
-    save self/start
-      call modulo
-        call add
-          call subtract
-            read self/start
-            code 1
-          call size
-            read self/items
-        call size
-          read self/items
+    # one place before the front, round the ring
+    save place
+      call slot
+        read self
+        call subtract
+          read self/items/length
+          code 1
     call self/items/set
-      read self/start
+      read place
       read item
+    save self/start, read place
     save self/filled
       call add
         read self/filled
@@ -140,19 +203,25 @@ form deque
       head t
     fork test
       hook test
-        call is-equal
-          read self/filled
-          code 0
+        call or
+          call is-maximum
+            read self/filled
+            code 0
+          call is-equal
+            read self/items/length
+            code 0
       hook hold
         send back, make none
+    save place
+      call slot
+        read self
+        call subtract
+          read self/filled
+          code 1
     save last
       call get
         read self/items
-        call slot
-          read self
-          call subtract
-            read self/filled
-            code 1
+        read place
     save self/filled
       call subtract
         read self/filled
@@ -167,15 +236,23 @@ form deque
       head t
     fork test
       hook test
-        call is-equal
-          read self/filled
-          code 0
+        call or
+          call is-maximum
+            read self/filled
+            code 0
+          call is-equal
+            read self/items/length
+            code 0
       hook hold
         send back, make none
+    save place
+      call slot
+        read self
+        code 0
     save first-item
       call get
         read self/items
-        read self/start
+        read place
     save self/start
       call slot
         read self
@@ -194,17 +271,25 @@ form deque
       head t
     fork test
       hook test
-        call is-equal
-          read self/filled
-          code 0
+        call or
+          call is-maximum
+            read self/filled
+            code 0
+          call is-equal
+            read self/items/length
+            code 0
       hook hold
         send back, make none
+    save place
+      call slot
+        read self
+        code 0
     send back
       make some
         bind value
           call get
             read self/items
-            read self/start
+            read place
 
   task back
     take self
@@ -212,21 +297,27 @@ form deque
       head t
     fork test
       hook test
-        call is-equal
-          read self/filled
-          code 0
+        call or
+          call is-maximum
+            read self/filled
+            code 0
+          call is-equal
+            read self/items/length
+            code 0
       hook hold
         send back, make none
+    save place
+      call slot
+        read self
+        call subtract
+          read self/filled
+          code 1
     send back
       make some
         bind value
           call get
             read self/items
-            call slot
-              read self
-              call subtract
-                read self/filled
-                code 1
+            read place
 
   task count
     take self

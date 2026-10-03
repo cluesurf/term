@@ -1,17 +1,17 @@
 
-load @term/bind/code/javascript/es5/function
+load @term/bind/javascript/es5/function
   find function
 
-load @term/bind/code/javascript/es5/omit-this-parameter
+load @term/bind/javascript/es5/omit-this-parameter
   find omit-this-parameter
 
-load @term/bind/code/javascript/es5/this-parameter-type
+load @term/bind/javascript/es5/this-parameter-type
   find this-parameter-type
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
 form callable-function, name <CallableFunction>

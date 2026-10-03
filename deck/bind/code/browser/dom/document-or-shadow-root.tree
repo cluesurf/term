@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/dom/animation
+load @term/bind/browser/dom/animation
   find animation
 
-load @term/bind/code/browser/dom/element
+load @term/bind/browser/dom/element
   find element
 
-load @term/bind/code/browser/dom/style-sheet-list
+load @term/bind/browser/dom/style-sheet-list
   find style-sheet-list
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
 form document-or-shadow-root, name <DocumentOrShadowRoot>

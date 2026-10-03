@@ -2,7 +2,7 @@
 load @term/bind/code/browser/dom/value-type
   find value-type
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
 form global-descriptor, name <GlobalDescriptor>

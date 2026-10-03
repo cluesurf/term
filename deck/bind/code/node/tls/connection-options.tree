@@ -2,7 +2,7 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-null
   find native-number
   find native-string
@@ -10,10 +10,10 @@ load @term/bind/code/javascript
   find net-lookup-function
   find stream-duplex
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/tls
+load @term/bind/node/tls
   find common-connection-options
   find psk-callback-negotation
   find secure-context-options

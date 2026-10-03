@@ -5,11 +5,11 @@ dock load
 dock load
   load <global:compare>, name compare-runtime
 
-load @term/base/code/list
+load @term/base/list
   find get
   find size
 
-load @term/base/code/text
+load @term/base/text
   find substring
 
 task deep-equal

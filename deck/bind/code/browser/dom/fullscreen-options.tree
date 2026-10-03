@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/fullscreen-navigation-ui
+load @term/bind/browser/dom/fullscreen-navigation-ui
   find fullscreen-navigation-ui
 
 form fullscreen-options, name <FullscreenOptions>

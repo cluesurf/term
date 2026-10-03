@@ -1,62 +1,62 @@
 
-load @term/bind/code/browser/dom/window-or-worker-global-scope
+load @term/bind/browser/dom/window-or-worker-global-scope
   find window-or-worker-global-scope
 
-load @term/bind/code/browser/webworker/cache-storage
+load @term/bind/browser/webworker/cache-storage
   find cache-storage
 
-load @term/bind/code/browser/webworker/crypto
+load @term/bind/browser/webworker/crypto
   find crypto
 
-load @term/bind/code/browser/webworker/idb-factory
+load @term/bind/browser/webworker/idb-factory
   find idb-factory
 
-load @term/bind/code/browser/webworker/image-bitmap
+load @term/bind/browser/webworker/image-bitmap
   find image-bitmap
 
-load @term/bind/code/browser/webworker/image-bitmap-options
+load @term/bind/browser/webworker/image-bitmap-options
   find image-bitmap-options
 
-load @term/bind/code/browser/webworker/image-bitmap-source
+load @term/bind/browser/webworker/image-bitmap-source
   find image-bitmap-source
 
-load @term/bind/code/browser/webworker/performance
+load @term/bind/browser/webworker/performance
   find performance
 
-load @term/bind/code/browser/webworker/request-info
+load @term/bind/browser/webworker/request-info
   find request-info
 
-load @term/bind/code/browser/webworker/request-init
+load @term/bind/browser/webworker/request-init
   find request-init
 
-load @term/bind/code/browser/webworker/response
+load @term/bind/browser/webworker/response
   find response
 
-load @term/bind/code/browser/webworker/timer-handler
+load @term/bind/browser/webworker/timer-handler
   find timer-handler
 
-load @term/bind/code/browser/webworker/void-function
+load @term/bind/browser/webworker/void-function
   find void-function
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form window-or-worker-global-scope, name <WindowOrWorkerGlobalScope>

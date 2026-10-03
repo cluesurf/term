@@ -15,7 +15,7 @@ bear @term/bind/code/javascript/node/http/agent-options
 bear @term/bind/code/javascript/node/http/agent
 bear @term/bind/code/javascript/node/http/request-options
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find agent
   find array
   find client-request
@@ -32,7 +32,7 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/http
+load @term/bind/node/http
   find request-listener
   find request-options
   find server-options

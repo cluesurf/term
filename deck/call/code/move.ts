@@ -20,9 +20,11 @@ export async function callMove(input: {
   target?: string
   level?: string
 }): Promise<void> {
-  if (input.target !== 'code') {
+  // the target names the manifest field that moves: `mark`, the version. `code` is its old spelling (the version
+  // was `code <...>` until `code` came to name the code root), still taken so a script written against it works
+  if (input.target !== 'mark' && input.target !== 'code') {
     logFail(
-      `Unknown move target: ${input.target}. Use: term move code [1|2|3]`,
+      `Unknown move target: ${input.target}. Use: term move mark [1|2|3]`,
     )
     process.exit(1)
   }
@@ -33,9 +35,9 @@ export async function callMove(input: {
 
   try {
     const manifest = await loadManifest({ dir: input.root })
-    const oldCode = showCode(manifest.code)
-    const newCode = bumpCode({ code: manifest.code, level })
-    manifest.code = newCode
+    const oldCode = showCode(manifest.mark)
+    const newCode = bumpCode({ code: manifest.mark, level })
+    manifest.mark = newCode
 
     const newCodeStr = showCode(newCode)
 

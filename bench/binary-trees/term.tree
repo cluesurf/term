@@ -1,4 +1,4 @@
-load @term/base/code/math
+load @term/base/math
   find power
 
 # binary-trees, the Benchmarks Game program, single-threaded: build perfect binary trees bottom-up, walk each to count

@@ -2,15 +2,15 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
   find native-void
   find node-js-array-buffer-view
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/crypto
+load @term/bind/node/crypto
   find binary-like
   find binary-to-text-encoding
   find ecdh-key-format

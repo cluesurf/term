@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/storage
+load @term/bind/browser/dom/storage
   find storage
 
 form window-session-storage, name <WindowSessionStorage>

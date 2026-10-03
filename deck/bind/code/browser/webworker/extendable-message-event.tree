@@ -1,26 +1,26 @@
 
-load @term/bind/code/browser/webworker/client
+load @term/bind/browser/webworker/client
   find client
 
-load @term/bind/code/browser/webworker/extendable-event
+load @term/bind/browser/webworker/extendable-event
   find extendable-event
 
-load @term/bind/code/browser/webworker/message-port
+load @term/bind/browser/webworker/message-port
   find message-port
 
-load @term/bind/code/browser/webworker/service-worker
+load @term/bind/browser/webworker/service-worker
   find service-worker
 
-load @term/bind/code/javascript/es5/readonly-array
+load @term/bind/javascript/es5/readonly-array
   find readonly-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form extendable-message-event, name <ExtendableMessageEvent>

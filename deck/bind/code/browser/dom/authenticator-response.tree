@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript/es5/array-buffer
+load @term/bind/javascript/es5/array-buffer
   find array-buffer
 
 form authenticator-response, name <AuthenticatorResponse>

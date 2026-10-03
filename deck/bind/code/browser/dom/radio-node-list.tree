@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/node-list
+load @term/bind/browser/dom/node-list
   find node-list
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form radio-node-list, name <RadioNodeList>

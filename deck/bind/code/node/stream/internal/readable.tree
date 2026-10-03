@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find async-iterable
   find async-iterable-iterator
@@ -21,30 +21,30 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer-encoding
 
-load @term/bind/code/node/stream/internal
+load @term/bind/node/stream/internal
   find readable-options
 
 form readable, name <Readable>
   base stream
-  link readable-aborted, name <readableAborted>, like native-boolean
-  link readable, name <readable>, like native-boolean
-  link readable-did-read, name <readableDidRead>, like native-boolean
+  link readable-aborted, name(<readableAborted>), like native-boolean
+  link readable, name(<readable>), like native-boolean
+  link readable-did-read, name(<readableDidRead>), like native-boolean
   link readable-encoding, name <readableEncoding>
     like or
       like buffer-encoding
       like native-null
-  link readable-ended, name <readableEnded>, like native-boolean
+  link readable-ended, name(<readableEnded>), like native-boolean
   link readable-flowing, name <readableFlowing>
     like or
       like native-boolean
       like native-null
-  link readable-high-water-mark, name <readableHighWaterMark>, like native-number
-  link readable-length, name <readableLength>, like native-number
-  link readable-object-mode, name <readableObjectMode>, like native-boolean
-  link destroyed, name <destroyed>, like native-boolean
+  link readable-high-water-mark, name(<readableHighWaterMark>), like native-number
+  link readable-length, name(<readableLength>), like native-number
+  link readable-object-mode, name(<readableObjectMode>), like native-boolean
+  link destroyed, name(<destroyed>), like native-boolean
 
   task construct, name <_construct>
     like native-void

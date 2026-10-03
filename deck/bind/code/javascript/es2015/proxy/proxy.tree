@@ -1,9 +1,9 @@
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-object
   find native-void
 
-load @term/bind/code/javascript/es2015/proxy
+load @term/bind/javascript/es2015/proxy
   find proxy-handler
 
 form proxy

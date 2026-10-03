@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/key-algorithm
+load @term/bind/browser/dom/key-algorithm
   find key-algorithm
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form key-algorithm, name <KeyAlgorithm>

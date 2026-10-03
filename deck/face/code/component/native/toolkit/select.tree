@@ -8,21 +8,21 @@
 # per line), reports the person's choice as `change`, and answers `get-value` with the chosen item as the control holds
 # it.
 
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
   find write-attribute
   find attach-event
-load @term/site/code/view/reactive
+load @term/site/view/reactive
   find signal
   find make-effect
   find read-signal
   find write-signal
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
   find get-value
   find set-value
-load @term/base/code/text/util
+load @term/base/text/util
   find join
 
 # the work of the view below, in a task: in a `view` body a bare `call` renders as a text child
@@ -33,6 +33,7 @@ task mount-select
   take options
     like list
       like text
+  take label, like text
   like view
   save picker
     call make-element
@@ -41,6 +42,11 @@ task mount-select
     read picker
     text <data-slot>
     text <select>
+  # its name, which the host gives the platform control as its accessibility label (native-accessibility-0003)
+  call write-attribute
+    read picker
+    text <aria-label>
+    read label
   call write-attribute
     read picker
     text <class>
@@ -79,9 +85,14 @@ view select
   take options
     like list
       like text
+  take
+    label
+    like text
+    fall <>
   save mounted
     call mount-select
       read host
       read class
       read control
       read options
+      read label

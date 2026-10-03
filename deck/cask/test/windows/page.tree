@@ -3,10 +3,10 @@
 # the generated dispatcher carries the database commands and keeps rows as handles, and it asks the cask one thing,
 # its bundle path, so each window's handler hears from it. Everything else is driven by ./main.tree.
 
-load @term/cask/code/cask
+load @term/cask/cask
   find bundle-path
 
-load @term/site/code/base/db
+load @term/site/base/db
   find connect
   find query
   find run

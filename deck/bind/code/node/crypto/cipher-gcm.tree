@@ -2,13 +2,13 @@
 load @term/bind
   find form
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find cipher
   find native-number
   find native-this
   find node-js-array-buffer-view
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
 form cipher-gcm, name <CipherGCM>

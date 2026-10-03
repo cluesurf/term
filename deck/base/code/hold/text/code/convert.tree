@@ -4,16 +4,16 @@
 # 2026-08-30 from the retired-syntax draft; held to mixed-width vectors (1/2/3/4-byte characters) in
 # deck/base/test/utf-convert.tree.
 
-load @term/base/code/hold/text/code/utf-8
+load @term/base/hold/text/code/utf-8
   find text-utf-8
 
-load @term/base/code/hold/text/code/utf-16
+load @term/base/hold/text/code/utf-16
   find text-utf-16
 
-load @term/base/code/boolean
+load @term/base/boolean
   find not
 
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-and
   find bitwise-or
   find shift-left

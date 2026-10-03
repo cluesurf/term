@@ -1,4 +1,4 @@
-load @term/base/code/proof/equal
+load @term/base/proof/equal
   find equal
 
 # if x equals y and y equals z, x equals z

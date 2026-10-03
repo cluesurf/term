@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/webworker/g-lenum
+load @term/bind/browser/webworker/g-lenum
   find g-lenum
 
-load @term/bind/code/browser/webworker/webgl-draw-buffers
+load @term/bind/browser/webworker/webgl-draw-buffers
   find webgl-draw-buffers
 
 load @term/bind/code/javascript/iterable
   find iterable
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form webgl-draw-buffers, name <WEBGL_draw_buffers>

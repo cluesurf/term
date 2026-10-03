@@ -1,39 +1,44 @@
-load @term/mill/code/code/call/mine
+load @term/mill/code/call/mine
   find call-link
 
 # One VALUE expression (what a `bind`, a call argument, a `send back` or a `save` carries): a call, a
 # construction, a read, a literal. This is the `seed` every rule that says `mine form, like seed` means.
 
-load @term/mill/code/code/call/mine
+load @term/mill/code/call/mine
   find call
+  find tick
 
-load @term/mill/code/code/make/mine
+load @term/mill/code/make/mine
   find make
 
-load @term/mill/code/code/fork/mine
+load @term/mill/code/fork/mine
   find fork
 
-load @term/mill/code/code/task/mine
+load @term/mill/code/task/mine
   find task
 
-load @term/mill/code/code/tool/flow/mine
+load @term/mill/code/tool/flow/mine
   find move
 
-load @term/mill/code/code/wait/mine
+load @term/mill/code/wait/mine
   find wait
 
-load @term/mill/code/code/bind/mine
+load @term/mill/code/bind/mine
   find bind
 
-load @term/mill/code/code/halt/mine
+load @term/mill/code/halt/mine
   find halt
 
-load @term/mill/code/code/like/mine
+load @term/mill/code/like/mine
   find like
 
 mine seed
   mine any
     mine form, like call
+      site call
+    # `tick f(x)` in a value position: the call started and not waited for, whose value is the pending one.
+    # Before the bare-head fallback, which would read it as a call to something named `tick`
+    mine form, like tick
       site call
     mine form, like make
       site make

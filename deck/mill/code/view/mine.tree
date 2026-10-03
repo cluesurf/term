@@ -31,16 +31,16 @@
 # express things a document may not have, so this grammar has no way to reach `view-save` (a computed local),
 # `view-seed` (an attribute or an event handler), or a `walk` whose mode is `test`. See note/term/view/05-sandbox.md.
 
-load @term/mill/code/view/load/mine
+load @term/mill/view/load/mine
   find view-load
 
-load @term/mill/code/view/host/mine
+load @term/mill/view/host/mine
   find view-host
 
-load @term/mill/code/view/find/mine
+load @term/mill/view/find/mine
   find view-find
 
-load @term/mill/code/view/def/mine
+load @term/mill/view/def/mine
   find view-def
 
 mine view-file

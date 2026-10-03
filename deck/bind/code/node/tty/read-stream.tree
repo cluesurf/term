@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-number
   find native-this
@@ -7,8 +7,8 @@ load @term/bind/code/javascript
 
 form read-stream, name <ReadStream>
   base net-socket
-  link is-raw, name <isRaw>, like native-boolean
-  link is-tty, name <isTTY>, like native-boolean
+  link is-raw, name(<isRaw>), like native-boolean
+  link is-tty, name(<isTTY>), like native-boolean
 
   task set-raw-mode, name <setRawMode>
     like native-this

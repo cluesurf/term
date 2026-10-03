@@ -2,12 +2,12 @@
 load @term/bind
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
   find native-this
   find native-void
 
-load @term/bind/code/node/http2
+load @term/bind/node/http2
   find settings
 
 form http2-server-common, name <HTTP2ServerCommon>

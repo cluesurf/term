@@ -23,7 +23,18 @@ import {
   isText,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp, FormKind, FormSpec } from '@term/make/code/compile/backend'
-import { escapingParams, formSpec, hasValuedReturn, refuseAny, specForms, swapAt } from '@term/make/code/compile/backend'
+import { recordPlaces } from '@term/make/code/compile/place'
+import {
+  escapingParams,
+  formSpec,
+  hasValuedReturn,
+  refuseAny,
+  specForms,
+  swapAt,
+  gatedTasks,
+  listFacts,
+  fixedLists,
+} from '@term/make/code/compile/backend'
 import {
   collectBinds,
   renderBind,
@@ -316,6 +327,9 @@ fun mutableLongListOf(vararg items: Long): MutableList<Long> {
     return list
 }
 
+// a fixed list (backend.ts, fixedLists) taken from a fresh task's result: one copy of the storage
+fun termLongArray(xs: MutableList<Long>): LongArray = if (xs is TermLongs) xs.data.copyOf(xs.count) else xs.toLongArray()
+
 fun mutableLongListOf(from: Collection<Long>): MutableList<Long> {
     val list = TermLongs(maxOf(from.size, 10))
     list.addAll(from)
@@ -404,6 +418,14 @@ export function emitKotlin(
   const provenSteps = provenIncrements(program)
   // the field names some assignment in the program writes (`save p/x, ...`): every other field is a `val`
   const assignedFields = fieldsAssigned(program)
+  // the slot writes of a record that assign the changed fields of the object already there (compile/place.ts): no
+  // allocation per write. Their fields are written, so they are `var` too
+  const places = recordPlaces(program).writes
+
+  for (const place of places.values()) {
+    place.fields.forEach(f => assignedFields.add(f.name))
+  }
+
   // the names the function being emitted reassigns, for `var` against `val`; undefined at module level
   let fnAssigned: Set<string> | undefined
   // the tasks this program defines with a body: their emitted result type is exactly what the checker says
@@ -655,6 +677,25 @@ export function emitKotlin(
       }
     }
   }
+
+  // F1, the fixed-length slice (backend.ts, `fixedLists`): an integer list a task owns outright and never grows, or a
+  // lent parameter every caller fills with one, is a plain `LongArray`, where every other list is a `MutableList<Long>`
+  // reached through the interface. `xs[i]`, `xs.size` and a walk read the same on both
+  // the primitive array a fixed list of this element is: `LongArray` for an integer, `DoubleArray` for a decimal
+  const arrayKind = (t: Type | undefined): 'Long' | 'Double' | undefined =>
+    t?.kind === 'number' || (t?.kind === 'named' && (t.name === 'number' || t.name === 'integer'))
+      ? 'Long'
+      : t?.kind === 'float' || (t?.kind === 'named' && t.name === 'decimal')
+        ? 'Double'
+        : undefined
+  const listGates = gatedTasks(program, maskMethods)
+  const { lend: lendParams, fresh: freshLists } = listFacts(program, listGates)
+  const fixed = fixedLists(program, lendParams, freshLists, t => arrayKind(t) !== undefined)
+  // the primitive-array names of the function being emitted, its fixed locals and parameters, each with its kind
+  let arrayNames = new Map<string, 'Long' | 'Double'>()
+  // a fixed list of this kind taken from a fresh task's result: one copy of the storage
+  const toArray = (kind: 'Long' | 'Double', list: string): string =>
+    kind === 'Long' ? need('longs', `termLongArray(${list})`) : `(${list}).toDoubleArray()`
 
   type Instance = Extract<Statement, { form: 'instance' }>
   const conformances = new Map<string, Instance[]>()
@@ -931,6 +972,10 @@ export function emitKotlin(
   // Known Long without a conversion: a variable or an element read of type `number`, integer arithmetic (a
   // `Math.*Exact` or a Long operator), and a call to a task this program defines with a body, whose emitted result
   // type is Long. A native call keeps the `.toLong()`, since its shim may answer an Int
+  // a type a Double carries: the checker's float, or the `decimal` it was declared as
+  const isDecimal = (type: Type | undefined): boolean =>
+    type?.kind === 'float' || (type?.kind === 'named' && type.name === 'decimal')
+
   const longOf = (node: Expression): string => {
     const number = node.type?.kind === 'number'
     const defined = node.form === 'call' && node.callee.form === 'variable' && bodiedTasks.has(node.callee.name)
@@ -1050,6 +1095,16 @@ export function emitKotlin(
           )
         }
 
+        // the size of a fixed list (a LongArray) is its own; the stdlib's generic `list_size` takes a MutableList
+        if (
+          node.callee.form === 'variable' &&
+          node.callee.name === 'list_size' &&
+          node.args[0]?.form === 'variable' &&
+          arrayNames.has(node.args[0].name)
+        ) {
+          return `${expr(node.args[0])}.size.toLong()`
+        }
+
         // a native map / list operation lowers to kotlin's collection API
         const operation = collectionCall(node.callee)
 
@@ -1080,7 +1135,14 @@ export function emitKotlin(
 
         // a trailing `need false` parameter left out at the call site still exists in the native signature:
         // fill it with its type's empty value (Unit for an unknown)
-        const rendered = node.args.map(expr)
+        // a fixed list parameter (fixedLists) takes its LongArray as it is, and a fresh task's list converted once
+        const fixedAt =
+          node.callee.form === 'variable' && !localNames.has(node.callee.name) ? fixed.params.get(node.callee.name) : undefined
+        const rendered = node.args.map((a, i) => {
+          const kind = fixedAt?.has(i) ? arrayKind(a.type?.kind === 'array' ? a.type.element : undefined) : undefined
+
+          return kind && !(a.form === 'variable' && arrayNames.has(a.name)) ? toArray(kind, expr(a)) : expr(a)
+        })
         const declaredParams =
           node.callee.form === 'variable'
             ? functionParams.get(node.callee.name)
@@ -1218,6 +1280,12 @@ export function emitKotlin(
             declaredType?.kind === 'map'
           ) {
             return `mutableMapOf<${kotlinType(declaredType.key)}, ${kotlinType(declaredType.value)}>()`
+          }
+
+          // a whole-number literal in a field declared `decimal` is a Double: kotlin does not widen `1L` to one,
+          // where Swift's literal adapts to its slot (native-text-0001, the font table's `scale 1`)
+          if (value.form === 'integer' && isDecimal(declaredType)) {
+            return `${value.value}.0`
           }
 
           return expr(value)
@@ -1516,6 +1584,12 @@ export function emitKotlin(
       // the three-statement swap of two slots is `Collections.swap`, which checks both indexes before it writes
       const swap = swapAt(body, at)
 
+      // a LongArray has no Collections.swap: its own three statements, unboxed
+      if (swap && swap.list.form === 'variable' && arrayNames.has(swap.list.name)) {
+        lines.push(`${pad(d)}${stmt(body[at]!, d)}`)
+        continue
+      }
+
       if (swap) {
         lines.push(`${pad(d)}java.util.Collections.swap(${expr(swap.list)}, Math.toIntExact(${expr(swap.first)}), Math.toIntExact(${expr(swap.second)}))`)
         at += 2
@@ -1532,6 +1606,12 @@ export function emitKotlin(
     switch (node.form) {
       case 'let': {
         localNames.add(node.name)
+
+        // a fixed list local (fixedLists) is a `LongArray`, taken once from the fresh task that made it
+        if (arrayNames.has(node.name) && node.init.form === 'call') {
+          return `val ${camel(node.name)} = ${toArray(arrayNames.get(node.name)!, expr(node.init))}`
+        }
+
         // a lambda binding is annotated with its full function type: Kotlin cannot infer a lambda's parameter types
         // without an expected type, and a suspend lambda only becomes suspend when the expected type says so.
         const ann =
@@ -1578,10 +1658,26 @@ export function emitKotlin(
           node.name,
         )}${ann} = ${expr(node.init)}`
       }
-      case 'assign':
+      case 'assign': {
+        const place = places.get(node)
+
+        if (place) {
+          const local = camel(place.local)
+
+          if (!place.temps) {
+            return place.fields.map(f => `${local}.${camel(f.name)} = ${expr(f.value)}`).join('; ')
+          }
+
+          const temps = place.fields.map((f, i) => `val __place${i} = ${expr(f.value)}`)
+          const sets = place.fields.map((f, i) => `${local}.${camel(f.name)} = __place${i}`)
+
+          return `run { ${[...temps, ...sets].join('; ')} }`
+        }
+
         return node.op === '='
           ? `${expr(node.target)} = ${expr(node.value)}`
           : `${expr(node.target)} ${node.op} ${expr(node.value)}`
+      }
       case 'expression':
         return expr(node.expr)
       case 'return': {
@@ -1796,8 +1892,37 @@ export function emitKotlin(
         scopeGenerics = new Set(node.generics.map(g => g.name.toUpperCase()))
         localNames.clear()
         node.params.forEach(p => localNames.add(p.name))
+        // a fixed list parameter or local is a `LongArray` or a `DoubleArray`, by its element (fixedLists)
+        const fixedAt = fixed.params.get(node.name)
+        const outerArrays = arrayNames
+        const letTypes = new Map<string, Type | undefined>()
+        const collectLets = (value: unknown): void => {
+          if (typeof value !== 'object' || value === null) return
+          if (Array.isArray(value)) return value.forEach(collectLets)
+          const s = value as { form?: string; name?: string; type?: Type }
+          if (s.form === 'let' && typeof s.name === 'string') letTypes.set(s.name, s.type)
+          for (const [key, child] of Object.entries(s)) if (key !== 'type' && key !== 'span') collectLets(child)
+        }
+        collectLets(node.body)
+        const elementKind = (t: Type | undefined) => arrayKind(t?.kind === 'array' ? t.element : undefined)
+        arrayNames = new Map([
+          ...node.params.flatMap((p, i) => {
+            const kind = fixedAt?.has(i) ? elementKind(p.type) : undefined
+
+            return kind ? [[p.name, kind] as const] : []
+          }),
+          ...[...(fixed.locals.get(node.name) ?? [])].flatMap(name => {
+            const kind = elementKind(letTypes.get(name))
+
+            return kind ? [[name, kind] as const] : []
+          }),
+        ])
         const params = node.params
-          .map(p => `${camel(p.name)}: ${kotlinType(p.type)}`)
+          .map((p, i) => {
+            const kind = fixedAt?.has(i) ? elementKind(p.type) : undefined
+
+            return `${camel(p.name)}: ${kind ? `${kind}Array` : kotlinType(p.type)}`
+          })
           .join(', ')
 
         const suspend = node.async ? 'suspend ' : ''
@@ -1847,6 +1972,7 @@ export function emitKotlin(
                 .join('\n')
 
         fnAssigned = outerAssigned
+        arrayNames = outerArrays
 
         return `${inlineTasks.has(node.name) ? 'inline ' : ''}${suspend}fun ${generics}${camel(
           node.name,

@@ -3,10 +3,10 @@
 
 note stable
 
-load @term/base/code/list
+load @term/base/list
   find list
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
 form stack

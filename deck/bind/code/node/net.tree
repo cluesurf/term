@@ -22,17 +22,17 @@ bear @term/bind/code/javascript/node/net/socket-address
 load @term/bind
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-number
   find native-string
   find native-void
   find socket
 
-load @term/bind/code/node/https
+load @term/bind/node/https
   find server
 
-load @term/bind/code/node/net
+load @term/bind/node/net
   find net-connect-opts
   find server-opts
 

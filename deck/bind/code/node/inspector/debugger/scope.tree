@@ -2,12 +2,12 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
   find native-undefined
   find runtime-remote-object
 
-load @term/bind/code/node/inspector/debugger
+load @term/bind/node/inspector/debugger
   find location
 
 form scope, name <Scope>

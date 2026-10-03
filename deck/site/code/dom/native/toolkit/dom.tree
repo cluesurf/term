@@ -167,16 +167,43 @@ task measure-width
     call native-view/measure-width
       read node/handle
 
+# can the platform draw this family right now: one registered with `register-font`, or one it already has
+# (native-text-0002). A toolkit loads synchronously, so this is the whole answer, and text in a family it cannot draw
+# is set in the system face.
 task check-font
   take family, like text
   like boolean
-  send back, true
+  send back
+    call native-view/has-font
+      read family
 
+# a toolkit has nothing in flight: the family is drawable now (`ready`) or it is not (`error`), told at once
 task watch-font
   take family, like text
   take handler
     like task
       take status, like text
+  fork test
+    hook test
+      call native-view/has-font
+        read family
+    hook hold
+      call handler
+        text <ready>
+    hook miss
+      call handler
+        text <error>
+
+# register a face with the platform: CoreText on Apple, a Typeface on Android. `source` is a `data:` URI, a path, or
+# `asset:<name>` from the app bundle (an APK asset, a bundle resource)
+task register-font
+  take family, like text
+  take source, like text
+  like boolean
+  send back
+    call native-view/register-font
+      read family
+      read source
 
 task watch-deadline
   take family, like text
@@ -282,7 +309,22 @@ task exit-app
   call native-view/exit
     read status
 
+# the platform's own way back, given to the app's navigation (native-navigation-0007): Android's system back, macOS's
+# Go > Back (⌘[), iOS's swipe in from the left edge. `handler` answers whether the app took it; on Android a back it
+# refuses, at the first place, leaves the app, as Android's own does
+task on-back
+  take handler
+    like task
+      like boolean
+  call native-view/on-back
+    read handler
+
 # ---- for tests: what a person does, and what they see ----
+
+# go back the way a person does: the Activity's back on Android, ⌘[ through the menu bar on macOS, the edge swipe's own
+# action on iOS
+task press-back
+  call native-view/press-back
 
 # press a control the platform's own way, so its own action runs
 task press
@@ -309,6 +351,51 @@ task type-text
   take node, like view
   take text, like text
   call native-view/type
+    read node/handle
+    read text
+
+# the text an input method has marked in a field and not yet committed, empty when there is none: what a web handler
+# reads as a composition event's `data`. The field fires `compositionstart`, `compositionupdate` and `compositionend`
+# around it, and its value includes it while it is there (native-text-0003)
+task composing-text
+  take node, like view
+  like text
+  send back
+    call native-view/composing-text
+      read node/handle
+
+# what the platform's accessibility API reports for a node, `role|name`, the role in the contract's spelling
+# (note/term/view/11-vocabulary.md, "Accessibility"), `hidden|` for one out of the tree (native-accessibility-0007)
+task accessibility-of
+  take node, like view
+  like text
+  send back
+    call native-view/accessibility-of
+      read node/handle
+
+# the characters of a text node the platform draws as a box, each once, empty when it draws them all
+# (native-text-0004): CoreText's runs on Apple, the TextView's paint on Android, both through the system's fallback
+task missing-glyphs
+  take node, like view
+  like text
+  send back
+    call native-view/missing-glyphs
+      read node/handle
+
+# for tests: what an input method does while a person composes, through the platform's own entry point
+# (setMarkedText on Apple, InputConnection.setComposingText on Android). `text` replaces whatever is marked
+task compose
+  take node, like view
+  take text, like text
+  call native-view/compose
+    read node/handle
+    read text
+
+# for tests: the input method commits, replacing the marked text with `text`
+task commit-composition
+  take node, like view
+  take text, like text
+  call native-view/commit-composition
     read node/handle
     read text
 

@@ -10,18 +10,18 @@
 # integer quotient, which is already floor(m / 32), so a filter of fewer than 32 bits had no buckets at all and m of
 # zero. And `get-locations` wrote into a stored list made empty, which grows on TypeScript and panics on Rust.
 
-load @term/base/code/hold/integer
+load @term/base/hold/integer
   find count-one-bits-32
 
-load @term/base/code/bit
+load @term/base/bit
   find shift-left
   find bitwise-and
   find bitwise-or
 
-load @term/base/code/hold/hash/fnv
+load @term/base/hold/hash/fnv
   find fnv-hash-32-1a
 
-load @term/base/code/float
+load @term/base/float
   find natural-logarithm
   find to-decimal
   find to-number

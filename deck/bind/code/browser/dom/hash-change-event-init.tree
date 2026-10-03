@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/event-init
+load @term/bind/browser/dom/event-init
   find event-init
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form hash-change-event-init, name <HashChangeEventInit>

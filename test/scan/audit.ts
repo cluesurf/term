@@ -130,7 +130,7 @@ async function main(): Promise<void> {
 
   const rewritten = await fsp.readFile(path.join(root, 'deck.tree'), 'utf-8')
   ok(
-    rewritten.includes('link @term/left-pad, code <^1.3.0>'),
+    rewritten.includes('link @term/left-pad, mark <^1.3.0>'),
     'manifest now pins the safe version',
     rewritten,
   )

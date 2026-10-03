@@ -2,13 +2,13 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-number
   find native-string
   find native-undefined
 
-load @term/bind/code/node/events/event-emitter
+load @term/bind/node/events/event-emitter
   find abortable
 
 form listen-options, name <ListenOptions>

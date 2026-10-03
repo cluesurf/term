@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/element
+load @term/bind/browser/dom/element
   find element
 
-load @term/bind/code/browser/dom/html-collection-base
+load @term/bind/browser/dom/html-collection-base
   find html-collection-base
 
 load @term/bind/code/javascript/iterable-iterator

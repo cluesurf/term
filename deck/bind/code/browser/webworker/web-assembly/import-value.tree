@@ -2,7 +2,7 @@
 load @term/bind/code/browser/webworker/export-value
   find export-value
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form import-value, name <ImportValue>

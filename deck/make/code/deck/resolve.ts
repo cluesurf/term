@@ -126,6 +126,31 @@ export function parsePackage(target: string): {
   }
 }
 
+// the path a package import names INSIDE its package: `@scope/name/a/b` -> `a/b`, `@scope/name` -> ''. Undefined
+// for anything that is not a package path. Browser-safe, so the mill reader can check a `base` with it.
+export function packageRest(importPath: string): { pkg: string; rest: string } | undefined {
+  const match = /^(@[^/]+\/[^/]+)(?:\/(.*))?$/.exec(importPath)
+
+  return match ? { pkg: match[1]!, rest: match[2] ?? '' } : undefined
+}
+
+// the refusal a `base <dir>` under a load earns, or undefined when it agrees with the path: it forces the PACKAGE
+// root, and must name the path's first segment (note/term/plan/manifest-mark-and-code-root.md). One sentence,
+// wherever it surfaces: the resolver refuses with it and the reader reports it at the `load`.
+export function baseRefusal(importPath: string, base: string): string | undefined {
+  const local = importPath.startsWith('@/') ? { rest: importPath.slice(2) } : packageRest(importPath)
+
+  if (!local) {
+    return `\`base ${base}\` names a folder of a package, and \`${importPath}\` is not a package path`
+  }
+
+  const first = local.rest.split('/')[0] ?? ''
+
+  return first === base
+    ? undefined
+    : `\`base ${base}\` must name the path's first segment, and \`${importPath}\` starts with \`${first || '(nothing)'}\``
+}
+
 // walk up from a file to find the enclosing deck root (the directory holding deck.tree)
 export function findDeckRoot(
   fromFile: string,

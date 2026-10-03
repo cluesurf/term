@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/base-audio-context-event-map
+load @term/bind/browser/dom/base-audio-context-event-map
   find base-audio-context-event-map
 
-load @term/bind/code/browser/dom/offline-audio-completion-event
+load @term/bind/browser/dom/offline-audio-completion-event
   find offline-audio-completion-event
 
 form offline-audio-context-event-map, name <OfflineAudioContextEventMap>

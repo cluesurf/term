@@ -1,23 +1,23 @@
 
-load @term/bind/code/browser/dom/before-unload-event
+load @term/bind/browser/dom/before-unload-event
   find before-unload-event
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/message-event
+load @term/bind/browser/dom/message-event
   find message-event
 
-load @term/bind/code/browser/dom/page-transition-event
+load @term/bind/browser/dom/page-transition-event
   find page-transition-event
 
-load @term/bind/code/browser/dom/pop-state-event
+load @term/bind/browser/dom/pop-state-event
   find pop-state-event
 
-load @term/bind/code/browser/dom/promise-rejection-event
+load @term/bind/browser/dom/promise-rejection-event
   find promise-rejection-event
 
-load @term/bind/code/browser/dom/storage-event
+load @term/bind/browser/dom/storage-event
   find storage-event
 
 form window-event-handlers-event-map, name <WindowEventHandlersEventMap>

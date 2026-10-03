@@ -1,6 +1,6 @@
 # One regex dialect, the same matches and groups on every backend. Held by `pnpm term:base-gate`.
 
-load @term/base/code/regex
+load @term/base/regex
   find matches
   find find-match
   find find-matches
@@ -13,15 +13,15 @@ load @term/base/code/regex
   find is-valid-pattern
   find regex-match
 
-load @term/base/code/text/unicode
+load @term/base/text/unicode
   find rune-to-text
 
-load @term/base/code/list
+load @term/base/list
   find list
   find join
   find size
 
-load @term/base/code/maybe
+load @term/base/maybe
   find unwrap-or
 
 # the first match as start:end:text|group|group, with ~ for a group that took no part, or `none`

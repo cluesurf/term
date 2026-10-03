@@ -3,13 +3,13 @@
 # read-file`) renamed the definition for every file in the build rather than for the importing file only, so
 # @term/host's `read` went undefined elsewhere. Wrapping them here keeps each name imported once.
 
-load @term/base/code/file
+load @term/base/file
   find read
   find write
   find test
   find stat
 
-load @term/base/code/file/directory
+load @term/base/file/directory
   find make
   find list
 

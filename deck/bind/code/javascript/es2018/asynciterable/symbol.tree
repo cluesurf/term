@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-symbol
 
-load @term/bind/code/javascript/es2015/symbol/wellknown/symbol
+load @term/bind/javascript/es2015/symbol/wellknown/symbol
   find symbol
 
 form symbol

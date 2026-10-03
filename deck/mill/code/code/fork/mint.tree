@@ -1,13 +1,13 @@
-load @term/mill/code/code/form/link/mint
+load @term/mill/code/form/link/mint
   find link
 
-load @term/mill/code/code/seed/mint
+load @term/mill/code/seed/mint
   find seed
 
-load @term/mill/code/code/tool/flow/mint
+load @term/mill/code/tool/flow/mint
   find flow
 
-load @term/base/code/lang
+load @term/base/lang
   find fork-test
   find fork-test-pair
   find fork-miss
@@ -63,6 +63,17 @@ mint fork-miss, like fork-miss
       bind flow, read flow
 
 mint fork-case, like fork-case
+  case seed
+    site seed
+  case arm, mint fork-arm
+    site arm
+  hook make
+    make fork-case
+      bind seed, read seed
+      bind arm, read arm
+
+# `sift <value>` mints the very form `fork case, <value>` does
+mint sift, like fork-case
   case seed
     site seed
   case arm, mint fork-arm

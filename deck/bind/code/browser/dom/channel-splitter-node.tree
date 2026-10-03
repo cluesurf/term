@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/audio-node
+load @term/bind/browser/dom/audio-node
   find audio-node
 
 form channel-splitter-node, name <ChannelSplitterNode>

@@ -4,7 +4,7 @@
 # ../device. The defaults describe a phone: compact, touch, light, motion allowed, text at its standard size. A name
 # that is not a trait reads `no`.
 
-load @term/base/code/hash
+load @term/base/hash
   find hash
   find get
   find set

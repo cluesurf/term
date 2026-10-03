@@ -4,7 +4,7 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find error
   find native-boolean
   find native-null
@@ -13,10 +13,10 @@ load @term/bind/code/javascript
   find native-void
   find stream
 
-load @term/bind/code/node/events/event-emitter
+load @term/bind/node/events/event-emitter
   find abortable
 
-load @term/bind/code/node/fs/stream-options
+load @term/bind/node/fs/stream-options
   find stream-options
 
 form stream-options, name <StreamOptions>

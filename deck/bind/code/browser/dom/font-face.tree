@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/font-face-load-status
+load @term/bind/browser/dom/font-face-load-status
   find font-face-load-status
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form font-face, name <FontFace>

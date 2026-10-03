@@ -1,18 +1,18 @@
-load @term/mill/code/code/head/mint
+load @term/mill/code/head/mint
   find head
 
-load @term/mill/code/code/like/mint
+load @term/mill/code/like/mint
   find and
   find like
   find or
 
-load @term/mill/code/code/suit/mint
+load @term/mill/code/suit/mint
   find suit-base
 
-load @term/mill/code/code/take/mint
+load @term/mill/code/take/mint
   find take
 
-load @term/mill/code/code/task/mint
+load @term/mill/code/task/mint
   find task
 
 mint mask

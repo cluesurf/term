@@ -1,89 +1,89 @@
 
-load @term/bind/code/browser/dom/aes-cbc-params
+load @term/bind/browser/dom/aes-cbc-params
   find aes-cbc-params
 
-load @term/bind/code/browser/dom/aes-ctr-params
+load @term/bind/browser/dom/aes-ctr-params
   find aes-ctr-params
 
-load @term/bind/code/browser/dom/aes-derived-key-params
+load @term/bind/browser/dom/aes-derived-key-params
   find aes-derived-key-params
 
-load @term/bind/code/browser/dom/aes-gcm-params
+load @term/bind/browser/dom/aes-gcm-params
   find aes-gcm-params
 
-load @term/bind/code/browser/dom/aes-key-algorithm
+load @term/bind/browser/dom/aes-key-algorithm
   find aes-key-algorithm
 
-load @term/bind/code/browser/dom/aes-key-gen-params
+load @term/bind/browser/dom/aes-key-gen-params
   find aes-key-gen-params
 
-load @term/bind/code/browser/dom/algorithm-identifier
+load @term/bind/browser/dom/algorithm-identifier
   find algorithm-identifier
 
-load @term/bind/code/browser/dom/buffer-source
+load @term/bind/browser/dom/buffer-source
   find buffer-source
 
-load @term/bind/code/browser/dom/crypto-key
+load @term/bind/browser/dom/crypto-key
   find crypto-key
 
-load @term/bind/code/browser/dom/crypto-key-pair
+load @term/bind/browser/dom/crypto-key-pair
   find crypto-key-pair
 
-load @term/bind/code/browser/dom/ec-key-gen-params
+load @term/bind/browser/dom/ec-key-gen-params
   find ec-key-gen-params
 
-load @term/bind/code/browser/dom/ec-key-import-params
+load @term/bind/browser/dom/ec-key-import-params
   find ec-key-import-params
 
-load @term/bind/code/browser/dom/ecdh-key-derive-params
+load @term/bind/browser/dom/ecdh-key-derive-params
   find ecdh-key-derive-params
 
-load @term/bind/code/browser/dom/hkdf-params
+load @term/bind/browser/dom/hkdf-params
   find hkdf-params
 
-load @term/bind/code/browser/dom/hmac-import-params
+load @term/bind/browser/dom/hmac-import-params
   find hmac-import-params
 
-load @term/bind/code/browser/dom/hmac-key-gen-params
+load @term/bind/browser/dom/hmac-key-gen-params
   find hmac-key-gen-params
 
-load @term/bind/code/browser/dom/json-web-key
+load @term/bind/browser/dom/json-web-key
   find json-web-key
 
-load @term/bind/code/browser/dom/key-format
+load @term/bind/browser/dom/key-format
   find key-format
 
-load @term/bind/code/browser/dom/key-usage
+load @term/bind/browser/dom/key-usage
   find key-usage
 
-load @term/bind/code/browser/dom/pbkdf2-params
+load @term/bind/browser/dom/pbkdf2-params
   find pbkdf2-params
 
-load @term/bind/code/browser/dom/rsa-hashed-import-params
+load @term/bind/browser/dom/rsa-hashed-import-params
   find rsa-hashed-import-params
 
-load @term/bind/code/browser/dom/rsa-hashed-key-gen-params
+load @term/bind/browser/dom/rsa-hashed-key-gen-params
   find rsa-hashed-key-gen-params
 
-load @term/bind/code/browser/dom/rsa-oaep-params
+load @term/bind/browser/dom/rsa-oaep-params
   find rsa-oaep-params
 
-load @term/bind/code/browser/dom/subtle-crypto
+load @term/bind/browser/dom/subtle-crypto
   find subtle-crypto
 
-load @term/bind/code/javascript/es5/exclude
+load @term/bind/javascript/es5/exclude
   find exclude
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
 load @term/bind/code/javascript/iterable
   find iterable
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
 form subtle-crypto, name <SubtleCrypto>

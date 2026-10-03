@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { readFileSync, existsSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { compile } from '@term/make/code/compile/compile'
+import { stdlibResolver } from '@term/make/code/resolve'
 import type { Source } from '@term/make/code/compile/load'
 import type { Statement } from '@term/make/code/compile/node'
 
@@ -21,24 +22,8 @@ const baseTree = join(process.cwd(), 'deck', 'base')
 // `@term/base/...`. Both spell the same package, so the resolver accepts either prefix.
 const STDLIB_PREFIX = /^@term\/base\//
 
-const stdlib = (path: string): Source | undefined => {
-  if (!STDLIB_PREFIX.test(path)) {
-    return undefined
-  }
-
-  const rest = path.replace(STDLIB_PREFIX, '')
-
-  for (const candidate of [
-    join(baseTree, `${rest}.tree`),
-    join(baseTree, rest, 'base.tree'),
-  ]) {
-    if (existsSync(candidate)) {
-      return { file: candidate, text: readFileSync(candidate, 'utf8') }
-    }
-  }
-
-  return undefined
-}
+// the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+const stdlib = stdlibResolver()!
 
 // relative loads within the stdlib tree resolve against the importing file
 const resolve = (path: string, from: string): Source | undefined => {

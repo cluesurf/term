@@ -6,7 +6,7 @@
 # unconfirmed syntax guesses that a plain, verbose loop is the safer choice here. `show <text>` (CLAUDE.md's
 # metadata list) turned out not to be a callable statement — `console/log` is the real one.
 #
-# This benchmark is what actually found ../code/json/code.tree's text-cursor-at-end bug: json round-tripped at
+# This benchmark is what actually found ../code/json/code.tree's is-text-cursor-at-end bug: json round-tripped at
 # 117ms/5000 iterations against hex's 4.7ms/10000, roughly 50x slower per byte despite the input being only ~9x
 # longer — the signature of an O(n^2) term. Cause: char-count (Array.from, O(n)) was being recomputed on every
 # character of every parse instead of cached once at cursor construction. Fixed, remeasured: 25.7ms/5000, a 4.6x
@@ -19,10 +19,10 @@
 # normalized; pdf's plain template substitution is the cheapest at ~56ns per 4-operator call, as expected for the
 # simplest dialect in the package).
 
-load @term/base/code/clock
+load @term/base/clock
   find now
 
-load @term/base/code/console
+load @term/base/console
   find log
 
 load ../code/hex/code
@@ -33,7 +33,7 @@ load ../code/json/code
   find read-json
   find write-json
 
-load @term/base/code/list
+load @term/base/list
   find push
 
 load ../code/gzip/code
@@ -258,9 +258,9 @@ test <pdf operator generation throughput over 20,000 iterations>
         read index
         code 20000
     hook hold
-      call move-to(code 10, code 20)
-      call line-to(code 30, code 40)
-      call set-color-fill-rgb(code 1, code 0, code 0)
+      call move-to(code(10), code 20)
+      call line-to(code(30), code 40)
+      call set-color-fill-rgb(code(1), code(0), code 0)
       call fill
       save index
         call add

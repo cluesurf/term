@@ -6,7 +6,7 @@
 #
 # Run with: term test
 
-load @term/base/code/integer/32
+load @term/base/integer/32
   find i32-shift-left
   find i32-shift-right
   find i32-checked-add

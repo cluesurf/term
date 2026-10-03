@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/source-buffer
+load @term/bind/browser/dom/source-buffer
   find source-buffer
 
-load @term/bind/code/browser/dom/source-buffer-list
+load @term/bind/browser/dom/source-buffer-list
   find source-buffer-list
 
 load @term/bind/code/javascript/iterable-iterator

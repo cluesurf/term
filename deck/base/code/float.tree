@@ -2,7 +2,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/float
+load @term/base/native/{platform}/float
   find float-square-root
   find float-floor
   find float-ceiling

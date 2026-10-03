@@ -8,7 +8,7 @@ load @term/bind/code/browser/webworker/memory
 load @term/bind/code/browser/webworker/table
   find table
 
-load @term/bind/code/javascript/es5/function
+load @term/bind/javascript/es5/function
   find function
 
 form export-value, name <ExportValue>

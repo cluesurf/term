@@ -11,7 +11,7 @@
 
 note unstable
 
-load @term/base/code/native/{platform}/process/line
+load @term/base/native/{platform}/process/line
   find line-open
   find line-ask
   find line-read
@@ -28,7 +28,6 @@ task open
   like tool
   send back
     call line-open
-      wait true
 
 # write `prompt`, then answer with the line that comes back, without its newline. The empty text means the input
 # ended (the person pressed ctrl-d, or standard input was a file that ran out).
@@ -41,7 +40,6 @@ task ask
     call line-ask
       read tool
       read prompt
-      wait true
 
 # the next line, with no prompt written first
 task read
@@ -51,7 +49,6 @@ task read
   send back
     call line-read
       read tool
-      wait true
 
 task close
   note async
@@ -59,4 +56,3 @@ task close
   like void
   call line-close
     read tool
-    wait true

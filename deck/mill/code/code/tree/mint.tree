@@ -1,13 +1,13 @@
-load @term/mill/code/code/take/mint
+load @term/mill/code/take/mint
   find take
 
-load @term/mill/code/code/task/mint
+load @term/mill/code/task/mint
   find task
 
-load @term/mill/code/code/tool/flow/mint
+load @term/mill/code/tool/flow/mint
   find flow
 
-load @term/base/code/lang
+load @term/base/lang
   find code-tree
   find code-tree-take
   find code-tree-body

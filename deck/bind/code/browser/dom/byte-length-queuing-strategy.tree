@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/queuing-strategy
+load @term/bind/browser/dom/queuing-strategy
   find queuing-strategy
 
-load @term/bind/code/browser/dom/queuing-strategy-size
+load @term/bind/browser/dom/queuing-strategy-size
   find queuing-strategy-size
 
-load @term/bind/code/javascript/es5/array-buffer-view
+load @term/bind/javascript/es5/array-buffer-view
   find array-buffer-view
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form byte-length-queuing-strategy, name <ByteLengthQueuingStrategy>

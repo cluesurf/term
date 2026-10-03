@@ -5,32 +5,32 @@
 # real streaming source (`make-streaming-text-cursor`) can parse a JSON document far larger than memory a chunk
 # at a time. See note/term/feed/08-streaming.md.
 
-load @term/base/code/boolean
+load @term/base/boolean
   find and
   find or
   find not
 
-load @term/base/code/list
+load @term/base/list
   find push
   find join
   find get
   find set
 
-load @term/base/code/text
+load @term/base/text
   find char-count
   find char-at
   find char-code-at
 
-load @term/base/code/text/string
+load @term/base/text/string
   find concat
 
-load @term/base/code/rune
+load @term/base/rune
   find rune-to-text
 
 load ../hex/code
   find hex-digit-value
 
-load @term/base/code/float
+load @term/base/float
   find to-decimal
   find to-number
 
@@ -38,10 +38,10 @@ load ../base
   find text-cursor
   find make-text-cursor
   find make-streaming-text-cursor
-  find text-cursor-at-end
-  find text-cursor-peek
-  find text-cursor-peek-code
-  find text-cursor-read
+  find is-text-cursor-at-end
+  find peek-text-cursor
+  find peek-text-cursor-code
+  find read-text-cursor
 
 load ./form
   find json-value
@@ -72,19 +72,19 @@ task skip-json-whitespace
   walk test
     hook test
       call and
-        call not, call text-cursor-at-end(read cursor)
-        call is-json-whitespace(call text-cursor-peek-code(read cursor))
+        call not, call is-text-cursor-at-end read cursor
+        call is-json-whitespace call peek-text-cursor-code read cursor
     hook hold
-      call text-cursor-read(read cursor)
+      call read-text-cursor read cursor
 
 task expect-json-char
   take cursor, like text-cursor
   take value, like text
   fork test
     hook test
-      call is-equal(call text-cursor-peek(read cursor), read value)
+      call is-equal(call(peek-text-cursor(read cursor)), read value)
     hook hold
-      call text-cursor-read(read cursor)
+      call read-text-cursor read cursor
       send back
   halt <unexpected character in JSON>
 
@@ -140,38 +140,38 @@ task parse-json-number
   save negative, false
   fork test
     hook test
-      call is-equal(call text-cursor-peek(read cursor), text <->)
+      call is-equal(call(peek-text-cursor(read cursor)), text <->)
     hook hold
-      call text-cursor-read(read cursor)
+      call read-text-cursor read cursor
       save negative, true
   save magnitude, code 0.0
   walk test
     hook test
       call and
-        call not, call text-cursor-at-end(read cursor)
-        call is-json-digit(call text-cursor-peek-code(read cursor))
+        call not, call is-text-cursor-at-end read cursor
+        call is-json-digit call peek-text-cursor-code read cursor
     hook hold
       save magnitude
         call add
           call multiply
             read magnitude
             code 10.0
-          call json-digit-value(call text-cursor-peek-code(read cursor))
-      call text-cursor-read(read cursor)
+          call json-digit-value call peek-text-cursor-code read cursor
+      call read-text-cursor read cursor
   save fraction, code 0.0
   fork test
     hook test
       call and
-        call not, call text-cursor-at-end(read cursor)
-        call is-equal(call text-cursor-peek(read cursor), text <.>)
+        call not, call is-text-cursor-at-end read cursor
+        call is-equal(call(peek-text-cursor(read cursor)), text <.>)
     hook hold
-      call text-cursor-read(read cursor)
+      call read-text-cursor read cursor
       save divisor, code 1.0
       walk test
         hook test
           call and
-            call not, call text-cursor-at-end(read cursor)
-            call is-json-digit(call text-cursor-peek-code(read cursor))
+            call not, call is-text-cursor-at-end read cursor
+            call is-json-digit call peek-text-cursor-code read cursor
         hook hold
           save divisor
             call multiply
@@ -181,9 +181,9 @@ task parse-json-number
             call add
               read fraction
               call divide
-                call json-digit-value(call text-cursor-peek-code(read cursor))
+                call json-digit-value call peek-text-cursor-code read cursor
                 read divisor
-          call text-cursor-read(read cursor)
+          call read-text-cursor read cursor
   save value
     call add
       read magnitude
@@ -191,37 +191,37 @@ task parse-json-number
   fork test
     hook test
       call and
-        call not, call text-cursor-at-end(read cursor)
+        call not, call is-text-cursor-at-end read cursor
         call or
-          call is-equal(call text-cursor-peek(read cursor), text <e>)
-          call is-equal(call text-cursor-peek(read cursor), text <E>)
+          call is-equal(call(peek-text-cursor(read cursor)), text <e>)
+          call is-equal(call(peek-text-cursor(read cursor)), text <E>)
     hook hold
-      call text-cursor-read(read cursor)
+      call read-text-cursor read cursor
       save exponent-negative, false
       fork test
         hook test
-          call is-equal(call text-cursor-peek(read cursor), text <->)
+          call is-equal(call(peek-text-cursor(read cursor)), text <->)
         hook hold
-          call text-cursor-read(read cursor)
+          call read-text-cursor read cursor
           save exponent-negative, true
         hook test
-          call is-equal(call text-cursor-peek(read cursor), text <+>)
+          call is-equal(call(peek-text-cursor(read cursor)), text <+>)
         hook hold
-          call text-cursor-read(read cursor)
+          call read-text-cursor read cursor
       save exponent, code 0
       walk test
         hook test
           call and
-            call not, call text-cursor-at-end(read cursor)
-            call is-json-digit(call text-cursor-peek-code(read cursor))
+            call not, call is-text-cursor-at-end read cursor
+            call is-json-digit call peek-text-cursor-code read cursor
         hook hold
           save exponent
             call add
               call multiply
                 read exponent
                 code 10
-              call subtract(call text-cursor-peek-code(read cursor), code 48)
-          call text-cursor-read(read cursor)
+              call subtract(call(peek-text-cursor-code(read cursor)), code 48)
+          call read-text-cursor read cursor
       save index, code 0
       walk test
         hook test
@@ -272,8 +272,8 @@ task parse-json-hex-4
           call multiply
             read value
             code 16
-          call hex-digit-value(call text-cursor-peek-code(read cursor))
-      call text-cursor-read(read cursor)
+          call hex-digit-value call peek-text-cursor-code read cursor
+      call read-text-cursor read cursor
       save index
         call add
           read index
@@ -283,9 +283,9 @@ task parse-json-hex-4
 task parse-json-string-escape
   take cursor, like text-cursor
   like text
-  call text-cursor-read(read cursor)
+  call read-text-cursor read cursor
   save marker
-    call text-cursor-read(read cursor)
+    call read-text-cursor read cursor
   fork test
     hook test
       call is-equal
@@ -368,14 +368,14 @@ task parse-json-string
       read continue
     hook hold
       save next
-        call text-cursor-peek(read cursor)
+        call peek-text-cursor read cursor
       fork test
         hook test
           call is-equal
             read next
             text <">
         hook hold
-          call text-cursor-read(read cursor)
+          call read-text-cursor read cursor
           save continue, false
         hook test
           call is-equal
@@ -388,7 +388,7 @@ task parse-json-string
         hook miss
           call push
             read chars
-            call text-cursor-read read cursor
+            call read-text-cursor read cursor
   send back
     call join
       read chars
@@ -399,7 +399,7 @@ task parse-json-value
   like json-value
   call skip-json-whitespace(read cursor)
   save next
-    call text-cursor-peek(read cursor)
+    call peek-text-cursor read cursor
   fork test
     hook test
       call is-equal
@@ -473,7 +473,7 @@ task parse-json-object
   fork test
     hook test
       call not
-        call is-equal(call text-cursor-peek(read cursor), text <}>)
+        call is-equal(call(peek-text-cursor(read cursor)), text <}>)
     hook hold
       save continue, true
       walk test
@@ -498,9 +498,9 @@ task parse-json-object
           call skip-json-whitespace(read cursor)
           fork test
             hook test
-              call is-equal(call text-cursor-peek(read cursor), text <,>)
+              call is-equal(call(peek-text-cursor(read cursor)), text <,>)
             hook hold
-              call text-cursor-read(read cursor)
+              call read-text-cursor read cursor
             hook miss
               save continue, false
   call skip-json-whitespace(read cursor)
@@ -523,7 +523,7 @@ task parse-json-array
   fork test
     hook test
       call not
-        call is-equal(call text-cursor-peek(read cursor), text <]>)
+        call is-equal(call(peek-text-cursor(read cursor)), text <]>)
     hook hold
       save continue, true
       walk test
@@ -537,9 +537,9 @@ task parse-json-array
           call skip-json-whitespace(read cursor)
           fork test
             hook test
-              call is-equal(call text-cursor-peek(read cursor), text <,>)
+              call is-equal(call(peek-text-cursor(read cursor)), text <,>)
             hook hold
-              call text-cursor-read(read cursor)
+              call read-text-cursor read cursor
             hook miss
               save continue, false
   call skip-json-whitespace(read cursor)

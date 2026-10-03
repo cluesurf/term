@@ -1,35 +1,35 @@
 
-load @term/bind/code/browser/dom/iterable/cache
+load @term/bind/browser/dom/iterable/cache
   find cache
 
-load @term/bind/code/browser/webworker/cache-query-options
+load @term/bind/browser/webworker/cache-query-options
   find cache-query-options
 
-load @term/bind/code/browser/webworker/request
+load @term/bind/browser/webworker/request
   find request
 
-load @term/bind/code/browser/webworker/request-info
+load @term/bind/browser/webworker/request-info
   find request-info
 
-load @term/bind/code/browser/webworker/response
+load @term/bind/browser/webworker/response
   find response
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/es5/readonly-array
+load @term/bind/javascript/es5/readonly-array
   find readonly-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-undefined
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form cache, name <Cache>

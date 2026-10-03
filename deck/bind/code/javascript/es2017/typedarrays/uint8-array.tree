@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript/es2016/array/include/uint8-array
+load @term/bind/javascript/es2016/array/include/uint8-array
   find uint8-array
 
 form uint8-array

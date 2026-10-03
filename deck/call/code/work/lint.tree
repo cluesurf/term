@@ -1,7 +1,7 @@
-load @term/call/code/work/home
+load @term/call/work/home
   find root, name project-root
 
-load @term/call/code/work/tint
+load @term/call/work/tint
   find log-good
   find log-fail
   find log-step
@@ -22,10 +22,10 @@ load @term/call/code/work/tint
 #
 # Ported from deck/call/code/lint.ts (cli-in-term-0004).
 
-load @term/call/code/work/files
+load @term/call/work/files
   find walk-trees
 
-load @term/base/code/file
+load @term/base/file
   find read, name read-file
 
 dock load
@@ -62,7 +62,7 @@ task lint
         make lint-ask, bind(root, root), bind(paths, make list), bind fix, true
         wait true
       send back
-  save files, walk-trees root, wait true
+  save files, walk-trees root
 
   fork test
     is-equal read(files/length), code 0
@@ -75,7 +75,7 @@ task lint
 
   walk files
     take site, name file
-    save text, read-file file, wait true
+    save text, read-file file
     save shown, node-path/relative root, file
     save found
       analyze-module/analyze

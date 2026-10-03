@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/performance-entry
+load @term/bind/browser/dom/performance-entry
   find performance-entry
 
 form performance-paint-timing, name <PerformancePaintTiming>

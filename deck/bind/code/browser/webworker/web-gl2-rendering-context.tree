@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/web-gl2-rendering-context
+load @term/bind/browser/dom/web-gl2-rendering-context
   find web-gl2-rendering-context
 
-load @term/bind/code/browser/webworker/web-gl-rendering-context-base
+load @term/bind/browser/webworker/web-gl-rendering-context-base
   find web-gl-rendering-context-base
 
-load @term/bind/code/browser/webworker/web-gl2-rendering-context-base
+load @term/bind/browser/webworker/web-gl2-rendering-context-base
   find web-gl2-rendering-context-base
 
-load @term/bind/code/browser/webworker/web-gl2-rendering-context-overloads
+load @term/bind/browser/webworker/web-gl2-rendering-context-overloads
   find web-gl2-rendering-context-overloads
 
 form web-gl2-rendering-context, name <WebGL2RenderingContext>

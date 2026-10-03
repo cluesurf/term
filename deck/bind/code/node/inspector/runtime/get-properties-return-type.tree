@@ -1,12 +1,12 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-undefined
 
 load @term/bind
   find or
 
-load @term/bind/code/node/inspector/runtime
+load @term/bind/node/inspector/runtime
   find exception-details
   find internal-property-descriptor
   find property-descriptor

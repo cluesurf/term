@@ -8,35 +8,35 @@
 
 note stable
 
-load @term/base/code/text/unicode
+load @term/base/text/unicode
   find to-runes
   find rune-to-text
 
-load @term/base/code/text
+load @term/base/text
   find starts-with
   find substring
   find last-index-of
   find index-of
   find char-count
 
-load @term/base/code/text/number
+load @term/base/text/number
   find parse-integer
   find parse-float
   find host-parse-float
 
-load @term/base/code/list
+load @term/base/list
   find list
   find size
   find get
 
-load @term/base/code/hash
+load @term/base/hash
   find hash
   find get-or-default
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
 
-load @term/base/code/exception
+load @term/base/exception
   find mismatch
 
 form toml
@@ -68,6 +68,11 @@ form toml-mismatch
     bind note, <Not TOML>
     link at, like number
     link reason, like text
+
+# where a read stands in the runes: one object, since every task it is handed moves it on
+form toml-cursor
+  mark shared
+  link at, like number
 
 task refuse-toml
   mark private
@@ -147,40 +152,29 @@ task peek
   take r
     like list
       like number
-  take cursor
-    like list
-      like number
+  take cursor, like toml-cursor
   take ahead, like number
   like number
   send back
     call at-rune
       read r
       call add
-        call at-rune
-          read cursor
-          code 0
+        read cursor/at
         read ahead
 
 task place
   mark private
-  take cursor
-    like list
-      like number
+  take cursor, like toml-cursor
   like number
   send back
-    call at-rune
-      read cursor
-      code 0
+    read cursor/at
 
 task move
   mark private
-  take cursor
-    like list
-      like number
+  take cursor, like toml-cursor
   take count, like number
   like number
-  call cursor/set
-    code 0
+  save cursor/at
     call add
       call place
         read cursor
@@ -194,26 +188,44 @@ task skip-blank
   take r
     like list
       like number
-  take cursor
-    like list
-      like number
+  take cursor, like toml-cursor
   like number
+  # a cursor walk: each turn reads a rune or more, or the next decides to stop, so no more turns are taken than twice the runes
+  save turns, code 0
+  save limit
+    call add
+      call multiply
+        read r/length
+        code 2
+      code 8
   walk test
+    down
+      call subtract
+        read limit
+        read turns
     hook test
-      call or
-        call is-equal
-          call peek
-            read r
-            read cursor
-            code 0
-          code 32
-        call is-equal
-          call peek
-            read r
-            read cursor
-            code 0
-          code 9
+      call and
+        call or
+          call is-equal
+            call peek
+              read r
+              read cursor
+              code 0
+            code 32
+          call is-equal
+            call peek
+              read r
+              read cursor
+              code 0
+            code 9
+        call is-below
+          read turns
+          read limit
     hook step
+      save turns
+        call add
+          read turns
+          code 1
       call move
         read cursor
         code 1
@@ -227,9 +239,7 @@ task skip-comment
   take r
     like list
       like number
-  take cursor
-    like list
-      like number
+  take cursor, like toml-cursor
   like number
   fork test
     hook test
@@ -240,22 +250,42 @@ task skip-comment
           code 0
         code 35
     hook hold
+      # a cursor walk: each turn reads a rune or more, or the next decides to stop, so no more turns are taken than twice the runes
+      save turns, code 0
+      save limit
+        call add
+          call multiply
+            read r/length
+            code 2
+          code 8
       walk test
+        down
+          call subtract
+            read limit
+            read turns
         hook test
           call and
-            call is-unequal
-              call peek
-                read r
-                read cursor
+            call and
+              call is-unequal
+                call peek
+                  read r
+                  read cursor
+                  code 0
+                code 10
+              call is-minimum
+                call peek
+                  read r
+                  read cursor
+                  code 0
                 code 0
-              code 10
-            call is-minimum
-              call peek
-                read r
-                read cursor
-                code 0
-              code 0
+            call is-below
+              read turns
+              read limit
         hook step
+          save turns
+            call add
+              read turns
+              code 1
           save c
             call peek
               read r
@@ -296,9 +326,7 @@ task take-newline
   take r
     like list
       like number
-  take cursor
-    like list
-      like number
+  take cursor, like toml-cursor
   like boolean
   fork test
     hook test
@@ -341,9 +369,7 @@ task end-line
   take r
     like list
       like number
-  take cursor
-    like list
-      like number
+  take cursor, like toml-cursor
   like number
   call skip-blank
     read r
@@ -383,15 +409,33 @@ task skip-space
   take r
     like list
       like number
-  take cursor
-    like list
-      like number
+  take cursor, like toml-cursor
   like number
   save going, true
+  # a cursor walk: each turn reads a rune or more, or the next decides to stop, so no more turns are taken than twice the runes
+  save turns, code 0
+  save limit
+    call add
+      call multiply
+        read r/length
+        code 2
+      code 8
   walk test
+    down
+      call subtract
+        read limit
+        read turns
     hook test
-      read going
+      call and
+        read going
+        call is-below
+          read turns
+          read limit
     hook step
+      save turns
+        call add
+          read turns
+          code 1
       call skip-blank
         read r
         read cursor
@@ -503,9 +547,7 @@ task read-escape
   take r
     like list
       like number
-  take cursor
-    like list
-      like number
+  take cursor, like toml-cursor
   like text
   save letter
     call peek
@@ -679,9 +721,7 @@ task read-string
   take r
     like list
       like number
-  take cursor
-    like list
-      like number
+  take cursor, like toml-cursor
   like text
   save quote
     call peek
@@ -696,10 +736,30 @@ task read-string
     code 1
   save out, text <>
   save going, true
+  # a cursor walk: each turn reads a rune or more, or the next decides to stop, so no more turns are taken than twice the runes
+  save turns, code 0
+  save limit
+    call add
+      call multiply
+        read r/length
+        code 2
+      code 8
   walk test
+    down
+      call subtract
+        read limit
+        read turns
     hook test
-      read going
+      call and
+        read going
+        call is-below
+          read turns
+          read limit
     hook step
+      save turns
+        call add
+          read turns
+          code 1
       save c
         call peek
           read r
@@ -773,9 +833,7 @@ task read-long-string
   take r
     like list
       like number
-  take cursor
-    like list
-      like number
+  take cursor, like toml-cursor
   like text
   save quote
     call peek
@@ -794,10 +852,30 @@ task read-long-string
     read cursor
   save out, text <>
   save going, true
+  # a cursor walk: each turn reads a rune or more, or the next decides to stop, so no more turns are taken than twice the runes
+  save turns, code 0
+  save limit
+    call add
+      call multiply
+        read r/length
+        code 2
+      code 8
   walk test
+    down
+      call subtract
+        read limit
+        read turns
     hook test
-      read going
+      call and
+        read going
+        call is-below
+          read turns
+          read limit
     hook step
+      save turns
+        call add
+          read turns
+          code 1
       save c
         call peek
           read r
@@ -968,15 +1046,33 @@ task skip-space-only
   take r
     like list
       like number
-  take cursor
-    like list
-      like number
+  take cursor, like toml-cursor
   like number
   save going, true
+  # a cursor walk: each turn reads a rune or more, or the next decides to stop, so no more turns are taken than twice the runes
+  save turns, code 0
+  save limit
+    call add
+      call multiply
+        read r/length
+        code 2
+      code 8
   walk test
+    down
+      call subtract
+        read limit
+        read turns
     hook test
-      read going
+      call and
+        read going
+        call is-below
+          read turns
+          read limit
     hook step
+      save turns
+        call add
+          read turns
+          code 1
       call skip-blank
         read r
         read cursor
@@ -997,9 +1093,7 @@ task read-simple-key
   take r
     like list
       like number
-  take cursor
-    like list
-      like number
+  take cursor, like toml-cursor
   like text
   save c
     call peek
@@ -1041,14 +1135,34 @@ task read-simple-key
           read r
           read cursor
   save out, text <>
+  # a cursor walk: each turn reads a rune or more, or the next decides to stop, so no more turns are taken than twice the runes
+  save turns, code 0
+  save limit
+    call add
+      call multiply
+        read r/length
+        code 2
+      code 8
   walk test
+    down
+      call subtract
+        read limit
+        read turns
     hook test
-      call is-bare-key-rune
-        call peek
-          read r
-          read cursor
-          code 0
+      call and
+        call is-bare-key-rune
+          call peek
+            read r
+            read cursor
+            code 0
+        call is-below
+          read turns
+          read limit
     hook step
+      save turns
+        call add
+          read turns
+          code 1
       save piece
         call rune-to-text
           call peek
@@ -1077,9 +1191,7 @@ task read-key
   take r
     like list
       like number
-  take cursor
-    like list
-      like number
+  take cursor, like toml-cursor
   like list
     like text
   save parts
@@ -1094,15 +1206,35 @@ task read-key
   call skip-blank
     read r
     read cursor
+  # a cursor walk: each turn reads a rune or more, or the next decides to stop, so no more turns are taken than twice the runes
+  save turns, code 0
+  save limit
+    call add
+      call multiply
+        read r/length
+        code 2
+      code 8
   walk test
+    down
+      call subtract
+        read limit
+        read turns
     hook test
-      call is-equal
-        call peek
-          read r
-          read cursor
-          code 0
-        code 46
+      call and
+        call is-equal
+          call peek
+            read r
+            read cursor
+            code 0
+          code 46
+        call is-below
+          read turns
+          read limit
     hook step
+      save turns
+        call add
+          read turns
+          code 1
       call move
         read cursor
         code 1
@@ -1139,19 +1271,37 @@ task read-token
   take r
     like list
       like number
-  take cursor
-    like list
-      like number
+  take cursor, like toml-cursor
   like text
   save out, text <>
+  # a cursor walk: each turn reads a rune or more, or the next decides to stop, so no more turns are taken than twice the runes
+  save turns, code 0
+  save limit
+    call add
+      call multiply
+        read r/length
+        code 2
+      code 8
   walk test
+    down
+      call subtract
+        read limit
+        read turns
     hook test
-      call is-token-rune
-        call peek
-          read r
-          read cursor
-          code 0
+      call and
+        call is-token-rune
+          call peek
+            read r
+            read cursor
+            code 0
+        call is-below
+          read turns
+          read limit
     hook step
+      save turns
+        call add
+          read turns
+          code 1
       save piece
         call rune-to-text
           call peek
@@ -1457,13 +1607,21 @@ task read-date-time
         call add
           read j
           code 1
-      # no `down`: what moves the loop on is not something the prover can bound here; each turn still advances
+      # past the end there is no digit (`at-rune` answers -1 there), which the test states where the prover sees it
       walk test
+        down
+          call subtract
+            read rest/length
+            read j
         hook test
-          call is-digit
-            call at-rune
-              read rest
+          call and
+            call is-below
               read j
+              read rest/length
+            call is-digit
+              call at-rune
+                read rest
+                read j
         hook step
           save piece
             call rune-to-text
@@ -1976,9 +2134,7 @@ task read-value
   take r
     like list
       like number
-  take cursor
-    like list
-      like number
+  take cursor, like toml-cursor
   like toml
   save c
     call peek
@@ -2038,10 +2194,30 @@ task read-value
       save items
         make list
       save going, true
+      # a cursor walk: each turn reads a rune or more, or the next decides to stop, so no more turns are taken than twice the runes
+      save turns, code 0
+      save limit
+        call add
+          call multiply
+            read r/length
+            code 2
+          code 8
       walk test
+        down
+          call subtract
+            read limit
+            read turns
         hook test
-          read going
+          call and
+            read going
+            call is-below
+              read turns
+              read limit
         hook step
+          save turns
+            call add
+              read turns
+              code 1
           call skip-space
             read r
             read cursor
@@ -2634,9 +2810,7 @@ task read-inline-table
   take r
     like list
       like number
-  take cursor
-    like list
-      like number
+  take cursor, like toml-cursor
   like toml
   call move
     read cursor
@@ -2663,10 +2837,30 @@ task read-inline-table
           bind entries
             make list
   save going, true
+  # a cursor walk: each turn reads a rune or more, or the next decides to stop, so no more turns are taken than twice the runes
+  save turns, code 0
+  save limit
+    call add
+      call multiply
+        read r/length
+        code 2
+      code 8
   walk test
+    down
+      call subtract
+        read limit
+        read turns
     hook test
-      read going
+      call and
+        read going
+        call is-below
+          read turns
+          read limit
     hook step
+      save turns
+        call add
+          read turns
+          code 1
       save at
         call place
           read cursor
@@ -2763,8 +2957,8 @@ task parse-toml
     call to-runes
       read text
   save cursor
-    make list
-  call cursor/push, code 0
+    make toml-cursor
+      bind at, code 0
   # a byte order mark is allowed first
   fork test
     hook test
@@ -2782,10 +2976,30 @@ task parse-toml
     call empty-registry
   save table, text <>
   save going, true
+  # a cursor walk: each turn reads a rune or more, or the next decides to stop, so no more turns are taken than twice the runes
+  save turns, code 0
+  save limit
+    call add
+      call multiply
+        read r/length
+        code 2
+      code 8
   walk test
+    down
+      call subtract
+        read limit
+        read turns
     hook test
-      read going
+      call and
+        read going
+        call is-below
+          read turns
+          read limit
     hook step
+      save turns
+        call add
+          read turns
+          code 1
       call skip-space
         read r
         read cursor

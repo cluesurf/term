@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/webgl-compressed-texture-s3tc-srgb
+load @term/bind/browser/dom/webgl-compressed-texture-s3tc-srgb
   find webgl-compressed-texture-s3tc-srgb
 
-load @term/bind/code/browser/webworker/g-lenum
+load @term/bind/browser/webworker/g-lenum
   find g-lenum
 
 form webgl-compressed-texture-s3tc-srgb, name <WEBGL_compressed_texture_s3tc_srgb>

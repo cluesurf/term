@@ -1,11 +1,11 @@
 
-load @term/bind/code/javascript/es2015/collection/map-constructor
+load @term/bind/javascript/es2015/collection/map-constructor
   find map-constructor
 
-load @term/bind/code/javascript/es2015/iterable/iterable
+load @term/bind/javascript/es2015/iterable/iterable
   find iterable
 
-load @term/bind/code/javascript/es2015/iterable/map
+load @term/bind/javascript/es2015/iterable/map
   find map
 
 form map-constructor, name <MapConstructor>

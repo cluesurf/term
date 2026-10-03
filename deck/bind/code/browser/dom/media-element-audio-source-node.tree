@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/audio-node
+load @term/bind/browser/dom/audio-node
   find audio-node
 
-load @term/bind/code/browser/dom/html-media-element
+load @term/bind/browser/dom/html-media-element
   find html-media-element
 
 form media-element-audio-source-node, name <MediaElementAudioSourceNode>

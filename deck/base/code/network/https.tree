@@ -6,17 +6,17 @@
 
 note unstable
 
-load @term/base/code/native/{platform}/network/https
+load @term/base/native/{platform}/network/https
   find https-serve
   find https-start
 
-load @term/base/code/network/server/request
+load @term/base/network/server/request
   find request
 
-load @term/base/code/network/server/response
+load @term/base/network/server/response
   find response
 
-load @term/base/code/network/server
+load @term/base/network/server
   find server
 
 # run an HTTPS server on `port`, blocking for the life of the process: the entry point of a server binary.
@@ -63,4 +63,3 @@ task start
       read handler
       read certificate
       read key
-      wait true

@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
 
-load @term/bind/code/node/crypto/certificate
+load @term/bind/node/crypto/certificate
   find certificate
 
 form certificate, name <Certificate>

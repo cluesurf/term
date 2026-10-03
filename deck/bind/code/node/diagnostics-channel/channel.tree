@@ -1,15 +1,15 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-string
   find native-void
 
-load @term/bind/code/node/diagnostics-channel
+load @term/bind/node/diagnostics-channel
   find channel-listener
 
 form channel, name <Channel>
-  link name, name <name>, like native-string
-  link has-subscribers, name <hasSubscribers>, like native-boolean
+  link name, name(<name>), like native-string
+  link has-subscribers, name(<hasSubscribers>), like native-boolean
 
   task subscribe, name <subscribe>
     like native-void

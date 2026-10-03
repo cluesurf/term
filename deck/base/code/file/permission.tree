@@ -3,7 +3,7 @@
 
 note unstable
 
-load @term/base/code/native/{platform}/file/asynchronous/permission
+load @term/base/native/{platform}/file/asynchronous/permission
   find permission-read
   find permission-write
 
@@ -14,7 +14,6 @@ task read
   send back
     call permission-read
       read path
-      wait true
 
 task write
   note async
@@ -24,4 +23,3 @@ task write
   call permission-write
     read path
     read mode
-    wait true

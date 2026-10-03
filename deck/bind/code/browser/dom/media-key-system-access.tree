@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/media-key-system-configuration
+load @term/bind/browser/dom/media-key-system-configuration
   find media-key-system-configuration
 
-load @term/bind/code/browser/dom/media-keys
+load @term/bind/browser/dom/media-keys
   find media-keys
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form media-key-system-access, name <MediaKeySystemAccess>

@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/payment-details-update
+load @term/bind/browser/dom/payment-details-update
   find payment-details-update
 
-load @term/bind/code/javascript/es5/promise-like
+load @term/bind/javascript/es5/promise-like
   find promise-like
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form payment-request-update-event, name <PaymentRequestUpdateEvent>

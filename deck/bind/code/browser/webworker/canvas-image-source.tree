@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/webworker/image-bitmap
+load @term/bind/browser/webworker/image-bitmap
   find image-bitmap
 
-load @term/bind/code/browser/webworker/offscreen-canvas
+load @term/bind/browser/webworker/offscreen-canvas
   find offscreen-canvas
 
 form canvas-image-source, name <CanvasImageSource>

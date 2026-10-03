@@ -1,23 +1,23 @@
 
-load @term/bind/code/browser/dom/angle-instanced-arrays
+load @term/bind/browser/dom/angle-instanced-arrays
   find angle-instanced-arrays
 
-load @term/bind/code/browser/webworker/g-lenum
+load @term/bind/browser/webworker/g-lenum
   find g-lenum
 
-load @term/bind/code/browser/webworker/g-lint
+load @term/bind/browser/webworker/g-lint
   find g-lint
 
-load @term/bind/code/browser/webworker/g-lintptr
+load @term/bind/browser/webworker/g-lintptr
   find g-lintptr
 
-load @term/bind/code/browser/webworker/g-lsizei
+load @term/bind/browser/webworker/g-lsizei
   find g-lsizei
 
-load @term/bind/code/browser/webworker/g-luint
+load @term/bind/browser/webworker/g-luint
   find g-luint
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form angle-instanced-arrays, name <ANGLE_instanced_arrays>

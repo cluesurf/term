@@ -1,25 +1,25 @@
-load @term/mill/code/code/like/mint
+load @term/mill/code/like/mint
   find like
 
-load @term/mill/code/code/bind/mint
+load @term/mill/code/bind/mint
   find bind
 
-load @term/mill/code/code/halt/mint
+load @term/mill/code/halt/mint
   find halt
 
-load @term/mill/code/code/hook/mint
+load @term/mill/code/hook/mint
   find hook
 
 load @term/mill/code/code/note/mint
   find note
 
-load @term/mill/code/code/seed/mint
+load @term/mill/code/seed/mint
   find seed
 
-load @term/mill/code/code/wait/mint
+load @term/mill/code/wait/mint
   find wait
 
-load @term/base/code/lang
+load @term/base/lang
   find code-call
 
 mint call, like code-call
@@ -49,6 +49,29 @@ mint call, like code-call
       bind halt, read halt
       bind note, read note
       bind like, read like
+      bind link, read link
+      bind seed, read seed
+      bind name, read name
+
+# `tick f(x)`: built as a `call`, so it is one call in every reader after this. The bridge reads the head word
+mint tick, like code-call
+  case wait
+    site wait
+  case bind
+    site bind
+  case halt
+    site halt
+  case link, mint call-link
+    site link
+  case seed
+    site seed
+  case name
+    site name
+  hook make
+    make call
+      bind wait, read wait
+      bind bind, read bind
+      bind halt, read halt
       bind link, read link
       bind seed, read seed
       bind name, read name

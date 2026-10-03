@@ -1,23 +1,23 @@
 
-load @term/bind/code/browser/webworker/blob
+load @term/bind/browser/webworker/blob
   find blob
 
-load @term/bind/code/browser/webworker/buffer-source
+load @term/bind/browser/webworker/buffer-source
   find buffer-source
 
-load @term/bind/code/browser/webworker/form-data
+load @term/bind/browser/webworker/form-data
   find form-data
 
-load @term/bind/code/browser/webworker/readable-stream
+load @term/bind/browser/webworker/readable-stream
   find readable-stream
 
-load @term/bind/code/browser/webworker/url-search-params
+load @term/bind/browser/webworker/url-search-params
   find url-search-params
 
-load @term/bind/code/javascript/es5/uint8-array
+load @term/bind/javascript/es5/uint8-array
   find uint8-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form body-init, name <BodyInit>

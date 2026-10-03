@@ -1,5 +1,5 @@
 
-load @term/bind/code/node/stream/internal
+load @term/bind/node/stream/internal
   find readable-options
 
 form stream, name <Stream>

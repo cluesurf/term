@@ -2,7 +2,7 @@
 load @term/bind
   find or
 
-load @term/bind/code/node/os
+load @term/bind/node/os
   find network-interface-info-i-pv4
   find network-interface-info-i-pv6
 

@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/audio-configuration
+load @term/bind/browser/dom/audio-configuration
   find audio-configuration
 
-load @term/bind/code/browser/dom/video-configuration
+load @term/bind/browser/dom/video-configuration
   find video-configuration
 
 form media-configuration, name <MediaConfiguration>

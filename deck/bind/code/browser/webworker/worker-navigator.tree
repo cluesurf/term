@@ -1,20 +1,20 @@
 
-load @term/bind/code/browser/webworker/navigator-concurrent-hardware
+load @term/bind/browser/webworker/navigator-concurrent-hardware
   find navigator-concurrent-hardware
 
-load @term/bind/code/browser/webworker/navigator-id
+load @term/bind/browser/webworker/navigator-id
   find navigator-id
 
-load @term/bind/code/browser/webworker/navigator-language
+load @term/bind/browser/webworker/navigator-language
   find navigator-language
 
-load @term/bind/code/browser/webworker/navigator-on-line
+load @term/bind/browser/webworker/navigator-on-line
   find navigator-on-line
 
-load @term/bind/code/browser/webworker/navigator-storage
+load @term/bind/browser/webworker/navigator-storage
   find navigator-storage
 
-load @term/bind/code/browser/webworker/permissions
+load @term/bind/browser/webworker/permissions
   find permissions
 
 form worker-navigator, name <WorkerNavigator>

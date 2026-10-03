@@ -1,13 +1,15 @@
 // The effect checker: tracks the async effect across the program and enforces a consistent async / await
 // discipline. This is the surface-level slice of the effect system (the deeper, kernel-level treatment ties
-// effects and mutation to the `1` multiplicity / linear regions; see plans/18-type-theory-gaps.md). The three
-// sound rules, given the model where `wait true` marks a task async and an awaited call:
+// effects and mutation to the `1` multiplicity / linear regions; see plans/18-type-theory-gaps.md). The rules,
+// given the model where `mark async` marks a task async and a call to one is awaited by default:
 //   1. `await` may only appear inside an async task.
 //   2. `await` may only target an asynchronous task (awaiting a synchronous one is meaningless).
-//   3. an asynchronous call in a synchronous task must be awaited (otherwise its result escapes unhandled).
+//   3. an asynchronous call in a synchronous task must be awaited or ticked (otherwise its result escapes unhandled).
+//   4. `tick` may only start an asynchronous task.
+//   5. outside every task, an asynchronous call must be ticked (checkCallsOutsideTasks, behind its switch).
 // Browser-safe, no host APIs.
 
-import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type {
   Expression,
@@ -378,7 +380,7 @@ export function checkEffects(
                 file,
                 span: node.span,
                 message:
-                  'await is only allowed inside an async task (mark this task with `wait true`)',
+                  'await is only allowed inside an async task (mark this task `mark async`)',
               }),
             )
           }
@@ -402,9 +404,9 @@ export function checkEffects(
         }
 
         case 'call':
-          // `wait false` is fire-and-forget: an async call deliberately left un-awaited, so it is exempt. Otherwise
-          // async resolution awaits async calls by default; a leftover un-awaited async call in a sync context is an
-          // error only when it was not marked background.
+          // `tick f(x)` (and the older `wait false`) is fire-and-forget: an async call deliberately left un-awaited,
+          // so it is exempt. Otherwise async resolution awaits async calls by default; a leftover un-awaited async
+          // call in a sync context is an error only when it was not ticked.
           if (
             !awaited &&
             !inAsync &&
@@ -412,13 +414,16 @@ export function checkEffects(
             node.callee.form === 'variable' &&
             isAsyncName(node.callee.name)
           ) {
-            diagnostics.push(
-              diagnose('effect-error', {
-                file,
-                span: node.span,
-                message: `"${node.callee.name}" is async; await it, or mark it fire-and-forget with \`wait false\``,
-              }),
-            )
+            diagnostics.push(asyncFromSync(file, node.span, node.callee.name))
+          }
+
+          // `tick` on a task that is not async starts nothing: the call runs to its end before the next line
+          if (
+            node.background &&
+            node.callee.form === 'variable' &&
+            isKnownSyncName(node.callee.name)
+          ) {
+            diagnostics.push(tickOnSync(file, node.span, node.callee.name))
           }
 
           visitExpression(node.callee, false)
@@ -535,6 +540,163 @@ export function checkEffects(
 }
 
 
+// a task's name as it was written: a name defined in more than one file is split by file (`name__in<g>_<k>`,
+// check/overload.ts) before this runs
+function written(name: string): string {
+  return name.replace(/__in\d+_\d+$/, '')
+}
+
+// a call to an async task, not waited for, from a place that is not async
+function asyncFromSync(file: string, span: Span, called: string): Diagnostic {
+  const name = written(called)
+
+  return diagnose('effect-error', {
+    file,
+    span,
+    message: `"${name}" is async, and this call is in a task that is not: mark the task \`mark async\`, or write \`tick ${name}\` to start it without waiting`,
+  })
+}
+
+// `tick` on a task that is not async
+function tickOnSync(file: string, span: Span, called: string): Diagnostic {
+  const name = written(called)
+
+  return diagnose('effect-error', {
+    file,
+    span,
+    message: `\`tick\` starts an async task and goes on, and "${name}" is not async: call it without \`tick\``,
+  })
+}
+
+// ---- the switch: a call to an async task outside any task ----
+//
+// AWAIT BY DEFAULT (note/term/plan/await-by-default-and-mark-metadata.md, section 1). Inside a task, a call to an
+// async task is awaited and the task becomes async (check/async-resolve.ts). OUTSIDE every task, in a top-level
+// `host` or statement, in a component's body, or in a closure written in either that is not itself `mark async`,
+// nothing can wait, and the call used to hand back a pending value with no message: `host config, read-config()`
+// bound a promise typed as the config. Under the switch that is an error naming `tick`, which is how a place that
+// cannot wait says it means the pending value.
+//
+// OFF until `pnpm term:await-migrate` has rewritten every such call in the repository to `tick`, each file proven to
+// emit what it emitted before. The migration compiles under both settings, which is why it is a switch and not a
+// constant. The compile cache keys on it (compile/compile.ts).
+let awaitOutsideTasks = false
+
+export function setAwaitOutsideTasks(on: boolean): void {
+  awaitOutsideTasks = on
+}
+
+export function awaitsOutsideTasks(): boolean {
+  return awaitOutsideTasks
+}
+
+// Every un-awaited, un-ticked call to an async task outside a task body. Runs after async resolution, so a task's
+// own body is already awaited and is not walked here. A closure inside a task is the task's business (resolution
+// awaits inside it); a closure outside one is walked, and is exempt only when it is itself async.
+export function checkCallsOutsideTasks(program: Program, file: string): Diagnostic[] {
+  if (!awaitOutsideTasks) {
+    return []
+  }
+
+  const asyncFunctions = new Set<string>()
+
+  for (const statement of program) {
+    if (statement.form === 'function' && statement.async) {
+      asyncFunctions.add(statement.name)
+    }
+  }
+
+  const diagnostics: Diagnostic[] = []
+  let owner = file
+
+  // `waiting`: inside an async closure, where an awaited call is in place and an un-awaited one is still the
+  // pending value nobody asked for. `bound`: names a closure's parameters and locals bind, which shadow a task
+  const visit = (value: unknown, waiting: boolean, bound: Set<string>): void => {
+    if (!value || typeof value !== 'object') {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(item => visit(item, waiting, bound))
+
+      return
+    }
+
+    const record = value as Record<string, unknown>
+
+    if (record.form === 'await') {
+      // awaited already, by `wait true` or a `wait` prefix. Its arguments are still walked
+      const inner = record.expr as Record<string, unknown> | undefined
+
+      if (inner?.form === 'call') {
+        visit(inner.args, waiting, bound)
+        visit(inner.callee, waiting, bound)
+
+        return
+      }
+    }
+
+    if (record.form === 'closure') {
+      const closure = record as unknown as Extract<Expression, { form: 'closure' }>
+      const inner = new Set(bound)
+
+      for (const param of closure.params) {
+        inner.add(param.name)
+      }
+
+      visit(closure.body, closure.async === true, inner)
+
+      return
+    }
+
+    if (record.form === 'let' && typeof record.name === 'string') {
+      bound.add(record.name)
+    }
+
+    if (record.form === 'call') {
+      const call = record as unknown as Extract<Expression, { form: 'call' }>
+
+      if (
+        !call.background &&
+        call.callee.form === 'variable' &&
+        asyncFunctions.has(call.callee.name) &&
+        !bound.has(call.callee.name)
+      ) {
+        const name = written(call.callee.name)
+
+        diagnostics.push(
+          diagnose('async-outside-task', {
+            file: owner,
+            span: { ...call.span, file: owner },
+            message: waiting
+              ? `"${name}" is async, and a call to it here is not waited for: write \`wait ${name}(...)\` to wait, or \`tick ${name}\` to start it and go on`
+              : `"${name}" is async, and this call is outside any task, where nothing can wait for it: move it into a task, or write \`tick ${name}\` to start it without waiting`,
+          }),
+        )
+      }
+    }
+
+    for (const [key, child] of Object.entries(record)) {
+      if (key !== 'span' && key !== 'type' && key !== 'result' && key !== 'declared') {
+        visit(child, waiting, bound)
+      }
+    }
+  }
+
+  for (const statement of program) {
+    if (statement.form === 'function') {
+      continue
+    }
+
+    // the module the statement came from: a merged program records it on each top-level statement's span, and an
+    // expression inside carries a position only, so a finding is placed in its own file rather than the entry's
+    owner = ('span' in statement ? statement.span?.file : undefined) ?? file
+    visit(statement, false, new Set())
+  }
+
+  return diagnostics
+}
+
 // the closure literals an expression makes, outermost first: a closure inside another closure's body is found when
 // that body is scanned, so each is visited once
 function closuresIn(node: Expression): Extract<Expression, { form: 'closure' }>[] {
@@ -573,7 +735,7 @@ function closuresIn(node: Expression): Extract<Expression, { form: 'closure' }>[
 // ---- raise sets ----
 //
 // The exceptions each function can raise: every `halt <form>` in its body outside a guarded body, plus what every
-// callee raises (least fixed point over the call graph), minus what a `note unsafe` / `halt take` catches, plus
+// callee raises (least fixed point over the call graph), minus what a `mark unsafe` / `halt take` catches, plus
 // what the handler itself raises. A thrown text is `failure`. A guard with no handler catches everything. This is
 // the raise set of note/term/hive/04-reach.md, and it is what the roll reports per task and per route.
 //
@@ -873,7 +1035,7 @@ export function checkRaiseBounds(
           file: at,
           span: s.span,
           message: `"${s.name}" can raise ${chains.join(', ')}, which its signature does not declare`,
-          hint: `add "halt ${beyond[0]}" to the signature, or handle it with note unsafe / halt take`,
+          hint: `add "halt ${beyond[0]}" to the signature, or handle it with mark unsafe / halt take`,
         }),
       )
     }

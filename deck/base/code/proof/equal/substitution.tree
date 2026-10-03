@@ -1,4 +1,4 @@
-load @term/base/code/proof/equal
+load @term/base/proof/equal
   find equal
 
 # Substitution (the eliminator `J` in its non-dependent form): if x equals y and `p` holds of x, it holds of y.

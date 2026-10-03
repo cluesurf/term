@@ -9,4 +9,4 @@
 # This replaced a web-only wrapper whose options were `slot` children and whose change was a raw handler, a shape only
 # a browser could honor, which nothing used.
 
-bear @term/face/code/component/native/{platform}/select
+bear @term/face/component/native/{platform}/select

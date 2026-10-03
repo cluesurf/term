@@ -2,11 +2,11 @@
 
 note stable
 
-load @term/base/code/native/{platform}/cryptography/key-agreement
+load @term/base/native/{platform}/cryptography/key-agreement
   find make-key-pair-bytes
   find compute-shared-secret
 
-load @term/base/code/bytes
+load @term/base/bytes
   find slice
 
 form exchange-pair
@@ -19,7 +19,6 @@ task make-key-pair
   like exchange-pair
   save raw
     call make-key-pair-bytes
-      wait true
   send back
     make exchange-pair
       bind private-key
@@ -43,4 +42,3 @@ task shared-secret
     call compute-shared-secret
       read private-key
       read public-key
-      wait true

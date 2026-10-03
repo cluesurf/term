@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-void
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find abort-signal
 
 form abort-controller, name <AbortController>

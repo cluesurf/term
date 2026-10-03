@@ -1,9 +1,9 @@
 
-bear @term/bind/code/javascript/es2021/promise/aggregate-error
-bear @term/bind/code/javascript/es2021/promise/aggregate-error-constructor
-bear @term/bind/code/javascript/es2021/promise/promise-constructor
+bear @term/bind/javascript/es2021/promise/aggregate-error
+bear @term/bind/javascript/es2021/promise/aggregate-error-constructor
+bear @term/bind/javascript/es2021/promise/promise-constructor
 
-load @term/bind/code/javascript/es2021/promise/aggregate-error-constructor
+load @term/bind/javascript/es2021/promise/aggregate-error-constructor
   find aggregate-error-constructor
 
 host aggregate-error, name <AggregateError>

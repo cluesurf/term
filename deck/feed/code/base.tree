@@ -4,11 +4,11 @@
 # genuinely needs random access (OTF's offset tables) uses a materialized cursor exactly as before; `seek` halts
 # outright if called against a streaming one, rather than silently producing a wrong answer.
 
-load @term/base/code/boolean
+load @term/base/boolean
   find and
   find not
 
-load @term/base/code/list
+load @term/base/list
   find push
   find get
   find set
@@ -18,21 +18,21 @@ load @term/base/code/list
   find slice
   find reverse
 
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-and
 
-load @term/base/code/float
+load @term/base/float
   find round-down
   find to-decimal
   find to-number
 
-load @term/base/code/text
+load @term/base/text
   find char-count
   find char-at
   find char-code-at
   find substring
 
-load @term/base/code/text/string
+load @term/base/text/string
   find concat, name text-concat
 
 # a byte order for a multi-byte integer field
@@ -62,7 +62,7 @@ form integer-sign
 # This is the workaround: every `position`/`bytes` read goes through `get(cell, 0)`, every write through
 # `set(cell, 0, value)`, so the mutation rides on a type that already works correctly everywhere. `bytes` needs
 # the same cell wrapping `position` does specifically because streaming mode periodically REPLACES it with a
-# shorter list (`feed-cursor-compact`, below) — a plain field couldn't carry that reassignment across calls
+# shorter list (`compact-feed-cursor`, below) — a plain field couldn't carry that reassignment across calls
 # either, for the identical reason.
 #
 # `pull` is `none` for a cursor built from an already-materialized buffer (`make-cursor`) and `some` for one
@@ -89,7 +89,7 @@ form feed-cursor
     like list
       like boolean
 
-task cursor-bytes
+task get-cursor-bytes
   take cursor, like feed-cursor
   like list
     like u8
@@ -108,7 +108,7 @@ task set-cursor-bytes
     code 0
     read value
 
-task cursor-position
+task get-cursor-position
   take cursor, like feed-cursor
   like number
   send back
@@ -193,10 +193,10 @@ task make-streaming-cursor
 # compactions, small enough that peak memory for the buffer itself stays a rounding error next to a real file.
 host feed-cursor-compact-threshold, code 65536
 
-task feed-cursor-compact
+task compact-feed-cursor
   take cursor, like feed-cursor
   save pos
-    call cursor-position(read cursor)
+    call get-cursor-position read cursor
   fork test
     hook test
       call is-above
@@ -205,7 +205,7 @@ task feed-cursor-compact
     hook hold
       call set-cursor-bytes
         read cursor
-        call drop-first(call cursor-bytes(read cursor), read pos)
+        call drop-first(call(get-cursor-bytes(read cursor)), read pos)
       call set-cursor-position
         read cursor
         code 0
@@ -219,7 +219,7 @@ task feed-cursor-compact
 # wants; `read-bytes` passes its own full width so it can then take the whole block in ONE slice instead of
 # refilling per byte. One task rather than a `width-1` fast path plus a bulk copy of it: the fall makes the
 # single-byte call site emit exactly the comparison it did before.
-task feed-cursor-ensure-width
+task ensure-feed-cursor-width
   take cursor, like feed-cursor
   take
     width
@@ -235,8 +235,8 @@ task feed-cursor-ensure-width
           call and
             call is-below
               call subtract
-                call size(call cursor-bytes(read cursor))
-                call cursor-position(read cursor)
+                call size call get-cursor-bytes read cursor
+                call get-cursor-position read cursor
               read width
             call
               not
@@ -256,8 +256,8 @@ task feed-cursor-ensure-width
               link value
               call set-cursor-bytes
                 read cursor
-                call concat(call cursor-bytes(read cursor), read value)
-              call feed-cursor-compact(read cursor)
+                call concat(call(get-cursor-bytes(read cursor)), read value)
+              call compact-feed-cursor read cursor
 
 # how many bytes are left in the WHOLE input. Refuses a streaming cursor for the same reason `seek` does, and it
 # is the same class of mistake: a streaming source does not know its own total length, so the honest answer here
@@ -274,8 +274,8 @@ task remaining
     case none
   send back
     call subtract
-      call size(call cursor-bytes(read cursor))
-      call cursor-position(read cursor)
+      call size call get-cursor-bytes read cursor
+      call get-cursor-position read cursor
 
 # `is-minimum` (position >= size), not `is-equal(remaining, 0)`: it works on a streaming cursor, where `remaining`
 # now refuses to answer, and it is also true when position has run PAST the end. The old equality read false in
@@ -283,18 +283,18 @@ task remaining
 task at-end
   take cursor, like feed-cursor
   like boolean
-  call feed-cursor-ensure-width(read cursor)
+  call ensure-feed-cursor-width read cursor
   send back
     call is-minimum
-      call cursor-position(read cursor)
-      call size(call cursor-bytes(read cursor))
+      call get-cursor-position read cursor
+      call size call get-cursor-bytes read cursor
 
 task peek-byte
   take cursor, like feed-cursor
   like u8
-  call feed-cursor-ensure-width(read cursor)
+  call ensure-feed-cursor-width read cursor
   send back
-    call get(call cursor-bytes(read cursor), call cursor-position(read cursor))
+    call get(call(get-cursor-bytes(read cursor)), call(get-cursor-position(read cursor)))
 
 task read-byte
   take cursor, like feed-cursor
@@ -303,7 +303,7 @@ task read-byte
     call peek-byte(read cursor)
   call set-cursor-position
     read cursor
-    call add(call cursor-position(read cursor), code 1)
+    call add(call(get-cursor-position(read cursor)), code 1)
   send back, read value
 
 task skip
@@ -311,12 +311,12 @@ task skip
   take width, like number
   call set-cursor-position
     read cursor
-    call add(call cursor-position(read cursor), read width)
+    call add(call(get-cursor-position(read cursor)), read width)
 
 # reposition the cursor to `base + offset` (an OTF/ELF-style table-relative offset; `base` defaults to 0, an
 # absolute offset from the buffer's own start), giving back the position it was at, so a caller restores it after
 # an offset-relative read (`mine at`) with `seek(cursor, prior-position)`. Refuses a streaming cursor outright —
-# `feed-cursor-compact` has already thrown away bytes before the current window, and there is no way to seek
+# `compact-feed-cursor` has already thrown away bytes before the current window, and there is no way to seek
 # forward past what a source has produced yet either without turning "read forward" into "buffer everything,"
 # which defeats streaming's entire point. A format that needs this (OTF's offset tables) is a format that
 # cannot stream; see note/term/feed/08-streaming.md.
@@ -333,7 +333,7 @@ task seek
       halt <cannot seek a streaming cursor: this format needs random access, which cannot stream>
     case none
   save prior
-    call cursor-position(read cursor)
+    call get-cursor-position read cursor
   call set-cursor-position
     read cursor
     call add
@@ -352,11 +352,11 @@ task read-bytes
   take width, like number
   like list
     like u8
-  call feed-cursor-ensure-width
+  call ensure-feed-cursor-width
     read cursor
     read width
   save start
-    call cursor-position(read cursor)
+    call get-cursor-position read cursor
   save end
     call add
       read start
@@ -366,7 +366,7 @@ task read-bytes
     read end
   send back
     call slice
-      call cursor-bytes read cursor
+      call get-cursor-bytes read cursor
       read start
       read end
 
@@ -506,7 +506,7 @@ task read-int
 # streaming cursor doesn't know the total length up front, that's the whole point. Instead it's a cell tracking
 # the CURRENT buffer's length, updated incrementally as chunks arrive (each chunk's own `char-count` added to the
 # running total) rather than recomputed from the whole accumulated buffer on every check — recomputing per
-# refill would reintroduce the exact O(n²) `text-cursor-at-end` regression `02-cursor.md` already documents and
+# refill would reintroduce the exact O(n²) `is-text-cursor-at-end` regression `02-cursor.md` already documents and
 # fixed once, just via a different path (per-refill instead of per-character).
 #
 # WHAT `position` COUNTS IS A DIFFERENT THING ON EVERY BACKEND. The stdlib's text primitives do not agree on an
@@ -527,11 +527,11 @@ task read-int
 #
 # This cursor therefore refuses to depend on any two of them agreeing:
 #
-#   - `text-cursor-peek-code` is derived FROM `text-cursor-peek`, taking the code of the one-character string it
+#   - `peek-text-cursor-code` is derived FROM `peek-text-cursor`, taking the code of the one-character string it
 #     already returned, rather than indexing the buffer a second time with the other primitive. Index 0 of a
 #     one-character string is that character in every index space, so the two now agree everywhere by
 #     construction instead of by luck.
-#   - `text-cursor-at-end` asks whether `char-at` reads EMPTY, which all four backends document as what a read
+#   - `is-text-cursor-at-end` asks whether `char-at` reads EMPTY, which all four backends document as what a read
 #     past the end gives (never an exception, never a trap — see each emitter's own comment). That is correct in
 #     whatever space the backend chose, and it costs O(1), so it is also strictly cheaper than the comparison
 #     against a counted length it replaced.
@@ -563,7 +563,7 @@ form text-cursor
     like list
       like boolean
 
-task cursor-text
+task get-cursor-text
   take cursor, like text-cursor
   like text
   send back
@@ -579,7 +579,7 @@ task set-cursor-text
     code 0
     read value
 
-task text-cursor-position
+task get-text-cursor-position
   take cursor, like text-cursor
   like number
   send back
@@ -595,7 +595,7 @@ task set-text-cursor-position
     code 0
     read value
 
-task text-cursor-length
+task get-text-cursor-length
   take cursor, like text-cursor
   like number
   send back
@@ -678,10 +678,10 @@ task make-streaming-text-cursor
 
 host text-cursor-compact-threshold, code 65536
 
-task text-cursor-compact
+task compact-text-cursor
   take cursor, like text-cursor
   save pos
-    call text-cursor-position(read cursor)
+    call get-text-cursor-position read cursor
   fork test
     hook test
       call is-above
@@ -690,7 +690,7 @@ task text-cursor-compact
     hook hold
       call set-cursor-text
         read cursor
-        call substring(call cursor-text(read cursor), read pos)
+        call substring(call(get-cursor-text(read cursor)), read pos)
       call set-text-cursor-position
         read cursor
         code 0
@@ -701,9 +701,9 @@ task text-cursor-compact
       call set
         read cursor/length
         code 0
-        call char-count call cursor-text read cursor
+        call char-count call get-cursor-text read cursor
 
-task text-cursor-ensure-available
+task ensure-text-cursor-available
   take cursor, like text-cursor
   fork case, read cursor/pull
     case none
@@ -714,7 +714,7 @@ task text-cursor-ensure-available
         hook test
           call and
             call is-equal
-              call char-at(call cursor-text(read cursor), call text-cursor-position(read cursor))
+              call char-at(call(get-cursor-text(read cursor)), call(get-text-cursor-position(read cursor)))
               text <>
             call
               not
@@ -734,51 +734,51 @@ task text-cursor-ensure-available
               link value
               call set-cursor-text
                 read cursor
-                call text-concat(call cursor-text(read cursor), read value)
+                call text-concat(call(get-cursor-text(read cursor)), read value)
               call set
                 read cursor/length
                 code 0
-                call add(call text-cursor-length(read cursor), call char-count(read value))
-              call text-cursor-compact(read cursor)
+                call add(call(get-text-cursor-length(read cursor)), call(char-count(read value)))
+              call compact-text-cursor read cursor
 
 # end of input is "`char-at` reads empty", which every backend guarantees for a read past the end, rather than
 # "position has reached a counted length" — see this form's own comment for why no two of these primitives can be
 # assumed to count the same things.
-task text-cursor-at-end
+task is-text-cursor-at-end
   take cursor, like text-cursor
   like boolean
-  call text-cursor-ensure-available(read cursor)
+  call ensure-text-cursor-available read cursor
   send back
     call is-equal
-      call char-at(call cursor-text(read cursor), call text-cursor-position(read cursor))
+      call char-at(call(get-cursor-text(read cursor)), call(get-text-cursor-position(read cursor)))
       text <>
 
-task text-cursor-peek
+task peek-text-cursor
   take cursor, like text-cursor
   like text
-  call text-cursor-ensure-available(read cursor)
+  call ensure-text-cursor-available read cursor
   send back
-    call char-at(call cursor-text(read cursor), call text-cursor-position(read cursor))
+    call char-at(call(get-cursor-text(read cursor)), call(get-text-cursor-position(read cursor)))
 
-# the code of the character `text-cursor-peek` returns, NOT a second independent index into the buffer with the
+# the code of the character `peek-text-cursor` returns, NOT a second independent index into the buffer with the
 # other primitive. On Rust and Swift `char-at` and `char-code-at` walk different index spaces, so indexing twice
 # at the same `position` can name two different characters; taking index 0 of the one-character string `peek`
 # already produced is the same character in every space, on every backend.
-task text-cursor-peek-code
+task peek-text-cursor-code
   take cursor, like text-cursor
   like number
   send back
-    call char-code-at(call text-cursor-peek(read cursor), code 0)
+    call char-code-at(call(peek-text-cursor(read cursor)), code 0)
 
-task text-cursor-read
+task read-text-cursor
   take cursor, like text-cursor
   like text
   save value
-    call text-cursor-peek(read cursor)
+    call peek-text-cursor read cursor
   call set-text-cursor-position
     read cursor
     call add
-      call text-cursor-position read cursor
+      call get-text-cursor-position read cursor
       code 1
   send back, read value
 

@@ -1,5 +1,5 @@
 
-load @term/bind/code/node/tls
+load @term/bind/node/tls
   find peer-certificate
 
 form detailed-peer-certificate, name <DetailedPeerCertificate>

@@ -1,19 +1,19 @@
-load @term/mill/code/code/take/mine
+load @term/mill/code/take/mine
   find take
 
-load @term/mill/code/code/like/mine
+load @term/mill/code/like/mine
   find like
 
 load @term/mill/code/code/note/mine
   find note
 
-load @term/mill/code/code/must/mine
+load @term/mill/code/must/mine
   find task-have
 
-load @term/mill/code/code/seed/mine
+load @term/mill/code/seed/mine
   find seed
 
-load @term/mill/code/code/tool/flow/mine
+load @term/mill/code/tool/flow/mine
   find flow
 
 # `twin <task>, name <label>`: another implementation of the named task, which must agree with it. The reference is

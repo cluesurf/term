@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/media-stream-track
+load @term/bind/browser/dom/media-stream-track
   find media-stream-track
 
 form media-stream-track-event, name <MediaStreamTrackEvent>

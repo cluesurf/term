@@ -7,7 +7,7 @@
 #
 # Run: term test, from deck/feed.
 
-load @term/base/code/list
+load @term/base/list
   find push
   find get
   find set
@@ -15,12 +15,12 @@ load @term/base/code/list
   find slice
   find join
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
   find some
   find none
 
-load @term/base/code/text
+load @term/base/text
   find substring
   find char-count
 
@@ -34,8 +34,8 @@ load ../code/base
   find read-bytes
   find read-int
   find at-end
-  find text-cursor-at-end
-  find text-cursor-read
+  find is-text-cursor-at-end
+  find read-text-cursor
 
 load ../code/json/code
   find read-json
@@ -164,30 +164,30 @@ task streamed-round-trip
     like u8
   send back
     call drain-bytes
-      call make-streaming-cursor(call make-byte-source(call read-hex(read input), read width))
+      call make-streaming-cursor call make-byte-source(call(read-hex(read input)), read width)
 
 test <a streaming byte cursor one byte per chunk yields the whole input>
   want hold
     call is-equal
-      call join(call streamed-round-trip(text <00ff7a2b>, code 1), text <,>)
+      call join(call(streamed-round-trip(text(<00ff7a2b>), code 1)), text <,>)
       text <0,255,122,43>
 
 test <a chunk width that does not divide the input still yields the whole input>
   want hold
     call is-equal
-      call join(call streamed-round-trip(text <00ff7a2b3c>, code 3), text <,>)
+      call join(call(streamed-round-trip(text(<00ff7a2b3c>), code 3)), text <,>)
       text <0,255,122,43,60>
 
 test <a chunk wider than the whole input yields the whole input>
   want hold
     call is-equal
-      call join(call streamed-round-trip(text <00ff7a>, code 64), text <,>)
+      call join(call(streamed-round-trip(text(<00ff7a>), code 64)), text <,>)
       text <0,255,122>
 
 test <an empty streaming source is immediately at its end>
   want hold
     call is-equal
-      call size(call streamed-round-trip(text <>, code 4))
+      call size call streamed-round-trip(text(<>), code 4)
       code 0
 
 # read-bytes takes its whole block in one slice now, so it has to be the thing that PULLS enough to satisfy the
@@ -195,7 +195,7 @@ test <an empty streaming source is immediately at its end>
 test <read-bytes pulls across several chunks to satisfy one wide request>
   save cursor
     call make-streaming-cursor
-      call make-byte-source(call read-hex(text <0102030405060708>), code 2)
+      call make-byte-source(call(read-hex(text <0102030405060708>)), code 2)
   save block
     call read-bytes
       read cursor
@@ -210,7 +210,7 @@ test <read-bytes pulls across several chunks to satisfy one wide request>
 test <a read-bytes that outruns the source stops at what the source had>
   save cursor
     call make-streaming-cursor
-      call make-byte-source(call read-hex(text <010203>), code 2)
+      call make-byte-source(call(read-hex(text <010203>)), code 2)
   save block
     call read-bytes
       read cursor
@@ -227,7 +227,7 @@ test <a read-bytes that outruns the source stops at what the source had>
 test <a multi-byte integer reads correctly across chunk boundaries>
   save cursor
     call make-streaming-cursor
-      call make-byte-source(call read-hex(text <0000010f>), code 1)
+      call make-byte-source(call(read-hex(text <0000010f>)), code 1)
   want hold
     call is-equal
       call read-int
@@ -240,7 +240,7 @@ test <a multi-byte integer reads correctly across chunk boundaries>
 test <a little-endian integer reads correctly across chunk boundaries>
   save cursor
     call make-streaming-cursor
-      call make-byte-source(call read-hex(text <0f010000>), code 1)
+      call make-byte-source(call(read-hex(text <0f010000>)), code 1)
   want hold
     call is-equal
       call read-int
@@ -268,25 +268,25 @@ task streamed-json
 test <a JSON object parses identically from a streaming text cursor>
   want hold
     call is-equal
-      call streamed-json(text <{"alpha":1,"beta":[1,2,3],"gamma":{"x":true}}>, code 3)
+      call streamed-json(text(<{"alpha":1,"beta":[1,2,3],"gamma":{"x":true}}>), code 3)
       call write-json(call read-json(text <{"alpha":1,"beta":[1,2,3],"gamma":{"x":true}}>))
 
 test <a JSON document parses identically one character at a time>
   want hold
     call is-equal
-      call streamed-json(text <{"a":[1,-2.5,null,false],"b":"str"}>, code 1)
+      call streamed-json(text(<{"a":[1,-2.5,null,false],"b":"str"}>), code 1)
       call write-json(call read-json(text <{"a":[1,-2.5,null,false],"b":"str"}>))
 
 test <a streamed JSON string spanning many chunks keeps every character>
   want hold
     call is-equal
-      call streamed-json(text <"the quick brown fox jumps over the lazy dog">, code 2)
+      call streamed-json(text(<"the quick brown fox jumps over the lazy dog">), code 2)
       text <"the quick brown fox jumps over the lazy dog">
 
 test <a streamed bare number parses to the same value>
   want hold
     call is-equal
-      call streamed-json(text <-3.5>, code 1)
+      call streamed-json(text(<-3.5>), code 1)
       text <-3.5>
 
 # past the compaction threshold the cursor drops its consumed prefix and resets `position` to zero mid-parse, so

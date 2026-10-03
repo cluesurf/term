@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/browser/dom/media-key-message-event
+load @term/bind/browser/dom/media-key-message-event
   find media-key-message-event
 
 form media-key-session-event-map, name <MediaKeySessionEventMap>

@@ -3,7 +3,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/file/directory
+load @term/base/native/{platform}/file/directory
   find directory-make
   find directory-remove
   find directory-exists

@@ -2,7 +2,7 @@
 
 note unstable
 
-load @term/base/code/list
+load @term/base/list
   find list
 
 task total

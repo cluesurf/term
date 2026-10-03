@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/webworker/on-error-event-handler-non-null
+load @term/bind/browser/webworker/on-error-event-handler-non-null
   find on-error-event-handler-non-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
 form on-error-event-handler, name <OnErrorEventHandler>

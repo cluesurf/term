@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form dom-matrix2-d-init, name <DOMMatrix2DInit>

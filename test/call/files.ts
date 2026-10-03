@@ -44,7 +44,8 @@ const put = (name: string, text = 'task probe\n  like number\n  send back, code 
 }
 
 put('code/plain.tree')
-put('code/shelved.tree', 'note draft\n\nthis is not Term at all\n')
+put('code/shelved.tree', 'mark draft\n\nthis is not Term at all\n')
+put('code/shelved-old.tree', 'note draft\n\nthis is not Term at all either\n')
 put('code/deep/draft.tree', '')
 put('code/deep/inside.tree')
 put('code/deep/further/down.tree')
@@ -57,8 +58,14 @@ const walked = (await collectTreeFiles([], root)).map(f => f.slice(root.length +
 ok('an ordinary file is collected', walked.includes('code/plain.tree'), walked.join(' '))
 
 ok(
-  'a file declaring `note draft` is not',
+  'a file declaring `mark draft` is not',
   !walked.includes('code/shelved.tree'),
+  walked.join(' '),
+)
+
+ok(
+  'nor one declaring `note draft`, the old spelling',
+  !walked.includes('code/shelved-old.tree'),
   walked.join(' '),
 )
 

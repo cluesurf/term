@@ -2,8 +2,9 @@ import chalk from 'chalk'
 import os from 'os'
 
 // The banner `term` prints with no verb, and the line `term show` prints. Both said `seed` (the language's old name)
-// until 2026-10-02, and the banner listed `term move mark` and `term show deck tree`, neither of which the CLI
-// accepts: `move` takes `code`, and `show` takes `code` or nothing.
+// until 2026-10-02, and the banner listed `term show deck tree`, which the CLI does not accept. `move` and `show`
+// take `mark`, the manifest's version field, since the version became `mark <1.4.2>` and `code` came to name the
+// code root folder (note/term/plan/manifest-mark-and-code-root.md). `code` is still taken as the old spelling.
 export function showBanner(): void {
   console.log('')
   console.log(
@@ -35,13 +36,13 @@ export function showBanner(): void {
   console.log('    term wash              Clean build artifacts')
   console.log('')
   console.log(chalk.yellow('  Version'))
-  console.log('    term move code         Bump patch version (to the next even patch)')
-  console.log('    term move code 2       Bump minor version')
-  console.log('    term move code 1       Bump major version')
+  console.log('    term move mark         Bump patch version')
+  console.log('    term move mark 2       Bump minor version')
+  console.log('    term move mark 1       Bump major version')
   console.log('')
   console.log(chalk.yellow('  Info'))
   console.log('    term show              Show the toolchain version and platform')
-  console.log('    term show code         Show this package\'s version')
+  console.log('    term show mark         Show this package\'s version')
   console.log('    term note              Show package info')
   console.log('    term fill              Print shell completion script')
   console.log('    term --version         Show the version number')

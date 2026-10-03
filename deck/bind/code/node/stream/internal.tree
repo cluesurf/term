@@ -34,7 +34,7 @@ load @term/bind
   find task
   find test
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-null
   find native-undefined
@@ -46,11 +46,11 @@ load @term/bind/code/javascript
   find readonly-array
   find stream
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find abort-signal
   find array
 
-load @term/bind/code/node/stream/internal
+load @term/bind/node/stream/internal
   find finished-options
   find pipeline-callback
   find pipeline-destination

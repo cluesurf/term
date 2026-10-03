@@ -1,5 +1,5 @@
 
-load @term/base/code/list
+load @term/base/list
   find list
 
 task allocate-utf-16

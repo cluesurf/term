@@ -1,20 +1,20 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
 
-load @term/bind/code/javascript/es2015/iterable
+load @term/bind/javascript/es2015/iterable
   find iterable
 
-load @term/bind/code/javascript/es2020/promise
+load @term/bind/javascript/es2020/promise
   find promise-settled-result
 
-load @term/bind/code/javascript/es5
+load @term/bind/javascript/es5
   find promise-like
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find u
 
-load @term/bind/code/javascript/es2018/promise/promise
+load @term/bind/javascript/es2018/promise/promise
   find promise
 
 form promise

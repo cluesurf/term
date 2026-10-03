@@ -5,7 +5,7 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array-buffer
   find async-generator-function
   find async-iterable
@@ -24,25 +24,25 @@ load @term/bind/code/javascript
   find promise
   find stream
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer-encoding
 
-load @term/bind/code/node/globals
+load @term/bind/node/globals
   find array
 
-load @term/bind/code/node/stream/internal
+load @term/bind/node/stream/internal
   find duplex-options
 
 form duplex, name <Duplex>
   base readable
-  link writable, name <writable>, like native-boolean
-  link writable-ended, name <writableEnded>, like native-boolean
-  link writable-finished, name <writableFinished>, like native-boolean
-  link writable-high-water-mark, name <writableHighWaterMark>, like native-number
-  link writable-length, name <writableLength>, like native-number
-  link writable-object-mode, name <writableObjectMode>, like native-boolean
-  link writable-corked, name <writableCorked>, like native-number
-  link allow-half-open, name <allowHalfOpen>, like native-boolean
+  link writable, name(<writable>), like native-boolean
+  link writable-ended, name(<writableEnded>), like native-boolean
+  link writable-finished, name(<writableFinished>), like native-boolean
+  link writable-high-water-mark, name(<writableHighWaterMark>), like native-number
+  link writable-length, name(<writableLength>), like native-number
+  link writable-object-mode, name(<writableObjectMode>), like native-boolean
+  link writable-corked, name(<writableCorked>), like native-number
+  link allow-half-open, name(<allowHalfOpen>), like native-boolean
 
   task write, name <_write>
     like native-void

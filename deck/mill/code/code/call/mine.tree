@@ -1,22 +1,22 @@
-load @term/mill/code/code/like/mine
+load @term/mill/code/like/mine
   find like
 
 load @term/mill/code/code/note/mine
   find note
 
-load @term/mill/code/code/halt/mine
+load @term/mill/code/halt/mine
   find halt
 
-load @term/mill/code/code/bind/mine
+load @term/mill/code/bind/mine
   find bind
 
-load @term/mill/code/code/seed/mine
+load @term/mill/code/seed/mine
   find seed
 
-load @term/mill/code/code/hook/mine
+load @term/mill/code/hook/mine
   find hook
 
-load @term/mill/code/code/wait/mine
+load @term/mill/code/wait/mine
   find wait
 
 # `call f, a, b`, `call f(a, b)` and the stacked form are one call. The callee is a HEAD whose own children
@@ -67,6 +67,39 @@ mine call
           site note
         mine form, like like
           site like
+        mine form, like call-link
+          site link
+        mine form, like seed
+          site seed
+
+# `tick f(x)`, `tick f, x` and `tick f` over arguments: the same call as `call`, started and NOT waited for. It is
+# `call f / ... / wait false`, so the task goes on at once, and in a value position the call's value is the
+# pending one (a `Promise` on TypeScript). note/term/plan/await-by-default-and-mark-metadata.md, section 2.
+#
+# The same sites as `call`, so a ticked call is written exactly as a called one. The bridge tells the two apart
+# by the head word, the way it tells a lean call from a longhand one by the file.
+mine tick
+  mine term, term tick
+    mine open
+      site name
+      mine list
+        mine any
+          mine form, like bind
+            site bind
+          mine form, like halt
+            site halt
+          mine form, like call-link
+            site link
+          mine form, like seed
+            site seed
+    mine list
+      mine any
+        mine form, like wait
+          site wait
+        mine form, like bind
+          site bind
+        mine form, like halt
+          site halt
         mine form, like call-link
           site link
         mine form, like seed

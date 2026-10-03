@@ -4,10 +4,10 @@
 #
 # Run with: term test
 
-load @term/base/code/native/shared/hash-table/quadratic-probing
+load @term/base/native/shared/hash-table/quadratic-probing
   find make-hash-table
 
-load @term/base/code/maybe
+load @term/base/maybe
   find unwrap-or
 
 test hash-table-finds-what-was-set

@@ -1,32 +1,32 @@
 
-load @term/bind/code/browser/dom/dom-matrix-read-only
+load @term/bind/browser/dom/dom-matrix-read-only
   find dom-matrix-read-only
 
-load @term/bind/code/browser/webworker/dom-matrix
+load @term/bind/browser/webworker/dom-matrix
   find dom-matrix
 
-load @term/bind/code/browser/webworker/dom-matrix-init
+load @term/bind/browser/webworker/dom-matrix-init
   find dom-matrix-init
 
-load @term/bind/code/browser/webworker/dom-point
+load @term/bind/browser/webworker/dom-point
   find dom-point
 
-load @term/bind/code/browser/webworker/dom-point-init
+load @term/bind/browser/webworker/dom-point-init
   find dom-point-init
 
-load @term/bind/code/javascript/es5/float32-array
+load @term/bind/javascript/es5/float32-array
   find float32-array
 
-load @term/bind/code/javascript/es5/float64-array
+load @term/bind/javascript/es5/float64-array
   find float64-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form dom-matrix-read-only, name <DOMMatrixReadOnly>

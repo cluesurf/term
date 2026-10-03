@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/ecdh-key-derive-params
+load @term/bind/browser/dom/ecdh-key-derive-params
   find ecdh-key-derive-params
 
-load @term/bind/code/browser/webworker/algorithm
+load @term/bind/browser/webworker/algorithm
   find algorithm
 
-load @term/bind/code/browser/webworker/crypto-key
+load @term/bind/browser/webworker/crypto-key
   find crypto-key
 
 form ecdh-key-derive-params, name <EcdhKeyDeriveParams>

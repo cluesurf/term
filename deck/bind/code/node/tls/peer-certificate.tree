@@ -1,13 +1,13 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-string
   find node-js-dict
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/tls
+load @term/bind/node/tls
   find certificate
 
 form peer-certificate, name <PeerCertificate>

@@ -6,13 +6,13 @@
 dock load
   load <global:bridge>, name bridge
 
-load @term/base/code/json
+load @term/base/json
   find make-object
   find set-field
   find from-text
   find from-number
 
-load @term/base/code/float
+load @term/base/float
   find to-decimal
 
 # the opaque handle a page never holds; declared so the contract's signatures spell the same on every env

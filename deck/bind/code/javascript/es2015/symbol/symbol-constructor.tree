@@ -1,17 +1,17 @@
 
-load @term/bind/code/javascript/es2015/iterable/symbol-constructor
+load @term/bind/javascript/es2015/iterable/symbol-constructor
   find symbol-constructor
 
-load @term/bind/code/javascript/es5/symbol
+load @term/bind/javascript/es5/symbol
   find symbol
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-symbol
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-undefined
 
 form symbol-constructor, name <SymbolConstructor>

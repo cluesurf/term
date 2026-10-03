@@ -1,14 +1,14 @@
 
-load @term/bind/code/browser/dom/registration-options
+load @term/bind/browser/dom/registration-options
   find registration-options
 
-load @term/bind/code/browser/webworker/service-worker-update-via-cache
+load @term/bind/browser/webworker/service-worker-update-via-cache
   find service-worker-update-via-cache
 
-load @term/bind/code/browser/webworker/worker-type
+load @term/bind/browser/webworker/worker-type
   find worker-type
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form registration-options, name <RegistrationOptions>

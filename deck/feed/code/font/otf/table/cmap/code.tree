@@ -7,7 +7,7 @@
 # subtable is written, so every subtable is serialized first (to know its byte length), then the directory is
 # written with a running offset total, then the subtable bytes follow in order — two passes, not one.
 
-load @term/base/code/list
+load @term/base/list
   find push
   find get
   find size
@@ -16,7 +16,7 @@ load ../../../../base
   find feed-cursor
   find feed-writer
   find seek
-  find cursor-position
+  find get-cursor-position
   find make-writer
   find write-bytes
   find to-bytes
@@ -247,7 +247,7 @@ task read-otf-cmap-table
   take cursor, like feed-cursor
   like otf-cmap-table
   save table-start
-    call cursor-position(read cursor)
+    call get-cursor-position read cursor
   save version
     call read-u16(read cursor)
   save table-count
@@ -343,7 +343,7 @@ task write-otf-cmap-format-4-bytes
         call multiply
           read seg-count
           code 8
-      call multiply(call size(read glyph-id-array), code 2)
+      call multiply(call(size(read glyph-id-array)), code 2)
   save search-power
     call otf-cmap-search-hint-power(read seg-count)
   save search-range

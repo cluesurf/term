@@ -192,9 +192,9 @@ describe('resolve', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      code: { major: 0, minor: 1, patch: 0 },
+      mark: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-leaf-a', code: parseCodeHold('1.x.x') },
+        { name: 'seed-e2e-leaf-a', mark: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -210,9 +210,9 @@ describe('resolve', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      code: { major: 0, minor: 1, patch: 0 },
+      mark: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-leaf-a', code: parseCodeHold('1.x.x') },
+        { name: 'seed-e2e-leaf-a', mark: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -228,11 +228,11 @@ describe('resolve', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      code: { major: 0, minor: 1, patch: 0 },
+      mark: { major: 0, minor: 1, patch: 0 },
       link: [
         {
           name: 'seed-e2e-leaf-a',
-          code: { form: 'exact', code: { major: 1, minor: 0, patch: 2 } },
+          mark: { form: 'exact', code: { major: 1, minor: 0, patch: 2 } },
         },
       ],
     }
@@ -247,9 +247,9 @@ describe('resolve', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      code: { major: 0, minor: 1, patch: 0 },
+      mark: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-mid-c', code: parseCodeHold('1.x.x') },
+        { name: 'seed-e2e-mid-c', mark: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -263,9 +263,9 @@ describe('resolve', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      code: { major: 0, minor: 1, patch: 0 },
+      mark: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-top-d', code: parseCodeHold('1.x.x') },
+        { name: 'seed-e2e-top-d', mark: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -281,9 +281,9 @@ describe('resolve', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      code: { major: 0, minor: 1, patch: 0 },
+      mark: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-does-not-exist', code: parseCodeHold('1.x.x') },
+        { name: 'seed-e2e-does-not-exist', mark: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -296,9 +296,9 @@ describe('resolve', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      code: { major: 0, minor: 1, patch: 0 },
+      mark: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-leaf-a', code: parseCodeHold('99.x.x') },
+        { name: 'seed-e2e-leaf-a', mark: parseCodeHold('99.x.x') },
       ],
     }
 
@@ -311,10 +311,10 @@ describe('resolve', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      code: { major: 0, minor: 1, patch: 0 },
+      mark: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-leaf-a', code: parseCodeHold('1.x.x') },
-        { name: 'seed-e2e-leaf-b', code: parseCodeHold('0.x.x') },
+        { name: 'seed-e2e-leaf-a', mark: parseCodeHold('1.x.x') },
+        { name: 'seed-e2e-leaf-b', mark: parseCodeHold('0.x.x') },
       ],
     }
 
@@ -328,9 +328,9 @@ describe('resolve', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      code: { major: 0, minor: 1, patch: 0 },
+      mark: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-leaf-a', code: parseCodeHold('1.0.0..1.1.0') },
+        { name: 'seed-e2e-leaf-a', mark: parseCodeHold('1.0.0..1.1.0') },
       ],
     }
 
@@ -348,9 +348,9 @@ describe('lockfile', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      code: { major: 0, minor: 1, patch: 0 },
+      mark: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-mid-c', code: parseCodeHold('1.x.x') },
+        { name: 'seed-e2e-mid-c', mark: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -369,9 +369,9 @@ describe('lockfile', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      code: { major: 0, minor: 1, patch: 0 },
+      mark: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-leaf-a', code: parseCodeHold('1.x.x') },
+        { name: 'seed-e2e-leaf-a', mark: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -390,9 +390,9 @@ describe('lockfile', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      code: { major: 0, minor: 1, patch: 0 },
+      mark: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-top-d', code: parseCodeHold('1.x.x') },
+        { name: 'seed-e2e-top-d', mark: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -412,16 +412,16 @@ describe('manifest', () => {
   test('parseManifest and writeManifest round-trip', () => {
     const text = [
       'deck @myorg/mypackage',
-      '  code <1.2.4>',
+      '  mark <1.2.4>',
       '  head <A test package>',
-      '  link seed-e2e-leaf-a, code <1.x.x>',
-      '  link seed-e2e-leaf-b, code <0.1.0..1.0.0>',
+      '  link seed-e2e-leaf-a, mark <1.x.x>',
+      '  link seed-e2e-leaf-b, mark <0.1.0..1.0.0>',
     ].join('\n')
 
     const manifest = parseManifest({ text })
     expect(manifest.host).toBe('myorg')
     expect(manifest.name).toBe('mypackage')
-    expect(manifest.code).toEqual({ major: 1, minor: 2, patch: 4 })
+    expect(manifest.mark).toEqual({ major: 1, minor: 2, patch: 4 })
     expect(manifest.link.length).toBe(2)
 
     const written = writeManifest({ manifest })
@@ -529,9 +529,9 @@ describe('offline mode', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      code: { major: 0, minor: 1, patch: 0 },
+      mark: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-leaf-a', code: parseCodeHold('1.x.x') },
+        { name: 'seed-e2e-leaf-a', mark: parseCodeHold('1.x.x') },
       ],
     }
 
@@ -547,9 +547,9 @@ describe('offline mode', () => {
     const manifest: DeckManifest = {
       host: '',
       name: 'test-project',
-      code: { major: 0, minor: 1, patch: 0 },
+      mark: { major: 0, minor: 1, patch: 0 },
       link: [
-        { name: 'seed-e2e-leaf-a', code: parseCodeHold('1.x.x') },
+        { name: 'seed-e2e-leaf-a', mark: parseCodeHold('1.x.x') },
       ],
     }
 

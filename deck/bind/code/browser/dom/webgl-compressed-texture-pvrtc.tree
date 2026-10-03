@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/g-lenum
+load @term/bind/browser/dom/g-lenum
   find g-lenum
 
 form webgl-compressed-texture-pvrtc, name <WEBGL_compressed_texture_pvrtc>

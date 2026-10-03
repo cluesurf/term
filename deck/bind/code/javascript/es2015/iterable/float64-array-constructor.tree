@@ -1,17 +1,17 @@
 
-load @term/bind/code/javascript/es2015/iterable/float64-array
+load @term/bind/javascript/es2015/iterable/float64-array
   find float64-array
 
-load @term/bind/code/javascript/es2015/iterable/iterable
+load @term/bind/javascript/es2015/iterable/iterable
   find iterable
 
-load @term/bind/code/javascript/es5/float64-array-constructor
+load @term/bind/javascript/es5/float64-array-constructor
   find float64-array-constructor
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form float64-array-constructor, name <Float64ArrayConstructor>

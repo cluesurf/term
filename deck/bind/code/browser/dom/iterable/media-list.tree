@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/media-list
+load @term/bind/browser/dom/media-list
   find media-list
 
 load @term/bind/code/javascript/iterable-iterator
   find iterable-iterator
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form media-list, name <MediaList>

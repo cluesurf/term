@@ -2,13 +2,13 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-number
   find native-undefined
   find stream-duplex
   find url-url
 
-load @term/bind/code/node/http2
+load @term/bind/node/http2
   find settings
 
 form session-options, name <SessionOptions>

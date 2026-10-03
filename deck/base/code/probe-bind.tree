@@ -4,7 +4,7 @@ note draft
 # names (`task add`, `form box`, `form colour`) into every program that loads the stdlib.
 
 
-load @term/base/code/list
+load @term/base/list
   find push
 
 form box

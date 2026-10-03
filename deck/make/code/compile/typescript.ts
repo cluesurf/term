@@ -31,6 +31,8 @@ import { armLocals } from '@term/make/code/check/arm'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
 import { boundedLoops } from '@term/make/code/ir/facts/bounds'
 import type { LoopGuard } from '@term/make/code/ir/facts/bounds'
+import { recordPlaces } from '@term/make/code/compile/place'
+import type { PlaceWrite } from '@term/make/code/compile/place'
 
 const guardStart = (text: string): string =>
   /^[([`]/.test(text) ? `;${text}` : text
@@ -629,14 +631,19 @@ const EXCEPTION_PRELUDE = `export class ${EXCEPTION_CLASS} extends Error {
 // is exact, and past them it is not the integer any more, so it raises the stdlib's `excess` (or `shortage` below).
 // A value that is not finite came from dividing by zero (no product of safe integers nears the float maximum), and
 // raises `defect`. As the exception class when the module carries it, as an Error with the same fields when not
+// The check is the whole of `__termInt`, and the stop is a function of its own: V8 inlines a function only while its
+// bytecode is small, and with the exception built in place every checked `+` was a real call. Measured on
+// spectral-norm, where a four-operation task runs 40 million times: the checks were most of a 5.5x gap to the hand
+// version (tmp/ts-fannkuch-ab.ts, tmp/ts-spectral-ab.ts, 2026-10-02)
 const intPrelude = (withClass: boolean): string => `function __termInt(x: number): number {
-  if (!(x <= 9007199254740991 && x >= -9007199254740991)) {
-    const base = !Number.isFinite(x)
-      ? { host: "@term/base", form: "defect", note: "Invalid", code: "", time: Date.now(), link: { thing: "a division or remainder by zero" } }
-      : { host: "@term/base", form: x > 0 ? "excess" : "shortage", note: x > 0 ? "Too large" : "Too small", code: "", time: Date.now(), link: { thing: "number", limit: x > 0 ? 9007199254740991 : -9007199254740991, actual: x } }
-    ${withClass ? `throw new ${EXCEPTION_CLASS}(base)` : `throw Object.assign(new Error(base.note), base, { name: "${EXCEPTION_CLASS}" })`}
-  }
+  if (!(x <= 9007199254740991 && x >= -9007199254740991)) __termIntStop(x)
   return x
+}
+function __termIntStop(x: number): never {
+  const base = !Number.isFinite(x)
+    ? { host: "@term/base", form: "defect", note: "Invalid", code: "", time: Date.now(), link: { thing: "a division or remainder by zero" } }
+    : { host: "@term/base", form: x > 0 ? "excess" : "shortage", note: x > 0 ? "Too large" : "Too small", code: "", time: Date.now(), link: { thing: "number", limit: x > 0 ? 9007199254740991 : -9007199254740991, actual: x } }
+  ${withClass ? `throw new ${EXCEPTION_CLASS}(base)` : `throw Object.assign(new Error(base.note), base, { name: "${EXCEPTION_CLASS}" })`}
 }`
 
 // THE TEXT OPERATIONS COUNT CODE POINTS, as they do on Rust, Swift and Kotlin (note/term/stdlib/semantics.md).
@@ -1157,6 +1164,8 @@ function makeEmitter(
   provenSteps: WeakSet<Expression> = new WeakSet(),
   // the counted loops whose list indexes a guard before the loop can prove in bounds (ir/facts/bounds.ts)
   loopGuards: WeakMap<Statement, LoopGuard> = new WeakMap(),
+  // the slot writes of a record that assign the changed fields of the object already there (compile/place.ts)
+  places: Map<Statement, PlaceWrite> = new Map(),
 ) {
   const pad = (depth: number) => '  '.repeat(depth)
   // the lists whose slots the loop copy being emitted reads and writes unchecked: its guard holds (loopGuards)
@@ -1927,6 +1936,24 @@ function makeEmitter(
       }
 
       case 'assign': {
+        // a record written back to the slot it was read from, its changed fields assigned on the object already there
+        // (compile/place.ts): `b.vx = b.vx - dx * m` where the write would have allocated a new record. The read of
+        // the slot already checked the index
+        const place = places.get(node)
+
+        if (place) {
+          const local = toCamel(place.local)
+
+          if (!place.temps) {
+            return place.fields.map(f => `${local}.${toCamel(f.name)} = ${expression(f.value)}`).join('; ')
+          }
+
+          const temps = place.fields.map((f, i) => `const __place${i} = ${expression(f.value)}`)
+          const sets = place.fields.map((f, i) => `${local}.${toCamel(f.name)} = __place${i}`)
+
+          return `{ ${[...temps, ...sets].join('; ')} }`
+        }
+
         // a write to a list slot (`save slots/{value}, ...`, `save xs/0, ...`): the READ of one is the checked
         // `__termAt(xs, i)`, which is no place to assign to (esbuild: "Invalid assignment target"). The write keeps
         // the same check, so a slot past the end stops here as on every other backend, then writes the slot itself
@@ -2491,6 +2518,7 @@ export function emitTypeScript(
     env,
     provenIncrements(program),
     boundedLoops(program),
+    recordPlaces(program).writes,
   )
 
   // native module bindings (`dock load`) become host imports at the top. A `<global:X>` binding refers to a host
@@ -2539,9 +2567,11 @@ export function emitTypeScript(
 
     const alias = toCamel(node.alias)
 
+    // the alias reads the global when the module loads, so a build with no shim for it (the CLI port, which never
+    // calls it) must not fail there: an absent global leaves the alias undefined, as a bare `declare` leaves it unread
     if (alias !== globalName && !dockAliases.has(alias)) {
       dockAliases.add(alias)
-      imports.push(`const ${alias} = ${globalName}`)
+      imports.push(`const ${alias}: any = typeof ${globalName} === "undefined" ? undefined : ${globalName}`)
     }
   }
 

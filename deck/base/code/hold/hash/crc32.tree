@@ -1,5 +1,5 @@
 
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-and
   find bitwise-or
   find unsigned-shift-right

@@ -4,7 +4,7 @@
 #
 # Run with: term test
 
-load @term/base/code/hold/hash
+load @term/base/hold/hash
   find hash-djb2-xor
 
 test djb2-xor-of-one-character

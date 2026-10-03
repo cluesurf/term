@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/keyframe-effect-options
+load @term/bind/browser/dom/keyframe-effect-options
   find keyframe-effect-options
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form keyframe-animation-options, name <KeyframeAnimationOptions>

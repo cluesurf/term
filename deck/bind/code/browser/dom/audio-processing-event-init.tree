@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/audio-buffer
+load @term/bind/browser/dom/audio-buffer
   find audio-buffer
 
-load @term/bind/code/browser/dom/event-init
+load @term/bind/browser/dom/event-init
   find event-init
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form audio-processing-event-init, name <AudioProcessingEventInit>

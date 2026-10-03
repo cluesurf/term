@@ -13,7 +13,7 @@
 # Ported from deck/call/code/manifest-name.ts (cli-in-term-0004). It docks the parser, which is the compiler's, so
 # there is still exactly one implementation of the grammar and this is not a second reader.
 
-load @term/base/code/file
+load @term/base/file
   find read, name read-file
 
 dock load
@@ -138,7 +138,7 @@ task manifest-value-of
   note unsafe
     send back
       call manifest-value
-        call read-file, read(file), wait true
+        call read-file, read(file)
         read file
         read head
   halt take

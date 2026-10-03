@@ -1,51 +1,53 @@
-load @term/mill/code/code/mark/mine
+load @term/mill/code/mark/mine
   find mark
 
-load @term/mill/code/code/drop/mine
+load @term/mill/code/drop/mine
   find drop
 
 
-load @term/mill/code/code/head/mine
+load @term/mill/code/head/mine
   find head
 
-load @term/mill/code/code/take/mine
+load @term/mill/code/take/mine
   find take
 
-load @term/mill/code/code/like/mine
+load @term/mill/code/like/mine
   find like
 
-load @term/mill/code/code/tool/flow/mine
+load @term/mill/code/tool/flow/mine
   find flow
 
-load @term/mill/code/code/fold/mine
+load @term/mill/code/fold/mine
   find fold
 
 load @term/mill/code/code/note/mine
   find note
   find note-guard
+  find mark-note
+  find mark-guard
 
-load @term/mill/code/code/tag/mine
+load @term/mill/code/tag/mine
   find tag
 
 load ./risk/mine
   find risk
 
-load @term/mill/code/code/wait/mine
+load @term/mill/code/wait/mine
   find wait
 
-load @term/mill/code/code/hide/mine
+load @term/mill/code/hide/mine
   find hide
 
-load @term/mill/code/code/form/link/mine
+load @term/mill/code/form/link/mine
   find link
 
-load @term/mill/code/code/tree/slot/mine
+load @term/mill/code/tree/slot/mine
   find slot
 
-load @term/mill/code/code/form/mine
+load @term/mill/code/form/mine
   find form-nick
 
-load @term/mill/code/code/must/mine
+load @term/mill/code/must/mine
   find task-have
   find must
   find down
@@ -72,9 +74,14 @@ mine task
           site take
         mine form, like like
           site like
-        # a guarded block goes into the STATEMENT stream, where its handler sits; a bare `note` is metadata
+        # a guarded block goes into the STATEMENT stream, where its handler sits; a bare `mark` / `note` is
+        # metadata. `mark` is the spelling, and minted as the same `note` form (note/mine.tree)
+        mine form, like mark-guard
+          site flow
         mine form, like note-guard
           site flow
+        mine form, like mark-note
+          site note
         mine form, like note
           site note
         mine form, like wait
@@ -93,8 +100,8 @@ mine task
           site link
         mine form, like slot
           site slot
-        # `mark private` / `mark async`: the older spelling of the metadata `note` carries, still live in about
-        # thirty files and read alongside it.
+        # `mark private`, `mark tag, name kind`, `mark feature, name x`: the marks that are not one of the
+        # metadata words `mine mark-note` takes above.
         mine form, like mark
           site mark
         mine form, like form-nick

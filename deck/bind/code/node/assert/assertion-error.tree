@@ -4,7 +4,7 @@ load @term/bind
   find or
   find unknown
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find function
   find native-boolean
   find native-string
@@ -12,11 +12,11 @@ load @term/bind/code/javascript
 
 form assertion-error, name <AssertionError>
   base error
-  link actual, name <actual>, like unknown
-  link expected, name <expected>, like unknown
-  link operator, name <operator>, like native-string
-  link generated-message, name <generatedMessage>, like native-boolean
-  link code, name <code>, text <ERR_ASSERTION>
+  link actual, name(<actual>), like unknown
+  link expected, name(<expected>), like unknown
+  link operator, name(<operator>), like native-string
+  link generated-message, name(<generatedMessage>), like native-boolean
+  link code, name(<code>), text <ERR_ASSERTION>
 
 form assertion-error-constructor
   hook make

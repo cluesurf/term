@@ -1,5 +1,5 @@
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find address-info
   find array
   find error
@@ -18,10 +18,10 @@ load @term/bind
   find or
   find task
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/dgram
+load @term/bind/node/dgram
   find bind-options
   find remote-info
 

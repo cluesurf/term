@@ -2,10 +2,10 @@
 load @term/base/code/deck
   find deck-case
 
-load @term/mill/code/deck/link/mint
+load @term/mill/deck/link/mint
   find deck-link
 
-load @term/mill/code/deck/host/mint
+load @term/mill/deck/host/mint
   find deck-host
 
 mint deck-case, like deck-case

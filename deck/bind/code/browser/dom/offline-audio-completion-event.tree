@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/audio-buffer
+load @term/bind/browser/dom/audio-buffer
   find audio-buffer
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
 form offline-audio-completion-event, name <OfflineAudioCompletionEvent>

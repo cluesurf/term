@@ -194,16 +194,11 @@ export function bumpCode(input: {
         patch: 0,
       }
 
-    case 3: {
-      // even patch numbers only for published versions
-      const next = input.code.patch + 1
-      const even = next % 2 === 0 ? next : next + 1
-
+    case 3:
       return {
         major: input.code.major,
         minor: input.code.minor,
-        patch: even,
+        patch: input.code.patch + 1,
       }
-    }
   }
 }

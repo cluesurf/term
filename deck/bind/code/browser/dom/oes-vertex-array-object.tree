@@ -1,17 +1,17 @@
 
-load @term/bind/code/browser/dom/g-lboolean
+load @term/bind/browser/dom/g-lboolean
   find g-lboolean
 
-load @term/bind/code/browser/dom/g-lenum
+load @term/bind/browser/dom/g-lenum
   find g-lenum
 
-load @term/bind/code/browser/dom/web-gl-vertex-array-object-oes
+load @term/bind/browser/dom/web-gl-vertex-array-object-oes
   find web-gl-vertex-array-object-oes
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form oes-vertex-array-object, name <OES_vertex_array_object>

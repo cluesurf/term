@@ -12,7 +12,7 @@
 # When the self-hosting mill consumes the `test` grammar (deck/mill/code/code/test) this whole step folds into the
 # mint and none of it is needed. It is ported anyway because the CLI has to run in Term before that lands.
 
-load @term/base/code/text
+load @term/base/text
   find char-count
   find substring
   find trim
@@ -20,7 +20,7 @@ load @term/base/code/text
   find to-lower-case
   find starts-with
 
-load @term/base/code/regex
+load @term/base/regex
   find replace-matches, name replace-pattern
 
 # how many spaces a line is indented by

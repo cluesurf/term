@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/es2017/string/string
+load @term/bind/javascript/es2017/string/string
   find string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form string, name <String>

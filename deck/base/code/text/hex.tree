@@ -2,7 +2,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/text/hex
+load @term/base/native/{platform}/text/hex
   find to-hex
   find from-hex
 

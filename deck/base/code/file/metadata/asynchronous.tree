@@ -7,10 +7,10 @@
 
 note unstable
 
-load @term/base/code/native/{platform}/file/asynchronous/metadata
+load @term/base/native/{platform}/file/asynchronous/metadata
   find meta-read
 
-load @term/base/code/file/metadata
+load @term/base/file/metadata
   find file-metadata
 
 # With `follow`, a symbolic link is followed and the record describes what it points at; without it, the link
@@ -27,4 +27,3 @@ task read
     call meta-read
       read path
       read follow
-      wait true

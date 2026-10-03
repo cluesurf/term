@@ -1,5 +1,5 @@
 
-load @term/base/code/list
+load @term/base/list
   find clear
   find get
   find size

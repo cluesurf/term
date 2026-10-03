@@ -28,7 +28,6 @@ task run-tests
 
   save dir
     call make-temp-dir
-      wait true
       bind x, text <x>
 
   save source

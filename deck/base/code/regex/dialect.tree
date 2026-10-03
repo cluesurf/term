@@ -15,15 +15,15 @@
 
 note stable
 
-load @term/base/code/text/unicode
+load @term/base/text/unicode
   find to-runes
   find rune-to-text
 
-load @term/base/code/list
+load @term/base/list
   find size
   find get
 
-load @term/base/code/exception
+load @term/base/exception
   find mismatch
 
 form regex-mismatch
@@ -87,13 +87,21 @@ task regex-digits-end
   take at, like number
   like number
   save i, read at
-  # no `down`: what moves the loop on is not something the prover can bound here; each turn still advances
+  # past the end there is no digit, which the test states where the prover sees it
   walk test
+    down
+      call subtract
+        read runes/length
+        read i
     hook test
-      call regex-is-digit
-        call regex-rune-at
-          read runes
+      call and
+        call is-below
           read i
+          read runes/length
+        call regex-is-digit
+          call regex-rune-at
+            read runes
+            read i
     hook step
       save i
         call add
@@ -452,8 +460,11 @@ task canonical-pattern
     make list
   save held, false
   save i, code 0
-  # no `down`: what moves the loop on is not something the prover can bound here; each turn still advances
   walk test
+    down
+      call subtract
+        read n
+        read i
     hook test
       call is-below
         read i
@@ -523,28 +534,34 @@ task canonical-pattern
             read c
             code 41
         hook hold
+          # `depth` counts the open groups, one entry in `opened` each; the read is on the path that shows both
           fork test
             hook test
-              call is-equal
-                read depth
-                code 0
+              call or
+                call is-maximum
+                  read depth
+                  code 0
+                call is-below
+                  read opened/length
+                  read depth
             hook hold
               call refuse-regex
                 read at
                 text <a closing parenthesis has no group to close>
-          save depth
-            call subtract
-              read depth
-              code 1
-          save top
-            call get
-              read opened
-              read depth
-          call opened/pop
-          save held
-            call is-above
-              read groups
-              read top
+            hook miss
+              save depth
+                call subtract
+                  read depth
+                  code 1
+              save top
+                call get
+                  read opened
+                  read depth
+              call opened/pop
+              save held
+                call is-above
+                  read groups
+                  read top
           save out, text <{{out}})>
           save repeatable, true
         # alternation and the anchors
@@ -1032,6 +1049,26 @@ task canonical-pattern
               read c
           save out, text <{{out}}{{written}}>
           save repeatable, true
+      # every branch moved `i` past `at` and no further than the end; stated, so the walk is seen to rise each turn
+      save step, read i
+      fork test
+        hook test
+          call is-maximum
+            read step
+            read at
+        hook hold
+          save step
+            call add
+              read at
+              code 1
+      fork test
+        hook test
+          call is-above
+            read step
+            read n
+        hook hold
+          save step, read n
+      save i, read step
   fork test
     hook test
       call is-above

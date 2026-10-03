@@ -9,7 +9,7 @@
 # The window is made at boot, before the platform's run loop starts, the way every cask app makes it: a WKWebView made
 # inside a callback after NSApplication.run had begun never finished its first load (2026-10-02).
 
-load @term/cask/code/cask
+load @term/cask/cask
   find window
   find open-window
   find load-bundle

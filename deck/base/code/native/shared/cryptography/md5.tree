@@ -7,16 +7,16 @@
 # every implementation agrees on). Input is a byte list, output the 32-character lowercase hex digest.
 # Vectors held in deck/base/test/md5.tree: d41d8cd98f00b204e9800998ecf8427e for the empty message and
 # 900150983cd24fb0d6963f7d28e17f72 for "abc".
-load @term/base/code/boolean
+load @term/base/boolean
   find not
 
-load @term/base/code/text/string
+load @term/base/text/string
   find concat
 
-load @term/base/code/text
+load @term/base/text
   find char-at
 
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-and
   find bitwise-or
   find bitwise-not

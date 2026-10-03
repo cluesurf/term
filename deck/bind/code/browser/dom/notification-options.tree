@@ -1,26 +1,26 @@
 
-load @term/bind/code/browser/dom/dom-time-stamp
+load @term/bind/browser/dom/dom-time-stamp
   find dom-time-stamp
 
-load @term/bind/code/browser/dom/notification-action
+load @term/bind/browser/dom/notification-action
   find notification-action
 
-load @term/bind/code/browser/dom/notification-direction
+load @term/bind/browser/dom/notification-direction
   find notification-direction
 
-load @term/bind/code/browser/dom/vibrate-pattern
+load @term/bind/browser/dom/vibrate-pattern
   find vibrate-pattern
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form notification-options, name <NotificationOptions>

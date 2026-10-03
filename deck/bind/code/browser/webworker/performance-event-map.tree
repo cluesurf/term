@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/performance-event-map
+load @term/bind/browser/dom/performance-event-map
   find performance-event-map
 
-load @term/bind/code/browser/webworker/event
+load @term/bind/browser/webworker/event
   find event
 
 form performance-event-map, name <PerformanceEventMap>

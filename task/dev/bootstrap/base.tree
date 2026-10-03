@@ -31,32 +31,32 @@ load ./windows
   find windows-tools
   find windows-settings
 
-load @term/base/code/process
+load @term/base/process
   find platform
 
-load @term/base/code/process/run
+load @term/base/process/run
   find run
   find run-attached
   find run-with-input
   find run-result
 
-load @term/base/code/environment
+load @term/base/environment
   find variable
   find set-variable
   find change-directory
 
-load @term/base/code/file
+load @term/base/file
   find read
   find write
   find test
   find move
 
-load @term/base/code/file/directory
+load @term/base/file/directory
   find make
   find remove
   find exists
 
-load @term/base/code/text
+load @term/base/text
   find trim
   find split
   find contains
@@ -66,16 +66,16 @@ load @term/base/code/text
   find pad-right
   find replace-all
 
-load @term/base/code/text/unicode
+load @term/base/text/unicode
   find rune-to-text
 
-load @term/base/code/list
+load @term/base/list
   find list
   find size
   find get
   find join
 
-load @term/base/code/log
+load @term/base/log
   find info
 
 # ---------------------------------------------------------------- the machine
@@ -1061,7 +1061,7 @@ task write-profile
   call info, text <wrote the term development environment to {{machine/profile}}>
   send back, true
 
-load @term/base/code/text
+load @term/base/text
   find char-count
 
 # On Windows each variable goes to the user's environment through `setx`, and the directories to the user's Path

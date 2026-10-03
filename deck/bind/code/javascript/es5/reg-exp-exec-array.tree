@@ -1,11 +1,11 @@
 
-load @term/bind/code/javascript/es5/array
+load @term/bind/javascript/es5/array
   find array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form reg-exp-exec-array, name <RegExpExecArray>

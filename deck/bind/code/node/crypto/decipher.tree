@@ -2,18 +2,18 @@
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-boolean
   find native-string
   find native-this
   find native-undefined
   find node-js-array-buffer-view
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
   find buffer-encoding
 
-load @term/bind/code/node/crypto
+load @term/bind/node/crypto
   find encoding
 
 form decipher, name <Decipher>

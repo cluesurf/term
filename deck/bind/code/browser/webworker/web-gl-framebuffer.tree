@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/web-gl-framebuffer
+load @term/bind/browser/dom/web-gl-framebuffer
   find web-gl-framebuffer
 
 form web-gl-framebuffer, name <WebGLFramebuffer>

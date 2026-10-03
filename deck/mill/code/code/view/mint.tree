@@ -1,40 +1,40 @@
-load @term/mill/code/code/bind/mint
+load @term/mill/code/bind/mint
   find bind
 
-load @term/mill/code/code/hook/mint
+load @term/mill/code/hook/mint
   find hook
 
 load @term/mill/code/code/note/mint
   find note
 
-load @term/mill/code/code/take/mint
+load @term/mill/code/take/mint
   find take
 
-load @term/mill/code/code/tune/mint
+load @term/mill/code/tune/mint
   find tune
 
-load @term/mill/code/code/like/mint
+load @term/mill/code/like/mint
   find like
 
-load @term/mill/code/code/head/mint
+load @term/mill/code/head/mint
   find head
 
-load @term/mill/code/code/mark/mint
+load @term/mill/code/mark/mint
   find mark
 
-load @term/mill/code/code/seed/mint
+load @term/mill/code/seed/mint
   find seed
 
-load @term/mill/code/code/call/mint
+load @term/mill/code/call/mint
   find call
 
-load @term/mill/code/code/fork/mint
+load @term/mill/code/fork/mint
   find fork
 
-load @term/mill/code/code/walk/mint
+load @term/mill/code/walk/mint
   find walk
 
-load @term/mill/code/code/save/mint
+load @term/mill/code/save/mint
   find save
 
 mint view
@@ -83,6 +83,8 @@ mint view-node
   case text, mint view-text
     site text
   case read, mint view-read
+    site read
+  case read, mint view-word
     site read
   case fork, mint view-fork
     site fork
@@ -173,6 +175,14 @@ mint view-text
       bind value, read value
 
 mint view-read
+  case seed
+    site seed
+  hook make
+    make view-read
+      bind seed, read seed
+
+# a bare word mints the very form `read <word>` does, so the bridge reads one shape
+mint view-word
   case seed
     site seed
   hook make

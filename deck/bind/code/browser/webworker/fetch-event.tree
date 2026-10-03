@@ -1,23 +1,23 @@
 
-load @term/bind/code/browser/webworker/extendable-event
+load @term/bind/browser/webworker/extendable-event
   find extendable-event
 
-load @term/bind/code/browser/webworker/request
+load @term/bind/browser/webworker/request
   find request
 
-load @term/bind/code/browser/webworker/response
+load @term/bind/browser/webworker/response
   find response
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form fetch-event, name <FetchEvent>

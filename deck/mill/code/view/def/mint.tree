@@ -1,14 +1,14 @@
 
-load @term/base/code/view
+load @term/base/view
   find view-def
 
-load @term/base/code/take
+load @term/base/take
   find take
 
-load @term/mill/code/view/node/mint
+load @term/mill/view/node/mint
   find view-node
 
-load @term/mill/code/view/seed/mint
+load @term/mill/view/seed/mint
   find view-like
 
 mint view-def, like view-def

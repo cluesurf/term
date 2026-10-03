@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/html-media-element
+load @term/bind/browser/dom/html-media-element
   find html-media-element
 
 form media-element-audio-source-options, name <MediaElementAudioSourceOptions>

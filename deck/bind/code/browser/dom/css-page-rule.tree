@@ -1,11 +1,11 @@
 
-load @term/bind/code/browser/dom/css-grouping-rule
+load @term/bind/browser/dom/css-grouping-rule
   find css-grouping-rule
 
-load @term/bind/code/browser/dom/css-style-declaration
+load @term/bind/browser/dom/css-style-declaration
   find css-style-declaration
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form css-page-rule, name <CSSPageRule>

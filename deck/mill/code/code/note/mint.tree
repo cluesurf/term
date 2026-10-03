@@ -1,7 +1,28 @@
-load @term/mill/code/code/tool/flow/mint
+load @term/mill/code/tool/flow/mint
   find flow
 
 mint note
+  case text
+    site text
+  case flow
+    site flow
+  hook make
+    make note
+      bind text, read text
+      bind flow, read flow
+
+# `mark <metadata>` is built as the `note` it replaces (note/mine.tree, `mine mark-note`)
+mint mark-note
+  case text
+    site text
+  case flow
+    site flow
+  hook make
+    make note
+      bind text, read text
+      bind flow, read flow
+
+mint mark-guard
   case text
     site text
   case flow

@@ -1,10 +1,10 @@
 
 bear @term/bind/code/javascript/node/punycode/ucs2
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
 
-load @term/bind/code/node/punycode
+load @term/bind/node/punycode
   find ucs2
 
 host ucs2, name <ucs2>

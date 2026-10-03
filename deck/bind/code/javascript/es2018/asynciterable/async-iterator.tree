@@ -1,17 +1,17 @@
 
-load @term/bind/code/javascript/es2015/iterable/iterator-result
+load @term/bind/javascript/es2015/iterable/iterator-result
   find iterator-result
 
-load @term/bind/code/javascript/es2015/symbol/wellknown/promise
+load @term/bind/javascript/es2015/symbol/wellknown/promise
   find promise
 
-load @term/bind/code/javascript/es5/promise-like
+load @term/bind/javascript/es5/promise-like
   find promise-like
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-undefined
 
 form async-iterator, name <AsyncIterator>

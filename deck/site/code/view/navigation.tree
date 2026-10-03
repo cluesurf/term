@@ -1,0 +1,266 @@
+
+# THE NAVIGATION CONTRACT (native-navigation-0001): where an app is, and how it moves, the same on every target. The
+# history is HELD HERE, a stack of paths with the current one on top and a signal of it, so a native app with no address
+# bar and no History API navigates exactly as a page does. A host that has an address bar mirrors the stack into it
+# (`push-path`, `replace-path`, `go-back` in ../dom/page, the browser's History), and tells this module when the person
+# moved it themselves (back, forward), through `follow-address`. Everything a route reads is a signal or a task here,
+# never the host's own state: note/term/project/native-navigation.md.
+#
+#   start-navigation   begin at the host's own path (`/` with no address)
+#   navigate           go to a path: on top of the stack
+#   navigate-replace   go to a path in place of the current one
+#   navigate-back      the one before, false at the first
+#   current-path       where the app is now; `route-signal` is the same as a signal a view reads to re-render
+#   route-matches      whether a path is one a pattern with `:name` segments names
+#   route-param        one `:name` segment of a pattern, read out of a path
+#   set-route-title    the title of where the app is (document.title on the web, the window's title natively)
+
+load @term/site/view/reactive
+  find signal
+  find make-signal
+  find read-signal
+  find write-signal
+load @term/site/dom/page
+  find page-path
+  find push-path
+  find replace-path
+  find go-back
+  find set-title
+load @term/base/list
+  find list
+load @term/base/text
+  find split
+  find starts-with
+
+# where the app has been: the paths, the current one last, and the signal of the current one every reader shares
+form navigation-state
+  mark shared
+  link paths
+    like list
+      like text
+  link current, like signal text
+
+host navigation
+  make navigation-state
+    bind paths
+      make list
+    bind current
+      call make-signal
+        bind value, text </>
+
+# where the app is now
+task current-path
+  like text
+  send back
+    call read-signal
+      bind self, read navigation/current
+
+# the current path as a signal: a view that reads it inside an effect re-renders when the app moves
+task route-signal
+  like signal text
+  send back, read navigation/current
+
+# write the current path, the one place it changes, so every reader wakes once
+task arrive
+  take path, like text
+  call write-signal
+    bind self, read navigation/current
+    bind value, read path
+
+# begin at the host's own path: the address on the web, `/` where there is none
+task start-navigation
+  save here
+    call page-path
+  save paths, read navigation/paths
+  # emptied with the native pop, which every backend lowers; the list form's `clear` is not a native array method
+  walk test
+    hook test
+      call is-above
+        read paths/length
+        code 0
+    hook hold
+      save gone
+        call paths/pop
+  call paths/push
+    read here
+  call arrive
+    read here
+
+# go to a path, on top of the stack
+task navigate
+  take path, like text
+  call navigation/paths/push
+    read path
+  call push-path
+    read path
+  call arrive
+    read path
+
+# go to a path in place of the current one: the stack keeps its depth
+task navigate-replace
+  take path, like text
+  save paths, read navigation/paths
+  fork test
+    hook test
+      call is-above
+        read paths/length
+        code 0
+    hook hold
+      save gone
+        call paths/pop
+  call paths/push
+    read path
+  call replace-path
+    read path
+  call arrive
+    read path
+
+# the path before the current one. False at the first, where there is nowhere to go back to
+task navigate-back
+  like boolean
+  save paths, read navigation/paths
+  fork test
+    hook test
+      call is-above
+        read paths/length
+        code 1
+    hook hold
+      save gone
+        call paths/pop
+      call go-back
+      save top
+        call subtract
+          read paths/length
+          code 1
+      call arrive
+        read paths/{top}
+      send back, true
+  send back, false
+
+# the person moved the address themselves (the browser's back or forward): follow it. A path equal to the one below the
+# top is a step back; anything else is a step forward onto it
+task follow-address
+  save here
+    call page-path
+  save paths, read navigation/paths
+  # the entry below the top, or the path itself when there is none, which then reads as no step back
+  save below, read here
+  fork test
+    hook test
+      call is-above
+        read paths/length
+        code 1
+    hook hold
+      save under
+        call subtract
+          read paths/length
+          code 2
+      save below, read paths/{under}
+  fork test
+    hook test
+      meet and
+        call is-above
+          read paths/length
+          code 1
+        call is-equal
+          read below
+          read here
+    hook hold
+      save gone
+        call paths/pop
+    hook miss
+      fork test
+        hook test
+          call is-unequal
+            call current-path
+            read here
+        hook hold
+          call paths/push
+            read here
+        hook miss
+          save same, code 0
+  call arrive
+    read here
+
+# whether a path is one a pattern names: the same number of segments, each equal, or a `:name` segment, which matches
+# any. `route-matches(</users/:id>, </users/42>)` is true, and so is a pattern with no parameter against itself
+task route-matches
+  take pattern, like text
+  take path, like text
+  like boolean
+  save wanted
+    call split
+      read pattern
+      text </>
+  save given
+    call split
+      read path
+      text </>
+  fork test
+    hook test
+      call is-unequal
+        read wanted/length
+        read given/length
+    hook hold
+      send back, false
+  save same, true
+  walk size
+    bind base, code 0
+    bind head, read wanted/length
+    hook next
+      take site, name index
+      save part, read wanted/{index}
+      fork test
+        hook test
+          meet and
+            call is-unequal
+              read part
+              read given/{index}
+            call is-unequal
+              call starts-with
+                read part
+                text <:>
+              true
+        hook hold
+          save same, false
+  send back, read same
+
+# one `:name` segment of a pattern, read out of a path: `route-param(</posts/:id>, </posts/42>, <id>)` is `42`. Empty
+# when the pattern names no such segment or the path has fewer segments
+task route-param
+  take pattern, like text
+  take path, like text
+  take name, like text
+  like text
+  save wanted
+    call split
+      read pattern
+      text </>
+  save given
+    call split
+      read path
+      text </>
+  save found, text <>
+  walk size
+    bind base, code 0
+    bind head, read wanted/length
+    hook next
+      take site, name index
+      fork test
+        hook test
+          meet and
+            call is-below
+              read index
+              read given/length
+            call is-equal
+              read wanted/{index}
+              text <:{{name}}>
+        hook hold
+          save found, read given/{index}
+  send back, read found
+
+# the title of where the app is: document.title on the web, the window's title natively
+task set-route-title
+  take title, like text
+  call set-title
+    read title

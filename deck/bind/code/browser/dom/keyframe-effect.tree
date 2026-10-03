@@ -1,35 +1,35 @@
 
-load @term/bind/code/browser/dom/animation-effect
+load @term/bind/browser/dom/animation-effect
   find animation-effect
 
-load @term/bind/code/browser/dom/composite-operation
+load @term/bind/browser/dom/composite-operation
   find composite-operation
 
-load @term/bind/code/browser/dom/computed-keyframe
+load @term/bind/browser/dom/computed-keyframe
   find computed-keyframe
 
-load @term/bind/code/browser/dom/element
+load @term/bind/browser/dom/element
   find element
 
-load @term/bind/code/browser/dom/iteration-composite-operation
+load @term/bind/browser/dom/iteration-composite-operation
   find iteration-composite-operation
 
-load @term/bind/code/browser/dom/keyframe
+load @term/bind/browser/dom/keyframe
   find keyframe
 
-load @term/bind/code/browser/dom/property-indexed-keyframes
+load @term/bind/browser/dom/property-indexed-keyframes
   find property-indexed-keyframes
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form keyframe-effect, name <KeyframeEffect>

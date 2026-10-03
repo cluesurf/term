@@ -1,14 +1,14 @@
 
-load @term/bind/code/javascript/es2015/collection/map
+load @term/bind/javascript/es2015/collection/map
   find map
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-array
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
 form map-constructor, name <MapConstructor>

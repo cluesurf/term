@@ -5,11 +5,11 @@ bear @term/bind/code/javascript/node/trace-events/create-tracing-options
 load @term/bind
   find or
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find native-string
   find native-undefined
 
-load @term/bind/code/node/trace-events
+load @term/bind/node/trace-events
   find create-tracing-options
   find tracing
 

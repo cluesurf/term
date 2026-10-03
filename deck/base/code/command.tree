@@ -13,30 +13,30 @@
 
 note stable
 
-load @term/base/code/text
+load @term/base/text
   find starts-with
   find substring
   find index-of
   find char-count
 
-load @term/base/code/list
+load @term/base/list
   find list
   find size
   find get
   find contains
 
-load @term/base/code/hash
+load @term/base/hash
   find hash
   find has
   find get-or-default
 
-load @term/base/code/text/number
+load @term/base/text/number
   find read-number
 
-load @term/base/code/maybe
+load @term/base/maybe
   find is-some
 
-load @term/base/code/text/unicode
+load @term/base/text/unicode
   find rune-to-text
 
 form schema
@@ -260,10 +260,15 @@ task parse
       call subtract
         read count
         read i
+    # the calls below reach records, so the words' own length is tested on each turn, not only the count taken first
     hook test
-      call is-below
-        read i
-        read count
+      call and
+        call is-below
+          read i
+          read count
+        call is-below
+          read i
+          read words/length
     hook step
       save word
         call get
@@ -359,9 +364,13 @@ task parse
                       save negated, true
                   fork test
                     hook test
-                      call is-below
-                        read at
-                        code 0
+                      call or
+                        call is-below
+                          read at
+                          code 0
+                        call is-maximum
+                          read schema/flags/length
+                          read at
                     hook hold
                       call errors/push
                         text <--{{name}} is not a flag>
@@ -407,7 +416,7 @@ task parse
                                 hook test
                                   call is-below
                                     read i
-                                    read count
+                                    read words/length
                                 hook hold
                                   save value
                                     call get
@@ -465,9 +474,13 @@ task parse
                           true
                       fork test
                         hook test
-                          call is-below
-                            read at
-                            code 0
+                          call or
+                            call is-below
+                              read at
+                              code 0
+                            call is-maximum
+                              read schema/flags/length
+                              read at
                         hook hold
                           call errors/push
                             text <-{{letter}} is not a flag>
@@ -494,7 +507,7 @@ task parse
                                       read letters
                                     call is-below
                                       read i
-                                      read count
+                                      read words/length
                                 hook hold
                                   save value
                                     call get

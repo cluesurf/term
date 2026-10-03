@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/event
+load @term/bind/browser/dom/event
   find event
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form web-gl-context-event, name <WebGLContextEvent>

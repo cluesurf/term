@@ -9,15 +9,15 @@
 # generic `set-slot` writes any region; one generic `region` outlet renders any region -- both parameterized by the
 # region signal, so there is no per-region boilerplate beyond the signals themselves.
 
-load @term/site/code/view/reactive
+load @term/site/view/reactive
   find signal
   find make-signal
   find read-signal
   find write-signal
-load @term/site/code/view/render
+load @term/site/view/render
   find make-element
   find render-dynamic-view
-load @term/site/code/dom/dom
+load @term/site/dom/dom
   find view
   find append
 

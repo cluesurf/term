@@ -13,15 +13,15 @@
 # it means the writer needs no flag/coordinate-choice heuristics to be correct, matching how `write-int` always
 # uses one representation regardless of what a real font tool might pick to save space.
 
-load @term/base/code/list
+load @term/base/list
   find push
   find get
   find size
 
-load @term/base/code/boolean
+load @term/base/boolean
   find and
 
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-and
 
 load ../../../../base
@@ -103,7 +103,7 @@ task read-glyf-flags
     make list
   walk test
     hook test
-      call is-below(call size(read result), read point-count)
+      call is-below(call(size(read result)), read point-count)
     hook hold
       save flag
         call read-byte(read cursor)
@@ -127,7 +127,7 @@ task read-glyf-flags
                 call is-below
                   read copied
                   read repeat-count
-                call is-below(call size(read result), read point-count)
+                call is-below(call(size(read result)), read point-count)
             hook hold
               call push
                 read result

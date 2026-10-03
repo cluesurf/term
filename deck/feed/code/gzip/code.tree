@@ -3,26 +3,26 @@
 # note/term/feed/03-worked-examples.md field for field: the flags-byte bitwise tests, the NUL-terminated latin1
 # name/comment fields, the trailer.
 
-load @term/base/code/boolean
+load @term/base/boolean
   find and
   find not
 
-load @term/base/code/list
+load @term/base/list
   find push
   find size
   find join
 
-load @term/base/code/text
+load @term/base/text
   find char-at
   find char-code-at
 
-load @term/base/code/rune
+load @term/base/rune
   find rune-to-text
 
-load @term/base/code/bit
+load @term/base/bit
   find bitwise-and
 
-load @term/base/code/maybe
+load @term/base/maybe
   find maybe
   find some
   find none
@@ -224,7 +224,7 @@ task read-gzip
       read cursor
       read flags
   save compressed-length
-    call subtract(call remaining(read cursor), code 8)
+    call subtract(call(remaining(read cursor)), code 8)
   save compressed-data
     call read-bytes
       read cursor

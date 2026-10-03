@@ -2,10 +2,10 @@
 # The blog example: a self-contained app package that consumes the @term/site framework.
 
 deck @term/blog
-  code <0.0.1>
+  mark <0.0.1>
 
 load @term/site
-  code <0.0.x>
+  mark <0.0.x>
 
 # the entry `seed boot` runs (its `boot` task): the Postgres-backed HTTP API
 boot ./hook/blog

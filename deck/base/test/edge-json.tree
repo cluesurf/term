@@ -2,11 +2,11 @@
 # the same position and reason (note/term/stdlib/semantics.md). Held by `pnpm term:base-gate`. A backslash is built
 # from its code point, so no escape in this file depends on how a text literal reads one.
 
-load @term/base/code/json/check
+load @term/base/json/check
   find check-json
   find json-mismatch
 
-load @term/base/code/text/unicode
+load @term/base/text/unicode
   find rune-to-text
 
 task slash

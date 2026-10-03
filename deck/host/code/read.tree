@@ -1,15 +1,15 @@
 # Nodes to data: the rules of note/term/host/01-grammar.md, each a `data-defect` naming the rule. `read` gives the
 # expanded value; `read-raw` keeps the anchors (`tree`) and the splices (`fuse`) for a writer that preserves them.
 
-load @term/base/code/boolean
+load @term/base/boolean
   find not
 
-load @term/base/code/list
+load @term/base/list
   find push
   find size
   find get
 
-load @term/base/code/text/string
+load @term/base/text/string
   find concat
 
 load ./node
@@ -150,8 +150,8 @@ task read-raw
   fork test
     hook test
       call and
-        call is-above(call size(read entries), code 0)
-        call is-above(call size(read items), code 0)
+        call is-above(call(size(read entries)), code 0)
+        call is-above(call(size(read items)), code 0)
     hook hold
       halt data-defect
         bind rule, text <a file is a map of "host" entries or a list of "mesh" items, never both>
@@ -161,7 +161,7 @@ task read-raw
       bind list, read entries
   fork test
     hook test
-      call is-above(call size(read items), code 0)
+      call is-above(call(size(read items)), code 0)
     hook hold
       save root
         make array
@@ -266,7 +266,7 @@ task key-of
       link kids
       fork test
         hook test
-          call is-equal(call size(read kids), code 0)
+          call is-equal(call(size(read kids)), code 0)
         hook hold
           send back, text <>
       save first
@@ -285,7 +285,7 @@ task key-of
           link kids
           fork test
             hook test
-              call is-equal(call size(read kids), code 0)
+              call is-equal(call(size(read kids)), code 0)
             hook hold
               send back, read head
           send back, text <>
@@ -364,7 +364,7 @@ task is-scalar
       link kids
       send back
         call and
-          call is-equal(call size(read kids), code 0)
+          call is-equal(call(size(read kids)), code 0)
           call or
             call is-equal
               read head
@@ -522,7 +522,7 @@ task read-entry
         call is-above
           read scalars
           code 0
-        call is-above(call size(read blocks), code 0)
+        call is-above(call(size(read blocks)), code 0)
     hook hold
       halt data-defect
         bind rule
@@ -546,7 +546,7 @@ task read-entry
                 call integer-text(read scalars)
                 call concat
                   text < values. A list is written >
-                  call quote(call concat(text <list >, read name))
+                  call quote call concat(text(<list >), read name)
         bind line, code 0
   fork test
     hook test
@@ -814,7 +814,7 @@ task read-tree
       read root
   fork test
     hook test
-      call is-equal(call size(read rest), code 0)
+      call is-equal(call(size(read rest)), code 0)
     hook hold
       send back
         make data-tree
@@ -951,7 +951,7 @@ task not-value-rule
       link kids
       fork test
         hook test
-          call is-equal(call size(read kids), code 0)
+          call is-equal(call(size(read kids)), code 0)
         hook hold
           send back
             call concat
@@ -992,7 +992,7 @@ task key-is-word
       link kids
       fork test
         hook test
-          call is-equal(call size(read kids), code 0)
+          call is-equal(call(size(read kids)), code 0)
         hook hold
           send back, false
       save first
@@ -1006,7 +1006,7 @@ task key-is-word
           link head
           link kids
           send back
-            call is-equal(call size(read kids), code 0)
+            call is-equal(call(size(read kids)), code 0)
         case text
           send back, false
         case number

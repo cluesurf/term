@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/svg-transform-list
+load @term/bind/browser/dom/svg-transform-list
   find svg-transform-list
 
 form svg-animated-transform-list, name <SVGAnimatedTransformList>

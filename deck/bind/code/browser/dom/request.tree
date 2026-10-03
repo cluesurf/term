@@ -1,35 +1,35 @@
 
-load @term/bind/code/browser/dom/abort-signal
+load @term/bind/browser/dom/abort-signal
   find abort-signal
 
-load @term/bind/code/browser/dom/body
+load @term/bind/browser/dom/body
   find body
 
-load @term/bind/code/browser/dom/headers
+load @term/bind/browser/dom/headers
   find headers
 
-load @term/bind/code/browser/dom/referrer-policy
+load @term/bind/browser/dom/referrer-policy
   find referrer-policy
 
-load @term/bind/code/browser/dom/request-cache
+load @term/bind/browser/dom/request-cache
   find request-cache
 
-load @term/bind/code/browser/dom/request-credentials
+load @term/bind/browser/dom/request-credentials
   find request-credentials
 
-load @term/bind/code/browser/dom/request-destination
+load @term/bind/browser/dom/request-destination
   find request-destination
 
-load @term/bind/code/browser/dom/request-mode
+load @term/bind/browser/dom/request-mode
   find request-mode
 
-load @term/bind/code/browser/dom/request-redirect
+load @term/bind/browser/dom/request-redirect
   find request-redirect
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form request, name <Request>

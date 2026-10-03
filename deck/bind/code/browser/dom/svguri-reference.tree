@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/svg-animated-string
+load @term/bind/browser/dom/svg-animated-string
   find svg-animated-string
 
 form svguri-reference, name <SVGURIReference>

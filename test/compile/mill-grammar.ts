@@ -12,6 +12,7 @@ import { parse } from '@term/make/code/parser/tree'
 import type { GroupNode, Node } from '@term/make/code/parser/tree'
 import { parse, renderHead } from '@term/make/code/parser/tree'
 import { checkMillDefinition, millDeclared } from '@term/make/code/compile/mill-check'
+import { projectResolver } from '@term/call/code/make'
 
 let pass = 0
 let fail = 0
@@ -65,7 +66,6 @@ function topLevel(file: string, text: string, head: string): string[] {
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
 const MILL = join(TERM, 'deck/mill/code')
-const SEED = join(TERM, 'deck/base/code')
 
 // the roles held to zero problems
 const HELD = new Set(['host', 'mill', 'deck', 'note', 'code', 'test', 'view'])
@@ -84,29 +84,18 @@ function walk(dir: string, into: string[] = []): string[] {
   return into
 }
 
-// where a `load` target lives: the stdlib, the mill package, or a relative path
-function resolveLoad(target: string, from: string): string | undefined {
-  let base: string
+// where a `load` target lives, asked of the BUILD's resolver, so this gate and `term make` cannot disagree about
+// what a grammar file loads. It had its own prefix table (`@term/base/code/`, `@term/mill/code/`, ...), a second
+// resolver that stopped finding every load the moment the tree moved to the short form `@term/mill/deck/...`
+// (note/term/plan/manifest-mark-and-code-root.md)
+const resolveBuild = projectResolver(TERM)
 
-  if (target.startsWith('@term/base/code/')) {
-    base = join(SEED, target.slice('@term/base/code/'.length))
-  } else if (target.startsWith('@term/mill/code/')) {
-    base = join(MILL, target.slice('@term/mill/code/'.length))
-  } else if (target.startsWith('@term/host/code/')) {
-    base = join(TERM, 'deck/host/code', target.slice('@term/host/code/'.length))
-  } else if (target.startsWith('./') || target.startsWith('../')) {
-    base = join(from, '..', target)
-  } else {
+function resolveLoad(target: string, from: string): string | undefined {
+  if (!target.startsWith('@') && !target.startsWith('./') && !target.startsWith('../')) {
     return undefined
   }
 
-  for (const candidate of [`${base}.tree`, join(base, 'base.tree')]) {
-    if (existsSync(candidate)) {
-      return candidate
-    }
-  }
-
-  return undefined
+  return resolveBuild(target, from)?.file
 }
 
 function headOf(group: GroupNode): string {

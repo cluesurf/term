@@ -1,5 +1,5 @@
 
-load @term/bind/code/browser/dom/html-pre-element
+load @term/bind/browser/dom/html-pre-element
   find html-pre-element
 
 form html-element-deprecated-tag-name-map, name <HTMLElementDeprecatedTagNameMap>

@@ -1,8 +1,8 @@
 
-load @term/bind/code/javascript/es5/array-buffer
+load @term/bind/javascript/es5/array-buffer
   find array-buffer
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form memory, name <Memory>

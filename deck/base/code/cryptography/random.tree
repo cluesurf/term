@@ -2,7 +2,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/cryptography/random
+load @term/base/native/{platform}/cryptography/random
   find random-bytes
 
 task bytes

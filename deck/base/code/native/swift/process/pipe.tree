@@ -1,7 +1,7 @@
 # swift pipe between two child processes: a Foundation Pipe wired as one child's standard output and the
 # other's standard input, in one native expression (the child's dock is a Foundation Process).
 
-load @term/base/code/process
+load @term/base/process
   find child
 
 bind pipe-connect

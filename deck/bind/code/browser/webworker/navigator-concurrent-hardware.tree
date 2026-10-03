@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/navigator-concurrent-hardware
+load @term/bind/browser/dom/navigator-concurrent-hardware
   find navigator-concurrent-hardware
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-number
 
 form navigator-concurrent-hardware, name <NavigatorConcurrentHardware>

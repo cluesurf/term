@@ -1,20 +1,20 @@
 
-load @term/bind/code/browser/webworker/client
+load @term/bind/browser/webworker/client
   find client
 
-load @term/bind/code/browser/webworker/visibility-state
+load @term/bind/browser/webworker/visibility-state
   find visibility-state
 
-load @term/bind/code/javascript/es5/promise
+load @term/bind/javascript/es5/promise
   find promise
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-boolean
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
 form window-client, name <WindowClient>

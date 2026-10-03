@@ -1,44 +1,44 @@
 
-load @term/bind/code/browser/dom/g-lboolean
+load @term/bind/browser/dom/g-lboolean
   find g-lboolean
 
-load @term/bind/code/browser/dom/g-lenum
+load @term/bind/browser/dom/g-lenum
   find g-lenum
 
-load @term/bind/code/browser/dom/g-lfloat
+load @term/bind/browser/dom/g-lfloat
   find g-lfloat
 
-load @term/bind/code/browser/dom/g-lint
+load @term/bind/browser/dom/g-lint
   find g-lint
 
-load @term/bind/code/browser/dom/g-lsizei
+load @term/bind/browser/dom/g-lsizei
   find g-lsizei
 
-load @term/bind/code/browser/dom/g-luint
+load @term/bind/browser/dom/g-luint
   find g-luint
 
-load @term/bind/code/browser/dom/web-gl-program
+load @term/bind/browser/dom/web-gl-program
   find web-gl-program
 
-load @term/bind/code/browser/dom/web-gl-uniform-location
+load @term/bind/browser/dom/web-gl-uniform-location
   find web-gl-uniform-location
 
-load @term/bind/code/browser/dom/web-gl2-rendering-context-base
+load @term/bind/browser/dom/web-gl2-rendering-context-base
   find web-gl2-rendering-context-base
 
 load @term/bind/code/javascript/iterable
   find iterable
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-any
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-null
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-string
 
-load @term/bind/code/javascript/native
+load @term/bind/javascript/native
   find native-void
 
 form web-gl2-rendering-context-base, name <WebGL2RenderingContextBase>

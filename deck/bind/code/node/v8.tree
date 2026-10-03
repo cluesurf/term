@@ -8,7 +8,7 @@ bear @term/bind/code/javascript/node/v8/default-serializer
 bear @term/bind/code/javascript/node/v8/deserializer
 bear @term/bind/code/javascript/node/v8/default-deserializer
 
-load @term/bind/code/javascript
+load @term/bind/javascript
   find array
   find native-number
   find native-string
@@ -19,10 +19,10 @@ load @term/bind/code/javascript
 load @term/bind
   find any
 
-load @term/bind/code/node/buffer
+load @term/bind/node/buffer
   find buffer
 
-load @term/bind/code/node/v8
+load @term/bind/node/v8
   find heap-code-statistics
   find heap-info
   find heap-space-info

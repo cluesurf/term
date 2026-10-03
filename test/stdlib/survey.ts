@@ -7,6 +7,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { compile } from '@term/make/code/compile/compile'
+import { stdlibResolver } from '@term/make/code/resolve'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import type { Source } from '@term/make/code/compile/load'
 
@@ -14,18 +15,8 @@ const here = dirname(fileURLToPath(import.meta.url))
 const base = join(here, '..', '..', 'deck', 'base')
 const codeDir = join(base, 'code')
 
-const stdlib = (path: string): Source | undefined => {
-  const prefix = '@term/base/'
-  path = path.replace(/^@term\/base\//, prefix)
-
-  if (!path.startsWith(prefix)) {return undefined}
-
-  const file = join(base, `${path.slice(prefix.length)}.tree`)
-
-  return existsSync(file)
-    ? { file, text: readFileSync(file, 'utf8') }
-    : undefined
-}
+// the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
+const stdlib = stdlibResolver()!
 
 // the survey compiles against the node target, so a public module's abstract `native/<x>` import resolves to the
 // node implementation (native/node/<x>); modules that do not use native imports are unaffected

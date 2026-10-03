@@ -1,8 +1,8 @@
 
-load @term/bind/code/browser/dom/progress-event
+load @term/bind/browser/dom/progress-event
   find progress-event
 
-load @term/bind/code/browser/dom/xml-http-request-event-target
+load @term/bind/browser/dom/xml-http-request-event-target
   find xml-http-request-event-target
 
 form xml-http-request-event-target-event-map, name <XMLHttpRequestEventTargetEventMap>

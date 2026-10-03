@@ -2,7 +2,7 @@
 
 note stable
 
-load @term/base/code/native/{platform}/json
+load @term/base/native/{platform}/json
   find json-parse
   find json-stringify
   find json-get-field
@@ -27,7 +27,7 @@ load @term/base/code/native/{platform}/json
   find json-array-item
   find json-object-keys
 
-load @term/base/code/json/check
+load @term/base/json/check
   find check-json
 
 # parse one JSON value. A text that is not JSON raises `json-mismatch` with the code point position and the reason,
